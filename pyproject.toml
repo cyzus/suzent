@@ -1,0 +1,13 @@
+[project]
+name = "suzent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "smolagents[gradio,litellm,mcp]",
+    "streamlit>=1.47.0",
+]
+
+[tool.uv.sources]
+smolagents = { path = "../smolagents" }
