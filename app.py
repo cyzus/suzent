@@ -24,10 +24,11 @@ if prompt := st.chat_input("What is up?"):
         final_answer = ""
         with st.status("Thinking...", expanded=True) as status:
             try:
+                placeholder = st.empty()
+                streaming_content = ""
                 with requests.post("http://localhost:8000/chat", json={"message": prompt}, stream=True) as r:
                     r.raise_for_status()
                     is_streaming = False
-                    streaming_content = ""
                     code_content = ""
                     for chunk in r.iter_content(chunk_size=None):
                         if chunk:
@@ -42,14 +43,15 @@ if prompt := st.chat_input("What is up?"):
                                         if CODE_TAG not in content and not code_content:
                                             is_streaming = True
                                             streaming_content += content
-                                            st.write(content)
+                                            placeholder.markdown(streaming_content)
+
                                         else:
                                             code_index = content.find(CODE_TAG)
                                             if code_index != -1:
                                                 content_for_stream = content[:content.index(CODE_TAG)]
                                                 streaming_content += content_for_stream
                                                 if content_for_stream:
-                                                    st.write(content_for_stream)
+                                                    placeholder.markdown(streaming_content)
                                                 code_content += content[content.index(CODE_TAG) + len(CODE_TAG):]
                                             else:
                                                 code_content += content
