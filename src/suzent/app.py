@@ -12,18 +12,18 @@ import re
 import requests
 import streamlit as st
 
-TITLE = "SUZ AGENT"
+from suzent.config import Config
 
 # --- Page Configuration ---
 st.set_page_config(
-    page_title=TITLE,
+    page_title=Config.TITLE,
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # --- Constants ---
-SERVER_URL = "http://localhost:8000/chat"
+SERVER_URL = Config.SERVER_URL
 CODE_TAG = "<code>"
 
 
@@ -41,31 +41,25 @@ def main():
     """
     Main function to run the Streamlit application.
     """
-    st.title(TITLE)
+    st.title(Config.TITLE)
 
     # --- Sidebar ---
     st.sidebar.title("Configuration")
 
     # Model selection
-    model_options = [
-        "gemini/gemini-2.5-flash",
-        "gemini/gemini-2.5-pro",
-        "anthropic/claude-sonnet-4-20250514",
-        "openai/gpt-4.1",
-        "deepseek/deepseek-chat"
-    ]
+    model_options = Config.MODEL_OPTIONS
     selected_model = st.sidebar.selectbox("Select Model", model_options, index=0)
 
     # Agent selection
-    agent_options = ["CodeAgent"]
+    agent_options = Config.AGENT_OPTIONS
     selected_agent = st.sidebar.selectbox("Select Agent", agent_options, index=0)
 
     # Tool selection
-    tool_options = ["WebSearchTool"]
-    selected_tools = st.sidebar.multiselect("Select Tools", tool_options, default=["WebSearchTool"])
+    tool_options = Config.TOOL_OPTIONS
+    selected_tools = st.sidebar.multiselect("Select Tools", tool_options, default=Config.DEFAULT_TOOLS)
 
     mcp_urls_str = st.sidebar.text_area(
-        "MCP URLs (comma-separated)", "https://evalstate-hf-mcp-server.hf.space/mcp"
+        "MCP URLs (comma-separated)", Config.DEFAULT_MCP_URLS
     )
     mcp_urls = [url.strip() for url in mcp_urls_str.split(",") if url.strip()]
 
