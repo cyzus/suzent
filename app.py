@@ -61,15 +61,13 @@ def main():
     selected_agent = st.sidebar.selectbox("Select Agent", agent_options, index=0)
 
     # Tool selection
-    tool_options = ["WebSearchTool", "MCPClient"]
+    tool_options = ["WebSearchTool"]
     selected_tools = st.sidebar.multiselect("Select Tools", tool_options, default=["WebSearchTool"])
 
-    mcp_urls = []
-    if "MCPClient" in selected_tools:
-        mcp_urls_str = st.sidebar.text_area(
-            "MCP URLs (comma-separated)", "https://evalstate-hf-mcp-server.hf.space/mcp"
-        )
-        mcp_urls = [url.strip() for url in mcp_urls_str.split(",") if url.strip()]
+    mcp_urls_str = st.sidebar.text_area(
+        "MCP URLs (comma-separated)", "https://evalstate-hf-mcp-server.hf.space/mcp"
+    )
+    mcp_urls = [url.strip() for url in mcp_urls_str.split(",") if url.strip()]
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -126,8 +124,8 @@ def process_agent_response(prompt, config, reset: bool = False):
     if full_response:
         st.session_state.messages.append({"role": "assistant", "content": full_response})
         # Final render to clean up any open code blocks
-        if is_in_code_block:
-            full_response += "\n```\n"
+        # if is_in_code_block:
+        #     full_response += "\n```\n"
         placeholder.markdown(full_response, unsafe_allow_html=True)
 
 
@@ -170,7 +168,7 @@ def handle_stream_chunk(chunk, placeholder, full_response, is_in_code_block):
                 full_response += f"\n\n{final_answer}"
             elif response_type == "action":
                 observations = response_data.get("observations")
-                if observations:
+                if observations and not response_data.get("is_final_answer"):
                     full_response += f"\n\n<div style='background-color:#f9f6e7; border-left: 6px solid #f7c873; padding: 12px; margin: 10px 0; border-radius: 6px;'><strong>Observations:</strong><br>{observations}</div>"
             elif response_type == "other" and isinstance(response_data, str):
                 match = re.search(r"name='([^']*)'", response_data)

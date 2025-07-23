@@ -41,8 +41,9 @@ def create_agent(config: dict):
     tools = []
     if "WebSearchTool" in tool_names:
         tools.append(WebSearchTool())
-    if "MCPClient" in tool_names:
-        mcp_urls = config.get("mcp_urls", ["https://evalstate-hf-mcp-server.hf.space/mcp"])
+
+    mcp_urls = config.get("mcp_urls", [])
+    if mcp_urls:
         mcp_server_parameters = [
             {"url": url, "transport": "streamable-http"} for url in mcp_urls
         ]
