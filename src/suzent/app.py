@@ -1,13 +1,6 @@
-"""
-This module implements a Streamlit-based user interface for interacting with a code-generating agent.
-
-It provides a chat-like interface where users can send messages to the agent and receive real-time
-responses. The UI handles various types of messages from the agent, including streaming text,
-code blocks, tool usage, and final answers, displaying them in a structured and readable format.
-"""
-
 import json
 import re
+from pathlib import Path
 
 import requests
 import streamlit as st
@@ -24,7 +17,33 @@ st.set_page_config(
 
 # --- Constants ---
 SERVER_URL = Config.SERVER_URL
-CODE_TAG = "<code>"
+CODE_TAG = Config.CODE_TAG
+MCP_URLS_FILE = Path("mcp_urls.json")
+
+
+# --- MCP URL Persistence ---
+def load_mcp_urls():
+    """Loads MCP URLs from the JSON file."""
+    if MCP_URLS_FILE.exists():
+        with open(MCP_URLS_FILE, "r") as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return []  # Return empty list if file is corrupted
+    # Default URLs if file doesn't exist
+    return [
+        {"name": f"Default Server {i+1}", "url": url.strip()}
+        for i, url in enumerate(Config.DEFAULT_MCP_URLS.split(","))
+        if url.strip()
+    ]
+
+
+def save_mcp_urls(servers):
+    """Saves MCP URLs to the JSON file."""
+    with open(MCP_URLS_FILE, "w") as f:
+        # Save only name and url, not the enabled state
+        servers_to_save = [{"name": s["name"], "url": s["url"]} for s in servers]
+        json.dump(servers_to_save, f, indent=2)
 
 
 # --- UI Components ---
@@ -58,10 +77,51 @@ def main():
     tool_options = Config.TOOL_OPTIONS
     selected_tools = st.sidebar.multiselect("Select Tools", tool_options, default=Config.DEFAULT_TOOLS)
 
-    mcp_urls_str = st.sidebar.text_area(
-        "MCP URLs (comma-separated)", Config.DEFAULT_MCP_URLS
-    )
-    mcp_urls = [url.strip() for url in mcp_urls_str.split(",") if url.strip()]
+    st.sidebar.title("MCP Configuration")
+
+    # Initialize mcp_servers in session state if not present
+    if "mcp_servers" not in st.session_state:
+        servers = load_mcp_urls()
+        st.session_state.mcp_servers = [
+            {"name": s["name"], "url": s["url"], "enabled": True} for s in servers
+        ]
+
+    # Input for adding a new MCP URL
+    st.sidebar.markdown("Add New MCP Server")
+    new_mcp_name = st.sidebar.text_input("Server Name", key="new_mcp_name_input")
+    new_mcp_url = st.sidebar.text_input("Server URL", key="new_mcp_url_input")
+
+    if st.sidebar.button("Add MCP") and new_mcp_name and new_mcp_url:
+        if not any(s["url"] == new_mcp_url for s in st.session_state.mcp_servers):
+            st.session_state.mcp_servers.append(
+                {"name": new_mcp_name, "url": new_mcp_url, "enabled": True}
+            )
+            save_mcp_urls(st.session_state.mcp_servers)
+            st.rerun()
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**Registered MCP Servers**")
+
+    # Display and manage existing MCP servers
+    indices_to_remove = []
+    for i, server in enumerate(st.session_state.mcp_servers):
+        cols = st.sidebar.columns([0.1, 0.7, 0.2])
+        server["enabled"] = cols[0].checkbox(
+            "", server["enabled"], key=f"mcp_enabled_{i}", label_visibility="collapsed"
+        )
+        cols[1].write(f"**{server['name']}**: `{server['url']}`")
+        if cols[2].button("X", key=f"mcp_remove_{i}"):
+            indices_to_remove.append(i)
+
+    if indices_to_remove:
+        st.session_state.mcp_servers = [
+            s for i, s in enumerate(st.session_state.mcp_servers) if i not in indices_to_remove
+        ]
+        save_mcp_urls(st.session_state.mcp_servers)
+        st.rerun()
+
+    # Collect enabled MCP URLs to be used by the agent
+    mcp_urls = [s["url"] for s in st.session_state.mcp_servers if s["enabled"]]
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
