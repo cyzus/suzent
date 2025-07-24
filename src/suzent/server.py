@@ -12,12 +12,14 @@ import os
 import types
 from dataclasses import asdict, is_dataclass
 from json import JSONEncoder
+import importlib
 
 from dotenv import load_dotenv
-from smolagents import CodeAgent, LiteLLMModel, WebSearchTool, MCPClient
+from smolagents import CodeAgent, LiteLLMModel, MCPClient, WebSearchTool
 from smolagents.agents import ActionOutput, PlanningStep
 from smolagents.memory import ActionStep, FinalAnswerStep
 from smolagents.models import ChatMessageStreamDelta
+from smolagents.tools import Tool # Import the base Tool class
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
@@ -34,13 +36,40 @@ def create_agent(config: dict):
     """
     model_id = config.get("model", "gemini/gemini-2.5-pro")
     agent_name = config.get("agent", "CodeAgent")
-    tool_names = config.get("tools", ["WebSearchTool"])
+    tool_names = config.get("tools", []) # Default to empty list, tools will be loaded dynamically
 
     model = LiteLLMModel(model_id=model_id)
 
     tools = []
     if "WebSearchTool" in tool_names:
         tools.append(WebSearchTool())
+    
+    # Filter out WebSearchTool from tool_names for dynamic loading
+    custom_tool_names = [t for t in tool_names if t != "WebSearchTool"]
+
+    # Mapping of tool class names to their module file names
+    tool_module_map = {
+        "PlanningTool": "planning_tool",
+        # Add other custom tools here as needed
+    }
+
+    for tool_name in custom_tool_names:
+        try:
+            module_file_name = tool_module_map.get(tool_name)
+            if not module_file_name:
+                print(f"Warning: No module mapping found for tool {tool_name}. Skipping.")
+                continue
+
+            tool_module = importlib.import_module(f"suzent.tools.{module_file_name}")
+            # Get the tool class from the module
+            tool_class = getattr(tool_module, tool_name)
+            # Instantiate the tool if it's a subclass of Tool
+            if issubclass(tool_class, Tool):
+                tools.append(tool_class())
+            else:
+                print(f"Warning: {tool_name} is not a valid Tool class. Skipping.")
+        except (ImportError, AttributeError) as e:
+            print(f"Warning: Could not load tool {tool_name}: {e}")
 
     mcp_urls = config.get("mcp_urls", [])
     if mcp_urls:
@@ -183,7 +212,16 @@ async def chat(request):
                 status_code=400,
             )
         
-        agent = create_agent(config)
+        try:
+            agent = create_agent(config)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return StreamingResponse(
+                iter([f'data: {{\"type\": \"error\", \"data\": \"Error creating agent: {e!s}\"}}\n\n']),
+                media_type="text/event-stream",
+                status_code=500,
+            )
 
         return StreamingResponse(
             stream_agent_responses(agent, message, reset=reset),
