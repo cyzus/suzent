@@ -1,13 +1,13 @@
 import json
 import re
 from pathlib import Path
-from dataclasses import dataclass, field
 from typing import Optional
 
 import requests
 import streamlit as st
 
 from suzent.config import Config
+from suzent.plan import read_plan_from_file
 
 
 # --- Page Configuration ---
@@ -22,53 +22,7 @@ st.set_page_config(
 SERVER_URL = Config.SERVER_URL
 CODE_TAG = Config.CODE_TAG
 MCP_URLS_FILE = Path("mcp_urls.json")
-TODO_FILE = Path("TODO.md")
 
-
-# --- Plan dataclasses and parsing ---
-STATUS_MAP = {
-    "pending": " ",
-    "in_progress": ">",
-    "completed": "x",
-    "failed": "!",
-}
-REVERSE_STATUS_MAP = {v: k for k, v in STATUS_MAP.items()}
-
-
-@dataclass
-class Task:
-    """Represents a single task in the plan."""
-    number: int
-    description: str
-    status: str = "pending"
-    note: Optional[str] = None
-
-@dataclass
-class Plan:
-    """Represents the overall plan."""
-    objective: str
-    tasks: list[Task] = field(default_factory=list)
-
-
-def read_plan_from_file() -> Optional[Plan]:
-    """Reads the plan from the TODO.md file."""
-    if not TODO_FILE.exists():
-        return None
-
-    content = TODO_FILE.read_text()
-    objective_match = re.search(r"# Plan for: (.*)", content)
-    objective = objective_match.group(1).strip() if objective_match else "Unknown Objective"
-
-    tasks = []
-    for match in re.finditer(r"- \[(.)\] (\d+)\. (.*?)(?: - Note: (.*))?$", content, re.MULTILINE):
-        status_char, num_str, desc, note = match.groups()
-        tasks.append(Task(
-            number=int(num_str),
-            description=desc.strip(),
-            status=REVERSE_STATUS_MAP.get(status_char, "unknown"),
-            note=note.strip() if note else None
-        ))
-    return Plan(objective=objective, tasks=tasks)
 
 def display_plan(placeholder):
     """Displays the current plan from TODO.md in a placeholder."""

@@ -4,56 +4,18 @@ This module provides a unified tool for creating and managing a plan in a TODO.m
 The tool is inspired by the smolagents style, providing a single class to interact
 with the plan. It supports creating a plan, checking its status, and updating steps.
 """
-import re
-from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Optional, Union
 
 from smolagents.tools import Tool
 
-TODO_FILE = Path("TODO.md")
-
-STATUS_MAP = {
-    "pending": " ",
-    "in_progress": ">",
-    "completed": "x",
-    "failed": "!",
-}
-REVERSE_STATUS_MAP = {v: k for k, v in STATUS_MAP.items()}
-
-
-@dataclass
-class Task:
-    """Represents a single task in the plan."""
-    number: int
-    description: str
-    status: str = "pending"
-    note: Optional[str] = None
-
-    def __str__(self):
-        note_str = f" - Note: {self.note}" if self.note else ""
-        return f"- [{STATUS_MAP[self.status]}] {self.number}. {self.description}{note_str}\n"
-
-
-@dataclass
-class Plan:
-    """Represents the overall plan."""
-    objective: str
-    tasks: list[Task] = field(default_factory=list)
-
-    def to_markdown(self, hide_completed: bool = False, newly_completed_step: Optional[int] = None) -> str:
-        """Converts the plan to a markdown string."""
-        markdown = f"### Current Plan for Objective: {self.objective}\n\n"
-        visible_tasks = []
-        for task in self.tasks:
-            if hide_completed and task.status == "completed" and task.number != newly_completed_step:
-                continue
-            task_item = f"- Step {task.number}: {task.description} - **{task.status.upper()}**"
-            if task.note:
-                task_item += f" (Note: {task.note})"
-            visible_tasks.append(task_item)
-        markdown += "\n".join(visible_tasks)
-        return markdown
+from suzent.plan import (
+    TODO_FILE,
+    STATUS_MAP,
+    Plan,
+    Task,
+    read_plan_from_file,
+    write_plan_to_file,
+)
 
 
 class PlanningTool(Tool):
@@ -118,55 +80,28 @@ class PlanningTool(Tool):
 
         return action_map[action](*args[action])
 
-    def _read_plan_from_file(self) -> Optional[Plan]:
-        """Reads the plan from the TODO.md file."""
-        if not TODO_FILE.exists():
-            return None
-
-        content = TODO_FILE.read_text()
-        objective_match = re.match(r"# Plan for: (.*)\n", content)
-        objective = objective_match.group(1).strip() if objective_match else "Unknown Objective"
-
-        tasks = []
-        for match in re.finditer(r"- \[(.)\] (\d+)\. (.*?)(?: - Note: (.*))?$", content, re.MULTILINE):
-            status_char, num_str, desc, note = match.groups()
-            tasks.append(Task(
-                number=int(num_str),
-                description=desc.strip(),
-                status=REVERSE_STATUS_MAP.get(status_char, "unknown"),
-                note=note.strip() if note else None
-            ))
-        return Plan(objective=objective, tasks=tasks)
-
-    def _write_plan_to_file(self, plan: Plan):
-        """Writes the plan to the TODO.md file."""
-        with open(TODO_FILE, "w") as f:
-            f.write(f"# Plan for: {plan.objective}\n\n")
-            for task in plan.tasks:
-                f.write(str(task))
-
     def _create_plan(self, objective: str, action_items: list[str]) -> str:
         """Creates a new plan."""
         tasks = [Task(number=i + 1, description=item) for i, item in enumerate(action_items)]
         plan = Plan(objective=objective, tasks=tasks)
-        self._write_plan_to_file(plan)
+        write_plan_to_file(plan)
         return f"Successfully created plan for Objective: {objective}\n\nAction Items:\n\n" + "\n".join([f"- {item}" for item in action_items])
 
     def _get_status(self) -> str:
         """Gets the current status of the plan."""
-        plan = self._read_plan_from_file()
+        plan = read_plan_from_file()
         if not plan:
             return "No plan found. Please create a plan first using the 'create_plan' action."
         return plan.to_markdown()
 
     def _update_plan(self, overwrite_plan_items: list[str]) -> str:
         """Overwrites the current plan with new action items."""
-        plan = self._read_plan_from_file()
+        plan = read_plan_from_file()
         if not plan:
             return "No plan found to update. Please create a plan first."
 
         plan.tasks = [Task(number=i + 1, description=item) for i, item in enumerate(overwrite_plan_items)]
-        self._write_plan_to_file(plan)
+        write_plan_to_file(plan)
         return f"Successfully updated plan in {TODO_FILE}"
 
     def _mark_step(self, step_number: int, status: str, step_note: Optional[str] = None) -> str:
@@ -174,7 +109,7 @@ class PlanningTool(Tool):
         if status not in STATUS_MAP:
             return f"Invalid status. Valid statuses are: {list(STATUS_MAP.keys())}"
 
-        plan = self._read_plan_from_file()
+        plan = read_plan_from_file()
         if not plan:
             return "TODO.md file not found."
 
@@ -186,7 +121,7 @@ class PlanningTool(Tool):
         if step_note:
             task_to_update.note = step_note
 
-        self._write_plan_to_file(plan)
+        write_plan_to_file(plan)
 
         hide_completed = status == "completed"
         newly_completed_step = step_number if status == "completed" else None
