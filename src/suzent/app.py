@@ -26,8 +26,7 @@ MCP_URLS_FILE = Path("mcp_urls.json")
 
 def display_plan(placeholder):
     """Displays the current plan from TODO.md in a placeholder."""
-    placeholder.empty()
-    with placeholder.container():
+    with placeholder.container(), placeholder.empty():
         st.title("Current Plan")
         plan = read_plan_from_file()
         if plan and plan.tasks:

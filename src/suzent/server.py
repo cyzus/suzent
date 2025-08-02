@@ -94,7 +94,7 @@ def create_agent(config: dict):
         raise ValueError(f"Unknown agent: {agent_name}")
 
     instructions = config.get("instructions", "")
-    
+    print(tools)
     return agent_class(model=model, tools=tools, stream_outputs=True, instructions=instructions)
 
 
