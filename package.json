@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@tailwindcss/typography": "^0.5.16",
+    "react-markdown": "^10.1.0",
+    "rehype-prism-plus": "^2.0.1",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "^4.0.1"
+  }
+}
