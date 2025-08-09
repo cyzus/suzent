@@ -12,10 +12,19 @@ export interface StreamCallbacks {
 
 interface ContentBlock { type: 'markdown' | 'code'; content: string }
 
-function assembleForStorage(blocks: ContentBlock[]): string {
-  // Wrap code blocks in triple backticks so downstream markdown splitter can detect & render
+function assembleForStorage(blocks: ContentBlock[], isInCodeBlock: boolean): string {
+  // Build markdown incrementally; keep final code block open if still streaming
   return blocks
-    .map(b => b.type === 'markdown' ? b.content : `\n\n\u0060\u0060\u0060python\n${b.content}\n\u0060\u0060\u0060\n\n`)
+    .map((b, i) => {
+      if (b.type === 'markdown') return b.content;
+      const isLast = i === blocks.length - 1;
+      if (isLast && isInCodeBlock) {
+        // Open fence only (no closing) so subsequent stream deltas stay inside
+        return `\n\n\u0060\u0060\u0060python\n${b.content}`;
+      }
+      // Closed code block
+      return `\n\n\u0060\u0060\u0060python\n${b.content}\n\u0060\u0060\u0060\n\n`;
+    })
     .join('');
 }
 
@@ -47,9 +56,11 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
   let blocks: ContentBlock[] = [{ type: 'markdown', content: '' }];
   let isInCodeBlock = false;
   let assembledLen = 0;
+  // Buffer for detecting split codeTag across chunks
+  let pendingCodeProbe = '';
 
   const emitDiff = () => {
-    const assembled = assembleForStorage(blocks);
+    const assembled = assembleForStorage(blocks, isInCodeBlock);
     if (assembled.length > assembledLen) {
       const delta = assembled.slice(assembledLen);
       assembledLen = assembled.length;
@@ -57,7 +68,16 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
     }
   };
 
+  const flushPendingIfAny = () => {
+    if (pendingCodeProbe) {
+      // Pending never completed a full codeTag -> treat as plain text
+      blocks[blocks.length - 1].content += pendingCodeProbe;
+      pendingCodeProbe = '';
+    }
+  };
+
   const resetForNewAssistantMessage = () => {
+    flushPendingIfAny();
     blocks = [{ type: 'markdown', content: '' }];
     isInCodeBlock = false;
     assembledLen = 0;
@@ -87,53 +107,79 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
       const data = obj.data;
 
       if (type === 'stream_delta') {
-        const content: string = data?.content || '';
+        let content: string = data?.content || '';
         if (!content) continue;
-        let remaining = content;
-        while (remaining.includes(codeTag)) {
-          const idx = remaining.indexOf(codeTag);
-          const before = remaining.slice(0, idx);
-          const after = remaining.slice(idx + codeTag.length);
-          if (before) blocks[blocks.length - 1].content += before;
-          if (isInCodeBlock) {
-            blocks.push({ type: 'markdown', content: '' });
-            isInCodeBlock = false;
-          } else {
-            blocks.push({ type: 'code', content: '' });
-            isInCodeBlock = true;
-          }
-          remaining = after;
+        content = pendingCodeProbe + content;
+        pendingCodeProbe = '';
+        let processPos = 0;
+        while (true) {
+          const idx = content.indexOf(codeTag, processPos);
+            if (idx === -1) break;
+            const before = content.slice(processPos, idx);
+            if (before) blocks[blocks.length - 1].content += before;
+            if (isInCodeBlock) {
+              // Close current code block by toggling to markdown
+              blocks.push({ type: 'markdown', content: '' });
+              isInCodeBlock = false;
+            } else {
+              // Start a new code block
+              blocks.push({ type: 'code', content: '' });
+              isInCodeBlock = true;
+            }
+            processPos = idx + codeTag.length;
         }
-        if (remaining) blocks[blocks.length - 1].content += remaining;
+        let leftover = content.slice(processPos);
+        let keepForProbe = 0;
+        for (let k = Math.min(codeTag.length - 1, leftover.length); k > 0; k--) {
+          if (codeTag.startsWith(leftover.slice(-k))) { keepForProbe = k; break; }
+        }
+        if (keepForProbe) {
+          pendingCodeProbe = leftover.slice(-keepForProbe);
+          leftover = leftover.slice(0, leftover.length - keepForProbe);
+        }
+        if (leftover) blocks[blocks.length - 1].content += leftover;
         emitDiff();
       } else if (type === 'final_answer') {
-        if (isInCodeBlock) { blocks.push({ type: 'markdown', content: '' }); isInCodeBlock = false; }
+        flushPendingIfAny();
+        if (isInCodeBlock) { isInCodeBlock = false; blocks.push({ type: 'markdown', content: '' }); }
         blocks[blocks.length - 1].content += `\n\n${data}`;
         emitDiff();
-        // Final answer ends this assistant message
       } else if (type === 'action') {
+        flushPendingIfAny();
         if (onAction) onAction();
-        if (isInCodeBlock) { blocks.push({ type: 'markdown', content: '' }); isInCodeBlock = false; }
+        if (isInCodeBlock) { isInCodeBlock = false; blocks.push({ type: 'markdown', content: '' }); }
         let actionMarkdown = '';
         let observations: string | undefined = data?.observations;
         if (observations && !data?.is_final_answer) {
           observations = observations.replace(/^Execution logs:\s*/i, '').trim();
-          const split = observations.split(/Last output from code snippet:\s*/i);
-          observations = split[0].trimEnd();
+          const splitObs = observations.split(/Last output from code snippet:\s*/i);
+          observations = splitObs[0].trimEnd();
           actionMarkdown += `\n\n<details><summary>📝 Execution Logs</summary>\n\n${observations}\n\n</details>`;
         }
         const stepName = `Step: ${data?.step_number}`;
         actionMarkdown += getStepFootnote(data, stepName);
         blocks[blocks.length - 1].content += actionMarkdown;
         emitDiff();
-        // Start a new assistant message for next step output
         resetForNewAssistantMessage();
       } else if (type === 'error') {
-        if (isInCodeBlock) { blocks.push({ type: 'markdown', content: '' }); isInCodeBlock = false; }
+        flushPendingIfAny();
+        if (isInCodeBlock) { isInCodeBlock = false; blocks.push({ type: 'markdown', content: '' }); }
         blocks[blocks.length - 1].content += `\n\n**Error:** ${data}`;
         emitDiff();
         resetForNewAssistantMessage();
       }
     }
+  }
+  // Flush any trailing pending probe characters (incomplete tag) at end of stream
+  if (pendingCodeProbe) {
+    blocks[blocks.length - 1].content += pendingCodeProbe;
+    pendingCodeProbe = '';
+    emitDiff();
+  }
+  // Close any still-open code block at end so rendering finalizes
+  if (isInCodeBlock) {
+    isInCodeBlock = false;
+    // Re-emit to add closing fence
+    emitDiff();
   }
 }
