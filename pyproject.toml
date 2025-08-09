@@ -13,8 +13,4 @@ dependencies = [
     "streamlit>=1.47.0",
 ]
 
-[tool.uv.sources]
-smolagents = { path = "../smolagents" }
-
-
 
