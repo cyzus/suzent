@@ -75,7 +75,7 @@ const CopyButton: React.FC<{ text: string }> = ({ text }) => {
 const MarkdownRenderer = (props: { content: string }) => {
   const RM: any = ReactMarkdown;
   return (
-    <div className="prose prose-sm max-w-none">
+    <div className="prose prose-sm max-w-none break-words whitespace-pre-wrap">
       <RM
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeSanitize, rehypePrism]}
@@ -85,24 +85,24 @@ const MarkdownRenderer = (props: { content: string }) => {
             const match = /language-(\w+)/.exec(className || '');
             if (!inline && match) {
               return (
-                <pre className="max-w-3xl overflow-x-auto text-xs bg-neutral-900 text-neutral-100 border border-neutral-800 rounded-lg p-3 font-mono leading-relaxed">
+                <pre className="max-w-3xl overflow-x-auto text-xs bg-neutral-900 text-neutral-100 border border-neutral-800 rounded-lg p-3 font-mono leading-relaxed break-words">
                   <code className={className}>{String(children)}</code>
                 </pre>
               );
             }
-            return <code className="bg-neutral-100 px-1.5 py-0.5 rounded text-[11px] font-mono text-brand-600" {...rest}>{children}</code>;
+            return <code className="bg-neutral-100 px-1.5 py-0.5 rounded text-[11px] font-mono text-brand-600 break-words" {...rest}>{children}</code>;
           },
-          a(aProps: any) { const { href, children } = aProps; return <a href={href} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">{children}</a>; },
+          a(aProps: any) { const { href, children } = aProps; return <a href={href} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline break-words">{children}</a>; },
           table(p: any) { return <div className="overflow-x-auto"><table className="text-xs border border-neutral-200">{p.children}</table></div>; },
           th(p: any) { return <th className="border px-2 py-1 bg-neutral-50 font-semibold">{p.children}</th>; },
           td(p: any) { return <td className="border px-2 py-1 align-top">{p.children}</td>; },
           ul(p: any) { return <ul className="list-disc ml-5 space-y-1">{p.children}</ul>; },
           ol(p: any) { return <ol className="list-decimal ml-5 space-y-1">{p.children}</ol>; },
-          h1(p: any) { return <h1 className="text-xl font-semibold mt-4 mb-2">{p.children}</h1>; },
-            h2(p: any) { return <h2 className="text-lg font-semibold mt-4 mb-2">{p.children}</h2>; },
-            h3(p: any) { return <h3 className="text-base font-semibold mt-4 mb-2">{p.children}</h3>; },
-            p(pArg: any) { return <p className="leading-relaxed">{pArg.children}</p>; },
-            blockquote(p: any) { return <blockquote className="border-l-4 border-brand-600/30 pl-3 italic text-neutral-600">{p.children}</blockquote>; }
+          h1(p: any) { return <h1 className="text-xl font-semibold mt-4 mb-2 break-words">{p.children}</h1>; },
+          h2(p: any) { return <h2 className="text-lg font-semibold mt-4 mb-2 break-words">{p.children}</h2>; },
+          h3(p: any) { return <h3 className="text-base font-semibold mt-4 mb-2 break-words">{p.children}</h3>; },
+          p(pArg: any) { return <p className="leading-relaxed break-words whitespace-pre-wrap">{pArg.children}</p>; },
+          blockquote(p: any) { return <blockquote className="border-l-4 border-brand-600/30 pl-3 italic text-neutral-600 break-words">{p.children}</blockquote>; }
         }}
       >
         {props.content}
@@ -142,7 +142,7 @@ export const ChatWindow: React.FC = () => {
 
   return (
     <div className="flex flex-col flex-1 h-full overflow-hidden bg-white">
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-neutral-300/80">
+      <div className="flex-1 overflow-y-auto p-6 pb-24 space-y-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-neutral-300/80">
         {messages.map((m: Message, idx: number) => {
           const isUser = m.role === 'user';
           const blocks = isUser ? [{ type: 'markdown', content: m.content } as { type: 'markdown'; content: string; lang?: string }] : splitAssistantContent(m.content);
@@ -169,9 +169,9 @@ export const ChatWindow: React.FC = () => {
                 </div>
               )}
               <div className={`flex ${alignClass} w-full`}>
-                <div className={`group max-w-3xl w-fit ${isUser ? 'bg-gradient-to-tr from-brand-600 to-brand-500 text-white' : 'bg-white/90 border border-neutral-200 text-neutral-800'} rounded-xl shadow-sm px-5 py-3 space-y-3 text-sm leading-relaxed relative`}>
+                <div className={`group w-full max-w-3xl break-words overflow-visible ${isUser ? 'bg-gradient-to-tr from-brand-600 to-brand-500 text-white' : 'bg-white/90 border border-neutral-200 text-neutral-800'} rounded-xl shadow-sm px-5 py-3 space-y-3 text-sm leading-relaxed relative`}>
                   {isUser ? (
-                    <div className="prose prose-sm prose-invert max-w-none text-white whitespace-pre-wrap">{m.content}</div>
+                    <div className="prose prose-sm prose-invert max-w-none text-white whitespace-pre-wrap break-words">{m.content}</div>
                   ) : (
                     blocks.map((b, bi) => b.type === 'markdown' ? (
                       <MarkdownRenderer key={bi} content={b.content} />
@@ -184,6 +184,7 @@ export const ChatWindow: React.FC = () => {
                       </div>
                     ))
                   )}
+                  {/* end user/assistant content */}
                   {!isUser && idx === messages.length - 1 && loading && (
                     <div className="flex gap-1 items-center text-[10px] text-neutral-400 animate-pulse">Thinking<span className="w-1 h-1 bg-neutral-300 rounded-full animate-bounce [animation-delay:-0.2s]"></span><span className="w-1 h-1 bg-neutral-300 rounded-full animate-bounce [animation-delay:-0.05s]"></span><span className="w-1 h-1 bg-neutral-300 rounded-full animate-bounce"></span></div>
                   )}

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Message, ChatConfig, ConfigOptions } from '../types/api.js';
+import { Message, ChatConfig, ConfigOptions } from '../types/api';
 
 interface ChatContextValue {
   messages: Message[];

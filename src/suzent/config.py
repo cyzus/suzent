@@ -57,11 +57,3 @@ class Config:
     TOOL_OPTIONS = list(dict.fromkeys(_DISCOVERED + DEFAULT_TOOLS))
 
     DEFAULT_MCP_URLS = "https://evalstate-hf-mcp-server.hf.space/mcp"
-
-    # Example configuration options (can be removed if not used)
-    DEBUG = True
-    PORT = 8000
-    HOST = "0.0.0.0"
-    API_KEY = "your_api_key_here"
-
-    # Add other configurations as needed
