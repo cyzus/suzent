@@ -56,4 +56,16 @@ class Config:
     _DISCOVERED = get_tool_options.__func__()  # call static without binding
     TOOL_OPTIONS = list(dict.fromkeys(_DISCOVERED + DEFAULT_TOOLS))
 
-    DEFAULT_MCP_URLS = "https://evalstate-hf-mcp-server.hf.space/mcp"
+    # DEFAULT_MCP_URLS = "https://evalstate-hf-mcp-server.hf.space/mcp"
+    MCP_URLS = {
+        "HF Space MCP": "https://evalstate-hf-mcp-server.hf.space/mcp",
+    }
+
+    INSTRUCTIONS = \
+"""
+# Language Requirement
+You should respond in the language of the user's query.
+
+# Task Management
+Make plans for complex tasks.
+"""

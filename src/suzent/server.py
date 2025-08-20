@@ -59,6 +59,7 @@ def create_agent(config: dict):
     # Mapping of tool class names to their module file names
     tool_module_map = {
         "PlanningTool": "planning_tool",
+        "WebpageTool": "webpage_tool",
         # Add other custom tools here as needed
     }
 
@@ -96,7 +97,7 @@ def create_agent(config: dict):
     if not agent_class:
         raise ValueError(f"Unknown agent: {agent_name}")
 
-    instructions = config.get("instructions", "")
+    instructions = config.get("instructions", Config.INSTRUCTIONS)
     print(tools)
     return agent_class(model=model, tools=tools, stream_outputs=True, instructions=instructions)
 

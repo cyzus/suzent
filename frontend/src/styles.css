@@ -19,3 +19,13 @@ pre code { font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regu
 /* Fade-in animation */
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(4px);} to { opacity:1; transform: translateY(0);} }
 .group { animation: fadeInUp 0.25s ease; }
+
+/* Improved button responsiveness */
+.btn-responsive {
+  transition: all 0.1s ease-out;
+  transform: translateZ(0); /* Force hardware acceleration */
+}
+
+.btn-responsive:active {
+  transform: scale(0.98);
+}

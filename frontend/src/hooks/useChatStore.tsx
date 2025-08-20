@@ -1,10 +1,10 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { Message, ChatConfig, ConfigOptions } from '../types/api';
 
 interface ChatContextValue {
   messages: Message[];
   config: ChatConfig;
-  setConfig: (c: ChatConfig) => void;
+  setConfig: (c: ChatConfig | ((prev: ChatConfig) => ChatConfig)) => void;
   addMessage: (m: Message) => void;
   updateAssistantStreaming: (delta: string) => void;
   backendConfig: ConfigOptions | null;
@@ -33,20 +33,43 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     (async () => {
       try {
+        console.log('Fetching backend config...');
         const res = await fetch('/api/config');
         if (res.ok) {
           const data: ConfigOptions = await res.json();
+          console.log('Backend config received:', data);
           setBackendConfig(data);
-          // Initialize config with backend defaults if available
-          setConfig((c: ChatConfig) => ({
+          
+          // Manual initialization for testing
+          setConfig({
             model: data.models[0] || '',
             agent: data.agents[0] || '',
-            tools: data.defaultTools || []
-          }));
+            tools: []
+          });
+        } else {
+          console.error('Failed to fetch config:', res.status, res.statusText);
         }
-      } catch { /* ignore */ }
+      } catch (error) {
+        console.error('Error fetching config:', error);
+      }
     })();
   }, []);
+
+  // Optimized config setter with immediate UI feedback
+  const optimizedSetConfig = useCallback((newConfig: ChatConfig | ((prev: ChatConfig) => ChatConfig)) => {
+    console.log('optimizedSetConfig called with:', typeof newConfig === 'function' ? 'function' : newConfig);
+    
+    if (typeof newConfig === 'function') {
+      setConfig(prevConfig => {
+        const result = newConfig(prevConfig);
+        console.log('Function config update - prev:', prevConfig, 'new:', result);
+        return result;
+      });
+    } else {
+      console.log('Direct config update to:', newConfig);
+      setConfig(newConfig);
+    }
+  }, []); // Remove config dependency
 
   const addMessage = (m: Message) => setMessages(prev => [...prev, m]);
 
@@ -70,7 +93,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const consumeResetFlag = () => setShouldResetNext(false);
 
   return (
-    <ChatContext.Provider value={{ messages, config, setConfig, addMessage, updateAssistantStreaming, backendConfig, newAssistantMessage, resetChat, shouldResetNext, consumeResetFlag }}>
+    <ChatContext.Provider value={{ messages, config, setConfig: optimizedSetConfig, addMessage, updateAssistantStreaming, backendConfig, newAssistantMessage, resetChat, shouldResetNext, consumeResetFlag }}>
       {children}
     </ChatContext.Provider>
   );

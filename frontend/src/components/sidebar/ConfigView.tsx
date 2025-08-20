@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { useChatStore } from '../../hooks/useChatStore';
 
 interface MCPServer { id: string; name: string; url: string; enabled: boolean }
@@ -9,6 +10,11 @@ export const ConfigView: React.FC = () => {
   const [srvName, setSrvName] = useState('');
   const [srvUrl, setSrvUrl] = useState('');
   const LS_KEY = 'mcp_servers_v1';
+  
+  // Debug render counter
+  const renderCount = useRef(0);
+  renderCount.current++;
+  console.log('ConfigView render #', renderCount.current, 'config:', config);
 
   // Load from localStorage OR backend defaults once
   useEffect(() => {
@@ -21,12 +27,11 @@ export const ConfigView: React.FC = () => {
         return;
       }
     } catch { /* ignore */ }
-    // Fallback to config.mcp_urls (if backend supplied) or DEFAULT_MCP_URLS embedded in backend?
+    // Fallback to config.mcp_urls (if backend supplied)
     if (config.mcp_urls && config.mcp_urls.length) {
-      setServers(config.mcp_urls.map(u => ({ id: u, name: new URL(u).host || u, url: u, enabled: true })));
+      setServers(config.mcp_urls.map(u => ({ id: crypto.randomUUID(), name: new URL(u).host || u, url: u, enabled: true })));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.mcp_urls]);
+  }, []); // Remove config.mcp_urls dependency to prevent loops
 
   // Persist to localStorage
   useEffect(() => {
@@ -36,29 +41,57 @@ export const ConfigView: React.FC = () => {
   // Sync enabled server urls back to config
   useEffect(() => {
     const enabled = servers.filter(s => s.enabled).map(s => s.url);
-    setConfig({ ...config, mcp_urls: enabled });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [servers]);
+    setConfig(prevConfig => ({ ...prevConfig, mcp_urls: enabled }));
+  }, [servers, setConfig]);
 
   if (!backendConfig) {
     return <div className="text-xs text-neutral-500">Loading config...</div>;
   }
 
-  const update = (patch: Partial<typeof config>) => setConfig({ ...config, ...patch });
+  const update = useCallback((patch: Partial<typeof config>) => {
+    console.log('update called with patch:', patch);
+    setConfig(prevConfig => {
+      const newConfig = { ...prevConfig, ...patch };
+      console.log('update: prevConfig:', prevConfig, 'newConfig:', newConfig);
+      return newConfig;
+    });
+  }, [setConfig]);
 
   const toggleTool = (tool: string) => {
-    const tools = config.tools.includes(tool) ? config.tools.filter((t: string) => t !== tool) : [...config.tools, tool];
-    update({ tools });
+    console.log('toggleTool called for:', tool, 'current config:', config);
+    
+    flushSync(() => {
+      setConfig(prevConfig => {
+        console.log('toggleTool - prevConfig:', prevConfig);
+        const currentTools = prevConfig.tools || [];
+        const isActive = currentTools.includes(tool);
+        
+        const newTools = isActive 
+          ? currentTools.filter((t: string) => t !== tool)
+          : [...currentTools, tool];
+        
+        const newConfig = { ...prevConfig, tools: newTools };
+        console.log('toggleTool - returning newConfig:', newConfig);
+        
+        return newConfig;
+      });
+    });
   };
 
-  const addServer = () => {
+  const addServer = useCallback(() => {
     if (!srvUrl.trim()) return;
     try { new URL(srvUrl); } catch { return; }
     setServers(prev => [...prev, { id: crypto.randomUUID(), name: srvName.trim() || new URL(srvUrl).host, url: srvUrl.trim(), enabled: true }]);
     setSrvName(''); setSrvUrl('');
-  };
-  const toggleServer = (id: string) => setServers(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
-  const removeServer = (id: string) => setServers(prev => prev.filter(s => s.id !== id));
+  }, [srvName, srvUrl]);
+  
+  const toggleServer = useCallback((id: string) => {
+    setServers(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
+  }, []);
+  
+  const removeServer = useCallback((id: string) => {
+    setServers(prev => prev.filter(s => s.id !== id));
+  }, []);
 
   return (
     <div className="space-y-6 text-xs">
@@ -96,7 +129,11 @@ export const ConfigView: React.FC = () => {
                 key={tool}
                 type="button"
                 onClick={() => toggleTool(tool)}
-                className={`px-2.5 py-1 rounded-full border text-[11px] font-medium transition-colors ${active ? 'bg-brand-600 text-white border-brand-500 shadow' : 'border-neutral-300 text-neutral-700 hover:border-neutral-400 hover:text-neutral-900 bg-white/70'}`}
+                className={`px-2.5 py-1 rounded-full border text-[11px] font-medium transition-colors ${
+                  active 
+                    ? 'bg-brand-600 text-white border-brand-500 shadow' 
+                    : 'border-neutral-300 text-neutral-700 hover:border-neutral-400 hover:text-neutral-900 bg-white/70'
+                }`}
               >
                 {tool}
               </button>
