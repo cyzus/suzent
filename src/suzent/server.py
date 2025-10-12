@@ -30,6 +30,7 @@ from starlette.routing import Route
 from mcp import StdioServerParameters
 from suzent.config import Config
 from suzent.plan import read_plan_from_file
+from suzent.database import get_database, generate_chat_title
 
 load_dotenv()
 
@@ -373,6 +374,100 @@ async def get_plan(request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+async def get_chats(request):
+    """Return list of chat summaries."""
+    try:
+        db = get_database()
+        
+        # Parse query parameters
+        limit = int(request.query_params.get("limit", 50))
+        offset = int(request.query_params.get("offset", 0))
+        
+        chats = db.list_chats(limit=limit, offset=offset)
+        total = db.get_chat_count()
+        
+        return JSONResponse({
+            "chats": chats,
+            "total": total,
+            "limit": limit,
+            "offset": offset
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def get_chat(request):
+    """Return a specific chat by ID."""
+    try:
+        chat_id = request.path_params["chat_id"]
+        db = get_database()
+        
+        chat = db.get_chat(chat_id)
+        if not chat:
+            return JSONResponse({"error": "Chat not found"}, status_code=404)
+        
+        return JSONResponse(chat)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def create_chat(request):
+    """Create a new chat."""
+    try:
+        data = await request.json()
+        title = data.get("title", "New Chat")
+        config = data.get("config", {})
+        messages = data.get("messages", [])
+        
+        db = get_database()
+        chat_id = db.create_chat(title, config, messages)
+        
+        # Return the created chat
+        chat = db.get_chat(chat_id)
+        return JSONResponse(chat, status_code=201)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def update_chat(request):
+    """Update an existing chat."""
+    try:
+        chat_id = request.path_params["chat_id"]
+        data = await request.json()
+        
+        db = get_database()
+        
+        # Extract update fields
+        title = data.get("title")
+        config = data.get("config")
+        messages = data.get("messages")
+        
+        success = db.update_chat(chat_id, title=title, config=config, messages=messages)
+        if not success:
+            return JSONResponse({"error": "Chat not found"}, status_code=404)
+        
+        # Return updated chat
+        chat = db.get_chat(chat_id)
+        return JSONResponse(chat)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def delete_chat(request):
+    """Delete a chat."""
+    try:
+        chat_id = request.path_params["chat_id"]
+        db = get_database()
+        
+        success = db.delete_chat(chat_id)
+        if not success:
+            return JSONResponse({"error": "Chat not found"}, status_code=404)
+        
+        return JSONResponse({"message": "Chat deleted successfully"})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 # --- Application Setup ---
 app = Starlette(
     debug=True,
@@ -380,6 +475,11 @@ app = Starlette(
         Route("/chat", chat, methods=["POST"]),
         Route("/config", get_config, methods=["GET"]),
         Route("/plan", get_plan, methods=["GET"]),
+        Route("/chats", get_chats, methods=["GET"]),
+        Route("/chats", create_chat, methods=["POST"]),
+        Route("/chats/{chat_id}", get_chat, methods=["GET"]),
+        Route("/chats/{chat_id}", update_chat, methods=["PUT"]),
+        Route("/chats/{chat_id}", delete_chat, methods=["DELETE"]),
     ],
     middleware=[
         Middleware(
