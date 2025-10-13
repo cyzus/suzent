@@ -41,6 +41,15 @@ frontend/node_modules
 frontend/dist
 frontend/.dist
 frontend/vite-cache
+*.tsbuildinfo
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated plan files (optional - remove this line if you want to track TODO.md)
+TODO.md
 
 # Misc
 .DS_Store
