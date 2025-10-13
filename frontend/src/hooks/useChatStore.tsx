@@ -45,6 +45,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   // New chat management state
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [currentChatTitle, setCurrentChatTitle] = useState<string>("New Chat");
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [loadingChats, setLoadingChats] = useState(false);
   
@@ -106,15 +107,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const createNewChat = async () => {
     try {
-      const chatTitle = messages.length > 0 && messages[0].role === 'user' 
-        ? generateChatTitle(messages[0].content)
-        : "New Chat";
-      
+      // Always create a new chat with empty messages and default title
       const res = await fetch('/api/chats', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: chatTitle,
+          title: "New Chat",
           config,
           messages: []
         })
@@ -123,6 +121,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (res.ok) {
         const newChat: Chat = await res.json();
         setCurrentChatId(newChat.id);
+        setCurrentChatTitle(newChat.title);
         setMessages([]);
         setShouldResetNext(true);
         await refreshChatList();
@@ -140,6 +139,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (res.ok) {
         const chat: Chat = await res.json();
         setCurrentChatId(chat.id);
+        setCurrentChatTitle(chat.title);
         setMessages(chat.messages);
         setConfig(chat.config);
         setShouldResetNext(true);
@@ -192,17 +192,34 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('Updating existing chat:', currentChatId, 'with', messages.length, 'messages');
     
     try {
+      // Determine if we should update the title
+      let updateTitle = undefined;
+      if (messages.length > 0 && messages[0].role === 'user' && currentChatTitle === "New Chat") {
+        updateTitle = generateChatTitle(messages[0].content);
+      }
+      
+      const updatePayload: any = {
+        config,
+        messages
+      };
+      
+      // Include title if we should update it
+      if (updateTitle) {
+        updatePayload.title = updateTitle;
+      }
+      
       const res = await fetch(`/api/chats/${currentChatId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          config,
-          messages
-        })
+        body: JSON.stringify(updatePayload)
       });
       
       if (res.ok) {
         console.log('Chat updated successfully');
+        // Update local title state if we sent a title update
+        if (updateTitle) {
+          setCurrentChatTitle(updateTitle);
+        }
         if (!skipRefresh) await refreshChatList();
       } else {
         console.error('Failed to save chat:', res.status, res.statusText);
@@ -210,7 +227,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error saving chat:', error);
     }
-  }, [currentChatId, messages, config, refreshChatList]);
+  }, [currentChatId, messages, config, currentChatTitle, refreshChatList]);
 
   const deleteChat = async (chatId: string) => {
     try {
@@ -221,6 +238,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (res.ok) {
         if (currentChatId === chatId) {
           setCurrentChatId(null);
+          setCurrentChatTitle("New Chat");
           setMessages([]);
           setShouldResetNext(true);
         }
@@ -326,17 +344,34 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Update existing chat
         console.log('forceSaveNow: Updating existing chat:', capturedChatId);
         
+        // Determine if we should update the title (only if it's still "New Chat")
+        let updateTitle = undefined;
+        if (capturedMessages.length > 0 && capturedMessages[0].role === 'user' && currentChatTitle === "New Chat") {
+          updateTitle = generateChatTitle(capturedMessages[0].content);
+        }
+        
+        const updatePayload: any = {
+          config,
+          messages: capturedMessages
+        };
+        
+        // Only include title if we have a user message to generate it from
+        if (updateTitle) {
+          updatePayload.title = updateTitle;
+        }
+        
         const res = await fetch(`/api/chats/${capturedChatId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            config,
-            messages: capturedMessages
-          })
+          body: JSON.stringify(updatePayload)
         });
         
         if (res.ok) {
           console.log('forceSaveNow: Chat updated successfully');
+          // Update local title state if we sent a title update
+          if (updateTitle) {
+            setCurrentChatTitle(updateTitle);
+          }
           await refreshChatList();
         } else {
           console.error('forceSaveNow: Failed to update chat:', res.status);
@@ -346,7 +381,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('forceSaveNow: Error during save:', error);
     }
-  }, [config, generateChatTitle, refreshChatList]);
+  }, [config, currentChatTitle, generateChatTitle, refreshChatList]);
 
   const finalSave = useCallback(async () => {
     console.log('finalSave: delegating to forceSaveNow');
@@ -387,6 +422,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setMessages([]); 
     setShouldResetNext(true);
     setCurrentChatId(null);
+    setCurrentChatTitle("New Chat");
   };
   
   const consumeResetFlag = () => setShouldResetNext(false);
