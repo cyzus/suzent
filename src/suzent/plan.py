@@ -100,6 +100,38 @@ def read_plan_from_database(chat_id: str) -> Optional[Plan]:
     )
 
 
+def read_plan_by_id(plan_id: int) -> Optional[Plan]:
+    """Reads a specific plan by its identifier."""
+    from suzent.database import get_database
+
+    db = get_database()
+    plan_data = db.get_plan_by_id(plan_id)
+    if not plan_data:
+        return None
+
+    tasks = [
+        Task(
+            number=task_data['number'],
+            description=task_data['description'],
+            status=task_data['status'],
+            note=task_data['note'],
+            task_id=task_data.get('id'),
+            created_at=task_data.get('created_at'),
+            updated_at=task_data.get('updated_at'),
+        )
+        for task_data in plan_data['tasks']
+    ]
+
+    return Plan(
+        objective=plan_data['objective'],
+        tasks=tasks,
+        chat_id=plan_data.get('chat_id'),
+        id=plan_data.get('id'),
+        created_at=plan_data.get('created_at'),
+        updated_at=plan_data.get('updated_at'),
+    )
+
+
 def read_plan_history_from_database(chat_id: str, limit: Optional[int] = None) -> list[Plan]:
     """Fetch all plan versions for a chat ordered by most recent first."""
     from suzent.database import get_database
@@ -133,8 +165,12 @@ def read_plan_history_from_database(chat_id: str, limit: Optional[int] = None) -
     return plans
 
 
-def write_plan_to_database(plan: Plan):
-    """Writes the plan to the database."""
+def write_plan_to_database(plan: Plan, *, preserve_history: bool = True):
+    """Persist the plan to the database.
+
+    By default this records a new plan version so prior plans remain in history.
+    Set preserve_history=False to update the latest plan record in place.
+    """
     from suzent.database import get_database
     
     if not plan.chat_id:
@@ -150,7 +186,11 @@ def write_plan_to_database(plan: Plan):
             'note': task.note
         })
     
-    db.update_plan(plan.chat_id, plan.objective, tasks_data)
+    if preserve_history:
+        new_plan_id = db.create_plan(plan.chat_id, plan.objective, tasks_data)
+        plan.id = new_plan_id
+    else:
+        db.update_plan(plan.chat_id, plan.objective, tasks_data, plan_id=plan.id)
 
 
 def plan_to_dict(plan: Optional[Plan]) -> Optional[dict]:
@@ -171,6 +211,7 @@ def plan_to_dict(plan: Optional[Plan]) -> Optional[dict]:
         "id": plan.id,
         "chatId": plan.chat_id,
         "objective": plan.objective,
+        "title": plan.objective,
         "createdAt": plan.created_at,
         "updatedAt": plan.updated_at,
         "versionKey": version_key,

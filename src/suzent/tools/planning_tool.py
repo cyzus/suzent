@@ -13,6 +13,7 @@ from suzent.plan import (
     Plan,
     Task,
     read_plan_from_database,
+    read_plan_by_id,
     write_plan_to_database,
 )
 from suzent.database import get_database
@@ -65,6 +66,11 @@ class PlanningTool(Tool):
             "description": "A list of action items to overwrite the current plan. Required for 'update_plan'.",
             "nullable": True
         },
+        "plan_id": {
+            "type": "integer",
+            "description": "ID of the plan to operate on when updating or marking steps.",
+            "nullable": True
+        },
         "step_number": {
             "type": "integer",
             "description": "The number of the step to mark. Required for 'mark_step'.",
@@ -89,6 +95,7 @@ class PlanningTool(Tool):
         objective: Optional[str] = None,
         action_items: Optional[list[str]] = None,
         overwrite_plan_items: Optional[list[str]] = None,
+        plan_id: Optional[int] = None,
         step_number: Optional[int] = None,
         status: Optional[str] = None,
         step_note: Optional[str] = None,
@@ -120,9 +127,9 @@ class PlanningTool(Tool):
         # Prepare arguments for the respective methods
         args = {
             "create_plan": (chat_id, objective, action_items),
-            "status": (chat_id,),
-            "update_plan": (chat_id, overwrite_plan_items),
-            "mark_step": (chat_id, step_number, status, step_note),
+            "status": (chat_id, plan_id),
+            "update_plan": (chat_id, plan_id, overwrite_plan_items),
+            "mark_step": (chat_id, plan_id, step_number, status, step_note),
         }
         
         # Validate required arguments for the action
@@ -141,38 +148,64 @@ class PlanningTool(Tool):
         tasks = [Task(number=i + 1, description=item) for i, item in enumerate(action_items)]
         plan = Plan(objective=objective, tasks=tasks, chat_id=chat_id)
         write_plan_to_database(plan)
-        return f"Successfully created plan for Objective: {objective}\n\nAction Items:\n\n" + "\n".join([f"- {item}" for item in action_items])
+        return (
+            f"Successfully created plan for Objective: {objective}\n"
+            f"Plan ID: {plan.id if plan.id is not None else 'pending assignment'}\n\n"
+            "Action Items:\n\n" + "\n".join([f"- {item}" for item in action_items])
+        )
 
-    def _get_status(self, chat_id: str) -> str:
+    def _get_status(self, chat_id: str, plan_id: Optional[int] = None) -> str:
         """Gets the current status of the plan."""
-        plan = read_plan_from_database(chat_id)
+        plan = None
+        if plan_id is not None:
+            plan = read_plan_by_id(plan_id)
+            if plan and plan.chat_id != chat_id:
+                return f"Plan {plan_id} does not belong to chat {chat_id}."
+        if not plan:
+            plan = read_plan_from_database(chat_id)
         if not plan:
             return "No plan found. Please create a plan first using the 'create_plan' action."
         return plan.to_markdown()
 
-    def _update_plan(self, chat_id: str, overwrite_plan_items: list[str]) -> str:
+    def _update_plan(self, chat_id: str, plan_id: Optional[int], overwrite_plan_items: list[str]) -> str:
         """Overwrites the current plan with new action items."""
-        plan = read_plan_from_database(chat_id)
-        if not plan:
+        target_plan = None
+        if plan_id is not None:
+            target_plan = read_plan_by_id(plan_id)
+            if target_plan and target_plan.chat_id != chat_id:
+                return f"Plan {plan_id} does not belong to chat {chat_id}."
+        if target_plan is None:
+            target_plan = read_plan_from_database(chat_id)
+            if target_plan and plan_id is None:
+                print("PlanningTool: plan_id not provided; updating most recent plan.")
+        if target_plan is None:
             return "No plan found to update. Please create a plan first."
 
-        plan.tasks = [Task(number=i + 1, description=item) for i, item in enumerate(overwrite_plan_items)]
-        write_plan_to_database(plan)
-        return f"Successfully updated plan for chat {chat_id}"
+        target_plan.tasks = [Task(number=i + 1, description=item) for i, item in enumerate(overwrite_plan_items)]
+        write_plan_to_database(target_plan, preserve_history=False)
+        return f"Successfully updated plan {target_plan.id} for chat {chat_id}"
 
-    def _mark_step(self, chat_id: str, step_number: int, status: str, step_note: Optional[str] = None) -> str:
+    def _mark_step(self, chat_id: str, plan_id: Optional[int], step_number: int, status: str, step_note: Optional[str] = None) -> str:
         """Marks a step with a new status and optionally adds a note."""
         if status not in STATUS_MAP:
             return f"Invalid status. Valid statuses are: {list(STATUS_MAP.keys())}"
 
         db = get_database()
-        success = db.update_task_status(chat_id, step_number, status, step_note)
+        success = db.update_task_status(chat_id, step_number, status, step_note, plan_id=plan_id)
         
         if not success:
             return f"Step {step_number} not found or no plan exists for this chat."
 
         # Get the updated plan to return its markdown representation
-        plan = read_plan_from_database(chat_id)
+        plan = None
+        if plan_id is not None:
+            plan = read_plan_by_id(plan_id)
+            if plan and plan.chat_id != chat_id:
+                return f"Plan {plan_id} does not belong to chat {chat_id}."
+        if not plan:
+            plan = read_plan_from_database(chat_id)
+            if plan and plan_id is None:
+                print("PlanningTool: plan_id not provided; using most recent plan for status refresh.")
         if not plan:
             return f"Updated step {step_number} to {status}, but could not retrieve plan status."
 

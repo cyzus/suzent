@@ -309,6 +309,46 @@ class ChatDatabase:
                 "updated_at": plan_row["updated_at"]
             }
 
+    def get_plan_by_id(self, plan_id: int) -> Optional[Dict[str, Any]]:
+        """Fetch a plan and its tasks by plan ID."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+
+            cursor = conn.execute(
+                "SELECT * FROM plans WHERE id = ?",
+                (plan_id,),
+            )
+            plan_row = cursor.fetchone()
+            if not plan_row:
+                return None
+
+            task_cursor = conn.execute(
+                "SELECT * FROM tasks WHERE plan_id = ? ORDER BY number",
+                (plan_id,),
+            )
+            task_rows = task_cursor.fetchall()
+            tasks = [
+                {
+                    "id": task_row["id"],
+                    "number": task_row["number"],
+                    "description": task_row["description"],
+                    "status": task_row["status"],
+                    "note": task_row["note"],
+                    "created_at": task_row["created_at"],
+                    "updated_at": task_row["updated_at"],
+                }
+                for task_row in task_rows
+            ]
+
+            return {
+                "id": plan_row["id"],
+                "chat_id": plan_row["chat_id"],
+                "objective": plan_row["objective"],
+                "tasks": tasks,
+                "created_at": plan_row["created_at"],
+                "updated_at": plan_row["updated_at"],
+            }
+
     def list_plans(self, chat_id: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Return all plans for a chat ordered by newest first."""
         with sqlite3.connect(self.db_path) as conn:
@@ -356,15 +396,22 @@ class ChatDatabase:
 
             return plans
 
-    def update_plan(self, chat_id: str, objective: str = None, tasks: List[Dict[str, Any]] = None) -> bool:
-        """Update an existing plan or create a new one if it doesn't exist."""
+    def update_plan(self, chat_id: str, objective: str = None, tasks: List[Dict[str, Any]] = None, plan_id: Optional[int] = None) -> bool:
+        """Update an existing plan, optionally targeting a specific plan_id."""
         now = datetime.now().isoformat()
         
         with sqlite3.connect(self.db_path) as conn:
             # Check if plan exists
-            cursor = conn.execute("""
-                SELECT id FROM plans WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1
-            """, (chat_id,))
+            if plan_id is not None:
+                cursor = conn.execute(
+                    "SELECT id FROM plans WHERE id = ? AND chat_id = ?",
+                    (plan_id, chat_id),
+                )
+            else:
+                cursor = conn.execute(
+                    "SELECT id FROM plans WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1",
+                    (chat_id,),
+                )
             plan_row = cursor.fetchone()
             
             if plan_row:
@@ -405,15 +452,21 @@ class ChatDatabase:
                     return True
                 return False
 
-    def update_task_status(self, chat_id: str, task_number: int, status: str, note: str = None) -> bool:
-        """Update the status and optionally note of a specific task."""
+    def update_task_status(self, chat_id: str, task_number: int, status: str, note: str = None, plan_id: Optional[int] = None) -> bool:
+        """Update the status and optionally note of a specific task for a plan."""
         now = datetime.now().isoformat()
         
         with sqlite3.connect(self.db_path) as conn:
             # Get the plan ID for this chat
-            cursor = conn.execute("""
-                SELECT id FROM plans WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1
-            """, (chat_id,))
+            if plan_id is not None:
+                cursor = conn.execute(
+                    "SELECT id FROM plans WHERE id = ? AND chat_id = ?",
+                    (plan_id, chat_id),
+                )
+            else:
+                cursor = conn.execute("""
+                    SELECT id FROM plans WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1
+                """, (chat_id,))
             plan_row = cursor.fetchone()
             
             if not plan_row:

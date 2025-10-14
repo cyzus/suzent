@@ -19,7 +19,7 @@ const HeaderTitle: React.FC = () => {
 
 const AppInner: React.FC = () => {
   const [sidebarTab, setSidebarTab] = useState<'chats' | 'plan' | 'config'>('chats');
-  const { plan, currentPlan, snapshotPlan, history, selectedVersion, selectVersion, refresh } = usePlan();
+  const { plan, plans, currentPlan, snapshotPlan, selectedPlanKey, selectPlan, refresh } = usePlan();
   const { currentChatId } = useChatStore();
   
   const handlePlanRefresh = React.useCallback(() => {
@@ -44,9 +44,9 @@ const AppInner: React.FC = () => {
               plan={plan}
               currentPlan={currentPlan}
               snapshotPlan={snapshotPlan}
-              history={history}
-              selectedVersion={selectedVersion}
-              onSelectVersion={selectVersion}
+              plans={plans}
+              selectedPlanKey={selectedPlanKey}
+              onSelectPlan={selectPlan}
               onRefresh={handlePlanRefresh}
             />
           )}

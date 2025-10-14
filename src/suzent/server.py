@@ -494,6 +494,22 @@ async def get_config(request):
     }
     return JSONResponse(data)
 
+async def get_plans(request):
+    """Return all plans associated with a chat ordered by most recent first."""
+    try:
+        chat_id = request.query_params.get("chat_id")
+        if not chat_id:
+            return JSONResponse({"error": "chat_id parameter is required"}, status_code=400)
+
+        limit_param = request.query_params.get("limit")
+        limit = int(limit_param) if limit_param is not None else None
+
+        plans = read_plan_history_from_database(chat_id, limit=limit)
+        serialised_plans = [plan_to_dict(plan) for plan in plans if plan]
+        return JSONResponse(serialised_plans)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
 async def get_plan(request):
     """Return the current plan and historical versions for a chat."""
     try:
@@ -649,6 +665,7 @@ app = Starlette(
     routes=[
         Route("/chat", chat, methods=["POST"]),
         Route("/config", get_config, methods=["GET"]),
+    Route("/plans", get_plans, methods=["GET"]),
         Route("/plan", get_plan, methods=["GET"]),
         Route("/chats", get_chats, methods=["GET"]),
         Route("/chats", create_chat, methods=["POST"]),

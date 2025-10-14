@@ -35,15 +35,11 @@ export interface Plan {
   id?: number;
   chatId?: string | null;
   objective: string;
+  title?: string;
   tasks: PlanTask[];
   createdAt?: string;
   updatedAt?: string;
   versionKey: string;
-}
-
-export interface PlanHistoryResponse {
-  current: Plan | null;
-  history: Plan[];
 }
 
 // Added: configuration options exposed by backend (derived from suzent.config.Config)

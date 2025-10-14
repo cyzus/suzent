@@ -1,13 +1,15 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import type { Plan, PlanHistoryResponse, PlanTaskStatus } from '../types/api';
+import type { Plan, PlanTaskStatus } from '../types/api';
+
+const getPlanKey = (plan: Plan) => (plan.id != null ? `plan:${plan.id}` : plan.versionKey);
 
 interface PlanContextValue {
   plan: Plan | null;
+  plans: Plan[];
   currentPlan: Plan | null;
   snapshotPlan: Plan | null;
-  history: Plan[];
-  selectedVersion: string | null;
-  selectVersion: (versionKey: string | null) => void;
+  selectedPlanKey: string | null;
+  selectPlan: (planKey: string | null) => void;
   refresh: (chatId?: string | null) => Promise<void>;
   applySnapshot: (snapshot: Partial<Plan> & { objective?: string; tasks?: Array<Partial<Plan['tasks'][number]>> } | null) => void;
 }
@@ -15,118 +17,144 @@ interface PlanContextValue {
 const PlanContext = createContext<PlanContextValue | null>(null);
 
 export const PlanProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [planResponse, setPlanResponse] = useState<PlanHistoryResponse | null>(null);
-  const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [selectedPlanKey, setSelectedPlanKey] = useState<string | null>(null);
   const [snapshotPlan, setSnapshotPlan] = useState<Plan | null>(null);
 
   const refresh = useCallback(async (chatId?: string | null) => {
     if (!chatId) {
-      // No chat selected, clear plan state
-      setPlanResponse(null);
-      setSelectedVersion(null);
+      setPlans([]);
+      setSelectedPlanKey(null);
       setSnapshotPlan(null);
       return;
     }
 
     try {
-      console.log(`Fetching plan for chat_id: ${chatId}`);
-      const res = await fetch(`/api/plan?chat_id=${chatId}`);
-      console.log(`Plan fetch response: ${res.status}`);
+      const res = await fetch(`/api/plans?chat_id=${chatId}`);
       if (res.ok) {
-        const data: PlanHistoryResponse = await res.json();
-        console.log('Plan data received:', data);
-        setPlanResponse(data);
-        if (data.current) {
+        const data: Plan[] = await res.json();
+        setPlans(data);
+
+        const snapshotMatchesPersisted = Boolean(
+          snapshotPlan &&
+            data.some(planEntry => {
+              if (snapshotPlan.id != null && planEntry.id === snapshotPlan.id) return true;
+              if (snapshotPlan.versionKey && snapshotPlan.versionKey === getPlanKey(planEntry)) return true;
+              return false;
+            }),
+        );
+
+        const effectiveSnapshot = snapshotMatchesPersisted ? null : snapshotPlan;
+        if (snapshotMatchesPersisted) {
           setSnapshotPlan(null);
         }
-        const defaultVersion = data.current?.versionKey ?? data.history[0]?.versionKey ?? null;
-        setSelectedVersion(defaultVersion);
+
+        const availableKeys = new Set<string>();
+        data.forEach(planEntry => availableKeys.add(getPlanKey(planEntry)));
+        if (effectiveSnapshot?.versionKey) availableKeys.add(effectiveSnapshot.versionKey);
+
+        setSelectedPlanKey(prev => {
+          if (prev && availableKeys.has(prev)) return prev;
+          if (effectiveSnapshot?.versionKey) return effectiveSnapshot.versionKey;
+          const firstPlan = data[0];
+          return firstPlan ? getPlanKey(firstPlan) : null;
+        });
       } else if (res.status === 400 || res.status === 404) {
-        console.log('No plan found for this chat');
-        setPlanResponse({ current: null, history: [] });
-        setSelectedVersion(null);
+        setPlans([]);
+        setSelectedPlanKey(null);
         setSnapshotPlan(null);
       } else {
         console.warn(`Plan fetch failed with status ${res.status}`);
-        setPlanResponse(null);
-        setSelectedVersion(null);
+        setPlans([]);
+        setSelectedPlanKey(null);
       }
     } catch (error) {
       console.warn('Failed to fetch plan:', error);
-      setPlanResponse(null);
-      setSelectedVersion(null);
+      setPlans([]);
+      setSelectedPlanKey(null);
     }
-  }, []);
+  }, [snapshotPlan]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
-  const history = planResponse?.history ?? [];
-  const currentPlanFromResponse = planResponse?.current ?? null;
+  const sortedPlans = useMemo(() => {
+    return [...plans].sort((a, b) => {
+      const aTime = new Date(a.updatedAt ?? a.createdAt ?? 0).getTime();
+      const bTime = new Date(b.updatedAt ?? b.createdAt ?? 0).getTime();
+      return bTime - aTime;
+    });
+  }, [plans]);
 
-  const allCandidates = useMemo(() => {
-    const entries: Plan[] = [];
-    if (snapshotPlan) entries.push(snapshotPlan);
-    if (currentPlanFromResponse) entries.push(currentPlanFromResponse);
-    if (history.length) entries.push(...history);
-    return entries;
-  }, [snapshotPlan, currentPlanFromResponse, history]);
+  const currentPlan = sortedPlans[0] ?? null;
 
   const plan = useMemo(() => {
-    if (!selectedVersion) {
-      return snapshotPlan ?? currentPlanFromResponse ?? history[0] ?? null;
+    if (selectedPlanKey) {
+      if (snapshotPlan && snapshotPlan.versionKey === selectedPlanKey) return snapshotPlan;
+      const matched = sortedPlans.find(entry => getPlanKey(entry) === selectedPlanKey);
+      if (matched) return matched;
     }
-    return allCandidates.find(candidate => candidate.versionKey === selectedVersion) ?? snapshotPlan ?? currentPlanFromResponse ?? history[0] ?? null;
-  }, [selectedVersion, snapshotPlan, currentPlanFromResponse, history, allCandidates]);
+    if (snapshotPlan) return snapshotPlan;
+    return currentPlan ?? null;
+  }, [selectedPlanKey, snapshotPlan, sortedPlans, currentPlan]);
 
-  const currentPlan = currentPlanFromResponse ?? snapshotPlan;
+  const applySnapshot = useCallback(
+    (snapshot: Partial<Plan> & { objective?: string; tasks?: Array<Partial<Plan['tasks'][number]>> } | null) => {
+      if (!snapshot || (!snapshot.objective && !Array.isArray(snapshot.tasks))) {
+        setSnapshotPlan(null);
+        return;
+      }
 
-  const applySnapshot = useCallback((snapshot: Partial<Plan> & { objective?: string; tasks?: Array<Partial<Plan['tasks'][number]>> } | null) => {
-    if (!snapshot || (!snapshot.objective && !Array.isArray(snapshot.tasks))) {
-      setSnapshotPlan(null);
-      return;
-    }
+      const tasks = Array.isArray(snapshot.tasks)
+        ? snapshot.tasks.map((task, index) => {
+            const rawStatus = typeof task?.status === 'string' ? task.status : undefined;
+            const validStatus: PlanTaskStatus =
+              rawStatus === 'pending' || rawStatus === 'in_progress' || rawStatus === 'completed' || rawStatus === 'failed'
+                ? rawStatus
+                : 'pending';
+            const number = typeof task?.number === 'number' ? task.number : index + 1;
+            return {
+              id: task?.id,
+              number,
+              description: String(task?.description ?? '').trim(),
+              status: validStatus,
+              note: task?.note ?? undefined,
+              createdAt: task?.createdAt,
+              updatedAt: task?.updatedAt,
+            };
+          })
+        : [];
 
-    const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks.map((task, index) => {
-      const rawStatus = typeof task?.status === 'string' ? task.status : undefined;
-      const validStatus: PlanTaskStatus = rawStatus === 'pending' || rawStatus === 'in_progress' || rawStatus === 'completed' || rawStatus === 'failed'
-        ? rawStatus
-        : 'pending';
-      const number = typeof task?.number === 'number' ? task.number : index + 1;
-      return {
-        id: task?.id,
-        number,
-        description: String(task?.description ?? '').trim(),
-        status: validStatus,
-        note: task?.note ?? undefined,
-        createdAt: task?.createdAt,
-        updatedAt: task?.updatedAt,
-      };
-    }) : [];
+      const versionKey = snapshot.versionKey ?? `snapshot:${Date.now()}`;
+      const timestamp = snapshot.updatedAt ?? snapshot.createdAt ?? new Date().toISOString();
+      setSnapshotPlan({
+        id: snapshot.id,
+        chatId: snapshot.chatId ?? null,
+        objective: snapshot.objective ?? 'Plan',
+        tasks,
+        createdAt: snapshot.createdAt ?? timestamp,
+        updatedAt: snapshot.updatedAt ?? timestamp,
+        versionKey,
+      });
+      setSelectedPlanKey(prev => (prev === null || prev.startsWith('snapshot:')) ? versionKey : prev);
+    },
+    [],
+  );
 
-    const versionKey = snapshot.versionKey ?? `snapshot:${Date.now()}`;
-    const timestamp = snapshot.updatedAt ?? snapshot.createdAt ?? new Date().toISOString();
-    setSnapshotPlan({
-      id: snapshot.id,
-      chatId: snapshot.chatId ?? null,
-      objective: snapshot.objective ?? 'Plan',
-      tasks,
-      createdAt: snapshot.createdAt ?? timestamp,
-      updatedAt: snapshot.updatedAt ?? timestamp,
-      versionKey,
-    });
-    setSelectedVersion(prev => (prev === null || prev.startsWith('snapshot:')) ? versionKey : prev);
-  }, []);
-
-  const contextValue: PlanContextValue = useMemo(() => ({
-    plan,
-    currentPlan,
-    snapshotPlan,
-    history,
-    selectedVersion,
-    selectVersion: setSelectedVersion,
-    refresh,
-    applySnapshot,
-  }), [plan, currentPlan, snapshotPlan, history, selectedVersion, refresh, applySnapshot]);
+  const contextValue: PlanContextValue = useMemo(
+    () => ({
+      plan,
+      plans: sortedPlans,
+      currentPlan,
+      snapshotPlan,
+      selectedPlanKey,
+      selectPlan: setSelectedPlanKey,
+      refresh,
+      applySnapshot,
+    }),
+    [plan, sortedPlans, currentPlan, snapshotPlan, selectedPlanKey, refresh, applySnapshot],
+  );
 
   return React.createElement(PlanContext.Provider, { value: contextValue }, children);
 };

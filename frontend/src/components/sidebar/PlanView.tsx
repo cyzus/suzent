@@ -5,11 +5,18 @@ interface PlanViewProps {
   plan: Plan | null;
   currentPlan: Plan | null;
   snapshotPlan: Plan | null;
-  history: Plan[];
-  selectedVersion: string | null;
-  onSelectVersion: (versionKey: string | null) => void;
+  plans: Plan[];
+  selectedPlanKey: string | null;
+  onSelectPlan: (planKey: string | null) => void;
   onRefresh: () => void;
 }
+
+const getPlanKey = (plan: Plan) => (plan.id != null ? `plan:${plan.id}` : plan.versionKey);
+const describePlan = (plan: Plan) => {
+  const candidate = plan.title ?? plan.objective;
+  const trimmed = typeof candidate === 'string' ? candidate.trim() : '';
+  return trimmed.length ? trimmed : 'Untitled plan';
+};
 
 const formatTimestamp = (input?: string | null) => {
   if (!input) return '';
@@ -18,45 +25,54 @@ const formatTimestamp = (input?: string | null) => {
   return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 };
 
-export const PlanView: React.FC<PlanViewProps> = ({ plan, currentPlan, snapshotPlan, history, selectedVersion, onSelectVersion, onRefresh }) => {
+export const PlanView: React.FC<PlanViewProps> = ({ plan, currentPlan, snapshotPlan, plans, selectedPlanKey, onSelectPlan, onRefresh }) => {
   const combinedPlans = React.useMemo(() => {
-    const items: Array<{ label: string; plan: Plan; kind: 'snapshot' | 'current' | 'history' }> = [];
+    const items: Array<{ label: string; plan: Plan; key: string; kind: 'snapshot' | 'current' | 'history' }> = [];
     const seenKeys = new Set<string>();
     if (snapshotPlan) {
+      const key = snapshotPlan.versionKey;
+      const timestamp = formatTimestamp(snapshotPlan.updatedAt || snapshotPlan.createdAt);
       items.push({
-        label: `Live Snapshot • ${formatTimestamp(snapshotPlan.updatedAt || snapshotPlan.createdAt)}`,
+        label: `Live Snapshot • ${describePlan(snapshotPlan)}${timestamp ? ` • ${timestamp}` : ''}`,
+        key,
         plan: snapshotPlan,
         kind: 'snapshot',
       });
-      seenKeys.add(snapshotPlan.versionKey);
+      seenKeys.add(key);
     }
     if (currentPlan) {
-      if (!seenKeys.has(currentPlan.versionKey)) {
-        items.push({
-          label: `Current • ${formatTimestamp(currentPlan.updatedAt || currentPlan.createdAt)}`,
-          plan: currentPlan,
-          kind: 'current',
-        });
-        seenKeys.add(currentPlan.versionKey);
+      const key = getPlanKey(currentPlan);
+      if (!seenKeys.has(key)) {
+      const timestamp = formatTimestamp(currentPlan.updatedAt || currentPlan.createdAt);
+      items.push({
+        label: `Current • ${describePlan(currentPlan)}${timestamp ? ` • ${timestamp}` : ''}`,
+        key,
+        plan: currentPlan,
+        kind: 'current',
+      });
+      seenKeys.add(key);
       }
     }
-    history.forEach((entry, index) => {
-      if (!seenKeys.has(entry.versionKey)) {
+    plans.forEach((entry: Plan, index: number) => {
+      const key = getPlanKey(entry);
+      if (!seenKeys.has(key)) {
+        const timestamp = formatTimestamp(entry.updatedAt || entry.createdAt);
         items.push({
-          label: `History #${index + 1} • ${formatTimestamp(entry.updatedAt || entry.createdAt)}`,
+          label: `Plan ${entry.id ?? index + 1} • ${describePlan(entry)}${timestamp ? ` • ${timestamp}` : ''}`,
+          key,
           plan: entry,
           kind: 'history',
         });
-        seenKeys.add(entry.versionKey);
+        seenKeys.add(key);
       }
     });
     return items;
-  }, [snapshotPlan, currentPlan, history]);
+  }, [snapshotPlan, currentPlan, plans]);
 
   const handleSelectChange = React.useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
     const value = event.target.value;
-    onSelectVersion(value || null);
-  }, [onSelectVersion]);
+    onSelectPlan(value || null);
+  }, [onSelectPlan]);
 
   if (!plan) {
     if (!combinedPlans.length) {
@@ -70,32 +86,41 @@ export const PlanView: React.FC<PlanViewProps> = ({ plan, currentPlan, snapshotP
   const isSnapshot = !!plan?.versionKey && plan.versionKey.startsWith('snapshot:');
   const createdAtLabel = formatTimestamp(plan?.createdAt);
   const updatedAtLabel = formatTimestamp(plan?.updatedAt);
-  const otherPlans = plan ? combinedPlans.filter(entry => entry.plan.versionKey !== plan.versionKey) : combinedPlans;
+  const activeKey = plan ? (isSnapshot ? plan.versionKey : getPlanKey(plan)) : null;
+  const otherPlans = activeKey ? combinedPlans.filter(entry => entry.key !== activeKey) : combinedPlans;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 relative z-0">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-medium text-sm tracking-wide text-neutral-700">Plan Overview</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end w-full sm:w-auto">
           {combinedPlans.length > 1 && (
-            <select
-              value={selectedVersion ?? ''}
-              onChange={handleSelectChange}
-              className="text-[11px] border border-neutral-200 rounded px-2 py-1 bg-white text-neutral-700"
-            >
-              {combinedPlans.map(item => (
-                <option key={item.plan.versionKey} value={item.plan.versionKey}>{item.label}</option>
-              ))}
-            </select>
+            <div className="relative w-full min-w-[8rem] sm:w-40">
+              <select
+                value={selectedPlanKey ?? ''}
+                onChange={handleSelectChange}
+                className="relative z-20 w-full text-[11px] border border-neutral-200 rounded px-2 py-1 bg-white text-neutral-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-200"
+              >
+                {combinedPlans.map(item => (
+                  <option key={item.key} value={item.key}>{item.label}</option>
+                ))}
+              </select>
+            </div>
           )}
-          <button onClick={onRefresh} className="text-[11px] text-brand-600 hover:text-brand-500 transition-colors">Refresh</button>
+          <button
+            onClick={onRefresh}
+            className="shrink-0 px-2 py-1 text-[11px] text-brand-600 hover:text-brand-500 transition-colors mt-1 sm:mt-0"
+          >
+            Refresh
+          </button>
         </div>
       </div>
 
       {plan ? (
         <>
           <div className="text-xs text-neutral-500 space-y-0.5">
-            <div>{isSnapshot ? 'Live Snapshot' : `Version ${plan.versionKey}`}</div>
+            <div>{isSnapshot ? 'Live Snapshot' : plan.id != null ? `Plan #${plan.id}` : 'Plan'}</div>
+            {!isSnapshot && plan.versionKey && <div>· Version {plan.versionKey}</div>}
             {createdAtLabel && <div>· Created {createdAtLabel}</div>}
             {updatedAtLabel && <div>· Updated {updatedAtLabel}</div>}
           </div>
@@ -112,7 +137,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ plan, currentPlan, snapshotP
             {plan.tasks.map(task => {
               const statusIcons: Record<string, string> = { pending: '⚪', in_progress: '🔵', completed: '🟢', failed: '🔴' };
               return (
-                <li key={task.id ?? `${plan.versionKey}-${task.number}`} className="bg-white/70 rounded border border-neutral-200 p-2.5">
+                <li key={task.id ?? `${getPlanKey(plan)}-${task.number}`} className="bg-white/70 rounded border border-neutral-200 p-2.5">
                   <div className="flex justify-between items-start gap-2">
                     <span className="font-medium text-neutral-800 flex-1">{task.number}. {task.description}</span>
                     <span className="shrink-0 text-xs">{statusIcons[task.status] || '❓'}</span>
@@ -135,9 +160,10 @@ export const PlanView: React.FC<PlanViewProps> = ({ plan, currentPlan, snapshotP
               const label = item.label;
               const otherPlan = item.plan;
               const otherCompleted = otherPlan.tasks.filter(task => task.status === 'completed').length;
-              const objectiveLines = otherPlan.objective.split(/\r?\n/).filter(Boolean);
+              const summarySource = otherPlan.title ?? otherPlan.objective;
+              const objectiveLines = summarySource.split(/\r?\n/).filter(Boolean);
               return (
-                <li key={otherPlan.versionKey} className="flex items-center justify-between gap-3 rounded border border-neutral-200 bg-white/70 px-2.5 py-1.5">
+                <li key={item.key} className="flex items-center justify-between gap-3 rounded border border-neutral-200 bg-white/70 px-2.5 py-1.5">
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-neutral-700 truncate">{label}</div>
                     <div className="text-[10px] text-neutral-500">
@@ -148,7 +174,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ plan, currentPlan, snapshotP
                   </div>
                   <div className="text-[10px] text-neutral-500 whitespace-nowrap mr-2">{otherCompleted}/{otherPlan.tasks.length} tasks</div>
                   <button
-                    onClick={() => onSelectVersion(otherPlan.versionKey)}
+                    onClick={() => onSelectPlan(item.key)}
                     className="text-[10px] text-brand-600 hover:text-brand-500 transition-colors"
                   >
                     View
