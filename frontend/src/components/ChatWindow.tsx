@@ -74,11 +74,11 @@ function splitAssistantContent(content: string): { type: 'markdown' | 'code'; co
       if (detailsIdx !== -1) splitIdx = detailsIdx;
       if (stepIdx !== -1 && (splitIdx === -1 || stepIdx < splitIdx)) splitIdx = stepIdx;
       if (splitIdx !== -1) {
-        blocks.push({ type: 'code', content: codeBody.slice(0, splitIdx).trim(), lang });
+        blocks.push({ type: 'code', content: codeBody.slice(0, splitIdx), lang });
         codeBody = codeBody.slice(splitIdx);
         blocks.push({ type: 'markdown', content: codeBody });
       } else {
-        blocks.push({ type: 'code', content: codeBody.trim(), lang });
+        blocks.push({ type: 'code', content: codeBody, lang });
       }
       i = len;
       break;
@@ -99,11 +99,11 @@ function splitAssistantContent(content: string): { type: 'markdown' | 'code'; co
       if (detailsIdx !== -1) splitIdx = detailsIdx;
       if (stepIdx !== -1 && (splitIdx === -1 || stepIdx < splitIdx)) splitIdx = stepIdx;
       if (splitIdx !== -1) {
-        blocks.push({ type: 'code', content: codeBody.slice(0, splitIdx).trim(), lang });
+        blocks.push({ type: 'code', content: codeBody.slice(0, splitIdx), lang });
         codeBody = codeBody.slice(splitIdx);
         blocks.push({ type: 'markdown', content: codeBody });
       } else {
-        blocks.push({ type: 'code', content: codeBody.trim(), lang });
+        blocks.push({ type: 'code', content: codeBody, lang });
       }
       i = closingFence + 4;
     }

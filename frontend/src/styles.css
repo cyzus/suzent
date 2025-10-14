@@ -16,6 +16,16 @@ html, body, #root { height: 100%; }
 pre[class*="language-"] { position: relative; }
 pre code { font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
 
+/* Ensure all pre and code elements preserve whitespace */
+pre {
+  white-space: pre !important;
+  overflow-x: auto;
+}
+
+code {
+  white-space: pre !important;
+}
+
 /* Fade-in animation */
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(4px);} to { opacity:1; transform: translateY(0);} }
 .group { animation: fadeInUp 0.25s ease; }

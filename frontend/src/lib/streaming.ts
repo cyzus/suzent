@@ -20,8 +20,8 @@ function assembleForStorage(blocks: ContentBlock[], isInCodeBlock: boolean): str
     .map((b, i) => {
       if (b.type === 'markdown') return b.content;
       const isLast = i === blocks.length - 1;
-      // Ensure we have clean content for code blocks
-      const cleanContent = String(b.content || '').trim();
+      // Preserve whitespace in code blocks - only check if empty
+      const cleanContent = String(b.content || '');
       if (!cleanContent) return '';
       
       if (isLast && isInCodeBlock) {
