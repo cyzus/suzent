@@ -25,6 +25,8 @@ class PlanningTool(Tool):
     description: str = "A tool for managing a project plan in a TODO.md file."
     name: str = "PlanningTool"
     is_initialized: bool = False
+    # Forward signature includes non-LLM exposed kwargs (e.g., chat_id), so skip strict validation.
+    skip_forward_signature_validation = True
 
     def __init__(self):
         self._current_chat_id = None
@@ -37,11 +39,6 @@ class PlanningTool(Tool):
         "action": {
             "type": "string",
             "description": "The operation to perform. Must be one of 'create_plan', 'status', 'update_plan', or 'mark_step'."
-        },
-        "chat_id": {
-            "type": "string",
-            "description": "The chat ID to associate the plan with. If not provided, will try to get from context.",
-            "nullable": True
         },
         "objective": {
             "type": "string",
@@ -79,13 +76,13 @@ class PlanningTool(Tool):
     def forward(
         self,
         action: str,
-        chat_id: Optional[str] = None,
         objective: Optional[str] = None,
         action_items: Optional[list[str]] = None,
         overwrite_plan_items: Optional[list[str]] = None,
         step_number: Optional[int] = None,
         status: Optional[str] = None,
         step_note: Optional[str] = None,
+        chat_id: Optional[str] = None,
     ) -> str:
         """Manages a project plan in a TODO.md file."""
         action_map = {
