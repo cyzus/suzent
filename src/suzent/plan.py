@@ -22,6 +22,9 @@ class Task:
     description: str
     status: str = "pending"
     note: Optional[str] = None
+    task_id: Optional[int] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
     def __str__(self):
         note_str = f" - Note: {self.note}" if self.note else ""
@@ -34,6 +37,9 @@ class Plan:
     objective: str
     tasks: list[Task] = field(default_factory=list)
     chat_id: Optional[str] = None
+    id: Optional[int] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
     def to_markdown(self, hide_completed: bool = False, newly_completed_step: Optional[int] = None) -> str:
         """Converts the plan to a markdown string."""
@@ -78,14 +84,53 @@ def read_plan_from_database(chat_id: str) -> Optional[Plan]:
             number=task_data['number'],
             description=task_data['description'],
             status=task_data['status'],
-            note=task_data['note']
+            note=task_data['note'],
+            task_id=task_data.get('id'),
+            created_at=task_data.get('created_at'),
+            updated_at=task_data.get('updated_at')
         ))
     
     return Plan(
         objective=plan_data['objective'],
         tasks=tasks,
-        chat_id=chat_id
+        chat_id=chat_id,
+        id=plan_data.get('id'),
+        created_at=plan_data.get('created_at'),
+        updated_at=plan_data.get('updated_at')
     )
+
+
+def read_plan_history_from_database(chat_id: str, limit: Optional[int] = None) -> list[Plan]:
+    """Fetch all plan versions for a chat ordered by most recent first."""
+    from suzent.database import get_database
+
+    db = get_database()
+    plan_rows = db.list_plans(chat_id, limit=limit)
+    plans: list[Plan] = []
+
+    for plan_data in plan_rows:
+        tasks = []
+        for task_data in plan_data['tasks']:
+            tasks.append(Task(
+                number=task_data['number'],
+                description=task_data['description'],
+                status=task_data['status'],
+                note=task_data['note'],
+                task_id=task_data.get('id'),
+                created_at=task_data.get('created_at'),
+                updated_at=task_data.get('updated_at')
+            ))
+
+        plans.append(Plan(
+            objective=plan_data['objective'],
+            tasks=tasks,
+            chat_id=plan_data.get('chat_id', chat_id),
+            id=plan_data.get('id'),
+            created_at=plan_data.get('created_at'),
+            updated_at=plan_data.get('updated_at')
+        ))
+
+    return plans
 
 
 def write_plan_to_database(plan: Plan):
@@ -106,6 +151,42 @@ def write_plan_to_database(plan: Plan):
         })
     
     db.update_plan(plan.chat_id, plan.objective, tasks_data)
+
+
+def plan_to_dict(plan: Optional[Plan]) -> Optional[dict]:
+    """Convert a Plan instance to a JSON-serialisable dictionary."""
+    if not plan:
+        return None
+
+    if plan.id is not None:
+        version_key = f"id:{plan.id}"
+    elif plan.updated_at:
+        version_key = f"updated:{plan.updated_at}"
+    elif plan.created_at:
+        version_key = f"created:{plan.created_at}"
+    else:
+        version_key = f"objective:{hash(plan.objective)}:{len(plan.tasks)}"
+
+    return {
+        "id": plan.id,
+        "chatId": plan.chat_id,
+        "objective": plan.objective,
+        "createdAt": plan.created_at,
+        "updatedAt": plan.updated_at,
+        "versionKey": version_key,
+        "tasks": [
+            {
+                "id": task.task_id,
+                "number": task.number,
+                "description": task.description,
+                "status": task.status,
+                "note": task.note,
+                "createdAt": task.created_at,
+                "updatedAt": task.updated_at,
+            }
+            for task in plan.tasks
+        ],
+    }
 
 
 def auto_mark_in_progress(chat_id: str):

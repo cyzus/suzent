@@ -19,7 +19,7 @@ const HeaderTitle: React.FC = () => {
 
 const AppInner: React.FC = () => {
   const [sidebarTab, setSidebarTab] = useState<'chats' | 'plan' | 'config'>('chats');
-  const { plan, refresh } = usePlan();
+  const { plan, currentPlan, snapshotPlan, history, selectedVersion, selectVersion, refresh } = usePlan();
   const { currentChatId } = useChatStore();
   
   const handlePlanRefresh = React.useCallback(() => {
@@ -39,7 +39,17 @@ const AppInner: React.FC = () => {
           activeTab={sidebarTab}
           onTabChange={setSidebarTab}
           chatsContent={<ChatList />}
-          planContent={<PlanView plan={plan} onRefresh={handlePlanRefresh} />}
+          planContent={(
+            <PlanView
+              plan={plan}
+              currentPlan={currentPlan}
+              snapshotPlan={snapshotPlan}
+              history={history}
+              selectedVersion={selectedVersion}
+              onSelectVersion={selectVersion}
+              onRefresh={handlePlanRefresh}
+            />
+          )}
           configContent={<ConfigView />}
         />
         <div className="flex-1 flex flex-col">

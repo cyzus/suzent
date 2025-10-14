@@ -18,7 +18,7 @@ interface ChatContextValue {
   currentChatId: string | null;
   chats: ChatSummary[];
   loadingChats: boolean;
-  createNewChat: () => Promise<void>;
+  createNewChat: () => Promise<string | null>;
   loadChat: (chatId: string) => Promise<void>;
   saveCurrentChat: (skipRefresh?: boolean) => Promise<void>;
   finalSave: () => Promise<void>;
@@ -103,7 +103,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const createNewChat = async () => {
+  const createNewChat = async (): Promise<string | null> => {
     try {
       // Always create a new chat with empty messages and default title
       const res = await fetch('/api/chats', {
@@ -123,12 +123,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setMessages([]);
         setShouldResetNext(true); // Reset for new chats
         await refreshChatList();
+        return newChat.id;
       } else {
         console.error('Failed to create chat:', res.status, res.statusText);
+        return null;
       }
     } catch (error) {
       console.error('Error creating chat:', error);
+      return null;
     }
+    return null;
   };
 
   const loadChat = async (chatId: string) => {

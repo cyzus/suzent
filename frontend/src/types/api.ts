@@ -19,8 +19,32 @@ export interface ChatSummary {
   lastMessage?: string;
 }
 
-export interface PlanTask { number: number; description: string; status: 'pending' | 'in_progress' | 'completed' | 'failed'; note?: string }
-export interface Plan { objective: string; tasks: PlanTask[] }
+export type PlanTaskStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
+
+export interface PlanTask {
+  id?: number;
+  number: number;
+  description: string;
+  status: PlanTaskStatus;
+  note?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Plan {
+  id?: number;
+  chatId?: string | null;
+  objective: string;
+  tasks: PlanTask[];
+  createdAt?: string;
+  updatedAt?: string;
+  versionKey: string;
+}
+
+export interface PlanHistoryResponse {
+  current: Plan | null;
+  history: Plan[];
+}
 
 // Added: configuration options exposed by backend (derived from suzent.config.Config)
 export interface ConfigOptions {

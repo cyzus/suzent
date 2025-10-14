@@ -183,8 +183,8 @@ const MarkdownRenderer = (props: { content: string }) => {
 };
 
 export const ChatWindow: React.FC = () => {
-  const { messages, addMessage, updateAssistantStreaming, config, backendConfig, newAssistantMessage, shouldResetNext, consumeResetFlag, forceSaveNow, setIsStreaming, currentChatId } = useChatStore();
-  const { setPlan, refresh: refreshPlan } = usePlan();
+  const { messages, addMessage, updateAssistantStreaming, config, backendConfig, newAssistantMessage, shouldResetNext, consumeResetFlag, forceSaveNow, setIsStreaming, currentChatId, createNewChat } = useChatStore();
+  const { refresh: refreshPlan, applySnapshot: applyPlanSnapshot } = usePlan();
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(false);
@@ -249,34 +249,56 @@ export const ChatWindow: React.FC = () => {
   const send = async () => {
     const prompt = input.trim();
     if (!prompt || loading || !configReady) return;
-    const resetFlag = shouldResetNext;
+    let chatIdForSend = currentChatId;
+    let createdChat = false;
+    if (!chatIdForSend) {
+      chatIdForSend = await createNewChat();
+      if (!chatIdForSend) {
+        console.error('Unable to initialize chat before sending message.');
+        return;
+      }
+      createdChat = true;
+    }
+
+    if (!chatIdForSend) {
+      console.error('Chat identifier unavailable after initialization.');
+      return;
+    }
+
+    const resetFlag = shouldResetNext || createdChat;
     if (resetFlag) consumeResetFlag();
     setInput('');
     addMessage({ role: 'user', content: prompt });
     setLoading(true);
     setIsStreaming(true);
     try {
-      await streamChat(prompt, safeConfig, {
-        onDelta: (partial: string) => { updateAssistantStreaming(partial); },
-        onAction: () => { /* compatibility */ },
-        onNewAssistantMessage: () => { newAssistantMessage(); },
-        onPlanUpdate: (p: any) => { 
-          // Refresh plan from database instead of using the streamed data
-          refreshPlan(currentChatId); 
+      await streamChat(
+        prompt,
+        safeConfig,
+        {
+          onDelta: (partial: string) => { updateAssistantStreaming(partial); },
+          onAction: () => { /* compatibility */ },
+          onNewAssistantMessage: () => { newAssistantMessage(); },
+          onPlanUpdate: (snapshot: any) => {
+            applyPlanSnapshot(snapshot);
+            refreshPlan(chatIdForSend);
+          },
+          onStreamComplete: () => {
+            setIsStreaming(false);
+            // Add a delay to ensure all message updates have processed
+            setTimeout(async () => {
+              try {
+                await forceSaveNow();
+              } catch (error) {
+                console.error('Error in forceSaveNow from onStreamComplete:', error);
+              }
+            }, 200);
+          },
         },
-        onStreamComplete: () => { 
-          setIsStreaming(false);
-          // Add a delay to ensure all message updates have processed
-          setTimeout(async () => {
-            try {
-              await forceSaveNow();
-            } catch (error) {
-              console.error('Error in forceSaveNow from onStreamComplete:', error);
-            }
-          }, 200);
-        }
-      }, safeBackendConfig?.codeTag || '<code>', resetFlag, currentChatId);
-      
+        safeBackendConfig?.codeTag || '<code>',
+        resetFlag,
+        chatIdForSend,
+      );
     } catch (error) {
       console.error('Error during streaming:', error);
     } finally { 

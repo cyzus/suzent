@@ -31,7 +31,7 @@ from starlette.responses import StreamingResponse, JSONResponse
 from starlette.routing import Route
 from mcp import StdioServerParameters
 from suzent.config import Config
-from suzent.plan import read_plan_from_database
+from suzent.plan import read_plan_from_database, read_plan_history_from_database, plan_to_dict
 from suzent.database import get_database, generate_chat_title
 
 load_dotenv()
@@ -495,25 +495,36 @@ async def get_config(request):
     return JSONResponse(data)
 
 async def get_plan(request):
-    """Return current plan (objective + tasks) as JSON."""
+    """Return the current plan and historical versions for a chat."""
     try:
-        # Get chat_id from query parameters
         chat_id = request.query_params.get("chat_id")
         if not chat_id:
             return JSONResponse({"error": "chat_id parameter is required"}, status_code=400)
-        
-        plan = read_plan_from_database(chat_id)
-        if not plan:
-            return JSONResponse({"objective": "", "tasks": []})
-        tasks = []
-        for t in plan.tasks:
-            tasks.append({
-                "number": t.number,
-                "description": t.description,
-                "status": t.status,
-                "note": getattr(t, 'note', None)
-            })
-        return JSONResponse({"objective": plan.objective, "tasks": tasks})
+
+        current_plan = plan_to_dict(read_plan_from_database(chat_id))
+        history_plans = [plan_to_dict(p) for p in read_plan_history_from_database(chat_id)]
+
+        # Exclude the current plan from history list if duplicated
+        if current_plan:
+            current_id = current_plan.get("id")
+            current_key = current_plan.get("versionKey")
+            pruned: list[dict] = []
+            for p in history_plans:
+                if not p:
+                    continue
+                if current_id is not None and p.get("id") == current_id:
+                    continue
+                if current_key and p.get("versionKey") == current_key:
+                    continue
+                pruned.append(p)
+            history_plans = pruned
+        else:
+            history_plans = [p for p in history_plans if p]
+
+        return JSONResponse({
+            "current": current_plan,
+            "history": history_plans,
+        })
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 

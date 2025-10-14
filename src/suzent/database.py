@@ -296,6 +296,53 @@ class ChatDatabase:
                 "updated_at": plan_row["updated_at"]
             }
 
+    def list_plans(self, chat_id: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Return all plans for a chat ordered by newest first."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+
+            query = "SELECT * FROM plans WHERE chat_id = ? ORDER BY created_at DESC"
+            params: List[Any] = [chat_id]
+            if limit is not None:
+                query += " LIMIT ?"
+                params.append(limit)
+
+            cursor = conn.execute(query, tuple(params))
+            plan_rows = cursor.fetchall()
+            plans: List[Dict[str, Any]] = []
+
+            for plan_row in plan_rows:
+                task_cursor = conn.execute(
+                    "SELECT * FROM tasks WHERE plan_id = ? ORDER BY number",
+                    (plan_row["id"],)
+                )
+                task_rows = task_cursor.fetchall()
+                tasks = [
+                    {
+                        "id": task_row["id"],
+                        "number": task_row["number"],
+                        "description": task_row["description"],
+                        "status": task_row["status"],
+                        "note": task_row["note"],
+                        "created_at": task_row["created_at"],
+                        "updated_at": task_row["updated_at"],
+                    }
+                    for task_row in task_rows
+                ]
+
+                plans.append(
+                    {
+                        "id": plan_row["id"],
+                        "chat_id": plan_row["chat_id"],
+                        "objective": plan_row["objective"],
+                        "tasks": tasks,
+                        "created_at": plan_row["created_at"],
+                        "updated_at": plan_row["updated_at"],
+                    }
+                )
+
+            return plans
+
     def update_plan(self, chat_id: str, objective: str = None, tasks: List[Dict[str, Any]] = None) -> bool:
         """Update an existing plan or create a new one if it doesn't exist."""
         now = datetime.now().isoformat()
