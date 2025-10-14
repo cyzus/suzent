@@ -183,6 +183,19 @@ class ChatDatabase:
             cursor = conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
             conn.commit()
             return cursor.rowcount > 0
+
+    def reassign_plan_chat(self, old_chat_id: str, new_chat_id: str) -> int:
+        """Reassign all plans from one chat_id to another. Returns number of plans updated."""
+        if old_chat_id == new_chat_id:
+            return 0
+
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "UPDATE plans SET chat_id = ?, updated_at = ? WHERE chat_id = ?",
+                (new_chat_id, datetime.now().isoformat(), old_chat_id)
+            )
+            conn.commit()
+            return cursor.rowcount
     
     def list_chats(self, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
         """List chat summaries ordered by last updated."""

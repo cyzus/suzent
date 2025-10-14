@@ -4,7 +4,7 @@ This module provides a unified tool for creating and managing a plan in a TODO.m
 The tool is inspired by the smolagents style, providing a single class to interact
 with the plan. It supports creating a plan, checking its status, and updating steps.
 """
-from typing import Optional, Union
+from typing import Optional
 
 from smolagents.tools import Tool
 
@@ -30,10 +30,20 @@ class PlanningTool(Tool):
 
     def __init__(self):
         self._current_chat_id = None
+        self._migrated_temp_plan = False
     
     def set_chat_context(self, chat_id: str):
         """Set the current chat context for this tool instance."""
         self._current_chat_id = chat_id
+        if chat_id and chat_id != "planning_session_temp" and not self._migrated_temp_plan:
+            try:
+                db = get_database()
+                migrated = db.reassign_plan_chat("planning_session_temp", chat_id)
+                if migrated:
+                    print(f"PlanningTool: migrated {migrated} temporary plan(s) to chat {chat_id}")
+                self._migrated_temp_plan = True
+            except Exception as exc:
+                print(f"PlanningTool: failed migrating temporary plan to {chat_id}: {exc}")
 
     inputs = {
         "action": {
@@ -101,18 +111,9 @@ class PlanningTool(Tool):
             print(f"PlanningTool: Using context chat_id: {context_chat_id} (overriding agent-provided: {chat_id})")
             chat_id = context_chat_id
         elif not chat_id:
-            # No chat_id provided and no context, create temporary chat
-            db = get_database()
-            temp_chat_id = "planning_session_temp"
-            temp_chat = db.get_chat(temp_chat_id)
-            if not temp_chat:
-                temp_chat_id = db.create_chat(
-                    title="Planning Session",
-                    config={"model": "gemini/gemini-2.5-pro", "agent": "CodeAgent", "tools": ["PlanningTool"]},
-                    messages=[]
-                )
-            chat_id = temp_chat_id
-            print(f"PlanningTool: Created/using temporary chat_id: {chat_id}")
+            return (
+                "Error: PlanningTool requires a chat_id. Ensure the agent is invoked with an active chat context."
+            )
         else:
             print(f"PlanningTool: Using agent-provided chat_id: {chat_id}")
         

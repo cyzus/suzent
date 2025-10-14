@@ -94,10 +94,10 @@ export const PlanView: React.FC<PlanViewProps> = ({ plan, currentPlan, snapshotP
 
       {plan ? (
         <>
-          <div className="text-xs text-neutral-500">
-            {isSnapshot ? 'Live Snapshot' : `Version ${plan.versionKey}`}
-            {createdAtLabel ? ` • Created ${createdAtLabel}` : ''}
-            {updatedAtLabel ? ` • Updated ${updatedAtLabel}` : ''}
+          <div className="text-xs text-neutral-500 space-y-0.5">
+            <div>{isSnapshot ? 'Live Snapshot' : `Version ${plan.versionKey}`}</div>
+            {createdAtLabel && <div>· Created {createdAtLabel}</div>}
+            {updatedAtLabel && <div>· Updated {updatedAtLabel}</div>}
           </div>
           <div className="text-sm font-semibold leading-snug text-neutral-900">{plan.objective}</div>
           <div className="w-full h-2 rounded bg-neutral-200 overflow-hidden relative">
