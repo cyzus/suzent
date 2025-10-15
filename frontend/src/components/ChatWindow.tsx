@@ -183,11 +183,28 @@ const MarkdownRenderer = (props: { content: string }) => {
 };
 
 export const ChatWindow: React.FC = () => {
-  const { messages, addMessage, updateAssistantStreaming, config, backendConfig, newAssistantMessage, shouldResetNext, consumeResetFlag, forceSaveNow, setIsStreaming, currentChatId, createNewChat } = useChatStore();
+  const {
+    messages,
+    addMessage,
+    updateAssistantStreaming,
+    config,
+    backendConfig,
+    newAssistantMessage,
+    shouldResetNext,
+    consumeResetFlag,
+    forceSaveNow,
+    setIsStreaming,
+    currentChatId,
+    createNewChat,
+    removeEmptyAssistantMessage,
+    isStreaming,
+    activeStreamingChatId,
+  } = useChatStore();
   const { refresh: refreshPlan, applySnapshot: applyPlanSnapshot } = usePlan();
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement | null>(null);
-  const [loading, setLoading] = useState(false);
+  const stopInFlightRef = useRef(false);
+  const streamingForCurrentChat = isStreaming && activeStreamingChatId === currentChatId;
 
   // Safeguard against undefined state
   const safeMessages = messages || [];
@@ -248,51 +265,56 @@ export const ChatWindow: React.FC = () => {
 
   const send = async () => {
     const prompt = input.trim();
-    if (!prompt || loading || !configReady) return;
+    if (!prompt || isStreaming || !configReady) return;
+    
+    const resetFlag = shouldResetNext;
+    if (resetFlag) consumeResetFlag();
+    setInput('');
+    
+    // Create the chat first if needed
     let chatIdForSend = currentChatId;
-    let createdChat = false;
     if (!chatIdForSend) {
       chatIdForSend = await createNewChat();
       if (!chatIdForSend) {
         console.error('Unable to initialize chat before sending message.');
         return;
       }
-      createdChat = true;
     }
+    
+    // Now add user message to the real chat
+    addMessage({ role: 'user', content: prompt }, chatIdForSend);
 
-    if (!chatIdForSend) {
-      console.error('Chat identifier unavailable after initialization.');
-      return;
-    }
-
-    const resetFlag = shouldResetNext || createdChat;
-    if (resetFlag) consumeResetFlag();
-    setInput('');
-    addMessage({ role: 'user', content: prompt });
-    setLoading(true);
-    setIsStreaming(true);
+    setIsStreaming(true, chatIdForSend);
+    stopInFlightRef.current = false;
     try {
       await streamChat(
         prompt,
         safeConfig,
         {
-          onDelta: (partial: string) => { updateAssistantStreaming(partial); },
+          onDelta: (partial: string) => { updateAssistantStreaming(partial, chatIdForSend); },
           onAction: () => { /* compatibility */ },
-          onNewAssistantMessage: () => { newAssistantMessage(); },
+          onNewAssistantMessage: () => { newAssistantMessage(chatIdForSend); },
           onPlanUpdate: (snapshot: any) => {
             applyPlanSnapshot(snapshot);
             refreshPlan(chatIdForSend);
           },
           onStreamComplete: () => {
-            setIsStreaming(false);
+            setIsStreaming(false, chatIdForSend);
+            console.log('[ChatWindow] Stream complete, saving chat:', chatIdForSend);
             // Add a delay to ensure all message updates have processed
             setTimeout(async () => {
               try {
-                await forceSaveNow();
+                await forceSaveNow(chatIdForSend);
+                console.log('[ChatWindow] Save complete after stream');
               } catch (error) {
                 console.error('Error in forceSaveNow from onStreamComplete:', error);
               }
             }, 200);
+          },
+          onStreamStopped: () => {
+            setIsStreaming(false, chatIdForSend);
+            removeEmptyAssistantMessage(chatIdForSend);
+            stopInFlightRef.current = false;
           },
         },
         safeBackendConfig?.codeTag || '<code>',
@@ -302,16 +324,40 @@ export const ChatWindow: React.FC = () => {
     } catch (error) {
       console.error('Error during streaming:', error);
     } finally { 
-      setLoading(false); 
-      setIsStreaming(false);
+      setIsStreaming(false, chatIdForSend);
       // Ensure we save even if onStreamComplete wasn't called
       setTimeout(async () => {
         try {
-          await forceSaveNow();
+          await forceSaveNow(chatIdForSend);
         } catch (error) {
           console.error('Error in forceSaveNow from finally block:', error);
         }
       }, 600);
+      stopInFlightRef.current = false;
+    }
+  };
+
+  const stopStreaming = async () => {
+    if (!isStreaming || stopInFlightRef.current) return;
+    stopInFlightRef.current = true;
+    const targetChatId = activeStreamingChatId;
+    if (!targetChatId) {
+      stopInFlightRef.current = false;
+      return;
+    }
+    try {
+      const res = await fetch('/api/chat/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: targetChatId, reason: 'User requested stop' })
+      });
+      if (!res.ok) {
+        console.error('Stop request failed:', res.status, res.statusText);
+        stopInFlightRef.current = false;
+      }
+    } catch (error) {
+      console.error('Error sending stop request:', error);
+      stopInFlightRef.current = false;
     }
   };
 
@@ -360,7 +406,7 @@ export const ChatWindow: React.FC = () => {
                     ))
                   )}
                   {/* end user/assistant content */}
-                  {!isUser && idx === safeMessages.length - 1 && loading && (
+                  {!isUser && idx === safeMessages.length - 1 && streamingForCurrentChat && (
                     <div className="flex gap-1 items-center text-[10px] text-neutral-400 animate-pulse">Thinking<span className="w-1 h-1 bg-neutral-300 rounded-full animate-bounce [animation-delay:-0.2s]"></span><span className="w-1 h-1 bg-neutral-300 rounded-full animate-bounce [animation-delay:-0.05s]"></span><span className="w-1 h-1 bg-neutral-300 rounded-full animate-bounce"></span></div>
                   )}
                 </div>
@@ -383,7 +429,7 @@ export const ChatWindow: React.FC = () => {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                if (!loading && configReady && input.trim()) {
+                if (!isStreaming && configReady && input.trim()) {
                   send();
                 }
               }
@@ -393,13 +439,25 @@ export const ChatWindow: React.FC = () => {
           />
           <div className="absolute bottom-2 right-3 text-[10px] text-neutral-400 select-none">Enter to send • Shift+Enter newline</div>
         </div>
-        <button
+        <div className="flex flex-col justify-end gap-2">
+          {streamingForCurrentChat && (
+            <button
+              type="button"
+              onClick={stopStreaming}
+              className="h-10 self-end rounded-lg bg-red-500 hover:bg-red-500/90 active:bg-red-600 transition-colors px-4 text-xs font-medium disabled:opacity-60 disabled:cursor-not-allowed shadow text-white"
+              disabled={stopInFlightRef.current}
+            >
+              Stop
+            </button>
+          )}
+          <button
             type="submit"
             className="h-12 self-end rounded-lg bg-brand-600 hover:bg-brand-500 active:bg-brand-500/90 transition-colors px-5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow text-white"
-            disabled={loading || !configReady}
+            disabled={isStreaming || !configReady}
           >
-            {loading ? 'Sending…' : 'Send'}
+            {streamingForCurrentChat ? 'Sending…' : 'Send'}
           </button>
+        </div>
       </form>
     </div>
   );

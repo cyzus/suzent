@@ -10,6 +10,7 @@ export interface StreamCallbacks {
   onNewAssistantMessage?: () => void;
   onPlanUpdate?: (plan: any) => void;
   onStreamComplete?: () => void; // new callback for when streaming finishes
+  onStreamStopped?: (payload?: any) => void;
 }
 
 interface ContentBlock { type: 'markdown' | 'code'; content: string }
@@ -50,7 +51,7 @@ function getStepFootnote(step: any, stepName: string): string {
 }
 
 export async function streamChat(prompt: string, config: ChatConfig, callbacks: StreamCallbacks, codeTag = '<code>', reset = false, chatId?: string | null) {
-  const { onDelta, onAction, onNewAssistantMessage } = callbacks;
+  const { onDelta, onAction, onNewAssistantMessage, onStreamStopped, onStreamComplete, onPlanUpdate } = callbacks;
   const payload: any = { message: prompt, config, reset };
   if (chatId) {
     payload.chat_id = chatId;
@@ -101,6 +102,8 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let terminatedEarly = false;
+
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -187,10 +190,15 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
         emitDiff();
         resetForNewAssistantMessage();
       } else if (type === 'plan_refresh') {
-        if (data && callbacks.onPlanUpdate) callbacks.onPlanUpdate(data);
+        if (data && onPlanUpdate) onPlanUpdate(data);
         if (onAction) onAction();
+      } else if (type === 'stopped') {
+        terminatedEarly = true;
+        if (onStreamStopped) onStreamStopped(data);
+        break;
       }
     }
+    if (terminatedEarly) break;
   }
   // Flush any trailing pending probe characters (incomplete tag) at end of stream
   if (pendingCodeProbe) {
@@ -206,7 +214,7 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
   }
   
   // Trigger final save when streaming completes
-  if (callbacks.onStreamComplete) {
-    callbacks.onStreamComplete();
+  if (onStreamComplete) {
+    onStreamComplete();
   }
 }

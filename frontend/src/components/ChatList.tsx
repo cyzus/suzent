@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
 import { ChatSummary } from '../types/api';
 
@@ -6,13 +6,27 @@ export const ChatList: React.FC = () => {
   const { 
     chats, 
     loadingChats, 
+    refreshingChats,
     currentChatId, 
     loadChat, 
-    createNewChat, 
+    beginNewChat,
     deleteChat 
   } = useChatStore();
   
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
+  const [showRefreshIndicator, setShowRefreshIndicator] = useState(false);
+
+  useEffect(() => {
+    let timeout: NodeJS.Timeout | null = null;
+    if (refreshingChats) {
+      timeout = setTimeout(() => setShowRefreshIndicator(true), 250);
+    } else {
+      setShowRefreshIndicator(false);
+    }
+    return () => {
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [refreshingChats]);
 
   const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent chat selection when deleting
@@ -58,16 +72,23 @@ export const ChatList: React.FC = () => {
   return (
     <div className="flex flex-col h-full">
       {/* New Chat Button */}
-      <div className="p-4 border-b border-neutral-200">
+      <div className="p-4 border-b border-neutral-200 flex items-center justify-between gap-3">
         <button
-          onClick={createNewChat}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-lg font-medium transition-colors"
+          onClick={beginNewChat}
+          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-lg font-medium transition-colors"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
           New Chat
         </button>
+        {showRefreshIndicator && (
+          <div className="flex items-center text-[11px] text-neutral-400 gap-2 whitespace-nowrap transition-opacity duration-150">
+            <span className="w-3 h-3 rounded-full border-2 border-neutral-300 border-t-brand-500 animate-spin" aria-hidden="true"></span>
+            Updating…
+            <span className="sr-only">Refreshing chat list</span>
+          </div>
+        )}
       </div>
 
       {/* Chat List */}
