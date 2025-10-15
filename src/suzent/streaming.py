@@ -1,0 +1,295 @@
+"""
+Streaming module for handling agent response streaming with SSE.
+
+This module provides functionality for streaming agent responses to clients
+using Server-Sent Events (SSE), including:
+- Stream control for cooperative cancellation
+- Event formatting and serialization
+- Plan watching and updates
+- Background processing with asyncio
+"""
+
+import asyncio
+import contextlib
+import json
+import threading
+from typing import Optional, Dict, AsyncGenerator
+
+from smolagents.agents import ActionOutput, PlanningStep
+from smolagents.memory import ActionStep, FinalAnswerStep
+from smolagents.models import ChatMessageStreamDelta
+
+from suzent.plan import read_plan_from_database
+from suzent.utils import to_serializable
+
+
+class StreamControl:
+    """Holds cooperative cancellation state for an active stream."""
+
+    __slots__ = ("async_event", "thread_event", "reason")
+
+    def __init__(self, async_event: asyncio.Event, thread_event: threading.Event):
+        """
+        Initialize stream control.
+        
+        Args:
+            async_event: Asyncio event for async cancellation.
+            thread_event: Threading event for thread-based cancellation.
+        """
+        self.async_event = async_event
+        self.thread_event = thread_event
+        self.reason = "Stream stopped by user"
+
+
+# Global registry of active streams
+stream_controls: Dict[str, StreamControl] = {}
+
+
+def step_to_json_event(chunk) -> Optional[dict]:
+    """
+    Converts an agent's step into a JSON event dictionary.
+    
+    Args:
+        chunk: Agent step or output chunk to convert.
+    
+    Returns:
+        Dictionary with 'type' and 'data' keys, or None if not serializable.
+    """
+    event_map = {
+        ActionStep: "action",
+        PlanningStep: "planning",
+        FinalAnswerStep: "final_answer",
+        ChatMessageStreamDelta: "stream_delta",
+        ActionOutput: "action_output",
+    }
+    event_type = next(
+        (event_map[t] for t in event_map if isinstance(chunk, t)), "other"
+    )
+
+    if event_type == "final_answer":
+        output = getattr(chunk, "output", str(chunk))
+        data = (
+            output.to_string()
+            if hasattr(output, "to_string") and not isinstance(output, str)
+            else str(output)
+        )
+    elif event_type == "action_output" and chunk.output is None:
+        return None
+    else:
+        data = to_serializable(chunk)
+
+    return {"type": event_type, "data": data}
+
+
+def _plan_snapshot(chat_id: Optional[str] = None) -> dict:
+    """
+    Get a snapshot of the current plan state.
+    
+    Args:
+        chat_id: Chat identifier to get plan for.
+    
+    Returns:
+        Dictionary with 'objective' and 'tasks' keys.
+    """
+    try:
+        if not chat_id:
+            return {"objective": "", "tasks": []}
+        plan = read_plan_from_database(chat_id)
+        if not plan:
+            return {"objective": "", "tasks": []}
+        return {
+            "objective": plan.objective,
+            "tasks": [
+                {
+                    "number": t.number,
+                    "description": t.description,
+                    "status": t.status,
+                    "note": getattr(t, "note", None),
+                }
+                for t in plan.tasks
+            ],
+        }
+    except Exception:
+        return {"objective": "", "tasks": []}
+
+
+class _PlanTick:
+    """Internal marker for plan updates."""
+    __slots__ = ["snapshot"]
+
+    def __init__(self, snapshot: dict):
+        self.snapshot = snapshot
+
+
+class _StopSignal:
+    """Internal marker for stop requests."""
+    __slots__ = ["reason"]
+
+    def __init__(self, reason: str):
+        self.reason = reason
+
+
+async def stream_agent_responses(
+    agent, 
+    message: str, 
+    reset: bool = False, 
+    chat_id: Optional[str] = None
+) -> AsyncGenerator[str, None]:
+    """
+    Runs the agent with the given message and yields JSON-formatted SSE events.
+    
+    Uses a background thread + asyncio.Queue so the event loop is not blocked and
+    deltas flush to the client sooner. Adds cooperative cancellation so the client
+    can request streaming to stop explicitly.
+    
+    Args:
+        agent: The agent instance to run.
+        message: User message to process.
+        reset: Whether to reset agent memory before processing.
+        chat_id: Optional chat identifier for plan tracking.
+    
+    Yields:
+        Server-sent event strings in the format "data: {json}\n\n"
+    """
+    queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_event_loop()
+    async_stop_event = asyncio.Event()
+    thread_stop_event = threading.Event()
+    control = StreamControl(async_stop_event, thread_stop_event)
+
+    if chat_id:
+        stream_controls[chat_id] = control
+
+    def worker():
+        """Background worker that runs agent in thread."""
+        stop_notified = False
+
+        def notify_stop():
+            nonlocal stop_notified
+            if stop_notified:
+                return
+            stop_notified = True
+            reason = control.reason or "Stream stopped by user"
+            loop.call_soon_threadsafe(queue.put_nowait, _StopSignal(reason))
+
+        try:
+            gen = agent.run(message, stream=True, reset=reset)
+            for chunk in gen:
+                if control.thread_event.is_set():
+                    notify_stop()
+                    break
+                loop.call_soon_threadsafe(queue.put_nowait, chunk)
+        except Exception as e:
+            if not control.thread_event.is_set():
+                loop.call_soon_threadsafe(queue.put_nowait, e)
+        finally:
+            if control.thread_event.is_set():
+                notify_stop()
+            loop.call_soon_threadsafe(queue.put_nowait, None)  # sentinel
+            loop.call_soon_threadsafe(async_stop_event.set)
+
+    async def plan_watcher(interval: float = 0.7):
+        """Watch the plan for changes and enqueue updates."""
+        last_snapshot = None
+        try:
+            while not async_stop_event.is_set():
+                if control.thread_event.is_set():
+                    break
+                await asyncio.sleep(interval)
+                try:
+                    snapshot = _plan_snapshot(chat_id)
+                    if snapshot != last_snapshot:
+                        last_snapshot = snapshot
+                        await queue.put(_PlanTick(snapshot))
+                except Exception as e:
+                    await queue.put(_PlanTick({"error": str(e)}))
+        except asyncio.CancelledError:
+            pass
+
+    # Start background tasks
+    threading.Thread(target=worker, daemon=True).start()
+    watcher_task = asyncio.create_task(plan_watcher())
+
+    stop_requested = False
+
+    try:
+        while True:
+            chunk = await queue.get()
+            if chunk is None:
+                break
+
+            if isinstance(chunk, _StopSignal):
+                stop_requested = True
+                stop_payload = {"type": "stopped", "data": {"reason": chunk.reason}}
+                yield f"data: {json.dumps(stop_payload)}\n\n"
+                await asyncio.sleep(0)
+                continue
+
+            if isinstance(chunk, Exception):
+                if stop_requested:
+                    continue
+                error_event = {"type": "error", "data": str(chunk)}
+                yield f"data: {json.dumps(error_event)}\n\n"
+                await asyncio.sleep(0)
+                continue
+
+            if isinstance(chunk, _PlanTick):
+                if stop_requested:
+                    continue
+                try:
+                    plan_event = {"type": "plan_refresh", "data": chunk.snapshot}
+                    yield f"data: {json.dumps(plan_event)}\n\n"
+                except Exception as e:
+                    error_event = {"type": "error", "data": f"Plan tick error: {e!s}"}
+                    yield f"data: {json.dumps(error_event)}\n\n"
+                await asyncio.sleep(0)
+                continue
+
+            if stop_requested:
+                await asyncio.sleep(0)
+                continue
+
+            try:
+                json_event = step_to_json_event(chunk)
+                if json_event:
+                    yield f"data: {json.dumps(json_event)}\n\n"
+                    et = json_event.get("type")
+                    if et in ("planning", "action"):
+                        plan_event = {"type": "plan_refresh", "data": _plan_snapshot(chat_id)}
+                        yield f"data: {json.dumps(plan_event)}\n\n"
+            except Exception as e:
+                error_event = {"type": "error", "data": f"Serialization error: {e!s} | Raw: {chunk!s}"}
+                yield f"data: {json.dumps(error_event)}\n\n"
+
+            await asyncio.sleep(0)
+    finally:
+        async_stop_event.set()
+        watcher_task.cancel()
+        with contextlib.suppress(Exception):
+            await watcher_task
+
+        if chat_id:
+            existing = stream_controls.get(chat_id)
+            if existing is control:
+                stream_controls.pop(chat_id, None)
+
+
+def stop_stream(chat_id: str, reason: str = "Stream stopped by user") -> bool:
+    """
+    Request to stop an active stream.
+    
+    Args:
+        chat_id: Chat identifier for the stream to stop.
+        reason: Reason for stopping the stream.
+    
+    Returns:
+        True if stream was found and stop requested, False otherwise.
+    """
+    control = stream_controls.get(chat_id)
+    if not control:
+        return False
+    
+    control.reason = reason
+    control.thread_event.set()
+    control.async_event.set()
+    return True
