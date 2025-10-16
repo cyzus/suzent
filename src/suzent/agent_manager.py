@@ -13,7 +13,7 @@ import importlib
 import pickle
 from typing import Optional, Dict, Any
 
-from smolagents import CodeAgent, LiteLLMModel, MCPClient, WebSearchTool
+from smolagents import CodeAgent, LiteLLMModel, MCPClient
 from smolagents.tools import Tool
 
 from suzent.config import Config
@@ -51,18 +51,16 @@ def create_agent(config: Dict[str, Any]) -> CodeAgent:
     model = LiteLLMModel(model_id=model_id)
 
     tools = []
-    if "WebSearchTool" in tool_names:
-        tools.append(WebSearchTool())
     
-    # Filter out WebSearchTool from tool_names for dynamic loading
-    custom_tool_names = [t for t in tool_names if t != "WebSearchTool"]
-
     # Mapping of tool class names to their module file names
     tool_module_map = {
+        "WebSearchTool": "websearch_tool",
         "PlanningTool": "planning_tool",
         "WebpageTool": "webpage_tool",
         # Add other custom tools here as needed
     }
+    
+    custom_tool_names = tool_names
 
     for tool_name in custom_tool_names:
         try:
@@ -184,7 +182,7 @@ def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[Cod
             # Map tool names back to config format
             tool_name_mapping = {
                 'WebSearchTool': 'WebSearchTool',
-                'PlanningTool': 'PlanningTool', 
+                'PlanningTool': 'PlanningTool',
                 'WebpageTool': 'WebpageTool',
             }
             config_with_tools = config.copy()

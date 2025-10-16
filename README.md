@@ -21,6 +21,9 @@ DEEPSEEK_API_KEY=sk-xxx
 QWEN_API_KEY=xxx
 GEMINI_API_KEY=xxx
 ANTHROPIC_API_KEY=sk-xxx
+
+# Optional: Use SearXNG for privacy-focused web search
+# SEARXNG_BASE_URL=http://localhost:8080
 ```
 
 
@@ -47,6 +50,22 @@ npm run dev
 ```
 
 5. **Open your browser to:** `http://localhost:5173`
+
+## Tools
+
+Suzent includes several powerful tools for the AI agent:
+
+### WebSearch
+- **Flexible Search**: Automatically uses SearXNG if configured, or falls back to default web search
+- **Privacy-Focused**: SearXNG provides meta-search without tracking
+- **Advanced Parameters**: When using SearXNG, supports categories, language filters, time ranges, and pagination
+- **Configuration**: Set `SEARXNG_BASE_URL` in `.env` to use SearXNG (optional)
+
+To use SearXNG:
+```bash
+# In your .env file
+SEARXNG_BASE_URL=http://localhost:8080
+```
 
 ## Chat Persistence
 
