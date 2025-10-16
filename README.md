@@ -1,6 +1,6 @@
 # Suzent
 
-An AI agent chat application with persistent conversation management.
+An AI agent chat application with persistent conversation management, web search capabilities, and task planning.
 
 ## Features
 
@@ -10,6 +10,13 @@ An AI agent chat application with persistent conversation management.
 - **Chat History**: Browse and continue previous conversations
 - **Real-time Planning**: AI agent can create and manage task plans
 - **Model Configuration**: Support for multiple AI models and agents
+- **Privacy-Focused Web Search**: Optional SearXNG integration for privacy-respecting search
+- **Extensible Tools**: Easy to add custom tools and capabilities
+
+## 📚 Documentation
+
+For detailed documentation, please see the [docs](./docs) folder:
+
 
 ## Quick Start
 
@@ -51,23 +58,28 @@ npm run dev
 
 5. **Open your browser to:** `http://localhost:5173`
 
-## Tools
+## 🛠️ Tools
 
 Suzent includes several powerful tools for the AI agent:
 
-### WebSearch
+### WebSearchTool
 - **Flexible Search**: Automatically uses SearXNG if configured, or falls back to default web search
 - **Privacy-Focused**: SearXNG provides meta-search without tracking
-- **Advanced Parameters**: When using SearXNG, supports categories, language filters, time ranges, and pagination
-- **Configuration**: Set `SEARXNG_BASE_URL` in `.env` to use SearXNG (optional)
+- **Clean Output**: Results formatted in readable markdown
+- **Advanced Parameters**: Supports categories, language filters, time ranges, and pagination (SearXNG only)
 
-To use SearXNG:
-```bash
-# In your .env file
-SEARXNG_BASE_URL=http://localhost:8080
-```
+### PlanningTool
+- **Structured Planning**: Create and manage task plans
+- **Context-Aware**: Plans are associated with specific chats
 
-## Chat Persistence
+### WebpageTool
+- **Content Retrieval**: Fetch and process web page content
+
+**For detailed tool documentation and SearXNG setup, see:**
+- [Tools Guide](./docs/tools.md)
+- [SearXNG Setup Guide](./docs/searxng-setup.md)
+
+## 💾 Chat Persistence
 
 The application now includes full chat persistence:
 
@@ -78,7 +90,7 @@ The application now includes full chat persistence:
 - **New Chats**: Click "New Chat" to start a fresh conversation
 - **Delete Chats**: Hover over a chat and click the trash icon to delete
 
-## API Endpoints
+## 🔌 API Endpoints
 
 The backend provides these chat management endpoints:
 
@@ -88,4 +100,20 @@ The backend provides these chat management endpoints:
 - `PUT /chats/{id}` - Update a chat
 - `DELETE /chats/{id}` - Delete a chat
 - `GET /plan?chat_id={id}` - Get the plan for a specific chat
+
+For complete API documentation, see [API Reference](./docs/api-reference.md) (coming soon).
+
+## 📖 Additional Documentation
+
+- **[Complete Documentation](./docs/README.md)** - Full documentation index
+- **[Tools Documentation](./src/suzent/tools/README.md)** - Tools directory README
+- **[Frontend Documentation](./frontend/README.md)** - Frontend-specific documentation
+
+## 🤝 Contributing
+
+Contributions are welcome! Please see the [Development Guide](./docs/development.md) for information on extending Suzent.
+
+## 📄 License
+
+See the [LICENSE](./LICENSE) file for details.
 
