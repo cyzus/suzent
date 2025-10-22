@@ -9,6 +9,7 @@ interface ChatContextValue {
   updateAssistantStreaming: (delta: string, chatId?: string | null) => void;
   backendConfig: ConfigOptions | null;
   newAssistantMessage: (chatId?: string | null) => void;
+  setStepInfo: (stepInfo: string, chatId?: string | null) => void;
   resetChat: () => void;
   shouldResetNext: boolean;
   consumeResetFlag: () => void;
@@ -392,6 +393,19 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setMessagesForChat(chatId, prev => [...prev, { role: 'assistant', content: '' }]);
   }, [currentChatId, setMessagesForChat]);
 
+  const setStepInfo = useCallback((stepInfo: string, chatId: string | null = currentChatId) => {
+    setMessagesForChat(chatId, prev => {
+      if (!prev.length) return prev;
+      const last = prev[prev.length - 1];
+      if (last.role === 'assistant') {
+        const updated = [...prev];
+        updated[updated.length - 1] = { ...last, stepInfo };
+        return updated;
+      }
+      return prev;
+    });
+  }, [currentChatId, setMessagesForChat]);
+
   const removeEmptyAssistantMessage = useCallback((chatId: string | null = currentChatId) => {
     setMessagesForChat(chatId, prev => {
       if (!prev.length) return prev;
@@ -620,6 +634,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updateAssistantStreaming,
       backendConfig,
       newAssistantMessage,
+      setStepInfo,
       resetChat,
       shouldResetNext,
       consumeResetFlag,

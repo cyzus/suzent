@@ -172,7 +172,18 @@ const MarkdownRenderer = (props: { content: string }) => {
           h1(p: any) { return <h1 className="text-xl font-semibold mb-1 break-words">{p.children}</h1>; },
           h2(p: any) { return <h2 className="text-lg font-semibold mb-1 break-words">{p.children}</h2>; },
           h3(p: any) { return <h3 className="text-base font-semibold mb-1 break-words">{p.children}</h3>; },
-          p(pArg: any) { return <p className="leading-relaxed break-words whitespace-pre-wrap m-0">{pArg.children}</p>; },
+          p(pArg: any) { 
+            // Style step metadata lines differently
+            const text = String(pArg.children?.[0] || '');
+            if (text.startsWith('Step: ') && text.includes('tokens')) {
+              return (
+                <p className="text-[10px] text-neutral-400 border-t border-neutral-200 pt-2 mt-3 font-mono break-words whitespace-pre-wrap m-0">
+                  {pArg.children}
+                </p>
+              );
+            }
+            return <p className="leading-relaxed break-words whitespace-pre-wrap m-0">{pArg.children}</p>; 
+          },
           blockquote(p: any) { return <blockquote className="border-l-4 border-brand-600/30 pl-3 italic text-neutral-600 break-words">{p.children}</blockquote>; }
         }}
       >
@@ -190,6 +201,7 @@ export const ChatWindow: React.FC = () => {
     config,
     backendConfig,
     newAssistantMessage,
+    setStepInfo,
     shouldResetNext,
     consumeResetFlag,
     forceSaveNow,
@@ -294,6 +306,7 @@ export const ChatWindow: React.FC = () => {
           onDelta: (partial: string) => { updateAssistantStreaming(partial, chatIdForSend); },
           onAction: () => { /* compatibility */ },
           onNewAssistantMessage: () => { newAssistantMessage(chatIdForSend); },
+          onStepComplete: (stepInfo: string) => { setStepInfo(stepInfo, chatIdForSend); },
           onPlanUpdate: (snapshot: any) => {
             applyPlanSnapshot(snapshot);
             refreshPlan(chatIdForSend);
@@ -365,26 +378,21 @@ export const ChatWindow: React.FC = () => {
         {safeMessages.map((m: Message, idx: number) => {
           const isUser = m.role === 'user';
           const blocks = isUser ? [{ type: 'markdown', content: m.content } as { type: 'markdown'; content: string; lang?: string }] : splitAssistantContent(m.content);
-          let rawMetaLine: string | null = null;
-          if (!isUser) {
-            const firstMarkdown = blocks.find(b => b.type === 'markdown');
-            if (firstMarkdown) {
-              const lines = firstMarkdown.content.split(/\n/);
-              const metaIdx = lines.findIndex(l => l.trim().startsWith('**Step:'));
-              if (metaIdx !== -1) {
-                rawMetaLine = lines[metaIdx];
-                lines.splice(metaIdx, 1);
-                firstMarkdown.content = lines.join('\n');
-              }
-            }
-          }
-          const displayMeta = rawMetaLine ? rawMetaLine.replace(/\*\*/g, '') : null;
+          
           const alignClass = isUser ? 'justify-end' : 'justify-start';
+          
+          // Show agent info for assistant messages
+          const showAgentBadge = !isUser && idx === 0 && safeConfig.agent && safeConfig.model;
+          
           return (
             <div key={idx} className="w-full flex flex-col">
-              {!isUser && displayMeta && (
-                <div className={`flex ${alignClass} w-full mb-0.5`}> 
-                  <div className="text-[10px] font-medium tracking-wide text-neutral-500 px-1">{displayMeta}</div>
+              {showAgentBadge && (
+                <div className={`flex ${alignClass} w-full mb-1`}> 
+                  <div className="text-[9px] font-medium tracking-wide text-neutral-400 px-1 flex items-center gap-2">
+                    <span className="bg-brand-500/10 text-brand-600 px-2 py-0.5 rounded">{safeConfig.agent}</span>
+                    <span>•</span>
+                    <span>{safeConfig.model.replace(/^[^/]+\//, '')}</span>
+                  </div>
                 </div>
               )}
               <div className={`flex ${alignClass} w-full`}>
@@ -409,6 +417,13 @@ export const ChatWindow: React.FC = () => {
                   )}
                 </div>
               </div>
+              {!isUser && m.stepInfo && (
+                <div className={`flex ${alignClass} w-full mt-1`}>
+                  <div className="text-[10px] text-neutral-400 px-1">
+                    {m.stepInfo}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}

@@ -31,15 +31,29 @@ class CustomJsonEncoder(JSONEncoder):
         if is_dataclass(o):
             return asdict(o)
         if isinstance(o, Exception):
-            return str(o)
-        if hasattr(o, "dict"):
-            return o.dict()
-        if hasattr(o, "__dict__"):
+            # Handle exceptions more robustly
             return {
-                k: v
-                for k, v in o.__dict__.items()
-                if not k.startswith("_") and self._is_json_serializable(v)
+                "error_type": type(o).__name__,
+                "message": str(o),
+                "args": list(o.args) if hasattr(o, 'args') else []
             }
+        if hasattr(o, "dict") and callable(o.dict):
+            try:
+                return o.dict()
+            except Exception:
+                pass  # Fall through to __dict__ handling
+        if hasattr(o, "__dict__"):
+            result = {}
+            for k, v in o.__dict__.items():
+                if k.startswith("_"):
+                    continue
+                try:
+                    if self._is_json_serializable(v):
+                        result[k] = v
+                except Exception:
+                    # Skip attributes that fail serialization check
+                    continue
+            return result if result else str(o)
         if isinstance(o, types.GeneratorType):
             return list(o)
         return super().default(o)

@@ -15,7 +15,7 @@ import json
 import threading
 from typing import Optional, Dict, AsyncGenerator
 
-from smolagents.agents import ActionOutput, PlanningStep
+from smolagents.agents import ActionOutput, PlanningStep, ToolOutput
 from smolagents.memory import ActionStep, FinalAnswerStep
 from smolagents.models import ChatMessageStreamDelta
 
@@ -61,6 +61,7 @@ def step_to_json_event(chunk) -> Optional[dict]:
         FinalAnswerStep: "final_answer",
         ChatMessageStreamDelta: "stream_delta",
         ActionOutput: "action_output",
+        ToolOutput: "tool_output",
     }
     event_type = next(
         (event_map[t] for t in event_map if isinstance(chunk, t)), "other"
@@ -75,10 +76,60 @@ def step_to_json_event(chunk) -> Optional[dict]:
         )
     elif event_type == "action_output" and chunk.output is None:
         return None
+    elif event_type == "tool_output":
+        # Handle ToolOutput specifically to ensure all fields are serialized
+        data = to_serializable(chunk)
+    elif event_type == "action":
+        # Handle ActionStep specially to deal with error field
+        # ActionStep may contain an AgentError which has non-serializable logger
+        data = _serialize_action_step(chunk)
     else:
         data = to_serializable(chunk)
 
     return {"type": event_type, "data": data}
+
+
+def _serialize_action_step(action_step) -> dict:
+    """
+    Safely serialize an ActionStep, handling the error field specially.
+    
+    Args:
+        action_step: ActionStep instance to serialize.
+    
+    Returns:
+        Dictionary with serializable ActionStep data.
+    """
+    try:
+        # Get all attributes
+        data = {}
+        for key, value in action_step.__dict__.items():
+            if key.startswith('_'):
+                continue
+            
+            # Handle error field specially
+            if key == 'error' and value is not None:
+                # Serialize error without the logger
+                try:
+                    data['error'] = {
+                        'type': type(value).__name__,
+                        'message': str(value),
+                        'args': value.args if hasattr(value, 'args') else []
+                    }
+                except Exception:
+                    data['error'] = str(value)
+            else:
+                # Try to serialize other fields normally
+                try:
+                    data[key] = to_serializable(value)
+                except Exception:
+                    # Skip fields that can't be serialized
+                    pass
+        
+        return data
+    except Exception as e:
+        # Fallback to basic serialization
+        return {'error': f'Failed to serialize ActionStep: {str(e)}'}
+
 
 
 def _plan_snapshot(chat_id: Optional[str] = None) -> dict:
@@ -258,8 +309,15 @@ async def stream_agent_responses(
                         plan_event = {"type": "plan_refresh", "data": _plan_snapshot(chat_id)}
                         yield f"data: {json.dumps(plan_event)}\n\n"
             except Exception as e:
-                error_event = {"type": "error", "data": f"Serialization error: {e!s} | Raw: {chunk!s}"}
-                yield f"data: {json.dumps(error_event)}\n\n"
+                # More robust error serialization
+                try:
+                    error_msg = str(e)
+                    chunk_type = type(chunk).__name__ if hasattr(chunk, '__name__') or hasattr(type(chunk), '__name__') else 'unknown'
+                    error_event = {"type": "error", "data": f"Serialization error: {error_msg} | Chunk type: {chunk_type}"}
+                    yield f"data: {json.dumps(error_event)}\n\n"
+                except Exception as nested_e:
+                    # Fallback for complete failure
+                    yield f'data: {{"type": "error", "data": "Critical serialization failure"}}\n\n'
 
             await asyncio.sleep(0)
     finally:

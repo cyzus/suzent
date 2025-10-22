@@ -104,6 +104,14 @@ export const ConfigView: React.FC = () => {
         >
           {backendConfig.agents.map((a: string) => <option key={a} value={a}>{a}</option>)}
         </select>
+        <div className="text-[10px] text-neutral-500 mt-1 leading-relaxed">
+          {config.agent === 'CodeAgent' && (
+            <span>📝 Writes and executes Python code for problem-solving</span>
+          )}
+          {config.agent === 'ToolcallingAgent' && (
+            <span>🔧 Direct tool calling without code execution</span>
+          )}
+        </div>
       </div>
       <div className="space-y-2">
         <label className="block font-medium tracking-wide text-neutral-700">Tools</label>

@@ -1,4 +1,8 @@
-export interface Message { role: 'user' | 'assistant'; content: string; }
+export interface Message { 
+  role: 'user' | 'assistant'; 
+  content: string;
+  stepInfo?: string; // Step metadata like "Step: 1 | Input tokens: 100 | Output tokens: 50"
+}
 export interface ChatConfig { model: string; agent: string; tools: string[]; mcp_urls?: string[] }
 
 export interface Chat {
@@ -50,4 +54,21 @@ export interface ConfigOptions {
   tools: string[];        // full list of tool options
   defaultTools: string[]; // default enabled tools
   codeTag: string;        // CODE_TAG (e.g. <code>) so frontend can parse blocks consistently
+}
+
+// Stream event types from backend
+export type StreamEventType = 
+  | 'stream_delta'    // Token streaming (both agents)
+  | 'action'          // Action step completed with full metadata (both agents)
+  | 'action_output'   // Action output (both agents)
+  | 'tool_output'     // Tool execution result (ToolCallingAgent)
+  | 'final_answer'    // Final answer (both agents)
+  | 'planning'        // Planning step (both agents)
+  | 'plan_refresh'    // Plan state update (both agents)
+  | 'error'           // Error occurred (both agents)
+  | 'stopped';        // Stream stopped by user (both agents)
+
+export interface StreamEvent {
+  type: StreamEventType;
+  data: any;
 }
