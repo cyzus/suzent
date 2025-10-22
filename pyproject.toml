@@ -11,7 +11,6 @@ requires-python = ">=3.12"
 dependencies = [
     "crawl4ai>=0.7.3",
     "smolagents[gradio,litellm,mcp]",
-    "streamlit>=1.47.0",
     "starlette",
     "uvicorn",
     "python-dotenv",
