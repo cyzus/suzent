@@ -15,6 +15,7 @@ dependencies = [
     "uvicorn",
     "python-dotenv",
     "loguru>=0.7.0",
+    "markitdown[all]",
 ]
 
 

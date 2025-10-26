@@ -61,6 +61,7 @@ def create_agent(config: Dict[str, Any]) -> CodeAgent:
         "WebSearchTool": "websearch_tool",
         "PlanningTool": "planning_tool",
         "WebpageTool": "webpage_tool",
+        "FileTool": "file_tool",
         # Add other custom tools here as needed
     }
     
@@ -190,6 +191,7 @@ def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[Cod
                 'WebSearchTool': 'WebSearchTool',
                 'PlanningTool': 'PlanningTool',
                 'WebpageTool': 'WebpageTool',
+                'FileTool': 'FileTool',
             }
             config_with_tools = config.copy()
             config_with_tools['tools'] = [
