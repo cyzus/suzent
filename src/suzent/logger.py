@@ -9,6 +9,9 @@ from typing import Optional
 
 from loguru import logger
 
+# Track if logging has been configured to prevent duplicate handlers
+_logging_configured = False
+
 
 def setup_logging(
     level: str = "INFO",
@@ -16,13 +19,21 @@ def setup_logging(
 ) -> None:
     """
     Configure logging for the entire application using loguru.
-    
+
     Args:
         level: Logging level (TRACE, DEBUG, INFO, SUCCESS, WARNING, ERROR, CRITICAL)
         log_file: Optional file path to write logs to
     """
+    global _logging_configured
+
+    # Only configure once to prevent duplicate handlers
+    if _logging_configured:
+        return
+
     # Remove default handler
     logger.remove()
+
+    _logging_configured = True
     
     # Add console handler with colors and nice formatting
     logger.add(

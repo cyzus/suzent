@@ -11,6 +11,7 @@ This module handles the lifecycle of AI agents including:
 import asyncio
 import importlib
 import pickle
+import os
 from typing import Optional, Dict, Any
 
 from smolagents import CodeAgent, ToolCallingAgent, LiteLLMModel, MCPClient
@@ -19,6 +20,9 @@ from smolagents.tools import Tool
 from suzent.config import Config
 from suzent.logger import get_logger
 from suzent.prompts import format_instructions
+
+# Suppress LiteLLM's verbose logging
+os.environ["LITELLM_LOG"] = "ERROR"
 
 logger = get_logger(__name__)
 
@@ -104,7 +108,13 @@ def create_agent(config: Dict[str, Any]) -> CodeAgent:
 
     base_instructions = config.get("instructions", Config.INSTRUCTIONS)
     instructions = format_instructions(base_instructions)
-    agent = agent_class(model=model, tools=tools, stream_outputs=True, instructions=instructions)
+    agent = agent_class(
+        model=model,
+        tools=tools,
+        stream_outputs=True,
+        instructions=instructions,
+        # verbosity_level=0  # Set to 0 to reduce console output
+    )
     # Store tool instances on the agent for later context injection
     agent._tool_instances = tools
     return agent
