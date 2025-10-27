@@ -136,6 +136,17 @@ const MarkdownRenderer = (props: { content: string }) => {
     .replace(/^\n+/, '')
     .replace(/\n+$/, '');
 
+  // Sanitize fenced code block info strings so rehype-prism-plus never
+  // receives an invalid language token like "###" which causes it to throw.
+  // This replaces the language token on the opening fence with a cleaned
+  // identifier (alphanumeric, underscore, hyphen) or removes it (default to no language).
+  const sanitized = normalized.replace(/```\s*([^\n`]*)/g, (_m, info) => {
+    // Take only the first token on the fence line (the language identifier)
+    const token = String(info || '').trim().split(/\s+/)[0] || '';
+    const clean = token.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+    return clean ? `\`\`\`${clean}` : '```';
+  });
+
   return (
     // add `tight-lists` to increase selector specificity for our list overrides
     // remove whitespace-pre-wrap so stray newlines do not render as visible gaps
@@ -147,7 +158,7 @@ const MarkdownRenderer = (props: { content: string }) => {
           code(codeProps: any) {
             const { inline, className, children, ...rest } = codeProps;
             // More robust language extraction with validation
-            const match = /language-(\w+)/.exec(className || '');
+            const match = /language-([a-zA-Z0-9_-]+)/.exec(className || '');
             const lang = match ? match[1] : null;
             
             if (!inline && lang) {
@@ -187,7 +198,7 @@ const MarkdownRenderer = (props: { content: string }) => {
           blockquote(p: any) { return <blockquote className="border-l-4 border-brand-600/30 pl-3 italic text-neutral-600 break-words">{p.children}</blockquote>; }
         }}
       >
-  {normalized}
+  {sanitized}
       </RM>
     </div>
   );
