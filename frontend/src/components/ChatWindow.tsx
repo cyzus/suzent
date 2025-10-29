@@ -137,14 +137,21 @@ const MarkdownRenderer = (props: { content: string }) => {
     .replace(/\n+$/, '');
 
   // Sanitize fenced code block info strings so rehype-prism-plus never
-  // receives an invalid language token like "###" which causes it to throw.
-  // This replaces the language token on the opening fence with a cleaned
-  // identifier (alphanumeric, underscore, hyphen) or removes it (default to no language).
+  // receives an invalid language token which causes it to throw (for
+  // example incoming fences like ```<body> or malformed tokens). We only
+  // allow a known whitelist of language identifiers; otherwise we remove
+  // the info string so the highlighter treats the block as plain text.
+  const allowedLanguages = new Set([
+    'python','javascript','typescript','java','cpp','c','go','rust','sql','html','css','json','yaml','xml','bash','shell','powershell','php','ruby','swift','kotlin','dart','r','matlab','scala','perl','lua','haskell','clojure','elixir','erlang','fsharp','ocaml','pascal','fortran','cobol','assembly','asm','text','plain'
+  ]);
+
   const sanitized = normalized.replace(/```\s*([^\n`]*)/g, (_m, info) => {
     // Take only the first token on the fence line (the language identifier)
     const token = String(info || '').trim().split(/\s+/)[0] || '';
     const clean = token.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
-    return clean ? `\`\`\`${clean}` : '```';
+    // If the cleaned token is not in our allowed set, drop the info
+    // string so rehype-prism-plus does not receive an unknown language.
+    return allowedLanguages.has(clean) ? `\`\`\`${clean}` : '```';
   });
 
   return (
