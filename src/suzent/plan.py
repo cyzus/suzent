@@ -4,8 +4,6 @@ from pathlib import Path
 from typing import Optional
 
 # Keep for backward compatibility and migration
-TODO_FILE = Path("TODO.md")
-
 STATUS_MAP = {
     "pending": " ",
     "in_progress": ">",
@@ -254,48 +252,3 @@ def auto_complete_current(chat_id: str):
         from suzent.database import get_database
         db = get_database()
         db.update_task_status(chat_id, cur.number, "completed")
-
-
-# Legacy functions for backward compatibility and migration
-def read_plan_from_file() -> Optional[Plan]:
-    """Reads the plan from the TODO.md file (legacy function)."""
-    if not TODO_FILE.exists():
-        return None
-
-    content = TODO_FILE.read_text()
-    objective_match = re.search(r"# Plan for: (.*)", content)
-    objective = objective_match.group(1).strip() if objective_match else "Unknown Objective"
-
-    tasks = []
-    for match in re.finditer(r"- \[(.)\] (\d+)\. (.*?)(?: - Note: (.*))?$", content, re.MULTILINE):
-        status_char, num_str, desc, note = match.groups()
-        tasks.append(Task(
-            number=int(num_str),
-            description=desc.strip(),
-            status=REVERSE_STATUS_MAP.get(status_char, "unknown"),
-            note=note.strip() if note else None
-        ))
-    return Plan(objective=objective, tasks=tasks)
-
-
-def write_plan_to_file(plan: Plan):
-    """Writes the plan to the TODO.md file (legacy function)."""
-    with open(TODO_FILE, "w") as f:
-        f.write(f"# Plan for: {plan.objective}\n\n")
-        for task in plan.tasks:
-            f.write(str(task))
-
-
-def migrate_plan_to_database(chat_id: str) -> bool:
-    """Migrate an existing TODO.md plan to the database for a specific chat."""
-    plan = read_plan_from_file()
-    if not plan:
-        return False
-    
-    plan.chat_id = chat_id
-    try:
-        write_plan_to_database(plan)
-        return True
-    except Exception as e:
-        print(f"Error migrating plan to database: {e}")
-        return False
