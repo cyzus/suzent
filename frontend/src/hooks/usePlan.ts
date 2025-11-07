@@ -137,7 +137,8 @@ export const PlanProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updatedAt: snapshot.updatedAt ?? timestamp,
         versionKey,
       });
-      setSelectedPlanKey(prev => (prev === null || prev.startsWith('snapshot:')) ? versionKey : prev);
+      // Automatically switch to the new snapshot
+      setSelectedPlanKey(versionKey);
     },
     [],
   );
