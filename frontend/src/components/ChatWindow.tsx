@@ -234,6 +234,7 @@ export const ChatWindow: React.FC = () => {
   const { refresh: refreshPlan, applySnapshot: applyPlanSnapshot } = usePlan();
   const [input, setInput] = useState('');
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const stopInFlightRef = useRef(false);
@@ -307,6 +308,41 @@ export const ChatWindow: React.FC = () => {
 
   const removeImage = (index: number) => {
     setSelectedImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Drag and drop handlers
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set dragging to false if leaving the chat window entirely
+    if (e.currentTarget === e.target) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    const imageFiles = files.filter(f => f.type.startsWith('image/'));
+    if (imageFiles.length > 0) {
+      setSelectedImages(prev => [...prev, ...imageFiles]);
+    }
   };
 
   const send = async () => {
@@ -439,7 +475,25 @@ export const ChatWindow: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col flex-1 h-full overflow-hidden bg-white">
+    <div 
+      className="flex flex-col flex-1 h-full overflow-hidden bg-white"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Drag overlay */}
+      {isDragging && (
+        <div className="absolute inset-0 z-50 bg-brand-500/10 backdrop-blur-sm border-4 border-dashed border-brand-500 flex items-center justify-center pointer-events-none">
+          <div className="bg-white/95 rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span className="text-lg font-semibold text-brand-600">Drop images here</span>
+          </div>
+        </div>
+      )}
+      
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-6 pb-24 space-y-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-neutral-300/80">
         {safeMessages.map((m: Message, idx: number) => {
           const isUser = m.role === 'user';
@@ -462,26 +516,38 @@ export const ChatWindow: React.FC = () => {
                 </div>
               )}
               <div className={`flex ${alignClass} w-full`}>
-                <div className={`group w-full max-w-3xl break-words overflow-visible ${isUser ? 'bg-gradient-to-tr from-brand-600 to-brand-500 text-white' : 'bg-white/90 border border-neutral-200 text-neutral-800'} rounded-xl shadow-sm px-5 py-3 space-y-3 text-sm leading-relaxed relative`}>
-                  {isUser ? (
-                    <div className="space-y-2">
-                      {m.images && m.images.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mb-2">
-                          {m.images.map((img, imgIdx) => (
+                {isUser ? (
+                  // User message: display images and text separately
+                  <div className="w-full max-w-3xl space-y-3">
+                    {m.images && m.images.length > 0 && (
+                      <div className="flex flex-wrap gap-3 justify-end">
+                        {m.images.map((img, imgIdx) => (
+                          <div key={imgIdx} className="relative group">
                             <img
-                              key={imgIdx}
                               src={`data:${img.mime_type};base64,${img.data}`}
                               alt={img.filename}
-                              className="max-w-xs max-h-48 rounded border-2 border-white/30 shadow-lg object-contain"
+                              className="max-w-sm max-h-64 rounded-xl shadow-lg object-contain border border-neutral-200"
                               title={img.filename}
                             />
-                          ))}
+                            <div className="absolute bottom-2 left-2 right-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                              {img.filename}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {m.content && (
+                      <div className="flex justify-end">
+                        <div className="bg-gradient-to-tr from-brand-600 to-brand-500 text-white rounded-xl shadow-sm px-5 py-3 max-w-2xl">
+                          <div className="prose prose-sm prose-invert max-w-none text-white break-words">{m.content}</div>
                         </div>
-                      )}
-                      <div className="prose prose-sm prose-invert max-w-none text-white break-words">{m.content}</div>
-                    </div>
-                  ) : (
-                    blocks.map((b, bi) => b.type === 'markdown' ? (
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  // Assistant message: keep existing layout
+                  <div className={`group w-full max-w-3xl break-words overflow-visible bg-white/90 border border-neutral-200 text-neutral-800 rounded-xl shadow-sm px-5 py-3 space-y-3 text-sm leading-relaxed relative`}>
+                    {blocks.map((b, bi) => b.type === 'markdown' ? (
                       <MarkdownRenderer key={bi} content={b.content} />
                     ) : (
                       <div key={bi} className="relative">
@@ -490,13 +556,13 @@ export const ChatWindow: React.FC = () => {
                           <code className={`language-${((b as any).lang || 'text').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase() || 'text'}`}>{b.content}</code>
                         </pre>
                       </div>
-                    ))
-                  )}
-                  {/* end user/assistant content */}
-                  {!isUser && idx === safeMessages.length - 1 && streamingForCurrentChat && (
-                    <div className="flex gap-1 items-center text-[10px] text-neutral-400 animate-pulse">Thinking<span className="w-1 h-1 bg-neutral-300 rounded-full animate-bounce [animation-delay:-0.2s]"></span><span className="w-1 h-1 bg-neutral-300 rounded-full animate-bounce [animation-delay:-0.05s]"></span><span className="w-1 h-1 bg-neutral-300 rounded-full animate-bounce"></span></div>
-                  )}
-                </div>
+                    ))}
+                    {/* end user/assistant content */}
+                    {idx === safeMessages.length - 1 && streamingForCurrentChat && (
+                      <div className="flex gap-1 items-center text-[10px] text-neutral-400 animate-pulse">Thinking<span className="w-1 h-1 bg-neutral-300 rounded-full animate-bounce [animation-delay:-0.2s]"></span><span className="w-1 h-1 bg-neutral-300 rounded-full animate-bounce [animation-delay:-0.05s]"></span><span className="w-1 h-1 bg-neutral-300 rounded-full animate-bounce"></span></div>
+                    )}
+                  </div>
+                )}
               </div>
               {!isUser && m.stepInfo && (
                 <div className={`flex ${alignClass} w-full mt-1`}>
