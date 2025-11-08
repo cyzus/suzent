@@ -14,7 +14,9 @@ html, body, #root { height: 100%; }
 
 /* Code block styling */
 pre[class*="language-"] { position: relative; }
-pre code { font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+pre code {
+  font-family: Consolas, 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, 'Liberation Mono', 'Ubuntu Mono', 'DejaVu Sans Mono', 'Segoe UI Symbol', 'Courier New', monospace;
+}
 
 /* Ensure all pre and code elements preserve whitespace */
 pre {
@@ -24,6 +26,7 @@ pre {
 
 code {
   white-space: pre !important;
+  font-family: Consolas, 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, 'Liberation Mono', 'Ubuntu Mono', 'DejaVu Sans Mono', 'Segoe UI Symbol', 'Courier New', monospace;
 }
 
 /* Fade-in animation */

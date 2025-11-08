@@ -129,7 +129,20 @@ module.exports = {
         'brutal-shake': 'brutalShake 0.2s linear'
       },
       fontFamily: {
-        'mono': ['Courier New', 'monospace'],
+        'mono': [
+          'Consolas',
+          'JetBrains Mono',
+          'Fira Code',
+          'SFMono-Regular',
+          'Menlo',
+          'Monaco',
+          'Liberation Mono',
+          'Ubuntu Mono',
+          'DejaVu Sans Mono',
+          'Segoe UI Symbol',
+          'Courier New',
+          'monospace'
+        ],
         'brutal': ['Arial Black', 'Arial', 'sans-serif'],
       }
     }
