@@ -195,7 +195,8 @@ const MarkdownRenderer = (props: { content: string }) => {
             const text = String(pArg.children?.[0] || '');
             if (text.startsWith('Step: ') && text.includes('tokens')) {
               return (
-                <p className="text-[11px] text-brutal-black border-t-2 border-brutal-black pt-2 mt-3 font-mono font-bold break-words whitespace-pre-wrap m-0 opacity-40">
+                <p className="text-[10px] text-brutal-black border-t-3 border-brutal-black pt-3 mt-4 font-mono font-bold break-words whitespace-pre-wrap m-0 bg-neutral-100 -mx-5 px-5 pb-2">
+                  <span className="inline-block mr-1">▸</span>
                   {pArg.children}
                 </p>
               );
@@ -567,8 +568,9 @@ export const ChatWindow: React.FC = () => {
               </div>
               {!isUser && m.stepInfo && (
                 <div className={`flex ${alignClass} w-full mt-1`}>
-                  <div className="text-[11px] text-brutal-black font-mono font-bold px-1 opacity-40">
-                    {m.stepInfo}
+                  <div className="inline-flex items-center gap-1 text-[10px] text-brutal-black font-mono font-bold px-2 py-0.5 bg-neutral-200 border-2 border-brutal-black">
+                    <span>▸</span>
+                    <span>{m.stepInfo}</span>
                   </div>
                 </div>
               )}
@@ -608,10 +610,10 @@ export const ChatWindow: React.FC = () => {
           </div>
         )}
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-start">
           <div className="flex-1 relative">
             <textarea
-              className="flex-1 w-full resize-none bg-brutal-white border-3 border-brutal-black focus:border-brutal-blue focus:shadow-brutal-blue focus:outline-none px-4 py-3 text-sm placeholder-neutral-500 font-mono font-medium"
+              className="flex-1 w-full resize-none bg-brutal-white border-3 border-brutal-black focus:shadow-brutal-lg focus:outline-none px-4 py-3 text-sm placeholder-neutral-500 font-medium placeholder:font-bold placeholder:uppercase"
               rows={3}
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -638,18 +640,20 @@ export const ChatWindow: React.FC = () => {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="text-neutral-400 hover:text-brand-600 transition-colors"
+                className="p-1.5 bg-brutal-white border-2 border-brutal-black hover:shadow-brutal-sm text-brutal-black disabled:opacity-40"
                 title="Attach images"
                 disabled={!configReady || isStreaming}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="2" y="2" width="12" height="12" />
+                  <circle cx="6" cy="6" r="1.5" fill="currentColor" />
+                  <polyline points="4,12 7,9 9,11 12,8 14,10" strokeLinecap="square" />
                 </svg>
               </button>
             </div>
             <div className="absolute bottom-2 right-3 text-[11px] text-brutal-black font-mono font-bold select-none uppercase opacity-40">↵ SEND • ⇧↵ LINE</div>
           </div>
-        <div className="flex flex-col justify-end gap-2">
+        <div className="flex flex-col gap-2">
           {streamingForCurrentChat && (
             <button
               type="button"

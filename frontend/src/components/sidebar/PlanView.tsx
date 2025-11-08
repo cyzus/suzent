@@ -114,7 +114,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ plan, currentPlan, snapshotP
               <select
                 value={selectedPlanKey ?? ''}
                 onChange={handleSelectChange}
-                className="relative z-20 w-full text-xs border-3 border-brutal-black px-2 py-1.5 bg-brutal-white text-brutal-black font-bold uppercase hover:bg-neutral-100 focus:outline-none focus:border-brutal-blue focus:shadow-brutal-sm"
+                className="relative z-20 w-full text-xs border-3 border-brutal-black px-2 py-1.5 bg-brutal-white text-brutal-black font-bold uppercase hover:bg-neutral-100 focus:outline-none focus:shadow-brutal-sm"
               >
                 {combinedPlans.map(item => (
                   <option key={item.key} value={item.key}>{item.label}</option>
