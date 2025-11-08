@@ -116,7 +116,7 @@ export const ChatList: React.FC = () => {
                 className={`group relative p-3 cursor-pointer active:animate-brutal-shake animate-brutal-slide ${
                   currentChatId === chat.id
                     ? 'bg-brutal-yellow border-3 border-brutal-black shadow-brutal'
-                    : 'bg-brutal-white hover:bg-neutral-100 border-3 border-brutal-black hover:shadow-brutal-sm'
+                    : 'bg-brutal-white hover:bg-neutral-100 border-3 border-brutal-black'
                 }`}
                 style={{ animationDelay: `${idx * 30}ms` }}
               >
@@ -168,7 +168,7 @@ export const ChatList: React.FC = () => {
                   <button
                     onClick={(e) => handleDeleteClick(chat.id, e)}
                     disabled={deletingChatId === chat.id}
-                    className="opacity-0 group-hover:opacity-100 ml-2 p-1.5 bg-brutal-red border-2 border-brutal-black hover:shadow-brutal-sm transition-opacity duration-75"
+                    className="opacity-0 group-hover:opacity-100 ml-2 p-1.5 bg-brutal-red border-2 border-brutal-black transition-opacity duration-75"
                     title="Delete chat"
                   >
                     {deletingChatId === chat.id ? (

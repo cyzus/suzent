@@ -597,7 +597,7 @@ export const ChatWindow: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => removeImage(idx)}
-                  className="absolute -top-2 -right-2 w-5 h-5 bg-brutal-red border-2 border-brutal-black hover:shadow-brutal-sm text-white text-xs flex items-center justify-center font-bold opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute -top-2 -right-2 w-5 h-5 bg-brutal-red border-2 border-brutal-black text-white text-xs flex items-center justify-center font-bold opacity-0 group-hover:opacity-100 transition-opacity"
                   title="Remove image"
                 >
                   ×
@@ -613,7 +613,7 @@ export const ChatWindow: React.FC = () => {
         <div className="flex gap-3 items-start">
           <div className="flex-1 relative">
             <textarea
-              className="flex-1 w-full resize-none bg-brutal-white border-3 border-brutal-black focus:shadow-brutal-lg focus:outline-none px-4 py-3 text-sm placeholder-neutral-500 font-medium placeholder:font-bold placeholder:uppercase"
+              className="flex-1 w-full resize-none bg-brutal-white border-3 border-brutal-black focus:outline-none px-4 py-3 text-sm placeholder-neutral-500 font-medium placeholder:font-bold placeholder:uppercase"
               rows={3}
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -640,7 +640,7 @@ export const ChatWindow: React.FC = () => {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="p-1.5 bg-brutal-white border-2 border-brutal-black hover:shadow-brutal-sm text-brutal-black disabled:opacity-40"
+                className="p-1.5 bg-brutal-white border-2 border-brutal-black text-brutal-black disabled:opacity-40 hover:bg-neutral-100"
                 title="Attach images"
                 disabled={!configReady || isStreaming}
               >

@@ -136,16 +136,12 @@ export const ConfigView: React.FC = () => {
 
   return (
     <div className="space-y-6 text-xs">
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-brutal tracking-wide text-brutal-black uppercase">Session</div>
-        <button type="button" onClick={resetChat} className="text-xs px-2 py-1 bg-brutal-blue border-2 border-brutal-black shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-transform duration-75 text-white font-bold uppercase">New Chat</button>
-      </div>
       <div className="space-y-1">
         <label className="block font-bold tracking-wide text-brutal-black uppercase">Model</label>
         <select
           value={config.model}
           onChange={e => update({ model: e.target.value })}
-          className="w-full bg-brutal-white border-3 border-brutal-black px-3 py-2 font-bold text-sm focus:shadow-brutal-sm focus:outline-none"
+          className="w-full bg-brutal-white border-3 border-brutal-black px-3 py-2 font-bold text-sm focus:outline-none"
         >
           {backendConfig.models.map((m: string) => <option key={m} value={m}>{m}</option>)}
         </select>
@@ -155,7 +151,7 @@ export const ConfigView: React.FC = () => {
         <select
           value={config.agent}
           onChange={e => update({ agent: e.target.value })}
-          className="w-full bg-brutal-white border-3 border-brutal-black px-3 py-2 font-bold text-sm focus:shadow-brutal-sm focus:outline-none"
+          className="w-full bg-brutal-white border-3 border-brutal-black px-3 py-2 font-bold text-sm focus:outline-none"
         >
           {backendConfig.agents.map((a: string) => <option key={a} value={a}>{a}</option>)}
         </select>
@@ -181,7 +177,7 @@ export const ConfigView: React.FC = () => {
                 className={`px-2.5 py-1 border-2 text-xs font-bold uppercase ${
                   active
                     ? 'bg-brutal-green text-brutal-black border-brutal-black shadow-brutal-sm'
-                    : 'border-brutal-black text-brutal-black hover:shadow-brutal-sm bg-brutal-white'
+                    : 'border-brutal-black text-brutal-black bg-brutal-white hover:bg-neutral-100'
                 }`}
               >
                 {tool}
@@ -233,7 +229,7 @@ export const ConfigView: React.FC = () => {
                 />
               </>
             )}
-            <button type="button" onClick={addServer} className="shrink-0 px-3 py-1 bg-brutal-green border-2 border-brutal-black text-brutal-black text-xs font-bold uppercase hover:shadow-brutal-sm disabled:opacity-50" disabled={addType === 'url' ? !srvUrl : !stdioCmd}>Add</button>
+            <button type="button" onClick={addServer} className="shrink-0 px-3 py-1 bg-brutal-green border-2 border-brutal-black text-brutal-black text-xs font-bold uppercase disabled:opacity-50" disabled={addType === 'url' ? !srvUrl : !stdioCmd}>Add</button>
           </div>
           {servers.length === 0 && (
             <div className="text-[11px] text-brutal-black font-bold uppercase">
@@ -266,7 +262,7 @@ export const ConfigView: React.FC = () => {
                     </div>
                   )}
                 </div>
-                <button type="button" onClick={() => removeServer(s.name)} className="text-brutal-white bg-brutal-red border-2 border-brutal-black hover:shadow-brutal-sm text-xs font-bold px-1" title="Remove" disabled={loading}>×</button>
+                <button type="button" onClick={() => removeServer(s.name)} className="text-brutal-white bg-brutal-red border-2 border-brutal-black text-xs font-bold px-1" title="Remove" disabled={loading}>×</button>
               </li>
             ))}
           </ul>
