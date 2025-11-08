@@ -39,3 +39,17 @@ code {
 .btn-responsive:active {
   transform: scale(0.98);
 }
+
+.sidebar-content-animate {
+  animation: sidebarFadeIn 0.2s ease-out both;
+}
+
+@keyframes sidebarFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}

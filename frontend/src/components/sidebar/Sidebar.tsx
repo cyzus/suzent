@@ -9,6 +9,14 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, chatsContent, planContent, configContent }) => {
+  const [animateContent, setAnimateContent] = React.useState(false);
+
+  React.useEffect(() => {
+    setAnimateContent(true);
+    const timeout = window.setTimeout(() => setAnimateContent(false), 200);
+    return () => window.clearTimeout(timeout);
+  }, [activeTab]);
+
   const getTabContent = () => {
     switch (activeTab) {
       case 'chats':
@@ -52,7 +60,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, chatsC
           );
         })}
       </nav>
-      <div className={`flex-1 overflow-y-auto ${activeTab === 'chats' ? '' : 'p-4 space-y-4'} scrollbar-thin scrollbar-thumb-brand-300`}>
+      <div
+        className={`flex-1 overflow-y-auto ${activeTab === 'chats' ? '' : 'p-4 space-y-4'} scrollbar-thin scrollbar-thumb-brand-300 ${
+          animateContent ? 'sidebar-content-animate' : ''
+        }`}
+      >
         {getTabContent()}
       </div>
     </aside>
