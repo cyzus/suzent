@@ -240,7 +240,10 @@ export const ConfigView: React.FC = () => {
               <span>No MCP servers configured.</span>
             </div>
           )}
-          <ul className="space-y-1 max-h-40 overflow-y-auto pr-1">
+          <ul
+            className={`space-y-1 ${servers.length > 4 ? 'max-h-40 overflow-y-auto pr-1' : ''}`}
+            style={servers.length > 4 ? { scrollbarGutter: 'stable both-edges' } : undefined}
+          >
             {servers.map(s => (
               <li key={s.name} className="flex items-center gap-2 bg-brutal-white border-3 border-brutal-black px-2 py-1 group">
                 <input aria-label="Enable server" type="checkbox" checked={s.enabled} onChange={() => toggleServer(s.name)} disabled={loading} className="w-4 h-4 border-2 border-brutal-black" />
