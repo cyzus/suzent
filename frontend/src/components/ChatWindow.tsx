@@ -494,8 +494,9 @@ export const ChatWindow: React.FC = () => {
         </div>
       )}
       
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-6 pb-24 space-y-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-neutral-300/80">
-        {safeMessages.map((m: Message, idx: number) => {
+  <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-6 pb-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-neutral-300/80">
+        <div className="space-y-6">
+          {safeMessages.map((m: Message, idx: number) => {
           const isUser = m.role === 'user';
           const blocks = isUser ? [{ type: 'markdown', content: m.content } as { type: 'markdown'; content: string; lang?: string }] : splitAssistantContent(m.content);
           
@@ -574,10 +575,11 @@ export const ChatWindow: React.FC = () => {
             </div>
           );
         })}
-        {!configReady && (
-          <div className="text-xs text-neutral-400">Loading backend configuration...</div>
-        )}
-        <div ref={bottomRef} />
+          {!configReady && (
+            <div className="text-xs text-neutral-400">Loading backend configuration...</div>
+          )}
+        </div>
+        <div ref={bottomRef} className="h-2" />
       </div>
       <form onSubmit={(e) => { e.preventDefault(); send(); }} className="border-t border-neutral-200 p-4 flex flex-col gap-3 bg-white/95">
         {/* Image preview section */}
