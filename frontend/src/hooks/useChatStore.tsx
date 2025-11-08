@@ -434,11 +434,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [currentChatId, scheduleSave, setMessagesForChat]);
 
   const updateAssistantStreaming = useCallback((delta: string, chatId: string | null = currentChatId) => {
+    // Preserve leading/trailing newlines so streamed code stays line-accurate
     const norm = String(delta)
       .replace(/\r\n/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .replace(/^\n+/, '')
-      .replace(/\n+$/, '');
+      .replace(/\n{3,}/g, '\n\n');
 
     setMessagesForChat(chatId, prev => {
       const last = prev[prev.length - 1];
