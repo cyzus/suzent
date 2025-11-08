@@ -10,6 +10,7 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, chatsContent, planContent, configContent }) => {
   const [animateContent, setAnimateContent] = React.useState(false);
+  const [mountedTabs, setMountedTabs] = React.useState<Set<'chats' | 'plan' | 'config'>>(() => new Set(['chats']));
 
   React.useEffect(() => {
     setAnimateContent(true);
@@ -17,18 +18,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, chatsC
     return () => window.clearTimeout(timeout);
   }, [activeTab]);
 
-  const getTabContent = () => {
-    switch (activeTab) {
-      case 'chats':
-        return chatsContent;
-      case 'plan':
-        return planContent;
-      case 'config':
-        return configContent;
-      default:
-        return null;
-    }
-  };
+  React.useEffect(() => {
+    setMountedTabs(prev => {
+      if (prev.has(activeTab)) return prev;
+      const next = new Set(prev);
+      next.add(activeTab);
+      return next;
+    });
+  }, [activeTab]);
 
   const getTabLabel = (tab: string) => {
     switch (tab) {
@@ -61,11 +58,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, chatsC
         })}
       </nav>
       <div
-        className={`flex-1 overflow-y-auto ${activeTab === 'chats' ? '' : 'p-4 space-y-4'} scrollbar-thin scrollbar-thumb-brand-300 ${
+        className={`flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-brand-300 ${
           animateContent ? 'sidebar-content-animate' : ''
         }`}
+        style={{ scrollbarGutter: 'stable both-edges' }}
       >
-        {getTabContent()}
+        <div className={activeTab === 'chats' ? '' : 'hidden'} aria-hidden={activeTab !== 'chats'}>
+          {mountedTabs.has('chats') ? chatsContent : null}
+        </div>
+        <div className={`${activeTab === 'plan' ? '' : 'hidden'} p-4 space-y-4`} aria-hidden={activeTab !== 'plan'}>
+          {mountedTabs.has('plan') ? planContent : null}
+        </div>
+        <div className={`${activeTab === 'config' ? '' : 'hidden'} p-4 space-y-4`} aria-hidden={activeTab !== 'config'}>
+          {mountedTabs.has('config') ? configContent : null}
+        </div>
       </div>
     </aside>
   );
