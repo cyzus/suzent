@@ -6,11 +6,49 @@ html, body, #root { height: 100%; }
 
 .prose pre { background: #111827; }
 
-/* Custom scrollbar */
-.scrollbar-thin::-webkit-scrollbar { width: 6px; }
-.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
-.scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(82,82,91,0.6); border-radius: 4px; }
-.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: rgba(113,113,122,0.7); }
+:root {
+  --scrollbar-track: #f1f5f9;
+  --scrollbar-thumb: #333333;
+  --scrollbar-thumb-hover: #1a1a1a;
+  --scrollbar-edge: #000000;
+}
+
+.dark {
+  --scrollbar-track: #111111;
+  --scrollbar-thumb: #a8e6a3;
+  --scrollbar-thumb-hover: #7acb77;
+  --scrollbar-edge: #ffe666;
+}
+
+/* Custom scrollbar tuned for the neo-brutalist palette */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-gutter: stable;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background-color: var(--scrollbar-track);
+  box-shadow: inset 0 0 0 3px var(--scrollbar-edge);
+  margin: 2px 0;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 0;
+  border: 3px solid var(--scrollbar-edge);
+  background-clip: padding-box;
+  transition: background-color 0.15s ease;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
 
 /* Code block styling */
 pre[class*="language-"] { position: relative; }

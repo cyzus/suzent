@@ -60,7 +60,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, chatsC
         className={`flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-brand-300 ${
           animateContent ? 'sidebar-content-animate' : ''
         }`}
-        style={{ scrollbarGutter: 'stable both-edges' }}
       >
         <div className={activeTab === 'chats' ? '' : 'hidden'} aria-hidden={activeTab !== 'chats'}>
           {mountedTabs.has('chats') ? chatsContent : null}
