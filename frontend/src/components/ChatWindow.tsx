@@ -545,7 +545,8 @@ export const ChatWindow: React.FC = () => {
                     {/* AI Assistant Label - Bold & Brutalist */}
                     <div className="inline-flex items-center gap-2 bg-brutal-black text-brutal-white px-3 py-1 font-bold text-xs tracking-wider border-3 border-brutal-black mb-0 animate-brutal-pop">
                       <svg className={`w-4 h-4 ${isStreamingAgentMessage ? 'robot-streaming' : ''}`} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <rect x="2" y="2" width="20" height="20" rx="3" fill="#000000" stroke="currentColor" strokeWidth="3" />
+                        <rect x="2" y="2" width="20" height="20" rx="3" fill="currentColor" />
+                        <rect x="4" y="4" width="16" height="16" rx="3" fill="#000000" />
                         <rect className={eyeClass} x="5.5" y="7" width="5" height="5" rx="1.5" fill="currentColor" />
                         <rect className={eyeClass} style={rightEyeStyle} x="13.5" y="7" width="5" height="5" rx="1.5" fill="currentColor" />
                       </svg>
