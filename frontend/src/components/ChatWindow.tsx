@@ -503,20 +503,8 @@ export const ChatWindow: React.FC = () => {
           
           const alignClass = isUser ? 'justify-end' : 'justify-start';
           
-          // Show agent info for assistant messages
-          const showAgentBadge = !isUser && idx === 0 && safeConfig.agent && safeConfig.model;
-          
           return (
             <div key={idx} className="w-full flex flex-col">
-              {showAgentBadge && (
-                <div className={`flex ${alignClass} w-full mb-1`}> 
-                  <div className="text-[11px] font-medium tracking-wide text-neutral-400 px-1 flex items-center gap-2">
-                    <span className="bg-brand-500/10 text-brand-600 px-2 py-0.5 rounded">{safeConfig.agent}</span>
-                    <span>•</span>
-                    <span>{safeConfig.model.replace(/^[^/]+\//, '')}</span>
-                  </div>
-                </div>
-              )}
               <div className={`flex ${alignClass} w-full`}>
                 {isUser ? (
                   // User message: display images and text separately
@@ -547,8 +535,19 @@ export const ChatWindow: React.FC = () => {
                     )}
                   </div>
                 ) : (
-                  // Assistant message: Neo-brutalist white bubble
-                  <div className={`group w-full max-w-3xl break-words overflow-visible bg-brutal-white border-3 border-brutal-black shadow-brutal-lg px-5 py-3 space-y-3 text-sm leading-relaxed relative animate-brutal-drop`}>
+                  // Assistant message: Neo-brutalist white bubble with AI indicator
+                  <div className={`group w-full max-w-3xl break-words overflow-visible space-y-0 text-sm leading-relaxed relative`}>
+                    {/* AI Assistant Label - Bold & Brutalist */}
+                    <div className="inline-flex items-center gap-2 bg-brutal-black text-brutal-white px-3 py-1 font-bold text-xs tracking-wider border-3 border-brutal-black mb-0 animate-brutal-pop">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <rect x="2.5" y="2.5" width="19" height="19" stroke="currentColor" strokeWidth="3" />
+                        <rect x="7" y="10" width="3" height="3" fill="currentColor" />
+                        <rect x="14" y="10" width="3" height="3" fill="currentColor" />
+                        <rect x="5" y="19" width="14" height="3" fill="currentColor" />
+                      </svg>
+                      <span>AGENT</span>
+                    </div>
+                    <div className="bg-brutal-white border-3 border-brutal-black shadow-brutal-lg px-5 py-3 space-y-3 animate-brutal-drop">
                     {blocks.map((b, bi) => b.type === 'markdown' ? (
                       <MarkdownRenderer key={bi} content={b.content} />
                     ) : (
@@ -563,6 +562,7 @@ export const ChatWindow: React.FC = () => {
                     {idx === safeMessages.length - 1 && streamingForCurrentChat && (
                       <div className="flex gap-1 items-center text-xs font-bold text-brutal-black animate-brutal-blink">THINKING...</div>
                     )}
+                    </div>
                   </div>
                 )}
               </div>
