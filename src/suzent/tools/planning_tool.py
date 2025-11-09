@@ -57,7 +57,7 @@ class PlanningTool(Tool):
         },
         "objective": {
             "type": "string",
-            "description": "The high-level objective for the plan. Required for 'create_plan'.",
+            "description": "A concise high-level goal for the plan. Required for 'create_plan'.",
             "nullable": True
         },
         "action_items": {
