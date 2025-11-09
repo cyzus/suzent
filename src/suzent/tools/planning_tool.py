@@ -52,7 +52,8 @@ class PlanningTool(Tool):
     inputs = {
         "action": {
             "type": "string",
-            "description": "The operation to perform. Must be one of 'create_plan', 'status', 'update_plan', or 'mark_step'."
+            "description": "The operation to perform.",
+            "enum": ["create_plan", "status", "update_plan", "mark_step"]
         },
         "objective": {
             "type": "string",
@@ -61,12 +62,7 @@ class PlanningTool(Tool):
         },
         "action_items": {
             "type": "array",
-            "description": "A list of action items (3-5 is recommended) for the plan. Required for 'create_plan'.",
-            "nullable": True
-        },
-        "overwrite_plan_items": {
-            "type": "array",
-            "description": "A list of action items to overwrite the current plan. Required for 'update_plan'.",
+            "description": "A list of action items (3-5 is recommended). Required for 'create_plan' and 'update_plan'.",
             "nullable": True
         },
         "plan_id": {
@@ -81,7 +77,8 @@ class PlanningTool(Tool):
         },
         "status": {
             "type": "string",
-            "description": "The new status for the step. Required for 'mark_step'. Valid statuses are: pending, in_progress, completed, failed.",
+            "description": "The new status for the step. Required for 'mark_step'.",
+            "enum": ["pending", "in_progress", "completed", "failed"],
             "nullable": True
         },
         "step_note": {
@@ -97,7 +94,6 @@ class PlanningTool(Tool):
         action: str,
         objective: Optional[str] = None,
         action_items: Optional[list[str]] = None,
-        overwrite_plan_items: Optional[list[str]] = None,
         plan_id: Optional[int] = None,
         step_number: Optional[int] = None,
         status: Optional[str] = None,
@@ -113,109 +109,139 @@ class PlanningTool(Tool):
         }
 
         if action not in action_map:
-            return "Error: Invalid action. Must be one of 'create_plan', 'status', 'update_plan', or 'mark_step'."
+            return self._format_error("Invalid action", f"Must be one of: {', '.join(action_map.keys())}")
 
-        # Prioritize context chat_id over agent-provided chat_id
-        context_chat_id = getattr(self, '_current_chat_id', None)
-        if context_chat_id:
-            logger.debug(f"Using context chat_id: {context_chat_id} (overriding agent-provided: {chat_id})")
-            chat_id = context_chat_id
-        elif not chat_id:
-            return (
-                "Error: PlanningTool requires a chat_id. Ensure the agent is invoked with an active chat context."
-            )
-        else:
-            logger.debug(f"Using agent-provided chat_id: {chat_id}")
+        # Resolve chat_id (context takes priority)
+        chat_id = self._resolve_chat_id(chat_id)
+        if not chat_id:
+            return self._format_error("Missing chat_id", "Ensure the agent is invoked with an active chat context")
+        
+        # Validate required arguments
+        validation_error = self._validate_action_args(action, objective, action_items, step_number, status)
+        if validation_error:
+            return validation_error
         
         # Prepare arguments for the respective methods
         args = {
             "create_plan": (chat_id, objective, action_items),
             "status": (chat_id, plan_id),
-            "update_plan": (chat_id, plan_id, overwrite_plan_items),
+            "update_plan": (chat_id, plan_id, action_items),
             "mark_step": (chat_id, plan_id, step_number, status, step_note),
         }
-        
-        # Validate required arguments for the action
-        required_args = {
-            "create_plan": (objective, action_items),
-            "update_plan": (overwrite_plan_items,),
-            "mark_step": (step_number, status),
-        }
-        if any(arg is None for arg in required_args.get(action, [])):
-            return f"Error: Missing required arguments for the '{action}' action."
 
         return action_map[action](*args[action])
+    
+    def _resolve_chat_id(self, provided_chat_id: Optional[str]) -> Optional[str]:
+        """Resolve the chat_id, prioritizing context over provided value."""
+        context_chat_id = getattr(self, '_current_chat_id', None)
+        if context_chat_id:
+            logger.debug(f"Using context chat_id: {context_chat_id}")
+            return context_chat_id
+        if provided_chat_id:
+            logger.debug(f"Using provided chat_id: {provided_chat_id}")
+            return provided_chat_id
+        return None
+    
+    def _validate_action_args(
+        self, 
+        action: str, 
+        objective: Optional[str],
+        action_items: Optional[list[str]],
+        step_number: Optional[int],
+        status: Optional[str]
+    ) -> Optional[str]:
+        """Validate that required arguments are provided for the action."""
+        if action == "create_plan" and (not objective or not action_items):
+            return self._format_error("Missing arguments", "create_plan requires 'objective' and 'action_items'")
+        if action == "update_plan" and not action_items:
+            return self._format_error("Missing arguments", "update_plan requires 'action_items'")
+        if action == "mark_step" and (step_number is None or not status):
+            return self._format_error("Missing arguments", "mark_step requires 'step_number' and 'status'")
+        return None
+    
+    def _format_error(self, title: str, message: str) -> str:
+        """Format error messages in markdown."""
+        return f"**Error: {title}**\n\n{message}"
+    
+    def _format_success(self, title: str, details: Optional[str] = None) -> str:
+        """Format success messages in markdown."""
+        if details:
+            return f"✓ **{title}**\n\n{details}"
+        return f"✓ **{title}**"
+
+    def _get_plan(self, chat_id: str, plan_id: Optional[int]) -> Optional[Plan]:
+        """Retrieve a plan by ID or most recent for chat_id."""
+        plan = None
+        
+        if plan_id is not None:
+            plan = read_plan_by_id(plan_id)
+            if plan and plan.chat_id != chat_id:
+                logger.warning(f"Plan {plan_id} does not belong to chat {chat_id}")
+                return None
+        
+        if not plan:
+            plan = read_plan_from_database(chat_id)
+            if plan and plan_id is None:
+                logger.debug("Using most recent plan for chat")
+        
+        return plan
 
     def _create_plan(self, chat_id: str, objective: str, action_items: list[str]) -> str:
         """Creates a new plan."""
         tasks = [Task(number=i + 1, description=item) for i, item in enumerate(action_items)]
         plan = Plan(objective=objective, tasks=tasks, chat_id=chat_id)
         write_plan_to_database(plan)
-        return (
-            f"Successfully created plan for Objective: {objective}\n"
-            f"Plan ID: {plan.id if plan.id is not None else 'pending assignment'}\n\n"
-            "Action Items:\n\n" + "\n".join([f"- {item}" for item in action_items])
-        )
+        
+        # Return the plan in markdown format directly
+        return f"✓ **Plan created** (ID: {plan.id or 'pending'})\n\n{plan.to_markdown()}"
 
     def _get_status(self, chat_id: str, plan_id: Optional[int] = None) -> str:
         """Gets the current status of the plan."""
-        plan = None
-        if plan_id is not None:
-            plan = read_plan_by_id(plan_id)
-            if plan and plan.chat_id != chat_id:
-                return f"Plan {plan_id} does not belong to chat {chat_id}."
+        plan = self._get_plan(chat_id, plan_id)
+        
         if not plan:
-            plan = read_plan_from_database(chat_id)
-        if not plan:
-            return "No plan found. Please create a plan first using the 'create_plan' action."
+            if plan_id is not None:
+                return self._format_error("Plan not found", f"No plan with ID {plan_id} found for this chat")
+            return self._format_error("No plan exists", "Create a plan first using 'create_plan'")
+        
         return plan.to_markdown()
 
-    def _update_plan(self, chat_id: str, plan_id: Optional[int], overwrite_plan_items: list[str]) -> str:
+    def _update_plan(self, chat_id: str, plan_id: Optional[int], action_items: list[str]) -> str:
         """Overwrites the current plan with new action items."""
-        target_plan = None
-        if plan_id is not None:
-            target_plan = read_plan_by_id(plan_id)
-            if target_plan and target_plan.chat_id != chat_id:
-                return f"Plan {plan_id} does not belong to chat {chat_id}."
-        if target_plan is None:
-            target_plan = read_plan_from_database(chat_id)
-            if target_plan and plan_id is None:
-                logger.debug("plan_id not provided; updating most recent plan")
-        if target_plan is None:
-            return "No plan found to update. Please create a plan first."
+        plan = self._get_plan(chat_id, plan_id)
+        
+        if not plan:
+            if plan_id is not None:
+                return self._format_error("Plan not found", f"No plan with ID {plan_id} found for this chat")
+            return self._format_error("No plan exists", "Create a plan first using 'create_plan'")
 
-        target_plan.tasks = [Task(number=i + 1, description=item) for i, item in enumerate(overwrite_plan_items)]
-        write_plan_to_database(target_plan, preserve_history=False)
-        return f"Successfully updated plan {target_plan.id} for chat {chat_id}"
+        plan.tasks = [Task(number=i + 1, description=item) for i, item in enumerate(action_items)]
+        write_plan_to_database(plan, preserve_history=False)
+        
+        return f"✓ **Plan updated**\n\n{plan.to_markdown()}"
 
     def _mark_step(self, chat_id: str, plan_id: Optional[int], step_number: int, status: str, step_note: Optional[str] = None) -> str:
         """Marks a step with a new status and optionally adds a note."""
         if status not in STATUS_MAP:
-            return f"Invalid status. Valid statuses are: {list(STATUS_MAP.keys())}"
+            valid_statuses = ", ".join(STATUS_MAP.keys())
+            return self._format_error("Invalid status", f"Valid statuses: {valid_statuses}")
 
         db = get_database()
         success = db.update_task_status(chat_id, step_number, status, step_note, plan_id=plan_id)
         
         if not success:
-            return f"Step {step_number} not found or no plan exists for this chat."
+            return self._format_error("Update failed", f"Step {step_number} not found or no plan exists")
 
-        # Get the updated plan to return its markdown representation
-        plan = None
-        if plan_id is not None:
-            plan = read_plan_by_id(plan_id)
-            if plan and plan.chat_id != chat_id:
-                return f"Plan {plan_id} does not belong to chat {chat_id}."
+        # Get updated plan to show current state
+        plan = self._get_plan(chat_id, plan_id)
         if not plan:
-            plan = read_plan_from_database(chat_id)
-            if plan and plan_id is None:
-                logger.debug("plan_id not provided; using most recent plan for status refresh")
-        if not plan:
-            return f"Updated step {step_number} to {status}, but could not retrieve plan status."
+            return self._format_success(f"Step {step_number} → {status}")
 
-        hide_completed = status == "completed"
-        newly_completed_step = step_number if status == "completed" else None
+        # When marking a task as completed, show only remaining tasks
+        if status == "completed":
+            plan_status = plan.to_markdown(hide_completed=True, newly_completed_step=None)
+            return f"✓ **Step {step_number} completed**\n\n{plan_status}"
         
-        return f"Updated step {step_number} to {status}.\n\n" + plan.to_markdown(
-            hide_completed=hide_completed,
-            newly_completed_step=newly_completed_step
-        )
+        # For other status changes, show all tasks
+        plan_status = plan.to_markdown(hide_completed=False, newly_completed_step=None)
+        return f"✓ **Step {step_number} → {status}**\n\n{plan_status}"
