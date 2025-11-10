@@ -31,3 +31,6 @@ MCP_STDIO_PARAMS:
 
 INSTRUCTIONS: |
   You are Suzent.
+
+EMBEDDING_MODEL: gemini/gemini-embedding-001
+EMBEDDING_DIMENSION: 3072

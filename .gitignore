@@ -11,7 +11,6 @@ wheels/
 # Virtual environments
 .venv
 .env
-.env.*
 venv/
 
 # Byte-compiled / cache
