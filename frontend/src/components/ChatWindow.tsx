@@ -239,6 +239,7 @@ export const ChatWindow: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const stopInFlightRef = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const streamingForCurrentChat = isStreaming && activeStreamingChatId === currentChatId;
 
   // Safeguard against undefined state
@@ -295,6 +296,15 @@ export const ChatWindow: React.FC = () => {
       // Optionally, we could show a subtle indicator here in future.
     }
   }, [safeMessages]);
+
+  // Auto-resize textarea based on content
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+    }
+  }, [input]);
 
   const configReady = safeBackendConfig && safeConfig.model && safeConfig.agent;
 
@@ -591,7 +601,7 @@ export const ChatWindow: React.FC = () => {
       <form onSubmit={(e) => { e.preventDefault(); send(); }} className="border-t-4 border-brutal-black p-4 flex flex-col gap-3 bg-neutral-100">
         {/* Image preview section */}
         {selectedImages.length > 0 && (
-          <div className="flex flex-wrap gap-2 p-2 bg-brutal-white border-3 border-brutal-black">
+          <div className="flex flex-wrap gap-2 p-3 bg-brutal-white border-3 border-brutal-black shadow-brutal-sm">
             {selectedImages.map((file, idx) => (
               <div key={idx} className="relative group">
                 <img
@@ -602,12 +612,12 @@ export const ChatWindow: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => removeImage(idx)}
-                  className="absolute -top-2 -right-2 w-5 h-5 bg-brutal-red border-2 border-brutal-black text-white text-xs flex items-center justify-center font-bold opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute -top-2 -right-2 w-6 h-6 bg-brutal-red border-2 border-brutal-black text-white text-sm flex items-center justify-center font-bold shadow-brutal-sm hover:shadow-none transition-all"
                   title="Remove image"
                 >
                   ×
                 </button>
-                <div className="absolute bottom-0 left-0 right-0 bg-brutal-black text-brutal-white text-[11px] px-1 py-0.5 truncate font-bold">
+                <div className="absolute bottom-0 left-0 right-0 bg-brutal-black text-brutal-white text-[10px] px-1 py-0.5 truncate font-bold">
                   {file.name}
                 </div>
               </div>
@@ -615,25 +625,28 @@ export const ChatWindow: React.FC = () => {
           </div>
         )}
 
-        <div className="flex gap-3 items-start">
-          <div className="flex-1 relative">
-            <textarea
-              className="flex-1 w-full resize-none bg-brutal-white border-3 border-brutal-black focus:outline-none px-4 py-3 text-sm placeholder-neutral-500 font-medium placeholder:font-bold placeholder:uppercase"
-              rows={3}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  if (!isStreaming && configReady && input.trim()) {
-                    send();
-                  }
+        {/* Input area with clean grid layout */}
+        <div className="flex flex-col gap-2">
+          <textarea
+            ref={textareaRef}
+            className="w-full resize-none overflow-y-auto min-h-[80px] max-h-[200px] bg-brutal-white border-3 border-brutal-black focus:outline-none focus:ring-4 focus:ring-brutal-yellow px-4 py-3 text-sm placeholder-neutral-400 font-medium placeholder:font-bold placeholder:uppercase transition-shadow scrollbar-thin scrollbar-track-transparent scrollbar-thumb-neutral-400"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!isStreaming && configReady && input.trim()) {
+                  send();
                 }
-              }}
-              placeholder={configReady ? 'TYPE COMMAND' : 'SYSTEM LOADING...'}
-              disabled={!configReady}
-            />
-            <div className="absolute bottom-2 left-3 flex items-center gap-2">
+              }
+            }}
+            placeholder={configReady ? 'TYPE YOUR MESSAGE HERE...' : 'SYSTEM LOADING...'}
+            disabled={!configReady}
+          />
+
+          {/* Button row */}
+          <div className="flex gap-2 items-center justify-between">
+            <div className="flex gap-2 items-center">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -645,38 +658,45 @@ export const ChatWindow: React.FC = () => {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="p-1.5 bg-brutal-white border-2 border-brutal-black text-brutal-black disabled:opacity-40 hover:bg-neutral-100"
+                className="h-12 px-4 bg-brutal-white border-3 border-brutal-black shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-brutal-sm active:translate-x-[4px] active:translate-y-[4px] active:shadow-none transition-all duration-100 disabled:opacity-40 disabled:cursor-not-allowed font-bold uppercase text-xs flex items-center gap-2"
                 title="Attach images"
                 disabled={!configReady || isStreaming}
               >
-                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg className="w-5 h-5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
                   <rect x="2" y="2" width="12" height="12" />
                   <circle cx="6" cy="6" r="1.5" fill="currentColor" />
                   <polyline points="4,12 7,9 9,11 12,8 14,10" strokeLinecap="square" />
                 </svg>
+                <span className="hidden sm:inline">IMAGE</span>
               </button>
             </div>
-            <div className="absolute bottom-2 right-3 text-[11px] text-brutal-black font-mono font-bold select-none uppercase opacity-40">↵ SEND • ⇧↵ LINE</div>
+
+            <div className="flex gap-3 items-center">
+              <div className="text-[10px] text-brutal-black font-mono font-bold select-none uppercase opacity-50 hidden sm:block">
+                ↵ SEND • ⇧↵ NEW LINE
+              </div>
+
+              <div className="flex gap-2">
+                {streamingForCurrentChat && (
+                  <button
+                    type="button"
+                    onClick={stopStreaming}
+                    className="h-12 bg-brutal-red border-3 border-brutal-black shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-brutal-sm active:translate-x-[4px] active:translate-y-[4px] active:shadow-none transition-all duration-100 px-5 text-xs font-bold disabled:opacity-60 disabled:cursor-not-allowed text-white uppercase"
+                    disabled={stopInFlightRef.current}
+                  >
+                    STOP
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  className="h-12 bg-brutal-blue border-3 border-brutal-black shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-brutal-sm active:translate-x-[4px] active:translate-y-[4px] active:shadow-none transition-all duration-100 px-6 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase"
+                  disabled={isStreaming || !configReady}
+                >
+                  {streamingForCurrentChat ? 'SENDING...' : 'SEND'}
+                </button>
+              </div>
+            </div>
           </div>
-        <div className="flex flex-col gap-2">
-          {streamingForCurrentChat && (
-            <button
-              type="button"
-              onClick={stopStreaming}
-              className="h-10 self-end bg-brutal-red border-3 border-brutal-black shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-brutal-sm active:translate-x-[4px] active:translate-y-[4px] active:shadow-none transition-all duration-100 px-4 text-xs font-bold disabled:opacity-60 disabled:cursor-not-allowed text-white uppercase"
-              disabled={stopInFlightRef.current}
-            >
-              Stop
-            </button>
-          )}
-          <button
-            type="submit"
-            className="h-12 self-end bg-brutal-blue border-3 border-brutal-black shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-brutal-sm active:translate-x-[4px] active:translate-y-[4px] active:shadow-none transition-all duration-100 px-5 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase"
-            disabled={isStreaming || !configReady}
-          >
-            {streamingForCurrentChat ? 'Sending...' : 'Send'}
-          </button>
-        </div>
         </div>
       </form>
     </div>
