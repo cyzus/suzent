@@ -73,6 +73,9 @@ class ConfigModel(BaseModel):
 
     instructions: str = ""
 
+    embedding_model: str = None
+    embedding_dimension: int = 0
+
     @classmethod
     def load_from_files(cls) -> "ConfigModel":
         logger = get_logger(__name__)
