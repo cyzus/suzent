@@ -141,37 +141,58 @@ class ChatDatabase:
                    messages: List[Dict[str, Any]] = None, agent_state: bytes = None) -> bool:
         """Update an existing chat."""
         with sqlite3.connect(self.db_path) as conn:
-            # First check if chat exists
-            cursor = conn.execute("SELECT id FROM chats WHERE id = ?", (chat_id,))
-            if not cursor.fetchone():
+            # First check if chat exists and get current values
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute("SELECT id, title, messages, agent_state FROM chats WHERE id = ?", (chat_id,))
+            existing_row = cursor.fetchone()
+            if not existing_row:
                 return False
 
             # Build update query dynamically
             updates = []
             params = []
 
+            # Track whether we should update the timestamp
+            # Only update timestamp for meaningful content changes (not just config)
+            should_update_timestamp = False
+
             if title is not None:
-                updates.append("title = ?")
-                params.append(title)
+                existing_title = existing_row["title"]
+                if title != existing_title:
+                    updates.append("title = ?")
+                    params.append(title)
+                    should_update_timestamp = True
 
             if config is not None:
                 updates.append("config = ?")
                 params.append(json.dumps(config))
+                # Config changes alone don't update timestamp
 
             if messages is not None:
-                updates.append("messages = ?")
-                params.append(json.dumps(messages))
+                # Compare with existing messages to see if they actually changed
+                existing_messages = json.loads(existing_row["messages"])
+                if messages != existing_messages:
+                    updates.append("messages = ?")
+                    params.append(json.dumps(messages))
+                    should_update_timestamp = True
 
             if agent_state is not None:
-                updates.append("agent_state = ?")
-                params.append(agent_state)
+                existing_agent_state = existing_row["agent_state"]
+                # Only update if agent_state actually changed
+                if agent_state != existing_agent_state:
+                    updates.append("agent_state = ?")
+                    params.append(agent_state)
+                    should_update_timestamp = True
 
-            # Only update timestamp if something actually changed
-            if updates:
+            # Only update timestamp if meaningful content changed
+            if updates and should_update_timestamp:
                 updates.append("updated_at = ?")
                 params.append(datetime.now().isoformat())
-                params.append(chat_id)
 
+            if updates:
+                params.append(chat_id)
+                # Reset row_factory for execute
+                conn.row_factory = None
                 conn.execute(f"""
                     UPDATE chats SET {', '.join(updates)} WHERE id = ?
                 """, params)
