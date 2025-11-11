@@ -434,3 +434,95 @@ class PostgresMemoryStore:
                     WHERE user_id = $1 AND chat_id = $2
                 """, user_id, chat_id)
             return count
+
+    async def list_memories(
+        self,
+        user_id: str,
+        chat_id: Optional[str] = None,
+        limit: int = 20,
+        offset: int = 0,
+        order_by: str = 'created_at',
+        order_desc: bool = True
+    ) -> List[Dict[str, Any]]:
+        """List memories with pagination and ordering."""
+        # Validate order_by column to prevent SQL injection
+        valid_columns = ['created_at', 'importance', 'access_count', 'accessed_at']
+        if order_by not in valid_columns:
+            order_by = 'created_at'
+
+        order_direction = 'DESC' if order_desc else 'ASC'
+
+        async with self.pool.acquire() as conn:
+            if chat_id is None:
+                query = f"""
+                    SELECT
+                        id,
+                        content,
+                        metadata,
+                        importance,
+                        created_at,
+                        access_count,
+                        accessed_at
+                    FROM archival_memories
+                    WHERE user_id = $1
+                    ORDER BY {order_by} {order_direction}
+                    LIMIT $2 OFFSET $3
+                """
+                rows = await conn.fetch(query, user_id, limit, offset)
+            else:
+                query = f"""
+                    SELECT
+                        id,
+                        content,
+                        metadata,
+                        importance,
+                        created_at,
+                        access_count,
+                        accessed_at
+                    FROM archival_memories
+                    WHERE user_id = $1 AND chat_id = $2
+                    ORDER BY {order_by} {order_direction}
+                    LIMIT $3 OFFSET $4
+                """
+                rows = await conn.fetch(query, user_id, chat_id, limit, offset)
+
+            return [dict(row) for row in rows]
+
+    async def get_memory_stats(self, user_id: str) -> Dict[str, Any]:
+        """Get memory statistics for a user."""
+        async with self.pool.acquire() as conn:
+            stats = await conn.fetchrow("""
+                SELECT
+                    COUNT(*) as total_memories,
+                    AVG(importance) as avg_importance,
+                    MAX(importance) as max_importance,
+                    MIN(importance) as min_importance,
+                    SUM(access_count) as total_accesses,
+                    AVG(access_count) as avg_access_count
+                FROM archival_memories
+                WHERE user_id = $1
+            """, user_id)
+
+            # Get importance distribution
+            distribution = await conn.fetch("""
+                SELECT
+                    CASE
+                        WHEN importance >= 0.8 THEN 'high'
+                        WHEN importance >= 0.5 THEN 'medium'
+                        ELSE 'low'
+                    END as category,
+                    COUNT(*) as count
+                FROM archival_memories
+                WHERE user_id = $1
+                GROUP BY category
+            """, user_id)
+
+            return {
+                'total_memories': stats['total_memories'] or 0,
+                'avg_importance': float(stats['avg_importance']) if stats['avg_importance'] else 0.0,
+                'max_importance': float(stats['max_importance']) if stats['max_importance'] else 0.0,
+                'min_importance': float(stats['min_importance']) if stats['min_importance'] else 0.0,
+                'total_accesses': stats['total_accesses'] or 0,
+                'avg_access_count': float(stats['avg_access_count']) if stats['avg_access_count'] else 0.0,
+                'importance_distribution': {row['category']: row['count'] for row in distribution}
+            }

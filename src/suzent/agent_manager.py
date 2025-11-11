@@ -109,6 +109,16 @@ async def shutdown_memory_system():
             logger.error(f"Error shutting down memory system: {e}")
 
 
+def get_memory_manager():
+    """
+    Get the global memory manager instance.
+
+    Returns:
+        MemoryManager instance or None if not initialized.
+    """
+    return memory_manager
+
+
 def create_agent(config: Dict[str, Any]) -> CodeAgent:
     """
     Creates an agent based on the provided configuration.

@@ -174,27 +174,34 @@ async def chat(request: Request) -> StreamingResponse:
                         logger.error(f"Error saving agent state for chat {chat_id}: {e}")
 
                 # Extract facts from conversation if memory system is enabled
-                if chat_id:
+                if chat_id and message:
                     try:
-                        from suzent.agent_manager import memory_manager
-                        if memory_manager:
-                            # Get the last user message and assistant response
-                            db = get_database()
-                            chat = db.get_chat(chat_id)
-                            if chat and chat.get('messages'):
-                                messages = chat['messages']
-                                # Extract from the last user message
-                                if len(messages) > 0 and messages[-1].get('role') == 'user':
-                                    import asyncio
-                                    asyncio.create_task(
-                                        memory_manager.process_message_for_memories(
-                                            message=messages[-1],
-                                            chat_id=chat_id,
-                                            user_id="default"  # TODO: Add multi-user support
-                                        )
+                        from suzent.agent_manager import get_memory_manager
+                        memory_mgr = get_memory_manager()
+
+                        if memory_mgr:
+                            logger.info(f"Starting memory extraction for chat {chat_id}")
+                            # Process the user's message for memory extraction
+                            import asyncio
+                            user_message = {"role": "user", "content": message}
+
+                            # Run memory extraction in background (fire and forget)
+                            async def extract_memory():
+                                try:
+                                    result = await memory_mgr.process_message_for_memories(
+                                        message=user_message,
+                                        chat_id=chat_id,
+                                        user_id="default-user"  # TODO: Add multi-user support
                                     )
+                                    logger.info(f"Memory extraction completed for chat {chat_id}: {result}")
+                                except Exception as e:
+                                    logger.error(f"Memory extraction failed: {e}", exc_info=True)
+
+                            asyncio.create_task(extract_memory())
+                        else:
+                            logger.warning("Memory manager not initialized, skipping extraction")
                     except Exception as e:
-                        logger.debug(f"Memory extraction skipped: {e}")
+                        logger.error(f"Memory extraction error: {e}", exc_info=True)
 
             except Exception as e:
                 traceback.print_exc()
