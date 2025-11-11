@@ -40,3 +40,4 @@ EMBEDDING_DIMENSION: 3072
 
 # Memory System (requires PostgreSQL with pgvector - see .env for connection)
 MEMORY_ENABLED: false
+USER_ID: "default-user"

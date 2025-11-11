@@ -18,6 +18,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
 
 from suzent.logger import get_logger
+from suzent.config import CONFIG
 from suzent.agent_manager import (
     get_or_create_agent,
     inject_chat_context,
@@ -134,7 +135,7 @@ async def chat(request: Request) -> StreamingResponse:
                     yield f'data: {json.dumps({"type": "images_processed", "data": images_data})}\n\n'
 
                 # Inject user_id and chat_id into config for memory system
-                config['_user_id'] = 'default-user'  # TODO: Multi-user support
+                config['_user_id'] = CONFIG.user_id
                 config['_chat_id'] = chat_id
 
                 # Get or create agent with specified configuration
@@ -157,9 +158,10 @@ async def chat(request: Request) -> StreamingResponse:
                         logger.warning(f"Error loading agent state: {e}")
                         # Continue without state restoration rather than failing
 
-                # Inject chat_id into tools if available
+                # Inject chat_id and user_id into tools if available
                 if chat_id:
-                    inject_chat_context(agent_instance, chat_id)
+                    user_id = config.get('_user_id', CONFIG.user_id)
+                    inject_chat_context(agent_instance, chat_id, user_id)
 
                 # Stream agent responses (pass PIL images to agent)
                 async for chunk in stream_agent_responses(
@@ -194,7 +196,7 @@ async def chat(request: Request) -> StreamingResponse:
                                     result = await memory_mgr.process_message_for_memories(
                                         message=user_message,
                                         chat_id=chat_id,
-                                        user_id="default-user"  # TODO: Add multi-user support
+                                        user_id=CONFIG.user_id
                                     )
                                     logger.debug(f"Memory extraction completed for chat {chat_id}: {result}")
                                 except Exception as e:

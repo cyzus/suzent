@@ -7,6 +7,7 @@ from typing import Dict, Any
 from datetime import datetime
 
 from suzent.logger import get_logger
+from suzent.config import CONFIG
 from .manager import MemoryManager
 
 logger = get_logger(__name__)
@@ -22,9 +23,6 @@ class MemorySearchTool(Tool):
 
 Use this to recall facts, preferences, or information you learned in past conversations.
 The search uses semantic similarity to find relevant memories even if the exact words differ.
-
-Note: Memories are automatically stored as you interact with users. You don't need to
-explicitly store them—just search when you need to recall information.
 
 Args:
     query: What to search for in memory (use natural language)
@@ -51,7 +49,7 @@ Returns:
     def __init__(self, memory_manager: MemoryManager):
         super().__init__()
         self.memory_manager = memory_manager
-        self._user_id = 'default-user'
+        self._user_id = CONFIG.user_id
         self._chat_id = None
         # Main event loop reference will be injected by agent_manager
         self._main_loop = None
@@ -65,7 +63,7 @@ Returns:
         """Execute memory search."""
         try:
             # Get user_id from context (would come from agent context in real implementation)
-            user_id = getattr(self, '_user_id', 'default-user')
+            user_id = getattr(self, '_user_id', CONFIG.user_id)
             chat_id = getattr(self, '_chat_id', None)
 
             memories = await self.memory_manager.search_memories(
@@ -189,7 +187,7 @@ Returns:
     def __init__(self, memory_manager: MemoryManager):
         super().__init__()
         self.memory_manager = memory_manager
-        self._user_id = 'default-user'
+        self._user_id = CONFIG.user_id
         self._chat_id = None
         # Main event loop reference will be injected by agent_manager
         self._main_loop = None
@@ -214,7 +212,7 @@ Returns:
                 return f"Error: Invalid block '{block}'. Must be one of: {', '.join(valid_blocks)}"
 
             # Get context
-            user_id = getattr(self, '_user_id', 'default-user')
+            user_id = getattr(self, '_user_id', CONFIG.user_id)
             chat_id = getattr(self, '_chat_id', None)
 
             # Get current content

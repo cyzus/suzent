@@ -13,6 +13,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from suzent.logger import get_logger
+from suzent.config import CONFIG
 from suzent.agent_manager import get_memory_manager
 
 logger = get_logger(__name__)
@@ -23,14 +24,14 @@ async def get_core_memory(request: Request) -> JSONResponse:
     Get all core memory blocks for a user.
 
     Query params:
-        - user_id: User identifier (defaults to 'default-user')
+        - user_id: User identifier (defaults to CONFIG.user_id)
         - chat_id: Optional chat context
 
     Returns:
         JSONResponse with core memory blocks
     """
     try:
-        user_id = request.query_params.get('user_id', 'default-user')
+        user_id = request.query_params.get('user_id', CONFIG.user_id)
         chat_id = request.query_params.get('chat_id')
 
         manager = get_memory_manager()
@@ -62,7 +63,7 @@ async def update_core_memory_block(request: Request) -> JSONResponse:
     Body:
         - label: Block label (persona, user, facts, context)
         - content: New content for the block
-        - user_id: User identifier (defaults to 'default-user')
+        - user_id: User identifier (defaults to CONFIG.user_id)
         - chat_id: Optional chat context
 
     Returns:
@@ -72,7 +73,7 @@ async def update_core_memory_block(request: Request) -> JSONResponse:
         data = await request.json()
         label = data.get('label')
         content = data.get('content')
-        user_id = data.get('user_id', 'default-user')
+        user_id = data.get('user_id', CONFIG.user_id)
         chat_id = data.get('chat_id')
 
         if not label:
@@ -136,7 +137,7 @@ async def search_archival_memory(request: Request) -> JSONResponse:
 
     Query params:
         - query: Search query string
-        - user_id: User identifier (defaults to 'default-user')
+        - user_id: User identifier (defaults to CONFIG.user_id)
         - chat_id: Optional chat context
         - limit: Maximum results (default: 20, max: 100)
         - offset: Pagination offset (default: 0)
@@ -146,7 +147,7 @@ async def search_archival_memory(request: Request) -> JSONResponse:
     """
     try:
         query = request.query_params.get('query', '')
-        user_id = request.query_params.get('user_id', 'default-user')
+        user_id = request.query_params.get('user_id', CONFIG.user_id)
         chat_id = request.query_params.get('chat_id')
         limit = min(int(request.query_params.get('limit', '20')), 100)
         offset = int(request.query_params.get('offset', '0'))
@@ -257,13 +258,13 @@ async def get_memory_stats(request: Request) -> JSONResponse:
     Get memory statistics for a user.
 
     Query params:
-        - user_id: User identifier (defaults to 'default-user')
+        - user_id: User identifier (defaults to CONFIG.user_id)
 
     Returns:
         JSONResponse with statistics
     """
     try:
-        user_id = request.query_params.get('user_id', 'default-user')
+        user_id = request.query_params.get('user_id', CONFIG.user_id)
 
         manager = get_memory_manager()
         if not manager:

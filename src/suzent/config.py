@@ -82,6 +82,7 @@ class ConfigModel(BaseModel):
 
     # Memory system
     memory_enabled: bool = False
+    user_id: str = "default-user"  # Default user identifier for memory system
 
     @classmethod
     def load_from_files(cls) -> "ConfigModel":

@@ -407,17 +407,22 @@ async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Co
         return agent_instance
 
 
-def inject_chat_context(agent: CodeAgent, chat_id: str, user_id: str = "default") -> None:
+def inject_chat_context(agent: CodeAgent, chat_id: str, user_id: str = None) -> None:
     """
     Inject chat context into agent tools that support it.
 
     Args:
         agent: The agent instance whose tools should receive context.
         chat_id: The chat identifier to inject into tools.
-        user_id: The user identifier for memory system.
+        user_id: The user identifier for memory system (defaults to CONFIG.user_id).
     """
     if not chat_id or not hasattr(agent, '_tool_instances'):
         return
+
+    # Use configured user_id if not provided
+    if user_id is None:
+        from suzent.config import CONFIG
+        user_id = CONFIG.user_id
 
     for tool_instance in agent._tool_instances:
         # Inject chat_id for tools like PlanningTool
