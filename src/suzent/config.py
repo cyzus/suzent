@@ -49,6 +49,10 @@ def get_tool_options() -> List[str]:
                     and getattr(attribute, "__module__", "").startswith("suzent.tools")
                 ):
                     tool_options.append(attribute.__name__)
+
+    # Note: Memory tools are added dynamically when memory system initializes
+    # See agent_manager.init_memory_system()
+
     return tool_options
 
 
@@ -75,6 +79,9 @@ class ConfigModel(BaseModel):
 
     embedding_model: str = None
     embedding_dimension: int = 0
+
+    # Memory system
+    memory_enabled: bool = False
 
     @classmethod
     def load_from_files(cls) -> "ConfigModel":

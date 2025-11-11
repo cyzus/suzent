@@ -45,15 +45,13 @@ async def demo():
     logger.info("=" * 60)
 
     # 1. Connect to PostgreSQL
-    connection_string = os.getenv('POSTGRES_CONNECTION_STRING')
-    if not connection_string:
-        # Build from individual components
-        db_user = os.getenv('POSTGRES_USER', 'suzent')
-        db_password = os.getenv('POSTGRES_PASSWORD', 'password')
-        db_host = os.getenv('POSTGRES_HOST', '127.0.0.1')
-        db_port = os.getenv('POSTGRES_PORT', '5432')
-        db_name = os.getenv('POSTGRES_DB', 'suzent')
-        connection_string = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+    # Build from individual components
+    db_user = os.getenv('POSTGRES_USER', 'suzent')
+    db_password = os.getenv('POSTGRES_PASSWORD', 'password')
+    db_host = os.getenv('POSTGRES_HOST', '127.0.0.1')
+    db_port = os.getenv('POSTGRES_PORT', '5432')
+    db_name = os.getenv('POSTGRES_DB', 'suzent')
+    connection_string = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
     logger.info(f"1. Connecting to PostgreSQL...")
     logger.info(f"   Host: {connection_string.split('@')[1].split('/')[0]}")

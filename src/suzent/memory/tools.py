@@ -49,6 +49,15 @@ Returns:
     def __init__(self, memory_manager: MemoryManager):
         super().__init__()
         self.memory_manager = memory_manager
+        self._user_id = 'default-user'
+        self._chat_id = None
+        # Main event loop reference will be injected by agent_manager
+        self._main_loop = None
+
+    def set_context(self, chat_id: str = None, user_id: str = "default"):
+        """Set chat and user context for this tool instance."""
+        self._chat_id = chat_id
+        self._user_id = user_id
 
     async def forward_async(self, query: str, limit: int = 10) -> str:
         """Execute memory search."""
@@ -105,15 +114,25 @@ Returns:
             return f"Error searching memories: {str(e)}"
 
     def forward(self, query: str, limit: int = 10) -> str:
-        """Synchronous wrapper for async forward."""
+        """Synchronous wrapper for async forward - runs in main event loop."""
         import asyncio
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
 
-        return loop.run_until_complete(self.forward_async(query, limit))
+        # If we have a reference to the main loop, use it (thread-safe)
+        if self._main_loop and self._main_loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(
+                self.forward_async(query, limit),
+                self._main_loop
+            )
+            return future.result(timeout=30)  # 30 second timeout
+
+        # Fallback: run in new loop (for testing/standalone use)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self.forward_async(query, limit))
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
 
 
 class MemoryBlockUpdateTool(Tool):
@@ -168,6 +187,15 @@ Returns:
     def __init__(self, memory_manager: MemoryManager):
         super().__init__()
         self.memory_manager = memory_manager
+        self._user_id = 'default-user'
+        self._chat_id = None
+        # Main event loop reference will be injected by agent_manager
+        self._main_loop = None
+
+    def set_context(self, chat_id: str = None, user_id: str = "default"):
+        """Set chat and user context for this tool instance."""
+        self._chat_id = chat_id
+        self._user_id = user_id
 
     async def forward_async(
         self,
@@ -234,14 +262,24 @@ Returns:
         content: str,
         search_pattern: str = None
     ) -> str:
-        """Synchronous wrapper for async forward."""
+        """Synchronous wrapper for async forward - runs in main event loop."""
         import asyncio
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
 
-        return loop.run_until_complete(
-            self.forward_async(block, operation, content, search_pattern)
-        )
+        # If we have a reference to the main loop, use it (thread-safe)
+        if self._main_loop and self._main_loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(
+                self.forward_async(block, operation, content, search_pattern),
+                self._main_loop
+            )
+            return future.result(timeout=30)  # 30 second timeout
+
+        # Fallback: run in new loop (for testing/standalone use)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(
+                self.forward_async(block, operation, content, search_pattern)
+            )
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)

@@ -6,6 +6,7 @@ This module handles the lifecycle of AI agents including:
 - Serializing agent state for persistence
 - Deserializing and restoring agent state
 - Managing global agent instances
+- Memory system integration
 """
 
 import asyncio
@@ -32,6 +33,80 @@ logger = get_logger(__name__)
 agent_instance: Optional[CodeAgent] = None
 agent_config: Optional[dict] = None
 agent_lock = asyncio.Lock()
+
+# --- Memory System State ---
+memory_manager = None
+memory_store = None
+main_event_loop = None  # Store reference to main event loop for async operations
+
+
+async def init_memory_system() -> bool:
+    """
+    Initialize the memory system if enabled in configuration.
+
+    Returns:
+        True if memory system initialized successfully, False otherwise.
+    """
+    global memory_manager, memory_store, main_event_loop
+
+    # Store reference to main event loop
+    import asyncio
+    main_event_loop = asyncio.get_running_loop()
+
+    if not CONFIG.memory_enabled:
+        logger.info("Memory system disabled in configuration")
+        return False
+
+    try:
+        # Import memory modules
+        from suzent.memory import MemoryManager, PostgresMemoryStore
+
+        # Get PostgreSQL connection string from environment
+        host = os.getenv("POSTGRES_HOST", "localhost")
+        port = os.getenv("POSTGRES_PORT", "5432")
+        db = os.getenv("POSTGRES_DB", "suzent")
+        user = os.getenv("POSTGRES_USER", "suzent")
+        password = os.getenv("POSTGRES_PASSWORD", "password")
+        postgres_conn = f"postgresql://{user}:{password}@{host}:{port}/{db}"
+
+        # Initialize PostgreSQL store
+        memory_store = PostgresMemoryStore(postgres_conn)
+        await memory_store.connect()
+
+        # Initialize memory manager
+        memory_manager = MemoryManager(
+            store=memory_store,
+            embedding_model=CONFIG.embedding_model,
+            embedding_dimension=CONFIG.embedding_dimension,
+            llm_for_extraction=None  # TODO: Add extraction model config
+        )
+
+        logger.info("Memory system initialized successfully")
+
+        # Add memory tools to CONFIG.tool_options so they appear in frontend
+        if "MemorySearchTool" not in CONFIG.tool_options:
+            CONFIG.tool_options.extend(["MemorySearchTool", "MemoryBlockUpdateTool"])
+            logger.info("Added memory tools to config")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to initialize memory system: {e}")
+        memory_manager = None
+        memory_store = None
+        return False
+
+
+async def shutdown_memory_system():
+    """Shutdown memory system and close connections."""
+    global memory_store
+
+    if memory_store:
+        try:
+            await memory_store.close()
+            logger.info("Memory system shutdown complete")
+        except Exception as e:
+            logger.error(f"Error shutting down memory system: {e}")
 
 
 def create_agent(config: Dict[str, Any]) -> CodeAgent:
@@ -67,6 +142,8 @@ def create_agent(config: Dict[str, Any]) -> CodeAgent:
         "PlanningTool": "planning_tool",
         "WebpageTool": "webpage_tool",
         "FileTool": "file_tool",
+        "MemorySearchTool": "memory",
+        "MemoryBlockUpdateTool": "memory",
         # Add other custom tools here as needed
     }
     
@@ -77,6 +154,22 @@ def create_agent(config: Dict[str, Any]) -> CodeAgent:
             module_file_name = tool_module_map.get(tool_name)
             if not module_file_name:
                 logger.warning(f"No module mapping found for tool {tool_name}")
+                continue
+
+            # Handle memory tools specially (they need memory_manager instance)
+            if tool_name in ["MemorySearchTool", "MemoryBlockUpdateTool"]:
+                if memory_manager is None:
+                    logger.warning(f"Memory system not initialized, skipping {tool_name}")
+                    continue
+                from suzent.memory import MemorySearchTool, MemoryBlockUpdateTool
+                if tool_name == "MemorySearchTool":
+                    tool = MemorySearchTool(memory_manager)
+                    tool._main_loop = main_event_loop  # Inject main loop reference
+                    tools.append(tool)
+                elif tool_name == "MemoryBlockUpdateTool":
+                    tool = MemoryBlockUpdateTool(memory_manager)
+                    tool._main_loop = main_event_loop  # Inject main loop reference
+                    tools.append(tool)
                 continue
 
             tool_module = importlib.import_module(f"suzent.tools.{module_file_name}")
@@ -136,6 +229,29 @@ def create_agent(config: Dict[str, Any]) -> CodeAgent:
 
     base_instructions = config.get("instructions", CONFIG.instructions)
     instructions = format_instructions(base_instructions)
+
+    # Inject memory context if memory system is enabled
+    if memory_manager:
+        chat_id = config.get("_chat_id")  # Optional chat ID for context
+        user_id = config.get("_user_id", "default")  # Optional user ID
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Create task for later awaiting
+                memory_context = None
+            else:
+                memory_context = loop.run_until_complete(
+                    memory_manager.format_core_memory_for_context(
+                        chat_id=chat_id,
+                        user_id=user_id
+                    )
+                )
+                if memory_context:
+                    instructions = f"{instructions}\n\n{memory_context}"
+        except Exception as e:
+            logger.warning(f"Could not inject memory context: {e}")
+
     agent = agent_class(
         model=model,
         tools=tools,
@@ -282,17 +398,24 @@ async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Co
         return agent_instance
 
 
-def inject_chat_context(agent: CodeAgent, chat_id: str) -> None:
+def inject_chat_context(agent: CodeAgent, chat_id: str, user_id: str = "default") -> None:
     """
     Inject chat context into agent tools that support it.
-    
+
     Args:
         agent: The agent instance whose tools should receive context.
         chat_id: The chat identifier to inject into tools.
+        user_id: The user identifier for memory system.
     """
     if not chat_id or not hasattr(agent, '_tool_instances'):
         return
-    
+
     for tool_instance in agent._tool_instances:
+        # Inject chat_id for tools like PlanningTool
         if hasattr(tool_instance, 'set_chat_context'):
             tool_instance.set_chat_context(chat_id)
+
+        # Inject user_id and chat_id for memory tools
+        if tool_instance.__class__.__name__ in ['MemorySearchTool', 'MemoryBlockUpdateTool']:
+            if hasattr(tool_instance, 'set_context'):
+                tool_instance.set_context(chat_id=chat_id, user_id=user_id)

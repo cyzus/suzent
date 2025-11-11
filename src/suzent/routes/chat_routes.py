@@ -173,6 +173,29 @@ async def chat(request: Request) -> StreamingResponse:
                     except Exception as e:
                         logger.error(f"Error saving agent state for chat {chat_id}: {e}")
 
+                # Extract facts from conversation if memory system is enabled
+                if chat_id:
+                    try:
+                        from suzent.agent_manager import memory_manager
+                        if memory_manager:
+                            # Get the last user message and assistant response
+                            db = get_database()
+                            chat = db.get_chat(chat_id)
+                            if chat and chat.get('messages'):
+                                messages = chat['messages']
+                                # Extract from the last user message
+                                if len(messages) > 0 and messages[-1].get('role') == 'user':
+                                    import asyncio
+                                    asyncio.create_task(
+                                        memory_manager.process_message_for_memories(
+                                            message=messages[-1],
+                                            chat_id=chat_id,
+                                            user_id="default"  # TODO: Add multi-user support
+                                        )
+                                    )
+                    except Exception as e:
+                        logger.debug(f"Memory extraction skipped: {e}")
+
             except Exception as e:
                 traceback.print_exc()
                 yield f'data: {{\"type\": \"error\", \"data\": \"Error creating agent: {e!s}\"}}\n\n'

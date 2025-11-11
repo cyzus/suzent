@@ -17,6 +17,9 @@ DEFAULT_TOOLS:
   - "PlanningTool"
   - "WebpageTool"
   - "FileTool"
+  # Memory tools (requires MEMORY_ENABLED: true and PostgreSQL)
+  # - "MemorySearchTool"
+  # - "MemoryBlockUpdateTool"
 
 MCP_URLS:
   "HF Space MCP": "https://evalstate-hf-mcp-server.hf.space/mcp"
@@ -34,3 +37,6 @@ INSTRUCTIONS: |
 
 EMBEDDING_MODEL: gemini/gemini-embedding-001
 EMBEDDING_DIMENSION: 3072
+
+# Memory System (requires PostgreSQL with pgvector - see .env for connection)
+MEMORY_ENABLED: false

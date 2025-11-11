@@ -58,6 +58,19 @@ setup_logging(level=log_level, log_file=log_file)
 logger = get_logger(__name__)
 
 
+async def startup():
+    """Initialize services on application startup."""
+    from suzent.agent_manager import init_memory_system
+    logger.info("Application startup - initializing services")
+    await init_memory_system()
+
+
+async def shutdown():
+    """Cleanup services on application shutdown."""
+    from suzent.agent_manager import shutdown_memory_system
+    logger.info("Application shutdown - cleaning up services")
+    await shutdown_memory_system()
+
 
 # --- Application Setup ---
 app = Starlette(
@@ -90,6 +103,8 @@ app = Starlette(
             allow_headers=["*"],
         )
     ],
+    on_startup=[startup],
+    on_shutdown=[shutdown],
 )
 
 

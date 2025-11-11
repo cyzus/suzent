@@ -210,7 +210,7 @@ memory/```bash
 
 ├── schema.sql            # Database schema```bash
 
-├── demo.py               # Demo scriptexport POSTGRES_CONNECTION_STRING="postgresql://suzent:password@localhost:5432/suzent"
+├── demo.py               # Demo scriptexport 
 
 └── README.md             # This fileexport OPENAI_API_KEY="your-key-here"  # For embeddings
 

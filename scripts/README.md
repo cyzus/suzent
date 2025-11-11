@@ -43,8 +43,6 @@ POSTGRES_DB=suzent
 POSTGRES_USER=suzent
 POSTGRES_PASSWORD=your_secure_password
 
-# Or use a connection string
-POSTGRES_CONNECTION_STRING=postgresql://user:pass@host:port/dbname
 ```
 
 **Note:** Use `127.0.0.1` instead of `localhost` on Windows to avoid IPv6 connection delays.
