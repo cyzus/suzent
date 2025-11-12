@@ -77,11 +77,13 @@ class ConfigModel(BaseModel):
 
     instructions: str = ""
 
+    # Embedding configuration
     embedding_model: str = None
     embedding_dimension: int = 0
 
     # Memory system
     memory_enabled: bool = False
+    extraction_model: str = None  # LLM model for fact extraction (None = use heuristics)
     user_id: str = "default-user"  # Default user identifier for memory system
 
     @classmethod

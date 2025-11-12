@@ -78,10 +78,10 @@ async def init_memory_system() -> bool:
             store=memory_store,
             embedding_model=CONFIG.embedding_model,
             embedding_dimension=CONFIG.embedding_dimension,
-            llm_for_extraction=None  # TODO: Add extraction model config
+            llm_for_extraction=CONFIG.extraction_model
         )
 
-        logger.info("Memory system initialized successfully")
+        logger.info(f"Memory system initialized successfully (extraction: {'LLM' if CONFIG.extraction_model else 'heuristic'})")
 
         # Add memory tools to CONFIG.tool_options so they appear in frontend
         if "MemorySearchTool" not in CONFIG.tool_options:

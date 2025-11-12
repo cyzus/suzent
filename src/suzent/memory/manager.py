@@ -6,8 +6,8 @@ from typing import Dict, List, Any, Optional
 import json
 
 from suzent.logger import get_logger
+from suzent.llm import EmbeddingGenerator, LLMClient
 from .postgres_store import PostgresMemoryStore
-from .embeddings import EmbeddingGenerator
 
 logger = get_logger(__name__)
 
@@ -34,7 +34,7 @@ class MemoryManager:
             store: PostgreSQL store instance
             embedding_model: LiteLLM model identifier for embeddings
             embedding_dimension: Expected embedding dimension (0 = auto-detect)
-            llm_for_extraction: LLM model for fact extraction (not yet implemented)
+            llm_for_extraction: LLM model for fact extraction (uses LLM if provided, else heuristics)
         """
         self.store = store
         self.embedding_gen = EmbeddingGenerator(
@@ -42,7 +42,8 @@ class MemoryManager:
             dimension=embedding_dimension
         )
         self.llm_extraction_model = llm_for_extraction
-        logger.info(f"MemoryManager initialized with embedding model: {embedding_model}")
+        self.llm_client = LLMClient(model=llm_for_extraction) if llm_for_extraction else None
+        logger.info(f"MemoryManager initialized with embedding model: {embedding_model}, extraction model: {llm_for_extraction}")
 
     # ===== Core Memory Blocks (Always visible to agent) =====
 
@@ -252,18 +253,85 @@ You have unlimited long-term memory storage that is automatically managed. Use `
         message: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """
-        Simplified fact extraction for POC.
-        In production, this would use an LLM to intelligently extract facts.
+        Extract facts from a message.
+        Uses LLM if available, otherwise falls back to simple heuristics.
         """
         content = message.get("content", "")
         role = message.get("role", "")
 
-        # Simple heuristics for POC (replace with LLM extraction in production)
-        facts = []
-
-        # Only extract from user messages for now
+        # Only extract from user messages
         if role != "user":
+            return []
+
+        # Use LLM-based extraction if configured
+        if self.llm_client:
+            return await self._extract_facts_llm(content)
+        else:
+            return await self._extract_facts_heuristic(content)
+
+    async def _extract_facts_llm(self, content: str) -> List[Dict[str, Any]]:
+        """
+        Extract facts using LLM with structured output.
+        
+        Returns list of facts with category, importance, and tags.
+        """
+        system_prompt = """You are a fact extraction system. Extract memorable facts from user messages.
+
+Focus on extracting:
+- Personal information (name, location, job, etc.)
+- Preferences (likes, dislikes, favorites)
+- Goals and intentions (plans, desires, tasks)
+- Important context (relationships, events, experiences)
+- Technical details (tools they use, skills they have)
+
+For each fact, provide:
+- content: The fact as a clear, standalone statement
+- category: One of [personal, preference, goal, context, technical, other]
+- importance: Float 0.0-1.0 (0.8-1.0 = critical, 0.5-0.8 = important, 0.0-0.5 = minor)
+- tags: List of relevant tags
+
+Return JSON in this format:
+{
+  "facts": [
+    {
+      "content": "User prefers dark mode",
+      "category": "preference",
+      "importance": 0.7,
+      "tags": ["preference", "ui"]
+    }
+  ]
+}
+
+If no facts are worth extracting, return {"facts": []}.
+"""
+
+        user_prompt = f"""Extract facts from this message:
+
+{content}
+
+Remember: Only extract facts that are worth remembering long-term. Skip questions, greetings, and ephemeral content."""
+
+        try:
+            response = await self.llm_client.extract_structured(
+                prompt=user_prompt,
+                system=system_prompt,
+                temperature=0.3
+            )
+
+            facts = response.get("facts", [])
+            logger.info(f"LLM extracted {len(facts)} facts from message")
             return facts
+
+        except Exception as e:
+            logger.error(f"LLM fact extraction failed, falling back to heuristics: {e}")
+            return await self._extract_facts_heuristic(content)
+
+    async def _extract_facts_heuristic(self, content: str) -> List[Dict[str, Any]]:
+        """
+        Fallback heuristic-based fact extraction.
+        Simple pattern matching for basic fact types.
+        """
+        facts = []
 
         # Look for preference patterns
         if any(word in content.lower() for word in ["i love", "i like", "i prefer", "my favorite"]):

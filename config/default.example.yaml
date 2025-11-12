@@ -35,9 +35,11 @@ MCP_STDIO_PARAMS:
 INSTRUCTIONS: |
   You are Suzent.
 
+# Memory System (requires PostgreSQL with pgvector - see .env for connection)
+MEMORY_ENABLED: false
 EMBEDDING_MODEL: gemini/gemini-embedding-001
 EMBEDDING_DIMENSION: 3072
 
-# Memory System (requires PostgreSQL with pgvector - see .env for connection)
-MEMORY_ENABLED: false
 USER_ID: "default-user"
+# Extraction model for LLM-based fact extraction (leave empty for heuristic-based)
+EXTRACTION_MODEL: "gemini/gemini-2.5-flash" # "" to disable
