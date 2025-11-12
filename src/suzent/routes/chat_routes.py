@@ -138,6 +138,33 @@ async def chat(request: Request) -> StreamingResponse:
                 config['_user_id'] = CONFIG.user_id
                 config['_chat_id'] = chat_id
 
+                # Extract facts from user message IMMEDIATELY (before agent response)
+                if chat_id and message:
+                    try:
+                        from suzent.agent_manager import get_memory_manager
+                        memory_mgr = get_memory_manager()
+
+                        if memory_mgr:
+                            # Process the user's message for memory extraction
+                            user_message = {"role": "user", "content": message}
+
+                            # Run memory extraction asynchronously (don't block response)
+                            import asyncio
+                            async def extract_memory():
+                                try:
+                                    result = await memory_mgr.process_message_for_memories(
+                                        message=user_message,
+                                        chat_id=chat_id,
+                                        user_id=CONFIG.user_id
+                                    )
+                                    logger.debug(f"Memory extraction completed for chat {chat_id}: {result}")
+                                except Exception as e:
+                                    logger.error(f"Memory extraction failed: {e}")
+
+                            asyncio.create_task(extract_memory())
+                    except Exception as e:
+                        logger.debug(f"Memory extraction skipped: {e}")
+
                 # Get or create agent with specified configuration
                 agent_instance = await get_or_create_agent(config, reset=reset)
 
@@ -178,33 +205,6 @@ async def chat(request: Request) -> StreamingResponse:
                             db.update_chat(chat_id, agent_state=agent_state)
                     except Exception as e:
                         logger.error(f"Error saving agent state for chat {chat_id}: {e}")
-
-                # Extract facts from conversation if memory system is enabled
-                if chat_id and message:
-                    try:
-                        from suzent.agent_manager import get_memory_manager
-                        memory_mgr = get_memory_manager()
-
-                        if memory_mgr:
-                            # Process the user's message for memory extraction
-                            import asyncio
-                            user_message = {"role": "user", "content": message}
-
-                            # Run memory extraction in background (fire and forget)
-                            async def extract_memory():
-                                try:
-                                    result = await memory_mgr.process_message_for_memories(
-                                        message=user_message,
-                                        chat_id=chat_id,
-                                        user_id=CONFIG.user_id
-                                    )
-                                    logger.debug(f"Memory extraction completed for chat {chat_id}: {result}")
-                                except Exception as e:
-                                    logger.error(f"Memory extraction failed: {e}")
-
-                            asyncio.create_task(extract_memory())
-                    except Exception as e:
-                        logger.debug(f"Memory extraction skipped: {e}")
 
             except Exception as e:
                 traceback.print_exc()
