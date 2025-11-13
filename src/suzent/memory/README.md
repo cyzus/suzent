@@ -257,7 +257,5 @@ To move from POC to production:
    - Query optimization
 
 ## References
-
-- [Design Document](../../../docs/MEMORY_SYSTEM_DESIGN.md)
 - [Letta (MemGPT)](https://github.com/letta-ai/letta)
 - [pgvector Documentation](https://github.com/pgvector/pgvector)
