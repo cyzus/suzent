@@ -31,6 +31,9 @@ from suzent.image_utils import compress_image_with_bytes
 
 logger = get_logger(__name__)
 
+# Memory retrieval configuration
+AUTO_RETRIEVAL_MEMORY_LIMIT = 5
+
 
 async def chat(request: Request) -> StreamingResponse:
     """
@@ -138,6 +141,26 @@ async def chat(request: Request) -> StreamingResponse:
                 config['_user_id'] = CONFIG.user_id
                 config['_chat_id'] = chat_id
 
+                # Retrieve relevant memories and inject into context (before agent response)
+                memory_context = ""
+                if chat_id and message:
+                    try:
+                        from suzent.agent_manager import get_memory_manager
+                        memory_mgr = get_memory_manager()
+
+                        if memory_mgr:
+                            # Retrieve relevant memories for the user's query
+                            memory_context = await memory_mgr.retrieve_relevant_memories(
+                                query=message,
+                                chat_id=chat_id,
+                                user_id=CONFIG.user_id,
+                                limit=AUTO_RETRIEVAL_MEMORY_LIMIT
+                            )
+                            if memory_context:
+                                logger.info(f"Injecting relevant memories into context for chat {chat_id}")
+                    except Exception as e:
+                        logger.debug(f"Memory retrieval skipped: {e}")
+
                 # Extract facts from user message IMMEDIATELY (before agent response)
                 if chat_id and message:
                     try:
@@ -190,9 +213,14 @@ async def chat(request: Request) -> StreamingResponse:
                     user_id = config.get('_user_id', CONFIG.user_id)
                     inject_chat_context(agent_instance, chat_id, user_id)
 
+                # Inject memory context into the message if available
+                final_message = message
+                if memory_context:
+                    final_message = memory_context + "\n" + message
+
                 # Stream agent responses (pass PIL images to agent)
                 async for chunk in stream_agent_responses(
-                    agent_instance, message, reset=reset, chat_id=chat_id, images=pil_images if pil_images else None
+                    agent_instance, final_message, reset=reset, chat_id=chat_id, images=pil_images if pil_images else None
                 ):
                     yield chunk
 

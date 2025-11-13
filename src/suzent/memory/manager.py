@@ -8,8 +8,22 @@ import json
 from suzent.logger import get_logger
 from suzent.llm import EmbeddingGenerator, LLMClient
 from .postgres_store import PostgresMemoryStore
+from . import memory_context
 
 logger = get_logger(__name__)
+
+# Memory system constants
+DEFAULT_MEMORY_RETRIEVAL_LIMIT = 5
+DEFAULT_MEMORY_SEARCH_LIMIT = 10
+IMPORTANT_MEMORY_THRESHOLD = 0.7
+
+# Heuristic extraction importance scores
+DEFAULT_IMPORTANCE = 0.5
+
+# Deduplication and extraction settings
+DEDUPLICATION_SEARCH_LIMIT = 3
+DEDUPLICATION_SIMILARITY_THRESHOLD = 0.9
+LLM_EXTRACTION_TEMPERATURE = 0.3
 
 class MemoryManager:
     """Central memory management service.
@@ -34,7 +48,7 @@ class MemoryManager:
             store: PostgreSQL store instance
             embedding_model: LiteLLM model identifier for embeddings
             embedding_dimension: Expected embedding dimension (0 = auto-detect)
-            llm_for_extraction: LLM model for fact extraction (uses LLM if provided, else heuristics)
+            llm_for_extraction: LLM model for fact extraction (uses LLM if provided)
         """
         self.store = store
         self.embedding_gen = EmbeddingGenerator(
@@ -102,42 +116,57 @@ class MemoryManager:
             logger.error(f"Error getting core memory blocks: {e}")
             return ""
 
-        memory_section = f"""
-## Your Memory System
+        return memory_context.format_core_memory_section(blocks)
 
-You have access to a two-tier memory system:
-
-### Core Memory (Always Visible)
-This is your active working memory. You can edit these blocks using the `memory_block_update` tool.
-
-**Persona** (your identity and capabilities):
-{blocks.get('persona', 'Not set')}
-
-**User** (information about the current user):
-{blocks.get('user', 'Not set')}
-
-**Facts** (key facts you should always remember):
-{blocks.get('facts', 'Not set')}
-
-**Context** (current session context):
-{blocks.get('context', 'Not set')}
-
-### Archival Memory (Search When Needed)
-You have unlimited long-term memory storage that is automatically managed. Use `memory_search` to find relevant past information when needed.
-
-**Memory Guidelines:**
-- Update your core memory blocks when you learn important new information about yourself or the user
-- Search your archival memory before asking the user for information they may have already provided
-- Memories are automatically stored as you interact—you don't need to explicitly save them
-"""
-        return memory_section
+    async def retrieve_relevant_memories(
+        self,
+        query: str,
+        chat_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        limit: int = DEFAULT_MEMORY_RETRIEVAL_LIMIT
+    ) -> str:
+        """
+        Automatically retrieve and format relevant memories for a query.
+        This is called before the agent processes the message to inject context.
+        
+        Args:
+            query: User's input query
+            chat_id: Optional chat context
+            user_id: User identifier
+            limit: Maximum number of memories to retrieve
+            
+        Returns:
+            Formatted string with relevant memories, or empty string if none found
+        """
+        try:
+            memories = await self.search_memories(
+                query=query,
+                limit=limit,
+                chat_id=chat_id,
+                user_id=user_id
+            )
+            
+            if not memories:
+                return ""
+            
+            # Format memories for context injection
+            memory_context_str = memory_context.format_retrieved_memories_section(
+                memories,
+                tag_important=True
+            )
+            logger.info(f"Retrieved {len(memories)} relevant memories for query")
+            return memory_context_str
+            
+        except Exception as e:
+            logger.error(f"Failed to retrieve relevant memories: {e}")
+            return ""
 
     # ===== Archival Memory Search (Agent-facing) =====
 
     async def search_memories(
         self,
         query: str,
-        limit: int = 10,
+        limit: int = DEFAULT_MEMORY_SEARCH_LIMIT,
         chat_id: Optional[str] = None,
         user_id: Optional[str] = None,
         filters: Optional[Dict[str, Any]] = None,
@@ -218,12 +247,12 @@ You have unlimited long-term memory storage that is automatically managed. Use `
                 # Search for similar existing memories
                 similar = await self.search_memories(
                     query=fact["content"],
-                    limit=3,
+                    limit=DEDUPLICATION_SEARCH_LIMIT,
                     user_id=user_id,
                     chat_id=None  # Search user-level memories
                 )
 
-                if similar and similar[0].get('similarity', 0) > 0.9:
+                if similar and similar[0].get('similarity', 0) > DEDUPLICATION_SIMILARITY_THRESHOLD:
                     # Very similar memory exists - skip
                     result["memories_updated"].append(str(similar[0]['id']))
                 else:
@@ -231,7 +260,7 @@ You have unlimited long-term memory storage that is automatically managed. Use `
                     memory_id = await self._add_memory_internal(
                         content=fact["content"],
                         metadata={
-                            "importance": fact.get("importance", 0.5),
+                            "importance": fact.get("importance", DEFAULT_IMPORTANCE),
                             "category": fact.get("category"),
                             "tags": fact.get("tags", []),
                             "source_chat_id": chat_id,
@@ -254,7 +283,7 @@ You have unlimited long-term memory storage that is automatically managed. Use `
     ) -> List[Dict[str, Any]]:
         """
         Extract facts from a message.
-        Uses LLM if available, otherwise falls back to simple heuristics.
+        Uses LLM if available
         """
         content = message.get("content", "")
         role = message.get("role", "")
@@ -267,7 +296,7 @@ You have unlimited long-term memory storage that is automatically managed. Use `
         if self.llm_client:
             return await self._extract_facts_llm(content)
         else:
-            return await self._extract_facts_heuristic(content)
+            return []
 
     async def _extract_facts_llm(self, content: str) -> List[Dict[str, Any]]:
         """
@@ -275,47 +304,14 @@ You have unlimited long-term memory storage that is automatically managed. Use `
         
         Returns list of facts with category, importance, and tags.
         """
-        system_prompt = """You are a fact extraction system. Extract memorable facts from user messages.
-
-Focus on extracting:
-- Personal information (name, location, job, etc.)
-- Preferences (likes, dislikes, favorites)
-- Goals and intentions (plans, desires, tasks)
-- Important context (relationships, events, experiences)
-- Technical details (tools they use, skills they have)
-
-For each fact, provide:
-- content: The fact as a clear, standalone statement
-- category: One of [personal, preference, goal, context, technical, other]
-- importance: Float 0.0-1.0 (0.8-1.0 = critical, 0.5-0.8 = important, 0.0-0.5 = minor)
-- tags: List of relevant tags
-
-Return JSON in this format:
-{
-  "facts": [
-    {
-      "content": "User prefers dark mode",
-      "category": "preference",
-      "importance": 0.7,
-      "tags": ["preference", "ui"]
-    }
-  ]
-}
-
-If no facts are worth extracting, return {"facts": []}.
-"""
-
-        user_prompt = f"""Extract facts from this message:
-
-{content}
-
-Remember: Only extract facts that are worth remembering long-term. Skip questions, greetings, and ephemeral content."""
+        system_prompt = memory_context.FACT_EXTRACTION_SYSTEM_PROMPT
+        user_prompt = memory_context.format_fact_extraction_user_prompt(content)
 
         try:
             response = await self.llm_client.extract_structured(
                 prompt=user_prompt,
                 system=system_prompt,
-                temperature=0.3
+                temperature=LLM_EXTRACTION_TEMPERATURE
             )
 
             facts = response.get("facts", [])
@@ -323,44 +319,8 @@ Remember: Only extract facts that are worth remembering long-term. Skip question
             return facts
 
         except Exception as e:
-            logger.error(f"LLM fact extraction failed, falling back to heuristics: {e}")
-            return await self._extract_facts_heuristic(content)
-
-    async def _extract_facts_heuristic(self, content: str) -> List[Dict[str, Any]]:
-        """
-        Fallback heuristic-based fact extraction.
-        Simple pattern matching for basic fact types.
-        """
-        facts = []
-
-        # Look for preference patterns
-        if any(word in content.lower() for word in ["i love", "i like", "i prefer", "my favorite"]):
-            facts.append({
-                "content": content,
-                "category": "preference",
-                "importance": 0.7,
-                "tags": ["preference", "user_info"]
-            })
-
-        # Look for personal information
-        elif any(word in content.lower() for word in ["i am", "my name is", "i work as", "i live in"]):
-            facts.append({
-                "content": content,
-                "category": "personal",
-                "importance": 0.8,
-                "tags": ["personal", "user_info"]
-            })
-
-        # Look for goals/tasks
-        elif any(word in content.lower() for word in ["i want to", "i need to", "my goal", "i'm working on"]):
-            facts.append({
-                "content": content,
-                "category": "goal",
-                "importance": 0.6,
-                "tags": ["goal", "task"]
-            })
-
-        return facts
+            logger.error(f"LLM fact extraction failed")
+            return []
 
     async def _add_memory_internal(
         self,
@@ -381,7 +341,7 @@ Remember: Only extract facts that are worth remembering long-term. Skip question
                 user_id=user_id,
                 chat_id=chat_id,
                 metadata=metadata,
-                importance=metadata.get("importance", 0.5)
+                importance=metadata.get("importance", DEFAULT_IMPORTANCE)
             )
 
             return memory_id
