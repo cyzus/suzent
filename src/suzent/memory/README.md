@@ -106,11 +106,6 @@ OPENAI_API_KEY=sk-xxx  # or other provider
 uv sync
 ```
 
-### 4. Run Demo
-
-```bash
-python -m suzent.memory.demo
-```
 
 ## Usage
 
