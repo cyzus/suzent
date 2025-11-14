@@ -23,7 +23,7 @@ DEFAULT_IMPORTANCE = 0.5
 # Deduplication and extraction settings
 DEDUPLICATION_SEARCH_LIMIT = 3
 DEDUPLICATION_SIMILARITY_THRESHOLD = 0.9
-LLM_EXTRACTION_TEMPERATURE = 0.3
+LLM_EXTRACTION_TEMPERATURE = 1.0
 
 class MemoryManager:
     """Central memory management service.

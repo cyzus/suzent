@@ -141,7 +141,27 @@ async def chat(request: Request) -> StreamingResponse:
                 config['_user_id'] = CONFIG.user_id
                 config['_chat_id'] = chat_id
 
-                # Retrieve relevant memories and inject into context (before agent response)
+                # Extract facts from user message FIRST (before retrieval)
+                # This ensures facts from current message are available for search
+                if chat_id and message:
+                    try:
+                        from suzent.agent_manager import get_memory_manager
+                        memory_mgr = get_memory_manager()
+
+                        if memory_mgr:
+                            # Process the user's message for memory extraction (BLOCKING)
+                            user_message = {"role": "user", "content": message}
+                            result = await memory_mgr.process_message_for_memories(
+                                message=user_message,
+                                chat_id=chat_id,
+                                user_id=CONFIG.user_id
+                            )
+                            if result.get("memories_created"):
+                                logger.debug(f"Memory extraction completed: created {len(result['memories_created'])} memories")
+                    except Exception as e:
+                        logger.debug(f"Memory extraction skipped: {e}")
+
+                # Retrieve relevant memories and inject into context (after extraction)
                 memory_context = ""
                 if chat_id and message:
                     try:
@@ -160,33 +180,6 @@ async def chat(request: Request) -> StreamingResponse:
                                 logger.info(f"Injecting relevant memories into context for chat {chat_id}")
                     except Exception as e:
                         logger.debug(f"Memory retrieval skipped: {e}")
-
-                # Extract facts from user message IMMEDIATELY (before agent response)
-                if chat_id and message:
-                    try:
-                        from suzent.agent_manager import get_memory_manager
-                        memory_mgr = get_memory_manager()
-
-                        if memory_mgr:
-                            # Process the user's message for memory extraction
-                            user_message = {"role": "user", "content": message}
-
-                            # Run memory extraction asynchronously (don't block response)
-                            import asyncio
-                            async def extract_memory():
-                                try:
-                                    result = await memory_mgr.process_message_for_memories(
-                                        message=user_message,
-                                        chat_id=chat_id,
-                                        user_id=CONFIG.user_id
-                                    )
-                                    logger.debug(f"Memory extraction completed for chat {chat_id}: {result}")
-                                except Exception as e:
-                                    logger.error(f"Memory extraction failed: {e}")
-
-                            asyncio.create_task(extract_memory())
-                    except Exception as e:
-                        logger.debug(f"Memory extraction skipped: {e}")
 
                 # Get or create agent with specified configuration
                 agent_instance = await get_or_create_agent(config, reset=reset)

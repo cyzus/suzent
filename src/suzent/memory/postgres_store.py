@@ -195,7 +195,7 @@ class PostgresMemoryStore:
                     FROM archival_memories
                     WHERE
                         user_id = $2
-                        AND chat_id = $3
+                        AND (chat_id = $3 OR chat_id IS NULL)
                         AND importance >= $4
                     ORDER BY embedding <=> $1
                     LIMIT $5
@@ -294,7 +294,7 @@ class PostgresMemoryStore:
                             access_count,
                             1 - (embedding <=> $1) AS semantic_score
                         FROM archival_memories
-                        WHERE user_id = $2 AND chat_id = $3
+                        WHERE user_id = $2 AND (chat_id = $3 OR chat_id IS NULL)
                         ORDER BY embedding <=> $1
                         LIMIT 50
                     ),
@@ -305,7 +305,7 @@ class PostgresMemoryStore:
                         FROM archival_memories
                         WHERE
                             user_id = $2
-                            AND chat_id = $3
+                            AND (chat_id = $3 OR chat_id IS NULL)
                             AND content_fts @@ websearch_to_tsquery('english', $4)
                     )
                     SELECT

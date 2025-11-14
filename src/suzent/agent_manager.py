@@ -140,7 +140,7 @@ def create_agent(config: Dict[str, Any], memory_context: Optional[str] = None) -
     model_id = config.get("model", "gemini/gemini-2.5-pro")
     agent_name = config.get("agent", "CodeAgent")
     # Use default_tools if tools not specified in config
-    tool_names = config.get("tools", CONFIG.default_tools)
+    tool_names = config.get("tools", CONFIG.default_tools).copy()
     additional_authorized_imports = config.get("additional_authorized_imports", [])
     model = LiteLLMModel(model_id=model_id)
 
@@ -157,6 +157,15 @@ def create_agent(config: Dict[str, Any], memory_context: Optional[str] = None) -
         # Add other custom tools here as needed
     }
     
+    # If memory system is enabled/initialized, ensure memory tools are available by default
+    try:
+        if CONFIG.memory_enabled and memory_manager is not None:
+            for t in ["MemorySearchTool", "MemoryBlockUpdateTool"]:
+                if t not in tool_names:
+                    tool_names.append(t)
+    except Exception:
+        pass
+
     custom_tool_names = tool_names
 
     for tool_name in custom_tool_names:
