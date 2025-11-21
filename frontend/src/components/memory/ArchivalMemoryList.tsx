@@ -284,14 +284,15 @@ export const ArchivalMemoryList: React.FC = () => {
 
       {/* Memory Cards */}
       <div className={isCompact ? "space-y-2" : "space-y-3"}>
-        {processedMemories.map((memory) => (
-          <MemoryCard
-            key={memory.id}
-            memory={memory}
-            onDelete={deleteArchivalMemory}
-            searchQuery={debouncedQuery}
-            compact={isCompact}
-          />
+        {processedMemories.map((memory, idx) => (
+          <div key={memory.id} className="animate-brutal-drop" style={{ animationDelay: `${idx * 0.05}s` }}>
+            <MemoryCard
+              memory={memory}
+              onDelete={deleteArchivalMemory}
+              searchQuery={debouncedQuery}
+              compact={isCompact}
+            />
+          </div>
         ))}
       </div>
 

@@ -115,12 +115,12 @@ export const ChatList: React.FC = () => {
               <div
                 key={chat.id}
                 onClick={() => loadChat(chat.id)}
-                className={`group relative p-3 cursor-pointer transition-all duration-200 ${
+                className={`group relative p-3 cursor-pointer transition-all duration-200 animate-brutal-drop ${
                   currentChatId === chat.id
                     ? 'bg-brutal-yellow border-3 border-brutal-black shadow-brutal translate-x-[-2px] translate-y-[-2px]'
                     : 'bg-white hover:bg-neutral-50 border-3 border-brutal-black hover:shadow-brutal-sm'
                 }`}
-                style={{ animation: `fadeInUp 0.3s ease-out ${idx * 0.05}s both` }}
+                style={{ animationDelay: `${idx * 0.05}s` }}
               >
                 {/* Active Indicator */}
                 {currentChatId === chat.id && (
@@ -156,16 +156,16 @@ export const ChatList: React.FC = () => {
                     </h3>
 
                     {chat.lastMessage && (
-                      <p className="text-xs mt-1 line-clamp-2 text-neutral-600 font-mono">
+                      <p className={`text-xs mt-1 line-clamp-2 font-mono ${currentChatId === chat.id ? 'text-brutal-black/80' : 'text-neutral-600'}`}>
                         {chat.lastMessage}
                       </p>
                     )}
 
-                    <div className="flex items-center justify-between mt-3 pt-2 border-t-2 border-neutral-200/50">
-                      <span className="text-[10px] font-bold text-neutral-500 uppercase bg-neutral-100 px-1.5 py-0.5 border border-neutral-300">
+                    <div className={`flex items-center justify-between mt-3 pt-2 border-t-2 ${currentChatId === chat.id ? 'border-brutal-black/20' : 'border-neutral-200/50'}`}>
+                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 border ${currentChatId === chat.id ? 'bg-white text-brutal-black border-brutal-black' : 'bg-neutral-100 text-neutral-500 border-neutral-300'}`}>
                         {chat.messageCount} MSG
                       </span>
-                      <span className="text-[10px] font-bold text-neutral-400 uppercase">
+                      <span className={`text-[10px] font-bold uppercase ${currentChatId === chat.id ? 'text-brutal-black/60' : 'text-neutral-400'}`}>
                         {formatDate(chat.updatedAt)}
                       </span>
                     </div>

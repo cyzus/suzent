@@ -18,7 +18,7 @@ export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({ stats, isLoad
         {[1, 2, 3, 4].map((i) => (
           <div
             key={i}
-            className="border-3 border-brutal-black bg-white p-4 animate-pulse"
+            className="border-3 border-brutal-black bg-white p-4 animate-brutal-blink"
           >
             <div className="h-4 bg-neutral-200 mb-2"></div>
             <div className="h-8 bg-neutral-200"></div>

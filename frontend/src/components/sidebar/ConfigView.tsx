@@ -3,6 +3,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { flushSync } from 'react-dom';
 import { useChatStore } from '../../hooks/useChatStore';
 import { fetchMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled } from '../../lib/api';
+import { BrutalSelect } from '../BrutalSelect';
 
 type MCPServer =
   | { type: 'url'; name: string; url: string; enabled: boolean }
@@ -138,23 +139,19 @@ export const ConfigView: React.FC = () => {
     <div className="space-y-6 text-xs">
       <div className="space-y-1">
         <label className="block font-bold tracking-wide text-brutal-black uppercase">Model</label>
-        <select
+        <BrutalSelect
           value={config.model}
-          onChange={e => update({ model: e.target.value })}
-          className="w-full bg-white border-3 border-brutal-black px-3 py-2 font-bold text-sm focus:outline-none focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-shadow duration-200"
-        >
-          {backendConfig.models.map((m: string) => <option key={m} value={m}>{m}</option>)}
-        </select>
+          onChange={val => update({ model: val })}
+          options={backendConfig.models}
+        />
       </div>
       <div className="space-y-1">
         <label className="block font-bold tracking-wide text-brutal-black uppercase">Agent</label>
-        <select
+        <BrutalSelect
           value={config.agent}
-          onChange={e => update({ agent: e.target.value })}
-          className="w-full bg-white border-3 border-brutal-black px-3 py-2 font-bold text-sm focus:outline-none focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-shadow duration-200"
-        >
-          {backendConfig.agents.map((a: string) => <option key={a} value={a}>{a}</option>)}
-        </select>
+          onChange={val => update({ agent: val })}
+          options={backendConfig.agents}
+        />
         <div className="text-xs text-brutal-black mt-1 leading-relaxed font-medium">
           {config.agent === 'CodeAgent' && (
             <span>📝 Writes and executes Python code</span>
@@ -190,10 +187,12 @@ export const ConfigView: React.FC = () => {
         <label className="block font-bold tracking-wide text-brutal-black uppercase">MCP Servers</label>
         <div className="space-y-2">
           <div className="flex gap-2 flex-wrap items-start">
-            <select value={addType} onChange={e => setAddType(e.target.value as 'url' | 'stdio')} className="w-20 bg-white border-3 border-brutal-black px-2 py-1 font-bold text-xs focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-shadow">
-              <option value="url">URL</option>
-              <option value="stdio">Stdio</option>
-            </select>
+            <BrutalSelect
+              value={addType}
+              onChange={val => setAddType(val as 'url' | 'stdio')}
+              options={[{ value: 'url', label: 'URL' }, { value: 'stdio', label: 'Stdio' }]}
+              className="w-24"
+            />
             <input
               value={srvName}
               onChange={e => setSrvName(e.target.value)}
@@ -240,8 +239,8 @@ export const ConfigView: React.FC = () => {
             className={`space-y-2 ${servers.length > 4 ? 'max-h-40 overflow-y-auto pr-1' : ''}`}
             style={servers.length > 4 ? { scrollbarGutter: 'stable both-edges' } : undefined}
           >
-            {servers.map(s => (
-              <li key={s.name} className="flex items-center gap-2 bg-white border-3 border-brutal-black px-2 py-1 group shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[1px] hover:translate-y-[1px] transition-transform">
+            {servers.map((s, idx) => (
+              <li key={s.name} className="flex items-center gap-2 bg-white border-3 border-brutal-black px-2 py-1 group shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[1px] hover:translate-y-[1px] transition-transform animate-brutal-drop" style={{ animationDelay: `${idx * 0.05}s` }}>
                 <input aria-label="Enable server" type="checkbox" checked={s.enabled} onChange={() => toggleServer(s.name)} disabled={loading} className="w-4 h-4 border-2 border-brutal-black accent-brutal-black" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">

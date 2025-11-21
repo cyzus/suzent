@@ -64,8 +64,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </nav>
       <div
         className={`flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-brutal-black scrollbar-track-neutral-200 ${
-          animateContent ? 'opacity-50' : 'opacity-100'
-        } transition-opacity duration-200`}
+          animateContent ? 'animate-brutal-drop' : ''
+        }`}
       >
         <div className={activeTab === 'chats' ? '' : 'hidden'} aria-hidden={activeTab !== 'chats'}>
           {mountedTabs.has('chats') ? chatsContent : null}

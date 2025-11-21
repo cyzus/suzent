@@ -30,22 +30,22 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     if (this.state.hasError) {
       // Return fallback UI or default error message
       return this.props.fallback || (
-        <div className="flex flex-col items-center justify-center h-64 p-8 bg-red-50 border border-red-200 rounded-lg">
-          <div className="text-red-600 text-lg font-semibold mb-2">
-            Something went wrong
+        <div className="flex flex-col items-center justify-center h-64 p-8 bg-white border-3 border-brutal-black shadow-brutal animate-brutal-shake">
+          <div className="text-brutal-red text-lg font-brutal uppercase mb-2">
+            System Failure
           </div>
-          <div className="text-red-500 text-sm mb-4 text-center">
+          <div className="text-brutal-black text-sm mb-4 text-center font-mono">
             {this.state.error?.message || 'An unexpected error occurred'}
           </div>
           <button 
-            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+            className="px-4 py-2 bg-brutal-red text-white border-2 border-brutal-black font-bold uppercase hover:bg-red-600 shadow-brutal-sm active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all"
             onClick={() => this.setState({ hasError: false, error: undefined })}
           >
-            Try again
+            Reboot System
           </button>
-          <details className="mt-4 text-xs text-gray-600">
-            <summary className="cursor-pointer">Error details</summary>
-            <pre className="mt-2 p-2 bg-gray-100 rounded overflow-auto">
+          <details className="mt-4 text-xs text-brutal-black w-full">
+            <summary className="cursor-pointer font-bold uppercase">Error details</summary>
+            <pre className="mt-2 p-2 bg-neutral-100 border-2 border-brutal-black overflow-auto font-mono text-[10px]">
               {this.state.error?.stack}
             </pre>
           </details>

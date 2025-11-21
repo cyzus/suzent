@@ -122,7 +122,15 @@ const AppInner: React.FC = () => {
               </button>
             </div>
           </header>
-          {mainView === 'chat' ? <ChatWindow /> : <MemoryView />}
+          {mainView === 'chat' ? (
+            <div key="chat" className="flex-1 flex flex-col min-h-0 animate-brutal-drop">
+              <ChatWindow />
+            </div>
+          ) : (
+            <div key="memory" className="flex-1 flex flex-col min-h-0 animate-brutal-drop">
+              <MemoryView />
+            </div>
+          )}
         </div>
       </div>
     </div>
