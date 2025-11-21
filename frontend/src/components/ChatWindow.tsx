@@ -255,11 +255,12 @@ export const ChatWindow: React.FC = () => {
   // from the bottom, disable auto-scroll until they scroll back to the bottom.
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const autoScrollEnabledRef = useRef(true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
   // Helper to determine if the user is at (or very near) the bottom
   const isAtBottom = (el: Element | null) => {
     if (!el) return true;
-    const tolerance = 24; // px from bottom to still consider "at bottom"
+    const tolerance = 50; // px from bottom to still consider "at bottom"
     return el.scrollHeight - el.scrollTop - el.clientHeight <= tolerance;
   };
 
@@ -272,6 +273,7 @@ export const ChatWindow: React.FC = () => {
       // disable auto-scrolling. If they reach the bottom again, re-enable it.
       const atBottom = isAtBottom(el);
       autoScrollEnabledRef.current = atBottom;
+      setShowScrollButton(!atBottom);
     };
 
     // Listen to a few events that indicate user interaction
@@ -291,13 +293,14 @@ export const ChatWindow: React.FC = () => {
     const el = scrollContainerRef.current;
     if (autoScrollEnabledRef.current) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    } else {
-      // If auto-scroll is disabled, do nothing. However, if the user has scrolled
-      // back to the bottom (maybe by clicking a "Jump to bottom" UI later),
-      // the scroll listener will re-enable auto-scroll.
-      // Optionally, we could show a subtle indicator here in future.
     }
-  }, [safeMessages]);
+  }, [safeMessages, isStreaming]);
+
+  const scrollToBottom = () => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    autoScrollEnabledRef.current = true;
+    setShowScrollButton(false);
+  };
 
   // Auto-resize textarea based on content
   useEffect(() => {
@@ -492,7 +495,7 @@ export const ChatWindow: React.FC = () => {
 
   return (
     <div
-      className="flex flex-col flex-1 h-full overflow-hidden bg-neutral-50"
+      className="flex flex-col flex-1 h-full overflow-hidden bg-neutral-50 relative"
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
@@ -510,98 +513,159 @@ export const ChatWindow: React.FC = () => {
         </div>
       )}
       
-  <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-6 pb-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-neutral-300/80">
-        <div className="space-y-6">
-          {safeMessages.map((m: Message, idx: number) => {
-          const isUser = m.role === 'user';
-          const blocks = isUser ? [{ type: 'markdown', content: m.content } as { type: 'markdown'; content: string; lang?: string }] : splitAssistantContent(m.content);
-          
-          const alignClass = isUser ? 'justify-end' : 'justify-start';
-          const isStreamingAgentMessage = !isUser && streamingForCurrentChat && idx === safeMessages.length - 1;
-          const eyeClass = isStreamingAgentMessage ? 'robot-eye robot-eye-blink' : 'robot-eye robot-eye-idle';
-          const rightEyeStyle = !isUser
-            ? (isStreamingAgentMessage ? undefined : { animationDelay: '1.8s' })
-            : undefined;
-          
-          return (
-            <div key={idx} className="w-full flex flex-col">
-              <div className={`flex ${alignClass} w-full`}>
-                {isUser ? (
-                  // User message: display images and text separately
-                  <div className="w-full max-w-3xl space-y-3">
-                    {m.images && m.images.length > 0 && (
-                      <div className="flex flex-wrap gap-3 justify-end">
-                        {m.images.map((img, imgIdx) => (
-                          <div key={imgIdx} className="relative group animate-brutal-pop">
-                            <img
-                              src={`data:${img.mime_type};base64,${img.data}`}
-                              alt={img.filename}
-                              className="max-w-sm max-h-64 border-4 border-brutal-black shadow-brutal-lg object-contain"
-                              title={img.filename}
-                            />
-                            <div className="absolute bottom-0 left-0 right-0 bg-brutal-black text-brutal-white text-xs px-2 py-1 font-bold opacity-0 group-hover:opacity-100 transition-opacity duration-100">
-                              {img.filename}
+      <div className="relative flex-1 min-h-0">
+        <div ref={scrollContainerRef} className="h-full overflow-y-auto p-4 md:p-6 pb-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-neutral-300/80">
+          {safeMessages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center p-8 animate-brutal-drop">
+              <div className="w-20 h-20 bg-brutal-black text-white flex items-center justify-center mb-6 border-4 border-brutal-black shadow-brutal-lg rotate-3 hover:rotate-0 transition-transform duration-300">
+                <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                </svg>
+              </div>
+              <h2 className="text-3xl font-brutal font-bold uppercase mb-2 text-brutal-black tracking-tight">System Ready</h2>
+              <p className="text-neutral-600 max-w-md font-mono text-xs mb-8 bg-white px-3 py-1 border-2 border-brutal-black shadow-brutal-sm">
+                // WAITING_FOR_INPUT...
+              </p>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl w-full">
+                {['Help me plan a project', 'Analyze this code', 'Search the web', 'Write a story'].map((suggestion, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setInput(suggestion)}
+                    className="p-4 bg-white border-3 border-brutal-black shadow-brutal hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-brutal-lg active:translate-x-[0px] active:translate-y-[0px] active:shadow-brutal transition-all text-left font-bold uppercase text-sm group relative overflow-hidden"
+                  >
+                    <div className="absolute inset-0 bg-brutal-yellow translate-y-full group-hover:translate-y-0 transition-transform duration-200 z-0"></div>
+                    <span className="relative z-10 flex items-center justify-between">
+                      {suggestion}
+                      <span className="text-brutal-black opacity-0 group-hover:opacity-100 transition-opacity">►</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {safeMessages.map((m: Message, idx: number) => {
+              const isUser = m.role === 'user';
+              const blocks = isUser ? [{ type: 'markdown', content: m.content } as { type: 'markdown'; content: string; lang?: string }] : splitAssistantContent(m.content);
+              
+              const alignClass = isUser ? 'justify-end' : 'justify-start';
+              const isStreamingAgentMessage = !isUser && streamingForCurrentChat && idx === safeMessages.length - 1;
+              const eyeClass = isStreamingAgentMessage ? 'robot-eye robot-eye-blink' : 'robot-eye robot-eye-idle';
+              const rightEyeStyle = !isUser
+                ? (isStreamingAgentMessage ? undefined : { animationDelay: '1.8s' })
+                : undefined;
+              
+              return (
+                <div key={idx} className="w-full flex flex-col group/message">
+                  <div className={`flex ${alignClass} w-full`}>
+                    {isUser ? (
+                      // User message: display images and text separately
+                      <div className="w-full max-w-3xl space-y-3 pl-8 md:pl-16">
+                        {m.images && m.images.length > 0 && (
+                          <div className="flex flex-wrap gap-3 justify-end">
+                            {m.images.map((img, imgIdx) => (
+                              <div key={imgIdx} className="relative group animate-brutal-pop">
+                                <img
+                                  src={`data:${img.mime_type};base64,${img.data}`}
+                                  alt={img.filename}
+                                  className="max-w-sm max-h-64 border-4 border-brutal-black shadow-brutal-lg object-contain bg-white"
+                                  title={img.filename}
+                                />
+                                <div className="absolute bottom-0 left-0 right-0 bg-brutal-black text-brutal-white text-xs px-2 py-1 font-bold opacity-0 group-hover:opacity-100 transition-opacity duration-100">
+                                  {img.filename}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {m.content && (
+                          <div className="flex justify-end">
+                            <div className="bg-brutal-yellow border-3 border-brutal-black shadow-brutal-lg px-5 py-4 max-w-full font-medium animate-brutal-slide relative">
+                              <div className="absolute -right-2 -top-2 w-4 h-4 bg-brutal-black"></div>
+                              <div className="prose prose-sm max-w-none break-words text-brutal-black font-sans">{m.content}</div>
                             </div>
                           </div>
-                        ))}
+                        )}
+                        <div className="text-[10px] font-bold text-neutral-400 uppercase text-right pr-1 opacity-0 group-hover/message:opacity-100 transition-opacity">
+                          User
+                        </div>
                       </div>
-                    )}
-                    {m.content && (
-                      <div className="flex justify-end">
-                        <div className="bg-brutal-yellow border-3 border-brutal-black shadow-brutal-lg px-5 py-3 max-w-2xl font-medium animate-brutal-slide">
-                          <div className="prose prose-sm max-w-none break-words text-brutal-black">{m.content}</div>
+                    ) : (
+                      // Assistant message: Neo-brutalist white bubble with AI indicator
+                      <div className={`group w-full max-w-4xl break-words overflow-visible space-y-0 text-sm leading-relaxed relative pr-4 md:pr-12`}>
+                        {/* AI Assistant Label - Bold & Brutalist */}
+                        <div className="inline-flex items-center gap-2 bg-brutal-black text-brutal-white px-3 py-1 font-bold text-xs tracking-wider border-3 border-brutal-black mb-0 animate-brutal-pop shadow-[4px_4px_0_0_rgba(0,0,0,0.1)] z-10 relative">
+                          <svg className={`w-4 h-4 ${isStreamingAgentMessage ? 'robot-streaming' : ''}`} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <rect x="2" y="2" width="20" height="20" rx="3" fill="currentColor" />
+                            <rect x="4" y="4" width="16" height="16" rx="3" fill="#000000" />
+                            <rect className={eyeClass} x="5.5" y="7" width="5" height="5" rx="1.5" fill="currentColor" />
+                            <rect className={eyeClass} style={rightEyeStyle} x="13.5" y="7" width="5" height="5" rx="1.5" fill="currentColor" />
+                          </svg>
+                          <span>AGENT</span>
+                        </div>
+                        <div className="bg-white border-3 border-brutal-black shadow-brutal-lg px-6 py-5 space-y-4 animate-brutal-drop relative z-0 -mt-3 pt-6">
+                        {blocks.map((b, bi) => b.type === 'markdown' ? (
+                          <MarkdownRenderer key={bi} content={b.content} />
+                        ) : (
+                          <div key={bi} className="relative my-4 group/code">
+                            <div className="absolute -top-3 left-4 bg-brutal-black text-white text-[10px] font-bold px-2 py-0.5 uppercase tracking-wider border-2 border-brutal-black z-10">
+                              {(b as any).lang || 'CODE'}
+                            </div>
+                            <CopyButton text={b.content} />
+                            <pre className="max-w-full overflow-x-auto text-xs bg-brutal-code-bg text-brutal-code-text border-3 border-brutal-black p-4 pt-6 font-mono leading-relaxed shadow-brutal-sm">
+                              <code className={`language-${((b as any).lang || 'text').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase() || 'text'}`}>{b.content}</code>
+                            </pre>
+                          </div>
+                        ))}
+                        {/* end user/assistant content */}
+                        {idx === safeMessages.length - 1 && streamingForCurrentChat && (
+                          <div className="flex gap-2 items-center text-xs font-bold text-brutal-black animate-pulse mt-2 p-2 bg-neutral-100 border-2 border-neutral-200 inline-block">
+                            <div className="w-2 h-2 bg-brutal-black animate-bounce"></div>
+                            <div className="w-2 h-2 bg-brutal-black animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                            <div className="w-2 h-2 bg-brutal-black animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                            <span className="ml-1">PROCESSING</span>
+                          </div>
+                        )}
                         </div>
                       </div>
                     )}
                   </div>
-                ) : (
-                  // Assistant message: Neo-brutalist white bubble with AI indicator
-                  <div className={`group w-full max-w-3xl break-words overflow-visible space-y-0 text-sm leading-relaxed relative`}>
-                    {/* AI Assistant Label - Bold & Brutalist */}
-                    <div className="inline-flex items-center gap-2 bg-brutal-black text-brutal-white px-3 py-1 font-bold text-xs tracking-wider border-3 border-brutal-black mb-0 animate-brutal-pop">
-                      <svg className={`w-4 h-4 ${isStreamingAgentMessage ? 'robot-streaming' : ''}`} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <rect x="2" y="2" width="20" height="20" rx="3" fill="currentColor" />
-                        <rect x="4" y="4" width="16" height="16" rx="3" fill="#000000" />
-                        <rect className={eyeClass} x="5.5" y="7" width="5" height="5" rx="1.5" fill="currentColor" />
-                        <rect className={eyeClass} style={rightEyeStyle} x="13.5" y="7" width="5" height="5" rx="1.5" fill="currentColor" />
-                      </svg>
-                      <span>AGENT</span>
-                    </div>
-                    <div className="bg-brutal-white border-3 border-brutal-black shadow-brutal-lg px-5 py-3 space-y-3 animate-brutal-drop">
-                    {blocks.map((b, bi) => b.type === 'markdown' ? (
-                      <MarkdownRenderer key={bi} content={b.content} />
-                    ) : (
-                      <div key={bi} className="relative">
-                        <CopyButton text={b.content} />
-                        <pre className="max-w-3xl overflow-x-auto text-xs bg-brutal-code-bg text-brutal-code-text border-3 border-brutal-black p-3 font-mono leading-relaxed">
-                          <code className={`language-${((b as any).lang || 'text').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase() || 'text'}`}>{b.content}</code>
-                        </pre>
+                  {!isUser && m.stepInfo && (
+                    <div className={`flex ${alignClass} w-full mt-2 pl-4`}>
+                      <div className="inline-flex items-center gap-2 text-[10px] text-brutal-black font-mono font-bold px-3 py-1 bg-neutral-100 border-2 border-brutal-black shadow-sm">
+                        <span className="text-brutal-blue">⚡</span>
+                        <span>{m.stepInfo}</span>
                       </div>
-                    ))}
-                    {/* end user/assistant content */}
-                    {idx === safeMessages.length - 1 && streamingForCurrentChat && (
-                      <div className="flex gap-1 items-center text-xs font-bold text-brutal-black animate-brutal-blink">THINKING...</div>
-                    )}
                     </div>
-                  </div>
-                )}
-              </div>
-              {!isUser && m.stepInfo && (
-                <div className={`flex ${alignClass} w-full mt-1`}>
-                  <div className="inline-flex items-center gap-1 text-[10px] text-brutal-black font-mono font-bold px-2 py-0.5 bg-neutral-200 border-2 border-brutal-black">
-                    <span>▸</span>
-                    <span>{m.stepInfo}</span>
-                  </div>
+                  )}
                 </div>
-              )}
+              );
+            })}
             </div>
-          );
-        })}
-          {!configReady && (
-            <div className="text-xs text-neutral-400">Loading backend configuration...</div>
           )}
+            {!configReady && (
+              <div className="flex items-center justify-center p-4">
+                <div className="bg-brutal-yellow border-2 border-brutal-black px-4 py-2 text-xs font-bold uppercase animate-pulse shadow-brutal-sm">
+                  Connecting to Neural Core...
+                </div>
+              </div>
+            )}
+          <div ref={bottomRef} className="h-4" />
         </div>
-        <div ref={bottomRef} className="h-2" />
+        
+        {/* Scroll to bottom button */}
+        {showScrollButton && (
+          <button
+            onClick={scrollToBottom}
+            className="absolute bottom-6 right-6 z-20 w-10 h-10 bg-brutal-black text-white border-2 border-white shadow-brutal-lg flex items-center justify-center hover:bg-brutal-blue transition-colors animate-brutal-pop"
+            title="Scroll to bottom"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          </button>
+        )}
       </div>
       <form onSubmit={(e) => { e.preventDefault(); send(); }} className="border-t-4 border-brutal-black p-4 flex flex-col gap-3 bg-neutral-100">
         {/* Image preview section */}

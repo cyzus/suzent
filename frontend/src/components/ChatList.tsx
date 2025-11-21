@@ -89,10 +89,10 @@ export const ChatList: React.FC = () => {
       )}
 
       {/* New Chat Button */}
-      <div className="p-4 border-b-3 border-brutal-black flex items-center justify-between gap-3">
+      <div className="p-4 border-b-3 border-brutal-black flex items-center justify-between gap-3 bg-white">
         <button
           onClick={beginNewChat}
-          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-brutal-blue border-3 border-brutal-black shadow-brutal hover:shadow-brutal-lg active:shadow-none text-white font-bold uppercase"
+          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-brutal-black border-3 border-brutal-black shadow-brutal hover:bg-brutal-blue hover:text-white hover:shadow-brutal-lg active:translate-x-[2px] active:translate-y-[2px] active:shadow-none text-white font-bold uppercase transition-all"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -102,24 +102,31 @@ export const ChatList: React.FC = () => {
       </div>
 
       {/* Chat List */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-thin">
         {chats.length === 0 ? (
-          <div className="p-4 text-center text-brutal-black text-sm font-bold uppercase">
-            No chats yet. Start a new conversation!
+          <div className="p-8 text-center">
+            <div className="w-12 h-12 bg-neutral-200 border-2 border-brutal-black mx-auto mb-3 flex items-center justify-center text-2xl">💬</div>
+            <p className="text-brutal-black text-sm font-bold uppercase">No chats yet</p>
+            <p className="text-neutral-500 text-xs mt-1">Start a new conversation to begin</p>
           </div>
         ) : (
-          <div className="p-2 space-y-2">
+          <div className="p-3 space-y-3">
             {chats.map((chat: ChatSummary, idx: number) => (
               <div
                 key={chat.id}
                 onClick={() => loadChat(chat.id)}
-                className={`group relative p-3 cursor-pointer active:animate-brutal-shake animate-brutal-slide ${
+                className={`group relative p-3 cursor-pointer transition-all duration-200 ${
                   currentChatId === chat.id
-                    ? 'bg-brutal-yellow border-3 border-brutal-black shadow-brutal'
-                    : 'bg-brutal-white hover:bg-neutral-100 border-3 border-brutal-black'
+                    ? 'bg-brutal-yellow border-3 border-brutal-black shadow-brutal translate-x-[-2px] translate-y-[-2px]'
+                    : 'bg-white hover:bg-neutral-50 border-3 border-brutal-black hover:shadow-brutal-sm'
                 }`}
-                style={{ animationDelay: `${idx * 30}ms` }}
+                style={{ animation: `fadeInUp 0.3s ease-out ${idx * 0.05}s both` }}
               >
+                {/* Active Indicator */}
+                {currentChatId === chat.id && (
+                  <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-8 bg-brutal-black"></div>
+                )}
+
                 {/* Inline delete confirmation overlay */}
                 {confirmDeleteId === chat.id && (
                   <div className="absolute inset-0 bg-brutal-red border-3 border-brutal-black flex flex-col items-center justify-center gap-2 z-10 p-2 animate-brutal-pop">
@@ -128,13 +135,13 @@ export const ChatList: React.FC = () => {
                       <button
                         onClick={(e) => handleDeleteChat(chat.id, e)}
                         disabled={deletingChatId === chat.id}
-                        className="px-3 py-1.5 bg-brutal-black border-2 border-brutal-white text-white text-xs font-bold uppercase disabled:opacity-50"
+                        className="px-3 py-1.5 bg-brutal-black border-2 border-brutal-white text-white text-xs font-bold uppercase disabled:opacity-50 hover:bg-neutral-800"
                       >
                         {deletingChatId === chat.id ? 'Deleting...' : 'Delete'}
                       </button>
                       <button
                         onClick={handleCancelDelete}
-                        className="px-3 py-1.5 bg-brutal-white border-2 border-brutal-black text-brutal-black text-xs font-bold uppercase"
+                        className="px-3 py-1.5 bg-brutal-white border-2 border-brutal-black text-brutal-black text-xs font-bold uppercase hover:bg-neutral-100"
                       >
                         Cancel
                       </button>
@@ -142,23 +149,23 @@ export const ChatList: React.FC = () => {
                   </div>
                 )}
 
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between pl-2">
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-sm truncate text-brutal-black uppercase">
-                      {chat.title}
+                    <h3 className={`font-bold text-sm truncate uppercase ${currentChatId === chat.id ? 'text-brutal-black' : 'text-neutral-800'}`}>
+                      {chat.title || 'Untitled Chat'}
                     </h3>
 
                     {chat.lastMessage && (
-                      <p className="text-xs mt-1 line-clamp-2 text-brutal-black">
+                      <p className="text-xs mt-1 line-clamp-2 text-neutral-600 font-mono">
                         {chat.lastMessage}
                       </p>
                     )}
 
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-xs font-mono font-bold text-brutal-black">
-                        {chat.messageCount} MSG{chat.messageCount !== 1 ? 'S' : ''}
+                    <div className="flex items-center justify-between mt-3 pt-2 border-t-2 border-neutral-200/50">
+                      <span className="text-[10px] font-bold text-neutral-500 uppercase bg-neutral-100 px-1.5 py-0.5 border border-neutral-300">
+                        {chat.messageCount} MSG
                       </span>
-                      <span className="text-xs font-mono font-bold text-brutal-black">
+                      <span className="text-[10px] font-bold text-neutral-400 uppercase">
                         {formatDate(chat.updatedAt)}
                       </span>
                     </div>
@@ -168,13 +175,15 @@ export const ChatList: React.FC = () => {
                   <button
                     onClick={(e) => handleDeleteClick(chat.id, e)}
                     disabled={deletingChatId === chat.id}
-                    className="opacity-0 group-hover:opacity-100 ml-2 p-1.5 bg-brutal-red border-2 border-brutal-black transition-opacity duration-75"
+                    className={`opacity-0 group-hover:opacity-100 ml-2 p-1.5 border-2 border-brutal-black transition-all duration-200 hover:shadow-[2px_2px_0_0_#000000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none ${
+                      currentChatId === chat.id ? 'bg-white hover:bg-brutal-red hover:text-white' : 'bg-neutral-100 hover:bg-brutal-red hover:text-white'
+                    }`}
                     title="Delete chat"
                   >
                     {deletingChatId === chat.id ? (
-                      <div className="w-4 h-4 animate-brutal-blink text-brutal-white font-bold text-xs">X</div>
+                      <div className="w-3 h-3 animate-brutal-blink text-brutal-black font-bold text-xs">X</div>
                     ) : (
-                      <svg className="w-4 h-4 text-brutal-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
                         <path strokeLinecap="round" strokeLinejoin="round"
                               d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
