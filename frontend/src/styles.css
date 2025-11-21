@@ -23,7 +23,8 @@ html, body, #root { height: 100%; }
 /* Custom scrollbar tuned for the neo-brutalist palette */
 .scrollbar-thin {
   scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  /* Make track transparent to avoid white block overlaying header/border lines */
+  scrollbar-color: var(--scrollbar-thumb) transparent; /* Firefox */
   scrollbar-gutter: stable;
 }
 
@@ -33,9 +34,9 @@ html, body, #root { height: 100%; }
 }
 
 .scrollbar-thin::-webkit-scrollbar-track {
-  background-color: var(--scrollbar-track);
+  background-color: transparent; /* Prevent covering underlying separators */
   box-shadow: inset 0 0 0 3px var(--scrollbar-edge);
-  margin: 2px 0;
+  margin: 3px 0;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
@@ -50,6 +51,34 @@ html, body, #root { height: 100%; }
   background-color: var(--scrollbar-thumb-hover);
 }
 
+/* Optional top offset variant for memory view to clear header border */
+.scrollbar-thin.scrollbar-offset-top::-webkit-scrollbar-track {
+  margin-top: 0; /* Use container padding instead of artificial track gap */
+  margin-bottom: 4px; /* keep a modest bottom gap */
+}
+
+/* Firefox can't style track margins; simulate with inner padding using outline gap */
+.scrollbar-offset-top {
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+  padding-top: 0;
+}
+
+.memory-scroll {
+  position: relative;
+  background: inherit;
+}
+
+/* Sticky spacer keeps a constant buffer between top line and content */
+.memory-scroll::before {
+  content: "";
+  display: block;
+  position: sticky;
+  top: 0;
+  height: 2.5rem; /* visual gap */
+  background: inherit;
+  z-index: 1;
+  pointer-events: none;
+}
 /* Code block styling */
 pre[class*="language-"] { position: relative; }
 pre code {

@@ -2,14 +2,10 @@
  * Memory system types for frontend
  */
 
-export interface CoreMemoryBlocks {
-  persona: string;
-  user: string;
-  facts: string;
-  context: string;
-}
+// Dynamic core memory blocks - supports any number of labels
+export type CoreMemoryBlocks = Record<string, string>;
 
-export type CoreMemoryLabel = keyof CoreMemoryBlocks;
+export type CoreMemoryLabel = string;
 
 export interface ArchivalMemory {
   id: string;
