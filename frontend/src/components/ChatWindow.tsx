@@ -754,11 +754,8 @@ export const ChatWindow: React.FC = () => {
                         })}
                         {/* end user/assistant content */}
                         {idx === safeMessages.length - 1 && streamingForCurrentChat && (
-                          <div className="flex gap-2 items-center text-xs font-bold text-brutal-black animate-pulse mt-2 p-2 bg-neutral-100 border-2 border-neutral-200 inline-block">
-                            <div className="w-2 h-2 bg-brutal-black animate-bounce"></div>
-                            <div className="w-2 h-2 bg-brutal-black animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                            <div className="w-2 h-2 bg-brutal-black animate-bounce" style={{animationDelay: '0.2s'}}></div>
-                            <span className="ml-1">PROCESSING</span>
+                          <div className="mt-4 inline-block bg-brutal-black text-white px-3 py-1 font-mono text-xs font-bold uppercase tracking-widest">
+                            PROCESSING<span className="animate-pulse">_</span>
                           </div>
                         )}
                         </div>
