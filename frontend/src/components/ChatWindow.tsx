@@ -582,7 +582,6 @@ export const ChatWindow: React.FC = () => {
                         {m.content && (
                           <div className="flex justify-end">
                             <div className="bg-brutal-yellow border-3 border-brutal-black shadow-brutal-lg px-5 py-4 max-w-full font-medium animate-brutal-slide relative">
-                              <div className="absolute -right-2 -top-2 w-4 h-4 bg-brutal-black"></div>
                               <div className="prose prose-sm max-w-none break-words text-brutal-black font-sans">{m.content}</div>
                             </div>
                           </div>
