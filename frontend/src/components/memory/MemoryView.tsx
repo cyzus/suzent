@@ -3,8 +3,9 @@
  * Displays core memory blocks and archival memories with enhanced stats
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useMemory } from '../../hooks/useMemory';
+import { useChatStore } from '../../hooks/useChatStore';
 import { CoreMemoryBlock } from './CoreMemoryBlock';
 import { ArchivalMemoryList } from './ArchivalMemoryList';
 import { MemoryStatsComponent } from './MemoryStats';
@@ -21,6 +22,8 @@ export const MemoryView: React.FC = () => {
     updateCoreMemoryBlock,
     loadStats,
   } = useMemory();
+  const { isStreaming } = useChatStore();
+  const prevStreamingRef = useRef(isStreaming);
 
   const [showCoreMemory, setShowCoreMemory] = useState(true);
 
@@ -29,23 +32,40 @@ export const MemoryView: React.FC = () => {
     loadStats();
   }, []);
 
+  // Auto-refresh when agent finishes streaming
+  useEffect(() => {
+    if (prevStreamingRef.current && !isStreaming) {
+      loadCoreMemory();
+      loadStats();
+    }
+    prevStreamingRef.current = isStreaming;
+  }, [isStreaming]);
+
   if (coreMemoryLoading && !coreMemory) {
     return (
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
-        <div className="h-20 bg-neutral-100 animate-pulse border-3 border-brutal-black"></div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="h-32 bg-neutral-100 animate-pulse border-3 border-brutal-black"></div>
-          ))}
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1 space-y-4">
-            <div className="h-8 w-1/2 bg-neutral-100 animate-pulse"></div>
-            <div className="h-64 bg-neutral-100 animate-pulse border-3 border-brutal-black"></div>
-          </div>
-          <div className="lg:col-span-2 space-y-4">
-            <div className="h-8 w-1/3 bg-neutral-100 animate-pulse"></div>
-            <div className="h-96 bg-neutral-100 animate-pulse border-3 border-brutal-black"></div>
+      <div className="h-full w-full flex flex-col items-center justify-center p-8">
+        <div className="max-w-md w-full space-y-4">
+          <div className="border-3 border-brutal-black bg-white p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+            <h2 className="font-brutal text-2xl uppercase mb-4 animate-pulse">
+              Initializing Memory System...
+            </h2>
+            <div className="space-y-2 font-mono text-xs text-brutal-black">
+              <div className="flex justify-between">
+                <span>{'>'} CONNECTING_TO_CORE</span>
+                <span>[OK]</span>
+              </div>
+              <div className="flex justify-between">
+                <span>{'>'} LOADING_VECTORS</span>
+                <span className="animate-pulse">...</span>
+              </div>
+              <div className="flex justify-between opacity-50">
+                <span>{'>'} INDEXING_ARCHIVES</span>
+                <span>WAITING</span>
+              </div>
+            </div>
+            <div className="mt-6 h-4 border-2 border-brutal-black p-0.5">
+              <div className="h-full bg-brutal-black w-2/3 animate-[shimmer_2s_infinite]"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -63,7 +83,7 @@ export const MemoryView: React.FC = () => {
               <p className="text-brutal-black font-mono text-sm mb-4">{coreMemoryError}</p>
               <button
                 onClick={() => loadCoreMemory()}
-                className="px-6 py-2 border-2 border-brutal-black bg-white hover:bg-neutral-100 font-bold uppercase shadow-brutal active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all"
+                className="px-6 py-2 border-3 border-brutal-black bg-white hover:bg-neutral-100 font-bold uppercase shadow-brutal active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all"
               >
                 🔄 Retry Connection
               </button>
@@ -86,17 +106,10 @@ export const MemoryView: React.FC = () => {
             // LONG_TERM_STORAGE_ACCESS_TERMINAL
           </p>
         </div>
-        <div className="flex gap-3">
-          <button
-            onClick={() => {
-              loadStats();
-              loadCoreMemory();
-            }}
-            className="px-4 py-2 border-2 border-brutal-black bg-white hover:bg-brutal-black hover:text-white font-bold text-sm uppercase shadow-brutal active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all flex items-center gap-2"
-            title="Refresh memory data"
-          >
-            <span>↻</span> Refresh Data
-          </button>
+        {/* Auto-refresh indicator instead of manual button */}
+        <div className="flex items-center gap-2 text-xs font-mono text-neutral-400">
+          <div className={`w-2 h-2 rounded-full ${isStreaming ? 'bg-brutal-yellow animate-pulse' : 'bg-brutal-green'}`}></div>
+          <span>{isStreaming ? 'SYNCING...' : 'SYSTEM_READY'}</span>
         </div>
       </div>
 
