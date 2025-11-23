@@ -13,7 +13,13 @@ export interface Message {
   stepInfo?: string; // Step metadata like "Step: 1 | Input tokens: 100 | Output tokens: 50"
   images?: ImageAttachment[]; // Optional image attachments
 }
-export interface ChatConfig { model: string; agent: string; tools: string[]; mcp_urls?: string[] }
+export interface ChatConfig {
+  model: string;
+  agent: string;
+  tools: string[];
+  mcp_urls?: string[];
+  memory_enabled?: boolean;
+}
 
 export interface Chat {
   id: string;

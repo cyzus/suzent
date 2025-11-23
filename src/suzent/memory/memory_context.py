@@ -12,40 +12,37 @@ from typing import Dict, Optional
 def format_core_memory_section(blocks: Dict[str, str]) -> str:
     """
     Format core memory blocks for agent context injection.
-    
+
     Args:
         blocks: Dictionary of memory block labels to content
-        
+
     Returns:
         Formatted string for prompt injection
     """
+    # Format core memory blocks dynamically
+    core_blocks_text = ""
+    if blocks:
+        for label, content in blocks.items():
+            core_blocks_text += f"\n**{label.capitalize()}**:\n{content or 'Not set'}\n"
+    else:
+        core_blocks_text = "\nNo core memory blocks configured.\n"
+
     return f"""
-## Your Memory System
+## Memory System
 
 You have access to a two-tier memory system:
 
 ### Core Memory (Always Visible)
 This is your active working memory. You can edit these blocks using the `memory_block_update` tool.
-
-**Persona** (your identity and capabilities):
-{blocks.get('persona', 'Not set')}
-
-**User** (information about the current user):
-{blocks.get('user', 'Not set')}
-
-**Facts** (key facts you should always remember):
-{blocks.get('facts', 'Not set')}
-
-**Context** (current session context):
-{blocks.get('context', 'Not set')}
-
+{core_blocks_text}
 ### Archival Memory (Search When Needed)
 You have unlimited long-term memory storage that is automatically managed. Use `memory_search` to find relevant past information when needed.
 
 **Memory Guidelines:**
-- Update your core memory blocks when you learn important new information about yourself or the user
+- Update your core memory blocks when you learn important new information
 - Search your archival memory before asking the user for information they may have already provided
-- Memories are automatically stored as you interact—you don't need to explicitly save them
+- Core memory blocks are structured sections you can update; archival memory is automatically stored as you interact
+- Use core memory for information you need to reference frequently; use archival memory for detailed historical context
 """
 
 
@@ -64,7 +61,7 @@ def format_retrieved_memories_section(memories: list, tag_important: bool = True
         return ""
     
     memory_context = "\n## Relevant Memories\n\n"
-    memory_context += "Based on your query, here are relevant memories from past conversations:\n\n"
+    memory_context += "Based on the user's query, here are some memories from past conversations that might be relevant:\n\n"
     
     for i, memory in enumerate(memories, 1):
         content = memory.get('content', '')

@@ -119,21 +119,56 @@ def get_memory_manager():
     return memory_manager
 
 
+def _create_memory_tools() -> list:
+    """
+    Create memory tool instances.
+
+    Returns:
+        List of memory tool instances, or empty list if memory not initialized.
+    """
+    if memory_manager is None:
+        logger.warning("Memory system not initialized, skipping memory tools")
+        return []
+
+    try:
+        from suzent.memory import MemorySearchTool, MemoryBlockUpdateTool
+
+        tools = []
+
+        # Create MemorySearchTool
+        search_tool = MemorySearchTool(memory_manager)
+        search_tool._main_loop = main_event_loop
+        tools.append(search_tool)
+
+        # Create MemoryBlockUpdateTool
+        update_tool = MemoryBlockUpdateTool(memory_manager)
+        update_tool._main_loop = main_event_loop
+        tools.append(update_tool)
+
+        logger.info("Memory tools equipped")
+        return tools
+
+    except Exception as e:
+        logger.error(f"Failed to create memory tools: {e}")
+        return []
+
+
 def create_agent(config: Dict[str, Any], memory_context: Optional[str] = None) -> CodeAgent:
     """
     Creates an agent based on the provided configuration.
-    
+
     Args:
         config: Configuration dictionary containing:
             - model: Model identifier (e.g., "gemini/gemini-2.5-pro")
             - agent: Agent type (e.g., "CodeAgent")
             - tools: List of tool names to enable
+            - memory_enabled: Whether to equip memory tools (default: False)
             - mcp_urls: Optional list of MCP server URLs
             - instructions: Optional custom instructions
-    
+
     Returns:
         Configured CodeAgent instance with specified tools and model.
-    
+
     Raises:
         ValueError: If an unknown agent type is specified.
     """
@@ -141,54 +176,33 @@ def create_agent(config: Dict[str, Any], memory_context: Optional[str] = None) -
     agent_name = config.get("agent", "CodeAgent")
     # Use default_tools if tools not specified in config
     tool_names = config.get("tools", CONFIG.default_tools).copy()
+    memory_enabled = config.get("memory_enabled", False)
     additional_authorized_imports = config.get("additional_authorized_imports", [])
     model = LiteLLMModel(model_id=model_id)
 
     tools = []
-    
+
     # Mapping of tool class names to their module file names
     tool_module_map = {
         "WebSearchTool": "websearch_tool",
         "PlanningTool": "planning_tool",
         "WebpageTool": "webpage_tool",
         "FileTool": "file_tool",
-        "MemorySearchTool": "memory",
-        "MemoryBlockUpdateTool": "memory",
         # Add other custom tools here as needed
     }
-    
-    # If memory system is enabled/initialized, ensure memory tools are available by default
-    try:
-        if CONFIG.memory_enabled and memory_manager is not None:
-            for t in ["MemorySearchTool", "MemoryBlockUpdateTool"]:
-                if t not in tool_names:
-                    tool_names.append(t)
-    except Exception:
-        pass
 
+    # Load regular tools (excluding memory tools)
     custom_tool_names = tool_names
 
     for tool_name in custom_tool_names:
         try:
+            # Skip memory tools - they are handled separately
+            if tool_name in ["MemorySearchTool", "MemoryBlockUpdateTool"]:
+                continue
+
             module_file_name = tool_module_map.get(tool_name)
             if not module_file_name:
                 logger.warning(f"No module mapping found for tool {tool_name}")
-                continue
-
-            # Handle memory tools specially (they need memory_manager instance)
-            if tool_name in ["MemorySearchTool", "MemoryBlockUpdateTool"]:
-                if memory_manager is None:
-                    logger.warning(f"Memory system not initialized, skipping {tool_name}")
-                    continue
-                from suzent.memory import MemorySearchTool, MemoryBlockUpdateTool
-                if tool_name == "MemorySearchTool":
-                    tool = MemorySearchTool(memory_manager)
-                    tool._main_loop = main_event_loop  # Inject main loop reference
-                    tools.append(tool)
-                elif tool_name == "MemoryBlockUpdateTool":
-                    tool = MemoryBlockUpdateTool(memory_manager)
-                    tool._main_loop = main_event_loop  # Inject main loop reference
-                    tools.append(tool)
                 continue
 
             tool_module = importlib.import_module(f"suzent.tools.{module_file_name}")
@@ -201,6 +215,11 @@ def create_agent(config: Dict[str, Any], memory_context: Optional[str] = None) -
                 logger.warning(f"{tool_name} is not a valid Tool class")
         except (ImportError, AttributeError) as e:
             logger.error(f"Could not load tool {tool_name}: {e}")
+
+    # Equip memory tools separately if enabled
+    if memory_enabled and CONFIG.memory_enabled:
+        memory_tools = _create_memory_tools()
+        tools.extend(memory_tools)
 
 
     # --- Filter MCP servers by enabled state if provided ---

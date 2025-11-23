@@ -165,6 +165,10 @@ export const ConfigView: React.FC = () => {
         <label className="block font-bold tracking-wide text-brutal-black uppercase">Tools</label>
         <div className="flex flex-wrap gap-2">
           {backendConfig.tools.map((tool: string) => {
+            // Skip memory tools in the main tools list - they're controlled by the memory toggle
+            if (tool === 'MemorySearchTool' || tool === 'MemoryBlockUpdateTool') {
+              return null;
+            }
             const active = (config.tools || []).includes(tool);
             return (
               <button
@@ -181,6 +185,34 @@ export const ConfigView: React.FC = () => {
               </button>
             );
           })}
+        </div>
+      </div>
+      <div className="space-y-2">
+        <label className="block font-bold tracking-wide text-brutal-black uppercase">Memory System</label>
+        <button
+          type="button"
+          onClick={() => update({ memory_enabled: !config.memory_enabled })}
+          className={`w-full px-3 py-2 border-3 text-xs font-bold uppercase transition-all duration-200 flex items-center justify-between ${
+            config.memory_enabled
+              ? 'bg-brutal-green text-brutal-black border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+              : 'border-brutal-black text-brutal-black bg-white hover:bg-brutal-yellow hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+          }`}
+        >
+          <span>🧠 Memory Tools</span>
+          <span className={`text-[10px] px-2 py-1 border-2 font-bold ${
+            config.memory_enabled
+              ? 'border-brutal-black bg-white text-brutal-black'
+              : 'border-brutal-black bg-neutral-200 text-brutal-black'
+          }`}>
+            {config.memory_enabled ? 'ENABLED' : 'DISABLED'}
+          </span>
+        </button>
+        <div className="text-[11px] text-brutal-black font-medium leading-relaxed">
+          {config.memory_enabled ? (
+            <span>✓ Agent can search and update memory</span>
+          ) : (
+            <span>Memory tools are disabled</span>
+          )}
         </div>
       </div>
       <div className="space-y-2">

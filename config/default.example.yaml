@@ -17,9 +17,6 @@ DEFAULT_TOOLS:
   - "PlanningTool"
   - "WebpageTool"
   - "FileTool"
-  # Memory tools (requires MEMORY_ENABLED: true and PostgreSQL)
-  # - "MemorySearchTool"
-  # - "MemoryBlockUpdateTool"
 
 MCP_URLS:
   "HF Space MCP": "https://evalstate-hf-mcp-server.hf.space/mcp"
@@ -32,8 +29,7 @@ MCP_STDIO_PARAMS:
     env:
       OBSIDIAN_API_KEY: ""
 
-INSTRUCTIONS: |
-  You are Suzent.
+INSTRUCTIONS: ""
 
 # Memory System (requires PostgreSQL with pgvector - see .env for connection)
 MEMORY_ENABLED: false
