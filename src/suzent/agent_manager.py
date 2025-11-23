@@ -414,7 +414,8 @@ async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Co
         if agent_instance is None or config != agent_config or reset:
             # Fetch memory context if memory system is enabled (in async context)
             memory_context = None
-            if memory_manager:
+            memory_enabled = config.get("memory_enabled", False)
+            if memory_manager and memory_enabled:
                 chat_id = config.get("_chat_id")
                 user_id = config.get("_user_id", "default-user")
                 try:

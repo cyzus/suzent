@@ -143,7 +143,8 @@ async def chat(request: Request) -> StreamingResponse:
 
                 # Extract facts from user message FIRST (before retrieval)
                 # This ensures facts from current message are available for search
-                if chat_id and message:
+                memory_enabled = config.get("memory_enabled", False)
+                if chat_id and message and memory_enabled:
                     try:
                         from suzent.agent_manager import get_memory_manager
                         memory_mgr = get_memory_manager()
@@ -163,7 +164,7 @@ async def chat(request: Request) -> StreamingResponse:
 
                 # Retrieve relevant memories and inject into context (after extraction)
                 memory_context = ""
-                if chat_id and message:
+                if chat_id and message and memory_enabled:
                     try:
                         from suzent.agent_manager import get_memory_manager
                         memory_mgr = get_memory_manager()
