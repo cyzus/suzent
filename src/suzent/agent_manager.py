@@ -284,14 +284,57 @@ def create_agent(config: Dict[str, Any], memory_context: Optional[str] = None) -
     return agent
 
 
+def _sanitize_memory(memory):
+    """
+    Sanitize agent memory to remove non-serializable objects like AgentError.
+    AgentError contains a logger which can't be pickled, and its signature may change
+    between library versions causing unpickling to fail.
+
+    Args:
+        memory: Agent memory (list of message dicts or other structure).
+
+    Returns:
+        Sanitized copy of memory safe for pickling.
+    """
+    import copy
+
+    def sanitize_value(value):
+        """Recursively sanitize a value."""
+        # Handle AgentError objects - convert to simple dict
+        if type(value).__name__ == 'AgentError':
+            return {
+                '_error_type': 'AgentError',
+                '_error_message': str(value),
+                '_error_args': value.args if hasattr(value, 'args') else []
+            }
+
+        # Recursively handle lists
+        elif isinstance(value, list):
+            return [sanitize_value(item) for item in value]
+
+        # Recursively handle dicts
+        elif isinstance(value, dict):
+            return {k: sanitize_value(v) for k, v in value.items()}
+
+        # Return other values as-is
+        else:
+            return value
+
+    try:
+        return sanitize_value(memory)
+    except Exception as e:
+        logger.warning(f"Error sanitizing memory, using original: {e}")
+        return memory
+
+
 def serialize_agent(agent: CodeAgent) -> Optional[bytes]:
     """
     Serialize an agent and its complete state to bytes.
     This preserves all memory, configuration, and internal state.
-    
+
     Args:
         agent: The agent instance to serialize.
-    
+
     Returns:
         Serialized agent state as bytes, or None if serialization fails.
     """
@@ -320,8 +363,11 @@ def serialize_agent(agent: CodeAgent) -> Optional[bytes]:
             if name not in tool_names:
                 tool_names.append(name)
 
+        # Sanitize memory to remove AgentError objects that can't be pickled
+        sanitized_memory = _sanitize_memory(agent.memory)
+
         serializable_state = {
-            'memory': agent.memory,
+            'memory': sanitized_memory,
             'model_id': getattr(agent.model, 'model_id', None) if hasattr(agent, 'model') else None,
             'instructions': getattr(agent, 'instructions', None),
             'step_number': getattr(agent, 'step_number', 1),
@@ -331,7 +377,7 @@ def serialize_agent(agent: CodeAgent) -> Optional[bytes]:
             # Store managed agent info if any
             'managed_agents': getattr(agent, 'managed_agents', []),
         }
-        
+
         # Serialize to bytes
         return pickle.dumps(serializable_state)
     except Exception as e:
@@ -342,21 +388,21 @@ def serialize_agent(agent: CodeAgent) -> Optional[bytes]:
 def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[CodeAgent]:
     """
     Deserialize agent state and restore it to a new agent instance.
-    
+
     Args:
         agent_data: Serialized agent state as bytes.
         config: Configuration dictionary for creating the agent.
-    
+
     Returns:
         Restored agent instance, or None if deserialization fails.
     """
     if not agent_data:
         return None
-        
+
     try:
         # Deserialize the state
         state = pickle.loads(agent_data)
-        
+
         # Create a new agent with the same configuration
         # Use tool names from saved state to ensure consistency
         if 'tool_names' in state and state['tool_names']:
@@ -369,18 +415,18 @@ def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[Cod
             }
             config_with_tools = config.copy()
             config_with_tools['tools'] = [
-                tool_name_mapping.get(tool_name, tool_name) 
+                tool_name_mapping.get(tool_name, tool_name)
                 for tool_name in state['tool_names']
                 if tool_name in tool_name_mapping
             ]
             agent = create_agent(config_with_tools)
         else:
             agent = create_agent(config)
-        
+
         # Restore the memory and state
         if 'memory' in state:
             agent.memory = state['memory']
-        
+
         # Restore other important state
         if 'step_number' in state:
             agent.step_number = state['step_number']
@@ -388,9 +434,16 @@ def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[Cod
             agent.max_steps = state['max_steps']
         if 'instructions' in state and state['instructions']:
             agent.instructions = state['instructions']
-            
+
         return agent
-        
+
+    except TypeError as e:
+        # Handle specific case where AgentError signature changed
+        if "AgentError" in str(e) and "missing" in str(e) and "required positional argument" in str(e):
+            logger.warning(f"Agent state contains incompatible AgentError from old library version, starting fresh agent. Error: {e}")
+            return None
+        logger.error(f"Type error deserializing agent: {e}")
+        return None
     except Exception as e:
         logger.error(f"Error deserializing agent: {e}")
         return None
