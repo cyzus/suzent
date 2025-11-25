@@ -71,10 +71,12 @@ LOG_FILE=suzent.log
 ### Frontend Structure (frontend/src/)
 - **lib/api.ts** - REST API client for CRUD operations
 - **lib/streaming.ts** - SSE client for agent responses
-- **hooks/useChatStore.tsx** - React Context for chat state (messages, config, auto-save)
+- **hooks/useChatStore.tsx** - React Context for chat state (messages, config, auto-save, message truncation)
 - **hooks/usePlan.tsx** - React Context for plan state and task monitoring
-- **components/ChatWindow.tsx** - Message rendering with markdown, code blocks, streaming support
-- **components/Sidebar.tsx** - Chat list, plan view, configuration tabs
+- **hooks/useMemory.tsx** - React Context for memory state (core blocks, archival, stats)
+- **components/ChatWindow.tsx** - Message rendering with markdown, code blocks, streaming support, drag-and-drop images
+- **components/Sidebar.tsx** - Chat list, plan view, configuration tabs, memory view
+- **components/memory/** - Memory UI components (CoreMemoryBlock, MemoryCard, ArchivalMemoryList, MemoryStats)
 
 ### Key Patterns
 
@@ -137,6 +139,17 @@ Currently no automated test suite. Manual testing workflow:
 - **Status lifecycle**: `pending` → `in_progress` → `completed` | `failed`
 - **Frontend sync**: Plan updates trigger `plan_refresh` SSE events
 
+### Frontend Styling Best Practices
+- **Text Selection**: Use `select-text` for content, `select-none` for UI chrome (labels, metadata)
+- **Z-index Management**: Decorative overlays should use `pointer-events-none` to pass through mouse events
+- **Animations**: Avoid animations on content containers during streaming or where selection is needed
+- **Neo-brutalist Design**:
+  - Bold 3px borders (`border-3`)
+  - Hard shadows (`shadow-brutal`, `shadow-brutal-lg`)
+  - High contrast colors from brutal palette
+  - No rounded corners (brutalism aesthetic)
+- **Tailwind Custom Config**: Extended theme in `tailwind.config.cjs` with brutal colors, shadows, and animations
+
 ### Configuration (config/default.yaml)
 - **default.example.yaml** - Template with defaults
 - **default.yaml** - User overrides (gitignored)
@@ -159,11 +172,20 @@ Currently no automated test suite. Manual testing workflow:
 ## Important Gotchas
 
 1. **Agent serialization fails**: Ensure tools don't hold non-serializable objects (open files, sockets)
+   - **AgentError deserialization**: Old agent states may contain `AgentError` objects with incompatible signatures. System gracefully recovers by starting fresh agents. This is a one-time migration issue.
 2. **Plan not updating**: Check `chat_id` context is injected before agent runs
 3. **Stream hanging**: Verify `stream_controls[chat_id]` cleaned up on stream end
 4. **Tool not found**: Check `tool_module_map` in agent_manager.py matches class name in tools/ directory
 5. **Code indentation in frontend**: Python rendering uses `normalizePythonCode()` - don't strip whitespace in backend
 6. **Memory system**: Requires PostgreSQL + pgvector extension, separate from SQLite chat storage
+7. **Text selection in frontend**:
+   - Z-index overlays can block text selection - use `pointer-events-none` on decorative elements
+   - Animations can interfere with selection - remove animations from message content
+   - Use explicit `select-text` / `select-none` classes with browser prefixes for consistent behavior
+8. **Message resend/regenerate**:
+   - Must truncate messages BEFORE the target message to avoid duplicates
+   - Must call `forceSaveNow()` after truncation to sync backend state before resending
+   - Frontend state changes need time to settle - add delays before re-sending
 
 ## Technology Stack
 
@@ -173,19 +195,31 @@ Currently no automated test suite. Manual testing workflow:
 
 ## API Endpoints
 
+### Chat & Streaming
 - `POST /chat` - Stream agent response (SSE)
 - `POST /chat/stop` - Stop active stream
 - `GET /chats` - List all chats
 - `POST /chats` - Create new chat
 - `GET /chats/{id}` - Get specific chat with messages
-- `PUT /chats/{id}` - Update chat (title, config)
+- `PUT /chats/{id}` - Update chat (title, config, messages)
 - `DELETE /chats/{id}` - Delete chat (cascades to plans/tasks)
+
+### Planning
 - `GET /plan?chat_id={id}` - Get current plan
 - `GET /plans?chat_id={id}` - Get plan history
+
+### Configuration & MCP
 - `GET /config` - Get configuration options
 - `POST /config` - Update configuration
 - `GET /mcp_servers` - List MCP servers
 - `POST /mcp_servers` - Add MCP server
+
+### Memory System (Optional)
+- `GET /memory/core` - Get core memory blocks
+- `PUT /memory/core/{block_name}` - Update core memory block
+- `GET /memory/archival` - Search archival memories
+- `POST /memory/archival` - Add archival memory
+- `GET /memory/stats` - Get memory statistics
 
 ## Design Philosophy
 
@@ -198,6 +232,7 @@ Currently no automated test suite. Manual testing workflow:
 
 ## Recent Changes (feat/memory branch)
 
+### Memory System Implementation
 The memory system is a recent addition implementing Letta-style memory:
 - PostgreSQL + pgvector replaces ChromaDB approach
 - Automatic fact extraction from conversations
@@ -205,3 +240,12 @@ The memory system is a recent addition implementing Letta-style memory:
 - Simplified agent interface (only 2 tools vs. 5 in Letta)
 - See `docs/MEMORY_SYSTEM_DESIGN.md` for full specifications
 - See `MEMORY_POC_SUMMARY.md` for implementation summary
+
+### UI/UX Improvements
+Recent frontend enhancements for better usability:
+- **Text selection fixes**: Removed z-index conflicts, animations, and added explicit user-select CSS for smooth text selection
+- **Neo-brutalist design system**: Consistent styling with bold borders, shadows, and high-contrast colors
+- **Drag-and-drop images**: Direct image upload via drag-and-drop in chat window
+- **Message resend functionality**: Hover over user messages to reveal resend button (truncates conversation and regenerates)
+- **Memory view integration**: Sidebar tab for viewing/editing core memory and browsing archival memories
+- **View switcher**: Toggle between chat and memory views with preserved context
