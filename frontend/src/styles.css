@@ -104,6 +104,15 @@ code {
   -ms-user-select: text;
 }
 
+/* Optimize text selection during streaming updates */
+.select-text {
+  /* Prevent text selection from being cleared during DOM updates */
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  /* Hint to browser that content will change (helps with rendering optimization) */
+  will-change: contents;
+}
+
 .select-none, .select-none * {
   user-select: none;
   -webkit-user-select: none;

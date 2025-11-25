@@ -34,6 +34,13 @@ function normalizePythonCode(code: string): string {
   return code;
 }
 
+// Helper to generate stable key for a block based on its position and type
+// During streaming, blocks grow but don't change position, so index is stable
+function generateBlockKey(block: { type: string; content: string; lang?: string; title?: string }, index: number, messageIdx: number): string {
+  // Use message index + block index + type for a stable key that doesn't change as content grows
+  return `msg-${messageIdx}-block-${index}-${block.type}`;
+}
+
 // Helper to split assistant content into markdown + code + log blocks
 function splitAssistantContent(content: string): { type: 'markdown' | 'code' | 'log'; content: string; lang?: string; title?: string }[] {
   const blocks: { type: 'markdown' | 'code' | 'log'; content: string; lang?: string; title?: string }[] = [];
@@ -213,7 +220,7 @@ const CopyButton: React.FC<{ text: string }> = ({ text }) => {
   );
 };
 
-const MarkdownRenderer = (props: { content: string }) => {
+const MarkdownRenderer = React.memo((props: { content: string }) => {
   const RM: any = ReactMarkdown;
   // Only minimal normalization: collapse runs of 3+ newlines to 2, trim leading/trailing newlines.
   // whitespace-pre-wrap handles line breaks elegantly, so no need for further HTML tag/class stripping.
@@ -340,7 +347,7 @@ const MarkdownRenderer = (props: { content: string }) => {
       </RM>
     </div>
   );
-};
+});
 
 export const ChatWindow: React.FC = () => {
   const {
@@ -734,13 +741,14 @@ export const ChatWindow: React.FC = () => {
                         </div>
                         <div className={`bg-white border-3 border-brutal-black px-6 py-5 space-y-4 relative -mt-3 pt-6 shadow-brutal-lg select-text`}>
                         {blocks.map((b, bi) => {
+                          const blockKey = generateBlockKey(b, bi, idx);
                           if (b.type === 'markdown') {
-                            return <MarkdownRenderer key={bi} content={b.content} />;
+                            return <MarkdownRenderer key={blockKey} content={b.content} />;
                           } else if (b.type === 'log') {
-                            return <LogBlock key={bi} title={b.title} content={b.content} />;
+                            return <LogBlock key={blockKey} title={b.title} content={b.content} />;
                           } else {
                             return (
-                              <div key={bi} className="relative my-4 group/code">
+                              <div key={blockKey} className="relative my-4 group/code">
                                 <div className="absolute -top-3 left-4 bg-brutal-black text-white text-[10px] font-bold px-2 py-0.5 uppercase tracking-wider border-2 border-brutal-black z-10">
                                   {(b as any).lang || 'CODE'}
                                 </div>

@@ -8,6 +8,7 @@ interface PlanViewProps {
   plans: Plan[];
   selectedPlanKey: string | null;
   onSelectPlan: (planKey: string | null) => void;
+  onRefresh?: () => void;
 }
 
 const getPlanKey = (plan: Plan) => (plan.id != null ? `plan:${plan.id}` : plan.versionKey);
