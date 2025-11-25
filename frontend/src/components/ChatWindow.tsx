@@ -244,7 +244,7 @@ const MarkdownRenderer = (props: { content: string }) => {
   return (
     // add `tight-lists` to increase selector specificity for our list overrides
     // remove whitespace-pre-wrap so stray newlines do not render as visible gaps
-    <div className="prose tight-lists prose-sm max-w-none break-words">
+    <div className="prose tight-lists prose-sm max-w-none break-words select-text">
       <RM
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[
@@ -710,12 +710,12 @@ export const ChatWindow: React.FC = () => {
                         )}
                         {m.content && (
                           <div className="flex justify-end">
-                            <div className="bg-brutal-yellow border-3 border-brutal-black shadow-brutal-lg px-5 py-4 max-w-full font-medium animate-brutal-slide relative">
+                            <div className="bg-brutal-yellow border-3 border-brutal-black shadow-brutal-lg px-5 py-4 max-w-full font-medium relative select-text">
                               <div className="prose prose-sm max-w-none break-words text-brutal-black font-sans">{m.content}</div>
                             </div>
                           </div>
                         )}
-                        <div className="text-[10px] font-bold text-neutral-400 uppercase text-right pr-1 opacity-0 group-hover/message:opacity-100 transition-opacity">
+                        <div className="text-[10px] font-bold text-neutral-400 uppercase text-right pr-1 opacity-0 group-hover/message:opacity-100 transition-opacity select-none">
                           User
                         </div>
                       </div>
@@ -723,7 +723,7 @@ export const ChatWindow: React.FC = () => {
                       // Assistant message: Neo-brutalist white bubble with AI indicator
                       <div className={`group w-full max-w-4xl break-words overflow-visible space-y-0 text-sm leading-relaxed relative pr-4 md:pr-12`}>
                         {/* AI Assistant Label - Bold & Brutalist */}
-                        <div className="inline-flex items-center gap-2 bg-brutal-black text-brutal-white px-3 py-1 font-bold text-xs tracking-wider border-3 border-brutal-black mb-0 animate-brutal-pop shadow-[4px_4px_0_0_rgba(0,0,0,0.1)] z-10 relative">
+                        <div className="inline-flex items-center gap-2 bg-brutal-black text-brutal-white px-3 py-1 font-bold text-xs tracking-wider border-3 border-brutal-black mb-0 shadow-[4px_4px_0_0_rgba(0,0,0,0.1)] relative pointer-events-none select-none">
                           <svg className={`w-4 h-4 ${isStreamingAgentMessage ? 'robot-streaming' : ''}`} viewBox="0 0 24 24" fill="none" aria-hidden="true">
                             <rect x="2" y="2" width="20" height="20" rx="3" fill="currentColor" />
                             <rect x="4" y="4" width="16" height="16" rx="3" fill="#000000" />
@@ -732,7 +732,7 @@ export const ChatWindow: React.FC = () => {
                           </svg>
                           <span>AGENT</span>
                         </div>
-                        <div className={`bg-white border-3 border-brutal-black px-6 py-5 space-y-4 relative z-0 -mt-3 pt-6 ${isStreamingAgentMessage ? 'shadow-brutal-lg' : 'shadow-brutal-lg animate-brutal-drop'}`}>
+                        <div className={`bg-white border-3 border-brutal-black px-6 py-5 space-y-4 relative -mt-3 pt-6 shadow-brutal-lg select-text`}>
                         {blocks.map((b, bi) => {
                           if (b.type === 'markdown') {
                             return <MarkdownRenderer key={bi} content={b.content} />;
@@ -766,7 +766,7 @@ export const ChatWindow: React.FC = () => {
                   </div>
                   {!isUser && m.stepInfo && (
                     <div className={`flex ${alignClass} w-full mt-2 pl-4`}>
-                      <div className="inline-flex items-center gap-2 text-[10px] text-brutal-black font-mono font-bold px-3 py-1 bg-neutral-100 border-2 border-brutal-black shadow-sm">
+                      <div className="inline-flex items-center gap-2 text-[10px] text-brutal-black font-mono font-bold px-3 py-1 bg-neutral-100 border-2 border-brutal-black shadow-sm select-none">
                         <span className="text-brutal-blue">⚡</span>
                         <span>{m.stepInfo}</span>
                       </div>

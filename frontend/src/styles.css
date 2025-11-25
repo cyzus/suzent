@@ -96,6 +96,27 @@ code {
   font-family: Consolas, 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, 'Liberation Mono', 'Ubuntu Mono', 'DejaVu Sans Mono', 'Segoe UI Symbol', 'Courier New', monospace;
 }
 
+/* Ensure smooth text selection */
+.select-text, .select-text * {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+.select-none, .select-none * {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+/* Improve prose text selection by reducing margin interference */
+.prose p, .prose li, .prose blockquote {
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+}
+
 /* Fade-in animation */
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(4px);} to { opacity:1; transform: translateY(0);} }
 .group { animation: fadeInUp 0.25s ease; }
