@@ -194,13 +194,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return title.length > 50 ? `${title.substring(0, 47)}...` : title;
   }, []);
 
-  // Fetch backend config once
+  // Fetch backend config once with retry logic
   useEffect(() => {
-    (async () => {
+    let isMounted = true;
+    const fetchConfigWithRetry = async (attempt = 1, maxAttempts = 5) => {
       try {
         const res = await fetch('/api/config');
         if (res.ok) {
           const data: ConfigOptions = await res.json();
+          if (!isMounted) return;
+
           setBackendConfig(data);
           // Align memory user id with backend-provided userId if present
           try {
@@ -220,16 +223,34 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
           setConfigState(firstConfig);
           setConfigByChat(prev => ({ ...prev, [UNSAVED_CHAT_KEY]: firstConfig }));
+        } else if (attempt < maxAttempts) {
+          // Backend not ready, retry with exponential backoff
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          console.log(`Backend not ready (${res.status}), retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`);
+          setTimeout(() => fetchConfigWithRetry(attempt + 1, maxAttempts), delay);
         } else {
-          console.error('Failed to fetch config:', res.status, res.statusText);
+          console.error('Failed to fetch config after', maxAttempts, 'attempts:', res.status, res.statusText);
         }
       } catch (error) {
-        console.error('Error fetching config:', error);
+        if (attempt < maxAttempts && isMounted) {
+          // Network error, retry with exponential backoff
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          console.log(`Error fetching config, retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`);
+          setTimeout(() => fetchConfigWithRetry(attempt + 1, maxAttempts), delay);
+        } else {
+          console.error('Error fetching config after', maxAttempts, 'attempts:', error);
+        }
       }
-    })();
+    };
+
+    fetchConfigWithRetry();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  const refreshChatList = useCallback(async () => {
+  const refreshChatList = useCallback(async (attempt = 1, maxAttempts = 5) => {
     const isFirstLoad = !chatsLoadedRef.current;
     if (isFirstLoad) {
       setLoadingChats(true);
@@ -242,7 +263,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (res.ok) {
         const data = await res.json();
         const serverList: ChatSummary[] = data.chats || [];
-        
+
         // Merge server list with local state, preserving local updates
         setChats(prev => {
           const merged = serverList.map(serverChat => {
@@ -256,7 +277,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
           return merged;
         });
-        
+
         if (currentChatId) {
           const summary = serverList.find(c => c.id === currentChatId);
           if (summary && summary.title && summary.title !== currentChatTitle) {
@@ -266,17 +287,44 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }
         }
+
+        // Success - mark as loaded
+        if (isFirstLoad) {
+          chatsLoadedRef.current = true;
+        }
+      } else if (isFirstLoad && attempt < maxAttempts) {
+        // Backend not ready on first load, retry with exponential backoff
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        console.log(`Backend not ready for chat list (${res.status}), retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`);
+        setTimeout(() => refreshChatList(attempt + 1, maxAttempts), delay);
+        return; // Don't clear loading state yet
       } else {
         console.error('Failed to fetch chats:', res.status, res.statusText);
       }
     } catch (error) {
-      console.error('Error fetching chats:', error);
-    } finally {
-      if (isFirstLoad) {
-        setLoadingChats(false);
-        chatsLoadedRef.current = true;
+      if (isFirstLoad && attempt < maxAttempts) {
+        // Network error on first load, retry with exponential backoff
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        console.log(`Error fetching chat list, retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`);
+        setTimeout(() => refreshChatList(attempt + 1, maxAttempts), delay);
+        return; // Don't clear loading state yet
+      } else {
+        console.error('Error fetching chats:', error);
       }
-      setRefreshingChats(false);
+    } finally {
+      // Clear loading state if we're done (success or final failure)
+      if (isFirstLoad) {
+        // Clear loading if we succeeded OR if this was the final attempt
+        if (chatsLoadedRef.current || attempt >= maxAttempts) {
+          setLoadingChats(false);
+          if (!chatsLoadedRef.current) {
+            chatsLoadedRef.current = true; // Mark as attempted even if failed
+          }
+        }
+      }
+      if (!isFirstLoad) {
+        setRefreshingChats(false);
+      }
     }
   }, [currentChatId, currentChatTitle, getMessagesForChat]);
 
