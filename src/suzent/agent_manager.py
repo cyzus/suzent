@@ -12,6 +12,7 @@ This module handles the lifecycle of AI agents including:
 import asyncio
 import importlib
 import pickle
+import io
 import os
 from typing import Optional, Dict, Any
 from mcp import StdioServerParameters
@@ -27,6 +28,35 @@ from suzent.prompts import format_instructions
 os.environ["LITELLM_LOG"] = "ERROR"
 
 logger = get_logger(__name__)
+
+
+class _AgentErrorCompatUnpickler(pickle.Unpickler):
+    """
+    Custom unpickler that handles old AgentError objects from previous library versions.
+    
+    The smolagents library changed AgentError.__init__ to require a 'logger' parameter.
+    Old pickled agent states contain AgentError objects without this parameter.
+    This unpickler intercepts AgentError construction and provides a dummy logger.
+    """
+    
+    def find_class(self, module, name):
+        """Override to intercept AgentError class loading."""
+        if module == 'smolagents.agents' and name == 'AgentError':
+            # Return a wrapper that handles both old and new signatures
+            from smolagents.agents import AgentError
+            
+            class CompatAgentError(AgentError):
+                """Compatibility wrapper for AgentError that handles missing logger."""
+                def __init__(self, message, logger=None):
+                    # If logger is not provided, use a minimal dummy logger
+                    if logger is None:
+                        from suzent.logger import get_logger
+                        logger = get_logger('agent_error_compat')
+                    super().__init__(message, logger)
+            
+            return CompatAgentError
+        
+        return super().find_class(module, name)
 
 
 # --- Agent State ---
@@ -406,8 +436,8 @@ def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[Cod
         return None
 
     try:
-        # Deserialize the state
-        state = pickle.loads(agent_data)
+        # Deserialize the state using custom unpickler for compatibility
+        state = _AgentErrorCompatUnpickler(io.BytesIO(agent_data)).load()
 
         # Create a new agent with the same configuration
         # Use tool names from saved state to ensure consistency
@@ -443,15 +473,8 @@ def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[Cod
 
         return agent
 
-    except TypeError as e:
-        # Handle specific case where AgentError signature changed
-        if "AgentError" in str(e) and "missing" in str(e) and "required positional argument" in str(e):
-            logger.warning(f"Agent state contains incompatible AgentError from old library version, starting fresh agent. Error: {e}")
-            return None
-        logger.error(f"Type error deserializing agent: {e}")
-        return None
     except Exception as e:
-        logger.error(f"Error deserializing agent: {e}")
+        logger.warning(f"Error deserializing agent state: {e}. Starting with fresh agent.")
         return None
 
 

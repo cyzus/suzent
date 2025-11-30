@@ -198,6 +198,11 @@ async def chat(request: Request) -> StreamingResponse:
                                 restored_agent = deserialize_agent(agent_state, config)
                                 if restored_agent:
                                     agent_instance = restored_agent
+                                else:
+                                    # Agent state was corrupted (e.g., incompatible library version)
+                                    # Clear it from database so fresh state can be saved
+                                    logger.info(f"Clearing corrupted agent state for chat {chat_id}")
+                                    db.update_chat(chat_id, agent_state=b'')
                     except Exception as e:
                         logger.warning(f"Error loading agent state: {e}")
                         # Continue without state restoration rather than failing
