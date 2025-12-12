@@ -8,15 +8,33 @@ export const ChatList: React.FC = () => {
     loadingChats,
     refreshingChats,
     currentChatId,
+    searchQuery,
+    setSearchQuery,
     loadChat,
     beginNewChat,
     deleteChat,
-    switchToView
+    switchToView,
+    refreshChatList
   } = useChatStore();
   
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showRefreshIndicator, setShowRefreshIndicator] = useState(false);
+  const [localSearchQuery, setLocalSearchQuery] = useState<string>('');
+
+  // Sync local search with global search on mount
+  useEffect(() => {
+    setLocalSearchQuery(searchQuery);
+  }, []);
+
+  // Debounce search to avoid too many API calls
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setSearchQuery(localSearchQuery);
+      refreshChatList(localSearchQuery);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [localSearchQuery]);
 
   useEffect(() => {
     let timeout: NodeJS.Timeout | null = null;
@@ -102,13 +120,52 @@ export const ChatList: React.FC = () => {
         </button>
       </div>
 
+      {/* Search Bar */}
+      <div className="p-4 border-b-3 border-brutal-black bg-white">
+        <div className="relative">
+          <input
+            type="text"
+            value={localSearchQuery}
+            onChange={(e) => setLocalSearchQuery(e.target.value)}
+            placeholder="SEARCH CHATS..."
+            className="w-full px-3 py-2 pl-10 bg-white border-3 border-brutal-black font-bold text-sm uppercase placeholder-neutral-400 focus:outline-none focus:shadow-brutal transition-shadow"
+          />
+          <svg
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brutal-black pointer-events-none"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            strokeWidth={3}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          {localSearchQuery && (
+            <button
+              onClick={() => setLocalSearchQuery('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-neutral-100 border-2 border-brutal-black transition-colors"
+              title="Clear search"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Chat List */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">
         {chats.length === 0 ? (
           <div className="p-8 text-center">
-            <div className="w-12 h-12 bg-neutral-200 border-2 border-brutal-black mx-auto mb-3 flex items-center justify-center text-2xl">💬</div>
-            <p className="text-brutal-black text-sm font-bold uppercase">No chats yet</p>
-            <p className="text-neutral-500 text-xs mt-1">Start a new conversation to begin</p>
+            <div className="w-12 h-12 bg-neutral-200 border-2 border-brutal-black mx-auto mb-3 flex items-center justify-center text-2xl">
+              {searchQuery ? '🔍' : '💬'}
+            </div>
+            <p className="text-brutal-black text-sm font-bold uppercase">
+              {searchQuery ? 'No results found' : 'No chats yet'}
+            </p>
+            <p className="text-neutral-500 text-xs mt-1">
+              {searchQuery ? 'Try a different search term' : 'Start a new conversation to begin'}
+            </p>
           </div>
         ) : (
           <div className="p-3 space-y-3">

@@ -247,16 +247,28 @@ class ChatDatabase:
             conn.commit()
             return cursor.rowcount
     
-    def list_chats(self, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
-        """List chat summaries ordered by last updated."""
+    def list_chats(self, limit: int = 50, offset: int = 0, search: str = None) -> List[Dict[str, Any]]:
+        """List chat summaries ordered by last updated, optionally filtered by search query."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute("""
-                SELECT id, title, created_at, updated_at, messages
-                FROM chats 
-                ORDER BY updated_at DESC 
-                LIMIT ? OFFSET ?
-            """, (limit, offset))
+            
+            if search:
+                # Search in title and message content
+                search_pattern = f"%{search}%"
+                cursor = conn.execute("""
+                    SELECT id, title, created_at, updated_at, messages
+                    FROM chats 
+                    WHERE title LIKE ? OR messages LIKE ?
+                    ORDER BY updated_at DESC 
+                    LIMIT ? OFFSET ?
+                """, (search_pattern, search_pattern, limit, offset))
+            else:
+                cursor = conn.execute("""
+                    SELECT id, title, created_at, updated_at, messages
+                    FROM chats 
+                    ORDER BY updated_at DESC 
+                    LIMIT ? OFFSET ?
+                """, (limit, offset))
             
             chats = []
             for row in cursor.fetchall():
@@ -280,10 +292,17 @@ class ChatDatabase:
             
             return chats
     
-    def get_chat_count(self) -> int:
-        """Get total number of chats."""
+    def get_chat_count(self, search: str = None) -> int:
+        """Get total number of chats, optionally filtered by search query."""
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("SELECT COUNT(*) FROM chats")
+            if search:
+                search_pattern = f"%{search}%"
+                cursor = conn.execute(
+                    "SELECT COUNT(*) FROM chats WHERE title LIKE ? OR messages LIKE ?",
+                    (search_pattern, search_pattern)
+                )
+            else:
+                cursor = conn.execute("SELECT COUNT(*) FROM chats")
             return cursor.fetchone()[0]
 
     # Plan management methods

@@ -297,6 +297,7 @@ async def get_chats(request: Request) -> JSONResponse:
     Query parameters:
     - limit: Maximum number of chats to return (default: 50)
     - offset: Number of chats to skip (default: 0)
+    - search: Optional search query to filter chats by title or message content
     
     Returns:
         JSONResponse with chats list, total count, and pagination info.
@@ -307,15 +308,17 @@ async def get_chats(request: Request) -> JSONResponse:
         # Parse query parameters
         limit = int(request.query_params.get("limit", 50))
         offset = int(request.query_params.get("offset", 0))
+        search = request.query_params.get("search", "").strip() or None
         
-        chats = db.list_chats(limit=limit, offset=offset)
-        total = db.get_chat_count()
+        chats = db.list_chats(limit=limit, offset=offset, search=search)
+        total = db.get_chat_count(search=search)
         
         return JSONResponse({
             "chats": chats,
             "total": total,
             "limit": limit,
-            "offset": offset
+            "offset": offset,
+            "search": search
         })
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

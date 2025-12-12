@@ -22,6 +22,8 @@ interface ChatContextValue {
   chats: ChatSummary[];
   loadingChats: boolean;
   refreshingChats: boolean;
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
   beginNewChat: () => void;
   createNewChat: () => Promise<string | null>;
   loadChat: (chatId: string) => Promise<void>;
@@ -29,7 +31,7 @@ interface ChatContextValue {
   finalSave: (chatId?: string | null) => Promise<void>;
   forceSaveNow: (chatId?: string | null) => Promise<void>;
   deleteChat: (chatId: string) => Promise<void>;
-  refreshChatList: () => Promise<void>;
+  refreshChatList: (searchQuery?: string) => Promise<void>;
   setViewSwitcher?: (switcher: (view: 'chat' | 'memory') => void) => void;
   switchToView?: (view: 'chat' | 'memory') => void;
 }
@@ -83,6 +85,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [loadingChats, setLoadingChats] = useState(false);
   const [refreshingChats, setRefreshingChats] = useState(false);
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const chatsLoadedRef = useRef(false);
   const chatCreationPromiseRef = useRef<Promise<string | null> | null>(null);
   const saveTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
@@ -289,7 +292,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const refreshChatList = useCallback(async (attempt = 1, maxAttempts = 5) => {
+  const refreshChatList = useCallback(async (search?: string, attempt = 1, maxAttempts = 5) => {
     const isFirstLoad = !chatsLoadedRef.current;
     if (isFirstLoad) {
       setLoadingChats(true);
@@ -298,7 +301,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     const currentMessages = currentChatId ? getMessagesForChat(currentChatId) : null;
     try {
-      const res = await fetch('/api/chats');
+      const searchParam = search !== undefined ? search : searchQuery;
+      const url = searchParam ? `/api/chats?search=${encodeURIComponent(searchParam)}` : '/api/chats';
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         const serverList: ChatSummary[] = data.chats || [];
@@ -335,7 +340,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Backend not ready on first load, retry with exponential backoff
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
         console.log(`Backend not ready for chat list (${res.status}), retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`);
-        setTimeout(() => refreshChatList(attempt + 1, maxAttempts), delay);
+        setTimeout(() => refreshChatList(search, attempt + 1, maxAttempts), delay);
         return; // Don't clear loading state yet
       } else {
         console.error('Failed to fetch chats:', res.status, res.statusText);
@@ -345,7 +350,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Network error on first load, retry with exponential backoff
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
         console.log(`Error fetching chat list, retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`);
-        setTimeout(() => refreshChatList(attempt + 1, maxAttempts), delay);
+        setTimeout(() => refreshChatList(search, attempt + 1, maxAttempts), delay);
         return; // Don't clear loading state yet
       } else {
         console.error('Error fetching chats:', error);
@@ -365,7 +370,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setRefreshingChats(false);
       }
     }
-  }, [currentChatId, currentChatTitle, getMessagesForChat]);
+  }, [currentChatId, currentChatTitle, getMessagesForChat, searchQuery]);
 
   // Load chat list on mount (and when refreshChatList reference changes)
   useEffect(() => {
@@ -871,6 +876,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       chats,
       loadingChats,
       refreshingChats,
+      searchQuery,
+      setSearchQuery,
       beginNewChat,
       createNewChat,
       loadChat,
