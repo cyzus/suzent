@@ -43,6 +43,19 @@ from suzent.routes.memory_routes import (
     delete_archival_memory,
     get_memory_stats,
 )
+from suzent.routes.export_routes import (
+    export_chat,
+    export_all,
+    import_chat,
+    create_backup,
+    get_stats,
+)
+from suzent.routes.health_routes import (
+    health_check,
+    readiness_check,
+    get_system_info,
+    get_metrics,
+)
 
 # Load environment variables
 load_dotenv()
@@ -108,6 +121,17 @@ app = Starlette(
         Route("/memory/archival", search_archival_memory, methods=["GET"]),
         Route("/memory/archival/{memory_id}", delete_archival_memory, methods=["DELETE"]),
         Route("/memory/stats", get_memory_stats, methods=["GET"]),
+        # Export/Import endpoints
+        Route("/export/chat", export_chat, methods=["GET"]),
+        Route("/export/all", export_all, methods=["GET"]),
+        Route("/import/chat", import_chat, methods=["POST"]),
+        Route("/backup", create_backup, methods=["GET"]),
+        Route("/stats", get_stats, methods=["GET"]),
+        # Health and monitoring endpoints
+        Route("/health", health_check, methods=["GET"]),
+        Route("/ready", readiness_check, methods=["GET"]),
+        Route("/info", get_system_info, methods=["GET"]),
+        Route("/metrics", get_metrics, methods=["GET"]),
     ],
     middleware=[
         Middleware(
