@@ -1,0 +1,60 @@
+# Production Configuration Example for Suzent
+#
+# This file demonstrates production-ready configuration with security enabled.
+# Copy to config/default.yaml and customize for your deployment.
+
+# Model Configuration
+MODEL_OPTIONS:
+  - "anthropic/claude-sonnet-4-20250514"
+  - "gemini/gemini-2.5-flash"
+  - "gemini/gemini-2.5-pro"
+  - "openai/gpt-4.1"
+  - "deepseek/deepseek-chat"
+
+# Default Tools - only enable what you need
+DEFAULT_TOOLS:
+  - "WebSearchTool"      # Web search (requires SearXNG or internet)
+  - "PlanningTool"       # Task planning
+  - "WebpageTool"        # Fetch web pages
+  # - "FileTool"         # File operations (disable in untrusted environments)
+
+# MCP Server Configuration
+MCP_URLS:
+  # Add your MCP servers here
+  # "Server Name": "https://server.com/mcp"
+
+MCP_STDIO_PARAMS: {}
+
+# Agent Configuration
+INSTRUCTIONS: |
+  You are a helpful AI assistant. Be concise and accurate.
+  Always cite sources when providing factual information.
+
+ADDITIONAL_AUTHORIZED_IMPORTS: []
+
+# Memory System (Optional - requires PostgreSQL + pgvector)
+MEMORY_ENABLED: false
+EMBEDDING_MODEL: gemini/gemini-embedding-001
+EMBEDDING_DIMENSION: 3072
+USER_ID: "default-user"
+EXTRACTION_MODEL: "gemini/gemini-2.5-flash"
+
+# Security Configuration (Optional - add to .env for production)
+# 
+# SUZENT_ENABLE_RATE_LIMIT=true
+# SUZENT_RATE_LIMIT_PER_MINUTE=60
+# SUZENT_RATE_LIMIT_BURST=20
+#
+# SUZENT_ENABLE_AUTH=true
+# SUZENT_API_KEYS=key1_hash,key2_hash,key3_hash
+#
+# SUZENT_ENABLE_SECURITY_HEADERS=true
+# SUZENT_ENABLE_REQUEST_LOGGING=true
+
+# Logging Configuration
+# LOG_LEVEL=INFO              # DEBUG, INFO, WARNING, ERROR
+# LOG_FILE=logs/suzent.log    # Optional: log to file
+
+# CORS Configuration (Production)
+# Set in environment:
+# SUZENT_CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
