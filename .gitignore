@@ -11,6 +11,8 @@ wheels/
 # Virtual environments
 .venv
 .env
+.env.local
+.env.*.local
 venv/
 
 # Byte-compiled / cache
@@ -30,10 +32,14 @@ pytest-debug.log
 # Logs
 logs/
 *.log
+suzent.log
 
 # IDE / editor
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
 # Frontend artifacts
 frontend/node_modules
@@ -44,8 +50,12 @@ frontend/vite-cache
 
 # Database files
 *.db
+*.db-journal
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
+chats.db*
 
 # Generated plan files (optional - remove this line if you want to track TODO.md)
 TODO.md
@@ -54,5 +64,16 @@ TODO.md
 .DS_Store
 Thumbs.db
 
-# Config
+# Config and secrets
 config/default.yaml
+config/api_keys.json
+
+# Backup and export files
+backups/
+exports/
+*.bak
+
+# Temporary files
+tmp/
+temp/
+*.tmp

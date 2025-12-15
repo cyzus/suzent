@@ -14,6 +14,11 @@ An AI agent chat application with persistent conversations, task planning, web s
 - **Streaming Responses** - Real-time SSE updates
 - **MCP Support** - Model Context Protocol server integration
 - **Extensible** - Easy to add custom tools
+- **Data Export/Import** - Export chats to JSON/Markdown, create backups
+- **Health Monitoring** - Health checks, metrics, system info endpoints
+- **Security** - Rate limiting, API authentication, input validation (optional)
+- **Testing** - Comprehensive test suite with CI/CD
+- **Developer Tools** - Setup scripts, linting, comprehensive documentation
 
 
 ## Quick Start
@@ -94,6 +99,7 @@ Letta-style long-term memory with:
 
 ## API Endpoints
 
+### Core Endpoints
 ```
 POST   /chat                Stream agent response (SSE)
 POST   /chat/stop           Stop active stream
@@ -105,12 +111,27 @@ DELETE /chats/{id}          Delete chat
 GET    /plan                Get current plan
 GET    /plans               Get plan history
 GET    /config              Get configuration
-POST   /config              Update configuration
-GET    /mcp_servers         List MCP servers
-POST   /mcp_servers         Add MCP server
+POST   /preferences         Update configuration
 ```
 
-See [API Reference](./docs/api-reference.md) for details.
+### Export/Import Endpoints
+```
+GET    /export/chat         Export chat (JSON/Markdown)
+GET    /export/all          Export all chats (ZIP)
+POST   /import/chat         Import chat from JSON
+GET    /backup              Create database backup
+GET    /stats               Get database statistics
+```
+
+### Monitoring Endpoints
+```
+GET    /health              Health check
+GET    /ready               Readiness check
+GET    /info                System information
+GET    /metrics             Prometheus metrics
+```
+
+See [docs/API_REFERENCE.md](./docs/API_REFERENCE.md) for complete API documentation.
 
 ## Architecture
 
@@ -138,17 +159,50 @@ frontend/src/
 
 ## Documentation
 
-- [AGENTS.md](./AGENTS.md) - Developer guide
-- [docs/tools.md](./docs/tools.md) - Tool documentation
-- [docs/searxng-setup.md](./docs/searxng-setup.md) - SearXNG setup
-- [docs/MEMORY_SYSTEM_DESIGN.md](./docs/MEMORY_SYSTEM_DESIGN.md) - Memory specs
-- [MEMORY_POC_SUMMARY.md](./MEMORY_POC_SUMMARY.md) - Memory implementation
+- **[AGENTS.md](./AGENTS.md)** - Developer guide and architecture
+- **[CONTRIBUTING.md](./CONTRIBUTING.md)** - How to contribute
+- **[SECURITY.md](./SECURITY.md)** - Security policies and best practices
+- **[docs/API_REFERENCE.md](./docs/API_REFERENCE.md)** - Complete API documentation
+- **[docs/tools.md](./docs/tools.md)** - Tool documentation
+- **[docs/searxng-setup.md](./docs/searxng-setup.md)** - SearXNG setup guide
+- **[docs/MEMORY_SYSTEM_DESIGN.md](./docs/MEMORY_SYSTEM_DESIGN.md)** - Memory system specs
 
-## Adding Tools
+## Contributing
 
-1. Create `src/suzent/tools/yourtool_tool.py` inheriting `smolagents.tools.Tool`
-2. Define `name`, `description`, `inputs`, `output_type`, `forward()` method
-3. Register in `agent_manager.py` → `tool_module_map`
+We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for:
+- Development setup
+- Code style guidelines
+- Testing requirements
+- Pull request process
 
-See [AGENTS.md](./AGENTS.md) for full details.
+Quick start for contributors:
+```bash
+./scripts/setup_dev.sh  # Automated setup
+# or follow manual setup in CONTRIBUTING.md
+```
+
+## Security
+
+For security issues, please see [SECURITY.md](./SECURITY.md).
+
+Optional security features:
+- **Rate Limiting**: Limit requests per IP
+- **API Authentication**: Protect endpoints with API keys
+- **Input Validation**: Comprehensive validation to prevent attacks
+
+## Testing
+
+Run tests:
+```bash
+# Backend tests
+uv run pytest test/ -v
+
+# Frontend build
+cd frontend && npm run build
+
+# Code linting
+uv run ruff check src/
+```
+
+CI/CD runs automatically on pull requests.
 
