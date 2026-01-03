@@ -17,10 +17,14 @@ def get_mcp_servers_merged():
     db_servers = db.get_mcp_servers()
 
     # Start with config defaults
+    # MCP servers from config default to DISABLED until user explicitly enables them
     merged = {
         "urls": dict(CONFIG.mcp_urls),
         "stdio": dict(CONFIG.mcp_stdio_params),
-        "enabled": {k: True for k in CONFIG.mcp_urls.keys()}
+        "enabled": {
+            **{k: False for k in CONFIG.mcp_urls.keys()},
+            **{k: False for k in CONFIG.mcp_stdio_params.keys()}
+        }
     }
 
     # Merge in database servers (overrides config)

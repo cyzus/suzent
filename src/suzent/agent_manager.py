@@ -230,25 +230,18 @@ def create_agent(config: Dict[str, Any], memory_context: Optional[str] = None) -
 
     mcp_server_parameters = []
     if mcp_enabled is not None:
-        # Only include enabled servers
+        # Only include explicitly enabled servers
+        # Default to False (disabled) if server not in mcp_enabled dict
         if mcp_urls:
             for name, url in (mcp_urls.items() if isinstance(mcp_urls, dict) else enumerate(mcp_urls)):
-                if mcp_enabled.get(name, True):
+                if mcp_enabled.get(name, False):
                     mcp_server_parameters.append({"url": url, "transport": "streamable-http"})
         if mcp_stdio_params:
             for name, params in mcp_stdio_params.items():
-                if mcp_enabled.get(name, True):
+                if mcp_enabled.get(name, False):
                     mcp_server_parameters.append(StdioServerParameters(**params))
-    else:
-        # Legacy: include all
-        if mcp_urls:
-            mcp_server_parameters.extend(
-                [{"url": url, "transport": "streamable-http"} for url in (mcp_urls.values() if isinstance(mcp_urls, dict) else mcp_urls)]
-            )
-        if mcp_stdio_params:
-            mcp_server_parameters.extend(
-                [StdioServerParameters(**params) for server, params in mcp_stdio_params.items()]
-            )
+    # Note: If mcp_enabled is not provided, default to NO MCP servers
+    # This ensures fresh launch matches frontend tool display (only native tools)
 
     if mcp_server_parameters:
         mcp_client = MCPClient(server_parameters=mcp_server_parameters)

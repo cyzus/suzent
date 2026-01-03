@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { useChatStore } from '../../hooks/useChatStore';
 import { fetchMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled } from '../../lib/api';
@@ -40,13 +40,22 @@ export const ConfigView: React.FC = () => {
     });
   }, []);
 
+  // Track previous values to prevent infinite loops
+  const prevMcpStateRef = useRef<string>('');
+
   // Sync enabled server urls and enabled state for all servers back to config
   useEffect(() => {
     const enabledUrls = servers.filter(s => s.enabled && s.type === 'url').map(s => (s as any).url);
     // mcp_enabled: { [name]: boolean }
     const mcp_enabled: Record<string, boolean> = {};
     servers.forEach(s => { mcp_enabled[s.name] = s.enabled; });
-    setConfig(prevConfig => ({ ...prevConfig, mcp_urls: enabledUrls, mcp_enabled }));
+
+    // Only update if values actually changed
+    const currentState = JSON.stringify({ enabledUrls, mcp_enabled });
+    if (currentState !== prevMcpStateRef.current) {
+      prevMcpStateRef.current = currentState;
+      setConfig(prevConfig => ({ ...prevConfig, mcp_urls: enabledUrls, mcp_enabled }));
+    }
   }, [servers, setConfig]);
 
   if (!backendConfig) {
