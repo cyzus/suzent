@@ -340,21 +340,57 @@ def _sanitize_memory(memory):
 
 def serialize_agent(agent: CodeAgent) -> Optional[bytes]:
     """
-    Serialize agent memory to bytes for persistence.
-    Configuration is stored separately in the database, so only memory is needed.
+    Serialize an agent and its complete state to bytes.
+    This preserves all memory, configuration, and internal state.
 
     Args:
         agent: The agent instance to serialize.
 
     Returns:
-        Serialized agent memory as bytes, or None if serialization fails.
+        Serialized agent state as bytes, or None if serialization fails.
     """
     try:
+        # Extract only the serializable parts we need
+        tool_attr = getattr(agent, '_tool_instances', None)
+        if tool_attr is None:
+            raw_tools = getattr(agent, 'tools', None)
+            if isinstance(raw_tools, dict):
+                tool_iterable = raw_tools.values()
+            elif isinstance(raw_tools, (list, tuple)):
+                tool_iterable = raw_tools
+            elif raw_tools is None:
+                tool_iterable = []
+            else:
+                tool_iterable = [raw_tools]
+        else:
+            tool_iterable = tool_attr
+
+        tool_names = []
+        for tool in tool_iterable:
+            try:
+                name = tool.__class__.__name__
+            except AttributeError:
+                continue
+            if name not in tool_names:
+                tool_names.append(name)
+
         # Sanitize memory to remove AgentError objects that can't be pickled
         sanitized_memory = _sanitize_memory(agent.memory)
 
-        # Just save the memory - config is in DB already
-        return pickle.dumps(sanitized_memory)
+        serializable_state = {
+            'memory': sanitized_memory,
+            'model_id': getattr(agent.model, 'model_id', None) if hasattr(agent, 'model') else None,
+            'instructions': getattr(agent, 'instructions', None),
+            'step_number': getattr(agent, 'step_number', 1),
+            'max_steps': getattr(agent, 'max_steps', 10),
+            # Store tool names/types instead of tool instances
+            'tool_names': tool_names,
+            # Store managed agent info if any
+            'managed_agents': getattr(agent, 'managed_agents', []),
+        }
+
+        # Serialize to bytes
+        return pickle.dumps(serializable_state)
     except Exception as e:
         logger.error(f"Error serializing agent: {e}")
         return None
@@ -362,11 +398,10 @@ def serialize_agent(agent: CodeAgent) -> Optional[bytes]:
 
 def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[CodeAgent]:
     """
-    Deserialize agent memory and restore it to a new agent instance.
-    Configuration comes from the database, so only memory needs to be restored.
+    Deserialize agent state and restore it to a new agent instance.
 
     Args:
-        agent_data: Serialized agent memory as bytes.
+        agent_data: Serialized agent state as bytes.
         config: Configuration dictionary for creating the agent.
 
     Returns:
@@ -376,9 +411,10 @@ def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[Cod
         return None
 
     try:
-        # Deserialize memory
+        # Try to deserialize the state
         try:
-            memory = pickle.loads(agent_data)
+            # Use standard pickle first (custom unpickler doesn't actually help with this issue)
+            state = pickle.loads(agent_data)
         except (TypeError, AttributeError, pickle.UnpicklingError) as unpickle_error:
             # If unpickling fails, it's likely due to incompatible AgentError objects
             # Log and return None so caller can clear the corrupted state
@@ -389,11 +425,37 @@ def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[Cod
                 logger.warning(f"Failed to unpickle agent state: {unpickle_error}")
             return None
 
-        # Create agent from config (config already contains all needed settings)
-        agent = create_agent(config)
+        # Create a new agent with the same configuration
+        # Use tool names from saved state to ensure consistency
+        if 'tool_names' in state and state['tool_names']:
+            # Map tool names back to config format
+            tool_name_mapping = {
+                'WebSearchTool': 'WebSearchTool',
+                'PlanningTool': 'PlanningTool',
+                'WebpageTool': 'WebpageTool',
+                'FileTool': 'FileTool',
+            }
+            config_with_tools = config.copy()
+            config_with_tools['tools'] = [
+                tool_name_mapping.get(tool_name, tool_name)
+                for tool_name in state['tool_names']
+                if tool_name in tool_name_mapping
+            ]
+            agent = create_agent(config_with_tools)
+        else:
+            agent = create_agent(config)
 
-        # Restore memory
-        agent.memory = memory
+        # Restore the memory and state
+        if 'memory' in state:
+            agent.memory = state['memory']
+
+        # Restore other important state
+        if 'step_number' in state:
+            agent.step_number = state['step_number']
+        if 'max_steps' in state:
+            agent.max_steps = state['max_steps']
+        if 'instructions' in state and state['instructions']:
+            agent.instructions = state['instructions']
 
         return agent
 

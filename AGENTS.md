@@ -81,11 +81,10 @@ LOG_FILE=suzent.log
 ### Key Patterns
 
 #### Agent State Persistence
-- Agent memory (conversation steps) pickled to `agent_state` BLOB in `chats` table
-- Configuration stored separately in `config` JSON column - no duplication in state
-- `serialize_agent()` saves only memory (aligned with smolagents design)
-- `deserialize_agent()` recreates agent from config + restores memory
-- State saved after each streaming response completes (chat_routes.py:232)
+- Agent state (memory, tools, step count) pickled to `agent_state` BLOB in `chats` table
+- `serialize_agent()` extracts serializable state before storage
+- `deserialize_agent()` recreates agent with same config and memory on next request
+- State saved after each streaming response completes (chat_routes.py:95)
 
 #### Tool Context Injection
 - Tools receive `chat_id` via `inject_chat_context()` before agent execution
@@ -172,10 +171,8 @@ Currently no automated test suite. Manual testing workflow:
 
 ## Important Gotchas
 
-1. **Agent serialization**: Only memory is serialized, not full agent state
-   - Tools don't need to be serializable (not saved in agent_state)
-   - **AgentError handling**: `AgentError` objects are stripped from memory before serialization (contain unpicklable loggers)
-   - Old agent states with incompatible objects are cleared automatically and agent starts fresh
+1. **Agent serialization fails**: Ensure tools don't hold non-serializable objects (open files, sockets)
+   - **AgentError deserialization**: Old agent states may contain `AgentError` objects with incompatible signatures. System gracefully recovers by starting fresh agents. This is a one-time migration issue.
 2. **Plan not updating**: Check `chat_id` context is injected before agent runs
 3. **Stream hanging**: Verify `stream_controls[chat_id]` cleaned up on stream end
 4. **Tool not found**: Check `tool_module_map` in agent_manager.py matches class name in tools/ directory
