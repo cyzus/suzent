@@ -10,16 +10,19 @@ import rehypePrism from 'rehype-prism-plus';
 import { usePlan } from '../hooks/usePlan';
 import { useMemory } from '../hooks/useMemory';
 import { normalizePythonCode, generateBlockKey, splitAssistantContent } from '../lib/chatUtils';
+import { useStatusStore } from '../hooks/useStatusStore';
 
 
 
 const LogBlock: React.FC<{ title?: string; content: string }> = ({ title, content }) => {
   const [expanded, setExpanded] = useState(false);
+  const { setStatus } = useStatusStore();
   const [copied, setCopied] = useState(false);
 
   const copyToClipboard = (e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(content);
+    setStatus('LOG_COPIED_TO_CLIPBOARD', 'success');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -39,14 +42,23 @@ const LogBlock: React.FC<{ title?: string; content: string }> = ({ title, conten
         <div className="flex items-center gap-2">
            <button 
              onClick={copyToClipboard}
-             className="px-2 py-0.5 bg-brutal-black text-white text-[10px] font-bold border-2 border-white hover:bg-white hover:text-brutal-black transition-colors uppercase"
+             className="w-8 h-8 flex items-center justify-center bg-brutal-black text-white border-2 border-white hover:bg-white hover:text-brutal-black transition-colors"
              title="Copy to clipboard"
            >
-             {copied ? 'COPIED' : 'COPY'}
+             {copied ? (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+             ) : (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <rect x="8" y="8" width="12" height="12" rx="2" ry="2" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
+                </svg>
+             )}
            </button>
            <button 
              onClick={() => setExpanded(!expanded)}
-             className="w-6 h-6 flex items-center justify-center bg-brutal-black text-white text-[10px] font-bold border-2 border-white hover:bg-white hover:text-brutal-black transition-colors uppercase"
+             className="w-8 h-8 flex items-center justify-center bg-brutal-black text-white text-lg font-bold border-2 border-white hover:bg-white hover:text-brutal-black transition-colors uppercase"
              title={expanded ? "Collapse" : "Expand"}
            >
              {expanded ? '−' : '+'}
@@ -72,15 +84,36 @@ const LogBlock: React.FC<{ title?: string; content: string }> = ({ title, conten
   );
 };
 
-const CopyButton: React.FC<{ text: string }> = ({ text }) => {
+const CopyButton: React.FC<{ text: string; className?: string; color?: string }> = ({ text, className, color = 'bg-brutal-green' }) => {
+  const { setStatus } = useStatusStore();
   const [copied, setCopied] = useState(false);
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(text);
+    setStatus('COPIED_TO_CLIPBOARD', 'success');
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <button
-      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(()=>setCopied(false),1500); }}
-      className="absolute top-2 right-2 text-[11px] px-2 py-1 bg-brutal-green border-2 border-brutal-black shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all duration-100 text-brutal-black font-bold uppercase"
-      title="Copy code"
+      onClick={handleCopy}
+      className={`w-8 h-8 flex items-center justify-center ${color} border-2 border-brutal-black shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all duration-100 text-brutal-black ${className || 'absolute top-2 right-2'}`}
+      title="Copy to clipboard"
       type="button"
-    >{copied ? 'Copied!' : 'Copy'}</button>
+    >
+      {copied ? (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      ) : (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <rect x="8" y="8" width="12" height="12" rx="2" ry="2" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
+        </svg>
+      )}
+    </button>
   );
 };
 
@@ -549,6 +582,25 @@ export const ChatWindow: React.FC = () => {
               const isUser = m.role === 'user';
               const blocks = isUser ? [{ type: 'markdown', content: m.content } as { type: 'markdown'; content: string; lang?: string }] : splitAssistantContent(m.content);
               
+              // Calculate clean content for copy (excluding logs)
+              const cleanContent = isUser ? m.content : blocks
+                .filter(b => b.type !== 'log')
+                .map(b => {
+                  if (b.type === 'code') {
+                    return '```' + (b.lang || '') + '\n' + b.content + '\n```';
+                  }
+                  return b.content;
+                })
+                .join('').trim();
+
+              // Determine if we should show the main copy button
+              // 1. Must have content
+              // 2. Should not be a "Thought" bubble (intermediate step)
+              // 3. Should not be an intermediate step (has stepInfo)
+              const isThought = !isUser && cleanContent.startsWith('Thought:');
+              const hasStepInfo = !isUser && !!m.stepInfo;
+              const showMainCopyButton = cleanContent && !isThought && !hasStepInfo;
+
               const alignClass = isUser ? 'justify-end' : 'justify-start';
               const isStreamingAgentMessage = !isUser && streamingForCurrentChat && idx === safeMessages.length - 1;
               const eyeClass = isStreamingAgentMessage ? 'robot-eye robot-eye-blink' : 'robot-eye robot-eye-idle';
@@ -604,6 +656,7 @@ export const ChatWindow: React.FC = () => {
                           <span>AGENT</span>
                         </div>
                         <div className={`bg-white border-3 border-brutal-black px-6 py-5 space-y-4 relative -mt-3 pt-6 shadow-brutal-lg select-text`}>
+                        {showMainCopyButton && <CopyButton text={cleanContent} className="absolute top-2 right-2 z-10" color="bg-brutal-yellow" />}
                         {blocks.map((b, bi) => {
                           const blockKey = generateBlockKey(b, bi, idx);
                           if (b.type === 'markdown') {

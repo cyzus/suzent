@@ -6,6 +6,7 @@ import { ConfigView } from './components/sidebar/ConfigView';
 import { ChatList } from './components/ChatList';
 import { MemoryView } from './components/memory/MemoryView';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { StatusBar } from './components/StatusBar';
 import { PlanProvider, usePlan } from './hooks/usePlan';
 import { ChatProvider, useChatStore } from './hooks/useChatStore.js';
 
@@ -159,6 +160,10 @@ const AppInner: React.FC = () => {
               </span>
             </div>
           </header>
+          
+          {/* System Status Line */}
+          <StatusBar />
+
           {mainView === 'chat' ? (
             <div key="chat" className="flex-1 flex flex-col min-h-0 animate-view-fade">
               <ChatWindow />
