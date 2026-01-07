@@ -47,41 +47,41 @@ const LogBlock: React.FC<{ title?: string; content: string }> = ({ title, conten
           </span>
         </div>
         <div className="flex items-center gap-2">
-           <button 
-             onClick={copyToClipboard}
-             className="w-8 h-8 flex items-center justify-center bg-brutal-black text-white border-2 border-white hover:bg-white hover:text-brutal-black transition-colors"
-             title="Copy to clipboard"
-           >
-             {copied ? (
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-             ) : (
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <rect x="8" y="8" width="12" height="12" rx="2" ry="2" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
-                </svg>
-             )}
-           </button>
-           <button 
-             onClick={() => setExpanded(!expanded)}
-             className="w-8 h-8 flex items-center justify-center bg-brutal-black text-white text-lg font-bold border-2 border-white hover:bg-white hover:text-brutal-black transition-colors uppercase"
-             title={expanded ? "Collapse" : "Expand"}
-           >
-             {expanded ? '−' : '+'}
-           </button>
+          <button
+            onClick={copyToClipboard}
+            className="w-8 h-8 flex items-center justify-center bg-brutal-black text-white border-2 border-white hover:bg-white hover:text-brutal-black transition-colors"
+            title="Copy to clipboard"
+          >
+            {copied ? (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <rect x="8" y="8" width="12" height="12" rx="2" ry="2" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
+              </svg>
+            )}
+          </button>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="w-8 h-8 flex items-center justify-center bg-brutal-black text-white text-lg font-bold border-2 border-white hover:bg-white hover:text-brutal-black transition-colors uppercase"
+            title={expanded ? "Collapse" : "Expand"}
+          >
+            {expanded ? '−' : '+'}
+          </button>
         </div>
       </div>
-      
+
       {/* Content Area */}
       <div className={`bg-neutral-50 transition-all duration-300 ease-in-out overflow-y-auto scrollbar-thin ${expanded ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'}`}>
         <div className="w-full p-3">
-           <pre className="text-xs text-brutal-black leading-relaxed font-mono whitespace-pre-wrap break-all">
-             {content}
-           </pre>
+          <pre className="text-xs text-brutal-black leading-relaxed font-mono whitespace-pre-wrap break-all">
+            {content}
+          </pre>
         </div>
       </div>
-      
+
       {/* Footer/Status Bar (Optional, adds to the window feel) */}
       <div className="px-2 py-1 bg-neutral-200 border-t-2 border-brutal-black text-[10px] text-neutral-500 flex justify-between items-center">
         <span>{content.length} chars</span>
@@ -140,6 +140,36 @@ const CodeBlockComponent: React.FC<{ lang?: string; content: string }> = ({ lang
 
   const safeLang = (lang || 'text').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
 
+  if (safeLang === 'text') {
+    return (
+      <div className="my-2 group/code relative border-2 border-brutal-black bg-neutral-50 shadow-brutal-sm p-4">
+        <div className="absolute top-2 right-2 opacity-0 group-hover/code:opacity-100 transition-opacity z-10">
+          <button
+            onClick={handleCopy}
+            className="w-8 h-8 flex items-center justify-center bg-white text-brutal-black border-2 border-brutal-black hover:bg-brutal-yellow transition-colors shadow-sm"
+            title="Copy text"
+          >
+            {copied ? (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <rect x="8" y="8" width="12" height="12" rx="2" ry="2" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
+              </svg>
+            )}
+          </button>
+        </div>
+        <div className="bg-transparent overflow-hidden">
+          <pre className="max-w-full text-xs text-brutal-code-text p-0 font-sans leading-relaxed overflow-x-auto whitespace-pre-wrap break-all !bg-transparent">
+            <code className={`language-${safeLang}`}>{content}</code>
+          </pre>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="my-4 font-mono text-sm border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white group/code relative">
       {/* Header Bar */}
@@ -156,35 +186,35 @@ const CodeBlockComponent: React.FC<{ lang?: string; content: string }> = ({ lang
           </span>
         </div>
         <div className="flex items-center gap-2">
-           <button 
-             onClick={handleCopy}
-             className="w-8 h-8 flex items-center justify-center bg-brutal-black text-white border-2 border-white hover:bg-white hover:text-brutal-black transition-colors"
-             title="Copy code"
-           >
-             {copied ? (
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-             ) : (
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <rect x="8" y="8" width="12" height="12" rx="2" ry="2" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
-                </svg>
-             )}
-           </button>
-           <button 
-             onClick={() => setExpanded(!expanded)}
-             className="w-8 h-8 flex items-center justify-center bg-brutal-black text-white text-lg font-bold border-2 border-white hover:bg-white hover:text-brutal-black transition-colors uppercase"
-             title={expanded ? "Collapse" : "Expand"}
-           >
-             {expanded ? '−' : '+'}
-           </button>
+          <button
+            onClick={handleCopy}
+            className="w-8 h-8 flex items-center justify-center bg-brutal-black text-white border-2 border-white hover:bg-white hover:text-brutal-black transition-colors"
+            title="Copy code"
+          >
+            {copied ? (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <rect x="8" y="8" width="12" height="12" rx="2" ry="2" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
+              </svg>
+            )}
+          </button>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="w-8 h-8 flex items-center justify-center bg-brutal-black text-white text-lg font-bold border-2 border-white hover:bg-white hover:text-brutal-black transition-colors uppercase"
+            title={expanded ? "Collapse" : "Expand"}
+          >
+            {expanded ? '−' : '+'}
+          </button>
         </div>
       </div>
-      
+
       {/* Content Area */}
       <div className={`bg-brutal-code-bg transition-all duration-300 ease-in-out overflow-hidden ${expanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
-        <pre className="max-w-full text-xs text-brutal-code-text p-4 pt-4 font-mono leading-relaxed whitespace-pre overflow-x-auto">
+        <pre className={`max-w-full text-xs text-brutal-code-text p-4 pt-4 leading-relaxed overflow-x-auto !bg-transparent ${safeLang === 'text' ? 'whitespace-pre-wrap break-all font-sans' : 'whitespace-pre font-mono'}`}>
           <code className={`language-${safeLang}`}>{content}</code>
         </pre>
       </div>
@@ -208,7 +238,7 @@ const MarkdownRenderer = React.memo((props: { content: string }) => {
   // allow a known whitelist of language identifiers; otherwise we remove
   // the info string so the highlighter treats the block as plain text.
   const allowedLanguages = new Set([
-    'python','javascript','typescript','java','cpp','c','go','rust','sql','html','css','json','yaml','xml','bash','shell','powershell','php','ruby','swift','kotlin','dart','r','matlab','scala','perl','lua','haskell','clojure','elixir','erlang','fsharp','ocaml','pascal','fortran','cobol','assembly','asm','text','plain'
+    'python', 'javascript', 'typescript', 'java', 'cpp', 'c', 'go', 'rust', 'sql', 'html', 'css', 'json', 'yaml', 'xml', 'bash', 'shell', 'powershell', 'php', 'ruby', 'swift', 'kotlin', 'dart', 'r', 'matlab', 'scala', 'perl', 'lua', 'haskell', 'clojure', 'elixir', 'erlang', 'fsharp', 'ocaml', 'pascal', 'fortran', 'cobol', 'assembly', 'asm', 'text', 'plain'
   ]);
 
   const sanitized = normalized.replace(/```\s*([^\n`]*)/g, (_m, info) => {
@@ -283,7 +313,7 @@ const MarkdownRenderer = React.memo((props: { content: string }) => {
             const match = /language-([a-zA-Z0-9_-]+)/.exec(className || '');
             const lang = match ? match[1] : null;
             const content = String(children).replace(/\n$/, '');
-            
+
             // Heuristic: Demote short, single-line "text" blocks to inline styling
             // This prevents "Thought: [BLOCK] variable [BLOCK]" visual stutter
             const isText = !lang || lang === 'text';
@@ -320,7 +350,7 @@ const MarkdownRenderer = React.memo((props: { content: string }) => {
           blockquote(p: any) { return <blockquote className="border-l-4 border-brutal-black pl-3 italic text-neutral-600 break-words bg-neutral-50 py-1 pr-2">{p.children}</blockquote>; }
         }}
       >
-  {sanitized}
+        {sanitized}
       </RM>
     </div>
   );
@@ -361,7 +391,7 @@ export const ChatWindow: React.FC = () => {
   const safeMessages = messages || [];
   const safeConfig = config || { model: '', agent: '', tools: [] };
   const safeBackendConfig = backendConfig || null;
-  
+
 
 
   // Track whether automatic scrolling is allowed. If the user manually scrolls away
@@ -553,7 +583,7 @@ export const ChatWindow: React.FC = () => {
             }, 200);
             // Refresh memory views so core blocks reflect tool updates
             // Fetch user-level blocks (persona/user/facts) since those persist across chats
-            try { loadCoreMemory(); loadStats(); } catch {}
+            try { loadCoreMemory(); loadStats(); } catch { }
           },
           onStreamStopped: () => {
             setIsStreaming(false, chatIdForSend);
@@ -568,7 +598,7 @@ export const ChatWindow: React.FC = () => {
       );
     } catch (error) {
       console.error('Error during streaming:', error);
-    } finally { 
+    } finally {
       setIsStreaming(false, chatIdForSend);
       // Ensure we save even if onStreamComplete wasn't called
       setTimeout(async () => {
@@ -625,7 +655,7 @@ export const ChatWindow: React.FC = () => {
           </div>
         </div>
       )}
-      
+
       <div className="relative flex-1 min-h-0">
         <div ref={scrollContainerRef} className="h-full overflow-y-auto p-4 md:p-6 pb-6 scrollbar-thin">
           {safeMessages.length === 0 ? (
@@ -639,7 +669,7 @@ export const ChatWindow: React.FC = () => {
               <p className="text-neutral-600 max-w-md font-mono text-xs mb-8 bg-white px-3 py-1 border-2 border-brutal-black shadow-brutal-sm">
                 // WAITING_FOR_INPUT...
               </p>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl w-full">
                 {['Help me plan a project', 'Analyze this code', 'Search the web', 'Write a story'].map((suggestion, i) => (
                   <button
@@ -659,129 +689,129 @@ export const ChatWindow: React.FC = () => {
           ) : (
             <div className="space-y-8">
               {safeMessages.map((m: Message, idx: number) => {
-              const isUser = m.role === 'user';
-              const blocks = isUser ? [{ type: 'markdown', content: m.content } as { type: 'markdown'; content: string; lang?: string }] : splitAssistantContent(m.content);
-              
-              // Calculate clean content for copy (excluding logs)
-              const cleanContent = isUser ? m.content : blocks
-                .filter(b => b.type !== 'log')
-                .map(b => {
-                  if (b.type === 'code') {
-                    return '```' + (b.lang || '') + '\n' + b.content + '\n```';
-                  }
-                  return b.content;
-                })
-                .join('').trim();
+                const isUser = m.role === 'user';
+                const blocks = isUser ? [{ type: 'markdown', content: m.content } as { type: 'markdown'; content: string; lang?: string }] : splitAssistantContent(m.content);
 
-              // Determine if we should show the main copy button
-              // 1. Must have content
-              // 2. Should not be a "Thought" bubble (intermediate step)
-              // 3. Should not be an intermediate step (has stepInfo)
-              const isThought = !isUser && cleanContent.startsWith('Thought:');
-              const hasStepInfo = !isUser && !!m.stepInfo;
-              const showMainCopyButton = cleanContent && !isThought && !hasStepInfo;
+                // Calculate clean content for copy (excluding logs)
+                const cleanContent = isUser ? m.content : blocks
+                  .filter(b => b.type !== 'log')
+                  .map(b => {
+                    if (b.type === 'code') {
+                      return '```' + (b.lang || '') + '\n' + b.content + '\n```';
+                    }
+                    return b.content;
+                  })
+                  .join('').trim();
 
-              const alignClass = isUser ? 'justify-end' : 'justify-start';
-              const isStreamingAgentMessage = !isUser && streamingForCurrentChat && idx === safeMessages.length - 1;
-              const eyeClass = isStreamingAgentMessage ? 'robot-eye robot-eye-blink' : 'robot-eye robot-eye-idle';
-              const rightEyeStyle = !isUser
-                ? (isStreamingAgentMessage ? undefined : { animationDelay: '1.8s' })
-                : undefined;
-              
-              return (
-                <div key={idx} className="w-full flex flex-col group/message">
-                  <div className={`flex ${alignClass} w-full`}>
-                    {isUser ? (
-                      // User message: display images and text separately
-                      <div className="w-full max-w-3xl space-y-3 pl-8 md:pl-16">
-                        {m.images && m.images.length > 0 && (
-                          <div className="flex flex-wrap gap-3 justify-end">
-                            {m.images.map((img, imgIdx) => (
-                              <div key={imgIdx} className="relative group animate-brutal-pop">
-                                <img
-                                  src={`data:${img.mime_type};base64,${img.data}`}
-                                  alt={img.filename}
-                                  className="max-w-sm max-h-64 border-4 border-brutal-black shadow-brutal-lg object-contain bg-white"
-                                  title={img.filename}
-                                />
-                                <div className="absolute bottom-0 left-0 right-0 bg-brutal-black text-brutal-white text-xs px-2 py-1 font-bold opacity-0 group-hover:opacity-100 transition-opacity duration-100">
-                                  {img.filename}
+                // Determine if we should show the main copy button
+                // 1. Must have content
+                // 2. Should not be a "Thought" bubble (intermediate step)
+                // 3. Should not be an intermediate step (has stepInfo)
+                const isThought = !isUser && cleanContent.startsWith('Thought:');
+                const hasStepInfo = !isUser && !!m.stepInfo;
+                const showMainCopyButton = cleanContent && !isThought && !hasStepInfo;
+
+                const alignClass = isUser ? 'justify-end' : 'justify-start';
+                const isStreamingAgentMessage = !isUser && streamingForCurrentChat && idx === safeMessages.length - 1;
+                const eyeClass = isStreamingAgentMessage ? 'robot-eye robot-eye-blink' : 'robot-eye robot-eye-idle';
+                const rightEyeStyle = !isUser
+                  ? (isStreamingAgentMessage ? undefined : { animationDelay: '1.8s' })
+                  : undefined;
+
+                return (
+                  <div key={idx} className="w-full flex flex-col group/message">
+                    <div className={`flex ${alignClass} w-full`}>
+                      {isUser ? (
+                        // User message: display images and text separately
+                        <div className="w-full max-w-3xl space-y-3 pl-8 md:pl-16">
+                          {m.images && m.images.length > 0 && (
+                            <div className="flex flex-wrap gap-3 justify-end">
+                              {m.images.map((img, imgIdx) => (
+                                <div key={imgIdx} className="relative group animate-brutal-pop">
+                                  <img
+                                    src={`data:${img.mime_type};base64,${img.data}`}
+                                    alt={img.filename}
+                                    className="max-w-sm max-h-64 border-4 border-brutal-black shadow-brutal-lg object-contain bg-white"
+                                    title={img.filename}
+                                  />
+                                  <div className="absolute bottom-0 left-0 right-0 bg-brutal-black text-brutal-white text-xs px-2 py-1 font-bold opacity-0 group-hover:opacity-100 transition-opacity duration-100">
+                                    {img.filename}
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {m.content && (
-                          <div className="flex justify-end">
-                            <div className="bg-brutal-yellow border-3 border-brutal-black shadow-brutal-lg px-5 py-4 max-w-full font-medium relative select-text">
-                              <div className="prose prose-sm max-w-none break-words text-brutal-black font-sans">{m.content}</div>
+                              ))}
                             </div>
+                          )}
+                          {m.content && (
+                            <div className="flex justify-end">
+                              <div className="bg-brutal-yellow border-3 border-brutal-black shadow-brutal-lg px-5 py-4 max-w-full font-medium relative select-text">
+                                <div className="prose prose-sm max-w-none break-words text-brutal-black font-sans">{m.content}</div>
+                              </div>
+                            </div>
+                          )}
+                          <div className="text-[10px] font-bold text-neutral-400 uppercase text-right pr-1 opacity-0 group-hover/message:opacity-100 transition-opacity select-none">
+                            User
                           </div>
-                        )}
-                        <div className="text-[10px] font-bold text-neutral-400 uppercase text-right pr-1 opacity-0 group-hover/message:opacity-100 transition-opacity select-none">
-                          User
                         </div>
-                      </div>
-                    ) : (
-                      // Assistant message: Neo-brutalist white bubble with AI indicator
-                      <div className={`group w-full max-w-4xl break-words overflow-visible space-y-0 text-sm leading-relaxed relative pr-4 md:pr-12`}>
-                        {/* AI Assistant Label - Bold & Brutalist */}
-                        <div className="inline-flex items-center gap-2 bg-brutal-black text-brutal-white px-3 py-1 font-bold text-xs tracking-wider border-3 border-brutal-black mb-0 shadow-[4px_4px_0_0_rgba(0,0,0,0.1)] relative pointer-events-none select-none">
-                          <svg className={`w-4 h-4 ${isStreamingAgentMessage ? 'robot-streaming' : ''}`} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                            <rect x="2" y="2" width="20" height="20" rx="3" fill="currentColor" />
-                            <rect x="4" y="4" width="16" height="16" rx="3" fill="#000000" />
-                            <rect className={eyeClass} x="5.5" y="7" width="5" height="5" rx="1.5" fill="currentColor" />
-                            <rect className={eyeClass} style={rightEyeStyle} x="13.5" y="7" width="5" height="5" rx="1.5" fill="currentColor" />
-                          </svg>
-                          <span>AGENT</span>
-                        </div>
-                        <div className={`bg-white border-3 border-brutal-black px-6 py-5 space-y-4 relative -mt-3 pt-6 shadow-brutal-lg select-text`}>
-                        {showMainCopyButton && <CopyButton text={cleanContent} className="absolute top-2 right-2 z-10" color="bg-brutal-yellow" />}
-                        {blocks.map((b, bi) => {
-                          const blockKey = generateBlockKey(b, bi, idx);
-                          if (b.type === 'markdown') {
-                            return <MarkdownRenderer key={blockKey} content={b.content} />;
-                          } else if (b.type === 'log') {
-                            return <LogBlock key={blockKey} title={b.title} content={b.content} />;
-                          } else {
-                            return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} />;
-                          }
-                        })}
-                        {/* end user/assistant content */}
-                        {idx === safeMessages.length - 1 && streamingForCurrentChat && (
-                          <div className="mt-3 flex items-center gap-1.5">
-                            <span className="text-neutral-500 font-mono text-sm animate-brutal-blink">●</span>
-                            <span className="text-neutral-500 font-mono text-sm animate-brutal-blink" style={{ animationDelay: '0.3s' }}>●</span>
-                            <span className="text-neutral-500 font-mono text-sm animate-brutal-blink" style={{ animationDelay: '0.6s' }}>●</span>
+                      ) : (
+                        // Assistant message: Neo-brutalist white bubble with AI indicator
+                        <div className={`group w-full max-w-4xl break-words overflow-visible space-y-0 text-sm leading-relaxed relative pr-4 md:pr-12`}>
+                          {/* AI Assistant Label - Bold & Brutalist */}
+                          <div className="inline-flex items-center gap-2 bg-brutal-black text-brutal-white px-3 py-1 font-bold text-xs tracking-wider border-3 border-brutal-black mb-0 shadow-[4px_4px_0_0_rgba(0,0,0,0.1)] relative pointer-events-none select-none">
+                            <svg className={`w-4 h-4 ${isStreamingAgentMessage ? 'robot-streaming' : ''}`} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <rect x="2" y="2" width="20" height="20" rx="3" fill="currentColor" />
+                              <rect x="4" y="4" width="16" height="16" rx="3" fill="#000000" />
+                              <rect className={eyeClass} x="5.5" y="7" width="5" height="5" rx="1.5" fill="currentColor" />
+                              <rect className={eyeClass} style={rightEyeStyle} x="13.5" y="7" width="5" height="5" rx="1.5" fill="currentColor" />
+                            </svg>
+                            <span>AGENT</span>
                           </div>
-                        )}
+                          <div className={`bg-white border-3 border-brutal-black px-6 py-5 space-y-4 relative -mt-3 pt-6 shadow-brutal-lg select-text`}>
+                            {showMainCopyButton && <CopyButton text={cleanContent} className="absolute top-2 right-2 z-10" color="bg-brutal-yellow" />}
+                            {blocks.map((b, bi) => {
+                              const blockKey = generateBlockKey(b, bi, idx);
+                              if (b.type === 'markdown') {
+                                return <MarkdownRenderer key={blockKey} content={b.content} />;
+                              } else if (b.type === 'log') {
+                                return <LogBlock key={blockKey} title={b.title} content={b.content} />;
+                              } else {
+                                return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} />;
+                              }
+                            })}
+                            {/* end user/assistant content */}
+                            {idx === safeMessages.length - 1 && streamingForCurrentChat && (
+                              <div className="mt-3 flex items-center gap-1.5">
+                                <span className="text-neutral-500 font-mono text-sm animate-brutal-blink">●</span>
+                                <span className="text-neutral-500 font-mono text-sm animate-brutal-blink" style={{ animationDelay: '0.3s' }}>●</span>
+                                <span className="text-neutral-500 font-mono text-sm animate-brutal-blink" style={{ animationDelay: '0.6s' }}>●</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    {!isUser && m.stepInfo && (
+                      <div className={`flex ${alignClass} w-full mt-2 pl-4`}>
+                        <div className="inline-flex items-center gap-2 text-[10px] text-brutal-black font-mono font-bold px-3 py-1 bg-neutral-100 border-2 border-brutal-black shadow-sm select-none">
+                          <span className="text-brutal-blue">⚡</span>
+                          <span>{m.stepInfo}</span>
                         </div>
                       </div>
                     )}
                   </div>
-                  {!isUser && m.stepInfo && (
-                    <div className={`flex ${alignClass} w-full mt-2 pl-4`}>
-                      <div className="inline-flex items-center gap-2 text-[10px] text-brutal-black font-mono font-bold px-3 py-1 bg-neutral-100 border-2 border-brutal-black shadow-sm select-none">
-                        <span className="text-brutal-blue">⚡</span>
-                        <span>{m.stepInfo}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                );
+              })}
             </div>
           )}
-            {!configReady && (
-              <div className="flex items-center justify-center p-4">
-                <div className="bg-brutal-yellow border-2 border-brutal-black px-4 py-2 text-xs font-bold uppercase animate-pulse shadow-brutal-sm">
-                  Connecting to Neural Core...
-                </div>
+          {!configReady && (
+            <div className="flex items-center justify-center p-4">
+              <div className="bg-brutal-yellow border-2 border-brutal-black px-4 py-2 text-xs font-bold uppercase animate-pulse shadow-brutal-sm">
+                Connecting to Neural Core...
               </div>
-            )}
+            </div>
+          )}
           <div ref={bottomRef} className="h-4" />
         </div>
-        
+
         {/* Scroll to bottom button */}
         {showScrollButton && (
           <button
