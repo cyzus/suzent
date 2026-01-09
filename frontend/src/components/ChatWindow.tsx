@@ -9,10 +9,11 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypePrism from 'rehype-prism-plus';
 import { usePlan } from '../hooks/usePlan';
 import { useMemory } from '../hooks/useMemory';
-import { normalizePythonCode, generateBlockKey, splitAssistantContent } from '../lib/chatUtils';
+import { generateBlockKey, splitAssistantContent } from '../lib/chatUtils';
 import { useStatusStore } from '../hooks/useStatusStore';
 import { PlanProgress } from './PlanProgress';
-import { BrutalSelect } from './BrutalSelect';
+import { NewChatView } from './NewChatView';
+import { ChatInputPanel } from './ChatInputPanel';
 
 
 
@@ -459,7 +460,7 @@ export const ChatWindow: React.FC = () => {
     }
   }, [input]);
 
-  const configReady = safeBackendConfig && safeConfig.model && safeConfig.agent;
+  const configReady = !!(safeBackendConfig && safeConfig.model && safeConfig.agent);
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -668,33 +669,22 @@ export const ChatWindow: React.FC = () => {
         <div className="relative flex-1 min-h-0">
           <div ref={scrollContainerRef} className="h-full overflow-y-auto p-4 md:p-6 pb-6 scrollbar-thin">
             {safeMessages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center p-8 animate-brutal-drop">
-                <div className="w-20 h-20 bg-brutal-black text-white flex items-center justify-center mb-6 border-4 border-brutal-black shadow-brutal-lg rotate-3 hover:rotate-0 transition-transform duration-300">
-                  <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                  </svg>
-                </div>
-                <h2 className="text-3xl font-brutal font-bold uppercase mb-2 text-brutal-black tracking-tight">System Ready</h2>
-                <p className="text-neutral-600 max-w-md font-mono text-xs mb-8 bg-white px-3 py-1 border-2 border-brutal-black shadow-brutal-sm">
-                // WAITING_FOR_INPUT...
-                </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl w-full">
-                  {['Help me plan a project', 'Analyze this code', 'Search the web', 'Write a story'].map((suggestion, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setInput(suggestion)}
-                      className="p-4 bg-white border-3 border-brutal-black shadow-brutal hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-brutal-lg active:translate-x-[0px] active:translate-y-[0px] active:shadow-brutal transition-all text-left font-bold uppercase text-sm group relative overflow-hidden"
-                    >
-                      <div className="absolute inset-0 bg-brutal-yellow translate-y-full group-hover:translate-y-0 transition-transform duration-200 z-0"></div>
-                      <span className="relative z-10 flex items-center justify-between">
-                        {suggestion}
-                        <span className="text-brutal-black opacity-0 group-hover:opacity-100 transition-opacity">►</span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <NewChatView
+                input={input}
+                setInput={setInput}
+                selectedImages={selectedImages}
+                handleImageSelect={handleImageSelect}
+                removeImage={removeImage}
+                send={send}
+                isStreaming={isStreaming}
+                config={safeConfig}
+                setConfig={setConfig}
+                backendConfig={safeBackendConfig}
+                fileInputRef={fileInputRef}
+                textareaRef={textareaRef}
+                configReady={configReady}
+                streamingForCurrentChat={streamingForCurrentChat}
+              />
             ) : (
               <div className="space-y-8">
                 {safeMessages.map((m: Message, idx: number) => {
@@ -834,135 +824,40 @@ export const ChatWindow: React.FC = () => {
             </button>
           )}
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); send(); }} className="border-t-4 border-brutal-black p-4 flex flex-col gap-3 bg-neutral-100">
+        {safeMessages.length > 0 && (
+          <div className="border-t-4 border-brutal-black p-4 flex flex-col gap-3 bg-neutral-100">
+            {/* Plan Progress (Inline) */}
+            {!isPlanDocked && (
+              <PlanProgress
+                plan={plan}
+                isDocked={false}
+                onToggleDock={() => setIsPlanDocked(true)}
+                isExpanded={isPlanExpanded}
+                onToggleExpand={() => setIsPlanExpanded(!isPlanExpanded)}
+              />
+            )}
 
-
-          {/* Plan Progress (Inline) */}
-          {!isPlanDocked && (
-            <PlanProgress
-              plan={plan}
-              isDocked={false}
-              onToggleDock={() => setIsPlanDocked(true)}
-              isExpanded={isPlanExpanded}
-              onToggleExpand={() => setIsPlanExpanded(!isPlanExpanded)}
+            <ChatInputPanel
+              input={input}
+              setInput={setInput}
+              selectedImages={selectedImages}
+              handleImageSelect={handleImageSelect}
+              removeImage={removeImage}
+              send={send}
+              isStreaming={isStreaming}
+              config={safeConfig}
+              setConfig={setConfig}
+              backendConfig={safeBackendConfig}
+              fileInputRef={fileInputRef}
+              textareaRef={textareaRef}
+              configReady={configReady}
+              streamingForCurrentChat={streamingForCurrentChat}
+              stopStreaming={stopStreaming}
+              stopInFlight={stopInFlightRef.current}
+              modelSelectDropUp={true}
             />
-          )}
-
-          {/* Image preview section */}
-          {selectedImages.length > 0 && (
-            <div className="flex flex-wrap gap-2 p-3 bg-brutal-white border-3 border-brutal-black shadow-brutal-sm">
-              {selectedImages.map((file, idx) => (
-                <div key={idx} className="relative group">
-                  <img
-                    src={URL.createObjectURL(file)}
-                    alt={file.name}
-                    className="w-20 h-20 object-cover border-3 border-brutal-black"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeImage(idx)}
-                    className="absolute -top-2 -right-2 w-6 h-6 bg-brutal-red border-2 border-brutal-black text-white text-sm flex items-center justify-center font-bold shadow-brutal-sm hover:shadow-none transition-all"
-                    title="Remove image"
-                  >
-                    ×
-                  </button>
-                  <div className="absolute bottom-0 left-0 right-0 bg-brutal-black text-brutal-white text-[10px] px-1 py-0.5 truncate font-bold">
-                    {file.name}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Input area with clean grid layout */}
-          <div className="flex flex-col gap-2">
-            <textarea
-              ref={textareaRef}
-              className="w-full resize-none overflow-y-auto min-h-[80px] max-h-[200px] bg-brutal-white border-3 border-brutal-black focus:outline-none focus:ring-4 focus:ring-brutal-yellow px-4 py-3 text-sm placeholder-neutral-400 font-medium placeholder:font-bold placeholder:uppercase transition-shadow scrollbar-thin scrollbar-track-transparent scrollbar-thumb-neutral-400"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  if (!isStreaming && configReady && input.trim()) {
-                    send();
-                  }
-                }
-              }}
-              placeholder={configReady ? 'TYPE YOUR MESSAGE HERE...' : 'SYSTEM LOADING...'}
-              disabled={!configReady}
-            />
-
-            {/* Button row */}
-            <div className="flex gap-2 items-center justify-between">
-              <div className="flex gap-2 items-center">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleImageSelect}
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="h-12 px-4 bg-brutal-white border-3 border-brutal-black shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-brutal-sm active:translate-x-[4px] active:translate-y-[4px] active:shadow-none transition-all duration-100 disabled:opacity-40 disabled:cursor-not-allowed font-bold uppercase text-xs flex items-center gap-2"
-                  title="Attach images"
-                  disabled={!configReady || isStreaming}
-                >
-                  <svg className="w-5 h-5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="2" y="2" width="12" height="12" />
-                    <circle cx="6" cy="6" r="1.5" fill="currentColor" />
-                    <polyline points="4,12 7,9 9,11 12,8 14,10" strokeLinecap="square" />
-                  </svg>
-                  <span className="hidden sm:inline">IMAGE</span>
-                </button>
-              </div>
-
-              <div className="flex gap-3 items-center">
-                <div className="text-[10px] text-brutal-black font-mono font-bold select-none uppercase opacity-50 hidden sm:block">
-                  ↵ SEND • ⇧↵ NEW LINE
-                </div>
-
-                <div className="flex gap-2">
-                  {streamingForCurrentChat && (
-                    <button
-                      type="button"
-                      onClick={stopStreaming}
-                      className="h-12 bg-brutal-red border-3 border-brutal-black shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-brutal-sm active:translate-x-[4px] active:translate-y-[4px] active:shadow-none transition-all duration-100 px-5 text-xs font-bold disabled:opacity-60 disabled:cursor-not-allowed text-white uppercase"
-                      disabled={stopInFlightRef.current}
-                    >
-                      STOP
-                    </button>
-                  )}
-
-                  {configReady && (
-                    <div className="w-64 h-12 relative">
-                      <BrutalSelect
-                        value={safeConfig.model}
-                        onChange={(val) => setConfig(prev => ({ ...prev, model: val }))}
-                        options={backendConfig!.models}
-                        placeholder="MODEL"
-                        dropUp={true}
-                        className="h-full"
-                        dropdownClassName="min-w-[300px] right-0"
-                      />
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    className="h-12 bg-brutal-blue border-3 border-brutal-black shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-brutal-sm active:translate-x-[4px] active:translate-y-[4px] active:shadow-none transition-all duration-100 px-6 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase"
-                    disabled={isStreaming || !configReady}
-                  >
-                    {streamingForCurrentChat ? 'SENDING...' : 'SEND'}
-                  </button>
-                </div>
-              </div>
-            </div>
           </div>
-        </form>
+        )}
       </div>
 
       {/* Right Sidebar - Plan Docked */}
