@@ -12,6 +12,7 @@ import { useMemory } from '../hooks/useMemory';
 import { normalizePythonCode, generateBlockKey, splitAssistantContent } from '../lib/chatUtils';
 import { useStatusStore } from '../hooks/useStatusStore';
 import { PlanProgress } from './PlanProgress';
+import { BrutalSelect } from './BrutalSelect';
 
 
 
@@ -366,6 +367,7 @@ export const ChatWindow: React.FC = () => {
     config,
     backendConfig,
     newAssistantMessage,
+    setConfig,
     setStepInfo,
     shouldResetNext,
     consumeResetFlag,
@@ -833,6 +835,8 @@ export const ChatWindow: React.FC = () => {
           )}
         </div>
         <form onSubmit={(e) => { e.preventDefault(); send(); }} className="border-t-4 border-brutal-black p-4 flex flex-col gap-3 bg-neutral-100">
+
+
           {/* Plan Progress (Inline) */}
           {!isPlanDocked && (
             <PlanProgress
@@ -933,7 +937,19 @@ export const ChatWindow: React.FC = () => {
                     </button>
                   )}
 
-
+                  {configReady && (
+                    <div className="w-64 h-12 relative">
+                      <BrutalSelect
+                        value={safeConfig.model}
+                        onChange={(val) => setConfig(prev => ({ ...prev, model: val }))}
+                        options={backendConfig!.models}
+                        placeholder="MODEL"
+                        dropUp={true}
+                        className="h-full"
+                        dropdownClassName="min-w-[300px] right-0"
+                      />
+                    </div>
+                  )}
 
                   <button
                     type="submit"

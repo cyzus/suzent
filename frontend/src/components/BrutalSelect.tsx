@@ -11,7 +11,9 @@ interface BrutalSelectProps {
   options: (string | Option)[];
   label?: string;
   placeholder?: string;
+  dropUp?: boolean;
   className?: string;
+  dropdownClassName?: string;
 }
 
 export const BrutalSelect: React.FC<BrutalSelectProps> = ({
@@ -20,17 +22,23 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
   options,
   label,
   placeholder = 'SELECT...',
+  dropUp = false,
   className = '',
+  dropdownClassName = '',
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Normalize options to Option objects
-  const normalizedOptions: Option[] = options.map(opt => 
+  const normalizedOptions: Option[] = options.map(opt =>
     typeof opt === 'string' ? { value: opt, label: opt } : opt
   );
 
   const selectedOption = normalizedOptions.find(opt => opt.value === value);
+
+  // Heuristic for scrollbar: average item height is ~38px. max-h-60 is 240px. 6 items ~ 228px.
+  // So > 6 items means we likely need a scrollbar.
+  const showScrollbar = normalizedOptions.length > 6;
 
   // Close on click outside
   useEffect(() => {
@@ -51,7 +59,7 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
           {label}
         </label>
       )}
-      
+
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
@@ -60,11 +68,11 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
         <span className="truncate">
           {selectedOption ? selectedOption.label : placeholder}
         </span>
-        <svg 
-          className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} 
-          fill="none" 
-          stroke="currentColor" 
-          viewBox="0 0 24 24" 
+        <svg
+          className={`w-4 h-4 transition-transform duration-200 ${isOpen ? (dropUp ? 'rotate-0' : 'rotate-180') : (dropUp ? 'rotate-180' : 'rotate-0')}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
           strokeWidth={3}
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -72,7 +80,7 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-white border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-60 overflow-y-auto animate-brutal-drop">
+        <div className={`absolute z-50 w-full bg-white border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-60 overflow-y-auto overflow-x-hidden animate-brutal-drop ${showScrollbar ? 'scrollbar-thin scrollbar-track-neutral-200 scrollbar-thumb-brutal-black' : 'scrollbar-none'} ${dropUp ? 'bottom-full mb-1' : 'mt-1'} ${dropdownClassName}`}>
           {normalizedOptions.map((option) => (
             <button
               key={option.value}
@@ -81,11 +89,10 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
                 onChange(option.value);
                 setIsOpen(false);
               }}
-              className={`w-full text-left px-3 py-2 font-bold text-sm uppercase transition-colors border-b-2 border-neutral-100 last:border-0 ${
-                value === option.value
-                  ? 'bg-brutal-black text-white'
-                  : 'bg-white text-brutal-black hover:bg-brutal-yellow'
-              }`}
+              className={`w-full text-left px-3 py-2 font-bold text-sm uppercase transition-colors border-b-2 border-neutral-100 last:border-0 ${value === option.value
+                ? 'bg-brutal-black text-white'
+                : 'bg-white text-brutal-black hover:bg-brutal-yellow'
+                }`}
             >
               {option.label}
             </button>

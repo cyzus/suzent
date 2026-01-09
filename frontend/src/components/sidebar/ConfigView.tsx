@@ -71,11 +71,11 @@ export const ConfigView: React.FC = () => {
       setConfig(prevConfig => {
         const currentTools = prevConfig.tools || [];
         const isActive = currentTools.includes(tool);
-        
-        const newTools = isActive 
+
+        const newTools = isActive
           ? currentTools.filter((t: string) => t !== tool)
           : [...currentTools, tool];
-        
+
         return { ...prevConfig, tools: newTools };
       });
     });
@@ -146,14 +146,7 @@ export const ConfigView: React.FC = () => {
 
   return (
     <div className="space-y-6 text-xs">
-      <div className="space-y-1">
-        <label className="block font-bold tracking-wide text-brutal-black uppercase">Model</label>
-        <BrutalSelect
-          value={config.model}
-          onChange={val => update({ model: val })}
-          options={backendConfig.models}
-        />
-      </div>
+
       <div className="space-y-1">
         <label className="block font-bold tracking-wide text-brutal-black uppercase">Agent</label>
         <BrutalSelect
@@ -184,11 +177,10 @@ export const ConfigView: React.FC = () => {
                 key={tool}
                 type="button"
                 onClick={() => toggleTool(tool)}
-                className={`px-2.5 py-1 border-3 text-xs font-bold uppercase transition-all duration-200 ${
-                  active
+                className={`px-2.5 py-1 border-3 text-xs font-bold uppercase transition-all duration-200 ${active
                     ? 'bg-brutal-green text-brutal-black border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[-1px] translate-y-[-1px]'
                     : 'border-brutal-black text-brutal-black bg-white hover:bg-brutal-yellow hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
-                }`}
+                  }`}
               >
                 {tool}
               </button>
@@ -201,18 +193,16 @@ export const ConfigView: React.FC = () => {
         <button
           type="button"
           onClick={() => update({ memory_enabled: !config.memory_enabled })}
-          className={`w-full px-3 py-2 border-3 text-xs font-bold uppercase transition-all duration-200 flex items-center justify-between ${
-            config.memory_enabled
+          className={`w-full px-3 py-2 border-3 text-xs font-bold uppercase transition-all duration-200 flex items-center justify-between ${config.memory_enabled
               ? 'bg-brutal-green text-brutal-black border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
               : 'border-brutal-black text-brutal-black bg-white hover:bg-brutal-yellow hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
-          }`}
+            }`}
         >
           <span>🧠 Memory Tools</span>
-          <span className={`text-[10px] px-2 py-1 border-2 font-bold ${
-            config.memory_enabled
+          <span className={`text-[10px] px-2 py-1 border-2 font-bold ${config.memory_enabled
               ? 'border-brutal-black bg-white text-brutal-black'
               : 'border-brutal-black bg-neutral-200 text-brutal-black'
-          }`}>
+            }`}>
             {config.memory_enabled ? 'ENABLED' : 'DISABLED'}
           </span>
         </button>
