@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import type { Plan, PlanTaskStatus } from '../types/api';
+import type { Plan, PlanPhaseStatus } from '../types/api';
 
 const getPlanKey = (plan: Plan) => (plan.id != null ? `plan:${plan.id}` : plan.versionKey);
 
@@ -11,7 +11,7 @@ interface PlanContextValue {
   selectedPlanKey: string | null;
   selectPlan: (planKey: string | null) => void;
   refresh: (chatId?: string | null) => Promise<void>;
-  applySnapshot: (snapshot: Partial<Plan> & { objective?: string; tasks?: Array<Partial<Plan['tasks'][number]>> } | null) => void;
+  applySnapshot: (snapshot: Partial<Plan> & { objective?: string; phases?: Array<Partial<Plan['phases'][number]>> } | null) => void;
 }
 
 const PlanContext = createContext<PlanContextValue | null>(null);
@@ -37,11 +37,11 @@ export const PlanProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const snapshotMatchesPersisted = Boolean(
           snapshotPlan &&
-            data.some(planEntry => {
-              if (snapshotPlan.id != null && planEntry.id === snapshotPlan.id) return true;
-              if (snapshotPlan.versionKey && snapshotPlan.versionKey === getPlanKey(planEntry)) return true;
-              return false;
-            }),
+          data.some(planEntry => {
+            if (snapshotPlan.id != null && planEntry.id === snapshotPlan.id) return true;
+            if (snapshotPlan.versionKey && snapshotPlan.versionKey === getPlanKey(planEntry)) return true;
+            return false;
+          }),
         );
 
         const effectiveSnapshot = snapshotMatchesPersisted ? null : snapshotPlan;
@@ -100,30 +100,32 @@ export const PlanProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [selectedPlanKey, snapshotPlan, sortedPlans, currentPlan]);
 
   const applySnapshot = useCallback(
-    (snapshot: Partial<Plan> & { objective?: string; tasks?: Array<Partial<Plan['tasks'][number]>> } | null) => {
-      if (!snapshot || (!snapshot.objective && !Array.isArray(snapshot.tasks))) {
+    (snapshot: Partial<Plan> & { objective?: string; phases?: Array<Partial<Plan['phases'][number]>> } | null) => {
+      if (!snapshot || (!snapshot.objective && !Array.isArray(snapshot.phases))) {
         setSnapshotPlan(null);
         return;
       }
 
-      const tasks = Array.isArray(snapshot.tasks)
-        ? snapshot.tasks.map((task, index) => {
-            const rawStatus = typeof task?.status === 'string' ? task.status : undefined;
-            const validStatus: PlanTaskStatus =
-              rawStatus === 'pending' || rawStatus === 'in_progress' || rawStatus === 'completed' || rawStatus === 'failed'
-                ? rawStatus
-                : 'pending';
-            const number = typeof task?.number === 'number' ? task.number : index + 1;
-            return {
-              id: task?.id,
-              number,
-              description: String(task?.description ?? '').trim(),
-              status: validStatus,
-              note: task?.note ?? undefined,
-              createdAt: task?.createdAt,
-              updatedAt: task?.updatedAt,
-            };
-          })
+      const phases = Array.isArray(snapshot.phases)
+        ? snapshot.phases.map((phase, index) => {
+          const rawStatus = typeof phase?.status === 'string' ? phase.status : undefined;
+          const validStatus: PlanPhaseStatus =
+            rawStatus === 'pending' || rawStatus === 'in_progress' || rawStatus === 'completed'
+              ? rawStatus
+              : 'pending';
+          const number = typeof phase?.number === 'number' ? phase.number : index + 1;
+          return {
+            id: phase?.id,
+            number,
+            title: String(phase?.title ?? phase?.description ?? '').trim(),
+            description: String(phase?.description ?? '').trim(),
+            status: validStatus,
+            note: phase?.note ?? undefined,
+            capabilities: phase?.capabilities,
+            createdAt: phase?.createdAt,
+            updatedAt: phase?.updatedAt,
+          };
+        })
         : [];
 
       const versionKey = snapshot.versionKey ?? `snapshot:${Date.now()}`;
@@ -132,7 +134,7 @@ export const PlanProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: snapshot.id,
         chatId: snapshot.chatId ?? null,
         objective: snapshot.objective ?? 'Plan',
-        tasks,
+        phases,
         createdAt: snapshot.createdAt ?? timestamp,
         updatedAt: snapshot.updatedAt ?? timestamp,
         versionKey,

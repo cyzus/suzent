@@ -39,14 +39,16 @@ export interface ChatSummary {
   lastMessage?: string;
 }
 
-export type PlanTaskStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
+export type PlanPhaseStatus = 'pending' | 'in_progress' | 'completed';
 
-export interface PlanTask {
+export interface PlanPhase {
   id?: number;
   number: number;
+  title: string;
   description: string;
-  status: PlanTaskStatus;
+  status: PlanPhaseStatus;
   note?: string;
+  capabilities?: Record<string, any>;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -56,7 +58,7 @@ export interface Plan {
   chatId?: string | null;
   objective: string;
   title?: string;
-  tasks: PlanTask[];
+  phases: PlanPhase[];
   createdAt?: string;
   updatedAt?: string;
   versionKey: string;
@@ -80,7 +82,7 @@ export interface ConfigOptions {
 }
 
 // Stream event types from backend
-export type StreamEventType = 
+export type StreamEventType =
   | 'stream_delta'    // Token streaming (both agents)
   | 'action'          // Action step completed with full metadata (both agents)
   | 'action_output'   // Action output (both agents)

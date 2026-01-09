@@ -19,7 +19,7 @@ from smolagents.agents import ActionOutput, PlanningStep, ToolOutput
 from smolagents.memory import ActionStep, FinalAnswerStep
 from smolagents.models import ChatMessageStreamDelta
 
-from suzent.plan import read_plan_from_database
+from suzent.plan import read_plan_from_database, plan_to_dict
 from suzent.utils import to_serializable
 
 
@@ -147,19 +147,9 @@ def _plan_snapshot(chat_id: Optional[str] = None) -> dict:
             return {"objective": "", "tasks": []}
         plan = read_plan_from_database(chat_id)
         if not plan:
-            return {"objective": "", "tasks": []}
-        return {
-            "objective": plan.objective,
-            "tasks": [
-                {
-                    "number": t.number,
-                    "description": t.description,
-                    "status": t.status,
-                    "note": getattr(t, "note", None),
-                }
-                for t in plan.tasks
-            ],
-        }
+            return {"objective": "", "phases": []}
+            
+        return plan_to_dict(plan) or {"objective": "", "phases": []}
     except Exception:
         return {"objective": "", "tasks": []}
 

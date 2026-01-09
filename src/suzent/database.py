@@ -57,6 +57,7 @@ class ChatDatabase:
                     description TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'pending',
                     note TEXT,
+                    capabilities TEXT,
                     created_at TIMESTAMP NOT NULL,
                     updated_at TIMESTAMP NOT NULL,
                     FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE
@@ -80,6 +81,14 @@ class ChatDatabase:
             # Add agent_state column if it doesn't exist (for existing databases)
             try:
                 conn.execute("ALTER TABLE chats ADD COLUMN agent_state BLOB")
+                conn.commit()
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+
+            # Add capabilities column to tasks if it doesn't exist
+            try:
+                conn.execute("ALTER TABLE tasks ADD COLUMN capabilities TEXT")
                 conn.commit()
             except sqlite3.OperationalError:
                 # Column already exists
@@ -307,29 +316,46 @@ class ChatDatabase:
 
     # Plan management methods
     def create_plan(self, chat_id: str, objective: str, tasks: List[Dict[str, Any]] = None) -> int:
-        """Create a new plan for a chat and return its ID."""
+        """Create or update the single plan for a chat and return its ID."""
         now = datetime.now().isoformat()
         tasks = tasks or []
         
         with sqlite3.connect(self.db_path) as conn:
-            # Create the plan
-            cursor = conn.execute("""
-                INSERT INTO plans (chat_id, objective, created_at, updated_at)
-                VALUES (?, ?, ?, ?)
-            """, (chat_id, objective, now, now))
-            plan_id = cursor.lastrowid
+            # Check for existing plan
+            cursor = conn.execute("SELECT id FROM plans WHERE chat_id = ? LIMIT 1", (chat_id,))
+            row = cursor.fetchone()
             
-            # Create the tasks
+            if row:
+                plan_id = row[0]
+                # Update existing plan
+                conn.execute("""
+                    UPDATE plans SET objective = ?, updated_at = ? WHERE id = ?
+                """, (objective, now, plan_id))
+                
+                # Delete existing tasks to overwrite with new ones (since we are "creating/updating" the plan structure)
+                # Note: This resets history of phases if completely re-called. 
+                # Assuming this is desired behavior for "Creating/Updating" a plan as a whole.
+                conn.execute("DELETE FROM tasks WHERE plan_id = ?", (plan_id,))
+            else:
+                # Create new plan
+                cursor = conn.execute("""
+                    INSERT INTO plans (chat_id, objective, created_at, updated_at)
+                    VALUES (?, ?, ?, ?)
+                """, (chat_id, objective, now, now))
+                plan_id = cursor.lastrowid
+            
+            # Create the tasks/phases
             for task in tasks:
                 conn.execute("""
-                    INSERT INTO tasks (plan_id, number, description, status, note, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO tasks (plan_id, number, description, status, note, capabilities, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     plan_id,
                     task.get('number'),
                     task.get('description'),
                     task.get('status', 'pending'),
                     task.get('note'),
+                    task.get('capabilities'),
                     now,
                     now
                 ))
@@ -365,6 +391,7 @@ class ChatDatabase:
                     "description": task_row["description"],
                     "status": task_row["status"],
                     "note": task_row["note"],
+                    "capabilities": task_row["capabilities"],
                     "created_at": task_row["created_at"],
                     "updated_at": task_row["updated_at"]
                 })
@@ -403,6 +430,7 @@ class ChatDatabase:
                     "description": task_row["description"],
                     "status": task_row["status"],
                     "note": task_row["note"],
+                    "capabilities": task_row["capabilities"],
                     "created_at": task_row["created_at"],
                     "updated_at": task_row["updated_at"],
                 }
@@ -446,6 +474,7 @@ class ChatDatabase:
                         "description": task_row["description"],
                         "status": task_row["status"],
                         "note": task_row["note"],
+                        "capabilities": task_row["capabilities"],
                         "created_at": task_row["created_at"],
                         "updated_at": task_row["updated_at"],
                     }
@@ -500,14 +529,15 @@ class ChatDatabase:
                     # Insert new tasks
                     for task in tasks:
                         conn.execute("""
-                            INSERT INTO tasks (plan_id, number, description, status, note, created_at, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            INSERT INTO tasks (plan_id, number, description, status, note, capabilities, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             plan_id,
                             task.get('number'),
                             task.get('description'),
                             task.get('status', 'pending'),
                             task.get('note'),
+                            task.get('capabilities'),
                             now,
                             now
                         ))

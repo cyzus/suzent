@@ -12,7 +12,7 @@ from suzent.logger import get_logger
 from suzent.plan import (
     STATUS_MAP,
     Plan,
-    Task,
+    Phase,
     read_plan_from_database,
     read_plan_by_id,
     write_plan_to_database,
@@ -53,37 +53,35 @@ class PlanningTool(Tool):
         "action": {
             "type": "string",
             "description": "The operation to perform.",
-            "enum": ["create_plan", "status", "update_plan", "mark_step"]
+            "enum": ["update", "advance"]
         },
-        "objective": {
+        "goal": {
             "type": "string",
-            "description": "A concise high-level goal for the plan. Required for 'create_plan'.",
+            "description": "A concise high-level goal for the plan. Required for 'update' if creating a new plan or changing goal.",
             "nullable": True
         },
-        "action_items": {
+        "phases": {
             "type": "array",
-            "description": "A list of action items (3-5 is recommended). Required for 'create_plan' and 'update_plan'.",
-            "nullable": True
+            "description": "A list of phases with id, title, and capabilities. Required for 'update'.",
+            "nullable": True,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "title": {"type": "string"},
+                    "capabilities": {"type": "object"}
+                },
+                "required": ["id", "title"]
+            }
         },
-        "plan_id": {
+        "current_phase_id": {
             "type": "integer",
-            "description": "ID of the plan to operate on when updating or marking steps.",
+            "description": "The ID of the phase currently finishing. Required for 'advance'.",
             "nullable": True
         },
-        "step_number": {
+        "next_phase_id": {
             "type": "integer",
-            "description": "The number of the step to mark. Required for 'mark_step'.",
-            "nullable": True
-        },
-        "status": {
-            "type": "string",
-            "description": "The new status for the step. Required for 'mark_step'.",
-            "enum": ["pending", "in_progress", "completed", "failed"],
-            "nullable": True
-        },
-        "step_note": {
-            "type": "string",
-            "description": "A note to add or update for the step.",
+            "description": "The ID of the next phase to start. Required for 'advance'.",
             "nullable": True
         },
     }
@@ -92,20 +90,16 @@ class PlanningTool(Tool):
     def forward(
         self,
         action: str,
-        objective: Optional[str] = None,
-        action_items: Optional[list[str]] = None,
-        plan_id: Optional[int] = None,
-        step_number: Optional[int] = None,
-        status: Optional[str] = None,
-        step_note: Optional[str] = None,
+        goal: Optional[str] = None,
+        phases: Optional[list[dict]] = None,
+        current_phase_id: Optional[int] = None,
+        next_phase_id: Optional[int] = None,
         chat_id: Optional[str] = None,
     ) -> str:
-        """Manages a project plan in a TODO.md file."""
+        """Manages a project plan."""
         action_map = {
-            "create_plan": self._create_plan,
-            "status": self._get_status,
-            "update_plan": self._update_plan,
-            "mark_step": self._mark_step,
+            "update": self._update_plan,
+            "advance": self._advance_plan,
         }
 
         if action not in action_map:
@@ -117,16 +111,14 @@ class PlanningTool(Tool):
             return self._format_error("Missing chat_id", "Ensure the agent is invoked with an active chat context")
         
         # Validate required arguments
-        validation_error = self._validate_action_args(action, objective, action_items, step_number, status)
+        validation_error = self._validate_action_args(action, goal, phases, current_phase_id, next_phase_id)
         if validation_error:
             return validation_error
         
         # Prepare arguments for the respective methods
         args = {
-            "create_plan": (chat_id, objective, action_items),
-            "status": (chat_id, plan_id),
-            "update_plan": (chat_id, plan_id, action_items),
-            "mark_step": (chat_id, plan_id, step_number, status, step_note),
+            "update": (chat_id, goal, phases),
+            "advance": (chat_id, current_phase_id, next_phase_id),
         }
 
         return action_map[action](*args[action])
@@ -145,18 +137,16 @@ class PlanningTool(Tool):
     def _validate_action_args(
         self, 
         action: str, 
-        objective: Optional[str],
-        action_items: Optional[list[str]],
-        step_number: Optional[int],
-        status: Optional[str]
+        goal: Optional[str],
+        phases: Optional[list[dict]],
+        current_phase_id: Optional[int],
+        next_phase_id: Optional[int]
     ) -> Optional[str]:
         """Validate that required arguments are provided for the action."""
-        if action == "create_plan" and (not objective or not action_items):
-            return self._format_error("Missing arguments", "create_plan requires 'objective' and 'action_items'")
-        if action == "update_plan" and not action_items:
-            return self._format_error("Missing arguments", "update_plan requires 'action_items'")
-        if action == "mark_step" and (step_number is None or not status):
-            return self._format_error("Missing arguments", "mark_step requires 'step_number' and 'status'")
+        if action == "update" and not phases:
+            return self._format_error("Missing arguments", "update requires 'phases'")
+        if action == "advance" and (current_phase_id is None or next_phase_id is None):
+            return self._format_error("Missing arguments", "advance requires 'current_phase_id' and 'next_phase_id'")
         return None
     
     def _format_error(self, title: str, message: str) -> str:
@@ -186,62 +176,78 @@ class PlanningTool(Tool):
         
         return plan
 
-    def _create_plan(self, chat_id: str, objective: str, action_items: list[str]) -> str:
-        """Creates a new plan."""
-        tasks = [Task(number=i + 1, description=item) for i, item in enumerate(action_items)]
-        plan = Plan(objective=objective, tasks=tasks, chat_id=chat_id)
-        write_plan_to_database(plan)
+    def _update_plan(self, chat_id: str, goal: Optional[str], phases: list[dict]) -> str:
+        """Create or update a plan."""
+        existing_plan = self._get_plan(chat_id, None)
+        objective = goal if goal else (existing_plan.objective if existing_plan else "No Goal")
         
-        # Return the plan in markdown format directly
-        return f"✓ **Plan created** (ID: {plan.id or 'pending'})\n\n{plan.to_markdown()}"
+        # Map phases to Phase objects
+        new_phases = []
+        for p in phases:
+            new_phases.append(Phase(
+                number=p['id'],
+                description=p['title'],
+                capabilities=p.get('capabilities', {})
+            ))
+            
+        
+        # Ensure first phase is in_progress if none are
+        if not any(p.status == "in_progress" for p in new_phases) and not any(p.status == "completed" for p in new_phases):
+             if new_phases:
+                 new_phases[0].status = "in_progress"
 
-    def _get_status(self, chat_id: str, plan_id: Optional[int] = None) -> str:
-        """Gets the current status of the plan."""
-        plan = self._get_plan(chat_id, plan_id)
+        plan = Plan(objective=objective, phases=new_phases, chat_id=chat_id)
+        if existing_plan:
+            plan.id = existing_plan.id # Keep ID to update in place if desired, though write_plan creates new version by default
         
+        write_plan_to_database(plan, preserve_history=True) # Always create history for updates generally good
+
+        return self._format_plan_output(plan, "Task plan updated")
+
+    def _advance_plan(self, chat_id: str, current_phase_id: int, next_phase_id: int) -> str:
+        """Advance the plan from current phase to next."""
+        plan = self._get_plan(chat_id, None)
         if not plan:
-            if plan_id is not None:
-                return self._format_error("Plan not found", f"No plan with ID {plan_id} found for this chat")
-            return self._format_error("No plan exists", "Create a plan first using 'create_plan'")
+             return self._format_error("No plan exists", "Create a plan first using 'update'")
+
+        # Find phases
+        try:
+            next_phase_idx = next(i for i, p in enumerate(plan.phases) if p.number == next_phase_id)
+        except StopIteration:
+            return self._format_error("Invalid next_phase_id", f"Phase {next_phase_id} not found")
+
+        current_phase = next((p for p in plan.phases if p.number == current_phase_id), None)
+        if not current_phase:
+             return self._format_error("Invalid current_phase_id", f"Phase {current_phase_id} not found")
+
+        next_phase = plan.phases[next_phase_idx]
         
-        return plan.to_markdown()
-
-    def _update_plan(self, chat_id: str, plan_id: Optional[int], action_items: list[str]) -> str:
-        """Overwrites the current plan with new action items."""
-        plan = self._get_plan(chat_id, plan_id)
+        # Mark all phases before the next phase as completed (handling skips)
+        for i in range(next_phase_idx):
+            plan.phases[i].status = "completed"
         
-        if not plan:
-            if plan_id is not None:
-                return self._format_error("Plan not found", f"No plan with ID {plan_id} found for this chat")
-            return self._format_error("No plan exists", "Create a plan first using 'create_plan'")
+        next_phase.status = "in_progress"
 
-        plan.tasks = [Task(number=i + 1, description=item) for i, item in enumerate(action_items)]
-        write_plan_to_database(plan, preserve_history=False)
+        write_plan_to_database(plan, preserve_history=True)
+
+        return self._format_plan_output(plan, "Advanced to the next phase", previous_phase=current_phase, next_phase=next_phase)
+
+    def _format_plan_output(self, plan: Plan, header: str, previous_phase: Optional[Phase] = None, next_phase: Optional[Phase] = None) -> str:
+        """Format the plan output as requested."""
+        phases_str = "; ".join([f"{p.number}: {p.description}" for p in plan.phases])
+        # Truncate phases str if too long? "..." was in example. 
+        # Making it simple: "1: Title; 2: Title"
         
-        return f"✓ **Plan updated**\n\n{plan.to_markdown()}"
-
-    def _mark_step(self, chat_id: str, plan_id: Optional[int], step_number: int, status: str, step_note: Optional[str] = None) -> str:
-        """Marks a step with a new status and optionally adds a note."""
-        if status not in STATUS_MAP:
-            valid_statuses = ", ".join(STATUS_MAP.keys())
-            return self._format_error("Invalid status", f"Valid statuses: {valid_statuses}")
-
-        db = get_database()
-        success = db.update_task_status(chat_id, step_number, status, step_note, plan_id=plan_id)
+        current = plan.first_in_progress()
+        current_str = f"{current.number}. {current.description}" if current else "None"
         
-        if not success:
-            return self._format_error("Update failed", f"Step {step_number} not found or no plan exists")
-
-        # Get updated plan to show current state
-        plan = self._get_plan(chat_id, plan_id)
-        if not plan:
-            return self._format_success(f"Step {step_number} → {status}")
-
-        # When marking a task as completed, show only remaining tasks
-        if status == "completed":
-            plan_status = plan.to_markdown(hide_completed=True, newly_completed_step=None)
-            return f"✓ **Step {step_number} completed**\n\n{plan_status}"
+        output = f"{header}:\n<task_plan>\nGoal: {plan.objective}\nPhases: {phases_str}\n"
         
-        # For other status changes, show all tasks
-        plan_status = plan.to_markdown(hide_completed=False, newly_completed_step=None)
-        return f"✓ **Step {step_number} → {status}**\n\n{plan_status}"
+        if previous_phase and next_phase:
+            output += f"Previous phase: {previous_phase.number}. {previous_phase.description}\n"
+            output += f"Next phase: {next_phase.number}. {next_phase.description}\n"
+        else:
+            output += f"Current phase: {current_str}\n"
+            
+        output += "</task_plan>"
+        return output

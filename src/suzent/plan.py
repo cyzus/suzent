@@ -1,26 +1,33 @@
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict
+from pydantic import BaseModel, Field
 
 # Keep for backward compatibility and migration
+import json
+from enum import Enum
+
+class PhaseStatus(str, Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+
 STATUS_MAP = {
-    "pending": " ",
-    "in_progress": ">",
-    "completed": "x",
-    "failed": "!",
+    PhaseStatus.PENDING: " ",
+    PhaseStatus.IN_PROGRESS: ">",
+    PhaseStatus.COMPLETED: "x",
 }
 REVERSE_STATUS_MAP = {v: k for k, v in STATUS_MAP.items()}
 
 
-@dataclass
-class Task:
-    """Represents a single task in the plan."""
+class Phase(BaseModel):
+    """Represents a single phase in the plan."""
     number: int
     description: str
-    status: str = "pending"
+    status: PhaseStatus = PhaseStatus.PENDING
     note: Optional[str] = None
     task_id: Optional[int] = None
+    capabilities: Dict = Field(default_factory=dict)
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -29,64 +36,24 @@ class Task:
         return f"- [{STATUS_MAP[self.status]}] {self.number}. {self.description}{note_str}\n"
 
 
-@dataclass
-class Plan:
+class Plan(BaseModel):
     """Represents the overall plan."""
     objective: str
-    tasks: list[Task] = field(default_factory=list)
+    phases: List[Phase] = Field(default_factory=list)
     chat_id: Optional[str] = None
     id: Optional[int] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
-    def to_markdown(self, hide_completed: bool = False, newly_completed_step: Optional[int] = None) -> str:
-        """Converts the plan to a markdown string."""
-        # Neo-brutalist status indicators
-        status_icons = {
-            "pending": "[ ]",
-            "in_progress": "[~]",
-            "completed": "[x]",
-            "failed": "[!]"
-        }
         
-        # Show progress summary if hiding completed tasks
-        if hide_completed:
-            completed_count = sum(1 for t in self.tasks if t.status == "completed")
-            remaining_count = len(self.tasks) - completed_count
-            if completed_count > 0:
-                markdown = f"### {self.objective}\n*{remaining_count} remaining • {completed_count} completed*\n\n"
-            else:
-                markdown = f"### {self.objective}\n\n"
-        else:
-            markdown = f"### {self.objective}\n\n"
-        
-        visible_tasks = []
-        
-        for task in self.tasks:
-            if hide_completed and task.status == "completed" and task.number != newly_completed_step:
-                continue
-            
-            icon = status_icons.get(task.status, "[ ]")
-            # Clean list format
-            task_item = f"{icon} **{task.number}.** {task.description}"
-            
-            if task.note:
-                task_item += f"\n    > *{task.note}*"
-            
-            visible_tasks.append(task_item)
-        
-        markdown += "\n".join(visible_tasks)
-        
-        return markdown
-        
-    def first_pending(self) -> Optional['Task']:
-        for t in self.tasks:
+    def first_pending(self) -> Optional['Phase']:
+        for t in self.phases:
             if t.status == "pending":
                 return t
         return None
 
-    def first_in_progress(self) -> Optional['Task']:
-        for t in self.tasks:
+    def first_in_progress(self) -> Optional['Phase']:
+        for t in self.phases:
             if t.status == "in_progress":
                 return t
         return None
@@ -104,19 +71,20 @@ def read_plan_from_database(chat_id: str) -> Optional[Plan]:
     
     tasks = []
     for task_data in plan_data['tasks']:
-        tasks.append(Task(
+        tasks.append(Phase(
             number=task_data['number'],
             description=task_data['description'],
             status=task_data['status'],
             note=task_data['note'],
             task_id=task_data.get('id'),
+            capabilities=json.loads(task_data.get('capabilities', '{}')) if task_data.get('capabilities') else {},
             created_at=task_data.get('created_at'),
             updated_at=task_data.get('updated_at')
         ))
     
     return Plan(
         objective=plan_data['objective'],
-        tasks=tasks,
+        phases=tasks,
         chat_id=chat_id,
         id=plan_data.get('id'),
         created_at=plan_data.get('created_at'),
@@ -134,12 +102,13 @@ def read_plan_by_id(plan_id: int) -> Optional[Plan]:
         return None
 
     tasks = [
-        Task(
+        Phase(
             number=task_data['number'],
             description=task_data['description'],
             status=task_data['status'],
             note=task_data['note'],
             task_id=task_data.get('id'),
+            capabilities=json.loads(task_data.get('capabilities', '{}')) if task_data.get('capabilities') else {},
             created_at=task_data.get('created_at'),
             updated_at=task_data.get('updated_at'),
         )
@@ -148,7 +117,7 @@ def read_plan_by_id(plan_id: int) -> Optional[Plan]:
 
     return Plan(
         objective=plan_data['objective'],
-        tasks=tasks,
+        phases=tasks,
         chat_id=plan_data.get('chat_id'),
         id=plan_data.get('id'),
         created_at=plan_data.get('created_at'),
@@ -167,19 +136,20 @@ def read_plan_history_from_database(chat_id: str, limit: Optional[int] = None) -
     for plan_data in plan_rows:
         tasks = []
         for task_data in plan_data['tasks']:
-            tasks.append(Task(
+            tasks.append(Phase(
                 number=task_data['number'],
                 description=task_data['description'],
                 status=task_data['status'],
                 note=task_data['note'],
                 task_id=task_data.get('id'),
+                capabilities=json.loads(task_data.get('capabilities', '{}')) if task_data.get('capabilities') else {},
                 created_at=task_data.get('created_at'),
                 updated_at=task_data.get('updated_at')
             ))
 
         plans.append(Plan(
             objective=plan_data['objective'],
-            tasks=tasks,
+            phases=tasks,
             chat_id=plan_data.get('chat_id', chat_id),
             id=plan_data.get('id'),
             created_at=plan_data.get('created_at'),
@@ -202,12 +172,13 @@ def write_plan_to_database(plan: Plan, *, preserve_history: bool = True):
     
     db = get_database()
     tasks_data = []
-    for task in plan.tasks:
+    for task in plan.phases:
         tasks_data.append({
             'number': task.number,
             'description': task.description,
             'status': task.status,
-            'note': task.note
+            'note': task.note,
+            'capabilities': json.dumps(task.capabilities) if task.capabilities else None
         })
     
     if preserve_history:
@@ -222,6 +193,10 @@ def plan_to_dict(plan: Optional[Plan]) -> Optional[dict]:
     if not plan:
         return None
 
+
+    data = plan.model_dump()
+    
+    # Computed version key logic
     if plan.id is not None:
         version_key = f"id:{plan.id}"
     elif plan.updated_at:
@@ -229,29 +204,22 @@ def plan_to_dict(plan: Optional[Plan]) -> Optional[dict]:
     elif plan.created_at:
         version_key = f"created:{plan.created_at}"
     else:
-        version_key = f"objective:{hash(plan.objective)}:{len(plan.tasks)}"
+        version_key = f"objective:{hash(plan.objective)}:{len(plan.phases)}"
 
-    return {
-        "id": plan.id,
-        "chatId": plan.chat_id,
-        "objective": plan.objective,
-        "title": plan.objective,
-        "createdAt": plan.created_at,
-        "updatedAt": plan.updated_at,
-        "versionKey": version_key,
-        "tasks": [
-            {
-                "id": task.task_id,
-                "number": task.number,
-                "description": task.description,
-                "status": task.status,
-                "note": task.note,
-                "createdAt": task.created_at,
-                "updatedAt": task.updated_at,
-            }
-            for task in plan.tasks
-        ],
-    }
+    # Add/Update frontend-specific fields
+    data["title"] = plan.objective
+    data["versionKey"] = version_key
+    data["chatId"] = plan.chat_id
+    data["createdAt"] = plan.created_at
+    data["updatedAt"] = plan.updated_at
+    
+    # Enhance phases for frontend compatibility
+    for phase_data in data["phases"]:
+        phase_data["title"] = phase_data["description"]
+        phase_data["createdAt"] = phase_data["created_at"]
+        phase_data["updatedAt"] = phase_data["updated_at"]
+
+    return data
 
 
 def auto_mark_in_progress(chat_id: str):
