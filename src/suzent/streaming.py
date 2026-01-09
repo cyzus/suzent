@@ -19,7 +19,7 @@ from smolagents.agents import ActionOutput, PlanningStep, ToolOutput
 from smolagents.memory import ActionStep, FinalAnswerStep
 from smolagents.models import ChatMessageStreamDelta
 
-from suzent.plan import read_plan_from_database, plan_to_dict
+from suzent.plan import read_plan_from_database, plan_to_dict, auto_complete_current
 from suzent.utils import to_serializable
 
 
@@ -319,6 +319,16 @@ async def stream_agent_responses(
             await watcher_task
 
         if chat_id:
+            # Auto-complete the current phase if stream finished successfully (not stopped/cancelled)
+            if not control.thread_event.is_set():
+                try:
+                    auto_complete_current(chat_id)
+                    # Push final plan update
+                    await queue.put(_PlanTick(_plan_snapshot(chat_id)))
+                except Exception as e:
+                    # Log error but don't fail the stream
+                    print(f"Failed to auto-complete plan: {e}")
+
             existing = stream_controls.get(chat_id)
             if existing is control:
                 stream_controls.pop(chat_id, None)
