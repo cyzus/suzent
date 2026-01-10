@@ -14,6 +14,7 @@ import { useStatusStore } from '../hooks/useStatusStore';
 import { PlanProgress } from './PlanProgress';
 import { NewChatView } from './NewChatView';
 import { ChatInputPanel } from './ChatInputPanel';
+import { useTypewriter } from '../hooks/useTypewriter';
 
 
 
@@ -127,7 +128,7 @@ const CopyButton: React.FC<{ text: string; className?: string; color?: string }>
   );
 };
 
-const CodeBlockComponent: React.FC<{ lang?: string; content: string }> = ({ lang, content }) => {
+const CodeBlockComponent: React.FC<{ lang?: string; content: string; isStreaming?: boolean }> = ({ lang, content, isStreaming }) => {
   const [expanded, setExpanded] = useState(true);
   const { setStatus } = useStatusStore();
   const [copied, setCopied] = useState(false);
@@ -166,7 +167,7 @@ const CodeBlockComponent: React.FC<{ lang?: string; content: string }> = ({ lang
         </div>
         <div className="bg-transparent overflow-hidden">
           <pre className="max-w-full text-xs text-brutal-code-text p-0 font-sans leading-relaxed overflow-x-auto whitespace-pre-wrap break-all !bg-transparent">
-            <code className={`language-${safeLang}`}>{content}</code>
+            <code className={`language-${safeLang}`}>{content}{isStreaming && <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1"></span>}</code>
           </pre>
         </div>
       </div>
@@ -218,7 +219,7 @@ const CodeBlockComponent: React.FC<{ lang?: string; content: string }> = ({ lang
       {/* Content Area */}
       <div className={`bg-brutal-code-bg transition-all duration-300 ease-in-out overflow-hidden ${expanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
         <pre className={`max-w-full text-xs text-brutal-code-text p-4 pt-4 leading-relaxed overflow-x-auto !bg-transparent ${safeLang === 'text' ? 'whitespace-pre-wrap break-all font-sans' : 'whitespace-pre font-mono'}`}>
-          <code className={`language-${safeLang}`}>{content}</code>
+          <code className={`language-${safeLang}`}>{content}{isStreaming && <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1"></span>}</code>
         </pre>
       </div>
     </div>
@@ -358,6 +359,21 @@ const MarkdownRenderer = React.memo((props: { content: string }) => {
     </div>
   );
 });
+
+// Component to handle typewriter effect for the active streaming message
+const StreamingMessageContent: React.FC<{
+  content: string;
+  isStreaming: boolean;
+  onBlockRender: (blocks: any[]) => React.ReactNode;
+}> = ({ content, isStreaming, onBlockRender }) => {
+  // Use typewriter effect only if streaming
+  const displayedContent = useTypewriter(content, 10, isStreaming);
+
+  // Split content based on what's currently displayed
+  const blocks = splitAssistantContent(displayedContent);
+
+  return <>{onBlockRender(blocks)}</>;
+};
 
 export const ChatWindow: React.FC = () => {
   const {
@@ -690,6 +706,7 @@ export const ChatWindow: React.FC = () => {
                 {safeMessages.map((m: Message, idx: number) => {
                   const isUser = m.role === 'user';
                   const blocks = isUser ? [{ type: 'markdown', content: m.content } as { type: 'markdown'; content: string; lang?: string }] : splitAssistantContent(m.content);
+                  const isStreamingAgentMessage = !isUser && streamingForCurrentChat && idx === safeMessages.length - 1;
 
                   // Calculate clean content for copy (excluding logs)
                   const cleanContent = isUser ? m.content : blocks
@@ -711,7 +728,7 @@ export const ChatWindow: React.FC = () => {
                   const showMainCopyButton = cleanContent && !isThought && !hasStepInfo;
 
                   const alignClass = isUser ? 'justify-end' : 'justify-start';
-                  const isStreamingAgentMessage = !isUser && streamingForCurrentChat && idx === safeMessages.length - 1;
+                  // isStreamingAgentMessage moved up
                   const eyeClass = isStreamingAgentMessage ? 'robot-eye robot-eye-blink' : 'robot-eye robot-eye-idle';
                   const rightEyeStyle = !isUser
                     ? (isStreamingAgentMessage ? undefined : { animationDelay: '1.8s' })
@@ -766,24 +783,48 @@ export const ChatWindow: React.FC = () => {
                             </div>
                             <div className={`bg-white border-3 border-brutal-black px-6 py-5 space-y-4 relative -mt-3 pt-6 shadow-brutal-lg select-text`}>
                               {showMainCopyButton && <CopyButton text={cleanContent} className="absolute top-2 right-2 z-10" color="bg-brutal-yellow" />}
-                              {blocks.map((b, bi) => {
-                                const blockKey = generateBlockKey(b, bi, idx);
-                                if (b.type === 'markdown') {
-                                  return <MarkdownRenderer key={blockKey} content={b.content} />;
-                                } else if (b.type === 'log') {
-                                  return <LogBlock key={blockKey} title={b.title} content={b.content} />;
-                                } else {
-                                  return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} />;
-                                }
-                              })}
+                              {/* Use StreamingMessageContent for the last message if it's streaming, otherwise render directly */
+                                isStreamingAgentMessage ? (
+                                  <StreamingMessageContent
+                                    content={m.content}
+                                    isStreaming={true}
+                                    onBlockRender={(blocks) => (
+                                      <>
+                                        {blocks.map((b, bi) => {
+                                          const blockKey = generateBlockKey(b, bi, idx);
+                                          const isLastBlock = bi === blocks.length - 1;
+                                          // Cursor always follows the typewriter trail
+                                          const showCursor = isLastBlock;
+
+                                          if (b.type === 'markdown') {
+                                            // Append blinking cursor HTML
+                                            const contentWithCursor = showCursor
+                                              ? b.content + ' <span class="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1"></span>'
+                                              : b.content;
+                                            return <MarkdownRenderer key={blockKey} content={contentWithCursor} />;
+                                          } else if (b.type === 'log') {
+                                            return <LogBlock key={blockKey} title={b.title} content={b.content} />;
+                                          } else {
+                                            return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} isStreaming={showCursor} />;
+                                          }
+                                        })}
+                                      </>
+                                    )}
+                                  />
+                                ) : (
+                                  blocks.map((b, bi) => {
+                                    const blockKey = generateBlockKey(b, bi, idx);
+                                    if (b.type === 'markdown') {
+                                      return <MarkdownRenderer key={blockKey} content={b.content} />;
+                                    } else if (b.type === 'log') {
+                                      return <LogBlock key={blockKey} title={b.title} content={b.content} />;
+                                    } else {
+                                      return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} />;
+                                    }
+                                  })
+                                )}
                               {/* end user/assistant content */}
-                              {idx === safeMessages.length - 1 && streamingForCurrentChat && (
-                                <div className="mt-3 flex items-center gap-1.5">
-                                  <span className="text-neutral-500 font-mono text-sm animate-brutal-blink">●</span>
-                                  <span className="text-neutral-500 font-mono text-sm animate-brutal-blink" style={{ animationDelay: '0.3s' }}>●</span>
-                                  <span className="text-neutral-500 font-mono text-sm animate-brutal-blink" style={{ animationDelay: '0.6s' }}>●</span>
-                                </div>
-                              )}
+                              {/* end user/assistant content */}
                             </div>
                           </div>
                         )}
