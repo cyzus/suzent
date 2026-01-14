@@ -168,7 +168,8 @@ export const ConfigView: React.FC = () => {
         <div className="flex flex-wrap gap-2">
           {backendConfig.tools.map((tool: string) => {
             // Skip memory tools in the main tools list - they're controlled by the memory toggle
-            if (tool === 'MemorySearchTool' || tool === 'MemoryBlockUpdateTool') {
+            // Also skip SandboxTool as it's controlled by the sandbox toggle
+            if (tool === 'MemorySearchTool' || tool === 'MemoryBlockUpdateTool' || tool === 'SandboxTool') {
               return null;
             }
             const active = (config.tools || []).includes(tool);
