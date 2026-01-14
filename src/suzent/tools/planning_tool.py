@@ -62,7 +62,7 @@ class PlanningTool(Tool):
         },
         "phases": {
             "type": "array",
-            "description": "A list of phases with id, title, and capabilities. Required for 'update'.",
+            "description": "A list of phases with id, title, and capabilities (a dictionary of capability_name: capability_description). Required for 'update'.",
             "nullable": True,
             "items": {
                 "type": "object",
