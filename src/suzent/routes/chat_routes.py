@@ -197,10 +197,10 @@ async def chat(request: Request) -> StreamingResponse:
                         logger.warning(f"Error loading agent state: {e}")
                         # Continue without state restoration rather than failing
 
-                # Inject chat_id and user_id into tools if available
+                # Inject chat_id, user_id, and config into tools if available
                 if chat_id:
                     user_id = config.get('_user_id', CONFIG.user_id)
-                    inject_chat_context(agent_instance, chat_id, user_id)
+                    inject_chat_context(agent_instance, chat_id, user_id, config)
 
                 # Inject memory context into agent instructions (ephemeral)
                 # We do this instead of prepending to message to keep the user's query clean

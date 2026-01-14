@@ -19,6 +19,8 @@ export interface ChatConfig {
   tools: string[];
   mcp_urls?: string[];
   memory_enabled?: boolean;
+  sandbox_enabled?: boolean;
+  sandbox_volumes?: string[];
 }
 
 export interface Chat {
@@ -73,11 +75,15 @@ export interface ConfigOptions {
   defaultTools: string[]; // default enabled tools
   codeTag: string;        // CODE_TAG (e.g. <code>) so frontend can parse blocks consistently
   userId?: string;        // backend-provided user identifier for memory system alignment
+  globalSandboxVolumes?: string[];  // global volumes from config file (read-only)
+  sandboxEnabled?: boolean;         // global sandbox enable setting
   userPreferences?: {     // saved user preferences from database
     model: string;
     agent: string;
     tools: string[];
     memory_enabled: boolean;
+    sandbox_enabled?: boolean;
+    sandbox_volumes?: string[];
   };
 }
 

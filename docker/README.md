@@ -22,4 +22,21 @@ nano .env  # or use your preferred editor
 docker compose -f docker/docker-compose.yml up -d
 ```
 
+## Sandbox (Optional)
 
+The sandbox provides isolated Python code execution for the agent. It requires:
+- WSL2 with nested virtualization enabled
+- KVM support (`/dev/kvm`)
+
+```bash
+# Start sandbox server (separate from main services)
+docker compose -f docker/sandbox-compose.yml up -d
+
+# Check logs
+docker logs suzent-microsandbox --tail 50
+```
+
+Enable sandbox in `config/default.yaml`:
+```yaml
+sandbox_enabled: true
+```

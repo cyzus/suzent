@@ -2734,9 +2734,11 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "crawl4ai" },
+    { name = "httpx" },
     { name = "loguru" },
     { name = "markitdown", extra = ["all"] },
     { name = "pydantic" },
+    { name = "pytest" },
     { name = "python-dotenv" },
     { name = "smolagents", extra = ["gradio", "litellm", "mcp"] },
     { name = "starlette" },
@@ -2767,10 +2769,12 @@ memory = [
 requires-dist = [
     { name = "asyncpg", marker = "extra == 'memory'", specifier = ">=0.29.0" },
     { name = "crawl4ai", specifier = ">=0.7.3" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "loguru", specifier = ">=0.7.0" },
     { name = "markitdown", extras = ["all"] },
     { name = "pgvector", marker = "extra == 'memory'", specifier = ">=0.3.6" },
     { name = "pydantic", specifier = ">=2.0" },
+    { name = "pytest", specifier = ">=9.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
     { name = "python-dotenv" },

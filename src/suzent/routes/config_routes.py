@@ -38,6 +38,9 @@ async def get_config(request: Request) -> JSONResponse:
         "defaultTools": CONFIG.default_tools,
         "codeTag": CONFIG.code_tag,
         "userId": CONFIG.user_id,
+        # Include global sandbox configuration
+        "globalSandboxVolumes": CONFIG.sandbox_volumes or [],
+        "sandboxEnabled": getattr(CONFIG, 'sandbox_enabled', False),
     }
 
     # Add user preferences if they exist

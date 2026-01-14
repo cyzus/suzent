@@ -178,8 +178,8 @@ export const ConfigView: React.FC = () => {
                 type="button"
                 onClick={() => toggleTool(tool)}
                 className={`px-2.5 py-1 border-3 text-xs font-bold uppercase transition-all duration-200 ${active
-                    ? 'bg-brutal-green text-brutal-black border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[-1px] translate-y-[-1px]'
-                    : 'border-brutal-black text-brutal-black bg-white hover:bg-brutal-yellow hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+                  ? 'bg-brutal-green text-brutal-black border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[-1px] translate-y-[-1px]'
+                  : 'border-brutal-black text-brutal-black bg-white hover:bg-brutal-yellow hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
                   }`}
               >
                 {tool}
@@ -194,14 +194,14 @@ export const ConfigView: React.FC = () => {
           type="button"
           onClick={() => update({ memory_enabled: !config.memory_enabled })}
           className={`w-full px-3 py-2 border-3 text-xs font-bold uppercase transition-all duration-200 flex items-center justify-between ${config.memory_enabled
-              ? 'bg-brutal-green text-brutal-black border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
-              : 'border-brutal-black text-brutal-black bg-white hover:bg-brutal-yellow hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+            ? 'bg-brutal-green text-brutal-black border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+            : 'border-brutal-black text-brutal-black bg-white hover:bg-brutal-yellow hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
             }`}
         >
           <span>🧠 Memory Tools</span>
           <span className={`text-[10px] px-2 py-1 border-2 font-bold ${config.memory_enabled
-              ? 'border-brutal-black bg-white text-brutal-black'
-              : 'border-brutal-black bg-neutral-200 text-brutal-black'
+            ? 'border-brutal-black bg-white text-brutal-black'
+            : 'border-brutal-black bg-neutral-200 text-brutal-black'
             }`}>
             {config.memory_enabled ? 'ENABLED' : 'DISABLED'}
           </span>
@@ -213,6 +213,120 @@ export const ConfigView: React.FC = () => {
             <span>Memory tools are disabled</span>
           )}
         </div>
+      </div>
+      <div className="space-y-2">
+        <label className="block font-bold tracking-wide text-brutal-black uppercase">Sandbox System</label>
+        <button
+          type="button"
+          onClick={() => update({ sandbox_enabled: !config.sandbox_enabled })}
+          className={`w-full px-3 py-2 border-3 text-xs font-bold uppercase transition-all duration-200 flex items-center justify-between ${config.sandbox_enabled
+            ? 'bg-brutal-green text-brutal-black border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+            : 'border-brutal-black text-brutal-black bg-white hover:bg-brutal-yellow hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+            }`}
+        >
+          <span>📦 Sandbox Execution</span>
+          <span className={`text-[10px] px-2 py-1 border-2 font-bold ${config.sandbox_enabled
+            ? 'border-brutal-black bg-white text-brutal-black'
+            : 'border-brutal-black bg-neutral-200 text-brutal-black'
+            }`}>
+            {config.sandbox_enabled ? 'ENABLED' : 'DISABLED'}
+          </span>
+        </button>
+        <div className="text-[11px] text-brutal-black font-medium leading-relaxed">
+          {config.sandbox_enabled ? (
+            <span>✓ Agent can run code in isolated sandbox</span>
+          ) : (
+            <span>Sandbox execution is disabled</span>
+          )}
+        </div>
+        {config.sandbox_enabled && (
+          <div className="mt-2 space-y-2">
+            <div className="text-[10px] font-bold uppercase text-brutal-black">Volume Mounts</div>
+
+            {/* Global volumes from config file (read-only) */}
+            {backendConfig?.globalSandboxVolumes && backendConfig.globalSandboxVolumes.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-[9px] font-bold uppercase text-brutal-black opacity-60">Global (from config.yaml)</div>
+                <ul className="space-y-1">
+                  {backendConfig.globalSandboxVolumes.map((vol: string, idx: number) => (
+                    <li key={`global-${idx}`} className="flex items-center gap-2 bg-brutal-yellow border-3 border-brutal-black px-2 py-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                      <span className="flex-1 font-mono text-xs font-bold truncate" title={vol}>{vol}</span>
+                      <span className="text-[9px] font-bold uppercase bg-brutal-black text-white px-1.5 py-0.5 border-2 border-brutal-black">
+                        🌍 Global
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Per-chat volumes (editable) */}
+            <div className="space-y-1">
+              <div className="text-[9px] font-bold uppercase text-brutal-black opacity-60">Per-Chat (this chat only)</div>
+              <div className="flex gap-2">
+                <input
+                  id="sandbox-volume-input"
+                  placeholder="host_path:container_path"
+                  className="flex-1 bg-white border-3 border-brutal-black px-2 py-1 font-mono font-bold text-xs placeholder:opacity-40 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-shadow"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const input = e.target as HTMLInputElement;
+                      const value = input.value.trim();
+                      if (value && value.includes(':')) {
+                        const current = config.sandbox_volumes || [];
+                        if (!current.includes(value)) {
+                          update({ sandbox_volumes: [...current, value] });
+                        }
+                        input.value = '';
+                      }
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const input = document.getElementById('sandbox-volume-input') as HTMLInputElement;
+                    const value = input?.value?.trim();
+                    if (value && value.includes(':')) {
+                      const current = config.sandbox_volumes || [];
+                      if (!current.includes(value)) {
+                        update({ sandbox_volumes: [...current, value] });
+                      }
+                      input.value = '';
+                    }
+                  }}
+                  className="shrink-0 px-3 py-1 bg-brutal-green border-3 border-brutal-black text-brutal-black text-xs font-bold uppercase hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+                >
+                  Add
+                </button>
+              </div>
+              {(config.sandbox_volumes || []).length > 0 && (
+                <ul className="space-y-1">
+                  {(config.sandbox_volumes || []).map((vol: string, idx: number) => (
+                    <li key={idx} className="flex items-center gap-2 bg-white border-3 border-brutal-black px-2 py-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                      <span className="flex-1 font-mono text-xs font-bold truncate" title={vol}>{vol}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const current = config.sandbox_volumes || [];
+                          update({ sandbox_volumes: current.filter((_: string, i: number) => i !== idx) });
+                        }}
+                        className="text-white bg-brutal-red border-2 border-brutal-black text-xs font-bold px-1.5 py-0.5 hover:bg-red-600 transition-colors"
+                        title="Remove"
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="text-[10px] text-brutal-black font-medium opacity-60">
+              Format: host_path:container_path (e.g., /mnt/c/data:/data)
+            </div>
+          </div>
+        )}
       </div>
       <div className="space-y-2">
         <label className="block font-bold tracking-wide text-brutal-black uppercase">MCP Servers</label>

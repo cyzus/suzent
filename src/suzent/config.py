@@ -87,6 +87,12 @@ class ConfigModel(BaseModel):
     extraction_model: str = None  # LLM model for fact extraction (None = use heuristics)
     user_id: str = "default-user"  # Default user identifier for memory system
 
+    # Sandbox system
+    sandbox_enabled: bool = False
+    sandbox_server_url: str = "http://localhost:7263"
+    sandbox_data_path: str = "sandbox-data"
+    sandbox_volumes: List[str] = []  # Additional volume mounts (format: "host_path:container_path")
+
     @classmethod
     def load_from_files(cls) -> "ConfigModel":
         logger = get_logger(__name__)

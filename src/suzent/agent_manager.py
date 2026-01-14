@@ -188,6 +188,7 @@ def create_agent(config: Dict[str, Any], memory_context: Optional[str] = None) -
         "PlanningTool": "planning_tool",
         "WebpageTool": "webpage_tool",
         "FileTool": "file_tool",
+        "SandboxTool": "sandbox_tool",
         # Add other custom tools here as needed
     }
 
@@ -506,7 +507,7 @@ async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Co
         return agent_instance
 
 
-def inject_chat_context(agent: CodeAgent, chat_id: str, user_id: str = None) -> None:
+def inject_chat_context(agent: CodeAgent, chat_id: str, user_id: str = None, config: dict = None) -> None:
     """
     Inject chat context into agent tools that support it.
 
@@ -514,6 +515,7 @@ def inject_chat_context(agent: CodeAgent, chat_id: str, user_id: str = None) -> 
         agent: The agent instance whose tools should receive context.
         chat_id: The chat identifier to inject into tools.
         user_id: The user identifier for memory system (defaults to CONFIG.user_id).
+        config: Optional chat configuration dict containing per-chat settings.
     """
     if not chat_id or not hasattr(agent, '_tool_instances'):
         return
@@ -532,3 +534,12 @@ def inject_chat_context(agent: CodeAgent, chat_id: str, user_id: str = None) -> 
         if tool_instance.__class__.__name__ in ['MemorySearchTool', 'MemoryBlockUpdateTool']:
             if hasattr(tool_instance, 'set_context'):
                 tool_instance.set_context(chat_id=chat_id, user_id=user_id)
+
+        # Inject chat_id and custom volumes for SandboxTool
+        if tool_instance.__class__.__name__ == 'SandboxTool':
+            tool_instance.chat_id = chat_id
+            # Inject per-chat sandbox volumes if configured
+            if config and 'sandbox_volumes' in config:
+                volumes = config.get('sandbox_volumes', [])
+                if volumes and hasattr(tool_instance, 'set_custom_volumes'):
+                    tool_instance.set_custom_volumes(volumes)
