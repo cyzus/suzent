@@ -47,14 +47,16 @@
 - `get_core_memory()` - All blocks with defaults
 - `format_core_memory_for_context()` - Prompt injection
 - `retrieve_relevant_memories()` - Auto-retrieval
-- `process_message_for_memories()` - Extract & store
+- `process_conversation_turn_for_memories()` - Extract from full context
+- `refresh_core_memory_facts()` - Auto-summarize core memory
 - `search_memories()` - Agent-facing search
 
 **Extraction Process:**
-1. User message → LLM extraction
-2. Deduplication check (similarity > 0.85)
-3. Store unique facts
-4. Return report
+1. Full Conversation Turn (User + Agent Steps + Response)
+2. LLM extraction with "Rich Context" prompts
+3. Deduplication check
+4. Store unique facts
+5. Monitor for high-importance facts -> Trigger Core Memory Refresh
 
 ### Memory Tools (tools.py)
 **Agent interface**
@@ -76,8 +78,9 @@ Uses `asyncio.run_coroutine_threadsafe()` for safe execution from worker threads
 **Prompt templates**
 
 - `format_core_memory_section()` - Agent context
-- `format_retrieved_memories_section()` - Search results
-- `FACT_EXTRACTION_SYSTEM_PROMPT` - Extraction instructions
+- `format_retrieved_memories_section()` - Search results with intent/outcome
+- `FACT_EXTRACTION_SYSTEM_PROMPT` - Rich extraction instructions
+- `CORE_MEMORY_SUMMARIZATION_PROMPT` - Auto-summary instructions
 
 ## Data Flow
 
@@ -89,22 +92,22 @@ manager.retrieve_relevant_memories()
   ↓
 Generate embedding → Hybrid search
   ↓
-Format results
+Format results (Content + Context + Outcome)
   ↓
 Inject into agent prompt
 ```
 
 ### Write Path (Extraction)
 ```
-User Message
+Conversation Turn (User + Agent + Response)
   ↓
-manager.process_message_for_memories()
+manager.process_conversation_turn_for_memories()
   ↓
-LLM extracts facts
-  ↓
-Deduplication check
+LLM extracts facts + context
   ↓
 Store unique facts
+  ↓
+If High Importance -> refresh_core_memory_facts()
 ```
 
 ### Tool Usage

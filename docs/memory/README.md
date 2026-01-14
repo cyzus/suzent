@@ -35,6 +35,8 @@ results = await manager.search_memories("user preferences", user_id="user-123")
 - ✅ Core memory blocks (persona, user, facts, context)
 - ✅ Semantic + full-text hybrid search
 - ✅ Automatic LLM-based fact extraction
+- ✅ **Rich Context Awareness** (captures extracted intent & outcomes)
+- ✅ **Auto-summarizing Core Memory** (keeps "facts" block fresh)
 - ✅ Importance scoring and deduplication
 - ✅ Thread-safe agent tools
 

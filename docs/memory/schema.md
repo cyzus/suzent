@@ -43,6 +43,22 @@ CREATE TABLE archival_memories (
 );
 ```
 
+**Metadata Structure (`conversation_context`):**
+The `metadata` JSONB field stores rich context about the memory:
+```json
+{
+  "importance": 0.8,
+  "category": "technical",
+  "tags": ["react", "optimization"],
+  "source_chat_id": "uuid",
+  "conversation_context": {
+    "user_intent": "User wanted to fix slow dashboard",
+    "agent_actions_summary": "Searched for react performance tools",
+    "outcome": "Recommended react-window"
+  }
+}
+```
+
 **Indexes:**
 ```sql
 -- Vector search (IVFFlat for 3072-dim)
