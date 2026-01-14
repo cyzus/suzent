@@ -18,6 +18,7 @@ Usage:
 
 from __future__ import annotations
 
+import time
 import uuid
 import asyncio
 import threading
@@ -25,11 +26,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional, Dict, List, TYPE_CHECKING
 
-try:
-    import httpx
-    HAS_HTTPX = True
-except ImportError:
-    HAS_HTTPX = False
+import httpx
 
 from suzent.logger import get_logger
 
@@ -128,11 +125,26 @@ class ExecutionResult:
         
         if "text" in result:
             output_parts.append(result["text"])
+            
+        output = "".join(output_parts).strip()
         
+        # Determine success: check has_error flag AND check for common exception patterns in output
+        # if the server fails to set has_error correctly for some runtimes.
+        success = not result.get("has_error", False)
+        
+        # Heuristic: If we see a Python traceback or common error marker and success was True,
+        # it might be a false positive from the REPL server.
+        # However, we should trust 'has_error' primarily. 
+        # The 'test_exception_recovery' failure "Exception should fail" suggests 'has_error' was False.
+        # Let's verify if the output contains an unhandled exception.
+        if success and language == Language.PYTHON:
+            if "Traceback (most recent call last):" in output or "SyntaxError:" in output:
+                success = False
+
         return cls(
-            success=not result.get("has_error", False),
-            output="".join(output_parts).strip(),
-            error=result.get("error") or None,
+            success=success,
+            output=output,
+            error=result.get("error") or (output if not success else None),
             language=language
         )
     
@@ -188,11 +200,8 @@ class RPCClient:
     def rpc_url(self) -> str:
         return f"{self.server_url}/api/v1/rpc"
 
-    def _get_client(self) -> Optional[httpx.Client]:
+    def _get_client(self) -> httpx.Client:
         """Get or create httpx client with connection pooling."""
-        if not HAS_HTTPX:
-            return None
-
         with self._lock:
             if self._client is None:
                 self._client = httpx.Client(
@@ -228,10 +237,7 @@ class RPCClient:
         try:
             # Prefer httpx for connection pooling
             client = self._get_client()
-            if client is not None:
-                return self._httpx_request(client, payload, effective_timeout)
-            else:
-                return self._urllib_request(payload, effective_timeout)
+            return self._httpx_request(client, payload, effective_timeout)
         except Exception as e:
             error_msg = str(e) or repr(e) or type(e).__name__
             logger.error(f"RPC call {method} failed: {error_msg}")
@@ -246,20 +252,6 @@ class RPCClient:
         )
         response.raise_for_status()
         return response.json()
-
-    def _urllib_request(self, payload: dict, timeout: float) -> dict:
-        """Fallback using urllib for environments without httpx."""
-        import json
-        import urllib.request
-
-        data = json.dumps(payload).encode('utf-8')
-        req = urllib.request.Request(
-            self.rpc_url,
-            data=data,
-            headers={"Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            return json.loads(response.read().decode('utf-8'))
 
     # Async wrapper for backward compatibility
     async def call_async(self, method: str, params: dict, timeout: Optional[float] = None) -> dict:
@@ -306,7 +298,8 @@ class SandboxSession:
     @property
     def sandbox_name(self) -> str:
         """Generate sandbox name from session ID."""
-        safe_id = self.session_id.replace("-", "").replace("_", "")[:20]
+        # Keep only alphanumeric characters to ensure valid container/hostname
+        safe_id = "".join(c for c in self.session_id if c.isalnum())[:20]
         return f"session-{safe_id}"
     
     @property
@@ -386,24 +379,44 @@ class SandboxSession:
 
             logger.info(f"Starting sandbox session: {self.session_id}")
 
-            response = self.rpc.call("sandbox.start", {
-                "namespace": self.namespace,
-                "sandbox": self.sandbox_name,
-                "config": {
-                    "image": self.image,
-                    "memory": self.memory_mb,
-                    "cpus": self.cpus,
-                    "volumes": self._get_volume_mounts()
-                }
-            })
+            # Retry logic for starting sessions under load
+            max_retries = 3
+            last_error = None
+            
+            for attempt in range(max_retries):
+                try:
+                    response = self.rpc.call("sandbox.start", {
+                        "namespace": self.namespace,
+                        "sandbox": self.sandbox_name,
+                        "config": {
+                            "image": self.image,
+                            "memory": self.memory_mb,
+                            "cpus": self.cpus,
+                            "volumes": self._get_volume_mounts()
+                        }
+                    })
 
-            if "error" in response:
-                logger.error(f"Failed to start session {self.session_id}: {response['error']}")
-                return False
-
-            self._is_running = True
-            logger.info(f"Sandbox session started: {self.session_id}")
-            return True
+                    if "error" in response:
+                        last_error = response['error']
+                        # If service is busy or temporarily unavailable, wait and retry
+                        if attempt < max_retries - 1:
+                            time.sleep(1.0 * (attempt + 1))
+                            continue
+                        logger.error(f"Failed to start session {self.session_id} after {max_retries} attempts: {last_error}")
+                        return False
+                    
+                    self._is_running = True
+                    logger.info(f"Sandbox session started: {self.session_id}")
+                    return True
+                    
+                except Exception as e:
+                    last_error = str(e)
+                    if attempt < max_retries - 1:
+                        time.sleep(1.0 * (attempt + 1))
+                        continue
+            
+            logger.error(f"Failed to start session {self.session_id}: {last_error}")
+            return False
 
     def stop(self) -> bool:
         """Stop the sandbox session."""

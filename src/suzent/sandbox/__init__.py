@@ -26,7 +26,6 @@ from .manager import (
 
     # Constants
     Defaults,
-    HAS_HTTPX,
 
     # Utilities
     check_server_status,
@@ -39,6 +38,5 @@ __all__ = [
     "RPCClient",
     "Language",
     "Defaults",
-    "HAS_HTTPX",
     "check_server_status",
 ]
