@@ -2,7 +2,6 @@
 WriteFileTool - Create or overwrite files.
 """
 
-from pathlib import Path
 from typing import Optional
 
 from smolagents.tools import Tool

@@ -1,5 +1,5 @@
 from smolagents.tools import Tool
-from typing import Optional, Union
+from typing import Union
 
 import asyncio
 from crawl4ai import AsyncWebCrawler

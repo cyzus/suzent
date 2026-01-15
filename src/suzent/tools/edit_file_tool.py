@@ -2,7 +2,6 @@
 EditFileTool - Make precise string replacements in files.
 """
 
-from pathlib import Path
 from typing import Optional
 
 from smolagents.tools import Tool

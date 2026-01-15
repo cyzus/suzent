@@ -111,7 +111,7 @@ def compress_image_with_bytes(image: Image.Image, max_size_mb: float = 4.0, targ
             return compressed_image, compressed_bytes
 
     # If quality reduction isn't enough, scale down dimensions
-    print(f"[Compression] Quality reduction insufficient, trying dimension scaling...")
+    print("[Compression] Quality reduction insufficient, trying dimension scaling...")
     scale_factors = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4]
 
     for scale in scale_factors:
@@ -133,7 +133,7 @@ def compress_image_with_bytes(image: Image.Image, max_size_mb: float = 4.0, targ
                 return compressed_image, compressed_bytes
 
     # Last resort: very small size with low quality
-    print(f"[Compression] Using last resort: 30% scale, quality=30")
+    print("[Compression] Using last resort: 30% scale, quality=30")
     final_size = (int(image.width * 0.3), int(image.height * 0.3))
     final_image = image.resize(final_size, Image.Resampling.LANCZOS)
     buffer = io.BytesIO()

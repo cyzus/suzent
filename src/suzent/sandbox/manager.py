@@ -30,9 +30,6 @@ import httpx
 
 from suzent.logger import get_logger
 
-if TYPE_CHECKING:
-    from suzent.config import ConfigModel
-
 logger = get_logger(__name__)
 
 

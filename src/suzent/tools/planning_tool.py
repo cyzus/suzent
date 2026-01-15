@@ -10,7 +10,6 @@ from smolagents.tools import Tool
 
 from suzent.logger import get_logger
 from suzent.plan import (
-    STATUS_MAP,
     Plan,
     Phase,
     read_plan_from_database,
@@ -91,7 +90,7 @@ class PlanningTool(Tool):
         self,
         action: str,
         goal: Optional[str] = None,
-        phases: Optional[list[dict]] = None,
+        phases: Optional[list[Phase]] = None,
         current_phase_id: Optional[int] = None,
         next_phase_id: Optional[int] = None,
         chat_id: Optional[str] = None,

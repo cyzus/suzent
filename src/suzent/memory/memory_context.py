@@ -4,7 +4,7 @@ Memory system prompt templates and context formatting.
 Centralizes all prompt engineering for the memory system.
 """
 
-from typing import Dict, Optional, List, Any
+from typing import Dict, List, Any
 from datetime import datetime
 
 

@@ -10,8 +10,7 @@ This module handles all chat endpoints including:
 import json
 import traceback
 import uuid
-import asyncio
-from typing import Optional, List, Dict, Any
+from typing import List, Dict, Any
 
 from PIL import Image
 from starlette.requests import Request
@@ -28,7 +27,6 @@ from suzent.agent_manager import (
 from suzent.database import get_database
 from suzent.streaming import stream_agent_responses, stop_stream
 from suzent.image_utils import compress_image_with_bytes
-from smolagents.memory import ActionStep, PlanningStep, FinalAnswerStep
 
 logger = get_logger(__name__)
 
@@ -187,7 +185,7 @@ async def chat(request: Request) -> StreamingResponse:
                                 if restored_agent:
                                     logger.debug(f"Restored agent has tools: {[t.__class__.__name__ for t in restored_agent._tool_instances]}")
                                     agent_instance = restored_agent
-                                    logger.debug(f"Replaced agent_instance with restored_agent")
+                                    logger.debug("Replaced agent_instance with restored_agent")
                                 else:
                                     # Agent state was corrupted (e.g., incompatible library version)
                                     # Clear it from database so fresh state can be saved
@@ -225,7 +223,6 @@ async def chat(request: Request) -> StreamingResponse:
                             from suzent.memory import (
                                 ConversationTurn,
                                 Message,
-                                AgentAction,
                                 AgentStepsSummary,
                             )
                             memory_mgr = get_memory_manager()

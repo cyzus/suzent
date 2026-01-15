@@ -15,12 +15,11 @@ import time
 import uuid
 import threading
 import concurrent.futures
-from typing import List, Tuple
+from typing import Tuple
 import pytest
 
 from suzent.sandbox import (
     SandboxManager,
-    SandboxSession,
     ExecutionResult,
     RPCClient,
     Language,

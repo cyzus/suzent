@@ -3,7 +3,6 @@ Memory tools exposed to agents.
 """
 
 from smolagents import Tool
-from typing import Dict, Any
 from datetime import datetime
 
 from suzent.logger import get_logger

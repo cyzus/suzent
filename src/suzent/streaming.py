@@ -307,9 +307,9 @@ async def stream_agent_responses(
                     chunk_type = type(chunk).__name__ if hasattr(chunk, '__name__') or hasattr(type(chunk), '__name__') else 'unknown'
                     error_event = {"type": "error", "data": f"Serialization error: {error_msg} | Chunk type: {chunk_type}"}
                     yield f"data: {json.dumps(error_event)}\n\n"
-                except Exception as nested_e:
+                except Exception:
                     # Fallback for complete failure
-                    yield f'data: {{"type": "error", "data": "Critical serialization failure"}}\n\n'
+                    yield 'data: {"type": "error", "data": "Critical serialization failure"}\n\n'
 
             await asyncio.sleep(0)
     finally:

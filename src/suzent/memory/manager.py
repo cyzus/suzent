@@ -3,7 +3,6 @@ Memory Manager - orchestrates core and archival memory operations.
 """
 
 from typing import Dict, List, Any, Optional, Union
-import json
 from datetime import datetime
 
 from suzent.logger import get_logger
@@ -12,8 +11,6 @@ from .postgres_store import PostgresMemoryStore
 from . import memory_context
 from .models import (
     ConversationTurn,
-    Message,
-    AgentAction,
     ExtractedFact,
     ConversationContext,
     MemoryExtractionResult,

@@ -13,7 +13,7 @@ import asyncio
 import importlib
 import pickle
 import os
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from mcp import StdioServerParameters
 
 from smolagents import CodeAgent, ToolCallingAgent, LiteLLMModel, MCPClient
@@ -317,7 +317,7 @@ def _sanitize_memory(memory):
     Returns:
         Sanitized memory safe for pickling.
     """
-    from smolagents.memory import ActionStep, FinalAnswerStep
+    from smolagents.memory import ActionStep
 
     # First pass: clear all error fields from ActionStep objects IN-PLACE
     # This must be done before any copy attempts
@@ -396,7 +396,7 @@ def serialize_agent(agent: CodeAgent) -> Optional[bytes]:
         # Sanitize memory to remove AgentError objects that can't be pickled
         logger.debug(f"Sanitizing memory before serialization (type: {type(agent.memory)})")
         sanitized_memory = _sanitize_memory(agent.memory)
-        logger.debug(f"Memory sanitization complete")
+        logger.debug("Memory sanitization complete")
 
         serializable_state = {
             'memory': sanitized_memory,
@@ -444,7 +444,7 @@ def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[Cod
 
             error_msg = str(unpickle_error)
             if 'AgentError' in error_msg or 'logger' in error_msg:
-                logger.info(f"Agent state contains incompatible AgentError, will be cleared")
+                logger.info("Agent state contains incompatible AgentError, will be cleared")
             else:
                 logger.warning(f"Unpickling failed for unknown reason: {error_msg}")
             return None
@@ -502,7 +502,7 @@ async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Co
         # Re-create agent if config changes, reset requested, or not initialized
         config_changed = config != agent_config
         if config_changed and agent_config is not None:
-            logger.info(f"Config changed - creating new agent")
+            logger.info("Config changed - creating new agent")
             logger.debug(f"Old config tools: {agent_config.get('tools', [])}")
             logger.debug(f"New config tools: {config.get('tools', [])}")
 

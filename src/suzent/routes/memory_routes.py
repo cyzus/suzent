@@ -8,7 +8,6 @@ This module handles all memory endpoints including:
 """
 
 import json
-from typing import Optional
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 

@@ -2,11 +2,8 @@
 Pydantic models for memory system data structures.
 """
 
-from typing import List, Dict, Any, Optional, Union, TYPE_CHECKING
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field
-
-if TYPE_CHECKING:
-    from smolagents.memory import ActionStep, PlanningStep, FinalAnswerStep
 
 
 class Message(BaseModel):
