@@ -39,7 +39,7 @@ Read-EnvFile -Path $envPath
 
 # Get values from environment (set by .env or existing env vars)
 $DB_USER = if ($env:POSTGRES_USER) { $env:POSTGRES_USER } else { "suzent" }
-$DB_PASSWORD = if ($env:POSTGRES_PASSWORD) { $env:POSTGRES_PASSWORD } else { "password" }
+$DB_PASSWORD = if ($env:POSTGRES_PASSWORD) { $env:POSTGRES_PASSWORD } else { "ultra_secret" }
 $DB_NAME = if ($env:POSTGRES_DB) { $env:POSTGRES_DB } else { "suzent" }
 $DB_HOST = if ($env:POSTGRES_HOST) { $env:POSTGRES_HOST } else { "localhost" }
 $DB_PORT = if ($env:POSTGRES_PORT) { $env:POSTGRES_PORT } else { "5430" }
@@ -205,7 +205,7 @@ Write-Host "  POSTGRES_HOST=$DB_HOST" -ForegroundColor White
 Write-Host "  POSTGRES_PORT=$DB_PORT" -ForegroundColor White
 Write-Host "  POSTGRES_DB=$DB_NAME" -ForegroundColor White
 Write-Host "  POSTGRES_USER=$DB_USER" -ForegroundColor White
-Write-Host "  POSTGRES_PASSWORD=your_secure_password" -ForegroundColor White
+Write-Host "  POSTGRES_PASSWORD=ultra_secret" -ForegroundColor White
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  1. Ensure Python dependencies are installed: uv sync" -ForegroundColor White

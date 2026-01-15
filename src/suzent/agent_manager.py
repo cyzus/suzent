@@ -66,11 +66,11 @@ async def init_memory_system() -> bool:
         from suzent.memory import MemoryManager, PostgresMemoryStore
 
         # Get PostgreSQL connection string from environment
-        host = os.getenv("POSTGRES_HOST", "localhost")
-        port = os.getenv("POSTGRES_PORT", "5432")
+        host = os.getenv("POSTGRES_HOST", "127.0.0.1")
+        port = os.getenv("POSTGRES_PORT", "5430")
         db = os.getenv("POSTGRES_DB", "suzent")
         user = os.getenv("POSTGRES_USER", "suzent")
-        password = os.getenv("POSTGRES_PASSWORD", "password")
+        password = os.getenv("POSTGRES_PASSWORD", "ultra_secret")
         postgres_conn = f"postgresql://{user}:{password}@{host}:{port}/{db}"
 
         # Initialize PostgreSQL store

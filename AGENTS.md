@@ -47,7 +47,7 @@ SEARXNG_BASE_URL=http://localhost:8080
 # Optional: Memory system (PostgreSQL)
 POSTGRES_HOST=localhost
 POSTGRES_USER=suzent
-POSTGRES_PASSWORD=your_password
+POSTGRES_PASSWORD=ultra_secret
 POSTGRES_DB=suzent
 
 # Optional: Logging

@@ -7,7 +7,7 @@ services:
     stop_grace_period: 60s # Allow clean shutdown for DB
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-suzent}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-ultra_secret}
       - POSTGRES_DB=${POSTGRES_DB:-suzent}
     ports:
       - "${POSTGRES_PORT:-5430}:5432"
