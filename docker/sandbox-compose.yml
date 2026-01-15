@@ -25,6 +25,10 @@ services:
     environment:
       - RUST_LOG=${RUST_LOG:-info}
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     logging:
       driver: "json-file"
       options:
