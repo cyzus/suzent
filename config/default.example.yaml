@@ -7,9 +7,8 @@ MODEL_OPTIONS:
   - "anthropic/claude-sonnet-4-20250514"
   - "gemini/gemini-2.5-flash"
   - "gemini/gemini-2.5-pro"
-  - "openai/gpt-4.1"
+  - "openai/gpt-5.1"
   - "deepseek/deepseek-chat"
-  - "litellm_proxy/claude-sonnet-4-5"
 
 # Tools to enable by default (these names must match Tool class names)
 DEFAULT_TOOLS:
@@ -41,3 +40,9 @@ EMBEDDING_DIMENSION: 3072
 USER_ID: "default-user"
 # Extraction model for LLM-based fact extraction (leave empty for heuristic-based)
 EXTRACTION_MODEL: "gemini/gemini-2.5-flash" # "" to disable
+
+# Sandbox
+SANDBOX_ENABLED: true
+SANDBOX_SERVER_URL: http://sandbox_ip:port
+SANDBOX_VOLUMES:
+  - "/mnt/d/data/notebook:/notebook"
