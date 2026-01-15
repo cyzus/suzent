@@ -60,7 +60,7 @@ Unlike most agents, **SUZENT** features dual workspaces: a cross-session workspa
 **SUZENT** implements a MemGPT-like global memory system that persists across sessions. This allows you to accumulate knowledge and context across conversations, making it easier to maintain a consistent and coherent conversation history.
 
 ### **PRIVATE & LOCAL**
-SUZENT runs entirely on your device with built-in SearXNG for ad-free, tracking-free web search, PostgreSQL + pgvector for local vector storage, and MicroSandbox isolation for safe code execution. Your data never leaves your machine.
+**SUZENT** runs entirely on your device with built-in SearXNG for ad-free, tracking-free web search, PostgreSQL + pgvector for local vector storage, and MicroSandbox isolation for safe code execution. Your data never leaves your machine.
 
 
 ### **UI READY**
