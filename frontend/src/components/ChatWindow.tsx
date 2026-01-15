@@ -404,6 +404,7 @@ export const ChatWindow: React.FC = () => {
   const [isPlanDocked, setIsPlanDocked] = useState(false);
   const [rightSidebarTab, setRightSidebarTab] = useState<'plan' | 'files'>('plan');
   const [isPlanExpanded, setIsPlanExpanded] = useState(true);
+  const [isFileExpanded, setIsFileExpanded] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -476,7 +477,7 @@ export const ChatWindow: React.FC = () => {
       textarea.style.height = 'auto';
       textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
     }
-  }, [input]);
+  }, [input, isPlanDocked, isPlanExpanded, isFileExpanded, rightSidebarTab]);
 
   const configReady = !!(safeBackendConfig && safeConfig.model && safeConfig.agent);
 
@@ -905,7 +906,14 @@ export const ChatWindow: React.FC = () => {
 
       {/* Right Sidebar - Plan Docked */}
       {isPlanDocked && (
-        <div className="w-96 bg-white border-l-3 border-brutal-black z-10 flex flex-col shrink-0 transition-all duration-300">
+        <div
+          className={`
+            border-l-3 border-brutal-black z-30 flex flex-col shrink-0 
+            absolute inset-0 md:static md:inset-auto
+            transition-all duration-300 ease-in-out bg-white
+            ${rightSidebarTab === 'files' && isFileExpanded ? 'w-full md:w-[800px] md:max-w-[80vw]' : 'w-full md:w-96'}
+          `}
+        >
           <div className="h-14 bg-white border-b-3 border-brutal-black flex items-center justify-between px-0 shrink-0">
             {/* Tab Buttons */}
             <div className="flex h-full">
@@ -946,7 +954,7 @@ export const ChatWindow: React.FC = () => {
               </div>
             ) : (
               <div className="flex-1 h-full">
-                <SandboxFiles />
+                <SandboxFiles onViewModeChange={(isViewing) => setIsFileExpanded(isViewing)} />
               </div>
             )}
           </div>

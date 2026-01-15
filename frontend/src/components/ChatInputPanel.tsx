@@ -88,7 +88,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             />
 
             {/* Button row */}
-            <div className="flex gap-2 items-center justify-between pt-2">
+            <div className="flex flex-wrap gap-2 items-center justify-between pt-2">
                 <div className="flex gap-4 items-center pl-2">
                     <input
                         ref={fileInputRef}

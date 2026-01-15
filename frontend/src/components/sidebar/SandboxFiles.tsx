@@ -27,7 +27,12 @@ interface FileListResponse {
     error?: string;
 }
 
-export const SandboxFiles: React.FC = () => {
+interface SandboxFilesProps {
+
+    onViewModeChange?: (isViewingFile: boolean) => void;
+}
+
+export const SandboxFiles: React.FC<SandboxFilesProps> = ({ onViewModeChange }) => {
     const { currentChatId, config } = useChatStore();
     const [currentPath, setCurrentPath] = useState<string>('/');
     const [items, setItems] = useState<FileItem[]>([]);
@@ -142,6 +147,7 @@ export const SandboxFiles: React.FC = () => {
         } else {
             setSelectedFile(newPath);
             fetchFileContent(newPath);
+            onViewModeChange?.(true);
         }
     };
 
@@ -149,6 +155,7 @@ export const SandboxFiles: React.FC = () => {
         setSelectedFile(null);
         setFileContent(null);
         setError(null);
+        onViewModeChange?.(false);
     };
 
     const handleUp = () => {
