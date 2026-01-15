@@ -21,12 +21,14 @@ MCP_URLS:
   "HF Space MCP": "https://evalstate-hf-mcp-server.hf.space/mcp"
 
 MCP_STDIO_PARAMS:
-  mcp-obsidian:
-    command: "uvx"
+  mcp-arxiv:
+    command: "uv"
     args:
-      - "mcp-obsidian"
-    env:
-      OBSIDIAN_API_KEY: ""
+      - "tool"
+      - "run"
+      - "arxiv-mcp-server"
+      - "--storage-path"
+      - "./data/papers"
 
 INSTRUCTIONS: ""
 ADDITIONAL_AUTHORIZED_IMPORTS: ["*"]
