@@ -41,9 +41,11 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
                 <h2 className="text-4xl sm:text-5xl font-brutal font-bold text-brutal-black mb-2 tracking-tight">
                     {(() => {
                         const hour = new Date().getHours();
-                        if (hour < 12) return 'Morning, Suzy';
-                        if (hour < 18) return 'Afternoon, Suzy';
-                        return 'Evening, Suzy';
+                        if (hour < 5) return 'NIGHT OWL?';
+                        if (hour < 12) return 'GOOD MORNING.';
+                        if (hour < 17) return 'KEEP BUILDING.';
+                        if (hour < 21) return 'GOOD EVENING.';
+                        return 'BED TIME? OR MAYBE LATE NIGHT CODING?';
                     })()}
                 </h2>
             </div>

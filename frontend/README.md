@@ -1,4 +1,4 @@
-# Suzant Frontend (SPA)
+# Suzent Frontend (SPA)
 
 Development:
 

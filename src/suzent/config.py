@@ -57,7 +57,7 @@ def get_tool_options() -> List[str]:
 
 
 class ConfigModel(BaseModel):
-    title: str = "SUZ AGENT"
+    title: str = "SUZENT"
     server_url: str = "http://localhost:8000/chat"
     code_tag: str = "<code>"
 
