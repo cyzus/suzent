@@ -188,7 +188,7 @@ class TestStateSynchronization:
         manager.start_session(session_id)
 
         # Execute code that causes an error
-        result = manager.execute(session_id, "raise Exception('test error')")
+        _result = manager.execute(session_id, "raise Exception('test error')")
 
         # Session should still be considered running
         session = manager.get_session(session_id)
@@ -438,7 +438,7 @@ class TestErrorHandling:
         """Test recovery after memory-intensive code."""
         # Try to allocate lots of memory
         code = "x = 'a' * (100 * 1024 * 1024)"  # 100MB string
-        result1 = manager.execute(session_id, code, timeout=10)
+        _result1 = manager.execute(session_id, code, timeout=10)
 
         # Whether it fails or succeeds, next execution should work
         result2 = manager.execute(session_id, "print('after memory test')")
@@ -453,15 +453,6 @@ class TestErrorHandling:
 
         Current patterns: timeout, connection, reset, failed to connect, internal server error
         """
-        patterns_to_test = [
-            "timeout",
-            "connection refused",
-            "connection reset",
-            "failed to connect",
-            "internal server error",
-            "some other error",  # Should NOT trigger healing
-        ]
-
         # This is more of a documentation test - actual behavior depends on server state
         print("\nAuto-healing patterns defined in code:")
         print("  - timeout")

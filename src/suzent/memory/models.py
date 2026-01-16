@@ -2,7 +2,7 @@
 Pydantic models for memory system data structures.
 """
 
-from typing import List, Dict, Any, Optional, TYPE_CHECKING
+from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 
 

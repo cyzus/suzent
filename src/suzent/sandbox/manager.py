@@ -24,7 +24,7 @@ import asyncio
 import threading
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Dict, List, TYPE_CHECKING
+from typing import Optional, Dict, List
 
 import httpx
 

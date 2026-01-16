@@ -7,6 +7,7 @@ This module handles all chat endpoints including:
 - Stopping active streams
 """
 
+import io
 import json
 import traceback
 import uuid

@@ -147,7 +147,7 @@ async def search_archival_memory(request: Request) -> JSONResponse:
     try:
         query = request.query_params.get('query', '')
         user_id = request.query_params.get('user_id', CONFIG.user_id)
-        chat_id = request.query_params.get('chat_id')
+        # chat_id = request.query_params.get('chat_id')
         limit = min(int(request.query_params.get('limit', '20')), 100)
         offset = int(request.query_params.get('offset', '0'))
 

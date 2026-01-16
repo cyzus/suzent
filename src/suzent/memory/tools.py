@@ -63,7 +63,7 @@ Returns:
         try:
             # Get user_id from context (would come from agent context in real implementation)
             user_id = getattr(self, '_user_id', CONFIG.user_id)
-            chat_id = getattr(self, '_chat_id', None)
+            # chat_id = getattr(self, '_chat_id', None)
 
             memories = await self.memory_manager.search_memories(
                 query=query,
@@ -91,7 +91,7 @@ Returns:
                     import json
                     try:
                         metadata = json.loads(metadata)
-                    except:
+                    except json.JSONDecodeError:
                         metadata = {}
 
                 tags = metadata.get('tags', [])
