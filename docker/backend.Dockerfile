@@ -25,19 +25,22 @@ ENV PYTHONUNBUFFERED=1 \
     UV_SYSTEM_PYTHON=1
 
 # Copy dependency files first
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock README.md ./
 
 # Install dependencies (including 'memory' extra)
-RUN uv sync --frozen --extra memory
+RUN uv sync --frozen --no-install-project --all-extras
 
 # Install playwright browsers (for WebpageTool)
-RUN uv run playwright install --with-deps chromium
+RUN uv run --no-sync playwright install --with-deps chromium
 
 # Copy application code
 COPY src/ src/
 COPY config/ config/
 COPY scripts/ scripts/
 COPY .env.example .env
+
+# Install the project itself
+RUN uv sync --frozen --all-extras
 
 # Expose port
 EXPOSE 8000

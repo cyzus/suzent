@@ -46,15 +46,16 @@ Copy-Item .env.example .env
 notepad .env
 ```
 4. Paste your API key into the `.env` file:
-   ```env
-   OPENAI_API_KEY=sk-your-key-here
-   # or
-   GEMINI_API_KEY=your-key-here
-   ```
+```env
+OPENAI_API_KEY=sk-your-key-here
+# or
+GEMINI_API_KEY=your-key-here
+```
 5. Save and close the file.
 
 ### Mac / Linux
 # Clone the project
+```bash
 git clone https://github.com/cyzus/suzent.git
 cd suzent
 
