@@ -2,6 +2,8 @@ services:
   # Python Backend
   backend:
     container_name: suzent-backend
+    networks:
+      - suzent-network
     build:
       context: ..
       dockerfile: docker/backend.Dockerfile
@@ -12,6 +14,7 @@ services:
     environment:
       # Overrides for Docker networking
       - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
       - SEARXNG_BASE_URL=http://searxng:8080
       - REDIS_URL=redis://redis:6379
     depends_on:
@@ -28,6 +31,8 @@ services:
   # React Frontend (Nginx)
   frontend:
     container_name: suzent-frontend
+    networks:
+      - suzent-network
     build:
       context: ..
       dockerfile: docker/frontend.Dockerfile

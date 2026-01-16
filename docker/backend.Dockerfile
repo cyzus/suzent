@@ -46,4 +46,4 @@ RUN uv sync --frozen --all-extras
 EXPOSE 8000
 
 # Start command
-CMD ["uv", "run", "python", "src/suzent/server.py"]
+CMD ["uv", "run", "--no-sync", "python", "src/suzent/server.py"]
