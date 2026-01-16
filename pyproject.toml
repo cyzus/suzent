@@ -19,16 +19,14 @@ dependencies = [
     "markitdown[all]",
     "httpx>=0.28.1",
     "pytest>=9.0.0",
+    # Memory system dependencies
+    "asyncpg>=0.29.0",
+    "pgvector>=0.3.6",
 ]
 
 [project.optional-dependencies]
-# Memory system with PostgreSQL + pgvector
-memory = [
-    "asyncpg>=0.29.0",
-    "pgvector>=0.3.6",
-    "python-dotenv>=1.0.0",
-    # litellm is already included via smolagents[litellm]
-]
+# Kept for backwards compatibility, but memory is now required
+memory = []
 
 # Development dependencies
 dev = [
