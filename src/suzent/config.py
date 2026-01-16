@@ -13,6 +13,7 @@ from pydantic import BaseModel, ValidationError
 # Project root (two levels above this file: src/suzent -> src -> project root)
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 
+
 def _normalize_keys(d: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize incoming keys to lowercase snake style the model expects.
 
@@ -73,7 +74,7 @@ class ConfigModel(BaseModel):
         "WriteFileTool",
         "EditFileTool",
         "GlobTool",
-        "GrepTool"
+        "GrepTool",
     ]
     tool_options: Optional[List[str]] = None
 
@@ -92,14 +93,18 @@ class ConfigModel(BaseModel):
 
     # Memory system
     memory_enabled: bool = False
-    extraction_model: str = None  # LLM model for fact extraction (None = use heuristics)
+    extraction_model: str = (
+        None  # LLM model for fact extraction (None = use heuristics)
+    )
     user_id: str = "default-user"  # Default user identifier for memory system
 
     # Sandbox system
     sandbox_enabled: bool = False
     sandbox_server_url: str = "http://localhost:7263"
     sandbox_data_path: str = "sandbox-data"
-    sandbox_volumes: List[str] = []  # Additional volume mounts (format: "host_path:container_path")
+    sandbox_volumes: List[
+        str
+    ] = []  # Additional volume mounts (format: "host_path:container_path")
 
     @classmethod
     def load_from_files(cls) -> "ConfigModel":

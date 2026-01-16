@@ -12,11 +12,11 @@ from pathlib import Path
 
 class ChatDatabase:
     """Handles SQLite database operations for chat persistence."""
-    
+
     def __init__(self, db_path: str = "chats.db"):
         self.db_path = Path(db_path)
         self.init_database()
-    
+
     def init_database(self):
         """Initialize the database and create tables if they don't exist."""
         with sqlite3.connect(self.db_path) as conn:
@@ -35,7 +35,7 @@ class ChatDatabase:
                 CREATE INDEX IF NOT EXISTS idx_chats_updated_at 
                 ON chats(updated_at DESC)
             """)
-            
+
             # Create plans table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS plans (
@@ -47,7 +47,7 @@ class ChatDatabase:
                     FOREIGN KEY (chat_id) REFERENCES chats (id) ON DELETE CASCADE
                 )
             """)
-            
+
             # Create tasks table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS tasks (
@@ -63,7 +63,7 @@ class ChatDatabase:
                     FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE
                 )
             """)
-            
+
             # Create indexes for plans and tasks
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_plans_chat_id 
@@ -77,7 +77,7 @@ class ChatDatabase:
                 CREATE INDEX IF NOT EXISTS idx_tasks_number 
                 ON tasks(plan_id, number)
             """)
-            
+
             # Add agent_state column if it doesn't exist (for existing databases)
             try:
                 conn.execute("ALTER TABLE chats ADD COLUMN agent_state BLOB")
@@ -122,40 +122,51 @@ class ChatDatabase:
             """)
 
             conn.commit()
-    
-    def create_chat(self, title: str, config: Dict[str, Any], messages: List[Dict[str, Any]] = None, 
-                   agent_state: bytes = None) -> str:
+
+    def create_chat(
+        self,
+        title: str,
+        config: Dict[str, Any],
+        messages: List[Dict[str, Any]] = None,
+        agent_state: bytes = None,
+    ) -> str:
         """Create a new chat and return its ID."""
         chat_id = str(uuid.uuid4())
         now = datetime.now().isoformat()
         messages = messages or []
-        
+
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO chats (id, title, created_at, updated_at, config, messages, agent_state)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                chat_id,
-                title,
-                now,
-                now,
-                json.dumps(config),
-                json.dumps(messages),
-                agent_state
-            ))
+            """,
+                (
+                    chat_id,
+                    title,
+                    now,
+                    now,
+                    json.dumps(config),
+                    json.dumps(messages),
+                    agent_state,
+                ),
+            )
             conn.commit()
-        
+
         return chat_id
-    
+
     def get_chat(self, chat_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific chat by ID."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT * FROM chats WHERE id = ?
-            """, (chat_id,))
+            """,
+                (chat_id,),
+            )
             row = cursor.fetchone()
-            
+
             if row:
                 result = {
                     "id": row["id"],
@@ -163,23 +174,32 @@ class ChatDatabase:
                     "createdAt": row["created_at"],
                     "updatedAt": row["updated_at"],
                     "config": json.loads(row["config"]),
-                    "messages": json.loads(row["messages"])
+                    "messages": json.loads(row["messages"]),
                 }
-                
+
                 # Include agent state if it exists
                 if row["agent_state"] is not None:
                     result["agent_state"] = row["agent_state"]
-                
+
                 return result
             return None
-    
-    def update_chat(self, chat_id: str, title: str = None, config: Dict[str, Any] = None,
-                   messages: List[Dict[str, Any]] = None, agent_state: bytes = None) -> bool:
+
+    def update_chat(
+        self,
+        chat_id: str,
+        title: str = None,
+        config: Dict[str, Any] = None,
+        messages: List[Dict[str, Any]] = None,
+        agent_state: bytes = None,
+    ) -> bool:
         """Update an existing chat."""
         with sqlite3.connect(self.db_path) as conn:
             # First check if chat exists and get current values
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute("SELECT id, title, messages, agent_state FROM chats WHERE id = ?", (chat_id,))
+            cursor = conn.execute(
+                "SELECT id, title, messages, agent_state FROM chats WHERE id = ?",
+                (chat_id,),
+            )
             existing_row = cursor.fetchone()
             if not existing_row:
                 return False
@@ -229,13 +249,16 @@ class ChatDatabase:
                 params.append(chat_id)
                 # Reset row_factory for execute
                 conn.row_factory = None
-                conn.execute(f"""
-                    UPDATE chats SET {', '.join(updates)} WHERE id = ?
-                """, params)
+                conn.execute(
+                    f"""
+                    UPDATE chats SET {", ".join(updates)} WHERE id = ?
+                """,
+                    params,
+                )
                 conn.commit()
 
             return True
-    
+
     def delete_chat(self, chat_id: str) -> bool:
         """Delete a chat by ID."""
         with sqlite3.connect(self.db_path) as conn:
@@ -251,34 +274,42 @@ class ChatDatabase:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 "UPDATE plans SET chat_id = ?, updated_at = ? WHERE chat_id = ?",
-                (new_chat_id, datetime.now().isoformat(), old_chat_id)
+                (new_chat_id, datetime.now().isoformat(), old_chat_id),
             )
             conn.commit()
             return cursor.rowcount
-    
-    def list_chats(self, limit: int = 50, offset: int = 0, search: str = None) -> List[Dict[str, Any]]:
+
+    def list_chats(
+        self, limit: int = 50, offset: int = 0, search: str = None
+    ) -> List[Dict[str, Any]]:
         """List chat summaries ordered by last updated, optionally filtered by search query."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            
+
             if search:
                 # Search in title and message content
                 search_pattern = f"%{search}%"
-                cursor = conn.execute("""
+                cursor = conn.execute(
+                    """
                     SELECT id, title, created_at, updated_at, messages
                     FROM chats 
                     WHERE title LIKE ? OR messages LIKE ?
                     ORDER BY updated_at DESC 
                     LIMIT ? OFFSET ?
-                """, (search_pattern, search_pattern, limit, offset))
+                """,
+                    (search_pattern, search_pattern, limit, offset),
+                )
             else:
-                cursor = conn.execute("""
+                cursor = conn.execute(
+                    """
                     SELECT id, title, created_at, updated_at, messages
                     FROM chats 
                     ORDER BY updated_at DESC 
                     LIMIT ? OFFSET ?
-                """, (limit, offset))
-            
+                """,
+                    (limit, offset),
+                )
+
             chats = []
             for row in cursor.fetchall():
                 messages = json.loads(row["messages"])
@@ -289,18 +320,20 @@ class ChatDatabase:
                     last_message = last_msg.get("content", "")[:100]
                     if len(last_msg.get("content", "")) > 100:
                         last_message += "..."
-                
-                chats.append({
-                    "id": row["id"],
-                    "title": row["title"],
-                    "createdAt": row["created_at"],
-                    "updatedAt": row["updated_at"],
-                    "messageCount": len(messages),
-                    "lastMessage": last_message
-                })
-            
+
+                chats.append(
+                    {
+                        "id": row["id"],
+                        "title": row["title"],
+                        "createdAt": row["created_at"],
+                        "updatedAt": row["updated_at"],
+                        "messageCount": len(messages),
+                        "lastMessage": last_message,
+                    }
+                )
+
             return chats
-    
+
     def get_chat_count(self, search: str = None) -> int:
         """Get total number of chats, optionally filtered by search query."""
         with sqlite3.connect(self.db_path) as conn:
@@ -308,58 +341,71 @@ class ChatDatabase:
                 search_pattern = f"%{search}%"
                 cursor = conn.execute(
                     "SELECT COUNT(*) FROM chats WHERE title LIKE ? OR messages LIKE ?",
-                    (search_pattern, search_pattern)
+                    (search_pattern, search_pattern),
                 )
             else:
                 cursor = conn.execute("SELECT COUNT(*) FROM chats")
             return cursor.fetchone()[0]
 
     # Plan management methods
-    def create_plan(self, chat_id: str, objective: str, tasks: List[Dict[str, Any]] = None) -> int:
+    def create_plan(
+        self, chat_id: str, objective: str, tasks: List[Dict[str, Any]] = None
+    ) -> int:
         """Create or update the single plan for a chat and return its ID."""
         now = datetime.now().isoformat()
         tasks = tasks or []
-        
+
         with sqlite3.connect(self.db_path) as conn:
             # Check for existing plan
-            cursor = conn.execute("SELECT id FROM plans WHERE chat_id = ? LIMIT 1", (chat_id,))
+            cursor = conn.execute(
+                "SELECT id FROM plans WHERE chat_id = ? LIMIT 1", (chat_id,)
+            )
             row = cursor.fetchone()
-            
+
             if row:
                 plan_id = row[0]
                 # Update existing plan
-                conn.execute("""
+                conn.execute(
+                    """
                     UPDATE plans SET objective = ?, updated_at = ? WHERE id = ?
-                """, (objective, now, plan_id))
-                
+                """,
+                    (objective, now, plan_id),
+                )
+
                 # Delete existing tasks to overwrite with new ones (since we are "creating/updating" the plan structure)
-                # Note: This resets history of phases if completely re-called. 
+                # Note: This resets history of phases if completely re-called.
                 # Assuming this is desired behavior for "Creating/Updating" a plan as a whole.
                 conn.execute("DELETE FROM tasks WHERE plan_id = ?", (plan_id,))
             else:
                 # Create new plan
-                cursor = conn.execute("""
+                cursor = conn.execute(
+                    """
                     INSERT INTO plans (chat_id, objective, created_at, updated_at)
                     VALUES (?, ?, ?, ?)
-                """, (chat_id, objective, now, now))
+                """,
+                    (chat_id, objective, now, now),
+                )
                 plan_id = cursor.lastrowid
-            
+
             # Create the tasks/phases
             for task in tasks:
-                conn.execute("""
+                conn.execute(
+                    """
                     INSERT INTO tasks (plan_id, number, description, status, note, capabilities, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    plan_id,
-                    task.get('number'),
-                    task.get('description'),
-                    task.get('status', 'pending'),
-                    task.get('note'),
-                    task.get('capabilities'),
-                    now,
-                    now
-                ))
-            
+                """,
+                    (
+                        plan_id,
+                        task.get("number"),
+                        task.get("description"),
+                        task.get("status", "pending"),
+                        task.get("note"),
+                        task.get("capabilities"),
+                        now,
+                        now,
+                    ),
+                )
+
             conn.commit()
             return plan_id
 
@@ -367,42 +413,50 @@ class ChatDatabase:
         """Get the plan for a specific chat."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            
+
             # Get the plan
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT * FROM plans WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1
-            """, (chat_id,))
+            """,
+                (chat_id,),
+            )
             plan_row = cursor.fetchone()
-            
+
             if not plan_row:
                 return None
-            
+
             # Get the tasks for this plan
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT * FROM tasks WHERE plan_id = ? ORDER BY number
-            """, (plan_row["id"],))
+            """,
+                (plan_row["id"],),
+            )
             task_rows = cursor.fetchall()
-            
+
             tasks = []
             for task_row in task_rows:
-                tasks.append({
-                    "id": task_row["id"],
-                    "number": task_row["number"],
-                    "description": task_row["description"],
-                    "status": task_row["status"],
-                    "note": task_row["note"],
-                    "capabilities": task_row["capabilities"],
-                    "created_at": task_row["created_at"],
-                    "updated_at": task_row["updated_at"]
-                })
-            
+                tasks.append(
+                    {
+                        "id": task_row["id"],
+                        "number": task_row["number"],
+                        "description": task_row["description"],
+                        "status": task_row["status"],
+                        "note": task_row["note"],
+                        "capabilities": task_row["capabilities"],
+                        "created_at": task_row["created_at"],
+                        "updated_at": task_row["updated_at"],
+                    }
+                )
+
             return {
                 "id": plan_row["id"],
                 "chat_id": plan_row["chat_id"],
                 "objective": plan_row["objective"],
                 "tasks": tasks,
                 "created_at": plan_row["created_at"],
-                "updated_at": plan_row["updated_at"]
+                "updated_at": plan_row["updated_at"],
             }
 
     def get_plan_by_id(self, plan_id: int) -> Optional[Dict[str, Any]]:
@@ -446,7 +500,9 @@ class ChatDatabase:
                 "updated_at": plan_row["updated_at"],
             }
 
-    def list_plans(self, chat_id: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    def list_plans(
+        self, chat_id: str, limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
         """Return all plans for a chat ordered by newest first."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -464,7 +520,7 @@ class ChatDatabase:
             for plan_row in plan_rows:
                 task_cursor = conn.execute(
                     "SELECT * FROM tasks WHERE plan_id = ? ORDER BY number",
-                    (plan_row["id"],)
+                    (plan_row["id"],),
                 )
                 task_rows = task_cursor.fetchall()
                 tasks = [
@@ -494,10 +550,16 @@ class ChatDatabase:
 
             return plans
 
-    def update_plan(self, chat_id: str, objective: str = None, tasks: List[Dict[str, Any]] = None, plan_id: Optional[int] = None) -> bool:
+    def update_plan(
+        self,
+        chat_id: str,
+        objective: str = None,
+        tasks: List[Dict[str, Any]] = None,
+        plan_id: Optional[int] = None,
+    ) -> bool:
         """Update an existing plan, optionally targeting a specific plan_id."""
         now = datetime.now().isoformat()
-        
+
         with sqlite3.connect(self.db_path) as conn:
             # Check if plan exists
             if plan_id is not None:
@@ -511,37 +573,43 @@ class ChatDatabase:
                     (chat_id,),
                 )
             plan_row = cursor.fetchone()
-            
+
             if plan_row:
                 plan_id = plan_row[0]
-                
+
                 # Update objective if provided
                 if objective is not None:
-                    conn.execute("""
+                    conn.execute(
+                        """
                         UPDATE plans SET objective = ?, updated_at = ? WHERE id = ?
-                    """, (objective, now, plan_id))
-                
+                    """,
+                        (objective, now, plan_id),
+                    )
+
                 # Update tasks if provided
                 if tasks is not None:
                     # Delete existing tasks
                     conn.execute("DELETE FROM tasks WHERE plan_id = ?", (plan_id,))
-                    
+
                     # Insert new tasks
                     for task in tasks:
-                        conn.execute("""
+                        conn.execute(
+                            """
                             INSERT INTO tasks (plan_id, number, description, status, note, capabilities, created_at, updated_at)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            plan_id,
-                            task.get('number'),
-                            task.get('description'),
-                            task.get('status', 'pending'),
-                            task.get('note'),
-                            task.get('capabilities'),
-                            now,
-                            now
-                        ))
-                
+                        """,
+                            (
+                                plan_id,
+                                task.get("number"),
+                                task.get("description"),
+                                task.get("status", "pending"),
+                                task.get("note"),
+                                task.get("capabilities"),
+                                now,
+                                now,
+                            ),
+                        )
+
                 conn.commit()
                 return True
             else:
@@ -551,10 +619,17 @@ class ChatDatabase:
                     return True
                 return False
 
-    def update_task_status(self, chat_id: str, task_number: int, status: str, note: str = None, plan_id: Optional[int] = None) -> bool:
+    def update_task_status(
+        self,
+        chat_id: str,
+        task_number: int,
+        status: str,
+        note: str = None,
+        plan_id: Optional[int] = None,
+    ) -> bool:
         """Update the status and optionally note of a specific task for a plan."""
         now = datetime.now().isoformat()
-        
+
         with sqlite3.connect(self.db_path) as conn:
             # Get the plan ID for this chat
             if plan_id is not None:
@@ -563,31 +638,37 @@ class ChatDatabase:
                     (plan_id, chat_id),
                 )
             else:
-                cursor = conn.execute("""
+                cursor = conn.execute(
+                    """
                     SELECT id FROM plans WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1
-                """, (chat_id,))
+                """,
+                    (chat_id,),
+                )
             plan_row = cursor.fetchone()
-            
+
             if not plan_row:
                 return False
-            
+
             plan_id = plan_row[0]
-            
+
             # Update the task
             update_fields = ["status = ?", "updated_at = ?"]
             params = [status, now]
-            
+
             if note is not None:
                 update_fields.append("note = ?")
                 params.append(note)
-            
+
             params.extend([plan_id, task_number])
-            
-            cursor = conn.execute(f"""
-                UPDATE tasks SET {', '.join(update_fields)}
+
+            cursor = conn.execute(
+                f"""
+                UPDATE tasks SET {", ".join(update_fields)}
                 WHERE plan_id = ? AND number = ?
-            """, params)
-            
+            """,
+                params,
+            )
+
             conn.commit()
             return cursor.rowcount > 0
 
@@ -612,12 +693,17 @@ class ChatDatabase:
                     "agent": row["agent"],
                     "tools": json.loads(row["tools"]) if row["tools"] else [],
                     "memory_enabled": bool(row["memory_enabled"]),
-                    "updated_at": row["updated_at"]
+                    "updated_at": row["updated_at"],
                 }
             return None
 
-    def save_user_preferences(self, model: str = None, agent: str = None,
-                             tools: List[str] = None, memory_enabled: bool = None) -> bool:
+    def save_user_preferences(
+        self,
+        model: str = None,
+        agent: str = None,
+        tools: List[str] = None,
+        memory_enabled: bool = None,
+    ) -> bool:
         """Save user preferences to the database."""
         now = datetime.now().isoformat()
 
@@ -652,21 +738,27 @@ class ChatDatabase:
                     params.append(now)
                     params.append(1)  # id = 1
 
-                    conn.execute(f"""
-                        UPDATE user_preferences SET {', '.join(updates)} WHERE id = ?
-                    """, params)
+                    conn.execute(
+                        f"""
+                        UPDATE user_preferences SET {", ".join(updates)} WHERE id = ?
+                    """,
+                        params,
+                    )
             else:
                 # Insert new preferences
-                conn.execute("""
+                conn.execute(
+                    """
                     INSERT INTO user_preferences (id, model, agent, tools, memory_enabled, updated_at)
                     VALUES (1, ?, ?, ?, ?, ?)
-                """, (
-                    model,
-                    agent,
-                    json.dumps(tools) if tools is not None else None,
-                    1 if memory_enabled else 0,
-                    now
-                ))
+                """,
+                    (
+                        model,
+                        agent,
+                        json.dumps(tools) if tools is not None else None,
+                        1 if memory_enabled else 0,
+                        now,
+                    ),
+                )
 
             conn.commit()
             return True
@@ -690,22 +782,18 @@ class ChatDatabase:
                 if row["type"] == "url":
                     urls[name] = row["url"]
                 elif row["type"] == "stdio":
-                    stdio_params = {
-                        "command": row["command"]
-                    }
+                    stdio_params = {"command": row["command"]}
                     if row["args"]:
                         stdio_params["args"] = json.loads(row["args"])
                     if row["env"]:
                         stdio_params["env"] = json.loads(row["env"])
                     stdio[name] = stdio_params
 
-            return {
-                "urls": urls,
-                "stdio": stdio,
-                "enabled": enabled
-            }
+            return {"urls": urls, "stdio": stdio, "enabled": enabled}
 
-    def add_mcp_server(self, name: str, url: str = None, stdio_params: Dict[str, Any] = None) -> bool:
+    def add_mcp_server(
+        self, name: str, url: str = None, stdio_params: Dict[str, Any] = None
+    ) -> bool:
         """Add or update an MCP server."""
         now = datetime.now().isoformat()
 
@@ -715,24 +803,34 @@ class ChatDatabase:
 
             if url:
                 # URL server
-                conn.execute("""
+                conn.execute(
+                    """
                     INSERT INTO mcp_servers (name, type, url, enabled, created_at, updated_at)
                     VALUES (?, 'url', ?, 1, ?, ?)
-                """, (name, url, now, now))
+                """,
+                    (name, url, now, now),
+                )
             elif stdio_params:
                 # Stdio server
-                conn.execute("""
+                conn.execute(
+                    """
                     INSERT INTO mcp_servers
                     (name, type, command, args, env, enabled, created_at, updated_at)
                     VALUES (?, 'stdio', ?, ?, ?, 1, ?, ?)
-                """, (
-                    name,
-                    stdio_params.get("command"),
-                    json.dumps(stdio_params.get("args")) if stdio_params.get("args") else None,
-                    json.dumps(stdio_params.get("env")) if stdio_params.get("env") else None,
-                    now,
-                    now
-                ))
+                """,
+                    (
+                        name,
+                        stdio_params.get("command"),
+                        json.dumps(stdio_params.get("args"))
+                        if stdio_params.get("args")
+                        else None,
+                        json.dumps(stdio_params.get("env"))
+                        if stdio_params.get("env")
+                        else None,
+                        now,
+                        now,
+                    ),
+                )
             else:
                 return False
 
@@ -749,15 +847,19 @@ class ChatDatabase:
     def set_mcp_server_enabled(self, name: str, enabled: bool) -> bool:
         """Enable or disable an MCP server."""
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 UPDATE mcp_servers SET enabled = ?, updated_at = ? WHERE name = ?
-            """, (1 if enabled else 0, datetime.now().isoformat(), name))
+            """,
+                (1 if enabled else 0, datetime.now().isoformat(), name),
+            )
             conn.commit()
             return cursor.rowcount > 0
 
 
 # Global database instance
 _db_instance = None
+
 
 def get_database() -> ChatDatabase:
     """Get the global database instance."""
@@ -771,15 +873,15 @@ def generate_chat_title(first_message: str, max_length: int = 50) -> str:
     """Generate a chat title from the first user message."""
     if not first_message.strip():
         return "New Chat"
-    
+
     # Clean and truncate the message
     title = first_message.strip()
-    
+
     # Remove newlines and extra spaces
     title = " ".join(title.split())
-    
+
     # Truncate if too long
     if len(title) > max_length:
-        title = title[:max_length - 3] + "..."
-    
+        title = title[: max_length - 3] + "..."
+
     return title

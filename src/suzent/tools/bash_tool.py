@@ -19,14 +19,14 @@ logger = get_logger(__name__)
 class BashTool(Tool):
     """
     Execute code in an isolated sandbox environment.
-    
+
     Features:
     - Supports Python, Node.js, and shell commands
     - Persistent storage at /persistence (survives restarts)
     - Shared storage at /shared (accessible by all sessions)
     - Internet access for package installation and API calls
     """
-    
+
     name = "BashTool"
     description = """Execute code in a secure, isolated sandbox environment.
 
@@ -41,26 +41,26 @@ Storage paths inside sandbox:
 - Custom mounts: Per-chat volumes configured in settings
 
 Returns the execution output or error message."""
-    
+
     inputs = {
         "content": {
             "type": "string",
-            "description": "The code or shell command to execute"
+            "description": "The code or shell command to execute",
         },
         "language": {
             "type": "string",
             "description": "Execution language: 'python', 'nodejs', or 'command'",
             "default": "python",
-            "nullable": True
+            "nullable": True,
         },
         "timeout": {
             "type": "integer",
             "description": "Execution timeout in seconds (optional)",
-            "nullable": True
-        }
+            "nullable": True,
+        },
     }
     output_type = "string"
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._manager = None
@@ -72,6 +72,7 @@ Returns the execution output or error message."""
         """Lazy-load sandbox manager with custom volumes if set."""
         if self._manager is None:
             from suzent.sandbox import SandboxManager
+
             # Pass custom volumes if they were set (per-chat config)
             if self.custom_volumes is not None:
                 self._manager = SandboxManager(custom_volumes=self.custom_volumes)
@@ -84,47 +85,46 @@ Returns the execution output or error message."""
         self.custom_volumes = volumes
         # Clear cached manager so it recreates with new volumes
         self._manager = None
-    
+
     def forward(
-        self, 
-        content: str, 
+        self,
+        content: str,
         language: Optional[str] = None,
-        timeout: Optional[int] = None
+        timeout: Optional[int] = None,
     ) -> str:
         """
         Execute code or command in the sandbox.
-        
+
         Args:
             content: Code or command to execute
             language: Execution language (python, nodejs, command)
             timeout: Execution timeout in seconds
-            
+
         Returns:
             Output from execution, or error message
         """
         if not self.chat_id:
             return "Error: No chat context. Cannot determine sandbox session."
-        
+
         # Default to Python if not specified
         lang = language or "python"
-        
+
         try:
             # Manager is now synchronous - no async needed
             result = self.manager.execute(
-                session_id=self.chat_id,
-                content=content,
-                language=lang,
-                timeout=timeout
+                session_id=self.chat_id, content=content, language=lang, timeout=timeout
             )
-            
+
             if result.success:
                 output = result.output or "(no output)"
-                logger.info(f"Sandbox execution successful [{lang}] for chat {self.chat_id}")
+                logger.info(
+                    f"Sandbox execution successful [{lang}] for chat {self.chat_id}"
+                )
                 return output
             else:
                 logger.warning(f"Sandbox execution error: {result.error}")
                 return f"Execution Error: {result.error}"
-                
+
         except Exception as e:
             logger.error(f"Sandbox tool error: {e}")
             return f"Sandbox Error: {str(e)}"

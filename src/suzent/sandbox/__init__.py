@@ -8,7 +8,7 @@ Configuration is read from suzent.config.CONFIG (single source of truth).
 
 Usage:
     from suzent.sandbox import SandboxManager, Language
-    
+
     async with SandboxManager() as manager:
         result = await manager.execute("chat_id", "print('Hello!')")
         result = await manager.execute("chat_id", "ls -la", Language.COMMAND)
@@ -20,13 +20,10 @@ from .manager import (
     SandboxSession,
     ExecutionResult,
     RPCClient,
-
     # Enums
     Language,
-
     # Constants
     Defaults,
-
     # Utilities
     check_server_status,
 )

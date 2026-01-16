@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 litellm.drop_params = True
 
 # Type variable for Pydantic models
-T = TypeVar('T', bound=BaseModel)
+T = TypeVar("T", bound=BaseModel)
 
 
 class EmbeddingGenerator:
@@ -27,7 +27,7 @@ class EmbeddingGenerator:
 
     def __init__(self, model: str = None, dimension: int = 0):
         """Initialize embedding generator.
-        
+
         Args:
             model: LiteLLM model identifier (e.g., 'text-embedding-3-small')
             dimension: Expected embedding dimension (0 = auto-detect from first response)
@@ -37,13 +37,13 @@ class EmbeddingGenerator:
 
     async def generate(self, text: str) -> List[float]:
         """Generate embedding for a single text.
-        
+
         Args:
             text: Input text to embed
-            
+
         Returns:
             List of floats representing the embedding vector
-            
+
         Raises:
             ValueError: If embedding dimension doesn't match expected dimension
         """
@@ -51,17 +51,16 @@ class EmbeddingGenerator:
             return [0.0] * self.dimension
 
         try:
-            response = await litellm.aembedding(
-                model=self.model,
-                input=text
-            )
+            response = await litellm.aembedding(model=self.model, input=text)
 
             embedding = response.data[0]["embedding"]
 
             # Auto-detect dimension on first call
             if not self.dimension:
                 self.dimension = len(embedding)
-                logger.info(f"Auto-detected embedding dimension: {self.dimension} (model={self.model})")
+                logger.info(
+                    f"Auto-detected embedding dimension: {self.dimension} (model={self.model})"
+                )
 
             # Validate dimension match
             if self.dimension != len(embedding):
@@ -76,13 +75,15 @@ class EmbeddingGenerator:
             logger.error(f"Failed to generate embedding: {e}")
             return [0.0] * (self.dimension or 1)
 
-    async def generate_batch(self, texts: List[str], batch_size: int = 32) -> List[List[float]]:
+    async def generate_batch(
+        self, texts: List[str], batch_size: int = 32
+    ) -> List[List[float]]:
         """Generate embeddings for multiple texts in batches.
-        
+
         Args:
             texts: List of texts to embed
             batch_size: Number of texts to process in each batch
-            
+
         Returns:
             List of embedding vectors, one per input text
         """
@@ -92,15 +93,12 @@ class EmbeddingGenerator:
         all_embeddings = []
 
         for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
+            batch = texts[i : i + batch_size]
 
             try:
-                response = await litellm.aembedding(
-                    model=self.model,
-                    input=batch
-                )
+                response = await litellm.aembedding(model=self.model, input=batch)
 
-                batch_embeddings = [item['embedding'] for item in response.data]
+                batch_embeddings = [item["embedding"] for item in response.data]
                 all_embeddings.extend(batch_embeddings)
 
             except Exception as e:
@@ -115,7 +113,7 @@ class LLMClient:
 
     def __init__(self, model: str = None):
         """Initialize LLM client.
-        
+
         Args:
             model: LiteLLM model identifier (defaults to CONFIG default model)
         """
@@ -130,7 +128,7 @@ class LLMClient:
         response_format: Optional[Any] = None,
     ) -> str:
         """Generate completion for a prompt.
-        
+
         Args:
             prompt: User prompt
             system: Optional system message
@@ -139,7 +137,7 @@ class LLMClient:
             response_format: Optional response format - can be:
                 - Dict like {"type": "json_object"}
                 - Pydantic model class for structured output
-            
+
         Returns:
             Generated text response
         """
@@ -172,20 +170,20 @@ class LLMClient:
         max_tokens: int = 2000,
     ) -> T:
         """Extract structured data using a Pydantic model schema.
-        
+
         Uses LiteLLM's built-in support for Pydantic models to enforce
         structured output from the LLM.
-        
+
         Args:
             prompt: User prompt
             response_model: Pydantic model class defining the expected output schema
             system: Optional system message
             temperature: Sampling temperature (lower for more deterministic)
             max_tokens: Maximum tokens to generate
-            
+
         Returns:
             Validated Pydantic model instance
-            
+
         Raises:
             ValueError: If response cannot be validated against the model
         """
@@ -206,7 +204,7 @@ class LLMClient:
             )
 
             content = response.choices[0].message.content
-            
+
             # Validate and parse with Pydantic
             return response_model.model_validate_json(content)
 
@@ -222,16 +220,16 @@ class LLMClient:
         response_model: Optional[Type[BaseModel]] = None,
     ) -> Dict[str, Any]:
         """Extract structured JSON data from prompt.
-        
+
         Args:
             prompt: User prompt
             system: Optional system message
             temperature: Sampling temperature (lower for more deterministic)
             response_model: Optional Pydantic model for schema enforcement
-            
+
         Returns:
             Parsed JSON object (or dict from validated Pydantic model)
-            
+
         Raises:
             ValueError: If response is not valid JSON
         """
@@ -262,4 +260,3 @@ class LLMClient:
             logger.error(f"Failed to parse JSON response: {e}")
             logger.debug(f"Raw response: {response}")
             raise ValueError(f"LLM returned invalid JSON: {e}")
-

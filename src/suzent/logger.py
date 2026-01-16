@@ -3,6 +3,7 @@ Centralized logging configuration for Suzent using loguru.
 
 Simple logging setup with color-coded console output and optional file logging.
 """
+
 import sys
 from pathlib import Path
 from typing import Optional
@@ -34,7 +35,7 @@ def setup_logging(
     logger.remove()
 
     _logging_configured = True
-    
+
     # Add console handler with colors and nice formatting
     logger.add(
         sys.stdout,
@@ -42,12 +43,12 @@ def setup_logging(
         format="<green>{time:HH:mm:ss}</green> | <level>{level:8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan> | <level>{message}</level>",
         colorize=True,
     )
-    
+
     # Optional file handler with rotation
     if log_file:
         log_path = Path(log_file)
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         logger.add(
             log_file,
             level="DEBUG",  # Always log everything to file
@@ -61,10 +62,10 @@ def setup_logging(
 def get_logger(name: str):
     """
     Get a logger instance for a module.
-    
+
     Args:
         name: Usually __name__ of the module
-        
+
     Returns:
         Logger instance bound with the module name
     """

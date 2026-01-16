@@ -14,6 +14,7 @@ Usage
   python start-dev.py --no-venv                # don't try to use a venv
 
 """
+
 import argparse
 import shutil
 import subprocess
@@ -58,16 +59,26 @@ def start_process(cmd, cwd=None, prefix=None, env=None):
         env=env,
     )
     lock = threading.Lock()
-    t = threading.Thread(target=stream_reader, args=(prefix, proc.stdout, lock), daemon=True)
+    t = threading.Thread(
+        target=stream_reader, args=(prefix, proc.stdout, lock), daemon=True
+    )
     t.start()
     return proc
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--venv-path", default=".venv", help="Relative path to virtualenv folder (default: .venv)")
-    parser.add_argument("--no-venv", action="store_true", help="Don't try to use a virtual environment")
-    parser.add_argument("--dry-run", action="store_true", help="Print commands without running them")
+    parser.add_argument(
+        "--venv-path",
+        default=".venv",
+        help="Relative path to virtualenv folder (default: .venv)",
+    )
+    parser.add_argument(
+        "--no-venv", action="store_true", help="Don't try to use a virtual environment"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print commands without running them"
+    )
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent
@@ -94,7 +105,9 @@ def main():
         procs.append(start_process(backend_cmd, cwd=root, prefix="backend"))
 
         # Start frontend
-        procs.append(start_process(frontend_cmd, cwd=root / "frontend", prefix="frontend"))
+        procs.append(
+            start_process(frontend_cmd, cwd=root / "frontend", prefix="frontend")
+        )
 
         # Wait until both processes exit or user interrupts.
         # Use poll + sleep instead of per-process wait(timeout=...) to avoid

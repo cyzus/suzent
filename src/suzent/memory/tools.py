@@ -34,12 +34,12 @@ Returns:
     inputs = {
         "query": {
             "type": "string",
-            "description": "What to search for in memory (use natural language)"
+            "description": "What to search for in memory (use natural language)",
         },
         "limit": {
             "type": "number",
             "description": "Maximum number of results to return (default: 10)",
-            "nullable": True
+            "nullable": True,
         },
     }
 
@@ -62,14 +62,14 @@ Returns:
         """Execute memory search."""
         try:
             # Get user_id from context (would come from agent context in real implementation)
-            user_id = getattr(self, '_user_id', CONFIG.user_id)
+            user_id = getattr(self, "_user_id", CONFIG.user_id)
             # chat_id = getattr(self, '_chat_id', None)
 
             memories = await self.memory_manager.search_memories(
                 query=query,
                 limit=limit,
                 chat_id=None,  # Always search user-level memories
-                user_id=user_id
+                user_id=user_id,
             )
 
             if not memories:
@@ -79,25 +79,26 @@ Returns:
             formatted = ["Found relevant memories:\n"]
             for i, mem in enumerate(memories, 1):
                 # Handle datetime formatting
-                created_at = mem.get('created_at')
+                created_at = mem.get("created_at")
                 if isinstance(created_at, datetime):
                     date_str = created_at.strftime("%Y-%m-%d")
                 else:
                     date_str = str(created_at)[:10] if created_at else "Unknown"
 
                 # Parse metadata
-                metadata = mem.get('metadata', {})
+                metadata = mem.get("metadata", {})
                 if isinstance(metadata, str):
                     import json
+
                     try:
                         metadata = json.loads(metadata)
                     except json.JSONDecodeError:
                         metadata = {}
 
-                tags = metadata.get('tags', [])
+                tags = metadata.get("tags", [])
                 tag_str = f" [Tags: {', '.join(tags)}]" if tags else ""
 
-                similarity = mem.get('similarity', mem.get('semantic_score', 0))
+                similarity = mem.get("similarity", mem.get("semantic_score", 0))
 
                 formatted.append(
                     f"{i}. {mem['content']}\n"
@@ -105,7 +106,9 @@ Returns:
                 )
 
             result = "\n\n".join(formatted)
-            logger.info(f"Memory search returned {len(memories)} results for query: {query}")
+            logger.info(
+                f"Memory search returned {len(memories)} results for query: {query}"
+            )
             return result
 
         except Exception as e:
@@ -119,8 +122,7 @@ Returns:
         # If we have a reference to the main loop, use it (thread-safe)
         if self._main_loop and self._main_loop.is_running():
             future = asyncio.run_coroutine_threadsafe(
-                self.forward_async(query, limit),
-                self._main_loop
+                self.forward_async(query, limit), self._main_loop
             )
             return future.result(timeout=30)  # 30 second timeout
 
@@ -164,21 +166,21 @@ Returns:
     inputs = {
         "block": {
             "type": "string",
-            "description": "Which block to update: 'persona', 'user', 'facts', or 'context'"
+            "description": "Which block to update: 'persona', 'user', 'facts', or 'context'",
         },
         "operation": {
             "type": "string",
-            "description": "Operation: 'replace' (full rewrite), 'append' (add to end), or 'search_replace' (find and replace)"
+            "description": "Operation: 'replace' (full rewrite), 'append' (add to end), or 'search_replace' (find and replace)",
         },
         "content": {
             "type": "string",
-            "description": "New content or content to append"
+            "description": "New content or content to append",
         },
         "search_pattern": {
             "type": "string",
             "description": "For search_replace operation: the text pattern to find and replace",
-            "nullable": True
-        }
+            "nullable": True,
+        },
     }
 
     output_type = "string"
@@ -197,11 +199,7 @@ Returns:
         self._user_id = user_id
 
     async def forward_async(
-        self,
-        block: str,
-        operation: str,
-        content: str,
-        search_pattern: str = None
+        self, block: str, operation: str, content: str, search_pattern: str = None
     ) -> str:
         """Execute memory block update."""
         try:
@@ -211,17 +209,17 @@ Returns:
                 return f"Error: Invalid block '{block}'. Must be one of: {', '.join(valid_blocks)}"
 
             # Get context
-            user_id = getattr(self, '_user_id', CONFIG.user_id)
-            chat_id = getattr(self, '_chat_id', None)
+            user_id = getattr(self, "_user_id", CONFIG.user_id)
+            chat_id = getattr(self, "_chat_id", None)
 
             # Decide scope: 'context' is chat-specific, others are user-level
             # This ensures persona/user/facts persist across all conversations
-            update_chat_id = chat_id if block == 'context' else None
+            update_chat_id = chat_id if block == "context" else None
 
             # Get current content (read from chat-specific or user-level)
             current_blocks = await self.memory_manager.get_core_memory(
                 chat_id=chat_id,  # Read prioritizes chat-specific
-                user_id=user_id
+                user_id=user_id,
             )
             current_content = current_blocks.get(block, "")
 
@@ -229,11 +227,17 @@ Returns:
             if operation == "replace":
                 new_content = content
             elif operation == "append":
-                separator = "\n" if current_content and not current_content.endswith("\n") else ""
+                separator = (
+                    "\n"
+                    if current_content and not current_content.endswith("\n")
+                    else ""
+                )
                 new_content = current_content + separator + content
             elif operation == "search_replace":
                 if not search_pattern:
-                    return "Error: search_pattern is required for search_replace operation"
+                    return (
+                        "Error: search_pattern is required for search_replace operation"
+                    )
                 if search_pattern not in current_content:
                     return f"Error: Pattern '{search_pattern}' not found in block '{block}'"
                 new_content = current_content.replace(search_pattern, content)
@@ -245,11 +249,13 @@ Returns:
                 label=block,
                 content=new_content,
                 chat_id=update_chat_id,  # None for persona/user/facts, chat_id for context
-                user_id=user_id
+                user_id=user_id,
             )
 
             if success:
-                logger.info(f"Updated memory block '{block}' with operation '{operation}'")
+                logger.info(
+                    f"Updated memory block '{block}' with operation '{operation}'"
+                )
                 return f"✓ Core memory block '{block}' updated successfully"
             else:
                 return f"✗ Failed to update block '{block}'"
@@ -259,11 +265,7 @@ Returns:
             return f"Error updating memory block: {str(e)}"
 
     def forward(
-        self,
-        block: str,
-        operation: str,
-        content: str,
-        search_pattern: str = None
+        self, block: str, operation: str, content: str, search_pattern: str = None
     ) -> str:
         """Synchronous wrapper for async forward - runs in main event loop."""
         import asyncio
@@ -272,7 +274,7 @@ Returns:
         if self._main_loop and self._main_loop.is_running():
             future = asyncio.run_coroutine_threadsafe(
                 self.forward_async(block, operation, content, search_pattern),
-                self._main_loop
+                self._main_loop,
             )
             return future.result(timeout=30)  # 30 second timeout
 

@@ -31,7 +31,7 @@ class StreamControl:
     def __init__(self, async_event: asyncio.Event, thread_event: threading.Event):
         """
         Initialize stream control.
-        
+
         Args:
             async_event: Asyncio event for async cancellation.
             thread_event: Threading event for thread-based cancellation.
@@ -48,10 +48,10 @@ stream_controls: Dict[str, StreamControl] = {}
 def step_to_json_event(chunk) -> Optional[dict]:
     """
     Converts an agent's step into a JSON event dictionary.
-    
+
     Args:
         chunk: Agent step or output chunk to convert.
-    
+
     Returns:
         Dictionary with 'type' and 'data' keys, or None if not serializable.
     """
@@ -92,10 +92,10 @@ def step_to_json_event(chunk) -> Optional[dict]:
 def _serialize_action_step(action_step) -> dict:
     """
     Safely serialize an ActionStep, handling the error field specially.
-    
+
     Args:
         action_step: ActionStep instance to serialize.
-    
+
     Returns:
         Dictionary with serializable ActionStep data.
     """
@@ -103,20 +103,20 @@ def _serialize_action_step(action_step) -> dict:
         # Get all attributes
         data = {}
         for key, value in action_step.__dict__.items():
-            if key.startswith('_'):
+            if key.startswith("_"):
                 continue
-            
+
             # Handle error field specially
-            if key == 'error' and value is not None:
+            if key == "error" and value is not None:
                 # Serialize error without the logger
                 try:
-                    data['error'] = {
-                        'type': type(value).__name__,
-                        'message': str(value),
-                        'args': value.args if hasattr(value, 'args') else []
+                    data["error"] = {
+                        "type": type(value).__name__,
+                        "message": str(value),
+                        "args": value.args if hasattr(value, "args") else [],
                     }
                 except Exception:
-                    data['error'] = str(value)
+                    data["error"] = str(value)
             else:
                 # Try to serialize other fields normally
                 try:
@@ -124,21 +124,20 @@ def _serialize_action_step(action_step) -> dict:
                 except Exception:
                     # Skip fields that can't be serialized
                     pass
-        
+
         return data
     except Exception as e:
         # Fallback to basic serialization
-        return {'error': f'Failed to serialize ActionStep: {str(e)}'}
-
+        return {"error": f"Failed to serialize ActionStep: {str(e)}"}
 
 
 def _plan_snapshot(chat_id: Optional[str] = None) -> dict:
     """
     Get a snapshot of the current plan state.
-    
+
     Args:
         chat_id: Chat identifier to get plan for.
-    
+
     Returns:
         Dictionary with 'objective' and 'tasks' keys.
     """
@@ -148,7 +147,7 @@ def _plan_snapshot(chat_id: Optional[str] = None) -> dict:
         plan = read_plan_from_database(chat_id)
         if not plan:
             return {"objective": "", "phases": []}
-            
+
         return plan_to_dict(plan) or {"objective": "", "phases": []}
     except Exception:
         return {"objective": "", "tasks": []}
@@ -156,6 +155,7 @@ def _plan_snapshot(chat_id: Optional[str] = None) -> dict:
 
 class _PlanTick:
     """Internal marker for plan updates."""
+
     __slots__ = ["snapshot"]
 
     def __init__(self, snapshot: dict):
@@ -164,6 +164,7 @@ class _PlanTick:
 
 class _StopSignal:
     """Internal marker for stop requests."""
+
     __slots__ = ["reason"]
 
     def __init__(self, reason: str):
@@ -175,7 +176,7 @@ async def stream_agent_responses(
     message: str,
     reset: bool = False,
     chat_id: Optional[str] = None,
-    images: Optional[list] = None
+    images: Optional[list] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Runs the agent with the given message and yields JSON-formatted SSE events.
@@ -298,14 +299,25 @@ async def stream_agent_responses(
                     yield f"data: {json.dumps(json_event)}\n\n"
                     et = json_event.get("type")
                     if et in ("planning", "action"):
-                        plan_event = {"type": "plan_refresh", "data": _plan_snapshot(chat_id)}
+                        plan_event = {
+                            "type": "plan_refresh",
+                            "data": _plan_snapshot(chat_id),
+                        }
                         yield f"data: {json.dumps(plan_event)}\n\n"
             except Exception as e:
                 # More robust error serialization
                 try:
                     error_msg = str(e)
-                    chunk_type = type(chunk).__name__ if hasattr(chunk, '__name__') or hasattr(type(chunk), '__name__') else 'unknown'
-                    error_event = {"type": "error", "data": f"Serialization error: {error_msg} | Chunk type: {chunk_type}"}
+                    chunk_type = (
+                        type(chunk).__name__
+                        if hasattr(chunk, "__name__")
+                        or hasattr(type(chunk), "__name__")
+                        else "unknown"
+                    )
+                    error_event = {
+                        "type": "error",
+                        "data": f"Serialization error: {error_msg} | Chunk type: {chunk_type}",
+                    }
                     yield f"data: {json.dumps(error_event)}\n\n"
                 except Exception:
                     # Fallback for complete failure
@@ -337,18 +349,18 @@ async def stream_agent_responses(
 def stop_stream(chat_id: str, reason: str = "Stream stopped by user") -> bool:
     """
     Request to stop an active stream.
-    
+
     Args:
         chat_id: Chat identifier for the stream to stop.
         reason: Reason for stopping the stream.
-    
+
     Returns:
         True if stream was found and stop requested, False otherwise.
     """
     control = stream_controls.get(chat_id)
     if not control:
         return False
-    
+
     control.reason = reason
     control.thread_event.set()
     control.async_event.set()

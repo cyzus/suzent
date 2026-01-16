@@ -21,10 +21,10 @@ class CustomJsonEncoder(JSONEncoder):
     def default(self, o: Any) -> Any:
         """
         Convert non-serializable objects to serializable format.
-        
+
         Args:
             o: Object to serialize.
-        
+
         Returns:
             Serializable representation of the object.
         """
@@ -35,7 +35,7 @@ class CustomJsonEncoder(JSONEncoder):
             return {
                 "error_type": type(o).__name__,
                 "message": str(o),
-                "args": list(o.args) if hasattr(o, 'args') else []
+                "args": list(o.args) if hasattr(o, "args") else [],
             }
         if hasattr(o, "dict") and callable(o.dict):
             try:
@@ -70,10 +70,10 @@ class CustomJsonEncoder(JSONEncoder):
 def to_serializable(obj: Any) -> Any:
     """
     Recursively converts an object to a JSON-serializable format.
-    
+
     Args:
         obj: Object to convert.
-    
+
     Returns:
         JSON-serializable representation of the object.
     """

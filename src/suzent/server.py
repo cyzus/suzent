@@ -34,7 +34,10 @@ from suzent.routes.plan_routes import get_plans, get_plan
 
 from suzent.routes.config_routes import get_config, save_preferences
 from suzent.routes.mcp_routes import (
-    list_mcp_servers, add_mcp_server, remove_mcp_server, set_mcp_server_enabled
+    list_mcp_servers,
+    add_mcp_server,
+    remove_mcp_server,
+    set_mcp_server_enabled,
 )
 from suzent.routes.memory_routes import (
     get_core_memory,
@@ -77,6 +80,7 @@ logger = get_logger(__name__)
 async def startup():
     """Initialize services on application startup."""
     from suzent.agent_manager import init_memory_system
+
     logger.info("Application startup - initializing services")
     await init_memory_system()
 
@@ -84,6 +88,7 @@ async def startup():
 async def shutdown():
     """Cleanup services on application shutdown."""
     from suzent.agent_manager import shutdown_memory_system
+
     logger.info("Application shutdown - cleaning up services")
     await shutdown_memory_system()
 
@@ -110,19 +115,21 @@ app = Starlette(
         Route("/mcp_servers", list_mcp_servers, methods=["GET"]),
         Route("/mcp_servers", add_mcp_server, methods=["POST"]),
         Route("/mcp_servers/remove", remove_mcp_server, methods=["POST"]),
-
         Route("/mcp_servers/enabled", set_mcp_server_enabled, methods=["POST"]),
         # Sandbox endpoints
-
         Route("/sandbox/files", list_sandbox_files, methods=["GET"]),
         Route("/sandbox/read_file", read_sandbox_file, methods=["GET"]),
-        Route("/sandbox/file", write_sandbox_file, methods=["POST", "PUT"]), # Support both for convenience
+        Route(
+            "/sandbox/file", write_sandbox_file, methods=["POST", "PUT"]
+        ),  # Support both for convenience
         Route("/sandbox/file", delete_sandbox_file, methods=["DELETE"]),
         # Memory endpoints
         Route("/memory/core", get_core_memory, methods=["GET"]),
         Route("/memory/core", update_core_memory_block, methods=["PUT"]),
         Route("/memory/archival", search_archival_memory, methods=["GET"]),
-        Route("/memory/archival/{memory_id}", delete_archival_memory, methods=["DELETE"]),
+        Route(
+            "/memory/archival/{memory_id}", delete_archival_memory, methods=["DELETE"]
+        ),
         Route("/memory/stats", get_memory_stats, methods=["GET"]),
     ],
     middleware=[

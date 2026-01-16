@@ -22,8 +22,8 @@ from smolagents.tools import Tool
 from suzent.config import CONFIG
 from suzent.logger import get_logger
 from suzent.prompts import format_instructions
-# Late imports for tools to avoid circular deps during init if needed, 
-# but imported at scope where used is generally cleaner if conditional. 
+# Late imports for tools to avoid circular deps during init if needed,
+# but imported at scope where used is generally cleaner if conditional.
 # However, for this refactor, we'll import PathResolver inside the helper.
 
 
@@ -55,6 +55,7 @@ async def init_memory_system() -> bool:
 
     # Store reference to main event loop
     import asyncio
+
     main_event_loop = asyncio.get_running_loop()
 
     if not CONFIG.memory_enabled:
@@ -82,10 +83,12 @@ async def init_memory_system() -> bool:
             store=memory_store,
             embedding_model=CONFIG.embedding_model,
             embedding_dimension=CONFIG.embedding_dimension,
-            llm_for_extraction=CONFIG.extraction_model
+            llm_for_extraction=CONFIG.extraction_model,
         )
 
-        logger.info(f"Memory system initialized successfully (extraction: {'LLM' if CONFIG.extraction_model else 'heuristic'})")
+        logger.info(
+            f"Memory system initialized successfully (extraction: {'LLM' if CONFIG.extraction_model else 'heuristic'})"
+        )
 
         # Add memory tools to CONFIG.tool_options so they appear in frontend
         if "MemorySearchTool" not in CONFIG.tool_options:
@@ -157,7 +160,9 @@ def _create_memory_tools() -> list:
         return []
 
 
-def create_agent(config: Dict[str, Any], memory_context: Optional[str] = None) -> CodeAgent:
+def create_agent(
+    config: Dict[str, Any], memory_context: Optional[str] = None
+) -> CodeAgent:
     """
     Creates an agent based on the provided configuration.
 
@@ -177,12 +182,19 @@ def create_agent(config: Dict[str, Any], memory_context: Optional[str] = None) -
         ValueError: If an unknown agent type is specified.
     """
     # Extract configuration with CONFIG-based fallbacks
-    model_id = config.get("model") or (CONFIG.model_options[0] if CONFIG.model_options else "gemini/gemini-2.5-pro")
-    agent_name = config.get("agent") or (CONFIG.agent_options[0] if CONFIG.agent_options else "CodeAgent")
+    model_id = config.get("model") or (
+        CONFIG.model_options[0] if CONFIG.model_options else "gemini/gemini-2.5-pro"
+    )
+    agent_name = config.get("agent") or (
+        CONFIG.agent_options[0] if CONFIG.agent_options else "CodeAgent"
+    )
     tool_names = (config.get("tools") or CONFIG.default_tools).copy()
     memory_enabled = config.get("memory_enabled", CONFIG.memory_enabled)
     sandbox_enabled = config.get("sandbox_enabled", CONFIG.sandbox_enabled)
-    additional_authorized_imports = config.get("additional_authorized_imports") or CONFIG.additional_authorized_imports
+    additional_authorized_imports = (
+        config.get("additional_authorized_imports")
+        or CONFIG.additional_authorized_imports
+    )
     model = LiteLLMModel(model_id=model_id)
 
     tools = []
@@ -206,7 +218,12 @@ def create_agent(config: Dict[str, Any], memory_context: Optional[str] = None) -
     for tool_name in custom_tool_names:
         try:
             # Skip memory and sandbox tools - they are handled separately
-            if tool_name in ["MemorySearchTool", "MemoryBlockUpdateTool", "SandboxTool", "BashTool"]:
+            if tool_name in [
+                "MemorySearchTool",
+                "MemoryBlockUpdateTool",
+                "SandboxTool",
+                "BashTool",
+            ]:
                 continue
 
             module_file_name = tool_module_map.get(tool_name)
@@ -243,7 +260,6 @@ def create_agent(config: Dict[str, Any], memory_context: Optional[str] = None) -
         except Exception as e:
             logger.error(f"Failed to equip BashTool: {e}")
 
-
     # --- Filter MCP servers by enabled state if provided ---
     # Accepts: config['mcp_enabled'] = {name: bool, ...}, config['mcp_urls'], config['mcp_stdio_params']
     mcp_enabled = config.get("mcp_enabled")
@@ -255,9 +271,13 @@ def create_agent(config: Dict[str, Any], memory_context: Optional[str] = None) -
         # Only include explicitly enabled servers
         # Default to False (disabled) if server not in mcp_enabled dict
         if mcp_urls:
-            for name, url in (mcp_urls.items() if isinstance(mcp_urls, dict) else enumerate(mcp_urls)):
+            for name, url in (
+                mcp_urls.items() if isinstance(mcp_urls, dict) else enumerate(mcp_urls)
+            ):
                 if mcp_enabled.get(name, False):
-                    mcp_server_parameters.append({"url": url, "transport": "streamable-http"})
+                    mcp_server_parameters.append(
+                        {"url": url, "transport": "streamable-http"}
+                    )
         if mcp_stdio_params:
             for name, params in mcp_stdio_params.items():
                 if mcp_enabled.get(name, False):
@@ -269,12 +289,7 @@ def create_agent(config: Dict[str, Any], memory_context: Optional[str] = None) -
         mcp_client = MCPClient(server_parameters=mcp_server_parameters)
         tools.extend(mcp_client.get_tools())
 
-
-
-    agent_map = {
-        "CodeAgent": CodeAgent,
-        "ToolcallingAgent": ToolCallingAgent
-    }
+    agent_map = {"CodeAgent": CodeAgent, "ToolcallingAgent": ToolCallingAgent}
 
     agent_class = agent_map.get(agent_name)
     if not agent_class:
@@ -297,9 +312,7 @@ def create_agent(config: Dict[str, Any], memory_context: Optional[str] = None) -
     if agent_name == "CodeAgent" and additional_authorized_imports:
         params["additional_authorized_imports"] = additional_authorized_imports
 
-    agent = agent_class(
-        **params
-    )
+    agent = agent_class(**params)
     # Store tool instances on the agent for later context injection
     agent._tool_instances = tools
     return agent
@@ -322,13 +335,15 @@ def _sanitize_memory(memory):
     # First pass: clear all error fields from ActionStep objects IN-PLACE
     # This must be done before any copy attempts
     errors_cleared = 0
-    
+
     def clear_errors(value):
         """Clear error fields from ActionStep objects."""
         nonlocal errors_cleared
         if isinstance(value, ActionStep):
-            if hasattr(value, 'error') and value.error is not None:
-                logger.debug(f"Clearing error from ActionStep: {type(value.error).__name__}")
+            if hasattr(value, "error") and value.error is not None:
+                logger.debug(
+                    f"Clearing error from ActionStep: {type(value.error).__name__}"
+                )
                 value.error = None
                 errors_cleared += 1
         elif isinstance(value, list):
@@ -337,20 +352,22 @@ def _sanitize_memory(memory):
         elif isinstance(value, dict):
             for v in value.values():
                 clear_errors(v)
-        elif hasattr(value, 'steps'):  # Memory object with steps attribute
+        elif hasattr(value, "steps"):  # Memory object with steps attribute
             logger.debug(f"Sanitizing Memory object with {len(value.steps)} steps")
             clear_errors(value.steps)
-    
+
     try:
         # Clear errors in-place first (safe because errors are not needed for restoration)
         clear_errors(memory)
-        
+
         if errors_cleared > 0:
-            logger.debug(f"Cleared {errors_cleared} AgentError objects from memory before serialization")
-        
+            logger.debug(
+                f"Cleared {errors_cleared} AgentError objects from memory before serialization"
+            )
+
         # Now return the cleaned memory
         return memory
-        
+
     except Exception as e:
         logger.error(f"Error sanitizing memory: {e}")
         # Return empty memory rather than risk corrupt state
@@ -370,9 +387,9 @@ def serialize_agent(agent: CodeAgent) -> Optional[bytes]:
     """
     try:
         # Extract only the serializable parts we need
-        tool_attr = getattr(agent, '_tool_instances', None)
+        tool_attr = getattr(agent, "_tool_instances", None)
         if tool_attr is None:
-            raw_tools = getattr(agent, 'tools', None)
+            raw_tools = getattr(agent, "tools", None)
             if isinstance(raw_tools, dict):
                 tool_iterable = raw_tools.values()
             elif isinstance(raw_tools, (list, tuple)):
@@ -394,20 +411,24 @@ def serialize_agent(agent: CodeAgent) -> Optional[bytes]:
                 tool_names.append(name)
 
         # Sanitize memory to remove AgentError objects that can't be pickled
-        logger.debug(f"Sanitizing memory before serialization (type: {type(agent.memory)})")
+        logger.debug(
+            f"Sanitizing memory before serialization (type: {type(agent.memory)})"
+        )
         sanitized_memory = _sanitize_memory(agent.memory)
         logger.debug("Memory sanitization complete")
 
         serializable_state = {
-            'memory': sanitized_memory,
-            'model_id': getattr(agent.model, 'model_id', None) if hasattr(agent, 'model') else None,
-            'instructions': getattr(agent, 'instructions', None),
-            'step_number': getattr(agent, 'step_number', 1),
-            'max_steps': getattr(agent, 'max_steps', 10),
+            "memory": sanitized_memory,
+            "model_id": getattr(agent.model, "model_id", None)
+            if hasattr(agent, "model")
+            else None,
+            "instructions": getattr(agent, "instructions", None),
+            "step_number": getattr(agent, "step_number", 1),
+            "max_steps": getattr(agent, "max_steps", 10),
             # Store tool names/types instead of tool instances
-            'tool_names': tool_names,
+            "tool_names": tool_names,
             # Store managed agent info if any
-            'managed_agents': getattr(agent, 'managed_agents', []),
+            "managed_agents": getattr(agent, "managed_agents", []),
         }
 
         # Serialize to bytes
@@ -439,12 +460,15 @@ def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[Cod
         except (TypeError, AttributeError, pickle.UnpicklingError) as unpickle_error:
             # Log the ACTUAL error to help debug what's wrong
             import traceback
+
             logger.error(f"Failed to unpickle agent state: {unpickle_error}")
             logger.debug(f"Unpickling traceback:\n{traceback.format_exc()}")
 
             error_msg = str(unpickle_error)
-            if 'AgentError' in error_msg or 'logger' in error_msg:
-                logger.info("Agent state contains incompatible AgentError, will be cleared")
+            if "AgentError" in error_msg or "logger" in error_msg:
+                logger.info(
+                    "Agent state contains incompatible AgentError, will be cleared"
+                )
             else:
                 logger.warning(f"Unpickling failed for unknown reason: {error_msg}")
             return None
@@ -455,7 +479,9 @@ def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[Cod
             logger.debug(f"State dict keys: {list(state.keys())}")
         else:
             # State is not a dict - might be from new format (just memory object)
-            logger.warning(f"Agent state is not a dict (type: {type(state).__name__}), expected old format with dict. Creating fresh agent.")
+            logger.warning(
+                f"Agent state is not a dict (type: {type(state).__name__}), expected old format with dict. Creating fresh agent."
+            )
             return None
 
         # Create a new agent with the config that was passed in
@@ -464,14 +490,14 @@ def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[Cod
         agent = create_agent(config)
 
         # Restore the memory and state
-        if 'memory' in state:
-            agent.memory = state['memory']
+        if "memory" in state:
+            agent.memory = state["memory"]
 
         # Restore other important state
-        if 'step_number' in state:
-            agent.step_number = state['step_number']
-        if 'max_steps' in state:
-            agent.max_steps = state['max_steps']
+        if "step_number" in state:
+            agent.step_number = state["step_number"]
+        if "max_steps" in state:
+            agent.max_steps = state["max_steps"]
         # We deliberately do NOT restore 'instructions' from state, as they might contain
         # outdated tool definitions or stale system prompts. We rely on create_agent(config)
         # to generate the correct fresh prompt based on current config/tools.
@@ -481,7 +507,9 @@ def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[Cod
         return agent
 
     except Exception as e:
-        logger.warning(f"Error deserializing agent state: {e}. Starting with fresh agent.")
+        logger.warning(
+            f"Error deserializing agent state: {e}. Starting with fresh agent."
+        )
         return None
 
 
@@ -514,9 +542,10 @@ async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Co
                 chat_id = config.get("_chat_id")
                 user_id = config.get("_user_id", "default-user")
                 try:
-                    memory_context = await memory_manager.format_core_memory_for_context(
-                        chat_id=chat_id,
-                        user_id=user_id
+                    memory_context = (
+                        await memory_manager.format_core_memory_for_context(
+                            chat_id=chat_id, user_id=user_id
+                        )
                     )
                     if memory_context:
                         logger.debug(f"Fetched core memory context for user={user_id}")
@@ -531,7 +560,9 @@ async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Co
         return agent_instance
 
 
-def inject_chat_context(agent: CodeAgent, chat_id: str, user_id: str = None, config: dict = None) -> None:
+def inject_chat_context(
+    agent: CodeAgent, chat_id: str, user_id: str = None, config: dict = None
+) -> None:
     """
     Inject chat context into agent tools that support it.
 
@@ -541,7 +572,7 @@ def inject_chat_context(agent: CodeAgent, chat_id: str, user_id: str = None, con
         user_id: The user identifier for memory system (defaults to CONFIG.user_id).
         config: Optional chat configuration dict containing per-chat settings.
     """
-    if not chat_id or not hasattr(agent, '_tool_instances'):
+    if not chat_id or not hasattr(agent, "_tool_instances"):
         return
 
     from suzent.config import CONFIG
@@ -552,63 +583,85 @@ def inject_chat_context(agent: CodeAgent, chat_id: str, user_id: str = None, con
 
     # --- Dynamic Sandbox Tool Management ---
     # Determine effective sandbox status
-    sandbox_enabled = config.get('sandbox_enabled', CONFIG.sandbox_enabled) if config else CONFIG.sandbox_enabled
-    
+    sandbox_enabled = (
+        config.get("sandbox_enabled", CONFIG.sandbox_enabled)
+        if config
+        else CONFIG.sandbox_enabled
+    )
+
     if not sandbox_enabled:
         # Remove BashTool if present
         # Update agent.tools dictionary if it exists
-        if hasattr(agent, 'tools') and isinstance(agent.tools, dict):
-            if 'BashTool' in agent.tools:
-                del agent.tools['BashTool']
-        
+        if hasattr(agent, "tools") and isinstance(agent.tools, dict):
+            if "BashTool" in agent.tools:
+                del agent.tools["BashTool"]
+
         # Update _tool_instances list
-        agent._tool_instances = [t for t in agent._tool_instances if t.__class__.__name__ != 'BashTool']
+        agent._tool_instances = [
+            t for t in agent._tool_instances if t.__class__.__name__ != "BashTool"
+        ]
 
         # Also check agent.toolbox if it exists (smolagents structure)
-        if hasattr(agent, 'toolbox') and hasattr(agent.toolbox, 'tools') and isinstance(agent.toolbox.tools, dict):
-             if 'BashTool' in agent.toolbox.tools:
-                 del agent.toolbox.tools['BashTool']
-        
+        if (
+            hasattr(agent, "toolbox")
+            and hasattr(agent.toolbox, "tools")
+            and isinstance(agent.toolbox.tools, dict)
+        ):
+            if "BashTool" in agent.toolbox.tools:
+                del agent.toolbox.tools["BashTool"]
+
     else:
         # Add BashTool if missing
-        has_bash = any(t.__class__.__name__ == 'BashTool' for t in agent._tool_instances)
+        has_bash = any(
+            t.__class__.__name__ == "BashTool" for t in agent._tool_instances
+        )
         if not has_bash:
             try:
                 from suzent.tools.bash_tool import BashTool
+
                 bash_tool = BashTool()
                 agent._tool_instances.append(bash_tool)
-                if hasattr(agent, 'tools') and isinstance(agent.tools, dict):
-                    agent.tools['BashTool'] = bash_tool
+                if hasattr(agent, "tools") and isinstance(agent.tools, dict):
+                    agent.tools["BashTool"] = bash_tool
             except Exception as e:
                 logger.error(f"Failed to dynamically equip BashTool: {e}")
 
     # --- Tool Context Injection ---
     for tool_instance in agent._tool_instances:
         # Inject chat_id for tools like PlanningTool
-        if hasattr(tool_instance, 'set_chat_context'):
+        if hasattr(tool_instance, "set_chat_context"):
             tool_instance.set_chat_context(chat_id)
 
         # Inject user_id and chat_id for memory tools
-        if tool_instance.__class__.__name__ in ['MemorySearchTool', 'MemoryBlockUpdateTool']:
-            if hasattr(tool_instance, 'set_context'):
+        if tool_instance.__class__.__name__ in [
+            "MemorySearchTool",
+            "MemoryBlockUpdateTool",
+        ]:
+            if hasattr(tool_instance, "set_context"):
                 tool_instance.set_context(chat_id=chat_id, user_id=user_id)
 
         # Inject chat_id and custom volumes for BashTool
-        if tool_instance.__class__.__name__ == 'BashTool':
+        if tool_instance.__class__.__name__ == "BashTool":
             tool_instance.chat_id = chat_id
             # Inject per-chat sandbox volumes if configured
             # Use same fallback logic as PathResolver
-            volumes = config.get('sandbox_volumes') if config else None
+            volumes = config.get("sandbox_volumes") if config else None
             if not volumes:
                 volumes = CONFIG.sandbox_volumes
-                
-            if volumes and hasattr(tool_instance, 'set_custom_volumes'):
-                 tool_instance.set_custom_volumes(volumes)
+
+            if volumes and hasattr(tool_instance, "set_custom_volumes"):
+                tool_instance.set_custom_volumes(volumes)
 
         # Inject PathResolver into file tools
-        file_tool_names = ['ReadFileTool', 'WriteFileTool', 'EditFileTool', 'GlobTool', 'GrepTool']
+        file_tool_names = [
+            "ReadFileTool",
+            "WriteFileTool",
+            "EditFileTool",
+            "GlobTool",
+            "GrepTool",
+        ]
         if tool_instance.__class__.__name__ in file_tool_names:
-            if hasattr(tool_instance, 'set_context'):
+            if hasattr(tool_instance, "set_context"):
                 resolver = _create_path_resolver(chat_id, config)
                 tool_instance.set_context(resolver)
 
@@ -616,29 +669,32 @@ def inject_chat_context(agent: CodeAgent, chat_id: str, user_id: str = None, con
 def _create_path_resolver(chat_id: str, config: Optional[dict]) -> Any:
     """
     Create a PathResolver instance with configuration overrides.
-    
+
     Args:
         chat_id: Chat session ID
         config: Optional chat configuration overriding globals
-        
+
     Returns:
         PathResolver instance
     """
     from suzent.tools.path_resolver import PathResolver
-    
+
     # 1. Determine sandbox_enabled (Chat Config > Global Config)
-    sandbox_enabled = config.get('sandbox_enabled', CONFIG.sandbox_enabled) if config else CONFIG.sandbox_enabled
-    
+    sandbox_enabled = (
+        config.get("sandbox_enabled", CONFIG.sandbox_enabled)
+        if config
+        else CONFIG.sandbox_enabled
+    )
+
     # 2. Determine sandbox_volumes (Chat Config > Global Config)
     # Note: If chat has empty list [], it overrides global. If None/missing, use global.
     # Wait, previous fix was: if empty list, use global.
-    # Logic: config.get('sandbox_volumes') returns None if missing. 
+    # Logic: config.get('sandbox_volumes') returns None if missing.
     # If key exists and is [], truthiness check fails.
     # Our requirement: "Robust fallback... if chat config has empty list/None, use global defaults"
-    custom_volumes = config.get('sandbox_volumes') if config else None
+    custom_volumes = config.get("sandbox_volumes") if config else None
     if not custom_volumes:
         custom_volumes = CONFIG.sandbox_volumes
-        
+
     # logger.debug(f"Creating PathResolver for {chat_id} with volumes: {custom_volumes}")
     return PathResolver(chat_id, sandbox_enabled, custom_volumes=custom_volumes)
-

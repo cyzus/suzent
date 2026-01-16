@@ -12,7 +12,9 @@ import io
 from PIL import Image
 
 
-def encode_image_to_base64(image: Image.Image, format: str = "JPEG", quality: int = 85) -> str:
+def encode_image_to_base64(
+    image: Image.Image, format: str = "JPEG", quality: int = 85
+) -> str:
     """
     Convert a PIL Image to a base64-encoded string.
 
@@ -26,7 +28,7 @@ def encode_image_to_base64(image: Image.Image, format: str = "JPEG", quality: in
     """
     buffered = io.BytesIO()
 
-    if format.upper() == 'JPEG':
+    if format.upper() == "JPEG":
         image.save(buffered, format=format, quality=quality, optimize=True)
     else:
         image.save(buffered, format=format)
@@ -35,7 +37,7 @@ def encode_image_to_base64(image: Image.Image, format: str = "JPEG", quality: in
     size_mb = len(img_bytes) / (1024 * 1024)
     print(f"[Encoding] Format={format}, Quality={quality}, Size={size_mb:.2f} MB")
 
-    return base64.b64encode(img_bytes).decode('utf-8')
+    return base64.b64encode(img_bytes).decode("utf-8")
 
 
 def decode_base64_to_image(b64_string: str) -> Image.Image:
@@ -52,7 +54,9 @@ def decode_base64_to_image(b64_string: str) -> Image.Image:
     return Image.open(io.BytesIO(img_data))
 
 
-def compress_image_with_bytes(image: Image.Image, max_size_mb: float = 4.0, target_format: str = 'JPEG') -> tuple[Image.Image, bytes]:
+def compress_image_with_bytes(
+    image: Image.Image, max_size_mb: float = 4.0, target_format: str = "JPEG"
+) -> tuple[Image.Image, bytes]:
     """
     Compress an image and return both the PIL Image and compressed bytes.
 
@@ -70,15 +74,19 @@ def compress_image_with_bytes(image: Image.Image, max_size_mb: float = 4.0, targ
     original_size = (image.width, image.height)
 
     # Always convert to RGB for consistent compression
-    if image.mode not in ('RGB', 'L'):
-        image = image.convert('RGB')
+    if image.mode not in ("RGB", "L"):
+        image = image.convert("RGB")
 
-    print(f"[Compression] Original: {original_size[0]}x{original_size[1]}, mode: {image.mode}")
+    print(
+        f"[Compression] Original: {original_size[0]}x{original_size[1]}, mode: {image.mode}"
+    )
 
     # For very small targets (< 1 MB), start with dimension reduction immediately
     # This is because PIL Images will be re-encoded by smolagents
     if max_size_mb < 1.0:
-        print(f"[Compression] Small target ({max_size_mb} MB), starting with dimension reduction")
+        print(
+            f"[Compression] Small target ({max_size_mb} MB), starting with dimension reduction"
+        )
         # Try progressively smaller sizes - be very aggressive for tiny targets
         for scale in [0.5, 0.45, 0.4, 0.35, 0.3, 0.28, 0.25, 0.22, 0.2, 0.18, 0.15]:
             new_size = (int(image.width * scale), int(image.height * scale))
@@ -86,13 +94,17 @@ def compress_image_with_bytes(image: Image.Image, max_size_mb: float = 4.0, targ
 
             for quality in [85, 70, 55, 40, 30]:
                 buffer = io.BytesIO()
-                resized.save(buffer, format=target_format, quality=quality, optimize=True)
+                resized.save(
+                    buffer, format=target_format, quality=quality, optimize=True
+                )
                 compressed_bytes = buffer.getvalue()
                 size_mb = len(compressed_bytes) / (1024 * 1024)
 
                 if len(compressed_bytes) <= max_size_bytes:
-                    print(f"[Compression] Success at scale={scale:.2f}, quality={quality}: "
-                          f"{new_size[0]}x{new_size[1]}, {size_mb:.2f} MB")
+                    print(
+                        f"[Compression] Success at scale={scale:.2f}, quality={quality}: "
+                        f"{new_size[0]}x{new_size[1]}, {size_mb:.2f} MB"
+                    )
                     buffer.seek(0)
                     compressed_image = Image.open(buffer)
                     return compressed_image, compressed_bytes
@@ -126,8 +138,10 @@ def compress_image_with_bytes(image: Image.Image, max_size_mb: float = 4.0, targ
             size_mb = len(compressed_bytes) / (1024 * 1024)
 
             if len(compressed_bytes) <= max_size_bytes:
-                print(f"[Compression] Success at scale={scale:.1f}, quality={quality}: "
-                      f"{new_size[0]}x{new_size[1]}, {size_mb:.2f} MB")
+                print(
+                    f"[Compression] Success at scale={scale:.1f}, quality={quality}: "
+                    f"{new_size[0]}x{new_size[1]}, {size_mb:.2f} MB"
+                )
                 buffer.seek(0)
                 compressed_image = Image.open(buffer)
                 return compressed_image, compressed_bytes
@@ -146,7 +160,9 @@ def compress_image_with_bytes(image: Image.Image, max_size_mb: float = 4.0, targ
     return compressed_image, compressed_bytes
 
 
-def get_image_size_mb(image: Image.Image, format: str = 'JPEG', quality: int = 85) -> float:
+def get_image_size_mb(
+    image: Image.Image, format: str = "JPEG", quality: int = 85
+) -> float:
     """
     Calculate the encoded size of an image in megabytes.
 

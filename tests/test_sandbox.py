@@ -32,10 +32,12 @@ from suzent.sandbox import (
 # Fixtures
 # =============================================================================
 
+
 @pytest.fixture(scope="module")
 def server_url():
     """Get sandbox server URL."""
     from suzent.config import CONFIG
+
     return CONFIG.sandbox_server_url or Defaults.SERVER_URL
 
 
@@ -56,6 +58,7 @@ def session_id():
 # =============================================================================
 # 1. Connectivity and Health Check Tests
 # =============================================================================
+
 
 class TestConnectivity:
     """Tests for server connectivity and health checks."""
@@ -101,6 +104,7 @@ class TestConnectivity:
 # 2. Session Lifecycle Tests
 # =============================================================================
 
+
 class TestSessionLifecycle:
     """Tests for session start/stop/restart behavior."""
 
@@ -118,7 +122,9 @@ class TestSessionLifecycle:
         success = manager.stop_session(session_id)
 
         assert success, "Failed to stop session"
-        assert session_id not in manager._sessions, "Session should be removed from manager"
+        assert session_id not in manager._sessions, (
+            "Session should be removed from manager"
+        )
 
     def test_session_restart(self, manager, session_id):
         """Test restarting a session after stop."""
@@ -165,6 +171,7 @@ class TestSessionLifecycle:
 # 3. State Synchronization Tests (Bug Detection)
 # =============================================================================
 
+
 class TestStateSynchronization:
     """Tests to detect _is_running flag getting out of sync with reality."""
 
@@ -192,7 +199,9 @@ class TestStateSynchronization:
 
         # Session should still be considered running
         session = manager.get_session(session_id)
-        assert session._is_running is True, "Session should remain running after code error"
+        assert session._is_running is True, (
+            "Session should remain running after code error"
+        )
 
     def test_state_recovery_simulation(self, manager, session_id):
         """
@@ -211,12 +220,15 @@ class TestStateSynchronization:
 
         # Should either succeed (auto-healed) or have clear error
         if not result.success:
-            assert result.error is not None, "Failed execution should have error message"
+            assert result.error is not None, (
+                "Failed execution should have error message"
+            )
 
 
 # =============================================================================
 # 4. Concurrency Tests
 # =============================================================================
+
 
 class TestConcurrency:
     """Tests for concurrent access and race conditions."""
@@ -229,7 +241,9 @@ class TestConcurrency:
             results.append(result)
 
         failures = [r for r in results if not r.success]
-        assert len(failures) == 0, f"Sequential executions failed: {[r.error for r in failures]}"
+        assert len(failures) == 0, (
+            f"Sequential executions failed: {[r.error for r in failures]}"
+        )
 
     def test_concurrent_executions_same_session(self, manager, session_id):
         """
@@ -251,7 +265,9 @@ class TestConcurrency:
         success_rate = (len(results) - len(failures)) / len(results)
 
         # Allow some failures due to race conditions, but most should succeed
-        assert success_rate >= 0.6, f"Too many concurrent failures ({len(failures)}/{len(results)})"
+        assert success_rate >= 0.6, (
+            f"Too many concurrent failures ({len(failures)}/{len(results)})"
+        )
 
         if failures:
             print(f"\nWARNING: {len(failures)} concurrent executions failed:")
@@ -287,7 +303,9 @@ class TestConcurrency:
 
         def long_execution():
             try:
-                result = manager.execute(session_id, "import time; time.sleep(2); print('done')")
+                result = manager.execute(
+                    session_id, "import time; time.sleep(2); print('done')"
+                )
                 results.append(result)
             except Exception as e:
                 errors.append(e)
@@ -316,6 +334,7 @@ class TestConcurrency:
 # =============================================================================
 # 5. Stress Tests
 # =============================================================================
+
 
 class TestStress:
     """Stress tests for stability under load."""
@@ -357,7 +376,9 @@ class TestStress:
                 print(f"  Execution {i} failed: {result.error}")
 
         success_rate = (total - failure_count) / total
-        assert success_rate >= 0.9, f"Too many failures: {failure_count}/{total} ({success_rate:.0%} success)"
+        assert success_rate >= 0.9, (
+            f"Too many failures: {failure_count}/{total} ({success_rate:.0%} success)"
+        )
 
     def test_multiple_sessions_sequential(self, manager):
         """Create multiple sessions sequentially."""
@@ -401,6 +422,7 @@ print('done')
 # =============================================================================
 # 6. Error Handling and Recovery Tests
 # =============================================================================
+
 
 class TestErrorHandling:
     """Tests for error handling and auto-healing."""
@@ -466,6 +488,7 @@ class TestErrorHandling:
 # 7. Persistence Tests
 # =============================================================================
 
+
 class TestPersistence:
     """Tests for data persistence across session restarts."""
 
@@ -497,7 +520,9 @@ class TestPersistence:
         result = manager.execute(session_id, read_code)
 
         assert result.success, f"Read after restart failed: {result.error}"
-        assert unique_data in result.output, f"Data not persisted: expected '{unique_data}', got '{result.output}'"
+        assert unique_data in result.output, (
+            f"Data not persisted: expected '{unique_data}', got '{result.output}'"
+        )
 
     def test_shared_storage_between_sessions(self, manager):
         """Test /shared is accessible across different sessions."""
@@ -526,6 +551,7 @@ class TestPersistence:
 # 8. Command Execution Tests
 # =============================================================================
 
+
 class TestCommandExecution:
     """Tests for shell command execution via Language.COMMAND."""
 
@@ -546,14 +572,18 @@ class TestCommandExecution:
     def test_command_exit_code(self, manager, session_id):
         """Test that exit codes are captured correctly."""
         # Command that fails
-        result = manager.execute(session_id, "ls /nonexistent_path_12345", language=Language.COMMAND)
+        result = manager.execute(
+            session_id, "ls /nonexistent_path_12345", language=Language.COMMAND
+        )
 
         assert not result.success, "Failed command should have success=False"
         assert result.exit_code != 0, "Failed command should have non-zero exit code"
 
     def test_command_not_found(self, manager, session_id):
         """Test handling of nonexistent commands."""
-        result = manager.execute(session_id, "nonexistent_command_12345", language=Language.COMMAND)
+        result = manager.execute(
+            session_id, "nonexistent_command_12345", language=Language.COMMAND
+        )
 
         assert not result.success, "Nonexistent command should fail"
 
@@ -562,12 +592,15 @@ class TestCommandExecution:
 # 9. Node.js Execution Tests (if supported)
 # =============================================================================
 
+
 class TestNodeJS:
     """Tests for Node.js execution."""
 
     def test_nodejs_basic(self, manager, session_id):
         """Test basic Node.js execution."""
-        result = manager.execute(session_id, "console.log('hello from node')", language=Language.NODEJS)
+        result = manager.execute(
+            session_id, "console.log('hello from node')", language=Language.NODEJS
+        )
 
         err_msg = str(result.error or "").lower()
         if "not supported" in err_msg or "500 internal server error" in err_msg:
@@ -580,6 +613,7 @@ class TestNodeJS:
 # =============================================================================
 # 10. Edge Cases and Bug Reproduction
 # =============================================================================
+
 
 class TestEdgeCases:
     """Tests for edge cases and potential bugs."""
@@ -635,12 +669,15 @@ class TestEdgeCases:
             mgr.cleanup_all()
 
         failures = [r for r in results if not r.success]
-        assert len(failures) == 0, f"Manager reuse failures: {[r.error for r in failures]}"
+        assert len(failures) == 0, (
+            f"Manager reuse failures: {[r.error for r in failures]}"
+        )
 
 
 # =============================================================================
 # Quick Diagnostic Test (run this first)
 # =============================================================================
+
 
 class TestQuickDiagnostic:
     """Run these first to quickly diagnose sandbox issues."""

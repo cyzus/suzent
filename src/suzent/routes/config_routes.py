@@ -40,7 +40,7 @@ async def get_config(request: Request) -> JSONResponse:
         "userId": CONFIG.user_id,
         # Include global sandbox configuration
         "globalSandboxVolumes": CONFIG.sandbox_volumes or [],
-        "sandboxEnabled": getattr(CONFIG, 'sandbox_enabled', False),
+        "sandboxEnabled": getattr(CONFIG, "sandbox_enabled", False),
     }
 
     # Add user preferences if they exist
@@ -49,7 +49,7 @@ async def get_config(request: Request) -> JSONResponse:
             "model": user_prefs["model"],
             "agent": user_prefs["agent"],
             "tools": user_prefs["tools"],
-            "memory_enabled": user_prefs["memory_enabled"]
+            "memory_enabled": user_prefs["memory_enabled"],
         }
 
     return JSONResponse(data)
@@ -78,10 +78,7 @@ async def save_preferences(request: Request) -> JSONResponse:
 
     db = get_database()
     success = db.save_user_preferences(
-        model=model,
-        agent=agent,
-        tools=tools,
-        memory_enabled=memory_enabled
+        model=model, agent=agent, tools=tools, memory_enabled=memory_enabled
     )
 
     if success:

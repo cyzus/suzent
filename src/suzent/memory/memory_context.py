@@ -10,6 +10,7 @@ from datetime import datetime
 
 # ===== Core Memory Context Prompts =====
 
+
 def format_core_memory_section(blocks: Dict[str, str]) -> str:
     """
     Format core memory blocks for agent context injection.
@@ -49,86 +50,89 @@ You have unlimited long-term memory storage that is automatically managed. Use `
 
 # ===== Phase 4: Improved Retrieval Formatting =====
 
-def format_retrieved_memories_section(memories: List[Dict[str, Any]], tag_important: bool = True) -> str:
+
+def format_retrieved_memories_section(
+    memories: List[Dict[str, Any]], tag_important: bool = True
+) -> str:
     """
     Format retrieved memories for context injection with rich context.
-    
+
     Args:
         memories: List of memory dictionaries with content, importance, timestamp, metadata
         tag_important: Whether to tag high-importance memories
-        
+
     Returns:
         Formatted string with relevant memories and their context
     """
     import json as json_module
-    
+
     if not memories:
         return ""
-    
+
     formatted_memories = []
-    
+
     for i, memory in enumerate(memories, 1):
         # Handle case where memory might be a string (shouldn't happen but defensive)
         if isinstance(memory, str):
             formatted_memories.append(f"{i}. {memory}")
             continue
-            
-        content = memory.get('content', '')
-        importance = memory.get('importance', 0)
-        updated_at = memory.get('updated_at')
-        
+
+        content = memory.get("content", "")
+        importance = memory.get("importance", 0)
+        updated_at = memory.get("updated_at")
+
         # Parse metadata - it might be a JSON string from PostgreSQL
-        metadata = memory.get('metadata', {})
+        metadata = memory.get("metadata", {})
         if isinstance(metadata, str):
             try:
                 metadata = json_module.loads(metadata)
             except (json_module.JSONDecodeError, TypeError):
                 metadata = {}
         metadata = metadata or {}
-        
+
         # Build the memory entry
         entry_parts = []
-        
+
         # Header with importance tag
         header = f"{i}."
         if tag_important and importance > 0.7:
             header += " **[Important]**"
-        
+
         # Category if available
-        category = metadata.get('category')
+        category = metadata.get("category")
         if category:
             header += f" [{category.capitalize()}]"
-        
+
         entry_parts.append(header)
-        
+
         # Main content (indented)
         entry_parts.append(f"   {content}")
-        
+
         # Conversation context if available (Phase 4 enhancement)
-        conversation_context = metadata.get('conversation_context')
+        conversation_context = metadata.get("conversation_context")
         if conversation_context:
             context_lines = []
-            
-            user_intent = conversation_context.get('user_intent')
+
+            user_intent = conversation_context.get("user_intent")
             if user_intent and user_intent != "inferred from conversation":
                 context_lines.append(f"Context: {user_intent}")
-            
-            agent_actions = conversation_context.get('agent_actions_summary')
+
+            agent_actions = conversation_context.get("agent_actions_summary")
             if agent_actions:
                 context_lines.append(f"Actions taken: {agent_actions}")
-            
-            outcome = conversation_context.get('outcome')
+
+            outcome = conversation_context.get("outcome")
             if outcome and outcome != "extracted from conversation turn":
                 context_lines.append(f"Outcome: {outcome}")
-            
+
             if context_lines:
                 entry_parts.append("   " + " | ".join(context_lines))
-        
+
         # Tags if available
-        tags = metadata.get('tags', [])
+        tags = metadata.get("tags", [])
         if tags:
             entry_parts.append(f"   Tags: {', '.join(tags)}")
-        
+
         # Timestamp
         if updated_at:
             if isinstance(updated_at, datetime):
@@ -136,11 +140,11 @@ def format_retrieved_memories_section(memories: List[Dict[str, Any]], tag_import
             else:
                 time_str = str(updated_at)
             entry_parts.append(f"   (Updated: {time_str})")
-        
+
         formatted_memories.append("\n".join(entry_parts))
-    
+
     memories_text = "\n\n".join(formatted_memories)
-    
+
     return f"""
 <memory>
 Based on the user's query, here are relevant memories from past conversations:
@@ -224,10 +228,10 @@ For each extracted fact, provide:
 def format_fact_extraction_user_prompt(content: str) -> str:
     """
     Format user prompt for fact extraction from a conversation turn.
-    
+
     Args:
         content: The formatted conversation turn text (user message + assistant response + actions)
-        
+
     Returns:
         Formatted extraction prompt
     """
@@ -249,14 +253,15 @@ Return your response as valid JSON with a "facts" array."""
 
 # ===== Legacy Support =====
 
+
 def format_fact_extraction_user_prompt_simple(content: str) -> str:
     """
     Legacy simple format for extracting facts from just a user message.
     Kept for backward compatibility.
-    
+
     Args:
         content: User message content
-        
+
     Returns:
         Formatted extraction prompt
     """
@@ -294,4 +299,3 @@ Create a structured summary with these sections (omit if empty):
 
 Respond ONLY with the summary text.
 """
-

@@ -23,8 +23,8 @@ def get_mcp_servers_merged():
         "stdio": dict(CONFIG.mcp_stdio_params),
         "enabled": {
             **{k: False for k in CONFIG.mcp_urls.keys()},
-            **{k: False for k in CONFIG.mcp_stdio_params.keys()}
-        }
+            **{k: False for k in CONFIG.mcp_stdio_params.keys()},
+        },
     }
 
     # Merge in database servers (overrides config)
@@ -40,11 +40,13 @@ async def list_mcp_servers(request: Request) -> JSONResponse:
     List all MCP servers (URLs and stdio params).
     """
     servers = get_mcp_servers_merged()
-    return JSONResponse({
-        "urls": servers["urls"],
-        "stdio": servers["stdio"],
-        "enabled": servers["enabled"]
-    })
+    return JSONResponse(
+        {
+            "urls": servers["urls"],
+            "stdio": servers["stdio"],
+            "enabled": servers["enabled"],
+        }
+    )
 
 
 async def add_mcp_server(request: Request) -> JSONResponse:

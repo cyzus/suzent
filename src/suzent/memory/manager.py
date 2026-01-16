@@ -32,12 +32,13 @@ DEDUPLICATION_SEARCH_LIMIT = 3
 DEDUPLICATION_SIMILARITY_THRESHOLD = 0.85
 LLM_EXTRACTION_TEMPERATURE = 1.0
 
+
 class MemoryManager:
     """Central memory management service.
-    
+
     Manages both core memory blocks (always-visible working memory) and
     archival memory (unlimited searchable storage with vector embeddings).
-    
+
     Key principle: Agents recall memories via search, but don't manage them explicitly.
     Memory operations happen automatically or via dedicated update tools.
     """
@@ -47,10 +48,10 @@ class MemoryManager:
         store: PostgresMemoryStore,
         embedding_model: str = None,
         embedding_dimension: int = 0,
-        llm_for_extraction: Optional[str] = None
+        llm_for_extraction: Optional[str] = None,
     ):
         """Initialize memory manager.
-        
+
         Args:
             store: PostgreSQL store instance
             embedding_model: LiteLLM model identifier for embeddings
@@ -59,29 +60,32 @@ class MemoryManager:
         """
         self.store = store
         self.embedding_gen = EmbeddingGenerator(
-            model=embedding_model,
-            dimension=embedding_dimension
+            model=embedding_model, dimension=embedding_dimension
         )
         self.llm_extraction_model = llm_for_extraction
-        self.llm_client = LLMClient(model=llm_for_extraction) if llm_for_extraction else None
-        logger.info(f"MemoryManager initialized with embedding model: {embedding_model}, extraction model: {llm_for_extraction}")
+        self.llm_client = (
+            LLMClient(model=llm_for_extraction) if llm_for_extraction else None
+        )
+        logger.info(
+            f"MemoryManager initialized with embedding model: {embedding_model}, extraction model: {llm_for_extraction}"
+        )
 
     # ===== Core Memory Blocks (Always visible to agent) =====
 
     async def get_core_memory(
-        self,
-        chat_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        self, chat_id: Optional[str] = None, user_id: Optional[str] = None
     ) -> Dict[str, str]:
         """Get all core memory blocks with defaults."""
-        blocks = await self.store.get_all_memory_blocks(chat_id=chat_id, user_id=user_id)
+        blocks = await self.store.get_all_memory_blocks(
+            chat_id=chat_id, user_id=user_id
+        )
 
         # Ensure default blocks exist
         default_blocks = {
-            'persona': 'You are Suzent, a helpful AI assistant with long-term memory.',
-            'user': 'No user information yet.',
-            'facts': 'No facts stored yet.',
-            'context': 'No current context.'
+            "persona": "You are Suzent, a helpful AI assistant with long-term memory.",
+            "user": "No user information yet.",
+            "facts": "No facts stored yet.",
+            "context": "No current context.",
         }
 
         for label, default_content in default_blocks.items():
@@ -95,17 +99,16 @@ class MemoryManager:
         label: str,
         content: str,
         chat_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
     ) -> bool:
         """Update a specific core memory block."""
         try:
             await self.store.set_memory_block(
-                label=label,
-                content=content,
-                chat_id=chat_id,
-                user_id=user_id
+                label=label, content=content, chat_id=chat_id, user_id=user_id
             )
-            logger.info(f"Updated core memory block '{label}' for user={user_id}, chat={chat_id}")
+            logger.info(
+                f"Updated core memory block '{label}' for user={user_id}, chat={chat_id}"
+            )
             return True
         except Exception as e:
             logger.error(f"Failed to update memory block '{label}': {e}")
@@ -114,7 +117,7 @@ class MemoryManager:
     async def refresh_core_memory_facts(self, user_id: str):
         """
         Refresh the 'facts' core memory block by summarizing highly important archival memories.
-        
+
         This condenses scattered archival memories into a high-density 'facts' block
         that is always visible to the agent.
         """
@@ -124,18 +127,18 @@ class MemoryManager:
             memories = await self.store.list_memories(
                 user_id=user_id,
                 limit=50,  # Fetch enough to summarize
-                order_by='importance',
-                order_desc=True
+                order_by="importance",
+                order_desc=True,
             )
-            
+
             if not memories:
                 return
 
             # Filter for high importance only
             important_facts = [
-                f"- {m['content']}" 
-                for m in memories 
-                if m.get('importance', 0) >= IMPORTANT_MEMORY_THRESHOLD
+                f"- {m['content']}"
+                for m in memories
+                if m.get("importance", 0) >= IMPORTANT_MEMORY_THRESHOLD
             ]
 
             if not important_facts:
@@ -150,30 +153,28 @@ class MemoryManager:
                     prompt=memory_context.CORE_MEMORY_SUMMARIZATION_PROMPT.format(
                         facts_list=facts_list_text
                     ),
-                    temperature=0.3, # Low temp for factual summary
-                    max_tokens=1000
+                    temperature=0.3,  # Low temp for factual summary
+                    max_tokens=1000,
                 )
-                
+
                 # 3. Update Core Memory Block
                 if summary:
                     stats = await self.get_memory_stats(user_id)
                     # Append stats to show freshness
                     final_content = f"{summary.strip()}\n\n(Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | Total Memories: {stats['total_memories']})"
-                    
+
                     await self.update_memory_block(
-                        label="facts",
-                        content=final_content,
-                        user_id=user_id
+                        label="facts", content=final_content, user_id=user_id
                     )
-                    logger.info(f"Refreshed core memory 'facts' block for user {user_id}")
-            
+                    logger.info(
+                        f"Refreshed core memory 'facts' block for user {user_id}"
+                    )
+
         except Exception as e:
             logger.error(f"Failed to refresh core memory facts: {e}")
 
     async def format_core_memory_for_context(
-        self,
-        chat_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        self, chat_id: Optional[str] = None, user_id: Optional[str] = None
     ) -> str:
         """Format core memory as text for prompt injection."""
         try:
@@ -189,40 +190,36 @@ class MemoryManager:
         query: str,
         chat_id: Optional[str] = None,
         user_id: Optional[str] = None,
-        limit: int = DEFAULT_MEMORY_RETRIEVAL_LIMIT
+        limit: int = DEFAULT_MEMORY_RETRIEVAL_LIMIT,
     ) -> str:
         """
         Automatically retrieve and format relevant memories for a query.
         This is called before the agent processes the message to inject context.
-        
+
         Args:
             query: User's input query
             chat_id: Optional chat context
             user_id: User identifier
             limit: Maximum number of memories to retrieve
-            
+
         Returns:
             Formatted string with relevant memories, or empty string if none found
         """
         try:
             memories = await self.search_memories(
-                query=query,
-                limit=limit,
-                chat_id=chat_id,
-                user_id=user_id
+                query=query, limit=limit, chat_id=chat_id, user_id=user_id
             )
-            
+
             if not memories:
                 return ""
-            
+
             # Format memories for context injection
             memory_context_str = memory_context.format_retrieved_memories_section(
-                memories,
-                tag_important=True
+                memories, tag_important=True
             )
             logger.info(f"Retrieved {len(memories)} relevant memories for query")
             return memory_context_str
-            
+
         except Exception as e:
             logger.error(f"Failed to retrieve relevant memories: {e}")
             return ""
@@ -236,7 +233,7 @@ class MemoryManager:
         chat_id: Optional[str] = None,
         user_id: Optional[str] = None,
         filters: Optional[Dict[str, Any]] = None,
-        use_hybrid: bool = True
+        use_hybrid: bool = True,
     ) -> List[Dict[str, Any]]:
         """
         Semantic search for memories (agent-facing tool).
@@ -253,7 +250,7 @@ class MemoryManager:
                     query_text=query,
                     user_id=user_id,
                     chat_id=chat_id,
-                    limit=limit
+                    limit=limit,
                 )
             else:
                 # Pure semantic search
@@ -261,7 +258,7 @@ class MemoryManager:
                     query_embedding=query_embedding,
                     user_id=user_id,
                     chat_id=chat_id,
-                    limit=limit
+                    limit=limit,
                 )
 
             logger.info(f"Memory search for '{query}': found {len(results)} results")
@@ -269,6 +266,7 @@ class MemoryManager:
 
         except Exception as e:
             import traceback
+
             logger.error(f"Memory search failed: {e}")
             logger.error(f"Full traceback:\n{traceback.format_exc()}")
             return []
@@ -279,7 +277,7 @@ class MemoryManager:
         self,
         conversation_turn: Union[ConversationTurn, Dict[str, Any]],
         chat_id: str,
-        user_id: str
+        user_id: str,
     ) -> MemoryExtractionResult:
         """
         Automatically extract and store important facts from a conversation turn.
@@ -305,7 +303,7 @@ class MemoryManager:
 
             # Format the full turn into a text representation for the LLM
             turn_text = turn.format_for_extraction()
-            
+
             # Extract facts using the formatted text
             extracted_facts = await self._extract_facts_llm(turn_text)
 
@@ -313,26 +311,34 @@ class MemoryManager:
                 logger.debug("No facts extracted from conversation turn")
                 return result
 
-            logger.debug(f"Extracted {len(extracted_facts)} facts: {[f.content for f in extracted_facts]}")
+            logger.debug(
+                f"Extracted {len(extracted_facts)} facts: {[f.content for f in extracted_facts]}"
+            )
 
             result.extracted_facts = [f.content for f in extracted_facts]
 
             # Store memories
-            await self._deduplicate_and_store_facts(extracted_facts, user_id, chat_id, result)
-            
+            await self._deduplicate_and_store_facts(
+                extracted_facts, user_id, chat_id, result
+            )
+
             # Check for high importance facts to trigger core memory update
             for fact in extracted_facts:
                 if fact.importance >= IMPORTANT_MEMORY_THRESHOLD:
                     high_importance_found = True
                     break
 
-            logger.info(f"Processed conversation turn: created {len(result.memories_created)} memories")
-            
-            # Trigger core memory refresh if needed (fire and forget handled by caller/event loop in theory, 
+            logger.info(
+                f"Processed conversation turn: created {len(result.memories_created)} memories"
+            )
+
+            # Trigger core memory refresh if needed (fire and forget handled by caller/event loop in theory,
             # here we await it but log errors so it doesn't fail the request)
             if high_importance_found:
                 # We could make this async in background, but for now just await safely
-                logger.info("High importance fact found, triggering core memory refresh")
+                logger.info(
+                    "High importance fact found, triggering core memory refresh"
+                )
                 try:
                     await self.refresh_core_memory_facts(user_id)
                 except Exception as e:
@@ -341,6 +347,7 @@ class MemoryManager:
         except Exception as e:
             logger.error(f"Failed to process conversation turn for memories: {e}")
             import traceback
+
             logger.error(traceback.format_exc())
 
         return result
@@ -350,7 +357,7 @@ class MemoryManager:
         facts: List[ExtractedFact],
         user_id: str,
         source_chat_id: str,
-        result: MemoryExtractionResult
+        result: MemoryExtractionResult,
     ):
         """Helper to deduplicate and store a list of facts."""
         for fact in facts:
@@ -362,7 +369,9 @@ class MemoryManager:
                 "source_chat_id": source_chat_id,
             }
             if fact.conversation_context:
-                metadata["conversation_context"] = fact.conversation_context.model_dump()
+                metadata["conversation_context"] = (
+                    fact.conversation_context.model_dump()
+                )
 
             # Search for similar existing memories
             similar = await self.search_memories(
@@ -370,27 +379,27 @@ class MemoryManager:
                 limit=DEDUPLICATION_SEARCH_LIMIT,
                 user_id=user_id,
                 chat_id=None,  # User-level memories
-                use_hybrid=False
+                use_hybrid=False,
             )
 
-            if similar and similar[0].get('similarity', 0) > DEDUPLICATION_SIMILARITY_THRESHOLD:
+            if (
+                similar
+                and similar[0].get("similarity", 0) > DEDUPLICATION_SIMILARITY_THRESHOLD
+            ):
                 # Very similar memory exists - update/skip
-                result.memories_updated.append(str(similar[0]['id']))
+                result.memories_updated.append(str(similar[0]["id"]))
             else:
                 # New fact - store it
                 memory_id = await self._add_memory_internal(
                     content=fact.content,
                     metadata=metadata,
                     chat_id=None,  # User-level memory
-                    user_id=user_id
+                    user_id=user_id,
                 )
                 result.memories_created.append(memory_id)
 
     async def process_message_for_memories(
-        self,
-        message: Dict[str, Any],
-        chat_id: str,
-        user_id: str
+        self, message: Dict[str, Any], chat_id: str, user_id: str
     ) -> MemoryExtractionResult:
         """
         (Legacy) Automatically extract and store important facts from a single message.
@@ -410,7 +419,9 @@ class MemoryManager:
             # Use shared storage logic
             await self._deduplicate_and_store_facts(facts, user_id, chat_id, result)
 
-            logger.info(f"Processed message: created {len(result.memories_created)} memories")
+            logger.info(
+                f"Processed message: created {len(result.memories_created)} memories"
+            )
 
         except Exception as e:
             logger.error(f"Failed to process message for memories: {e}")
@@ -418,8 +429,7 @@ class MemoryManager:
         return result
 
     async def _extract_facts_simple(
-        self,
-        message: Dict[str, Any]
+        self, message: Dict[str, Any]
     ) -> List[ExtractedFact]:
         """
         Extract facts from a message.
@@ -441,10 +451,10 @@ class MemoryManager:
     async def _extract_facts_llm(self, content: str) -> List[ExtractedFact]:
         """
         Extract facts using LLM with Pydantic schema-based structured output.
-        
+
         Uses LiteLLM's structured output feature to enforce the FactExtractionResponse
         schema, ensuring validated ExtractedFact models are returned.
-        
+
         Returns:
             List of ExtractedFact models
         """
@@ -458,18 +468,18 @@ class MemoryManager:
                 prompt=user_prompt,
                 response_model=FactExtractionResponse,
                 system=system_prompt,
-                temperature=LLM_EXTRACTION_TEMPERATURE
+                temperature=LLM_EXTRACTION_TEMPERATURE,
             )
-            
+
             facts = extraction_result.facts
-            
+
             # Ensure all facts have conversation_context set
             for fact in facts:
                 if fact.conversation_context is None:
                     fact.conversation_context = ConversationContext()
-            
+
             logger.info(f"LLM extracted {len(facts)} facts via schema")
-            
+
             # Debug: Show detailed extracted facts
             for i, fact in enumerate(facts, 1):
                 logger.debug(
@@ -481,22 +491,22 @@ class MemoryManager:
                     f"  Context: intent={fact.conversation_context.user_intent if fact.conversation_context else 'N/A'}, "
                     f"outcome={fact.conversation_context.outcome if fact.conversation_context else 'N/A'}"
                 )
-            
+
             return facts
 
         except Exception as e:
             logger.warning(f"Schema-based extraction failed, trying fallback: {e}")
-            
+
             # Fallback to basic JSON extraction
             try:
                 response = await self.llm_client.extract_structured(
                     prompt=user_prompt,
                     system=system_prompt,
-                    temperature=LLM_EXTRACTION_TEMPERATURE
+                    temperature=LLM_EXTRACTION_TEMPERATURE,
                 )
 
                 raw_facts = response.get("facts", [])
-                
+
                 # Convert to Pydantic models with defaults
                 facts = []
                 for f in raw_facts:
@@ -505,22 +515,28 @@ class MemoryManager:
                     conversation_context = None
                     if ctx_data:
                         conversation_context = ConversationContext(
-                            user_intent=ctx_data.get("user_intent", "inferred from conversation"),
+                            user_intent=ctx_data.get(
+                                "user_intent", "inferred from conversation"
+                            ),
                             agent_actions_summary=ctx_data.get("agent_actions_summary"),
-                            outcome=ctx_data.get("outcome", "extracted from conversation turn")
+                            outcome=ctx_data.get(
+                                "outcome", "extracted from conversation turn"
+                            ),
                         )
                     else:
                         # Provide default context for new facts
                         conversation_context = ConversationContext()
 
-                    facts.append(ExtractedFact(
-                        content=f.get("content", ""),
-                        category=f.get("category"),
-                        importance=f.get("importance", DEFAULT_IMPORTANCE),
-                        tags=f.get("tags", []),
-                        conversation_context=conversation_context
-                    ))
-                
+                    facts.append(
+                        ExtractedFact(
+                            content=f.get("content", ""),
+                            category=f.get("category"),
+                            importance=f.get("importance", DEFAULT_IMPORTANCE),
+                            tags=f.get("tags", []),
+                            conversation_context=conversation_context,
+                        )
+                    )
+
                 logger.info(f"LLM extracted {len(facts)} facts via fallback")
                 return facts
 
@@ -528,13 +544,12 @@ class MemoryManager:
                 logger.error(f"LLM fact extraction failed completely: {fallback_error}")
                 return []
 
-
     async def _add_memory_internal(
         self,
         content: str,
         metadata: Dict[str, Any],
         chat_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
     ) -> str:
         """Internal method to add memory to archival storage."""
         try:
@@ -548,7 +563,7 @@ class MemoryManager:
                 user_id=user_id,
                 chat_id=chat_id,
                 metadata=metadata,
-                importance=metadata.get("importance", DEFAULT_IMPORTANCE)
+                importance=metadata.get("importance", DEFAULT_IMPORTANCE),
             )
 
             return memory_id
@@ -564,10 +579,7 @@ class MemoryManager:
         try:
             total_count = await self.store.get_memory_count(user_id=user_id)
 
-            return {
-                "total_memories": total_count,
-                "user_id": user_id
-            }
+            return {"total_memories": total_count, "user_id": user_id}
         except Exception as e:
             logger.error(f"Failed to get memory stats: {e}")
             return {"total_memories": 0, "user_id": user_id}
