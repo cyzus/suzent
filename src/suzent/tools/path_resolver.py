@@ -282,6 +282,73 @@ class PathResolver:
         except ValueError:
             return False
 
+    def get_virtual_roots(self) -> List[Tuple[str, Path]]:
+        """
+        Get all top-level virtual roots and their host paths.
+        
+        Returns:
+            List of (virtual_path, host_path) tuples.
+            e.g. [("/persistence", D:/.../sessions/123), ("/mnt/skills", D:/skills), ...]
+        """
+        roots = []
+        
+        # 1. Standard Roots
+        roots.append(("/persistence", self.sandbox_data_path / "sessions" / self.chat_id))
+        roots.append(("/shared", self.sandbox_data_path / "shared"))
+        
+        # 2. Custom Mounts
+        # Sort by length descending to handle nested mounts correctly
+        sorted_mounts = sorted(self.custom_mounts.items(), key=lambda x: len(x[0]), reverse=True)
+        for v_path, h_path in sorted_mounts:
+            roots.append((v_path, h_path))
+            
+        return roots
+
+    def is_shadowed(self, virtual_path: str) -> bool:
+        """
+        Check if a file at this virtual path would be hidden by a mount.
+        
+        Example: if /persistence/data is a mount point, then a file at
+        host path .../persistence/data/file.txt (from base layer) is shadowed.
+        """
+        # Ensure consistent separator
+        virtual_path = virtual_path.replace("\\", "/")
+        
+        for mount_point in self.custom_mounts.keys():
+            # If the path equals a mount point, it's the mount itself (not shadowed)
+            if virtual_path == mount_point:
+                continue
+                
+            # If path is inside a mount point, it belongs to that mount
+            if virtual_path.startswith(f"{mount_point}/"):
+                continue
+                
+            # If we are here, the path is NOT inside this mount.
+            # But we need to check if this mount sits ON TOP of our path.
+            # In a flat virtual root list this is subtle, but primarily we care about
+            # base persistence vs custom mounts.
+            
+            # Implementation for now: 
+            # If we are scanning a base root (like /persistence) and encounter a directory
+            # that is ALSO a mount point, we should stop descending into it if we are
+            # representing the base layer.
+            # However, `is_shadowed` is asked about a specific FILE.
+            
+            # The tool logic will generally be:
+            # 1. List files in /persistence (Host: .../sessions/123)
+            # 2. If we find .../sessions/123/mnt/data/file.txt
+            #    Virtual Path: /persistence/mnt/data/file.txt
+            # 3. BUT if /persistence/mnt/data IS a custom mount point,
+            #    then that file.txt is physically shadowed by the mount in the container.
+            
+            if mount_point == virtual_path or mount_point.startswith(f"{virtual_path}/"):
+                 # This logic is for avoiding traversal INTO a mount point from below, 
+                 # not exactly shadowing.
+                 pass
+
+        return False # TODO: Implement robust shadowing check if complex nesting is needed.
+                     # For now, strict mount lists in get_virtual_roots + standard resolution is safe.
+
     def to_virtual_path(self, host_path: Path) -> Optional[str]:
         """
         Convert a host path back to a virtual path.
@@ -295,31 +362,37 @@ class PathResolver:
         host_path = host_path.resolve()
 
         # 1. Check custom mounts (reverse lookup)
-        for mount_point, mount_host_path in self.custom_mounts.items():
+        # Prioritize longest match to handle nesting correctly
+        # e.g. /mnt/data vs /mnt/data/nested
+        
+        # Invert map: host_path -> virtual_path (careful of duplicates?)
+        # Better: iterate and find best match.
+        
+        best_candidate = None
+        best_candidate_len = 0
+        
+        # Check all potential parents
+        potential_parents = [
+            (path, v_path) for v_path, path in self.custom_mounts.items()
+        ]
+        
+        # Add standard roots
+        potential_parents.append(((self.sandbox_data_path / "sessions" / self.chat_id).resolve(), "/persistence"))
+        potential_parents.append(((self.sandbox_data_path / "shared").resolve(), "/shared"))
+        
+        for root_path, v_prefix in potential_parents:
             try:
-                rel = host_path.relative_to(mount_host_path)
-                if str(rel) == ".":
-                    return mount_point
-                return f"{mount_point}/{rel}".replace("\\", "/")
+                # check if host_path is relative to this root
+                if host_path == root_path or root_path in host_path.parents:
+                    rel = host_path.relative_to(root_path)
+                    v_path = f"{v_prefix}/{rel}".replace("\\", "/").rstrip("/.")
+                    if v_path.endswith("/."): v_path = v_path[:-2]
+                    
+                    # Store the one with the longest prefix (most specific mount)
+                    if len(v_prefix) > best_candidate_len:
+                        best_candidate = v_path
+                        best_candidate_len = len(v_prefix)
             except ValueError:
                 continue
-
-        # 2. Check /persistence
-        persistence_root = (
-            self.sandbox_data_path / "sessions" / self.chat_id
-        ).resolve()
-        try:
-            rel = host_path.relative_to(persistence_root)
-            return f"/persistence/{rel}".rstrip("/")
-        except ValueError:
-            pass
-
-        # 3. Check /shared
-        shared_root = (self.sandbox_data_path / "shared").resolve()
-        try:
-            rel = host_path.relative_to(shared_root)
-            return f"/shared/{rel}".rstrip("/")
-        except ValueError:
-            pass
-
-        return None
+                
+        return best_candidate

@@ -93,27 +93,44 @@ Examples:
             except re.error as e:
                 return f"Error: Invalid regex pattern: {e}"
 
-            # Resolve path
-            if path:
-                search_path = self._resolver.resolve(path)
-            else:
-                search_path = self._resolver.get_working_dir()
-
-            if not search_path.exists():
-                return f"Error: Path not found: {path or 'working directory'}"
-
             # Collect files to search
             files_to_search: List[Path] = []
-
-            if search_path.is_file():
-                files_to_search = [search_path]
-            else:
-                # Use include pattern or search all text files
+            
+            # Case A: Searching from Root (/) - Virtual Union Search
+            if path == "/":
+                roots = self._resolver.get_virtual_roots()
                 glob_pattern = include or "**/*"
-                for f in search_path.glob(glob_pattern):
-                    if f.is_file() and self._is_text_file(f):
-                        if self._resolver.is_path_allowed(f):
-                            files_to_search.append(f)
+                
+                for v_root, h_root in roots:
+                    if not h_root.exists():
+                        continue
+                        
+                    # Recursively find text files in this root
+                    for f in h_root.glob(glob_pattern):
+                        if f.is_file() and self._is_text_file(f):
+                            if self._resolver.is_path_allowed(f):
+                                files_to_search.append(f)
+            
+            # Case B: Standard Path Search
+            else:
+                # Resolve path
+                if path:
+                    search_path = self._resolver.resolve(path)
+                else:
+                    search_path = self._resolver.get_working_dir()
+
+                if not search_path.exists():
+                    return f"Error: Path not found: {path or 'working directory'}"
+
+                if search_path.is_file():
+                    files_to_search = [search_path]
+                else:
+                    # Use include pattern or search all text files
+                    glob_pattern = include or "**/*"
+                    for f in search_path.glob(glob_pattern):
+                        if f.is_file() and self._is_text_file(f):
+                            if self._resolver.is_path_allowed(f):
+                                files_to_search.append(f)
 
             # Search files
             results: List[Tuple[str, int, str]] = []  # (file, line_num, content)

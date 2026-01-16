@@ -68,46 +68,74 @@ Examples:
             return "Error: GlobTool not initialized. No resolver context."
 
         try:
-            # Resolve base path
-            if path:
-                base_path = self._resolver.resolve(path)
+            results = []
+            
+            # Case A: Searching from Root (/) - Virtual Union Search
+            if path == "/" or (path is None and pattern.startswith("/")):
+                # If pattern is absolute like "/mnt/**/*.py", we can try to resolve the base 
+                # but standard glob doesn't support that well.
+                # For simplified UX: If path="/" or None, we search ALL virtual roots.
+                
+                roots = self._resolver.get_virtual_roots()
+                seen_virtual_paths = set()
+                
+                for v_root, h_root in roots:
+                    if not h_root.exists(): 
+                        continue
+                        
+                    # Glob relative to this host root
+                    # Handle recursive pattern from root:
+                    # If pattern is "**/*.py", we run it on h_root
+                    matches = list(h_root.glob(pattern))
+                    
+                    for match in matches:
+                        if self._resolver.is_path_allowed(match):
+                            v_path = self._resolver.to_virtual_path(match)
+                            if v_path and v_path not in seen_virtual_paths:
+                                results.append((v_path, match.is_dir()))
+                                seen_virtual_paths.add(v_path)
+            
+            # Case B: Standard Directory Search
             else:
-                base_path = self._resolver.get_working_dir()
+                # Resolve base path
+                if path:
+                    base_path = self._resolver.resolve(path)
+                else:
+                    base_path = self._resolver.get_working_dir()
 
-            # Check if base path exists
-            if not base_path.exists():
-                return f"Error: Directory not found: {path or 'working directory'}"
+                # Check if base path exists
+                if not base_path.exists():
+                    return f"Error: Directory not found: {path or 'working directory'}"
 
-            if not base_path.is_dir():
-                return f"Error: Path is not a directory: {path}"
+                if not base_path.is_dir():
+                    return f"Error: Path is not a directory: {path}"
 
-            # Find matching files
-            matches: List[Path] = list(base_path.glob(pattern))
+                # Find matching files
+                matches: List[Path] = list(base_path.glob(pattern))
 
-            # Filter to only allowed paths and sort
-            valid_matches = []
-            for match in matches:
-                if self._resolver.is_path_allowed(match):
-                    # Convert to virtual path for display
-                    virtual = self._resolver.to_virtual_path(match)
-                    if virtual:
-                        valid_matches.append((virtual, match.is_dir()))
-                    else:
-                        valid_matches.append((str(match.name), match.is_dir()))
+                for match in matches:
+                    if self._resolver.is_path_allowed(match):
+                        # Convert to virtual path for display
+                        virtual = self._resolver.to_virtual_path(match)
+                        if virtual:
+                            results.append((virtual, match.is_dir()))
+                        else:
+                            results.append((str(match.name), match.is_dir()))
 
-            valid_matches.sort(key=lambda x: (not x[1], x[0].lower()))
+            # Sort results: Files first, then alphabetical
+            results.sort(key=lambda x: (not x[1], x[0].lower()))
 
-            if not valid_matches:
-                return f"No files matching '{pattern}' found in {path or 'working directory'}"
+            if not results:
+                return f"No files matching '{pattern}' found in {path or 'virtual root'}"
 
             # Format output
-            result_lines = [f"Found {len(valid_matches)} matches for '{pattern}':"]
-            for vpath, is_dir in valid_matches[:100]:  # Limit to 100 results
+            result_lines = [f"Found {len(results)} matches for '{pattern}':"]
+            for vpath, is_dir in results[:100]:  # Limit to 100 results
                 marker = "[DIR] " if is_dir else ""
                 result_lines.append(f"  {marker}{vpath}")
 
-            if len(valid_matches) > 100:
-                result_lines.append(f"  ... and {len(valid_matches) - 100} more")
+            if len(results) > 100:
+                result_lines.append(f"  ... and {len(results) - 100} more")
 
             return "\n".join(result_lines)
 
