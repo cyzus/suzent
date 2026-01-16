@@ -45,4 +45,4 @@ EXTRACTION_MODEL: "gemini/gemini-2.5-flash" # "" to disable
 SANDBOX_ENABLED: true
 SANDBOX_SERVER_URL: http://sandbox_ip:port
 SANDBOX_VOLUMES:
-  - "/mnt/d/data/notebook:/notebook"
+  - "D:/data/notebook:/mnt/notebook"

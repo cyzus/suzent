@@ -2794,10 +2794,12 @@ name = "suzent"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "asyncpg" },
     { name = "crawl4ai" },
     { name = "httpx" },
     { name = "loguru" },
     { name = "markitdown", extra = ["all"] },
+    { name = "pgvector" },
     { name = "pydantic" },
     { name = "pytest" },
     { name = "python-dotenv" },
@@ -2808,12 +2810,9 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
-    { name = "asyncpg" },
-    { name = "pgvector" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
-    { name = "python-dotenv" },
     { name = "ruff" },
 ]
 dev = [
@@ -2822,27 +2821,21 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "ruff" },
 ]
-memory = [
-    { name = "asyncpg" },
-    { name = "pgvector" },
-    { name = "python-dotenv" },
-]
 
 [package.metadata]
 requires-dist = [
-    { name = "asyncpg", marker = "extra == 'memory'", specifier = ">=0.29.0" },
+    { name = "asyncpg", specifier = ">=0.29.0" },
     { name = "crawl4ai", specifier = ">=0.7.3" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "loguru", specifier = ">=0.7.0" },
     { name = "markitdown", extras = ["all"] },
-    { name = "pgvector", marker = "extra == 'memory'", specifier = ">=0.3.6" },
+    { name = "pgvector", specifier = ">=0.3.6" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.0.0" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", specifier = ">=9.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
     { name = "python-dotenv" },
-    { name = "python-dotenv", marker = "extra == 'memory'", specifier = ">=1.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "smolagents", extras = ["gradio", "litellm", "mcp"] },
     { name = "starlette" },

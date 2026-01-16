@@ -8,11 +8,9 @@ execution environments.
 
 import re
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional, Tuple
 
-from suzent.logger import get_logger
-
-logger = get_logger(__name__)
+from loguru import logger
 
 
 class PathResolver:
@@ -54,28 +52,58 @@ class PathResolver:
         self.uploads_path = Path(uploads_path).resolve()
         self.custom_mounts: Dict[str, Path] = {}  # container_path -> host_path
 
-        # Parse custom volumes if in sandbox mode
-        if self.sandbox_enabled and custom_volumes:
+        # Parse custom volumes (supported in both modes for consistency)
+        if custom_volumes:
             self._parse_custom_volumes(custom_volumes)
 
         # Ensure directories exist
         self._ensure_directories()
 
+    @staticmethod
+    def parse_volume_string(vol: str) -> Optional[Tuple[str, str]]:
+        """
+        Parse a volume string 'host:container' into components.
+        Handles Windows drive letters (e.g. D:/path:/container).
+        Returns (host_path, container_path) or None if invalid.
+        """
+        if ":" not in vol:
+            return None
+
+        # Handle Windows drive letters (e.g. D:/host:/container)
+        # Find the LAST colon which separates host and container
+        last_colon = vol.rfind(":")
+        if last_colon == -1:
+            return None
+
+        host_part = vol[:last_colon]
+        container_part = vol[last_colon + 1 :]
+        return host_part, container_part
+
+    @staticmethod
+    def to_linux_path(path: str) -> str:
+        """
+        Convert Windows path to Linux/WSL path if applicable.
+        E.g. D:\\workspace -> /mnt/d/workspace
+        """
+        import os
+        if os.name != 'nt':
+            return path
+            
+        path = path.replace("\\", "/")
+        if ":" in path:
+            drive, rest = path.split(":", 1)
+            return f"/mnt/{drive.lower()}{rest}"
+        return path
+
     def _parse_custom_volumes(self, volumes: List[str]) -> None:
         """Parse list of 'host:container' strings into a mapping."""
         for vol in volumes:
             try:
-                if ":" not in vol:
+                parsed = self.parse_volume_string(vol)
+                if not parsed:
                     continue
-
-                # Handle Windows drive letters (e.g. D:/host:/container)
-                # Find the LAST colon which separates host and container
-                last_colon = vol.rfind(":")
-                if last_colon == -1:
-                    continue
-
-                host_part = vol[:last_colon]
-                container_part = vol[last_colon + 1 :]
+                
+                host_part, container_part = parsed
 
                 # Handle WSL-style mounts (/mnt/c/...) -> drive letter
                 if host_part.startswith("/mnt/"):
@@ -102,14 +130,17 @@ class PathResolver:
 
     def _ensure_directories(self) -> None:
         """Create necessary directories if they don't exist."""
+
         try:
-            if self.sandbox_enabled:
-                (self.sandbox_data_path / "sessions" / self.chat_id).mkdir(
-                    parents=True, exist_ok=True
-                )
-                (self.sandbox_data_path / "shared").mkdir(parents=True, exist_ok=True)
-            else:
-                (self.uploads_path / self.chat_id).mkdir(parents=True, exist_ok=True)
+            # Always use the consistent sandbox-style structure
+            (self.sandbox_data_path / "sessions" / self.chat_id).mkdir(
+                parents=True, exist_ok=True
+            )
+            (self.sandbox_data_path / "shared").mkdir(parents=True, exist_ok=True)
+            
+            # In legacy mode, we might still want to ensure uploads path exists if used,
+            # but for unification we prefer the sandbox structure.
+            # We'll leave uploads_path unused to enforce the new standard.
         except Exception as e:
             logger.warning(f"Could not create directories: {e}")
 
@@ -120,10 +151,7 @@ class PathResolver:
         Returns:
             Path to the working directory
         """
-        if self.sandbox_enabled:
-            return self.sandbox_data_path / "sessions" / self.chat_id
-        else:
-            return self.uploads_path / self.chat_id
+        return self.sandbox_data_path / "sessions" / self.chat_id
 
     def resolve(self, virtual_path: str) -> Path:
         """
@@ -141,13 +169,10 @@ class PathResolver:
         # Normalize path separators
         virtual_path = virtual_path.replace("\\", "/").strip()
 
-        if self.sandbox_enabled:
-            return self._resolve_sandbox_path(virtual_path)
-        else:
-            return self._resolve_non_sandbox_path(virtual_path)
+        return self._resolve_path(virtual_path)
 
-    def _resolve_sandbox_path(self, virtual_path: str) -> Path:
-        """Resolve path in sandbox mode."""
+    def _resolve_path(self, virtual_path: str) -> Path:
+        """Resolve path using unified logic (custom mounts, persistence, shared)."""
         # 1. Check custom mounts
         # check for longest matching prefix to handle nested mounts correctly
         best_match = None
@@ -207,26 +232,11 @@ class PathResolver:
             resolved = (base / virtual_path).resolve()
 
         # Security check: ensure resolved path is within allowed directories
-        self._validate_sandbox_path(resolved)
+        self._validate_path(resolved)
         return resolved
 
-    def _resolve_non_sandbox_path(self, virtual_path: str) -> Path:
-        """Resolve path in non-sandbox mode."""
-        working_dir = self.uploads_path / self.chat_id
-
-        if virtual_path.startswith("/"):
-            # Treat absolute-looking paths as relative to working dir
-            rel_path = virtual_path.lstrip("/")
-            resolved = (working_dir / rel_path).resolve()
-        else:
-            resolved = (working_dir / virtual_path).resolve()
-
-        # Security check
-        self._validate_non_sandbox_path(resolved)
-        return resolved
-
-    def _validate_sandbox_path(self, resolved: Path) -> None:
-        """Validate that path is within allowed sandbox directories."""
+    def _validate_path(self, resolved: Path) -> None:
+        """Validate that path is within allowed directories."""
         # Allowed roots include standard dirs AND all custom volume host paths
         allowed_roots = [
             self.sandbox_data_path / "sessions" / self.chat_id,
@@ -267,10 +277,7 @@ class PathResolver:
             True if path is allowed, False otherwise
         """
         try:
-            if self.sandbox_enabled:
-                self._validate_sandbox_path(path.resolve())
-            else:
-                self._validate_non_sandbox_path(path.resolve())
+            self._validate_path(path.resolve())
             return True
         except ValueError:
             return False
@@ -287,40 +294,32 @@ class PathResolver:
         """
         host_path = host_path.resolve()
 
-        if self.sandbox_enabled:
-            # 1. Check custom mounts (reverse lookup)
-            for mount_point, mount_host_path in self.custom_mounts.items():
-                try:
-                    rel = host_path.relative_to(mount_host_path)
-                    if str(rel) == ".":
-                        return mount_point
-                    return f"{mount_point}/{rel}".replace("\\", "/")
-                except ValueError:
-                    continue
+        # 1. Check custom mounts (reverse lookup)
+        for mount_point, mount_host_path in self.custom_mounts.items():
+            try:
+                rel = host_path.relative_to(mount_host_path)
+                if str(rel) == ".":
+                    return mount_point
+                return f"{mount_point}/{rel}".replace("\\", "/")
+            except ValueError:
+                continue
 
-            # 2. Check /persistence
-            persistence_root = (
-                self.sandbox_data_path / "sessions" / self.chat_id
-            ).resolve()
-            try:
-                rel = host_path.relative_to(persistence_root)
-                return f"/persistence/{rel}".rstrip("/")
-            except ValueError:
-                pass
+        # 2. Check /persistence
+        persistence_root = (
+            self.sandbox_data_path / "sessions" / self.chat_id
+        ).resolve()
+        try:
+            rel = host_path.relative_to(persistence_root)
+            return f"/persistence/{rel}".rstrip("/")
+        except ValueError:
+            pass
 
-            # 3. Check /shared
-            shared_root = (self.sandbox_data_path / "shared").resolve()
-            try:
-                rel = host_path.relative_to(shared_root)
-                return f"/shared/{rel}".rstrip("/")
-            except ValueError:
-                pass
-        else:
-            working_dir = (self.uploads_path / self.chat_id).resolve()
-            try:
-                rel = host_path.relative_to(working_dir)
-                return str(rel).replace("\\", "/")
-            except ValueError:
-                pass
+        # 3. Check /shared
+        shared_root = (self.sandbox_data_path / "shared").resolve()
+        try:
+            rel = host_path.relative_to(shared_root)
+            return f"/shared/{rel}".rstrip("/")
+        except ValueError:
+            pass
 
         return None

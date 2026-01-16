@@ -13,13 +13,13 @@ import asyncio
 import importlib
 import pickle
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from mcp import StdioServerParameters
 
 from smolagents import CodeAgent, ToolCallingAgent, LiteLLMModel, MCPClient
 from smolagents.tools import Tool
 
-from suzent.config import CONFIG
+from suzent.config import CONFIG, PROJECT_DIR
 from suzent.logger import get_logger
 from suzent.prompts import format_instructions
 # Late imports for tools to avoid circular deps during init if needed,
@@ -210,6 +210,7 @@ def create_agent(
         "GlobTool": "glob_tool",
         "GrepTool": "grep_tool",
         "BashTool": "bash_tool",
+        "SkillTool": "skill_tool",
     }
 
     # Load regular tools (excluding memory tools)
@@ -644,10 +645,7 @@ def inject_chat_context(
         if tool_instance.__class__.__name__ == "BashTool":
             tool_instance.chat_id = chat_id
             # Inject per-chat sandbox volumes if configured
-            # Use same fallback logic as PathResolver
-            volumes = config.get("sandbox_volumes") if config else None
-            if not volumes:
-                volumes = CONFIG.sandbox_volumes
+            volumes = _get_effective_volumes(config)
 
             if volumes and hasattr(tool_instance, "set_custom_volumes"):
                 tool_instance.set_custom_volumes(volumes)
@@ -686,15 +684,32 @@ def _create_path_resolver(chat_id: str, config: Optional[dict]) -> Any:
         else CONFIG.sandbox_enabled
     )
 
-    # 2. Determine sandbox_volumes (Chat Config > Global Config)
-    # Note: If chat has empty list [], it overrides global. If None/missing, use global.
-    # Wait, previous fix was: if empty list, use global.
-    # Logic: config.get('sandbox_volumes') returns None if missing.
-    # If key exists and is [], truthiness check fails.
-    # Our requirement: "Robust fallback... if chat config has empty list/None, use global defaults"
-    custom_volumes = config.get("sandbox_volumes") if config else None
-    if not custom_volumes:
-        custom_volumes = CONFIG.sandbox_volumes
+    # 2. Determine sandbox_volumes (Chat Config > Global Config) and auto-mounts
+    custom_volumes = _get_effective_volumes(config)
 
     # logger.debug(f"Creating PathResolver for {chat_id} with volumes: {custom_volumes}")
     return PathResolver(chat_id, sandbox_enabled, custom_volumes=custom_volumes)
+
+def _get_effective_volumes(config: Optional[dict]) -> List[str]:
+    """
+    Calculate effective sandbox volumes, including auto-mounted skills directory.
+    """
+    custom_volumes = config.get("sandbox_volumes") if config else None
+    if not custom_volumes:
+        custom_volumes = CONFIG.sandbox_volumes
+        
+    volumes = list(custom_volumes) if custom_volumes else []
+    
+    # Auto-mount skills directory
+    # Host path: relative 'skills' -> resolves to {container_workspace}/skills in SandboxManager
+    # Container path: /mnt/skills
+    mount_str = "skills:/mnt/skills"
+    
+    # Check if already present (naive check)
+    if mount_str not in volumes:
+        volumes.append(mount_str)
+    
+
+    return volumes
+
+

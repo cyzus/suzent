@@ -370,10 +370,14 @@ class SandboxSession:
         ]
 
         # Add custom volumes from config
+        from suzent.tools.path_resolver import PathResolver
+
         for vol in self.custom_volumes:
-            # Prepend container_workspace to host paths for relative paths
-            if ":" in vol:
-                host, container = vol.split(":", 1)
+            # Parse using shared logic
+            parsed = PathResolver.parse_volume_string(vol)
+            
+            if parsed:
+                host, container = parsed
 
                 # Validate container path uses forward slashes (Linux)
                 if "\\" in container:
@@ -382,8 +386,19 @@ class SandboxSession:
                     )
                     continue
 
-                if not host.startswith("/"):
+                # Check if host path is absolute (supports Linux '/' and Windows 'C:')
+                is_absolute = host.startswith("/") or (len(host) > 1 and host[1] == ":")
+                
+                if not is_absolute:
                     host = f"{self.container_workspace}/{host}"
+                else:
+                    # If absolute on Windows, ensure it is Docker-friendly (WSL style if needed)
+                    host = PathResolver.to_linux_path(host)
+
+                # Ensure container path is absolute
+                if not container.startswith("/"):
+                    container = f"{self.container_workspace}/{container}"
+                    
                 volumes.append(f"{host}:{container}")
             else:
                 logger.warning(
@@ -416,6 +431,7 @@ class SandboxSession:
                                 "memory": self.memory_mb,
                                 "cpus": self.cpus,
                                 "volumes": self._get_volume_mounts(),
+                                "workdir": "/persistence",
                             },
                         },
                     )
