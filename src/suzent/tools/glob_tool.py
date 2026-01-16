@@ -93,7 +93,10 @@ Examples:
             results.sort(key=lambda x: (not x[1], x[0].lower()))
 
             if not results:
-                return f"No files matching '{pattern}' found in {path or 'virtual root'}"
+                target_desc = path or "working directory"
+                if path == "/" or (path is None and pattern.startswith("/")):
+                    target_desc = "all virtual roots"
+                return f"No files matching '{pattern}' found in {target_desc}"
 
             # Format output
             result_lines = [f"Found {len(results)} matches for '{pattern}':"]
