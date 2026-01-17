@@ -44,7 +44,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     return (
         <form
             onSubmit={(e) => { e.preventDefault(); send(); }}
-            className="bg-white border-2 border-brutal-black shadow-brutal-sm p-2 flex flex-col gap-2 relative group focus-within:shadow-brutal focus-within:-translate-y-[1px] transition-all duration-200"
+            className="bg-neutral-50 border-2 border-brutal-black shadow-brutal-sm p-2 flex flex-col gap-2 relative group focus-within:shadow-brutal focus-within:-translate-y-[1px] transition-all duration-200"
         >
             {/* Image preview section */}
             {selectedImages.length > 0 && (

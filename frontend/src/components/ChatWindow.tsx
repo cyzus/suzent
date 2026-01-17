@@ -879,7 +879,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           )}
         </div>
         {safeMessages.length > 0 && (
-          <div className="p-4 flex flex-col gap-3 bg-neutral-100">
+          <div className="p-4 flex flex-col gap-3 bg-neutral-50">
             {/* Plan Progress (Inline) */}
             <PlanProgress
               plan={plan}
