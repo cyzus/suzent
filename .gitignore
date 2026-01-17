@@ -62,3 +62,4 @@ sandbox-data/
 
 # Docker compose overrides
 *.override.yml
+config/skills.json
