@@ -798,32 +798,39 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                               {showMainCopyButton && <CopyButton text={cleanContent} className="absolute top-2 right-2 z-10" color="bg-brutal-yellow" />}
                               {/* Use StreamingMessageContent for the last message if it's streaming, otherwise render directly */
                                 isStreamingAgentMessage ? (
-                                  <StreamingMessageContent
-                                    content={m.content}
-                                    isStreaming={true}
-                                    onBlockRender={(blocks) => (
-                                      <>
-                                        {blocks.map((b, bi) => {
-                                          const blockKey = generateBlockKey(b, bi, idx);
-                                          const isLastBlock = bi === blocks.length - 1;
-                                          // Cursor always follows the typewriter trail
-                                          const showCursor = isLastBlock;
+                                  !m.content ? (
+                                    <div className="flex items-center gap-2 text-brutal-black font-bold animate-pulse">
+                                      <div className="w-3 h-3 bg-brutal-black"></div>
+                                      <span className="tracking-widest">THINKING</span>
+                                    </div>
+                                  ) : (
+                                    <StreamingMessageContent
+                                      content={m.content}
+                                      isStreaming={true}
+                                      onBlockRender={(blocks) => (
+                                        <>
+                                          {blocks.map((b, bi) => {
+                                            const blockKey = generateBlockKey(b, bi, idx);
+                                            const isLastBlock = bi === blocks.length - 1;
+                                            // Cursor always follows the typewriter trail
+                                            const showCursor = isLastBlock;
 
-                                          if (b.type === 'markdown') {
-                                            // Append blinking cursor HTML
-                                            const contentWithCursor = showCursor
-                                              ? b.content + ' <span class="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1"></span>'
-                                              : b.content;
-                                            return <MarkdownRenderer key={blockKey} content={contentWithCursor} />;
-                                          } else if (b.type === 'log') {
-                                            return <LogBlock key={blockKey} title={b.title} content={b.content} />;
-                                          } else {
-                                            return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} isStreaming={showCursor} />;
-                                          }
-                                        })}
-                                      </>
-                                    )}
-                                  />
+                                            if (b.type === 'markdown') {
+                                              // Append blinking cursor HTML
+                                              const contentWithCursor = showCursor
+                                                ? b.content + ' <span class="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1"></span>'
+                                                : b.content;
+                                              return <MarkdownRenderer key={blockKey} content={contentWithCursor} />;
+                                            } else if (b.type === 'log') {
+                                              return <LogBlock key={blockKey} title={b.title} content={b.content} />;
+                                            } else {
+                                              return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} isStreaming={showCursor} />;
+                                            }
+                                          })}
+                                        </>
+                                      )}
+                                    />
+                                  )
                                 ) : (
                                   blocks.map((b, bi) => {
                                     const blockKey = generateBlockKey(b, bi, idx);

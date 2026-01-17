@@ -130,7 +130,7 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
 
     // Compact View (for inline display)
     return (
-        <div className={`bg-white border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] animate-brutal-pop transition-all duration-300 ${isExpanded ? 'p-4 mb-4' : 'p-2 mb-2'}`}>
+        <div className={`bg-white border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] animate-brutal-pop transition-all duration-300 ${isExpanded ? 'p-2 mb-2' : 'p-2 mb-2'}`}>
 
             {/* Header / Collapsed View */}
             <div className="flex items-center justify-between gap-3">
@@ -197,9 +197,9 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
 
             {/* Expanded Content */}
             {(isExpanded && !isDocked) && (
-                <div className="mt-4 space-y-3 pt-3 border-t-2 border-dashed border-brutal-black/30">
+                <div className="mt-2 space-y-1 pt-2 border-t-2 border-dashed border-brutal-black/30">
                     {/* Detailed Progress List */}
-                    <div className="space-y-2">
+                    <div className="space-y-0.5">
                         {plan.phases.map((phase, idx) => {
                             let bgColor = 'bg-white';
                             let borderColor = 'border-neutral-300';
@@ -216,7 +216,7 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
                             }
 
                             return (
-                                <div key={phase.id || idx} className={`flex items-start gap-2 p-2 border-l-4 ${phase.status === 'in_progress' ? 'border-brutal-blue bg-neutral-50' : 'border-transparent'}`}>
+                                <div key={phase.id || idx} className={`flex items-start gap-2 p-1.5 border-l-4 ${phase.status === 'in_progress' ? 'border-brutal-blue bg-neutral-50' : 'border-transparent'}`}>
                                     <div className={`mt-0.5 w-4 h-4 shrink-0 border-2 flex items-center justify-center text-[9px] font-bold ${phase.status === 'completed' ? 'bg-brutal-green border-brutal-black text-brutal-black' :
                                         phase.status === 'in_progress' ? 'bg-brutal-blue border-brutal-black text-white' :
                                             'bg-white border-neutral-400 text-neutral-400'
