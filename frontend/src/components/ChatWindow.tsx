@@ -96,7 +96,7 @@ const LogBlock: React.FC<{ title?: string; content: string }> = ({ title, conten
   );
 };
 
-const CopyButton: React.FC<{ text: string; className?: string; color?: string }> = ({ text, className, color = 'bg-brutal-green' }) => {
+const CopyButton: React.FC<{ text: string; className?: string; color?: string }> = ({ text, className }) => {
   const { setStatus } = useStatusStore();
   const [copied, setCopied] = useState(false);
 
@@ -111,7 +111,7 @@ const CopyButton: React.FC<{ text: string; className?: string; color?: string }>
   return (
     <button
       onClick={handleCopy}
-      className={`w-8 h-8 flex items-center justify-center ${color} border-2 border-brutal-black shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all duration-100 text-brutal-black ${className || 'absolute top-2 right-2'}`}
+      className={`w-8 h-8 flex items-center justify-center bg-transparent rounded hover:bg-neutral-100 transition-colors text-neutral-400 hover:text-brutal-black ${className || 'absolute top-2 right-2'}`}
       title="Copy to clipboard"
       type="button"
     >
