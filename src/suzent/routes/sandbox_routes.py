@@ -320,3 +320,99 @@ async def delete_sandbox_file(request: Request) -> JSONResponse:
     except Exception as e:
         logger.error(f"Error deleting file: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def serve_sandbox_file(request: Request):
+    """Serve a file raw from sandbox (for browser rendering of html, pdf, etc)."""
+    from starlette.responses import FileResponse
+
+    chat_id = request.query_params.get("chat_id")
+    raw_path = request.query_params.get("path", "").strip()
+
+    if not chat_id:
+        return JSONResponse({"error": "chat_id is required"}, status_code=400)
+    if not raw_path:
+        return JSONResponse({"error": "path is required"}, status_code=400)
+
+    try:
+        request_path, mounts, matched_mount_point = _resolve_host_path(
+            chat_id, raw_path
+        )
+
+        if not matched_mount_point:
+            return JSONResponse(
+                {"error": "File not found (not in any mount)"}, status_code=404
+            )
+
+        host_root = mounts[matched_mount_point]
+        rel_path = request_path[len(matched_mount_point) :].lstrip("/")
+        target_host_path = (host_root / rel_path).resolve()
+
+        # Security Check
+        try:
+            target_host_path.relative_to(host_root)
+        except ValueError:
+            return JSONResponse({"error": "Access denied"}, status_code=403)
+
+        if not target_host_path.exists():
+            return JSONResponse({"error": "File not found"}, status_code=404)
+
+        if not target_host_path.is_file():
+            return JSONResponse({"error": "Not a file"}, status_code=400)
+
+        return FileResponse(target_host_path)
+
+    except Exception as e:
+        logger.error(f"Error serving file: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def serve_sandbox_file_wildcard(request: Request):
+    """
+    Serve a file from sandbox using path parameters.
+    Route: /sandbox/serve/{chat_id}/{file_path:path}
+    This allows relative links (e.g. <img src="image.png">) in HTML files to work correctly.
+    """
+    from starlette.responses import FileResponse
+
+    chat_id = request.path_params.get("chat_id")
+    # 'file_path' captures the rest of the URL, including slashes
+    raw_path = request.path_params.get("file_path", "").strip()
+
+    if not chat_id:
+        return JSONResponse({"error": "chat_id is required"}, status_code=400)
+    if not raw_path:
+        return JSONResponse({"error": "path is required"}, status_code=400)
+
+    try:
+        request_path, mounts, matched_mount_point = _resolve_host_path(
+            chat_id, raw_path
+        )
+
+        if not matched_mount_point:
+            return JSONResponse(
+                {"error": f"File not found: {raw_path} (not in any mount)"},
+                status_code=404,
+            )
+
+        host_root = mounts[matched_mount_point]
+        rel_path = request_path[len(matched_mount_point) :].lstrip("/")
+        target_host_path = (host_root / rel_path).resolve()
+
+        # Security Check
+        try:
+            target_host_path.relative_to(host_root)
+        except ValueError:
+            return JSONResponse({"error": "Access denied"}, status_code=403)
+
+        if not target_host_path.exists():
+            return JSONResponse({"error": f"File not found: {raw_path}"}, status_code=404)
+
+        if not target_host_path.is_file():
+            return JSONResponse({"error": "Not a file"}, status_code=400)
+
+        return FileResponse(target_host_path)
+
+    except Exception as e:
+        logger.error(f"Error serving file wildcard: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)

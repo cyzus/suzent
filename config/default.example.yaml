@@ -42,7 +42,7 @@ USER_ID: "default-user"
 EXTRACTION_MODEL: "gemini/gemini-2.5-flash" # "" to disable
 
 # Sandbox
-SANDBOX_ENABLED: true
+SANDBOX_ENABLED: false
 SANDBOX_SERVER_URL: http://sandbox_ip:port
 SANDBOX_VOLUMES:
   - "D:/data/notebook:/mnt/notebook"

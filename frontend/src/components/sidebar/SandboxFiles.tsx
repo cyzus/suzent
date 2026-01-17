@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useChatStore } from '../../hooks/useChatStore';
-import { MarkdownRenderer, CodeBlock } from '../';
+import { FilePreview } from './FilePreview';
 import {
     FolderIcon,
     DocumentIcon,
@@ -146,7 +146,15 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({ onViewModeChange }) 
             setCurrentPath(newPath);
         } else {
             setSelectedFile(newPath);
-            fetchFileContent(newPath);
+            setError(null);
+            setFileContent(null);
+
+            const ext = item.name.split('.').pop()?.toLowerCase();
+            // Skip content fetching for binary/served files
+            if (!['pdf', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'html', 'htm'].includes(ext || '')) {
+                fetchFileContent(newPath);
+            }
+
             onViewModeChange?.(true);
         }
     };
@@ -233,15 +241,13 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({ onViewModeChange }) 
                             ERROR: {error}
                         </div>
                     ) : (
-                        <div className="prose prose-sm max-w-none font-mono text-sm">
-                            {isMarkdown ? (
-                                <MarkdownRenderer content={fileContent || ''} />
-                            ) : (
-                                <CodeBlock
-                                    language={filename.split('.').pop() || 'text'}
-                                    code={fileContent || ''}
-                                />
-                            )}
+                        <div className="h-full">
+                            <FilePreview
+                                filename={filename}
+                                content={fileContent}
+                                chatId={currentChatId}
+                                path={selectedFile}
+                            />
                         </div>
                     )}
                 </div>

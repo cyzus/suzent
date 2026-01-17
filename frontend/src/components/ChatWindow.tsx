@@ -39,15 +39,15 @@ const LogBlock: React.FC<{ title?: string; content: string }> = ({ title, conten
   return (
     <div className="my-6 font-mono text-sm border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white group">
       {/* Header Bar */}
-      <div className="flex items-center justify-between px-3 py-2 bg-brutal-black border-b-3 border-brutal-black select-none">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-6 h-6 bg-white border-2 border-white text-brutal-black font-bold text-xs">
+      <div className="flex items-center justify-between px-3 py-2 bg-brutal-black border-b-3 border-brutal-black select-none overflow-hidden">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="flex items-center justify-center w-6 h-6 bg-white border-2 border-white text-brutal-black font-bold text-xs shrink-0">
             <span>{'>_'}</span>
           </div>
-          <span className="text-white font-bold uppercase tracking-wider text-xs truncate max-w-[200px]">
+          <span className="text-white font-bold uppercase tracking-wider text-xs truncate">
             {title || 'System Log'}
           </span>
-          <span className="text-neutral-400 text-[10px] font-bold">
+          <span className="text-neutral-400 text-[10px] font-bold shrink-0">
             {lineCount} LINES
           </span>
         </div>
@@ -178,15 +178,15 @@ const CodeBlockComponent: React.FC<{ lang?: string; content: string; isStreaming
   return (
     <div className="my-4 font-mono text-sm border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white group/code relative">
       {/* Header Bar */}
-      <div className="flex items-center justify-between px-3 py-2 bg-brutal-black border-b-3 border-brutal-black select-none">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-6 h-6 bg-white border-2 border-white text-brutal-black font-bold text-xs">
+      <div className="flex items-center justify-between px-3 py-2 bg-brutal-black border-b-3 border-brutal-black select-none overflow-hidden">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="flex items-center justify-center w-6 h-6 bg-white border-2 border-white text-brutal-black font-bold text-xs shrink-0">
             <span>{'{}'}</span>
           </div>
-          <span className="text-white font-bold uppercase tracking-wider text-xs truncate max-w-[200px]">
+          <span className="text-white font-bold uppercase tracking-wider text-xs truncate">
             {lang || 'CODE'}
           </span>
-          <span className="text-neutral-400 text-[10px] font-bold">
+          <span className="text-neutral-400 text-[10px] font-bold shrink-0">
             {lineCount} LINES
           </span>
         </div>
@@ -919,10 +919,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           border-l-3 border-brutal-black z-30 flex flex-col shrink-0 
           absolute inset-y-0 right-0 lg:static lg:inset-auto h-full
           bg-white transition-all duration-300 ease-in-out
-          ${rightSidebarTab === 'files' && isFileExpanded ? 'w-full lg:w-[50vw]' : 'w-full lg:w-96'}
+          ${rightSidebarTab === 'files' && isFileExpanded ? 'w-full lg:w-[40vw]' : 'w-full lg:w-96'}
           ${isRightSidebarOpen
             ? 'translate-x-0 lg:mr-0'
-            : `translate-x-full lg:translate-x-0 ${rightSidebarTab === 'files' && isFileExpanded ? 'lg:-mr-[50vw]' : 'lg:-mr-96'}`
+            : `translate-x-full lg:translate-x-0 ${rightSidebarTab === 'files' && isFileExpanded ? 'lg:-mr-[40vw]' : 'lg:-mr-96'}`
           }
         `}
       >

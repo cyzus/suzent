@@ -89,7 +89,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 
             {/* Button row */}
             <div className="flex flex-wrap gap-2 items-center justify-between pt-1">
-                <div className="flex gap-4 items-center pl-2">
+                <div className="flex gap-4 items-center pl-2 shrink-0">
                     <input
                         ref={fileInputRef}
                         type="file"
@@ -110,12 +110,11 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                             <line x1="2" y1="8" x2="14" y2="8" />
                         </svg>
                     </button>
-
                     {/* Removed Clock Icon as requested */}
                 </div>
 
-                <div className="flex gap-3 items-center">
-                    <div className="text-[10px] text-brutal-black font-mono font-bold select-none uppercase opacity-50 hidden sm:block">
+                <div className="flex flex-wrap gap-2 items-center justify-end flex-1 min-w-0">
+                    <div className="text-[10px] text-brutal-black font-mono font-bold select-none uppercase opacity-50 hidden sm:block whitespace-nowrap mr-2">
                         ↵ SEND • ⇧↵ NEW LINE
                     </div>
 
@@ -123,7 +122,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         <button
                             type="button"
                             onClick={stopStreaming}
-                            className="h-10 bg-brutal-red border-2 border-brutal-black shadow-brutal hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-brutal-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100 px-4 text-xs font-bold disabled:opacity-60 disabled:cursor-not-allowed text-white uppercase"
+                            className="h-10 bg-brutal-red border-2 border-brutal-black shadow-brutal hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-brutal-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100 px-4 text-xs font-bold disabled:opacity-60 disabled:cursor-not-allowed text-white uppercase shrink-0"
                             disabled={stopInFlight}
                         >
                             STOP
@@ -131,14 +130,14 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                     )}
 
                     {configReady && (
-                        <div className="relative">
+                        <div className="relative shrink-0 max-w-[120px] sm:max-w-none">
                             <BrutalSelect
                                 value={config.model}
                                 onChange={(val) => setConfig(prev => ({ ...prev, model: val }))}
                                 options={backendConfig!.models}
                                 placeholder="MODEL"
                                 dropUp={modelSelectDropUp}
-                                className="h-10 text-sm min-w-[120px]"
+                                className="h-10 text-sm w-full sm:min-w-[120px]"
                                 dropdownClassName="min-w-[200px] right-0"
                             />
                         </div>
@@ -146,7 +145,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 
                     <button
                         type="submit"
-                        className="h-9 bg-brutal-blue border-2 border-brutal-black shadow-brutal hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-brutal-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase ml-1"
+                        className="h-9 bg-brutal-blue border-2 border-brutal-black shadow-brutal hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-brutal-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase ml-1 shrink-0"
                         disabled={isStreaming || !configReady}
                         title="Send Message"
                     >
