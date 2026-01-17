@@ -112,5 +112,8 @@ docker compose -f docker/docker-compose.dev.yml up -d
 
 # Run app locally
 python src/suzent/server.py
+
+cd frontend
+npm install
 npm run dev
 ```

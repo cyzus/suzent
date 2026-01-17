@@ -7,7 +7,7 @@
 **[ LICENSE :: APACHE 2.0 ] • [ STATUS :: READY ] • [ SYSTEM :: AGENTIC ]**
 
 
-**[QUICKSTART](./QUICKSTART.md)** • **[DOCS](./docs/)** • **[CONTRIBUTING](./CONTRIBUTING.md)**
+**[QUICKSTART](docs/01-getting-started/quickstart.md)** • **[DOCS](docs/README.md)** • **[CONTRIBUTING](./CONTRIBUTING.md)**
 
 
 
