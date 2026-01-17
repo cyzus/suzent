@@ -53,6 +53,7 @@ from suzent.routes.sandbox_routes import (
     delete_sandbox_file,
 )
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
+from suzent.routes.system_routes import list_host_files
 
 # Load environment variables
 load_dotenv()
@@ -124,6 +125,8 @@ app = Starlette(
             "/sandbox/file", write_sandbox_file, methods=["POST", "PUT"]
         ),  # Support both for convenience
         Route("/sandbox/file", delete_sandbox_file, methods=["DELETE"]),
+        # System endpoints
+        Route("/system/files", list_host_files, methods=["GET"]),
         # Memory endpoints
         Route("/memory/core", get_core_memory, methods=["GET"]),
         Route("/memory/core", update_core_memory_block, methods=["PUT"]),

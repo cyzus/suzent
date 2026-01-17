@@ -631,11 +631,9 @@ class SandboxManager:
         self.namespace = Defaults.NAMESPACE
         self.data_path = getattr(CONFIG, "sandbox_data_path", Defaults.DATA_PATH)
 
-        # Use custom_volumes if provided (per-chat), otherwise use global config
-        if custom_volumes is not None:
-            self.custom_volumes = custom_volumes
-        else:
-            self.custom_volumes = getattr(CONFIG, "sandbox_volumes", []) or []
+        # Combine volumes using shared logic
+        from suzent.config import get_effective_volumes
+        self.custom_volumes = get_effective_volumes(custom_volumes)
 
         self.image = Defaults.IMAGE
         self.memory_mb = Defaults.MEMORY_MB

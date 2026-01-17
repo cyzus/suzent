@@ -57,6 +57,33 @@ def get_tool_options() -> List[str]:
     return tool_options
 
 
+def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[str]:
+    """
+    Calculate effective sandbox volumes by merging global config and per-chat volumes.
+    Also auto-mounts the 'skills' directory if not present.
+    
+    Args:
+        custom_volumes: Optional list of per-chat volume strings.
+        
+    Returns:
+        Merged list of volume strings.
+    """
+    global_volumes = CONFIG.sandbox_volumes or []
+    per_chat_volumes = custom_volumes or []
+    
+    # Merge and deduplicate
+    volumes = list(set(global_volumes + per_chat_volumes))
+    
+    # Auto-mount skills directory
+    # Host path: relative 'skills' -> resolves to {container_workspace}/skills
+    # Container path: /mnt/skills
+    mount_str = "skills:/mnt/skills"
+    if mount_str not in volumes:
+        volumes.append(mount_str)
+        
+    return volumes
+
+
 class ConfigModel(BaseModel):
     title: str = "SUZENT"
     server_url: str = "http://localhost:8000/chat"

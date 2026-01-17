@@ -72,15 +72,20 @@ Examples:
             # pattern in GlobTool is the glob pattern itself
             # path is the starting directory
             
-            # Special case: if path is not provided but pattern is absolute (starts with /),
-            # we treat pattern as relative to root and path as root.
+            # Merge path and pattern for unified root-relative search
             search_path = path
             search_pattern = pattern
             
-            if search_path is None and search_pattern.startswith("/"):
-                 # This mimics the logic we had: searching from root/virtual roots
-                 # But standard glob pattern "/**/foo" from a root usually implies root search.
-                 pass
+            if search_path:
+                # Normalize path
+                search_path = search_path.replace("\\", "/").rstrip("/")
+                if not search_path.startswith("/"):
+                    search_path = "/" + search_path
+                
+                # Combine
+                search_pattern = f"{search_path}/{search_pattern}"
+                # Reset search_path to None (or "/" to trigger root search in find_files)
+                search_path = None
 
             found_files = self._resolver.find_files(search_pattern, search_path)
             

@@ -408,14 +408,9 @@ class PathResolver:
     def find_files(self, pattern: str, search_path: Optional[str] = "/") -> List[Tuple[Path, str]]:
         """
         Find files matching a glob pattern, handling virtual roots transparently.
-        
-        Args:
-            pattern: Glob pattern (e.g. "**/*.py")
-            search_path: Virtual path to start search from (default: "/")
-            
-        Returns:
-            List of (host_path, virtual_path) tuples
         """
+        import fnmatch
+        
         results = []
         seen_virtual_paths = set()
         
@@ -429,38 +424,73 @@ class PathResolver:
              # Search specific path
              resolved = self.resolve(search_path or "/")
              if resolved.exists() and resolved.is_dir():
-                 # For specific path, we simulate a single root 
-                 # We don't have the virtual prefix easily handy without reverse, 
-                 # but we can resolve it later.
-                 # Actually, better to just use the resolved path.
-                 # We dummy the virtual_root part as we will calculate v_paths per file anyway.
                  search_roots = [(None, resolved)]
+                 
+                 # Also include custom mounts that are children of this path
+                 # to allow globbing into them
+                 # e.g. search_path="/mnt", mount="/mnt/saipre"
+                 search_path_clean = (search_path or "/").rstrip("/")
+                 for v_mount, h_mount in self.custom_mounts.items():
+                      if v_mount.startswith(f"{search_path_clean}/"):
+                           search_roots.append((v_mount, h_mount))
         
         for v_root_prefix, h_root in search_roots:
             if not h_root.exists():
                 continue
-                
+            
+            # Determine effective pattern for this root
+            local_pattern = pattern
+            
+            if pattern.startswith("/"):
+                 # Absolute virtual pattern
+                 if v_root_prefix:
+                      # 1. Check if the root itself matches the pattern (e.g. pattern="/mnt/*", root="/mnt/saipre")
+                      # Normalize pattern to ignore trailing slash for directory matching
+                      check_pattern = pattern.rstrip('/')
+                      if fnmatch.fnmatch(v_root_prefix, check_pattern):
+                           if v_root_prefix not in seen_virtual_paths:
+                                seen_virtual_paths.add(v_root_prefix)
+                                results.append((h_root, v_root_prefix))
+                      
+                      # 2. Check if we should glob INSIDE this root
+                      # We can descend if the pattern starts with the root prefix
+                      if pattern.startswith(v_root_prefix + "/"):
+                           local_pattern = pattern[len(v_root_prefix)+1:]
+                      elif v_root_prefix == pattern:
+                           # Exact match of directory, usually implies listing contents if it was a dir glob?
+                           # But glob("/dir") returns the dir.
+                           local_pattern = None # Already handled by step 1
+                      else:
+                           # Pattern does not start with this root. 
+                           # e.g. pattern="/mnt/*/*", root="/mnt/saipre"
+                           # Do we skip?
+                           # We can try to handle overlap if "mnt/*" matches "mnt/saipre"?
+                           # For now, simplistic prefix check.
+                           local_pattern = None
+                 else:
+                      # v_root_prefix is None or empty (shouldn't happen for roots list)
+                      pass
+            
+            if not local_pattern:
+                 continue
+
             # Run glob
             try:
-                matches = list(h_root.glob(pattern))
+                matches = list(h_root.glob(local_pattern))
             except Exception as e:
-                # logger.warning(f"Glob error on {h_root}: {e}")
                 continue
                 
             for match in matches:
-                # Security check
                 if not self.is_path_allowed(match):
                     continue
                     
-                # Get virtual path
                 v_path = self.to_virtual_path(match)
                 
-                # If we couldn't resolve virtual path, perform fallback if we know the root prefix
+                # Fallback path construction
                 if not v_path and v_root_prefix and h_root in match.parents:
                      rel = match.relative_to(h_root)
                      v_path = f"{v_root_prefix}/{rel}".replace("\\", "/")
                 
-                # Fallback for simple resolved path case without prefix
                 if not v_path:
                     v_path = match.name 
                     

@@ -4,6 +4,7 @@ import { flushSync } from 'react-dom';
 import { useChatStore } from '../../hooks/useChatStore';
 import { fetchMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled } from '../../lib/api';
 import { BrutalSelect } from '../BrutalSelect';
+import { FilePicker } from '../FilePicker';
 
 type MCPServer =
   | { type: 'url'; name: string; url: string; enabled: boolean }
@@ -20,6 +21,11 @@ export const ConfigView: React.FC = () => {
   const [stdioEnv, setStdioEnv] = useState('');
   const [addType, setAddType] = useState<'url' | 'stdio'>('url');
   const [loading, setLoading] = useState(false);
+
+  // File Picker state
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [mountHostPath, setMountHostPath] = useState('');
+  const [mountContainerPath, setMountContainerPath] = useState('');
 
   // Load from backend
   useEffect(() => {
@@ -144,8 +150,25 @@ export const ConfigView: React.FC = () => {
     }
   }, []);
 
+  const handleAddVolume = () => {
+    if (mountHostPath && mountContainerPath) {
+      const val = `${mountHostPath}:${mountContainerPath}`;
+      const current = config.sandbox_volumes || [];
+      if (!current.includes(val)) {
+        update({ sandbox_volumes: [...current, val] });
+      }
+      setMountHostPath('');
+      setMountContainerPath('');
+    }
+  };
+
   return (
     <div className="space-y-6 text-xs">
+      <FilePicker
+        isOpen={isPickerOpen}
+        onClose={() => setIsPickerOpen(false)}
+        onSelect={(path) => setMountHostPath(path)}
+      />
 
       <div className="space-y-1">
         <label className="block font-bold tracking-wide text-brutal-black uppercase">Agent</label>
@@ -240,94 +263,99 @@ export const ConfigView: React.FC = () => {
             <span>Sandbox execution is disabled</span>
           )}
         </div>
-        {config.sandbox_enabled && (
-          <div className="mt-2 space-y-2">
-            <div className="text-[10px] font-bold uppercase text-brutal-black">Volume Mounts</div>
+      </div>
 
-            {/* Global volumes from config file (read-only) */}
-            {backendConfig?.globalSandboxVolumes && backendConfig.globalSandboxVolumes.length > 0 && (
-              <div className="space-y-1">
-                <div className="text-[9px] font-bold uppercase text-brutal-black opacity-60">Global (from config.yaml)</div>
-                <ul className="space-y-1">
-                  {backendConfig.globalSandboxVolumes.map((vol: string, idx: number) => (
-                    <li key={`global-${idx}`} className="flex items-center gap-2 bg-brutal-yellow border-3 border-brutal-black px-2 py-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                      <span className="flex-1 font-mono text-xs font-bold truncate" title={vol}>{vol}</span>
-                      <span className="text-[9px] font-bold uppercase bg-brutal-black text-white px-1.5 py-0.5 border-2 border-brutal-black">
-                        🌍 Global
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+      <div className="space-y-2">
+        <div className="text-[10px] font-bold uppercase text-brutal-black">Volume Mounts</div>
 
-            {/* Per-chat volumes (editable) */}
-            <div className="space-y-1">
-              <div className="text-[9px] font-bold uppercase text-brutal-black opacity-60">Per-Chat (this chat only)</div>
-              <div className="flex gap-2">
-                <input
-                  id="sandbox-volume-input"
-                  placeholder="host_path:container_path"
-                  className="flex-1 bg-white border-3 border-brutal-black px-2 py-1 font-mono font-bold text-xs placeholder:opacity-40 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-shadow"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      const input = e.target as HTMLInputElement;
-                      const value = input.value.trim();
-                      if (value && value.includes(':')) {
-                        const current = config.sandbox_volumes || [];
-                        if (!current.includes(value)) {
-                          update({ sandbox_volumes: [...current, value] });
-                        }
-                        input.value = '';
-                      }
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const input = document.getElementById('sandbox-volume-input') as HTMLInputElement;
-                    const value = input?.value?.trim();
-                    if (value && value.includes(':')) {
-                      const current = config.sandbox_volumes || [];
-                      if (!current.includes(value)) {
-                        update({ sandbox_volumes: [...current, value] });
-                      }
-                      input.value = '';
-                    }
-                  }}
-                  className="shrink-0 px-3 py-1 bg-brutal-green border-3 border-brutal-black text-brutal-black text-xs font-bold uppercase hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
-                >
-                  Add
-                </button>
-              </div>
-              {(config.sandbox_volumes || []).length > 0 && (
-                <ul className="space-y-1">
-                  {(config.sandbox_volumes || []).map((vol: string, idx: number) => (
-                    <li key={idx} className="flex items-center gap-2 bg-white border-3 border-brutal-black px-2 py-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                      <span className="flex-1 font-mono text-xs font-bold truncate" title={vol}>{vol}</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const current = config.sandbox_volumes || [];
-                          update({ sandbox_volumes: current.filter((_: string, i: number) => i !== idx) });
-                        }}
-                        className="text-white bg-brutal-red border-2 border-brutal-black text-xs font-bold px-1.5 py-0.5 hover:bg-red-600 transition-colors"
-                        title="Remove"
-                      >
-                        ×
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            <div className="text-[10px] text-brutal-black font-medium opacity-60">
-              Format: host_path:container_path (e.g., /mnt/c/data:/data)
-            </div>
+        {/* Global volumes from config file (read-only) */}
+        {backendConfig?.globalSandboxVolumes && backendConfig.globalSandboxVolumes.length > 0 && (
+          <div className="space-y-1">
+            <div className="text-[9px] font-bold uppercase text-brutal-black opacity-60">Global (from config.yaml)</div>
+            <ul className="space-y-1">
+              {backendConfig.globalSandboxVolumes.map((vol: string, idx: number) => (
+                <li key={`global-${idx}`} className="flex items-center gap-2 bg-brutal-yellow border-3 border-brutal-black px-2 py-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                  <span className="flex-1 font-mono text-xs font-bold truncate" title={vol}>{vol}</span>
+                  <span className="text-[9px] font-bold uppercase bg-brutal-black text-white px-1.5 py-0.5 border-2 border-brutal-black">
+                    🌍 Global
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
+
+        {/* Per-chat volumes (editable) */}
+        <div className="space-y-2">
+          <div className="text-[9px] font-bold uppercase text-brutal-black opacity-60">Per-Chat (this chat only)</div>
+
+          <div className="flex flex-col gap-2 p-2 border-2 border-brutal-black bg-neutral-50">
+            {/* Host Path Input with Picker */}
+            <div className="flex gap-2">
+              <div className="flex-1 min-w-0">
+                <label className="text-[9px] font-bold uppercase mb-0.5 block">Host Path</label>
+                <div className="flex gap-1">
+                  <input
+                    value={mountHostPath}
+                    onChange={(e) => setMountHostPath(e.target.value)}
+                    placeholder="C:\Users\..."
+                    className="flex-1 bg-white border-2 border-brutal-black px-1.5 py-1 font-mono font-bold text-xs focus:outline-none focus:shadow-[2px_2px_0_0_#000] w-full"
+                  />
+                  <button
+                    onClick={() => setIsPickerOpen(true)}
+                    className="px-2 bg-white border-2 border-brutal-black font-bold text-xs hover:bg-neutral-100"
+                    title="Browse"
+                  >
+                    📂
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Container Path Input */}
+            <div className="flex gap-2 items-end">
+              <div className="flex-1">
+                <label className="text-[9px] font-bold uppercase mb-0.5 block">Sandbox Path</label>
+                <input
+                  value={mountContainerPath}
+                  onChange={(e) => setMountContainerPath(e.target.value)}
+                  placeholder="/mnt/data"
+                  className="w-full bg-white border-2 border-brutal-black px-1.5 py-1 font-mono font-bold text-xs focus:outline-none focus:shadow-[2px_2px_0_0_#000]"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleAddVolume}
+                disabled={!mountHostPath || !mountContainerPath}
+                className="px-3 py-1 h-[26px] bg-brutal-green border-2 border-brutal-black text-brutal-black text-xs font-bold uppercase hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:opacity-50"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+
+
+          {(config.sandbox_volumes || []).length > 0 && (
+            <ul className="space-y-1">
+              {(config.sandbox_volumes || []).map((vol: string, idx: number) => (
+                <li key={idx} className="flex items-center gap-2 bg-white border-3 border-brutal-black px-2 py-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                  <span className="flex-1 font-mono text-xs font-bold truncate" title={vol}>{vol}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const current = config.sandbox_volumes || [];
+                      update({ sandbox_volumes: current.filter((_: string, i: number) => i !== idx) });
+                    }}
+                    className="text-white bg-brutal-red border-2 border-brutal-black text-xs font-bold px-1.5 py-0.5 hover:bg-red-600 transition-colors"
+                    title="Remove"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
       <div className="space-y-2">
         <label className="block font-bold tracking-wide text-brutal-black uppercase">MCP Servers</label>
@@ -416,6 +444,6 @@ export const ConfigView: React.FC = () => {
           )}
         </div>
       </div>
-    </div>
+    </div >
   );
 };

@@ -21,7 +21,19 @@ def _resolve_host_path(
     """
     try:
         # Instantiate manager to get config/paths resolved
-        manager = SandboxManager()
+        # Fetch per-chat config from database
+        from suzent.database import get_database
+        
+        custom_volumes = None
+        try:
+            db = get_database()
+            chat = db.get_chat(chat_id)
+            if chat and "config" in chat:
+                 custom_volumes = chat["config"].get("sandbox_volumes")
+        except Exception as e:
+            logger.warning(f"Failed to fetch chat config for volumes: {e}")
+
+        manager = SandboxManager(custom_volumes=custom_volumes)
         session = manager.get_session(chat_id)
 
         # Build Mount Map: Key=VirtualPath, Value=HostPath

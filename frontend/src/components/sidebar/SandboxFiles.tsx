@@ -66,10 +66,10 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({ onViewModeChange }) 
     }, [currentChatId]);
 
     useEffect(() => {
-        if (config.sandbox_enabled && currentChatId) {
+        if (currentChatId) {
             fetchFiles(currentPath);
         }
-    }, [currentChatId, currentPath, config.sandbox_enabled, fetchFiles]);
+    }, [currentChatId, currentPath, fetchFiles, config]);
 
     const fetchFileContent = useCallback(async (path: string) => {
         if (!currentChatId || !config.sandbox_enabled) return;
@@ -195,9 +195,9 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({ onViewModeChange }) 
         return <div className="text-xs font-mono p-4 text-center border-2 border-brutal-black m-2 bg-brutal-yellow">SELECT A CHAT</div>;
     }
 
-    if (!config.sandbox_enabled) {
-        return <div className="text-xs font-mono p-4 text-center border-2 border-brutal-black m-2 bg-neutral-200">SANDBOX DISABLED</div>;
-    }
+    // if (!config.sandbox_enabled) {
+    //     return <div className="text-xs font-mono p-4 text-center border-2 border-brutal-black m-2 bg-neutral-200">SANDBOX DISABLED</div>;
+    // }
 
     // File Content View
     if (selectedFile) {

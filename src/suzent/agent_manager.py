@@ -23,6 +23,7 @@ from suzent.config import CONFIG, PROJECT_DIR
 from suzent.logger import get_logger
 from suzent.prompts import format_instructions
 from suzent.skills import get_skill_manager
+from suzent.config import get_effective_volumes
 # Late imports for tools to avoid circular deps during init if needed,
 # but imported at scope where used is generally cleaner if conditional.
 # However, for this refactor, we'll import PathResolver inside the helper.
@@ -658,8 +659,9 @@ def inject_chat_context(
         # Inject chat_id and custom volumes for BashTool
         if tool_instance.__class__.__name__ == "BashTool":
             tool_instance.chat_id = chat_id
+            tool_instance.chat_id = chat_id
             # Inject per-chat sandbox volumes if configured
-            volumes = _get_effective_volumes(config)
+            volumes = get_effective_volumes(config.get("sandbox_volumes") if config else None)
 
             if volumes and hasattr(tool_instance, "set_custom_volumes"):
                 tool_instance.set_custom_volumes(volumes)
@@ -699,31 +701,11 @@ def _create_path_resolver(chat_id: str, config: Optional[dict]) -> Any:
     )
 
     # 2. Determine sandbox_volumes (Chat Config > Global Config) and auto-mounts
-    custom_volumes = _get_effective_volumes(config)
+    custom_volumes = get_effective_volumes(config.get("sandbox_volumes") if config else None)
 
     # logger.debug(f"Creating PathResolver for {chat_id} with volumes: {custom_volumes}")
     return PathResolver(chat_id, sandbox_enabled, custom_volumes=custom_volumes)
 
-def _get_effective_volumes(config: Optional[dict]) -> List[str]:
-    """
-    Calculate effective sandbox volumes, including auto-mounted skills directory.
-    """
-    custom_volumes = config.get("sandbox_volumes") if config else None
-    if not custom_volumes:
-        custom_volumes = CONFIG.sandbox_volumes
-        
-    volumes = list(custom_volumes) if custom_volumes else []
-    
-    # Auto-mount skills directory
-    # Host path: relative 'skills' -> resolves to {container_workspace}/skills in SandboxManager
-    # Container path: /mnt/skills
-    mount_str = "skills:/mnt/skills"
-    
-    # Check if already present (naive check)
-    if mount_str not in volumes:
-        volumes.append(mount_str)
-    
 
-    return volumes
 
 
