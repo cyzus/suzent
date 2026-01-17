@@ -312,11 +312,7 @@ def create_agent(
         raise ValueError(f"Unknown agent: {agent_name}")
 
     base_instructions = config.get("instructions", CONFIG.instructions)
-    instructions = format_instructions(base_instructions)
-
-    # Inject memory context if provided (fetched in async context by get_or_create_agent)
-    if memory_context:
-        instructions = f"{instructions}\n\n{memory_context}"
+    instructions = format_instructions(base_instructions, memory_context)
 
     params = {
         "model": model,
