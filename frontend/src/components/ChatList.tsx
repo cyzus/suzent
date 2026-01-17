@@ -16,7 +16,7 @@ export const ChatList: React.FC = () => {
     switchToView,
     refreshChatList
   } = useChatStore();
-  
+
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showRefreshIndicator, setShowRefreshIndicator] = useState(false);
@@ -50,7 +50,7 @@ export const ChatList: React.FC = () => {
 
   const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent chat selection when deleting
-    
+
     setDeletingChatId(chatId);
     try {
       await deleteChat(chatId);
@@ -76,7 +76,7 @@ export const ChatList: React.FC = () => {
     const date = new Date(dateString);
     const now = new Date();
     const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
-    
+
     if (diffInHours < 24) {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } else if (diffInHours < 24 * 7) {
@@ -110,7 +110,10 @@ export const ChatList: React.FC = () => {
       {/* New Chat Button */}
       <div className="p-4 border-b-3 border-brutal-black flex items-center justify-between gap-3 bg-white">
         <button
-          onClick={beginNewChat}
+          onClick={() => {
+            beginNewChat();
+            if (switchToView) switchToView('chat');
+          }}
           className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-brutal-black border-3 border-brutal-black shadow-brutal hover:bg-brutal-blue hover:text-white hover:shadow-brutal-lg active:translate-x-[2px] active:translate-y-[2px] active:shadow-none text-white font-bold uppercase transition-all"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
@@ -179,11 +182,10 @@ export const ChatList: React.FC = () => {
                     switchToView('chat');
                   }
                 }}
-                className={`group relative p-3 cursor-pointer transition-all duration-200 animate-brutal-drop ${
-                  currentChatId === chat.id
+                className={`group relative p-3 cursor-pointer transition-all duration-200 animate-brutal-drop ${currentChatId === chat.id
                     ? 'bg-brutal-yellow border-3 border-brutal-black shadow-brutal translate-x-[-2px] translate-y-[-2px]'
                     : 'bg-white hover:bg-neutral-50 border-3 border-brutal-black hover:shadow-brutal-sm'
-                }`}
+                  }`}
                 style={{ animationDelay: `${idx * 0.05}s` }}
               >
                 {/* Active Indicator */}
@@ -239,9 +241,8 @@ export const ChatList: React.FC = () => {
                   <button
                     onClick={(e) => handleDeleteClick(chat.id, e)}
                     disabled={deletingChatId === chat.id}
-                    className={`opacity-0 group-hover:opacity-100 ml-2 p-1.5 border-2 border-brutal-black transition-all duration-200 hover:shadow-[2px_2px_0_0_#000000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none ${
-                      currentChatId === chat.id ? 'bg-white hover:bg-brutal-red hover:text-white' : 'bg-neutral-100 hover:bg-brutal-red hover:text-white'
-                    }`}
+                    className={`opacity-0 group-hover:opacity-100 ml-2 p-1.5 border-2 border-brutal-black transition-all duration-200 hover:shadow-[2px_2px_0_0_#000000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none ${currentChatId === chat.id ? 'bg-white hover:bg-brutal-red hover:text-white' : 'bg-neutral-100 hover:bg-brutal-red hover:text-white'
+                      }`}
                     title="Delete chat"
                   >
                     {deletingChatId === chat.id ? (
@@ -249,7 +250,7 @@ export const ChatList: React.FC = () => {
                     ) : (
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
                         <path strokeLinecap="round" strokeLinejoin="round"
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
                     )}
                   </button>
