@@ -16,7 +16,8 @@
 ---
 
 ## <img src="docs/assets/robot-idle.svg" width="30" style="vertical-align: middle;" /> **THE PHILOSOPHY**
-Your data. Your machine. Your rules.
+
+> Your data. Your machine. Your rules.
 
 SUZENT [soo-zuh-nt] combines SUZERAIN (sovereign) + AGENT (executor)—an automated system that answers to one authority: you. Built on the principles of digital sovereignty and open inspiration.
 
@@ -61,6 +62,9 @@ Unlike most agents, **SUZENT** features dual workspaces: a cross-session workspa
 ### <img src="docs/assets/robot-party.svg" width="28" style="vertical-align: middle;" /> **UI READY**
 
 **SUZENT** features a NeoBrutalist web interface that transforms terminal-based agent interactions into a modern, aesthetically distinct experience—combining powerful functionality with bold visual design for your digital sovereign co-worker.
+
+![SUZENT's NeoBrutalist Interface](docs/assets/new-chat.png)
+*Clean, bold, and ready to work—your sovereign co-worker's command center.*
 
 ---
 
