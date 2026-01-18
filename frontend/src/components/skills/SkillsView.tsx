@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useSkills } from '../../hooks/useSkills';
-import { MarkdownRenderer } from '../MarkdownRenderer';
+import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 
 export const SkillsView: React.FC = () => {
     const { skills, loading, error, loadSkills, reload, toggle } = useSkills();

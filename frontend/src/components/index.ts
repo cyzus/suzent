@@ -4,4 +4,4 @@ export * from './LoadingDots';
 export * from './CodeBlock';
 export * from './ChatList';
 export * from './ErrorBoundary';
-export * from './MarkdownRenderer';
+export * from './chat/MarkdownRenderer';
