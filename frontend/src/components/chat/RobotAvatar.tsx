@@ -112,7 +112,10 @@ export const RobotAvatar: React.FC<RobotAvatarProps> = ({
     if (variant === 'peeker') {
         return (
             <div className={`relative w-full h-full overflow-hidden ${className}`}>
-                <BaseRobot style={{ animation: 'robot-peek-up 3s infinite ease-in-out' }} />
+                <BaseRobot
+                    style={{ animation: 'robot-peek-up 3s infinite ease-in-out', transformOrigin: 'bottom center' }}
+                    eyeStyle={{ animation: 'robot-peek-eyes 3s infinite ease-in-out' }}
+                />
             </div>
         );
     }
@@ -145,7 +148,7 @@ export const RobotAvatar: React.FC<RobotAvatarProps> = ({
                         <rect className="eye" x="5" y="8" width="5" height="5" rx="1.5" fill="currentColor" style={{ transformOrigin: 'center', animation: 'robot-squint 3s infinite ease-in-out' }} />
                         <rect className="eye" x="14" y="8" width="5" height="5" rx="1.5" fill="currentColor" style={{ animation: 'robot-raise-brow 3s infinite ease-in-out' }} />
                         {/* Floating ? - SVG text */}
-                        <text x="22" y="3" fontSize="8" fontWeight="bold" fill="#000000" style={{ animation: 'robot-float-q 3s infinite ease-in-out' }}>?</text>
+                        <text x="22" y="4" fontSize="8" fontWeight="bold" fill="#000000" style={{ animation: 'robot-float-q 3s infinite ease-in-out' }}>?</text>
                     </svg>
                 </div>
             </div>

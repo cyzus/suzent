@@ -162,34 +162,68 @@
 
 /* --- V17: PEEKER (Active) --- */
 @keyframes robot-peek-up {
-
-    0%,
-    10% {
-        transform: translateY(0);
+    0% {
+        transform: translateY(110%);
     }
 
-    30% {
-        transform: translateY(-5%);
+    10% {
+        transform: translateY(0);
+        /* Pop up */
+    }
+
+    20% {
+        transform: translateY(0) rotate(-10deg);
+        /* Look Left */
     }
 
     40% {
-        transform: translateY(-5%) rotate(-5deg);
-    }
-
-    50% {
-        transform: translateY(-5%) rotate(5deg);
+        transform: translateY(0) rotate(10deg);
+        /* Look Right */
     }
 
     60% {
-        transform: translateY(-5%) rotate(0);
+        transform: translateY(0) rotate(0deg);
+    }
+
+    70% {
+        transform: translateY(40%);
+        /* Duck partial */
     }
 
     80% {
         transform: translateY(0);
+        /* Quick check */
     }
 
     100% {
-        transform: translateY(0);
+        transform: translateY(110%);
+        /* Hide */
+    }
+}
+
+@keyframes robot-peek-eyes {
+
+    0%,
+    10% {
+        transform: translateX(0);
+    }
+
+    20% {
+        transform: translateX(-3px);
+    }
+
+    /* Look Left */
+    40% {
+        transform: translateX(3px);
+    }
+
+    /* Look Right */
+    60% {
+        transform: translateX(0);
+    }
+
+    100% {
+        transform: translateX(0);
     }
 }
 
@@ -382,7 +416,7 @@
     }
 
     50% {
-        transform: translateY(-5px) scale(1.2);
+        transform: translateY(-1px) scale(1.2);
         opacity: 1;
     }
 }
@@ -584,13 +618,11 @@
 /* "Goes in later": Start at 2.5% (0.3s) instead of 0% */
 @keyframes robot-feed-train {
     0% {
-        transform: translateX(35px) scale(0.8);
+        transform: translateX(50px) scale(0.8);
         opacity: 0;
     }
 
-    2.5% {
-        /* Start moving late (0.3s) */
-        transform: translateX(35px) scale(0.8);
+    2% {
         opacity: 1;
     }
 
