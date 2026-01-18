@@ -142,19 +142,19 @@
     }
 
     30% {
-        transform: translateY(-25%);
+        transform: translateY(-5%);
     }
 
     40% {
-        transform: translateY(-25%) rotate(-10deg);
+        transform: translateY(-5%) rotate(-5deg);
     }
 
     50% {
-        transform: translateY(-25%) rotate(10deg);
+        transform: translateY(-5%) rotate(5deg);
     }
 
     60% {
-        transform: translateY(-25%) rotate(0);
+        transform: translateY(-5%) rotate(0);
     }
 
     80% {
@@ -163,6 +163,40 @@
 
     100% {
         transform: translateY(0);
+    }
+}
+
+/* ... (Shaker omitted) ... */
+
+/* --- V27: PORTAL (Reaction) --- */
+@keyframes robot-teleport {
+    0% {
+        transform: scale(1) rotate(0);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(0) rotate(180deg);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1) rotate(360deg);
+        opacity: 1;
+    }
+}
+
+@keyframes robot-hole-pulse {
+
+    0%,
+    100% {
+        transform: scale(0.5, 0.5);
+        opacity: 0;
+    }
+
+    50% {
+        transform: scale(1.5, 1);
+        opacity: 1;
     }
 }
 
@@ -565,27 +599,25 @@
 /* --- V27: PORTAL (Reaction) --- */
 @keyframes robot-teleport {
     0% {
-        transform: translateY(-30px) scale(0);
-        opacity: 0;
-    }
-
-    20% {
-        transform: translateY(0) scale(1);
+        transform: scale(1) rotate(0);
         opacity: 1;
     }
 
     50% {
-        transform: translateY(0) scale(1) rotate(0);
-        opacity: 1;
-    }
-
-    80% {
-        transform: translateY(30px) scale(0) rotate(180deg);
+        transform: scale(0) rotate(180deg);
         opacity: 0;
     }
 
     100% {
-        transform: translateY(30px) scale(0);
+        transform: scale(1) rotate(360deg);
+        opacity: 1;
+    }
+}
+
+@keyframes robot-hole-pulse {
+
+    0%,
+    100% {
         opacity: 0;
     }
 }
@@ -594,12 +626,27 @@
 
     0%,
     100% {
-        transform: scaleX(1);
+        transform: scale(0);
+        opacity: 0;
+    }
+
+    20% {
+        transform: scale(1.2, 0.8);
+        opacity: 1;
+    }
+
+    /* Open */
+    40% {
+        transform: scale(1);
+        opacity: 1;
     }
 
     50% {
-        transform: scaleX(1.2);
+        transform: scale(0);
+        opacity: 0;
     }
+
+    /* Close */
 }
 
 /* --- V28: SCANNER (Thinking) --- */

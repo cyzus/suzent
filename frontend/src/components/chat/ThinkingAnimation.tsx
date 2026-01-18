@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { RobotAvatar } from './RobotAvatar';
 
 interface ThinkingAnimationProps {
@@ -6,6 +6,16 @@ interface ThinkingAnimationProps {
 }
 
 export const ThinkingAnimation: React.FC<ThinkingAnimationProps> = ({ isThinking }) => {
+  const variants = ['idle', 'observer', 'jumper', 'peeker'];
+
+  // Randomly select 3 variants only when the component mounts
+  // This prevents the robots from changing types during a re-render
+  const selectedVariants = useMemo(() => {
+    return [0, 1, 2].map(() =>
+      variants[Math.floor(Math.random() * variants.length)]
+    );
+  }, []);
+
   return (
     <div className={`
       absolute inset-0 pointer-events-none
@@ -14,13 +24,16 @@ export const ThinkingAnimation: React.FC<ThinkingAnimationProps> = ({ isThinking
     `}>
       <div className="scanner-beam"></div>
       <div className="conveyor-track"></div>
-      {[0, 1, 2].map((i) => (
-        <div key={i} className="conveyor-item" style={{ animationDelay: `${i * 0.7}s` }}>
-          <svg width="100%" height="100%" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="2" y="2" width="20" height="20" rx="3" fill="#000000" />
-            <rect x="5" y="7" width="5" height="5" rx="1.5" fill="#FFFFFF" />
-            <rect x="14" y="7" width="5" height="5" rx="1.5" fill="#FFFFFF" />
-          </svg>
+
+      {selectedVariants.map((variant, i) => (
+        <div
+          key={i}
+          className="conveyor-item"
+          style={{ animationDelay: `${i * 0.7}s` }}
+        >
+          <div className="w-full h-full text-white">
+            <RobotAvatar variant={variant as any} />
+          </div>
         </div>
       ))}
     </div>
