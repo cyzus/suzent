@@ -531,33 +531,93 @@
 }
 
 /* --- V23: EATER (Action) --- */
-@keyframes robot-chomp {
-    0% {
-        transform: translateX(0) rotate(0);
+/* Top Jaw: Pivot at back (x=4 approx for hinge) or center */
+/* Top Jaw: Pivot at back (x=4 approx for hinge) or center */
+@keyframes robot-eat-top {
+
+    0%,
+    90% {
+        transform: rotate(0deg);
     }
 
-    100% {
-        transform: translateX(-5%) rotate(-10deg);
+    10% {
+        transform: rotate(-30deg);
+    }
+
+    /* Open Wide (Faster/Earlier) */
+    40% {
+        transform: rotate(0deg);
+    }
+
+    /* SNAP SHUT */
+    55% {
+        transform: translateY(1px);
+    }
+
+    /* Chew */
+    65% {
+        transform: translateY(0px);
     }
 }
 
-@keyframes robot-feed {
+/* Bottom Jaw - Sync with Top (10% open, 40% close) */
+@keyframes robot-eat-bottom {
+
+    0%,
+    90% {
+        transform: rotate(0deg);
+    }
+
+    10% {
+        transform: rotate(30deg);
+    }
+
+    /* Open Wide matches top */
+    40% {
+        transform: rotate(0deg);
+    }
+
+    /* SNAP SHUT matches top */
+    55% {
+        transform: translateY(-1px);
+    }
+
+    /* Chew */
+    65% {
+        transform: translateY(0px);
+    }
+}
+
+/* Multi-bit Train animation: 12s total cycle (1.5s * 8 bites) */
+/* Action happens in first 1.5s. Snap is at 40% of 1.5s = 0.6s */
+/* 0.6s / 12s = 5.0% */
+/* "Goes in later": Start at 2.5% (0.3s) instead of 0% */
+@keyframes robot-feed-train {
     0% {
-        transform: translateX(40px);
+        transform: translateX(35px) scale(0.8);
+        opacity: 0;
+    }
+
+    2.5% {
+        /* Start moving late (0.3s) */
+        transform: translateX(35px) scale(0.8);
         opacity: 1;
     }
 
-    70% {
-        transform: translateX(-10px) scale(0.5);
+    5.0% {
+        /* 0.60s: Arrive inside mouth (x=0) exactly at snap */
+        transform: translateX(0px) scale(0.8);
         opacity: 1;
     }
 
-    80% {
-        transform: translateX(-15px);
+    5.1% {
+        /* SNAP */
+        transform: translateX(0px) scale(0);
         opacity: 0;
     }
 
     100% {
+        transform: translateX(0px) scale(0);
         opacity: 0;
     }
 }

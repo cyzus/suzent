@@ -211,11 +211,68 @@ export const RobotAvatar: React.FC<RobotAvatarProps> = ({
     if (variant === 'eater') {
         return (
             <div className={`relative w-full h-full ${className}`}>
-                <div className="w-full h-full flex items-center justify-center" style={{ animation: 'robot-chomp 0.4s infinite alternate', transformOrigin: 'center' }}>
+                <div className="w-full h-full flex items-center justify-center">
                     <svg className="w-full h-full" viewBox="0 0 24 24" overflow="visible" style={{ transform: `scale(${ROBOT_SCALE})` }}>
-                        <RobotFace />
-                        {/* Binary feed - SVG text */}
-                        <text x="28" y="14" fontSize="3" fontWeight="bold" fill="#000000" opacity="0" style={{ animation: 'robot-feed 1.5s infinite linear' }}>01001010</text>
+
+                        {/* Top Head (Eyes + Top) */}
+                        <g style={{ animation: 'robot-eat-top 1.5s infinite ease-in-out', transformOrigin: '4px 15px' }}>
+                            {/* Path: Top rounded rect - extended to y=15 */}
+                            <path d="M0,4 Q0,0 4,0 L20,0 Q24,0 24,4 L24,15 L0,15 Z" fill="#000000" />
+                            {/* Eyes looking forward/right */}
+                            <rect className="eye" x="7.5" y="8" width="5" height="5" rx="1.5" fill="currentColor" />
+                            <rect className="eye" x="15.5" y="8" width="5" height="5" rx="1.5" fill="currentColor" />
+                        </g>
+
+                        {/* Bottom Jaw */}
+                        <g style={{ animation: 'robot-eat-bottom 1.5s infinite ease-in-out', transformOrigin: '4px 15px' }}>
+                            {/* Path: Bottom rounded rect - start from y=15 */}
+                            <path d="M0,15 L24,15 L24,20 Q24,24 20,24 L4,24 Q0,24 0,20 Z" fill="#000000" />
+                        </g>
+
+                        {/* Data bits - Bites (Mixed chunks) */}
+                        {/* 8 Bites. Loop 12s. */}
+                        <g style={{ transform: 'translateY(15px)' }}>
+                            {/* Bite 1: 000 (x offsets to center around 6) */}
+                            <g style={{ animation: 'robot-feed-train 12s infinite linear', animationDelay: '0s' }}>
+                                <text x="0" y="2" fontSize="6" fontWeight="bold" fill="#000000">0</text>
+                                <text x="5" y="2" fontSize="6" fontWeight="bold" fill="#000000">0</text>
+                                <text x="10" y="2" fontSize="6" fontWeight="bold" fill="#000000">0</text>
+                            </g>
+                            {/* Bite 2: 0 */}
+                            <g style={{ animation: 'robot-feed-train 12s infinite linear', animationDelay: '1.5s' }}>
+                                <text x="6" y="2" fontSize="6" fontWeight="bold" fill="#000000">0</text>
+                            </g>
+                            {/* Bite 3: 01 */}
+                            <g style={{ animation: 'robot-feed-train 12s infinite linear', animationDelay: '3.0s' }}>
+                                <text x="3" y="2" fontSize="6" fontWeight="bold" fill="#000000">0</text>
+                                <text x="8" y="2" fontSize="6" fontWeight="bold" fill="#000000">1</text>
+                            </g>
+                            {/* Bite 4: 00 */}
+                            <g style={{ animation: 'robot-feed-train 12s infinite linear', animationDelay: '4.5s' }}>
+                                <text x="3" y="2" fontSize="6" fontWeight="bold" fill="#000000">0</text>
+                                <text x="8" y="2" fontSize="6" fontWeight="bold" fill="#000000">0</text>
+                            </g>
+                            {/* Bite 5: 000 */}
+                            <g style={{ animation: 'robot-feed-train 12s infinite linear', animationDelay: '6.0s' }}>
+                                <text x="0" y="2" fontSize="6" fontWeight="bold" fill="#000000">0</text>
+                                <text x="5" y="2" fontSize="6" fontWeight="bold" fill="#000000">0</text>
+                                <text x="10" y="2" fontSize="6" fontWeight="bold" fill="#000000">0</text>
+                            </g>
+                            {/* Bite 6: 1 */}
+                            <g style={{ animation: 'robot-feed-train 12s infinite linear', animationDelay: '7.5s' }}>
+                                <text x="6" y="2" fontSize="6" fontWeight="bold" fill="#000000">1</text>
+                            </g>
+                            {/* Bite 7: 011 */}
+                            <g style={{ animation: 'robot-feed-train 12s infinite linear', animationDelay: '9.0s' }}>
+                                <text x="0" y="2" fontSize="6" fontWeight="bold" fill="#000000">0</text>
+                                <text x="5" y="2" fontSize="6" fontWeight="bold" fill="#000000">1</text>
+                                <text x="10" y="2" fontSize="6" fontWeight="bold" fill="#000000">1</text>
+                            </g>
+                            {/* Bite 8: 0 */}
+                            <g style={{ animation: 'robot-feed-train 12s infinite linear', animationDelay: '10.5s' }}>
+                                <text x="6" y="2" fontSize="6" fontWeight="bold" fill="#000000">0</text>
+                            </g>
+                        </g>
                     </svg>
                 </div>
             </div>
