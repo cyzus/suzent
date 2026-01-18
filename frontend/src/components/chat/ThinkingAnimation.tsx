@@ -5,15 +5,43 @@ interface ThinkingAnimationProps {
   isThinking: boolean;
 }
 
-export const ThinkingAnimation: React.FC<ThinkingAnimationProps> = ({ isThinking }) => {
-  const variants = ['idle', 'observer', 'jumper', 'peeker'];
+// Weighted probability configuration for Thinking Animation (Production Line)
+const THINKING_WEIGHTS: { variant: RobotVariant; weight: number }[] = [
+  { variant: 'idle', weight: 20 }, // High chance
+  { variant: 'observer', weight: 20 },
+  { variant: 'party', weight: 5 },
+  { variant: 'workout', weight: 5 },
+  { variant: 'skeptic', weight: 1 },
+  { variant: 'eater', weight: 1 },
+  { variant: 'scanner', weight: 1 },
+];
 
-  // Randomly select 3 variants only when the component mounts
-  // This prevents the robots from changing types during a re-render
-  const selectedVariants = useMemo(() => {
-    return [0, 1, 2].map(() =>
-      variants[Math.floor(Math.random() * variants.length)]
-    );
+// Weighted probability configuration for Agent Badge (Personality)
+const BADGE_WEIGHTS: { variant: RobotVariant; weight: number }[] = [
+  { variant: 'idle', weight: 20 }, // High chance of calm
+  { variant: 'observer', weight: 20 },
+  { variant: 'peeker', weight: 10 },
+  { variant: 'jumper', weight: 5 },
+  { variant: 'party', weight: 5 },  // Occasional cool
+  { variant: 'love', weight: 2 },  // Rare heartwarming
+  { variant: 'dj', weight: 2 },  // Very rare music
+];
+
+const selectWeightedVariant = (weights: { variant: RobotVariant; weight: number }[]): RobotVariant => {
+  const totalWeight = weights.reduce((sum, item) => sum + item.weight, 0);
+  let random = Math.random() * totalWeight;
+
+  for (const item of weights) {
+    random -= item.weight;
+    if (random <= 0) return item.variant;
+  }
+  return weights[0].variant; // Fallback
+};
+
+export const ThinkingAnimation: React.FC<ThinkingAnimationProps> = ({ isThinking }) => {
+  // Randomly select 3 variants based on weights on mount
+  const variants = useMemo(() => {
+    return [0, 1, 2].map(() => selectWeightedVariant(THINKING_WEIGHTS));
   }, []);
 
   return (
@@ -25,7 +53,7 @@ export const ThinkingAnimation: React.FC<ThinkingAnimationProps> = ({ isThinking
       <div className="scanner-beam"></div>
       <div className="conveyor-track"></div>
 
-      {selectedVariants.map((variant, i) => (
+      {variants.map((variant, i) => (
         <div
           key={i}
           className="conveyor-item"
@@ -33,7 +61,7 @@ export const ThinkingAnimation: React.FC<ThinkingAnimationProps> = ({ isThinking
         >
           <div className="w-full h-full flex items-center justify-center text-white">
             <div className="w-8 h-8">
-              <RobotAvatar variant={variant as any} />
+              <RobotAvatar variant={variant} />
             </div>
           </div>
         </div>
@@ -70,33 +98,45 @@ export const RobotIcon: React.FC<RobotIconProps> = ({
   );
 };
 
+
+
 interface AgentBadgeProps {
   isThinking: boolean;
   isStreaming: boolean;
   eyeClass?: string;
-  rightEyeStyle?: React.CSSProperties;
 }
-
-// All robot variants for showcase
-const SHOWCASE_VARIANTS: RobotVariant[] = [
-  'idle', 'observer', 'jumper', 'snoozer', 'peeker', 'shaker', 'skeptic',
-  'love', 'rage', 'party', 'eater', 'dj', 'ghost', 'workout', 'portal', 'scanner'
-];
 
 export const AgentBadge: React.FC<AgentBadgeProps> = ({
   isThinking,
-  isStreaming,
+  isStreaming
 }) => {
-  const [currentIndex, setCurrentIndex] = useState(0);
+  // Determine variant based on state
+  const [baseVariant, setBaseVariant] = useState<RobotVariant>(() => selectWeightedVariant(BADGE_WEIGHTS));
 
+  // Effect to handle snoozing
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % SHOWCASE_VARIANTS.length);
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
+    if (isStreaming) {
+      // If we start streaming, ensure we wake up if we were sleeping
+      if (baseVariant === 'snoozer') {
+        setBaseVariant('idle');
+      }
+      return;
+    }
 
-  const currentVariant = SHOWCASE_VARIANTS[currentIndex];
+    // Only auto-snooze if we are 'idle'
+    if (baseVariant === 'idle') {
+      const timeout = setTimeout(() => {
+        setBaseVariant('snoozer');
+      }, 10000); // 10s of idleness = snooze
+      return () => clearTimeout(timeout);
+    }
+  }, [isStreaming, baseVariant]);
+
+  let variant: RobotVariant = baseVariant;
+
+  if (isStreaming) {
+    variant = 'observer'; // Active/Working
+  }
 
   return (
     <div className={`
@@ -105,10 +145,11 @@ export const AgentBadge: React.FC<AgentBadgeProps> = ({
       ${isThinking ? 'opacity-0 pointer-events-none' : 'opacity-100'}
     `}>
       <div
-        key={currentIndex}
+        // Key change forces animation reset on variant switch
+        key={variant}
         className="w-8 h-8 animate-robot-slide-in"
       >
-        <RobotAvatar variant={currentVariant} />
+        <RobotAvatar variant={variant} />
       </div>
     </div>
   );

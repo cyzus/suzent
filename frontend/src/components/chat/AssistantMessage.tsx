@@ -70,7 +70,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   message,
   messageIndex,
   isStreaming,
-  isLastMessage
+  isLastMessage,
 }) => {
   const isStreamingThis = isStreaming && isLastMessage;
   const isThinking = isStreamingThis && !message.content;
@@ -115,7 +115,6 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
           <AgentBadge
             isThinking={false}
             isStreaming={isStreamingThis}
-            eyeClass="" // Deprecated
           />
         )}
       </div>

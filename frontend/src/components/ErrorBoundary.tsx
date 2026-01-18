@@ -1,4 +1,5 @@
 import React from 'react';
+import { RobotAvatar } from './chat/RobotAvatar';
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -31,13 +32,16 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
       // Return fallback UI or default error message
       return this.props.fallback || (
         <div className="flex flex-col items-center justify-center h-64 p-8 bg-white border-3 border-brutal-black shadow-brutal animate-brutal-shake">
+          <div className="w-16 h-16 mb-4 text-brutal-red">
+            <RobotAvatar variant="shaker" />
+          </div>
           <div className="text-brutal-red text-lg font-brutal uppercase mb-2">
             System Failure
           </div>
           <div className="text-brutal-black text-sm mb-4 text-center font-mono">
             {this.state.error?.message || 'An unexpected error occurred'}
           </div>
-          <button 
+          <button
             className="px-4 py-2 bg-brutal-red text-white border-2 border-brutal-black font-bold uppercase hover:bg-red-600 shadow-brutal-sm active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all"
             onClick={() => this.setState({ hasError: false, error: undefined })}
           >

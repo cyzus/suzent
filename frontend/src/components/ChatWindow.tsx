@@ -45,6 +45,8 @@ const LoadingIndicator: React.FC = () => (
   </div>
 );
 
+
+
 // Message list component
 const MessageList: React.FC<{
   messages: Message[];
@@ -91,7 +93,7 @@ interface ChatWindowProps {
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   isRightSidebarOpen = false,
-  onRightSidebarToggle = () => {}
+  onRightSidebarToggle = () => { }
 }) => {
   // Store hooks
   const {
@@ -197,7 +199,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         safeConfig,
         {
           onDelta: (partial) => updateAssistantStreaming(partial, chatIdForSend),
-          onAction: () => {},
+          onAction: () => { },
           onNewAssistantMessage: () => newAssistantMessage(chatIdForSend),
           onStepComplete: (stepInfo) => setStepInfo(stepInfo, chatIdForSend),
           onImagesProcessed: (processedImages) => {
@@ -216,7 +218,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 console.error('Error in forceSaveNow:', error);
               }
             }, 200);
-            try { loadCoreMemory(); loadStats(); } catch {}
+            try { loadCoreMemory(); loadStats(); } catch { }
           },
           onStreamStopped: () => {
             setIsStreaming(false, chatIdForSend);

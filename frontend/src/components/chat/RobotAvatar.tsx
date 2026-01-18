@@ -43,8 +43,8 @@ export const RobotAvatar: React.FC<RobotAvatarProps> = ({
     const RobotFace = ({ eyesClass = '', eyeStyle = {} }: { eyesClass?: string; eyeStyle?: React.CSSProperties }) => (
         <>
             <rect x="0" y="0" width="24" height="24" rx="4" fill="#000000" />
-            <rect className={`eye left ${eyesClass}`} style={eyeStyle} x="5" y="8" width="5" height="5" rx="1.5" fill="currentColor" />
-            <rect className={`eye right ${eyesClass}`} style={eyeStyle} x="14" y="8" width="5" height="5" rx="1.5" fill="currentColor" />
+            <rect className={`eye left ${eyesClass}`} style={eyeStyle} x="5" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" />
+            <rect className={`eye right ${eyesClass}`} style={eyeStyle} x="14" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" />
         </>
     );
 
@@ -64,8 +64,8 @@ export const RobotAvatar: React.FC<RobotAvatarProps> = ({
                 <RobotBody>
                     <rect x="0" y="0" width="24" height="24" rx="4" fill="#000000" />
                     <g style={{ animation: 'robot-look-around 4s infinite step-end' }}>
-                        <rect className="eye" x="5" y="8" width="5" height="5" rx="1.5" fill="currentColor" />
-                        <rect className="eye" x="14" y="8" width="5" height="5" rx="1.5" fill="currentColor" />
+                        <rect className="eye" x="5" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" />
+                        <rect className="eye" x="14" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" />
                     </g>
                 </RobotBody>
             </div>
@@ -82,8 +82,8 @@ export const RobotAvatar: React.FC<RobotAvatarProps> = ({
                         {/* Jumping Body */}
                         <g style={{ animation: 'robot-jump-body 1.2s infinite' }}>
                             <rect x="0" y="0" width="24" height="24" rx="4" fill="#000000" />
-                            <rect className="eye left" x="5" y="8" width="5" height="5" rx="1.5" fill="currentColor" />
-                            <rect className="eye right" x="14" y="8" width="5" height="5" rx="1.5" fill="currentColor" />
+                            <rect className="eye left" x="5" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" />
+                            <rect className="eye right" x="14" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" />
                         </g>
                     </svg>
                 </div>
@@ -145,8 +145,8 @@ export const RobotAvatar: React.FC<RobotAvatarProps> = ({
                 <div className="w-full h-full flex items-center justify-center" style={{ animation: 'robot-ponder-tilt 3s infinite ease-in-out', transformOrigin: 'bottom center' }}>
                     <svg className="w-full h-full" viewBox="0 0 24 24" overflow="visible" style={{ transform: `scale(${ROBOT_SCALE})` }}>
                         <rect x="0" y="0" width="24" height="24" rx="4" fill="#000000" />
-                        <rect className="eye" x="5" y="8" width="5" height="5" rx="1.5" fill="currentColor" style={{ transformOrigin: 'center', animation: 'robot-squint 3s infinite ease-in-out' }} />
-                        <rect className="eye" x="14" y="8" width="5" height="5" rx="1.5" fill="currentColor" style={{ animation: 'robot-raise-brow 3s infinite ease-in-out' }} />
+                        <rect className="eye" x="5" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" style={{ transformOrigin: 'center', animation: 'robot-squint 3s infinite ease-in-out' }} />
+                        <rect className="eye" x="14" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" style={{ animation: 'robot-raise-brow 3s infinite ease-in-out' }} />
                         {/* Floating ? - SVG text */}
                         <text x="22" y="4" fontSize="8" fontWeight="bold" fill="#000000" style={{ animation: 'robot-float-q 3s infinite ease-in-out' }}>?</text>
                     </svg>
@@ -162,8 +162,8 @@ export const RobotAvatar: React.FC<RobotAvatarProps> = ({
                 <div className="w-full h-full flex items-center justify-center" style={{ animation: 'robot-heartbeat 1s infinite' }}>
                     <svg className="w-full h-full" viewBox="0 0 24 24" overflow="visible" style={{ transform: `scale(${ROBOT_SCALE})` }}>
                         <rect x="0" y="0" width="24" height="24" rx="4" fill="#000000" />
-                        <text x="5.5" y="12" fontSize="5" fill="currentColor" style={{ animation: 'robot-pulse-eye 1s infinite alternate', transformOrigin: 'center' }}>♥</text>
-                        <text x="14.5" y="12" fontSize="5" fill="currentColor" style={{ animation: 'robot-pulse-eye 1s infinite alternate', transformOrigin: 'center' }}>♥</text>
+                        <text x="5.5" y="12" fontSize="5" fill="#FFFFFF" style={{ animation: 'robot-pulse-eye 1s infinite alternate', transformOrigin: 'center' }}>♥</text>
+                        <text x="14.5" y="12" fontSize="5" fill="#FFFFFF" style={{ animation: 'robot-pulse-eye 1s infinite alternate', transformOrigin: 'center' }}>♥</text>
                         {/* Floating hearts - SVG text */}
                         <text x="-4" y="4" fontSize="4" fill="#000000" style={{ animation: 'robot-float-up 2s infinite linear' }}>♥</text>
                         <text x="-2" y="0" fontSize="3" fill="#000000" style={{ animation: 'robot-float-up 2s infinite linear 0.5s' }}>♥</text>
@@ -182,8 +182,8 @@ export const RobotAvatar: React.FC<RobotAvatarProps> = ({
                 <div className="w-full h-full flex items-center justify-center" style={{ animation: 'robot-seethe 2s infinite ease-in-out' }}>
                     <svg className="w-full h-full" viewBox="0 0 24 24" overflow="visible" style={{ transform: `scale(${ROBOT_SCALE})` }}>
                         <rect x="0" y="0" width="24" height="24" rx="4" fill="#000000" />
-                        <rect className="eye left" x="5" y="8" width="5" height="5" rx="1.5" fill="currentColor" />
-                        <rect className="eye right" x="14" y="8" width="5" height="5" rx="1.5" fill="currentColor" />
+                        <rect className="eye left" x="5" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" />
+                        <rect className="eye right" x="14" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" />
                         <rect x="7" y="9" width="5" height="2" fill="#000000" transform="rotate(20, 7.5, 8)" />
                         <rect x="12" y="9" width="5" height="2" fill="#000000" transform="rotate(-20, 16.5, 8)" />
                         {/* Steam particles - SVG circles */}
@@ -202,7 +202,7 @@ export const RobotAvatar: React.FC<RobotAvatarProps> = ({
                 <RobotBody>
                     <rect x="0" y="0" width="24" height="24" rx="4" fill="#000000" />
                     <g style={{ animation: 'robot-glasses-bounce 0.5s infinite ease-in-out' }}>
-                        <rect x="4" y="8" width="16" height="6" rx="1" fill="currentColor" />
+                        <rect x="4" y="8" width="16" height="6" rx="1" fill="#FFFFFF" />
                         <rect x="5" y="9" width="14" height="1" fill="#FFFFFF" opacity="0.5" />
                     </g>
                 </RobotBody>
@@ -222,8 +222,8 @@ export const RobotAvatar: React.FC<RobotAvatarProps> = ({
                             {/* Path: Top rounded rect - extended to y=15 */}
                             <path d="M0,4 Q0,0 4,0 L20,0 Q24,0 24,4 L24,15 L0,15 Z" fill="#000000" />
                             {/* Eyes looking forward/right */}
-                            <rect className="eye" x="7.5" y="8" width="5" height="5" rx="1.5" fill="currentColor" />
-                            <rect className="eye" x="15.5" y="8" width="5" height="5" rx="1.5" fill="currentColor" />
+                            <rect className="eye" x="7.5" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" />
+                            <rect className="eye" x="15.5" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" />
                         </g>
 
                         {/* Bottom Jaw */}
@@ -308,8 +308,8 @@ export const RobotAvatar: React.FC<RobotAvatarProps> = ({
                 <div className="w-full h-full flex items-center justify-center" style={{ animation: 'robot-float-ghost 3s infinite ease-in-out' }}>
                     <svg className="w-full h-full" viewBox="0 0 24 24" overflow="visible" style={{ transform: `scale(${ROBOT_SCALE})` }}>
                         <path d="M2,25 L0,23 L0,13 A12,12 0 0,1 24,13 L24,23 L22,25 L18,21 L14,25 L12,23 L10,25 L6,21 L2,25 Z" fill="#000000" />
-                        <rect className="eye" x="5" y="10" width="5" height="5" rx="1.5" fill="currentColor" />
-                        <rect className="eye" x="14" y="10" width="5" height="5" rx="1.5" fill="currentColor" />
+                        <rect className="eye" x="5" y="10" width="5" height="5" rx="1.5" fill="#FFFFFF" />
+                        <rect className="eye" x="14" y="10" width="5" height="5" rx="1.5" fill="#FFFFFF" />
                         {/* 404 text - SVG */}
                         <text x="20" y="10" fontSize="4" fontWeight="bold" fill="#999999" style={{ animation: 'robot-boo-fade 2s infinite' }}>404</text>
                     </svg>

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ChatInputPanel } from './ChatInputPanel';
 import { ConfigOptions, ChatConfig } from '../types/api';
+import { RobotAvatar, RobotVariant } from './chat/RobotAvatar';
 
 interface NewChatViewProps {
     input: string;
@@ -35,9 +36,22 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
     configReady,
     streamingForCurrentChat,
 }) => {
+    // Select a random friendly robot
+    const greetingRobot = useMemo(() => {
+        const variants: RobotVariant[] = ['peeker', 'jumper', 'dj', 'party', 'snoozer'];
+        // Snoozer is rare (10% chance)
+        if (Math.random() > 0.9) return 'snoozer';
+
+        const friendly = ['peeker', 'jumper', 'dj', 'party'];
+        return friendly[Math.floor(Math.random() * friendly.length)] as RobotVariant;
+    }, []);
+
     return (
         <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center p-8 animate-brutal-drop">
-            <div className="mb-12">
+            <div className="mb-8 flex flex-col items-center gap-6">
+                <div className="w-24 h-24">
+                    <RobotAvatar variant={greetingRobot} />
+                </div>
                 <h2 className="text-4xl sm:text-5xl font-brutal font-bold text-brutal-black mb-2 tracking-tight">
                     {(() => {
                         const hour = new Date().getHours();

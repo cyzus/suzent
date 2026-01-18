@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
 import { ChatSummary } from '../types/api';
+import { RobotAvatar } from './chat/RobotAvatar';
 
 export const ChatList: React.FC = () => {
   const {
@@ -160,9 +161,15 @@ export const ChatList: React.FC = () => {
       <div className="flex-1 overflow-y-auto scrollbar-thin">
         {chats.length === 0 ? (
           <div className="p-8 text-center">
-            <div className="w-12 h-12 bg-neutral-200 border-2 border-brutal-black mx-auto mb-3 flex items-center justify-center text-2xl">
-              {searchQuery ? '🔍' : '💬'}
-            </div>
+            {searchQuery ? (
+              <div className="w-16 h-16 mx-auto mb-3">
+                <RobotAvatar variant="ghost" />
+              </div>
+            ) : (
+              <div className="w-12 h-12 bg-neutral-200 border-2 border-brutal-black mx-auto mb-3 flex items-center justify-center text-2xl">
+                💬
+              </div>
+            )}
             <p className="text-brutal-black text-sm font-bold uppercase">
               {searchQuery ? 'No results found' : 'No chats yet'}
             </p>
@@ -183,8 +190,8 @@ export const ChatList: React.FC = () => {
                   }
                 }}
                 className={`group relative p-3 cursor-pointer transition-all duration-200 animate-brutal-drop ${currentChatId === chat.id
-                    ? 'bg-brutal-yellow border-3 border-brutal-black shadow-brutal translate-x-[-2px] translate-y-[-2px]'
-                    : 'bg-white hover:bg-neutral-50 border-3 border-brutal-black hover:shadow-brutal-sm'
+                  ? 'bg-brutal-yellow border-3 border-brutal-black shadow-brutal translate-x-[-2px] translate-y-[-2px]'
+                  : 'bg-white hover:bg-neutral-50 border-3 border-brutal-black hover:shadow-brutal-sm'
                   }`}
                 style={{ animationDelay: `${idx * 0.05}s` }}
               >
