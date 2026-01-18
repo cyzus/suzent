@@ -125,10 +125,10 @@ export const RobotAvatar: React.FC<RobotAvatarProps> = ({
                     <svg className="w-full h-full" viewBox="0 0 24 24" overflow="visible" style={{ transform: `scale(${ROBOT_SCALE})` }}>
                         <RobotFace eyeStyle={{ animation: 'robot-dilate 2s infinite alternate', transformOrigin: 'center' }} />
                         {/* Sweat drops - SVG circles */}
-                        <ellipse cx="-2" cy="2" rx="1.5" ry="2" fill="#000000" opacity="0" style={{ animation: 'robot-sweat-drop 0.8s infinite' }} />
-                        <ellipse cx="-3" cy="5" rx="1" ry="1.5" fill="#000000" opacity="0" style={{ animation: 'robot-sweat-drop 0.7s infinite 0.2s' }} />
-                        <ellipse cx="26" cy="2" rx="1.5" ry="2" fill="#000000" opacity="0" style={{ animation: 'robot-sweat-drop 0.8s infinite 0.4s' }} />
-                        <ellipse cx="27" cy="5" rx="1" ry="1.5" fill="#000000" opacity="0" style={{ animation: 'robot-sweat-drop 0.7s infinite 0.1s' }} />
+                        <ellipse cx="-5" cy="2" rx="1.5" ry="2" fill="#000000" opacity="0" style={{ animation: 'robot-sweat-drop 0.8s infinite', transformOrigin: 'center', transformBox: 'fill-box' }} />
+                        <ellipse cx="-6" cy="5" rx="1" ry="1.5" fill="#000000" opacity="0" style={{ animation: 'robot-sweat-drop 0.7s infinite 0.2s', transformOrigin: 'center', transformBox: 'fill-box' }} />
+                        <ellipse cx="29" cy="2" rx="1.5" ry="2" fill="#000000" opacity="0" style={{ animation: 'robot-sweat-drop 0.8s infinite 0.4s', transformOrigin: 'center', transformBox: 'fill-box' }} />
+                        <ellipse cx="30" cy="5" rx="1" ry="1.5" fill="#000000" opacity="0" style={{ animation: 'robot-sweat-drop 0.7s infinite 0.1s', transformOrigin: 'center', transformBox: 'fill-box' }} />
                     </svg>
                 </div>
             </div>
