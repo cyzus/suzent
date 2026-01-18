@@ -304,7 +304,7 @@ export const RobotAvatar: React.FC<RobotAvatarProps> = ({
                 <div className="w-full h-full flex items-center justify-center">
                     <svg className="w-full h-full" viewBox="0 0 24 24" overflow="visible" style={{ transform: `scale(${ROBOT_SCALE})` }}>
                         {/* Top Portal Hole */}
-                        <ellipse cx="12" cy="-6" rx="12" ry="3" fill="#000000" style={{ animation: 'robot-hole-top 2s infinite ease-in-out' }} />
+                        <ellipse cx="12" cy="-4" rx="12" ry="3" fill="#000000" style={{ animation: 'robot-hole-top 2s infinite ease-in-out' }} />
 
                         {/* Teleporting Robot */}
                         <g style={{ animation: 'robot-teleport 2s infinite ease-in-out' }}>
@@ -312,7 +312,7 @@ export const RobotAvatar: React.FC<RobotAvatarProps> = ({
                         </g>
 
                         {/* Bottom Portal Hole */}
-                        <ellipse cx="12" cy="30" rx="12" ry="3" fill="#000000" style={{ animation: 'robot-hole-bottom 2s infinite ease-in-out' }} />
+                        <ellipse cx="12" cy="28" rx="12" ry="3" fill="#000000" style={{ animation: 'robot-hole-bottom 2s infinite ease-in-out' }} />
                     </svg>
                 </div>
             </div>
