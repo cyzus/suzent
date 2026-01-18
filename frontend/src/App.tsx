@@ -10,10 +10,44 @@ import { StatusBar } from './components/StatusBar';
 import { PlanProvider, usePlan } from './hooks/usePlan';
 import { ChatProvider, useChatStore } from './hooks/useChatStore.js';
 
-const HeaderTitle: React.FC<{ text?: string }> = ({ text }) => {
+const HeaderTitle: React.FC<{ text?: string; onUnlock?: () => void }> = ({ text, onUnlock }) => {
   const { backendConfig } = useChatStore();
+  const [clicks, setClicks] = React.useState(0);
+
+  const timerRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  const handleClick = () => {
+    setClicks(c => c + 1);
+
+    // Clear existing timer
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+
+    // Reset clicks if user stops clicking for 500ms
+    timerRef.current = setTimeout(() => {
+      setClicks(0);
+    }, 500);
+  };
+
+  // Cleanup on unmount
+  React.useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (clicks >= 5 && onUnlock) {
+      onUnlock();
+      setClicks(0);
+    }
+  }, [clicks, onUnlock]);
+
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3 cursor-pointer select-none" onClick={handleClick}>
       <div className="w-3 h-3 bg-brutal-black"></div>
       <h1 className="font-brutal text-3xl text-brutal-black tracking-tighter uppercase leading-none">
         {text || backendConfig?.title || 'SUZENT'}
@@ -24,16 +58,18 @@ const HeaderTitle: React.FC<{ text?: string }> = ({ text }) => {
 };
 
 import { SkillsView } from './components/skills/SkillsView';
+import { RobotShowcase } from './components/chat/RobotShowcase';
 
 const AppInner: React.FC = () => {
   const [sidebarTab, setSidebarTab] = useState<'chats' | 'config'>('chats');
-  const [mainView, setMainView] = useState<'chat' | 'memory' | 'skills'>('chat');
+  const [mainView, setMainView] = useState<'chat' | 'memory' | 'skills' | 'emotes'>('chat');
 
   // Sidebar State Management
   // Default to open on larger screens, closed on mobile
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(window.innerWidth >= 768);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
 
+  // ... (rest of imports/hooks same as before) ...
   const { refresh } = usePlan();
   const { currentChatId, setViewSwitcher } = useChatStore();
   const chatIdRef = React.useRef<string | null>(null);
@@ -53,9 +89,6 @@ const AppInner: React.FC = () => {
   const toggleLeftSidebar = () => setIsLeftSidebarOpen(!isLeftSidebarOpen);
 
   // Set view switcher in context so child components can switch views
-  // Note: setViewSwitcher type in ChatStore likely expects dispatching to 'chat' | 'memory'.
-  // Casting or ignoring here if strict typing prevents 'skills'.
-  // Ideally update useChatStore type definition, but for now we accept it might mismatch if only used for memory switch.
   React.useEffect(() => {
     setViewSwitcher?.(setMainView as any);
   }, [setViewSwitcher, setMainView]);
@@ -76,6 +109,7 @@ const AppInner: React.FC = () => {
     switch (mainView) {
       case 'memory': return 'MEMORY SYSTEM';
       case 'skills': return 'SKILLS LIBRARY';
+      case 'emotes': return 'ROBOT GALLERY';
       default: return undefined;
     }
   };
@@ -124,7 +158,7 @@ const AppInner: React.FC = () => {
               ) : (
                 <div className="h-10 w-10 mr-3" aria-hidden="true" />
               )}
-              <HeaderTitle text={getTitle()} />
+              <HeaderTitle text={getTitle()} onUnlock={() => setMainView('emotes')} />
             </div>
 
             <div className="flex items-center gap-3">
@@ -143,7 +177,7 @@ const AppInner: React.FC = () => {
                             ${mainView === view.id
                         ? 'bg-brutal-black text-white'
                         : 'bg-white text-brutal-black hover:bg-neutral-100'}
-                            ${view.id !== 'skills' ? 'border-r-3 border-brutal-black' : ''}
+                            ${view.id !== 'emotes' ? 'border-r-3 border-brutal-black' : ''}
                         `}
                   >
                     {view.label}
@@ -191,6 +225,11 @@ const AppInner: React.FC = () => {
           {mainView === 'skills' && (
             <div key="skills" className="flex-1 flex flex-col min-h-0 animate-view-fade">
               <SkillsView />
+            </div>
+          )}
+          {mainView === 'emotes' && (
+            <div key="emotes" className="flex-1 flex flex-col min-h-0 animate-view-fade">
+              <RobotShowcase />
             </div>
           )}
         </div>
