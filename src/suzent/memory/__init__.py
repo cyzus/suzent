@@ -3,7 +3,7 @@ Memory system for Suzent - provides long-term memory with automatic extraction.
 """
 
 from .manager import MemoryManager
-from .postgres_store import PostgresMemoryStore
+from .lancedb_store import LanceDBMemoryStore
 from .tools import MemorySearchTool, MemoryBlockUpdateTool
 from . import memory_context
 from .models import (
@@ -19,7 +19,7 @@ from .models import (
 
 __all__ = [
     "MemoryManager",
-    "PostgresMemoryStore",
+    "LanceDBMemoryStore",
     "MemorySearchTool",
     "MemoryBlockUpdateTool",
     "memory_context",

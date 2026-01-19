@@ -124,6 +124,7 @@ class ConfigModel(BaseModel):
         None  # LLM model for fact extraction (None = use heuristics)
     )
     user_id: str = "default-user"  # Default user identifier for memory system
+    lancedb_uri: str = ".suzent/data/memory"  # Path to LanceDB storage
 
     # Sandbox system
     sandbox_enabled: bool = False

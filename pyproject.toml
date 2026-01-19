@@ -20,8 +20,9 @@ dependencies = [
     "httpx>=0.28.1",
     "pytest>=9.0.0",
     # Memory system dependencies
-    "asyncpg>=0.29.0",
-    "pgvector>=0.3.6",
+    # "asyncpg>=0.29.0",  # Removed for LanceDB migration
+    # "pgvector>=0.3.6",  # Removed for LanceDB migration
+    "lancedb>=0.17.0",
 ]
 
 [project.optional-dependencies]

@@ -66,18 +66,11 @@ async def init_memory_system() -> bool:
 
     try:
         # Import memory modules
-        from suzent.memory import MemoryManager, PostgresMemoryStore
+        from suzent.memory import MemoryManager, LanceDBMemoryStore
 
-        # Get PostgreSQL connection string from environment
-        host = os.getenv("POSTGRES_HOST", "127.0.0.1")
-        port = os.getenv("POSTGRES_PORT", "5430")
-        db = os.getenv("POSTGRES_DB", "suzent")
-        user = os.getenv("POSTGRES_USER", "suzent")
-        password = os.getenv("POSTGRES_PASSWORD", "ultra_secret")
-        postgres_conn = f"postgresql://{user}:{password}@{host}:{port}/{db}"
-
-        # Initialize PostgreSQL store
-        memory_store = PostgresMemoryStore(postgres_conn)
+        # Initialize LanceDB store
+        # CONFIG.lancedb_uri is now available
+        memory_store = LanceDBMemoryStore(CONFIG.lancedb_uri, embedding_dim=CONFIG.embedding_dimension)
         await memory_store.connect()
 
         # Initialize memory manager

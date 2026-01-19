@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.letta.com)",
+      "Bash(chmod:*)",
+      "Bash(docker exec:*)",
+      "Bash(python:*)",
+      "Bash(uv run:*)",
+      "Bash(wsl hostname:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker logs:*)",
+      "Bash(ruff check:*)",
+      "Bash(curl:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

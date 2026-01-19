@@ -7,7 +7,7 @@ from datetime import datetime
 
 from suzent.logger import get_logger
 from suzent.llm import EmbeddingGenerator, LLMClient
-from .postgres_store import PostgresMemoryStore
+from .lancedb_store import LanceDBMemoryStore
 from . import memory_context
 from .models import (
     ConversationTurn,
@@ -45,7 +45,7 @@ class MemoryManager:
 
     def __init__(
         self,
-        store: PostgresMemoryStore,
+        store: LanceDBMemoryStore,
         embedding_model: str = None,
         embedding_dimension: int = 0,
         llm_for_extraction: Optional[str] = None,
@@ -53,7 +53,7 @@ class MemoryManager:
         """Initialize memory manager.
 
         Args:
-            store: PostgreSQL store instance
+            store: LanceDB store instance
             embedding_model: LiteLLM model identifier for embeddings
             embedding_dimension: Expected embedding dimension (0 = auto-detect)
             llm_for_extraction: LLM model for fact extraction (uses LLM if provided)
