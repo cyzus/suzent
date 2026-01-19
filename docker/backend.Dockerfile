@@ -36,6 +36,7 @@ RUN uv run --no-sync playwright install --with-deps chromium
 # Copy application code
 COPY src/ src/
 COPY config/ config/
+COPY skills/ skills/
 COPY scripts/ scripts/
 COPY .env.example .env
 
