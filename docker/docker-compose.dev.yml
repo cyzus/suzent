@@ -1,37 +1,5 @@
 services:
 
-  # PostgreSQL with pgvector for memory system
-  postgres:
-    container_name: suzent-postgres
-    image: pgvector/pgvector:pg18
-    restart: unless-stopped
-    stop_grace_period: 60s # Allow clean shutdown for DB
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER:-suzent}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-ultra_secret}
-      - POSTGRES_DB=${POSTGRES_DB:-suzent}
-    ports:
-      - "${POSTGRES_PORT:-5430}:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql
-      - ../src/suzent/memory/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-    networks:
-      - suzent-network
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-suzent}" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-
   # Redis for SearXNG caching
   redis:
     container_name: suzent-redis
@@ -95,8 +63,6 @@ networks:
     driver: bridge
 
 volumes:
-  postgres-data:
-    driver: local
   redis-data:
     driver: local
   searxng-data:

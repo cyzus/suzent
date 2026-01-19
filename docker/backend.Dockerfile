@@ -7,13 +7,11 @@ WORKDIR /app
 # Install system dependencies
 # - curl: for installing uv
 # - git: for installing dependencies from git
-# - build-essential: for compiling extensions
-# - libpq-dev: for psycopg2/asyncpg
+# - build-essential: for compiling Python extensions
 RUN apt-get update && apt-get install -y \
     curl \
     git \
     build-essential \
-    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast package management

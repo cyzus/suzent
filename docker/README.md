@@ -2,9 +2,10 @@
 
 This Docker Compose configuration provides all the infrastructure services needed for Suzent:
 
-- **PostgreSQL 18 + pgvector** - Memory system database
 - **Redis (Valkey)** - Cache for SearXNG
 - **SearXNG** - Privacy-respecting metasearch engine
+
+The memory system now uses **LanceDB** (embedded vector database), which requires no separate service - data is stored in the mounted `data/memory` volume.
 
 ## Quick Start
 

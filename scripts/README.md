@@ -1,10 +1,42 @@
 # Scripts Directory
 
-> 💡 **Most users should use Docker Compose** (see [`docker/README.md`](../docker/README.md)) for the easiest setup. These scripts are for advanced users with existing PostgreSQL installations (native, managed services like AWS RDS, etc.).
+> ⚠️ **DEPRECATED:** PostgreSQL setup scripts are archived. Suzent now uses **LanceDB** (embedded vector database) which requires no setup or external services.
 
-This directory contains utility scripts for manually setting up the Suzent memory system database.
+> 💡 **For new installations:** Simply run Suzent - LanceDB data is automatically created in `data/memory/`
 
-## Setup Scripts
+This directory contains utility scripts for Suzent, including archived PostgreSQL migration tools.
+
+## Migration Scripts
+
+### `migrate_memory.py`
+Migrates existing memory data from PostgreSQL to LanceDB (one-time migration for existing users).
+
+**Usage:**
+```bash
+python scripts/migrate_memory.py
+```
+
+**Prerequisites:**
+- Existing PostgreSQL database with memory data
+- PostgreSQL connection details in `.env` (old config)
+- Python dependencies installed
+
+**What it does:**
+1. Connects to your existing PostgreSQL database
+2. Exports all memory blocks and archival memories
+3. Imports them into LanceDB at `data/memory/`
+4. Preserves all data: timestamps, embeddings, metadata
+
+**After migration:**
+- You can safely remove PostgreSQL service
+- LanceDB data persists in `data/memory/`
+- No external database service needed
+
+---
+
+## Archived PostgreSQL Setup Scripts
+
+The following scripts are **archived** and only relevant for users migrating from old PostgreSQL-based installations:
 
 ### `setup_memory_db.ps1` / `setup_memory_db.sh`
 Sets up a PostgreSQL database with pgvector extension for the memory system.
