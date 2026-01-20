@@ -7,27 +7,30 @@ This module handles all chat endpoints including:
 - Stopping active streams
 """
 
+import base64
 import io
 import json
 import traceback
 import uuid
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 from PIL import Image
 from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
 
-from suzent.logger import get_logger
-from suzent.config import CONFIG
 from suzent.agent_manager import (
+    deserialize_agent,
+    get_memory_manager,
     get_or_create_agent,
     inject_chat_context,
     serialize_agent,
-    deserialize_agent,
 )
+from suzent.config import CONFIG
 from suzent.database import get_database
-from suzent.streaming import stream_agent_responses, stop_stream
 from suzent.image_utils import compress_image_with_bytes
+from suzent.logger import get_logger
+from suzent.memory import AgentStepsSummary, ConversationTurn, Message
+from suzent.streaming import stop_stream, stream_agent_responses
 
 logger = get_logger(__name__)
 
@@ -102,8 +105,6 @@ async def chat(request: Request) -> StreamingResponse:
                     pil_images.append(compressed_image)
 
                     # Store metadata with pre-compressed bytes (no re-encoding!)
-                    import base64
-
                     images_data.append(
                         {
                             "id": str(uuid.uuid4()),
@@ -141,8 +142,6 @@ async def chat(request: Request) -> StreamingResponse:
             try:
                 # Send image metadata to frontend if images were uploaded
                 if images_data:
-                    import json
-
                     yield f"data: {json.dumps({'type': 'images_processed', 'data': images_data})}\n\n"
 
                 # Inject user_id and chat_id into config for memory system
@@ -159,10 +158,7 @@ async def chat(request: Request) -> StreamingResponse:
                 memory_context = ""
                 if chat_id and message and memory_enabled:
                     try:
-                        from suzent.agent_manager import get_memory_manager
-
                         memory_mgr = get_memory_manager()
-
                         if memory_mgr:
                             # Retrieve relevant memories for the user's query
                             memory_context = (
@@ -192,29 +188,26 @@ async def chat(request: Request) -> StreamingResponse:
                         db = get_database()
                         chat = db.get_chat(chat_id)
 
-                        if chat:
-                            agent_state = chat.get("agent_state")
-
-                            if agent_state:
+                        if chat and chat.agent_state:
+                            logger.debug(
+                                f"Attempting to restore agent state for chat {chat_id}"
+                            )
+                            restored_agent = deserialize_agent(chat.agent_state, config)
+                            if restored_agent:
                                 logger.debug(
-                                    f"Attempting to restore agent state for chat {chat_id}"
+                                    f"Restored agent has tools: {[t.__class__.__name__ for t in restored_agent._tool_instances]}"
                                 )
-                                restored_agent = deserialize_agent(agent_state, config)
-                                if restored_agent:
-                                    logger.debug(
-                                        f"Restored agent has tools: {[t.__class__.__name__ for t in restored_agent._tool_instances]}"
-                                    )
-                                    agent_instance = restored_agent
-                                    logger.debug(
-                                        "Replaced agent_instance with restored_agent"
-                                    )
-                                else:
-                                    # Agent state was corrupted (e.g., incompatible library version)
-                                    # Clear it from database so fresh state can be saved
-                                    logger.info(
-                                        f"Clearing corrupted agent state for chat {chat_id}"
-                                    )
-                                    db.update_chat(chat_id, agent_state=b"")
+                                agent_instance = restored_agent
+                                logger.debug(
+                                    "Replaced agent_instance with restored_agent"
+                                )
+                            else:
+                                # Agent state was corrupted (e.g., incompatible library version)
+                                # Clear it from database so fresh state can be saved
+                                logger.info(
+                                    f"Clearing corrupted agent state for chat {chat_id}"
+                                )
+                                db.update_chat(chat_id, agent_state=b"")
                     except Exception as e:
                         logger.warning(f"Error loading agent state: {e}")
                         # Continue without state restoration rather than failing
@@ -251,13 +244,6 @@ async def chat(request: Request) -> StreamingResponse:
                     # Extract memories from the full conversation turn (Phase 1 & 2)
                     if chat_id and memory_enabled:
                         try:
-                            from suzent.agent_manager import get_memory_manager
-                            from suzent.memory import (
-                                ConversationTurn,
-                                Message,
-                                AgentStepsSummary,
-                            )
-
                             memory_mgr = get_memory_manager()
 
                             if memory_mgr:
@@ -302,8 +288,6 @@ async def chat(request: Request) -> StreamingResponse:
                             logger.error(
                                 f"Error extracting memories from conversation turn: {e}"
                             )
-                            import traceback
-
                             logger.error(traceback.format_exc())
 
                 finally:
@@ -407,9 +391,12 @@ async def get_chats(request: Request) -> JSONResponse:
         chats = db.list_chats(limit=limit, offset=offset, search=search)
         total = db.get_chat_count(search=search)
 
+        # Convert Pydantic models to dicts
+        chats_data = [c.model_dump(mode="json", by_alias=True) for c in chats]
+
         return JSONResponse(
             {
-                "chats": chats,
+                "chats": chats_data,
                 "total": total,
                 "limit": limit,
                 "offset": offset,
@@ -438,8 +425,10 @@ async def get_chat(request: Request) -> JSONResponse:
         if not chat:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
 
-        # Remove agent_state from response as it's binary data not needed by frontend
-        response_chat = {k: v for k, v in chat.items() if k != "agent_state"}
+        # Remove agent_state from response and use alias for camelCase timestamps
+        response_chat = chat.model_dump(
+            mode="json", by_alias=True, exclude={"agent_state"}
+        )
 
         return JSONResponse(response_chat)
     except Exception as e:
@@ -472,7 +461,9 @@ async def create_chat(request: Request) -> JSONResponse:
         # Return the created chat (excluding binary agent_state)
         chat = db.get_chat(chat_id)
         if chat:
-            response_chat = {k: v for k, v in chat.items() if k != "agent_state"}
+            response_chat = chat.model_dump(
+                mode="json", by_alias=True, exclude={"agent_state"}
+            )
             return JSONResponse(response_chat, status_code=201)
         else:
             return JSONResponse({"error": "Failed to create chat"}, status_code=500)
@@ -515,7 +506,9 @@ async def update_chat(request: Request) -> JSONResponse:
         # Return updated chat (excluding binary agent_state)
         chat = db.get_chat(chat_id)
         if chat:
-            response_chat = {k: v for k, v in chat.items() if k != "agent_state"}
+            response_chat = chat.model_dump(
+                mode="json", by_alias=True, exclude={"agent_state"}
+            )
             return JSONResponse(response_chat)
         else:
             return JSONResponse(

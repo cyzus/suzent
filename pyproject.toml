@@ -24,6 +24,7 @@ dependencies = [
     # "pgvector>=0.3.6",  # Removed for LanceDB migration
     "lancedb>=0.17.0",
     "ddgs>=9.10.0",
+    "sqlmodel>=0.0.22",
 ]
 
 [project.optional-dependencies]

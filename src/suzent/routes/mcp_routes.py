@@ -8,7 +8,7 @@ from suzent.config import CONFIG
 from suzent.database import get_database
 
 
-def get_mcp_servers_merged():
+def get_mcp_servers_merged() -> dict:
     """
     Get MCP servers merged from database and config file defaults.
     Database servers take precedence.
@@ -16,21 +16,27 @@ def get_mcp_servers_merged():
     db = get_database()
     db_servers = db.get_mcp_servers()
 
-    # Start with config defaults
-    # MCP servers from config default to DISABLED until user explicitly enables them
+    # Start with config defaults (servers default to DISABLED until user explicitly enables them)
+    all_config_names = set(CONFIG.mcp_urls.keys()) | set(CONFIG.mcp_stdio_params.keys())
     merged = {
         "urls": dict(CONFIG.mcp_urls),
         "stdio": dict(CONFIG.mcp_stdio_params),
-        "enabled": {
-            **{k: False for k in CONFIG.mcp_urls.keys()},
-            **{k: False for k in CONFIG.mcp_stdio_params.keys()},
-        },
+        "enabled": {name: False for name in all_config_names},
     }
 
     # Merge in database servers (overrides config)
-    merged["urls"].update(db_servers["urls"])
-    merged["stdio"].update(db_servers["stdio"])
-    merged["enabled"].update(db_servers["enabled"])
+    for server in db_servers:
+        merged["enabled"][server.name] = server.enabled
+
+        if server.type == "url" and server.url:
+            merged["urls"][server.name] = server.url
+        elif server.type == "stdio" and server.command:
+            stdio_config = {"command": server.command}
+            if server.args:
+                stdio_config["args"] = server.args
+            if server.env:
+                stdio_config["env"] = server.env
+            merged["stdio"][server.name] = stdio_config
 
     return merged
 
@@ -62,8 +68,19 @@ async def add_mcp_server(request: Request) -> JSONResponse:
     if not name or (not url and not stdio):
         return JSONResponse({"error": "Missing name and url/stdio"}, status_code=400)
 
+    config = {}
+    if url:
+        config = {"type": "url", "url": url}
+    elif stdio:
+        config = {
+            "type": "stdio",
+            "command": stdio.get("command"),
+            "args": stdio.get("args"),
+            "env": stdio.get("env"),
+        }
+
     db = get_database()
-    success = db.add_mcp_server(name, url=url, stdio_params=stdio)
+    success = db.add_mcp_server(name, config=config)
 
     if success:
         return JSONResponse({"success": True})
@@ -106,14 +123,22 @@ async def set_mcp_server_enabled(request: Request) -> JSONResponse:
 
     # If server not found in database, check if it's in config and add it first
     if not success:
+        config = {}
         # Check if server exists in config
         if name in CONFIG.mcp_urls:
-            # Add config server to database, then set enabled state
-            db.add_mcp_server(name, url=CONFIG.mcp_urls[name])
-            success = db.set_mcp_server_enabled(name, enabled)
+            config = {"type": "url", "url": CONFIG.mcp_urls[name]}
         elif name in CONFIG.mcp_stdio_params:
-            # Add stdio server to database, then set enabled state
-            db.add_mcp_server(name, stdio_params=CONFIG.mcp_stdio_params[name])
+            stdio_params = CONFIG.mcp_stdio_params[name]
+            config = {
+                "type": "stdio",
+                "command": stdio_params.get("command"),
+                "args": stdio_params.get("args"),
+                "env": stdio_params.get("env"),
+            }
+
+        if config:
+            # Add config server to database, then set enabled state
+            db.add_mcp_server(name, config=config)
             success = db.set_mcp_server_enabled(name, enabled)
 
     if success:

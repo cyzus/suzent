@@ -1,9 +1,16 @@
-from typing import Optional, List, Dict
-from pydantic import BaseModel, Field
+"""
+Plan management for agentic workflows.
 
-# Keep for backward compatibility and migration
+Provides Phase and Plan models along with database persistence utilities.
+"""
+
 import json
 from enum import Enum
+from typing import Dict, List, Optional
+
+from pydantic import BaseModel, Field
+
+from suzent.database import PlanModel, TaskModel, get_database
 
 
 class PhaseStatus(str, Enum):
@@ -32,6 +39,24 @@ class Phase(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
+    @classmethod
+    def from_orm_model(cls, task: TaskModel) -> "Phase":
+        """Create a Phase from a TaskModel."""
+        capabilities = {}
+        if task.capabilities:
+            capabilities = json.loads(task.capabilities)
+
+        return cls(
+            number=task.number,
+            description=task.description,
+            status=task.status,
+            note=task.note,
+            task_id=task.id,
+            capabilities=capabilities,
+            created_at=task.created_at.isoformat() if task.created_at else None,
+            updated_at=task.updated_at.isoformat() if task.updated_at else None,
+        )
+
     def __str__(self):
         note_str = f" - Note: {self.note}" if self.note else ""
         return f"- [{STATUS_MAP[self.status]}] {self.number}. {self.description}{note_str}\n"
@@ -47,131 +72,58 @@ class Plan(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
-    def first_pending(self) -> Optional["Phase"]:
-        for t in self.phases:
-            if t.status == "pending":
-                return t
-        return None
+    @classmethod
+    def from_orm_model(cls, plan: PlanModel) -> "Plan":
+        """Create a Plan from a PlanModel."""
+        phases = [Phase.from_orm_model(t) for t in plan.tasks]
+        return cls(
+            objective=plan.objective,
+            phases=phases,
+            chat_id=plan.chat_id,
+            id=plan.id,
+            created_at=plan.created_at.isoformat() if plan.created_at else None,
+            updated_at=plan.updated_at.isoformat() if plan.updated_at else None,
+        )
 
-    def first_in_progress(self) -> Optional["Phase"]:
-        for t in self.phases:
-            if t.status == "in_progress":
-                return t
-        return None
+    def first_pending(self) -> Optional[Phase]:
+        """Get the first pending phase."""
+        return next((p for p in self.phases if p.status == PhaseStatus.PENDING), None)
+
+    def first_in_progress(self) -> Optional[Phase]:
+        """Get the first in-progress phase."""
+        return next(
+            (p for p in self.phases if p.status == PhaseStatus.IN_PROGRESS), None
+        )
+
+
+# -----------------------------------------------------------------------------
+# Database Operations
+# -----------------------------------------------------------------------------
 
 
 def read_plan_from_database(chat_id: str) -> Optional[Plan]:
     """Reads the plan from the database for a specific chat."""
-    from suzent.database import get_database
-
-    db = get_database()
-    plan_data = db.get_plan(chat_id)
-
-    if not plan_data:
+    plan_model = get_database().get_plan(chat_id)
+    if not plan_model:
         return None
-
-    tasks = []
-    for task_data in plan_data["tasks"]:
-        tasks.append(
-            Phase(
-                number=task_data["number"],
-                description=task_data["description"],
-                status=task_data["status"],
-                note=task_data["note"],
-                task_id=task_data.get("id"),
-                capabilities=json.loads(task_data.get("capabilities", "{}"))
-                if task_data.get("capabilities")
-                else {},
-                created_at=task_data.get("created_at"),
-                updated_at=task_data.get("updated_at"),
-            )
-        )
-
-    return Plan(
-        objective=plan_data["objective"],
-        phases=tasks,
-        chat_id=chat_id,
-        id=plan_data.get("id"),
-        created_at=plan_data.get("created_at"),
-        updated_at=plan_data.get("updated_at"),
-    )
+    return Plan.from_orm_model(plan_model)
 
 
 def read_plan_by_id(plan_id: int) -> Optional[Plan]:
     """Reads a specific plan by its identifier."""
-    from suzent.database import get_database
-
-    db = get_database()
-    plan_data = db.get_plan_by_id(plan_id)
-    if not plan_data:
+    plan_model = get_database().get_plan_by_id(plan_id)
+    if not plan_model:
         return None
-
-    tasks = [
-        Phase(
-            number=task_data["number"],
-            description=task_data["description"],
-            status=task_data["status"],
-            note=task_data["note"],
-            task_id=task_data.get("id"),
-            capabilities=json.loads(task_data.get("capabilities", "{}"))
-            if task_data.get("capabilities")
-            else {},
-            created_at=task_data.get("created_at"),
-            updated_at=task_data.get("updated_at"),
-        )
-        for task_data in plan_data["tasks"]
-    ]
-
-    return Plan(
-        objective=plan_data["objective"],
-        phases=tasks,
-        chat_id=plan_data.get("chat_id"),
-        id=plan_data.get("id"),
-        created_at=plan_data.get("created_at"),
-        updated_at=plan_data.get("updated_at"),
-    )
+    return Plan.from_orm_model(plan_model)
 
 
 def read_plan_history_from_database(
-    chat_id: str, limit: Optional[int] = None
-) -> list[Plan]:
+    chat_id: str,
+    limit: Optional[int] = None,
+) -> List[Plan]:
     """Fetch all plan versions for a chat ordered by most recent first."""
-    from suzent.database import get_database
-
-    db = get_database()
-    plan_rows = db.list_plans(chat_id, limit=limit)
-    plans: list[Plan] = []
-
-    for plan_data in plan_rows:
-        tasks = []
-        for task_data in plan_data["tasks"]:
-            tasks.append(
-                Phase(
-                    number=task_data["number"],
-                    description=task_data["description"],
-                    status=task_data["status"],
-                    note=task_data["note"],
-                    task_id=task_data.get("id"),
-                    capabilities=json.loads(task_data.get("capabilities", "{}"))
-                    if task_data.get("capabilities")
-                    else {},
-                    created_at=task_data.get("created_at"),
-                    updated_at=task_data.get("updated_at"),
-                )
-            )
-
-        plans.append(
-            Plan(
-                objective=plan_data["objective"],
-                phases=tasks,
-                chat_id=plan_data.get("chat_id", chat_id),
-                id=plan_data.get("id"),
-                created_at=plan_data.get("created_at"),
-                updated_at=plan_data.get("updated_at"),
-            )
-        )
-
-    return plans
+    plan_models = get_database().list_plans(chat_id, limit=limit)
+    return [Plan.from_orm_model(p) for p in plan_models]
 
 
 def write_plan_to_database(plan: Plan, *, preserve_history: bool = True):
@@ -180,31 +132,36 @@ def write_plan_to_database(plan: Plan, *, preserve_history: bool = True):
     By default this records a new plan version so prior plans remain in history.
     Set preserve_history=False to update the latest plan record in place.
     """
-    from suzent.database import get_database
-
     if not plan.chat_id:
         raise ValueError("Plan must have a chat_id to be saved to database")
 
     db = get_database()
-    tasks_data = []
-    for task in plan.phases:
-        tasks_data.append(
-            {
-                "number": task.number,
-                "description": task.description,
-                "status": task.status,
-                "note": task.note,
-                "capabilities": json.dumps(task.capabilities)
-                if task.capabilities
-                else None,
-            }
-        )
+    tasks_data = [
+        {
+            "number": phase.number,
+            "description": phase.description,
+            "status": phase.status,
+            "note": phase.note,
+            "capabilities": json.dumps(phase.capabilities)
+            if phase.capabilities
+            else None,
+        }
+        for phase in plan.phases
+    ]
 
-    if preserve_history:
-        new_plan_id = db.create_plan(plan.chat_id, plan.objective, tasks_data)
-        plan.id = new_plan_id
-    else:
-        db.update_plan(plan.chat_id, plan.objective, tasks_data, plan_id=plan.id)
+    # create_plan handles upsert based on chat_id
+    plan.id = db.create_plan(plan.chat_id, plan.objective, tasks_data)
+
+
+def _compute_version_key(plan: Plan) -> str:
+    """Compute a unique version key for the plan."""
+    if plan.id is not None:
+        return f"id:{plan.id}"
+    if plan.updated_at:
+        return f"updated:{plan.updated_at}"
+    if plan.created_at:
+        return f"created:{plan.created_at}"
+    return f"objective:{hash(plan.objective)}:{len(plan.phases)}"
 
 
 def plan_to_dict(plan: Optional[Plan]) -> Optional[dict]:
@@ -214,19 +171,9 @@ def plan_to_dict(plan: Optional[Plan]) -> Optional[dict]:
 
     data = plan.model_dump()
 
-    # Computed version key logic
-    if plan.id is not None:
-        version_key = f"id:{plan.id}"
-    elif plan.updated_at:
-        version_key = f"updated:{plan.updated_at}"
-    elif plan.created_at:
-        version_key = f"created:{plan.created_at}"
-    else:
-        version_key = f"objective:{hash(plan.objective)}:{len(plan.phases)}"
-
-    # Add/Update frontend-specific fields
+    # Add frontend-specific fields
     data["title"] = plan.objective
-    data["versionKey"] = version_key
+    data["versionKey"] = _compute_version_key(plan)
     data["chatId"] = plan.chat_id
     data["createdAt"] = plan.created_at
     data["updatedAt"] = plan.updated_at
@@ -243,16 +190,12 @@ def plan_to_dict(plan: Optional[Plan]) -> Optional[dict]:
 def auto_mark_in_progress(chat_id: str):
     """If no task is in progress, mark the first pending as in_progress."""
     plan = read_plan_from_database(chat_id)
-    if not plan:
+    if not plan or plan.first_in_progress():
         return
-    if plan.first_in_progress():
-        return
+
     pending = plan.first_pending()
     if pending:
-        from suzent.database import get_database
-
-        db = get_database()
-        db.update_task_status(chat_id, pending.number, "in_progress")
+        get_database().update_task_status(chat_id, pending.number, "in_progress")
 
 
 def auto_complete_current(chat_id: str):
@@ -260,9 +203,7 @@ def auto_complete_current(chat_id: str):
     plan = read_plan_from_database(chat_id)
     if not plan:
         return
-    cur = plan.first_in_progress()
-    if cur:
-        from suzent.database import get_database
 
-        db = get_database()
-        db.update_task_status(chat_id, cur.number, "completed")
+    current = plan.first_in_progress()
+    if current:
+        get_database().update_task_status(chat_id, current.number, "completed")

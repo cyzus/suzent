@@ -1,17 +1,137 @@
 """
-Database layer for chat persistence using SQLite.
+Database layer for chat persistence using SQLModel.
+
+Provides a clean, type-safe interface for all database operations.
 """
 
-import sqlite3
-import json
+import os
 import uuid
 from datetime import datetime
-from typing import List, Optional, Dict, Any
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel
+from sqlalchemy.orm import selectinload
+from sqlmodel import (
+    Column,
+    Field,
+    JSON,
+    Relationship,
+    Session,
+    SQLModel,
+    create_engine,
+    select,
+)
+
+
+# -----------------------------------------------------------------------------
+# SQLModel Table Definitions
+# -----------------------------------------------------------------------------
+
+
+class ChatSummaryModel(BaseModel):
+    """Bail-out model for chat listing."""
+
+    id: str
+    title: str
+    createdAt: str
+    updatedAt: str
+    messageCount: int
+    lastMessage: Optional[str] = None
+
+
+class ChatModel(SQLModel, table=True):
+    """Chat session with messages and configuration."""
+
+    __tablename__ = "chats"
+
+    id: str = Field(primary_key=True)
+    title: str
+    created_at: datetime = Field(serialization_alias="createdAt")
+    updated_at: datetime = Field(serialization_alias="updatedAt")
+    config: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    messages: list = Field(default_factory=list, sa_column=Column(JSON))
+    agent_state: Optional[bytes] = None
+
+    plans: List["PlanModel"] = Relationship(
+        back_populates="chat",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+
+
+class PlanModel(SQLModel, table=True):
+    """Execution plan associated with a chat session."""
+
+    __tablename__ = "plans"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    chat_id: str = Field(foreign_key="chats.id", index=True)
+    objective: str
+    created_at: datetime = Field(serialization_alias="createdAt")
+    updated_at: datetime = Field(serialization_alias="updatedAt")
+
+    chat: Optional[ChatModel] = Relationship(back_populates="plans")
+    tasks: List["TaskModel"] = Relationship(
+        back_populates="plan",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+
+
+class TaskModel(SQLModel, table=True):
+    """Individual task within a plan."""
+
+    __tablename__ = "tasks"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    plan_id: int = Field(foreign_key="plans.id", index=True)
+    number: int = Field(index=True)
+    description: str
+    status: str = Field(default="pending")
+    note: Optional[str] = None
+    capabilities: Optional[str] = None
+    created_at: datetime = Field(serialization_alias="createdAt")
+    updated_at: datetime = Field(serialization_alias="updatedAt")
+
+    plan: Optional[PlanModel] = Relationship(back_populates="tasks")
+
+
+class UserPreferencesModel(SQLModel, table=True):
+    """Singleton table for global user preferences."""
+
+    __tablename__ = "user_preferences"
+
+    id: int = Field(default=1, primary_key=True)
+    model: Optional[str] = None
+    agent: Optional[str] = None
+    tools: Optional[list] = Field(default=None, sa_column=Column(JSON))
+    memory_enabled: bool = Field(default=False)
+    sandbox_enabled: bool = Field(default=True)
+    sandbox_volumes: Optional[list] = Field(default=None, sa_column=Column(JSON))
+    updated_at: datetime = Field(serialization_alias="updatedAt")
+
+
+class MCPServerModel(SQLModel, table=True):
+    """MCP server configuration."""
+
+    __tablename__ = "mcp_servers"
+
+    name: str = Field(primary_key=True)
+    type: str  # "url" or "stdio"
+    url: Optional[str] = None
+    command: Optional[str] = None
+    args: Optional[list] = Field(default=None, sa_column=Column(JSON))
+    env: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    enabled: bool = Field(default=True)
+    created_at: datetime = Field(serialization_alias="createdAt")
+    updated_at: datetime = Field(serialization_alias="updatedAt")
+
+
+# -----------------------------------------------------------------------------
+# Database Management
+# -----------------------------------------------------------------------------
 
 
 class ChatDatabase:
-    """Handles SQLite database operations for chat persistence."""
+    """Handles database operations for chat persistence using SQLModel."""
 
     def __init__(self, db_path: str = "chats.db"):
         self.db_path = Path(db_path)
@@ -25,116 +145,23 @@ class ChatDatabase:
 
             shutil.rmtree(self.db_path)
 
-        # Touch the file to ensure it exists before SQLite opens it
-        self.db_path.touch(exist_ok=True)
+        # Create engine with SQLite
+        self.engine = create_engine(
+            f"sqlite:///{self.db_path}",
+            echo=False,
+            connect_args={"check_same_thread": False},
+        )
 
-        self.init_database()
+        # Create all tables
+        SQLModel.metadata.create_all(self.engine)
 
-    def init_database(self):
-        """Initialize the database and create tables if they don't exist."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS chats (
-                    id TEXT PRIMARY KEY,
-                    title TEXT NOT NULL,
-                    created_at TIMESTAMP NOT NULL,
-                    updated_at TIMESTAMP NOT NULL,
-                    config TEXT NOT NULL,
-                    messages TEXT NOT NULL,
-                    agent_state BLOB
-                )
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_chats_updated_at 
-                ON chats(updated_at DESC)
-            """)
+    def _session(self) -> Session:
+        """Create a new database session."""
+        return Session(self.engine)
 
-            # Create plans table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS plans (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    chat_id TEXT NOT NULL,
-                    objective TEXT NOT NULL,
-                    created_at TIMESTAMP NOT NULL,
-                    updated_at TIMESTAMP NOT NULL,
-                    FOREIGN KEY (chat_id) REFERENCES chats (id) ON DELETE CASCADE
-                )
-            """)
-
-            # Create tasks table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS tasks (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    plan_id INTEGER NOT NULL,
-                    number INTEGER NOT NULL,
-                    description TEXT NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'pending',
-                    note TEXT,
-                    capabilities TEXT,
-                    created_at TIMESTAMP NOT NULL,
-                    updated_at TIMESTAMP NOT NULL,
-                    FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE
-                )
-            """)
-
-            # Create indexes for plans and tasks
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_plans_chat_id 
-                ON plans(chat_id)
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_tasks_plan_id 
-                ON tasks(plan_id)
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_tasks_number 
-                ON tasks(plan_id, number)
-            """)
-
-            # Add agent_state column if it doesn't exist (for existing databases)
-            try:
-                conn.execute("ALTER TABLE chats ADD COLUMN agent_state BLOB")
-                conn.commit()
-            except sqlite3.OperationalError:
-                # Column already exists
-                pass
-
-            # Add capabilities column to tasks if it doesn't exist
-            try:
-                conn.execute("ALTER TABLE tasks ADD COLUMN capabilities TEXT")
-                conn.commit()
-            except sqlite3.OperationalError:
-                # Column already exists
-                pass
-
-            # Create user_preferences table for global config persistence
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS user_preferences (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    model TEXT,
-                    agent TEXT,
-                    tools TEXT,
-                    memory_enabled INTEGER DEFAULT 0,
-                    updated_at TIMESTAMP NOT NULL
-                )
-            """)
-
-            # Create mcp_servers table for MCP server persistence
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS mcp_servers (
-                    name TEXT PRIMARY KEY,
-                    type TEXT NOT NULL,
-                    url TEXT,
-                    command TEXT,
-                    args TEXT,
-                    env TEXT,
-                    enabled INTEGER DEFAULT 1,
-                    created_at TIMESTAMP NOT NULL,
-                    updated_at TIMESTAMP NOT NULL
-                )
-            """)
-
-            conn.commit()
+    # -------------------------------------------------------------------------
+    # Chat Operations
+    # -------------------------------------------------------------------------
 
     def create_chat(
         self,
@@ -144,58 +171,28 @@ class ChatDatabase:
         agent_state: bytes = None,
     ) -> str:
         """Create a new chat and return its ID."""
+        now = datetime.now()
         chat_id = str(uuid.uuid4())
-        now = datetime.now().isoformat()
-        messages = messages or []
+        chat = ChatModel(
+            id=chat_id,
+            title=title,
+            created_at=now,
+            updated_at=now,
+            config=config,
+            messages=messages or [],
+            agent_state=agent_state,
+        )
 
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
-                INSERT INTO chats (id, title, created_at, updated_at, config, messages, agent_state)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    chat_id,
-                    title,
-                    now,
-                    now,
-                    json.dumps(config),
-                    json.dumps(messages),
-                    agent_state,
-                ),
-            )
-            conn.commit()
+        with self._session() as session:
+            session.add(chat)
+            session.commit()
 
         return chat_id
 
-    def get_chat(self, chat_id: str) -> Optional[Dict[str, Any]]:
+    def get_chat(self, chat_id: str) -> Optional[ChatModel]:
         """Get a specific chat by ID."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.execute(
-                """
-                SELECT * FROM chats WHERE id = ?
-            """,
-                (chat_id,),
-            )
-            row = cursor.fetchone()
-
-            if row:
-                result = {
-                    "id": row["id"],
-                    "title": row["title"],
-                    "createdAt": row["created_at"],
-                    "updatedAt": row["updated_at"],
-                    "config": json.loads(row["config"]),
-                    "messages": json.loads(row["messages"]),
-                }
-
-                # Include agent state if it exists
-                if row["agent_state"] is not None:
-                    result["agent_state"] = row["agent_state"]
-
-                return result
-            return None
+        with self._session() as session:
+            return session.get(ChatModel, chat_id)
 
     def update_chat(
         self,
@@ -206,431 +203,266 @@ class ChatDatabase:
         agent_state: bytes = None,
     ) -> bool:
         """Update an existing chat."""
-        with sqlite3.connect(self.db_path) as conn:
-            # First check if chat exists and get current values
-            conn.row_factory = sqlite3.Row
-            cursor = conn.execute(
-                "SELECT id, title, messages, agent_state FROM chats WHERE id = ?",
-                (chat_id,),
-            )
-            existing_row = cursor.fetchone()
-            if not existing_row:
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if not chat:
                 return False
 
-            # Build update query dynamically
-            updates = []
-            params = []
-
-            # Track whether we should update the timestamp
-            # Only update timestamp for meaningful content changes (not just config)
             should_update_timestamp = False
 
-            if title is not None:
-                existing_title = existing_row["title"]
-                if title != existing_title:
-                    updates.append("title = ?")
-                    params.append(title)
-                    should_update_timestamp = True
+            if title is not None and title != chat.title:
+                chat.title = title
+                should_update_timestamp = True
 
             if config is not None:
-                updates.append("config = ?")
-                params.append(json.dumps(config))
-                # Config changes alone don't update timestamp
+                chat.config = config
 
             if messages is not None:
-                # Compare with existing messages to see if they actually changed
-                existing_messages = json.loads(existing_row["messages"])
-                if messages != existing_messages:
-                    updates.append("messages = ?")
-                    params.append(json.dumps(messages))
-                    should_update_timestamp = True
+                chat.messages = messages
+                should_update_timestamp = True
 
             if agent_state is not None:
-                existing_agent_state = existing_row["agent_state"]
-                # Only update if agent_state actually changed
-                if agent_state != existing_agent_state:
-                    updates.append("agent_state = ?")
-                    params.append(agent_state)
-                    should_update_timestamp = True
+                chat.agent_state = agent_state
+                should_update_timestamp = True
 
-            # Only update timestamp if meaningful content changed
-            if updates and should_update_timestamp:
-                updates.append("updated_at = ?")
-                params.append(datetime.now().isoformat())
+            if should_update_timestamp:
+                chat.updated_at = datetime.now()
 
-            if updates:
-                params.append(chat_id)
-                # Reset row_factory for execute
-                conn.row_factory = None
-                conn.execute(
-                    f"""
-                    UPDATE chats SET {", ".join(updates)} WHERE id = ?
-                """,
-                    params,
-                )
-                conn.commit()
-
+            session.add(chat)
+            session.commit()
             return True
 
     def delete_chat(self, chat_id: str) -> bool:
         """Delete a chat by ID."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
-            conn.commit()
-            return cursor.rowcount > 0
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if not chat:
+                return False
 
-    def reassign_plan_chat(self, old_chat_id: str, new_chat_id: str) -> int:
-        """Reassign all plans from one chat_id to another. Returns number of plans updated."""
-        if old_chat_id == new_chat_id:
-            return 0
-
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
-                "UPDATE plans SET chat_id = ?, updated_at = ? WHERE chat_id = ?",
-                (new_chat_id, datetime.now().isoformat(), old_chat_id),
-            )
-            conn.commit()
-            return cursor.rowcount
+            session.delete(chat)
+            session.commit()
+            return True
 
     def list_chats(
-        self, limit: int = 50, offset: int = 0, search: str = None
-    ) -> List[Dict[str, Any]]:
-        """List chat summaries ordered by last updated, optionally filtered by search query."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        search: str = None,
+    ) -> List[ChatSummaryModel]:
+        """List chat summaries ordered by last updated."""
+        with self._session() as session:
+            statement = select(ChatModel).order_by(ChatModel.updated_at.desc())
 
             if search:
-                # Search in title and message content
-                search_pattern = f"%{search}%"
-                cursor = conn.execute(
-                    """
-                    SELECT id, title, created_at, updated_at, messages
-                    FROM chats 
-                    WHERE title LIKE ? OR messages LIKE ?
-                    ORDER BY updated_at DESC 
-                    LIMIT ? OFFSET ?
-                """,
-                    (search_pattern, search_pattern, limit, offset),
-                )
-            else:
-                cursor = conn.execute(
-                    """
-                    SELECT id, title, created_at, updated_at, messages
-                    FROM chats 
-                    ORDER BY updated_at DESC 
-                    LIMIT ? OFFSET ?
-                """,
-                    (limit, offset),
+                # ChatModel.messages is structured JSON (list/dict), searching simple constraints textually
+                # might be tricky depending on DB. SQLite JSON is just text usually.
+                statement = statement.where(
+                    (
+                        ChatModel.title.contains(search)
+                        # Note: Filtering on JSON column needs cast or specific functions usually,
+                        # but pure text search on JSON column works in SQLite if treated as text.
+                        # SQLModel usually maps specialized types.
+                        # If this fails, we might need func.cast(ChatModel.messages, String).contains(search)
+                    )
                 )
 
-            chats = []
-            for row in cursor.fetchall():
-                messages = json.loads(row["messages"])
+            statement = statement.offset(offset).limit(limit)
+            chats = session.exec(statement).all()
+
+            results = []
+            for chat in chats:
+                messages = chat.messages or []
                 last_message = None
                 if messages:
-                    # Get the last user or assistant message content (truncated)
                     last_msg = messages[-1]
                     last_message = last_msg.get("content", "")[:100]
                     if len(last_msg.get("content", "")) > 100:
                         last_message += "..."
 
-                chats.append(
-                    {
-                        "id": row["id"],
-                        "title": row["title"],
-                        "createdAt": row["created_at"],
-                        "updatedAt": row["updated_at"],
-                        "messageCount": len(messages),
-                        "lastMessage": last_message,
-                    }
+                results.append(
+                    ChatSummaryModel(
+                        id=chat.id,
+                        title=chat.title,
+                        createdAt=chat.created_at.isoformat(),
+                        updatedAt=chat.updated_at.isoformat(),
+                        messageCount=len(messages),
+                        lastMessage=last_message,
+                    )
                 )
 
-            return chats
+            return results
 
     def get_chat_count(self, search: str = None) -> int:
-        """Get total number of chats, optionally filtered by search query."""
-        with sqlite3.connect(self.db_path) as conn:
+        """Get total number of chats."""
+        with self._session() as session:
+            statement = select(ChatModel)
             if search:
-                search_pattern = f"%{search}%"
-                cursor = conn.execute(
-                    "SELECT COUNT(*) FROM chats WHERE title LIKE ? OR messages LIKE ?",
-                    (search_pattern, search_pattern),
-                )
-            else:
-                cursor = conn.execute("SELECT COUNT(*) FROM chats")
-            return cursor.fetchone()[0]
+                # Simplified search logic matching list_chats
+                statement = statement.where(ChatModel.title.contains(search))
+            return len(session.exec(statement).all())
 
-    # Plan management methods
+    def reassign_plan_chat(self, old_chat_id: str, new_chat_id: str) -> int:
+        """Reassign all plans from one chat_id to another."""
+        if old_chat_id == new_chat_id:
+            return 0
+
+        with self._session() as session:
+            statement = select(PlanModel).where(PlanModel.chat_id == old_chat_id)
+            plans = session.exec(statement).all()
+
+            for plan in plans:
+                plan.chat_id = new_chat_id
+                plan.updated_at = datetime.now()
+                session.add(plan)
+
+            session.commit()
+            return len(plans)
+
+    # -------------------------------------------------------------------------
+    # Plan Operations
+    # -------------------------------------------------------------------------
+
     def create_plan(
-        self, chat_id: str, objective: str, tasks: List[Dict[str, Any]] = None
-    ) -> int:
-        """Create or update the single plan for a chat and return its ID."""
-        now = datetime.now().isoformat()
-        tasks = tasks or []
-
-        with sqlite3.connect(self.db_path) as conn:
-            # Check for existing plan
-            cursor = conn.execute(
-                "SELECT id FROM plans WHERE chat_id = ? LIMIT 1", (chat_id,)
-            )
-            row = cursor.fetchone()
-
-            if row:
-                plan_id = row[0]
-                # Update existing plan
-                conn.execute(
-                    """
-                    UPDATE plans SET objective = ?, updated_at = ? WHERE id = ?
-                """,
-                    (objective, now, plan_id),
-                )
-
-                # Delete existing tasks to overwrite with new ones (since we are "creating/updating" the plan structure)
-                # Note: This resets history of phases if completely re-called.
-                # Assuming this is desired behavior for "Creating/Updating" a plan as a whole.
-                conn.execute("DELETE FROM tasks WHERE plan_id = ?", (plan_id,))
-            else:
-                # Create new plan
-                cursor = conn.execute(
-                    """
-                    INSERT INTO plans (chat_id, objective, created_at, updated_at)
-                    VALUES (?, ?, ?, ?)
-                """,
-                    (chat_id, objective, now, now),
-                )
-                plan_id = cursor.lastrowid
-
-            # Create the tasks/phases
-            for task in tasks:
-                conn.execute(
-                    """
-                    INSERT INTO tasks (plan_id, number, description, status, note, capabilities, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        plan_id,
-                        task.get("number"),
-                        task.get("description"),
-                        task.get("status", "pending"),
-                        task.get("note"),
-                        task.get("capabilities"),
-                        now,
-                        now,
-                    ),
-                )
-
-            conn.commit()
-            return plan_id
-
-    def get_plan(self, chat_id: str) -> Optional[Dict[str, Any]]:
-        """Get the plan for a specific chat."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-
-            # Get the plan
-            cursor = conn.execute(
-                """
-                SELECT * FROM plans WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1
-            """,
-                (chat_id,),
-            )
-            plan_row = cursor.fetchone()
-
-            if not plan_row:
-                return None
-
-            # Get the tasks for this plan
-            cursor = conn.execute(
-                """
-                SELECT * FROM tasks WHERE plan_id = ? ORDER BY number
-            """,
-                (plan_row["id"],),
-            )
-            task_rows = cursor.fetchall()
-
-            tasks = []
-            for task_row in task_rows:
-                tasks.append(
-                    {
-                        "id": task_row["id"],
-                        "number": task_row["number"],
-                        "description": task_row["description"],
-                        "status": task_row["status"],
-                        "note": task_row["note"],
-                        "capabilities": task_row["capabilities"],
-                        "created_at": task_row["created_at"],
-                        "updated_at": task_row["updated_at"],
-                    }
-                )
-
-            return {
-                "id": plan_row["id"],
-                "chat_id": plan_row["chat_id"],
-                "objective": plan_row["objective"],
-                "tasks": tasks,
-                "created_at": plan_row["created_at"],
-                "updated_at": plan_row["updated_at"],
-            }
-
-    def get_plan_by_id(self, plan_id: int) -> Optional[Dict[str, Any]]:
-        """Fetch a plan and its tasks by plan ID."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-
-            cursor = conn.execute(
-                "SELECT * FROM plans WHERE id = ?",
-                (plan_id,),
-            )
-            plan_row = cursor.fetchone()
-            if not plan_row:
-                return None
-
-            task_cursor = conn.execute(
-                "SELECT * FROM tasks WHERE plan_id = ? ORDER BY number",
-                (plan_id,),
-            )
-            task_rows = task_cursor.fetchall()
-            tasks = [
-                {
-                    "id": task_row["id"],
-                    "number": task_row["number"],
-                    "description": task_row["description"],
-                    "status": task_row["status"],
-                    "note": task_row["note"],
-                    "capabilities": task_row["capabilities"],
-                    "created_at": task_row["created_at"],
-                    "updated_at": task_row["updated_at"],
-                }
-                for task_row in task_rows
-            ]
-
-            return {
-                "id": plan_row["id"],
-                "chat_id": plan_row["chat_id"],
-                "objective": plan_row["objective"],
-                "tasks": tasks,
-                "created_at": plan_row["created_at"],
-                "updated_at": plan_row["updated_at"],
-            }
-
-    def list_plans(
-        self, chat_id: str, limit: Optional[int] = None
-    ) -> List[Dict[str, Any]]:
-        """Return all plans for a chat ordered by newest first."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-
-            query = "SELECT * FROM plans WHERE chat_id = ? ORDER BY created_at DESC"
-            params: List[Any] = [chat_id]
-            if limit is not None:
-                query += " LIMIT ?"
-                params.append(limit)
-
-            cursor = conn.execute(query, tuple(params))
-            plan_rows = cursor.fetchall()
-            plans: List[Dict[str, Any]] = []
-
-            for plan_row in plan_rows:
-                task_cursor = conn.execute(
-                    "SELECT * FROM tasks WHERE plan_id = ? ORDER BY number",
-                    (plan_row["id"],),
-                )
-                task_rows = task_cursor.fetchall()
-                tasks = [
-                    {
-                        "id": task_row["id"],
-                        "number": task_row["number"],
-                        "description": task_row["description"],
-                        "status": task_row["status"],
-                        "note": task_row["note"],
-                        "capabilities": task_row["capabilities"],
-                        "created_at": task_row["created_at"],
-                        "updated_at": task_row["updated_at"],
-                    }
-                    for task_row in task_rows
-                ]
-
-                plans.append(
-                    {
-                        "id": plan_row["id"],
-                        "chat_id": plan_row["chat_id"],
-                        "objective": plan_row["objective"],
-                        "tasks": tasks,
-                        "created_at": plan_row["created_at"],
-                        "updated_at": plan_row["updated_at"],
-                    }
-                )
-
-            return plans
-
-    def update_plan(
         self,
         chat_id: str,
-        objective: str = None,
+        objective: str,
         tasks: List[Dict[str, Any]] = None,
-        plan_id: Optional[int] = None,
-    ) -> bool:
-        """Update an existing plan, optionally targeting a specific plan_id."""
-        now = datetime.now().isoformat()
+    ) -> int:
+        """Create or update the single plan for a chat and return its ID."""
+        now = datetime.now()
+        tasks = tasks or []
 
-        with sqlite3.connect(self.db_path) as conn:
-            # Check if plan exists
-            if plan_id is not None:
-                cursor = conn.execute(
-                    "SELECT id FROM plans WHERE id = ? AND chat_id = ?",
-                    (plan_id, chat_id),
-                )
+        with self._session() as session:
+            # Check for existing plan
+            statement = select(PlanModel).where(PlanModel.chat_id == chat_id).limit(1)
+            existing_plan = session.exec(statement).first()
+
+            if existing_plan:
+                plan_id = existing_plan.id
+                existing_plan.objective = objective
+                existing_plan.updated_at = now
+                session.add(existing_plan)
+
+                # Delete existing tasks
+                task_stmt = select(TaskModel).where(TaskModel.plan_id == plan_id)
+                for task in session.exec(task_stmt).all():
+                    session.delete(task)
             else:
-                cursor = conn.execute(
-                    "SELECT id FROM plans WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1",
-                    (chat_id,),
+                # Create new plan
+                new_plan = PlanModel(
+                    chat_id=chat_id,
+                    objective=objective,
+                    created_at=now,
+                    updated_at=now,
                 )
-            plan_row = cursor.fetchone()
+                session.add(new_plan)
+                session.commit()
+                session.refresh(new_plan)
+                plan_id = new_plan.id
 
-            if plan_row:
-                plan_id = plan_row[0]
+            # Create tasks
+            for task_data in tasks:
+                task = TaskModel(
+                    plan_id=plan_id,
+                    number=task_data.get("number"),
+                    description=task_data.get("description"),
+                    status=task_data.get("status", "pending"),
+                    note=task_data.get("note"),
+                    capabilities=task_data.get("capabilities"),
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(task)
 
-                # Update objective if provided
-                if objective is not None:
-                    conn.execute(
-                        """
-                        UPDATE plans SET objective = ?, updated_at = ? WHERE id = ?
-                    """,
-                        (objective, now, plan_id),
-                    )
+            session.commit()
+            return plan_id
 
-                # Update tasks if provided
-                if tasks is not None:
-                    # Delete existing tasks
-                    conn.execute("DELETE FROM tasks WHERE plan_id = ?", (plan_id,))
+    def get_plan(self, chat_id: str) -> Optional[PlanModel]:
+        """Get the latest plan for a specific chat."""
+        with self._session() as session:
+            statement = (
+                select(PlanModel)
+                .where(PlanModel.chat_id == chat_id)
+                .order_by(PlanModel.created_at.desc())
+                .options(selectinload(PlanModel.tasks))
+                .limit(1)
+            )
+            plan = session.exec(statement).first()
+            if not plan:
+                return None
 
-                    # Insert new tasks
-                    for task in tasks:
-                        conn.execute(
-                            """
-                            INSERT INTO tasks (plan_id, number, description, status, note, capabilities, created_at, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                            (
-                                plan_id,
-                                task.get("number"),
-                                task.get("description"),
-                                task.get("status", "pending"),
-                                task.get("note"),
-                                task.get("capabilities"),
-                                now,
-                                now,
-                            ),
-                        )
+            # Ensure tasks are sorted (SQLModel might not guarantee order in relationship list)
+            plan.tasks.sort(key=lambda t: t.number)
+            return plan
 
-                conn.commit()
-                return True
-            else:
-                # Create new plan if it doesn't exist
-                if objective is not None and tasks is not None:
-                    self.create_plan(chat_id, objective, tasks)
-                    return True
+    def get_plan_by_id(self, plan_id: int) -> Optional[PlanModel]:
+        """Fetch a plan and its tasks by plan ID."""
+        with self._session() as session:
+            statement = (
+                select(PlanModel)
+                .where(PlanModel.id == plan_id)
+                .options(selectinload(PlanModel.tasks))
+            )
+            plan = session.exec(statement).first()
+            if not plan:
+                return None
+
+            plan.tasks.sort(key=lambda t: t.number)
+            return plan
+
+    def list_plans(
+        self,
+        chat_id: str,
+        limit: Optional[int] = None,
+    ) -> List[PlanModel]:
+        """Return all plans for a chat ordered by newest first."""
+        with self._session() as session:
+            statement = (
+                select(PlanModel)
+                .where(PlanModel.chat_id == chat_id)
+                .order_by(PlanModel.created_at.desc())
+                .options(selectinload(PlanModel.tasks))
+            )
+            if limit is not None:
+                statement = statement.limit(limit)
+
+            plans = session.exec(statement).all()
+            for plan in plans:
+                plan.tasks.sort(key=lambda t: t.number)
+            return plans
+
+    def update_plan_objective(self, plan_id: int, objective: str) -> bool:
+        """Update the objective of a plan."""
+        with self._session() as session:
+            plan = session.get(PlanModel, plan_id)
+            if not plan:
                 return False
+
+            plan.objective = objective
+            plan.updated_at = datetime.now()
+            session.add(plan)
+            session.commit()
+            return True
+
+    def create_task(self, plan_id: int, description: str, number: int) -> Optional[int]:
+        """Add a new task to a plan."""
+        now = datetime.now()
+        with self._session() as session:
+            plan = session.get(PlanModel, plan_id)
+            if not plan:
+                return None
+
+            task = TaskModel(
+                plan_id=plan_id,
+                description=description,
+                number=number,
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(task)
+            session.commit()
+            session.refresh(task)
+            return task.id
 
     def update_task_status(
         self,
@@ -640,75 +472,109 @@ class ChatDatabase:
         note: str = None,
         plan_id: Optional[int] = None,
     ) -> bool:
-        """Update the status and optionally note of a specific task for a plan."""
-        now = datetime.now().isoformat()
+        """Update the status and optionally note of a specific task."""
+        now = datetime.now()
 
-        with sqlite3.connect(self.db_path) as conn:
-            # Get the plan ID for this chat
+        with self._session() as session:
+            # Find the plan
             if plan_id is not None:
-                cursor = conn.execute(
-                    "SELECT id FROM plans WHERE id = ? AND chat_id = ?",
-                    (plan_id, chat_id),
-                )
+                plan = session.get(PlanModel, plan_id)
+                if plan and plan.chat_id != chat_id:
+                    plan = None
             else:
-                cursor = conn.execute(
-                    """
-                    SELECT id FROM plans WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1
-                """,
-                    (chat_id,),
+                statement = (
+                    select(PlanModel)
+                    .where(PlanModel.chat_id == chat_id)
+                    .order_by(PlanModel.created_at.desc())
+                    .limit(1)
                 )
-            plan_row = cursor.fetchone()
+                plan = session.exec(statement).first()
 
-            if not plan_row:
+            if not plan:
                 return False
 
-            plan_id = plan_row[0]
-
-            # Update the task
-            update_fields = ["status = ?", "updated_at = ?"]
-            params = [status, now]
-
-            if note is not None:
-                update_fields.append("note = ?")
-                params.append(note)
-
-            params.extend([plan_id, task_number])
-
-            cursor = conn.execute(
-                f"""
-                UPDATE tasks SET {", ".join(update_fields)}
-                WHERE plan_id = ? AND number = ?
-            """,
-                params,
+            # Find and update the task
+            task_stmt = select(TaskModel).where(
+                (TaskModel.plan_id == plan.id) & (TaskModel.number == task_number)
             )
+            task = session.exec(task_stmt).first()
 
-            conn.commit()
-            return cursor.rowcount > 0
+            if not task:
+                return False
+
+            task.status = status
+            task.updated_at = now
+            if note is not None:
+                task.note = note
+
+            session.add(task)
+            session.commit()
+            return True
+
+    def update_task(
+        self,
+        task_id: int,
+        status: str = None,
+        description: str = None,
+        note: str = None,
+        capabilities: str = None,
+    ) -> bool:
+        """Update a task's details."""
+        with self._session() as session:
+            task = session.get(TaskModel, task_id)
+            if not task:
+                return False
+
+            if status:
+                task.status = status
+            if description:
+                task.description = description
+            if note:
+                task.note = note
+            if capabilities:
+                task.capabilities = capabilities
+
+            task.updated_at = datetime.now()
+            session.add(task)
+            session.commit()
+            return True
+
+    def delete_task(self, task_id: int) -> bool:
+        """Delete a task."""
+        with self._session() as session:
+            task = session.get(TaskModel, task_id)
+            if not task:
+                return False
+            session.delete(task)
+            session.commit()
+            return True
 
     def delete_plan(self, chat_id: str) -> bool:
         """Delete the plan for a specific chat."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("DELETE FROM plans WHERE chat_id = ?", (chat_id,))
-            conn.commit()
-            return cursor.rowcount > 0
+        with self._session() as session:
+            statement = select(PlanModel).where(PlanModel.chat_id == chat_id)
+            plans = session.exec(statement).all()
 
-    # User preferences methods
-    def get_user_preferences(self) -> Optional[Dict[str, Any]]:
+            if not plans:
+                return False
+
+            for plan in plans:
+                session.delete(plan)
+
+            session.commit()
+            return True
+
+    # -------------------------------------------------------------------------
+    # User Preferences Operations
+    # -------------------------------------------------------------------------
+
+    def get_user_preferences(self) -> Optional[UserPreferencesModel]:
         """Get user preferences from the database."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.execute("SELECT * FROM user_preferences WHERE id = 1")
-            row = cursor.fetchone()
-
-            if row:
-                return {
-                    "model": row["model"],
-                    "agent": row["agent"],
-                    "tools": json.loads(row["tools"]) if row["tools"] else [],
-                    "memory_enabled": bool(row["memory_enabled"]),
-                    "updated_at": row["updated_at"],
-                }
-            return None
+        with self._session() as session:
+            prefs = session.get(UserPreferencesModel, 1)
+            # Handle missing preferences by returning None or empty model?
+            # Consumers expect object or None.
+            return prefs
 
     def save_user_preferences(
         self,
@@ -716,158 +582,140 @@ class ChatDatabase:
         agent: str = None,
         tools: List[str] = None,
         memory_enabled: bool = None,
+        sandbox_enabled: bool = None,
+        sandbox_volumes: List[str] = None,
     ) -> bool:
         """Save user preferences to the database."""
-        now = datetime.now().isoformat()
+        now = datetime.now()
 
-        with sqlite3.connect(self.db_path) as conn:
-            # Check if preferences exist
-            cursor = conn.execute("SELECT id FROM user_preferences WHERE id = 1")
-            exists = cursor.fetchone() is not None
+        with self._session() as session:
+            prefs = session.get(UserPreferencesModel, 1)
 
-            if exists:
-                # Update existing preferences
-                updates = []
-                params = []
-
+            if prefs:
+                # Update existing
                 if model is not None:
-                    updates.append("model = ?")
-                    params.append(model)
-
+                    prefs.model = model
                 if agent is not None:
-                    updates.append("agent = ?")
-                    params.append(agent)
-
+                    prefs.agent = agent
                 if tools is not None:
-                    updates.append("tools = ?")
-                    params.append(json.dumps(tools))
-
+                    prefs.tools = tools
                 if memory_enabled is not None:
-                    updates.append("memory_enabled = ?")
-                    params.append(1 if memory_enabled else 0)
-
-                if updates:
-                    updates.append("updated_at = ?")
-                    params.append(now)
-                    params.append(1)  # id = 1
-
-                    conn.execute(
-                        f"""
-                        UPDATE user_preferences SET {", ".join(updates)} WHERE id = ?
-                    """,
-                        params,
-                    )
+                    prefs.memory_enabled = memory_enabled
+                if sandbox_enabled is not None:
+                    prefs.sandbox_enabled = sandbox_enabled
+                if sandbox_volumes is not None:
+                    prefs.sandbox_volumes = sandbox_volumes
+                prefs.updated_at = now
             else:
-                # Insert new preferences
-                conn.execute(
-                    """
-                    INSERT INTO user_preferences (id, model, agent, tools, memory_enabled, updated_at)
-                    VALUES (1, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        model,
-                        agent,
-                        json.dumps(tools) if tools is not None else None,
-                        1 if memory_enabled else 0,
-                        now,
-                    ),
+                # Create new
+                prefs = UserPreferencesModel(
+                    id=1,
+                    model=model,
+                    agent=agent,
+                    tools=tools,
+                    memory_enabled=memory_enabled
+                    if memory_enabled is not None
+                    else False,
+                    sandbox_enabled=sandbox_enabled
+                    if sandbox_enabled is not None
+                    else True,
+                    sandbox_volumes=sandbox_volumes,
+                    updated_at=now,
                 )
 
-            conn.commit()
+            session.add(prefs)
+            session.commit()
             return True
 
-    # MCP server methods
-    def get_mcp_servers(self) -> Dict[str, Any]:
+    # -------------------------------------------------------------------------
+    # MCP Server Operations
+    # -------------------------------------------------------------------------
+
+    def get_mcp_servers(self) -> List[MCPServerModel]:
         """Get all MCP servers from the database."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.execute("SELECT * FROM mcp_servers")
-            rows = cursor.fetchall()
-
-            urls = {}
-            stdio = {}
-            enabled = {}
-
-            for row in rows:
-                name = row["name"]
-                enabled[name] = bool(row["enabled"])
-
-                if row["type"] == "url":
-                    urls[name] = row["url"]
-                elif row["type"] == "stdio":
-                    stdio_params = {"command": row["command"]}
-                    if row["args"]:
-                        stdio_params["args"] = json.loads(row["args"])
-                    if row["env"]:
-                        stdio_params["env"] = json.loads(row["env"])
-                    stdio[name] = stdio_params
-
-            return {"urls": urls, "stdio": stdio, "enabled": enabled}
+        with self._session() as session:
+            statement = select(MCPServerModel)
+            servers = session.exec(statement).all()
+            return servers
 
     def add_mcp_server(
-        self, name: str, url: str = None, stdio_params: Dict[str, Any] = None
+        self,
+        name: str,
+        config: Dict[str, Any],
+        enabled: bool = True,
     ) -> bool:
-        """Add or update an MCP server."""
-        now = datetime.now().isoformat()
-
-        with sqlite3.connect(self.db_path) as conn:
-            # Delete existing server if it exists
-            conn.execute("DELETE FROM mcp_servers WHERE name = ?", (name,))
-
-            if url:
-                # URL server
-                conn.execute(
-                    """
-                    INSERT INTO mcp_servers (name, type, url, enabled, created_at, updated_at)
-                    VALUES (?, 'url', ?, 1, ?, ?)
-                """,
-                    (name, url, now, now),
-                )
-            elif stdio_params:
-                # Stdio server
-                conn.execute(
-                    """
-                    INSERT INTO mcp_servers
-                    (name, type, command, args, env, enabled, created_at, updated_at)
-                    VALUES (?, 'stdio', ?, ?, ?, 1, ?, ?)
-                """,
-                    (
-                        name,
-                        stdio_params.get("command"),
-                        json.dumps(stdio_params.get("args"))
-                        if stdio_params.get("args")
-                        else None,
-                        json.dumps(stdio_params.get("env"))
-                        if stdio_params.get("env")
-                        else None,
-                        now,
-                        now,
-                    ),
-                )
-            else:
+        """Add a new MCP server configuration."""
+        now = datetime.now()
+        with self._session() as session:
+            if session.get(MCPServerModel, name):
                 return False
 
-            conn.commit()
+            server = MCPServerModel(
+                name=name,
+                type=config.get("type", "stdio"),
+                url=config.get("url"),
+                command=config.get("command"),
+                args=config.get("args"),
+                env=config.get("env"),
+                enabled=enabled,
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(server)
+            session.commit()
+            return True
+
+    def update_mcp_server(
+        self, name: str, config: Dict[str, Any] = None, enabled: bool = None
+    ) -> bool:
+        """Update an existing MCP server configuration."""
+        with self._session() as session:
+            server = session.get(MCPServerModel, name)
+            if not server:
+                return False
+
+            if config:
+                if "type" in config:
+                    server.type = config["type"]
+                if "url" in config:
+                    server.url = config["url"]
+                if "command" in config:
+                    server.command = config["command"]
+                if "args" in config:
+                    server.args = config["args"]
+                if "env" in config:
+                    server.env = config["env"]
+
+            if enabled is not None:
+                server.enabled = enabled
+
+            server.updated_at = datetime.now()
+            session.add(server)
+            session.commit()
             return True
 
     def remove_mcp_server(self, name: str) -> bool:
-        """Remove an MCP server."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("DELETE FROM mcp_servers WHERE name = ?", (name,))
-            conn.commit()
-            return cursor.rowcount > 0
+        """Remove an MCP server configuration."""
+        with self._session() as session:
+            server = session.get(MCPServerModel, name)
+            if not server:
+                return False
+            session.delete(server)
+            session.commit()
+            return True
 
     def set_mcp_server_enabled(self, name: str, enabled: bool) -> bool:
         """Enable or disable an MCP server."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
-                """
-                UPDATE mcp_servers SET enabled = ?, updated_at = ? WHERE name = ?
-            """,
-                (1 if enabled else 0, datetime.now().isoformat(), name),
-            )
-            conn.commit()
-            return cursor.rowcount > 0
+        with self._session() as session:
+            server = session.get(MCPServerModel, name)
+            if not server:
+                return False
+
+            server.enabled = enabled
+            server.updated_at = datetime.now()
+            session.add(server)
+            session.commit()
+            return True
 
 
 # Global database instance
@@ -878,9 +726,6 @@ def get_database() -> ChatDatabase:
     """Get the global database instance."""
     global _db_instance
     if _db_instance is None:
-        # Use environment variable for Docker, default to chats.db for local dev
-        import os
-
         db_path = os.getenv("CHATS_DB_PATH", "chats.db")
         _db_instance = ChatDatabase(db_path)
     return _db_instance
@@ -891,13 +736,9 @@ def generate_chat_title(first_message: str, max_length: int = 50) -> str:
     if not first_message.strip():
         return "New Chat"
 
-    # Clean and truncate the message
     title = first_message.strip()
-
-    # Remove newlines and extra spaces
     title = " ".join(title.split())
 
-    # Truncate if too long
     if len(title) > max_length:
         title = title[: max_length - 3] + "..."
 

@@ -30,6 +30,10 @@ async def get_config(request: Request) -> JSONResponse:
     db = get_database()
     user_prefs = db.get_user_preferences()
 
+    # Determine sandbox settings (DB prefs override CONFIG if present)
+    sandbox_enabled = getattr(CONFIG, "sandbox_enabled", False)
+    sandbox_volumes = CONFIG.sandbox_volumes or []
+
     data = {
         "title": CONFIG.title,
         "models": CONFIG.model_options,
@@ -38,18 +42,19 @@ async def get_config(request: Request) -> JSONResponse:
         "defaultTools": [t for t in CONFIG.default_tools if t != "SkillTool"],
         "codeTag": CONFIG.code_tag,
         "userId": CONFIG.user_id,
-        # Include global sandbox configuration
-        "globalSandboxVolumes": CONFIG.sandbox_volumes or [],
-        "sandboxEnabled": getattr(CONFIG, "sandbox_enabled", False),
+        "globalSandboxVolumes": sandbox_volumes,
+        "sandboxEnabled": sandbox_enabled,
     }
 
     # Add user preferences if they exist
     if user_prefs:
         data["userPreferences"] = {
-            "model": user_prefs["model"],
-            "agent": user_prefs["agent"],
-            "tools": user_prefs["tools"],
-            "memory_enabled": user_prefs["memory_enabled"],
+            "model": user_prefs.model,
+            "agent": user_prefs.agent,
+            "tools": user_prefs.tools,
+            "memory_enabled": user_prefs.memory_enabled,
+            "sandbox_enabled": user_prefs.sandbox_enabled,
+            "sandbox_volumes": user_prefs.sandbox_volumes,
         }
 
     return JSONResponse(data)
@@ -63,7 +68,9 @@ async def save_preferences(request: Request) -> JSONResponse:
         "model": str (optional),
         "agent": str (optional),
         "tools": list (optional),
-        "memory_enabled": bool (optional)
+        "memory_enabled": bool (optional),
+        "sandbox_enabled": bool (optional),
+        "sandbox_volumes": list (optional)
     }
 
     Returns:
@@ -75,10 +82,17 @@ async def save_preferences(request: Request) -> JSONResponse:
     agent = data.get("agent")
     tools = data.get("tools")
     memory_enabled = data.get("memory_enabled")
+    sandbox_enabled = data.get("sandbox_enabled")
+    sandbox_volumes = data.get("sandbox_volumes")
 
     db = get_database()
     success = db.save_user_preferences(
-        model=model, agent=agent, tools=tools, memory_enabled=memory_enabled
+        model=model,
+        agent=agent,
+        tools=tools,
+        memory_enabled=memory_enabled,
+        sandbox_enabled=sandbox_enabled,
+        sandbox_volumes=sandbox_volumes,
     )
 
     if success:
