@@ -72,7 +72,7 @@ Unlike most agents, **SUZENT** features dual workspaces: a cross-session workspa
 
 ### **NATIVE SETUP (RECOMMENDED)**
 
-The fastest path to getting started. Requires **Python 3.12+**, **Node.js 18+**, and **[uv](https://docs.astral.sh/uv/)**.
+The fastest path to getting started. Requires **Python 3.12+**, **[Node.js 18+](https://nodejs.org/en/download)**, and **[uv](https://docs.astral.sh/uv/)**.
 
 ```bash
 # 1. CLONE YOUR NEW CO-WORKER
