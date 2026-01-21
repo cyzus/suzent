@@ -45,8 +45,19 @@ all = [
 ]
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
 markers = [
     "sandbox: marks tests that require microsandbox server (deselect with '-m \"not sandbox\"')",
+    "integration: marks tests that require external services",
+    "slow: marks tests that take significant time to run",
+    "stress: marks stress/load tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
 ]
 
 

@@ -1,32 +1,41 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+
+type SidebarTab = 'chats' | 'config';
 
 interface SidebarProps {
-  activeTab: 'chats' | 'config';
-  onTabChange: (t: 'chats' | 'config') => void;
+  activeTab: SidebarTab;
+  onTabChange: (tab: SidebarTab) => void;
   chatsContent: React.ReactNode;
   configContent: React.ReactNode;
   isOpen?: boolean;
+  onOpenSettings: () => void;
   onClose?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({
+const TAB_LABELS: Record<SidebarTab, string> = {
+  chats: 'Chats',
+  config: 'Config'
+};
+
+export function Sidebar({
   activeTab,
   onTabChange,
   chatsContent,
   configContent,
   isOpen = false,
+  onOpenSettings,
   onClose
-}) => {
-  const [animateContent, setAnimateContent] = React.useState(false);
-  const [mountedTabs, setMountedTabs] = React.useState<Set<'chats' | 'config'>>(() => new Set(['chats']));
+}: SidebarProps): React.ReactElement {
+  const [animateContent, setAnimateContent] = useState(false);
+  const [mountedTabs, setMountedTabs] = useState<Set<SidebarTab>>(() => new Set(['chats']));
 
-  React.useEffect(() => {
+  useEffect(() => {
     setAnimateContent(true);
     const timeout = window.setTimeout(() => setAnimateContent(false), 200);
     return () => window.clearTimeout(timeout);
   }, [activeTab]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     setMountedTabs(prev => {
       if (prev.has(activeTab)) return prev;
       const next = new Set(prev);
@@ -34,17 +43,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       return next;
     });
   }, [activeTab]);
-
-  const getTabLabel = (tab: string) => {
-    switch (tab) {
-      case 'chats':
-        return 'Chats';
-      case 'config':
-        return 'Settings';
-      default:
-        return tab;
-    }
-  };
 
   return (
     <>
@@ -89,15 +87,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </svg>
         </div>
         <nav className="flex border-b-3 border-brutal-black">
-          {['chats', 'config'].map(tab => {
+          {(['chats', 'config'] as const).map(tab => {
             const active = activeTab === tab;
             return (
               <button
                 key={tab}
-                onClick={() => onTabChange(tab as any)}
+                onClick={() => onTabChange(tab)}
                 className={`flex-1 py-3 text-xs font-bold uppercase relative transition-all duration-200 ${active ? 'bg-brutal-black text-white' : 'bg-white text-brutal-black hover:bg-brutal-yellow border-r-3 border-brutal-black last:border-r-0'}`}
               >
-                {getTabLabel(tab)}
+                {TAB_LABELS[tab]}
               </button>
             );
           })}
@@ -112,6 +110,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className={`${activeTab === 'config' ? '' : 'hidden'} h-full overflow-y-auto scrollbar-thin p-4 space-y-4`} aria-hidden={activeTab !== 'config'}>
             {mountedTabs.has('config') ? configContent : null}
           </div>
+        </div>
+
+        {/* User / Global Settings - Bottom Stick */}
+        <div className="border-t-3 border-brutal-black bg-white p-3 md:p-4 sticky bottom-0 z-20">
+          <button
+            onClick={onOpenSettings}
+            className="w-full flex items-center gap-3 p-3 bg-neutral-100 hover:bg-brutal-yellow border-2 border-brutal-black transition-colors group text-left"
+          >
+            <div className="w-8 h-8 rounded-full bg-brutal-black flex items-center justify-center text-white shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="font-bold text-sm truncate uppercase tracking-tight">ADMIN USER</span>
+              <span className="text-xs text-neutral-600 font-mono truncate">Manage Keys</span>
+            </div>
+            <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </div>
+          </button>
         </div>
       </aside>
     </>

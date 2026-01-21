@@ -9,6 +9,7 @@ interface ChatContextValue {
   updateLastUserMessageImages: (images: any[], chatId?: string | null) => void;
   updateAssistantStreaming: (delta: string, chatId?: string | null) => void;
   backendConfig: ConfigOptions | null;
+  refreshBackendConfig: () => Promise<void>;
   newAssistantMessage: (chatId?: string | null) => void;
   setStepInfo: (stepInfo: string, chatId?: string | null) => void;
   resetChat: () => void;
@@ -223,84 +224,83 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return title.length > 50 ? `${title.substring(0, 47)}...` : title;
   }, []);
 
-  // Fetch backend config once with retry logic
-  useEffect(() => {
-    let isMounted = true;
-    const fetchConfigWithRetry = async (attempt = 1, maxAttempts = 5) => {
-      try {
-        const res = await fetch('/api/config');
-        if (res.ok) {
-          const data: ConfigOptions = await res.json();
-          if (!isMounted) return;
+  // Fetch backend config with retry logic
+  const fetchConfigWithRetry = useCallback(async (attempt = 1, maxAttempts = 5) => {
+    try {
+      const res = await fetch('/api/config');
+      if (res.ok) {
+        const data: ConfigOptions = await res.json();
 
-          setBackendConfig(data);
-          // Align memory user id with backend-provided userId if present
-          try {
-            if (data.userId) {
-              // Lazy import to avoid circulars; memory hook standalone
-              const { useMemory } = await import('./useMemory');
-              useMemory.getState().setUserId(data.userId);
-            }
-          } catch (e) {
-            console.warn('Failed to set memory userId from backend config:', e);
+        setBackendConfig(data);
+        // Align memory user id with backend-provided userId if present
+        try {
+          if (data.userId) {
+            // Lazy import to avoid circulars; memory hook standalone
+            const { useMemory } = await import('./useMemory');
+            useMemory.getState().setUserId(data.userId);
           }
+        } catch (e) {
+          console.warn('Failed to set memory userId from backend config:', e);
+        }
 
-          // Use user preferences if available, otherwise use defaults
-          const firstConfig: ChatConfig = (data as any).userPreferences ? {
-            model: (data as any).userPreferences.model || data.models[0] || '',
-            agent: (data as any).userPreferences.agent || data.agents[0] || '',
-            tools: (data as any).userPreferences.tools || data.defaultTools || [],
+        // Use user preferences if available, otherwise use defaults
+        const firstConfig: ChatConfig = (data as any).userPreferences ? {
+          model: (data as any).userPreferences.model || data.models[0] || '',
+          agent: (data as any).userPreferences.agent || data.agents[0] || '',
+          tools: (data as any).userPreferences.tools || data.defaultTools || [],
+          memory_enabled: (data as any).userPreferences.memory_enabled,
+          sandbox_enabled: (data as any).userPreferences.sandbox_enabled ?? data.sandboxEnabled ?? true,
+          sandbox_volumes: (data as any).userPreferences.sandbox_volumes || [],
+          mcp_urls: []
+        } : {
+          model: data.models[0] || '',
+          agent: data.agents[0] || '',
+          tools: data.defaultTools || [],
+          mcp_urls: []
+        };
+
+        // Track saved preferences to avoid re-saving on initial load
+        if ((data as any).userPreferences) {
+          lastSavedPreferencesRef.current = {
+            model: (data as any).userPreferences.model,
+            agent: (data as any).userPreferences.agent,
+            tools: (data as any).userPreferences.tools,
             memory_enabled: (data as any).userPreferences.memory_enabled,
-            sandbox_enabled: (data as any).userPreferences.sandbox_enabled ?? data.sandboxEnabled ?? true,
-            sandbox_volumes: (data as any).userPreferences.sandbox_volumes || [],
-            mcp_urls: []
-          } : {
-            model: data.models[0] || '',
-            agent: data.agents[0] || '',
-            tools: data.defaultTools || [],
-            mcp_urls: []
+            sandbox_enabled: (data as any).userPreferences.sandbox_enabled,
+            sandbox_volumes: (data as any).userPreferences.sandbox_volumes
           };
-
-          // Track saved preferences to avoid re-saving on initial load
-          if ((data as any).userPreferences) {
-            lastSavedPreferencesRef.current = {
-              model: (data as any).userPreferences.model,
-              agent: (data as any).userPreferences.agent,
-              tools: (data as any).userPreferences.tools,
-              memory_enabled: (data as any).userPreferences.memory_enabled,
-              sandbox_enabled: (data as any).userPreferences.sandbox_enabled,
-              sandbox_volumes: (data as any).userPreferences.sandbox_volumes
-            };
-          }
-
-          setConfigState(firstConfig);
-          setConfigByChat(prev => ({ ...prev, [UNSAVED_CHAT_KEY]: firstConfig }));
-        } else if (attempt < maxAttempts) {
-          // Backend not ready, retry with exponential backoff
-          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-          console.log(`Backend not ready (${res.status}), retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`);
-          setTimeout(() => fetchConfigWithRetry(attempt + 1, maxAttempts), delay);
-        } else {
-          console.error('Failed to fetch config after', maxAttempts, 'attempts:', res.status, res.statusText);
         }
-      } catch (error) {
-        if (attempt < maxAttempts && isMounted) {
-          // Network error, retry with exponential backoff
-          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-          console.log(`Error fetching config, retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`);
-          setTimeout(() => fetchConfigWithRetry(attempt + 1, maxAttempts), delay);
-        } else {
-          console.error('Error fetching config after', maxAttempts, 'attempts:', error);
-        }
+
+        setConfigState(firstConfig);
+        setConfigByChat(prev => ({ ...prev, [UNSAVED_CHAT_KEY]: firstConfig }));
+      } else if (attempt < maxAttempts) {
+        // Backend not ready, retry with exponential backoff
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        console.log(`Backend not ready (${res.status}), retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`);
+        setTimeout(() => fetchConfigWithRetry(attempt + 1, maxAttempts), delay);
+      } else {
+        console.error('Failed to fetch config after', maxAttempts, 'attempts:', res.status, res.statusText);
       }
-    };
-
-    fetchConfigWithRetry();
-
-    return () => {
-      isMounted = false;
-    };
+    } catch (error) {
+      if (attempt < maxAttempts) {
+        // Network error, retry with exponential backoff
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        console.log(`Error fetching config, retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`);
+        setTimeout(() => fetchConfigWithRetry(attempt + 1, maxAttempts), delay);
+      } else {
+        console.error('Error fetching config after', maxAttempts, 'attempts:', error);
+      }
+    }
   }, []);
+
+  const refreshBackendConfig = useCallback(async () => {
+    await fetchConfigWithRetry();
+  }, [fetchConfigWithRetry]);
+
+  // Fetch backend config once on mount
+  useEffect(() => {
+    fetchConfigWithRetry();
+  }, [fetchConfigWithRetry]);
 
   const refreshChatList = useCallback(async (search?: string, attempt = 1, maxAttempts = 5) => {
     const isFirstLoad = !chatsLoadedRef.current;
@@ -896,6 +896,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updateLastUserMessageImages,
       updateAssistantStreaming,
       backendConfig,
+      refreshBackendConfig,
       newAssistantMessage,
       setStepInfo,
       resetChat,

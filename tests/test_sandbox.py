@@ -4,26 +4,35 @@ Sandbox Stability Tests
 
 Comprehensive tests to identify instability issues in the sandbox system.
 
-Run with: pytest tests/test_sandbox.py -v -s
-
 Prerequisites:
 - Microsandbox server running on localhost:7263
 - Run in WSL2 environment with KVM support
+
+Usage:
+  # Run only basic tests (fast)
+  pytest tests/test_sandbox.py -v -m "not stress and not slow"
+
+  # Run all sandbox tests
+  pytest tests/test_sandbox.py -v
+
+  # Skip sandbox tests entirely
+  pytest -v -m "not sandbox"
 """
 
+import concurrent.futures
+import threading
 import time
 import uuid
-import threading
-import concurrent.futures
 from typing import Tuple
+
 import pytest
 
 from suzent.sandbox import (
-    SandboxManager,
-    ExecutionResult,
-    RPCClient,
-    Language,
     Defaults,
+    ExecutionResult,
+    Language,
+    RPCClient,
+    SandboxManager,
     check_server_status,
 )
 
@@ -52,9 +61,9 @@ def manager():
 
 
 @pytest.fixture
-def session_id():
+def session_id(unique_id):
     """Generate unique session ID for each test."""
-    return f"test-{uuid.uuid4().hex[:12]}"
+    return unique_id
 
 
 # =============================================================================
@@ -232,6 +241,7 @@ class TestStateSynchronization:
 # =============================================================================
 
 
+@pytest.mark.slow
 class TestConcurrency:
     """Tests for concurrent access and race conditions."""
 
@@ -338,6 +348,8 @@ class TestConcurrency:
 # =============================================================================
 
 
+@pytest.mark.stress
+@pytest.mark.slow
 class TestStress:
     """Stress tests for stability under load."""
 

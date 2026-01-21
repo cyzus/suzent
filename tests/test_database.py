@@ -1,37 +1,14 @@
-"""
-Unit tests for SQLModel database layer.
-"""
-
-import os
-import tempfile
+"""Unit tests for SQLModel database layer."""
 
 import pytest
 
-from suzent.database import (
-    ChatDatabase,
-    ChatSummaryModel,
-    PlanModel,
-    UserPreferencesModel,
-)
+from suzent.database import ChatSummaryModel, PlanModel, UserPreferencesModel
 
 
 @pytest.fixture
-def db():
-    """Create a temporary database for testing."""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        db_path = f.name
-
-    database = ChatDatabase(db_path)
-    yield database
-
-    # Dispose engine to release file locks (Windows)
-    database.engine.dispose()
-
-    # Cleanup
-    try:
-        os.unlink(db_path)
-    except PermissionError:
-        pass  # Windows may still hold locks briefly
+def db(temp_db):
+    """Use shared database fixture."""
+    return temp_db
 
 
 class TestChatOperations:

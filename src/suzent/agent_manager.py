@@ -18,6 +18,7 @@ from mcp import StdioServerParameters
 
 from smolagents import CodeAgent, ToolCallingAgent, LiteLLMModel, MCPClient
 from smolagents.tools import Tool
+from suzent.core.provider_factory import get_enabled_models_from_db
 
 from suzent.config import CONFIG
 from suzent.logger import get_logger
@@ -179,9 +180,30 @@ def create_agent(
         ValueError: If an unknown agent type is specified.
     """
     # Extract configuration with CONFIG-based fallbacks
-    model_id = config.get("model") or (
-        CONFIG.model_options[0] if CONFIG.model_options else "gemini/gemini-2.5-pro"
-    )
+    # Extract configuration with CONFIG-based fallbacks
+    # Validate model is enabled
+    enabled_models = get_enabled_models_from_db()
+
+    if not enabled_models:
+        # Fallback to CONFIG defaults if DB check returns nothing (should fallback in helper, but double check)
+        if CONFIG.model_options:
+            enabled_models = CONFIG.model_options
+        else:
+            # Critical failure if no models available anywhere
+            raise ValueError(
+                "No LLM models are enabled. Please configure a provider in Settings."
+            )
+
+    model_id = config.get("model")
+
+    # Check if requested model is valid/enabled
+    if not model_id or model_id not in enabled_models:
+        fallback = enabled_models[0]
+        if model_id:
+            logger.warning(
+                f"Requested model '{model_id}' is not enabled. Falling back to '{fallback}'."
+            )
+        model_id = fallback
     agent_name = config.get("agent") or (
         CONFIG.agent_options[0] if CONFIG.agent_options else "CodeAgent"
     )
