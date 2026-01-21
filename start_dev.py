@@ -52,19 +52,26 @@ def stream_reader(prefix: str, stream, lock: threading.Lock):
     stream.close()
 
 
-def wait_for_backend(url: str = "http://localhost:8000", timeout: int = 30, check_interval: float = 0.5):
+def wait_for_backend(
+    url: str = "http://localhost:8000", timeout: int = 30, check_interval: float = 0.5
+):
     """Wait for the backend to be ready by polling a health endpoint."""
     print(f"Waiting for backend to be ready at {url}...")
     start_time = time.time()
     while time.time() - start_time < timeout:
         try:
             with urlopen(url, timeout=1) as response:
-                if response.status in (200, 404):  # 404 is fine, just means server is up
+                if response.status in (
+                    200,
+                    404,
+                ):  # 404 is fine, just means server is up
                     print("Backend is ready!")
                     return True
         except (URLError, OSError):
             time.sleep(check_interval)
-    print(f"Warning: Backend did not respond within {timeout}s, starting frontend anyway...")
+    print(
+        f"Warning: Backend did not respond within {timeout}s, starting frontend anyway..."
+    )
     return False
 
 

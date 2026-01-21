@@ -5,9 +5,7 @@ Sandbox-related API routes.
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from pathlib import Path
 
-from pathlib import Path
 from suzent.logger import get_logger
 from suzent.config import get_effective_volumes
 from suzent.tools.path_resolver import PathResolver
@@ -54,10 +52,11 @@ async def list_sandbox_files(request: Request) -> JSONResponse:
     chat_id = request.query_params.get("chat_id")
     raw_path = request.query_params.get("path", "/").strip()
     volumes_json = request.query_params.get("volumes")
-    
+
     override_volumes = None
     if volumes_json:
         import json
+
         try:
             override_volumes = json.loads(volumes_json)
         except Exception:
@@ -68,38 +67,38 @@ async def list_sandbox_files(request: Request) -> JSONResponse:
 
     try:
         resolver = _get_resolver_for_request(chat_id, override_volumes=override_volumes)
-        
+
         # Normalize request path
         request_path = raw_path.replace("\\", "/")
         if not request_path.startswith("/"):
             request_path = "/" + request_path
         if request_path != "/" and request_path.endswith("/"):
             request_path = request_path[:-1]
-            
+
         items = []
         virtual_children = set()
 
         # 1. Virtual directory listing logic (parents of mounts)
         # SandboxFileView expects us to list "mnt" if we have "/mnt/data" and we are at "/"
-        
+
         # Get all virtual roots
         roots = resolver.get_virtual_roots()  # List[Tuple[virtual_path, host_path]]
-        
+
         # Collect virtual directories that are children of current path
         # e.g. if path="/", and we have "/mnt/data", we need to list "mnt"
         # e.g. if path="/mnt", and we have "/mnt/data", we need to list "data"
-        
+
         parent_check_path = request_path if request_path == "/" else request_path + "/"
-        
+
         for v_path, _ in roots:
             if v_path.startswith(parent_check_path):
                 # It is a child (or grandchild) of current view
-                suffix = v_path[len(parent_check_path):]
+                suffix = v_path[len(parent_check_path) :]
                 if "/" in suffix:
                     child = suffix.split("/")[0]
                 else:
                     child = suffix
-                    
+
                 if child:
                     virtual_children.add(child)
 
@@ -107,30 +106,30 @@ async def list_sandbox_files(request: Request) -> JSONResponse:
             items.append({"name": child, "is_dir": True, "size": 0, "mtime": 0})
 
         # 2. Actual file listing
-        # Try to resolve to a real path. 
+        # Try to resolve to a real path.
         # Note: If we are at "/" or "/mnt" which are purely virtual (no mapped host path yet),
         # resolver.resolve() might fail or default to persistence.
         # We only want to list REAL files if the path corresponds to a valid mount or inside one.
-        
+
         try:
-            # We use a slightly different check here. 
+            # We use a slightly different check here.
             # We want to know if there is a real directory backing this path.
             # resolver.resolve() raises ValueError if path is invalid/traversal
             # It maps "/" to /persistence usually, or custom logic.
-            
+
             # Let's see if we are inside a mount.
             # PathResolver.resolve maps unknown paths relative to session_dir.
             # But if request_path is just a virtual parent (like "/mnt"), it shouldn't map to persistence!
-            
+
             # Check if this path IS a mount point or INSIDE one
             best_match = None
             best_match_len = 0
             selected_host_root = None
-            
+
             # Re-implementing simplified logic from SandboxRoutes because PathResolver
             # doesn't expose "is this a purely virtual directory?" directly yet,
             # though get_virtual_roots gives us the map.
-            
+
             for v_path, h_path in roots:
                 if request_path == v_path or request_path.startswith(v_path + "/"):
                     if len(v_path) > best_match_len:
@@ -143,7 +142,7 @@ async def list_sandbox_files(request: Request) -> JSONResponse:
                 if request_path == best_match:
                     target_host_path = selected_host_root
                 else:
-                    rel_path = request_path[len(best_match):].lstrip("/")
+                    rel_path = request_path[len(best_match) :].lstrip("/")
                     target_host_path = (selected_host_root / rel_path).resolve()
 
                 if target_host_path.exists() and target_host_path.is_dir():
@@ -163,33 +162,33 @@ async def list_sandbox_files(request: Request) -> JSONResponse:
                         except Exception:
                             pass
             else:
-                 # If we are NOT in a mount (e.g. "/mnt" where only "/mnt/data" exists),
-                 # then we only show virtual children (which we already did).
-                 # Unless... "/" defaults to persistence?
-                 # PathResolver defaults "/" to persistence.
-                 # But if we treat "/" as purely virtual root for mounts, we might hide persistence if not explicit?
-                 # Actually, get_virtual_roots includes /persistence.
-                 # So if we are at "/", /persistence is a child.
-                 
-                 # Wait, PathResolver says:
-                 # roots.append(("/persistence", ...))
-                 # roots.append(("/shared", ...))
-                 
-                 # So if I am at "/", "persistence" and "shared" will be in virtual_children.
-                 # Accessing "/" directly doesn't list contents of persistence unless mapped to "/".
-                 # The current frontend expects "persistence" folder to show up? 
-                 # Or does it expect "/" to SHOW the contents of persistence?
-                 
-                 # SandboxFiles.tsx default path is "/".
-                 # Old logic:
-                 # mounts["/persistence"] = ...
-                 # if request_path == "/": virtual_children adds "persistence", "shared".
-                 
-                 # So yes, at "/" we just show the folders "persistence", "shared", "mnt" etc.
-                 # We do NOT list files inside persistence at root.
-                 pass
+                # If we are NOT in a mount (e.g. "/mnt" where only "/mnt/data" exists),
+                # then we only show virtual children (which we already did).
+                # Unless... "/" defaults to persistence?
+                # PathResolver defaults "/" to persistence.
+                # But if we treat "/" as purely virtual root for mounts, we might hide persistence if not explicit?
+                # Actually, get_virtual_roots includes /persistence.
+                # So if we are at "/", /persistence is a child.
 
-        except Exception as e:
+                # Wait, PathResolver says:
+                # roots.append(("/persistence", ...))
+                # roots.append(("/shared", ...))
+
+                # So if I am at "/", "persistence" and "shared" will be in virtual_children.
+                # Accessing "/" directly doesn't list contents of persistence unless mapped to "/".
+                # The current frontend expects "persistence" folder to show up?
+                # Or does it expect "/" to SHOW the contents of persistence?
+
+                # SandboxFiles.tsx default path is "/".
+                # Old logic:
+                # mounts["/persistence"] = ...
+                # if request_path == "/": virtual_children adds "persistence", "shared".
+
+                # So yes, at "/" we just show the folders "persistence", "shared", "mnt" etc.
+                # We do NOT list files inside persistence at root.
+                pass
+
+        except Exception:
             # If resolution fails, we just return what we have (virtual items)
             pass
 
@@ -206,10 +205,11 @@ async def read_sandbox_file(request: Request) -> JSONResponse:
     chat_id = request.query_params.get("chat_id")
     raw_path = request.query_params.get("path", "").strip()
     volumes_json = request.query_params.get("volumes")
-    
+
     override_volumes = None
     if volumes_json:
         import json
+
         try:
             override_volumes = json.loads(volumes_json)
         except Exception:
@@ -242,7 +242,7 @@ async def read_sandbox_file(request: Request) -> JSONResponse:
             return JSONResponse({"error": f"Failed to read file: {e}"}, status_code=500)
 
     except ValueError as ve:
-         return JSONResponse({"error": str(ve)}, status_code=403)
+        return JSONResponse({"error": str(ve)}, status_code=403)
     except Exception as e:
         logger.error(f"Error reading file: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -260,11 +260,12 @@ async def write_sandbox_file(request: Request) -> JSONResponse:
             return JSONResponse({"error": "chat_id is required"}, status_code=400)
         if not raw_path:
             return JSONResponse({"error": "path is required"}, status_code=400)
-            
+
         volumes_json = request.query_params.get("volumes")
         override_volumes = None
         if volumes_json:
             import json
+
             try:
                 override_volumes = json.loads(volumes_json)
             except Exception:
@@ -274,7 +275,7 @@ async def write_sandbox_file(request: Request) -> JSONResponse:
         try:
             target_host_path = resolver.resolve(raw_path)
         except ValueError as ve:
-             return JSONResponse({"error": str(ve)}, status_code=403)
+            return JSONResponse({"error": str(ve)}, status_code=403)
 
         # Ensure parent directory exists
         target_host_path.parent.mkdir(parents=True, exist_ok=True)
@@ -304,6 +305,7 @@ async def delete_sandbox_file(request: Request) -> JSONResponse:
     override_volumes = None
     if volumes_json:
         import json
+
         try:
             override_volumes = json.loads(volumes_json)
         except Exception:
@@ -328,7 +330,7 @@ async def delete_sandbox_file(request: Request) -> JSONResponse:
             return JSONResponse({"path": raw_path, "status": "file deleted"})
 
     except ValueError as ve:
-         return JSONResponse({"error": str(ve)}, status_code=403)
+        return JSONResponse({"error": str(ve)}, status_code=403)
     except Exception as e:
         logger.error(f"Error deleting file: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -350,6 +352,7 @@ async def serve_sandbox_file(request: Request):
     override_volumes = None
     if volumes_json:
         import json
+
         try:
             override_volumes = json.loads(volumes_json)
         except Exception:
@@ -368,7 +371,7 @@ async def serve_sandbox_file(request: Request):
         return FileResponse(target_host_path)
 
     except ValueError as ve:
-         return JSONResponse({"error": str(ve)}, status_code=403)
+        return JSONResponse({"error": str(ve)}, status_code=403)
     except Exception as e:
         logger.error(f"Error serving file: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -396,6 +399,7 @@ async def serve_sandbox_file_wildcard(request: Request):
     override_volumes = None
     if volumes_json:
         import json
+
         try:
             override_volumes = json.loads(volumes_json)
         except Exception:
@@ -416,7 +420,7 @@ async def serve_sandbox_file_wildcard(request: Request):
         return FileResponse(target_host_path)
 
     except ValueError as ve:
-         return JSONResponse({"error": str(ve)}, status_code=403)
+        return JSONResponse({"error": str(ve)}, status_code=403)
     except Exception as e:
         logger.error(f"Error serving file wildcard: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
