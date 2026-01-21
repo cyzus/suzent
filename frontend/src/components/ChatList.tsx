@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
 import { ChatSummary } from '../types/api';
 import { RobotAvatar } from './chat/RobotAvatar';
+import { BrutalDeleteButton } from './BrutalDeleteButton';
+import { BrutalDeleteOverlay } from './BrutalDeleteOverlay';
 
 export const ChatList: React.FC = () => {
   const {
@@ -202,24 +204,13 @@ export const ChatList: React.FC = () => {
 
                 {/* Inline delete confirmation overlay */}
                 {confirmDeleteId === chat.id && (
-                  <div className="absolute inset-0 bg-brutal-red border-3 border-brutal-black flex flex-col items-center justify-center gap-2 z-10 p-2 animate-brutal-pop">
-                    <span className="text-sm font-bold text-brutal-white uppercase animate-brutal-glitch">Delete this chat?</span>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={(e) => handleDeleteChat(chat.id, e)}
-                        disabled={deletingChatId === chat.id}
-                        className="px-3 py-1.5 bg-brutal-black border-2 border-brutal-white text-white text-xs font-bold uppercase disabled:opacity-50 hover:bg-neutral-800"
-                      >
-                        {deletingChatId === chat.id ? 'Deleting...' : 'Delete'}
-                      </button>
-                      <button
-                        onClick={handleCancelDelete}
-                        className="px-3 py-1.5 bg-brutal-white border-2 border-brutal-black text-brutal-black text-xs font-bold uppercase hover:bg-neutral-100"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
+                  <BrutalDeleteOverlay
+                    onConfirm={(e: any) => handleDeleteChat(chat.id, e)}
+                    onCancel={handleCancelDelete}
+                    isDeleting={deletingChatId === chat.id}
+                    title="Delete this chat?"
+                    confirmText="Delete"
+                  />
                 )}
 
                 <div className="flex items-start justify-between pl-2">
@@ -245,22 +236,21 @@ export const ChatList: React.FC = () => {
                   </div>
 
                   {/* Delete Button */}
-                  <button
-                    onClick={(e) => handleDeleteClick(chat.id, e)}
-                    disabled={deletingChatId === chat.id}
-                    className={`opacity-0 group-hover:opacity-100 ml-2 p-1.5 border-2 border-brutal-black transition-all duration-200 hover:shadow-[2px_2px_0_0_#000000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none ${currentChatId === chat.id ? 'bg-white hover:bg-brutal-red hover:text-white' : 'bg-neutral-100 hover:bg-brutal-red hover:text-white'
-                      }`}
-                    title="Delete chat"
-                  >
+                  <div className="ml-2">
                     {deletingChatId === chat.id ? (
-                      <div className="w-3 h-3 animate-brutal-blink text-brutal-black font-bold text-xs">X</div>
+                      <div className="w-7 h-7 flex items-center justify-center animate-brutal-blink text-brutal-black font-bold text-xs" title="Deleting...">
+                        X
+                      </div>
                     ) : (
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-                        <path strokeLinecap="round" strokeLinejoin="round"
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
+                      <BrutalDeleteButton
+                        onClick={(e) => handleDeleteClick(chat.id, e)}
+                        isActive={currentChatId === chat.id}
+                        className="opacity-0 group-hover:opacity-100"
+                        title="Delete chat"
+                        disabled={deletingChatId === chat.id}
+                      />
                     )}
-                  </button>
+                  </div>
                 </div>
               </div>
             ))}
