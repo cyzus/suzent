@@ -31,14 +31,16 @@ async def get_config(request: Request) -> JSONResponse:
     sandbox_enabled = getattr(CONFIG, "sandbox_enabled", False)
     sandbox_volumes = CONFIG.sandbox_volumes or []
     available_models = get_enabled_models_from_db()
-    
+
     # Get embedding/extraction models with fallback to CONFIG defaults
     embedding_model = (
-        memory_config.embedding_model if memory_config and memory_config.embedding_model 
+        memory_config.embedding_model
+        if memory_config and memory_config.embedding_model
         else CONFIG.embedding_model
     )
     extraction_model = (
-        memory_config.extraction_model if memory_config and memory_config.extraction_model 
+        memory_config.extraction_model
+        if memory_config and memory_config.extraction_model
         else CONFIG.extraction_model
     )
 
@@ -82,7 +84,7 @@ async def save_preferences(request: Request) -> JSONResponse:
     data = await request.json()
 
     db = get_database()
-    
+
     # Save user preferences (non-memory settings)
     success = db.save_user_preferences(
         model=data.get("model"),
@@ -92,9 +94,12 @@ async def save_preferences(request: Request) -> JSONResponse:
         sandbox_enabled=data.get("sandbox_enabled"),
         sandbox_volumes=data.get("sandbox_volumes"),
     )
-    
+
     # Save memory configuration separately
-    if data.get("embedding_model") is not None or data.get("extraction_model") is not None:
+    if (
+        data.get("embedding_model") is not None
+        or data.get("extraction_model") is not None
+    ):
         db.save_memory_config(
             embedding_model=data.get("embedding_model"),
             extraction_model=data.get("extraction_model"),
@@ -244,27 +249,25 @@ async def verify_provider(request: Request) -> JSONResponse:
 async def get_embedding_models(request: Request) -> JSONResponse:
     """
     Fetch available embedding models from configured providers.
-    
+
     Uses LiteLLM's get_valid_models() with provider endpoint checking,
     then filters for models containing 'embedding' in the name.
     """
     try:
         import litellm
-        
+
         # Fetch valid models from all configured providers
         all_models = litellm.get_valid_models(check_provider_endpoint=True)
-        
+
         # Filter for embedding models
         embedding_models = [
-            model for model in all_models 
-            if "embedding" in model.lower()
+            model for model in all_models if "embedding" in model.lower()
         ]
-        
+
         # Sort for consistent ordering
         embedding_models.sort()
-        
+
         return JSONResponse({"models": embedding_models})
     except Exception as e:
         traceback.print_exc()
         return JSONResponse({"error": str(e), "models": []}, status_code=500)
-

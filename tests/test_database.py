@@ -148,7 +148,7 @@ class TestUserPreferences:
         """Test that embedding and extraction models can be saved and retrieved."""
         db.save_memory_config(
             embedding_model="gemini/gemini-embedding-001",
-            extraction_model="gemini/gemini-2.5-flash"
+            extraction_model="gemini/gemini-2.5-flash",
         )
 
         config = db.get_memory_config()
