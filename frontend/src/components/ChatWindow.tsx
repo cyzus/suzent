@@ -72,7 +72,7 @@ const MessageList: React.FC<{
               />
             )}
           </div>
-          {!isUser && m.stepInfo && (
+          {!isUser && m.stepInfo && m.content?.trim() && (
             <div className="flex justify-start w-full mt-2 pl-4">
               <div className="inline-flex items-center gap-2 text-[10px] text-brutal-black font-mono font-bold px-3 py-1 bg-neutral-100 border-2 border-brutal-black shadow-sm select-none">
                 <span className="text-brutal-blue">⚡</span>

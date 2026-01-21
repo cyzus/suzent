@@ -74,6 +74,12 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
 }) => {
   const isStreamingThis = isStreaming && isLastMessage;
   const isThinking = isStreamingThis && !message.content;
+
+  // Don't render empty messages unless we're actively streaming
+  if (!isStreamingThis && !message.content?.trim()) {
+    return null;
+  }
+
   const blocks = splitAssistantContent(message.content);
 
   // Calculate clean content for copy (excluding logs)
