@@ -1,6 +1,8 @@
 """Add sandbox_volumes column to user_preferences table."""
+
 import sqlite3
 from pathlib import Path
+
 
 def migrate():
     db_path = Path("chats.db")
@@ -36,6 +38,7 @@ def migrate():
     print(f"Current columns: {columns}")
 
     conn.close()
+
 
 if __name__ == "__main__":
     migrate()

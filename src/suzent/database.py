@@ -125,6 +125,27 @@ class MCPServerModel(SQLModel, table=True):
     updated_at: datetime = Field(serialization_alias="updatedAt")
 
 
+class ApiKeyModel(SQLModel, table=True):
+    """Secure storage for API keys."""
+
+    __tablename__ = "api_keys"
+
+    key: str = Field(primary_key=True)
+    value: str
+    updated_at: datetime = Field(serialization_alias="updatedAt")
+
+
+class MemoryConfigModel(SQLModel, table=True):
+    """Singleton table for memory system configuration."""
+
+    __tablename__ = "memory_config"
+
+    id: int = Field(default=1, primary_key=True)
+    embedding_model: Optional[str] = None
+    extraction_model: Optional[str] = None
+    updated_at: datetime = Field(serialization_alias="updatedAt")
+
+
 # -----------------------------------------------------------------------------
 # Database Management
 # -----------------------------------------------------------------------------
@@ -254,17 +275,7 @@ class ChatDatabase:
             statement = select(ChatModel).order_by(ChatModel.updated_at.desc())
 
             if search:
-                # ChatModel.messages is structured JSON (list/dict), searching simple constraints textually
-                # might be tricky depending on DB. SQLite JSON is just text usually.
-                statement = statement.where(
-                    (
-                        ChatModel.title.contains(search)
-                        # Note: Filtering on JSON column needs cast or specific functions usually,
-                        # but pure text search on JSON column works in SQLite if treated as text.
-                        # SQLModel usually maps specialized types.
-                        # If this fails, we might need func.cast(ChatModel.messages, String).contains(search)
-                    )
-                )
+                statement = statement.where(ChatModel.title.contains(search))
 
             statement = statement.offset(offset).limit(limit)
             chats = session.exec(statement).all()
@@ -274,9 +285,9 @@ class ChatDatabase:
                 messages = chat.messages or []
                 last_message = None
                 if messages:
-                    last_msg = messages[-1]
-                    last_message = last_msg.get("content", "")[:100]
-                    if len(last_msg.get("content", "")) > 100:
+                    content = messages[-1].get("content", "")
+                    last_message = content[:100]
+                    if len(content) > 100:
                         last_message += "..."
 
                 results.append(
@@ -628,6 +639,46 @@ class ChatDatabase:
             return True
 
     # -------------------------------------------------------------------------
+    # Memory Configuration Operations
+    # -------------------------------------------------------------------------
+
+    def get_memory_config(self) -> Optional[MemoryConfigModel]:
+        """Get memory system configuration from the database."""
+        with self._session() as session:
+            return session.get(MemoryConfigModel, 1)
+
+    def save_memory_config(
+        self,
+        embedding_model: str = None,
+        extraction_model: str = None,
+    ) -> bool:
+        """Save memory system configuration to the database."""
+        now = datetime.now()
+
+        with self._session() as session:
+            config = session.get(MemoryConfigModel, 1)
+
+            if config:
+                # Update existing
+                if embedding_model is not None:
+                    config.embedding_model = embedding_model
+                if extraction_model is not None:
+                    config.extraction_model = extraction_model
+                config.updated_at = now
+            else:
+                # Create new
+                config = MemoryConfigModel(
+                    id=1,
+                    embedding_model=embedding_model,
+                    extraction_model=extraction_model,
+                    updated_at=now,
+                )
+
+            session.add(config)
+            session.commit()
+            return True
+
+    # -------------------------------------------------------------------------
     # MCP Server Operations
     # -------------------------------------------------------------------------
 
@@ -714,6 +765,41 @@ class ChatDatabase:
             server.enabled = enabled
             server.updated_at = datetime.now()
             session.add(server)
+            session.commit()
+            return True
+
+    # -------------------------------------------------------------------------
+    # API Key Operations
+    # -------------------------------------------------------------------------
+
+    def get_api_keys(self) -> Dict[str, str]:
+        """Get all API keys as a dictionary {KEY: value}."""
+        with self._session() as session:
+            statement = select(ApiKeyModel)
+            results = session.exec(statement).all()
+            return {item.key: item.value for item in results}
+
+    def save_api_key(self, key: str, value: str) -> bool:
+        """Save or update an API key."""
+        now = datetime.now()
+        with self._session() as session:
+            item = session.get(ApiKeyModel, key)
+            if item:
+                item.value = value
+                item.updated_at = now
+            else:
+                item = ApiKeyModel(key=key, value=value, updated_at=now)
+            session.add(item)
+            session.commit()
+            return True
+
+    def delete_api_key(self, key: str) -> bool:
+        """Delete an API key."""
+        with self._session() as session:
+            item = session.get(ApiKeyModel, key)
+            if not item:
+                return False
+            session.delete(item)
             session.commit()
             return True
 

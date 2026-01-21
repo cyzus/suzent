@@ -5,6 +5,8 @@
 
 import React, { useState } from 'react';
 import type { ArchivalMemory } from '../../types/memory';
+import { BrutalDeleteButton } from '../BrutalDeleteButton';
+import { BrutalDeleteOverlay } from '../BrutalDeleteOverlay';
 
 interface MemoryCardProps {
   memory: ArchivalMemory;
@@ -96,13 +98,24 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
 
   if (compact) {
     return (
-      <div className="border-2 border-brutal-black bg-white shadow-brutal-sm hover:bg-neutral-50 transition-all group">
+      <div className="border-2 border-brutal-black bg-white shadow-brutal-sm hover:bg-neutral-50 transition-all group relative">
+        {/* Inline delete confirmation overlay */}
+        {showConfirm && (
+          <BrutalDeleteOverlay
+            onConfirm={handleDelete}
+            onCancel={() => setShowConfirm(false)}
+            isDeleting={isDeleting}
+            title="Delete?"
+            confirmText="Yes"
+            layout="vertical"
+          />
+        )}
+
         <div className="p-2 flex items-center gap-3">
           {/* Importance Indicator */}
-          <div className={`w-1.5 h-8 flex-shrink-0 ${
-            memory.importance >= 0.8 ? 'bg-brutal-black' :
+          <div className={`w-1.5 h-8 flex-shrink-0 ${memory.importance >= 0.8 ? 'bg-brutal-black' :
             memory.importance >= 0.5 ? 'bg-neutral-400' : 'bg-neutral-200'
-          }`} title={`Importance: ${memory.importance.toFixed(2)}`}></div>
+            }`} title={`Importance: ${memory.importance.toFixed(2)}`}></div>
 
           {/* Content Preview */}
           <div className="flex-1 min-w-0">
@@ -117,21 +130,12 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-             {!showConfirm ? (
-              <button
-                onClick={() => setShowConfirm(true)}
-                className="w-6 h-6 border border-brutal-black hover:bg-brutal-black hover:text-white flex items-center justify-center font-bold text-xs"
-                title="Delete"
-              >
-                ×
-              </button>
-            ) : (
-              <div className="flex gap-1">
-                <button onClick={() => setShowConfirm(false)} className="text-[10px] underline">No</button>
-                <button onClick={handleDelete} className="text-[10px] font-bold text-red-600 underline">Yes</button>
-              </div>
-            )}
+          <div className="flex items-center gap-2">
+            <BrutalDeleteButton
+              onClick={() => setShowConfirm(true)}
+              className="w-6 h-6 border opacity-0 group-hover:opacity-100 transition-opacity"
+              title="Delete"
+            />
           </div>
         </div>
       </div>
@@ -139,7 +143,20 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
   }
 
   return (
-    <div className="border-3 border-brutal-black bg-white shadow-brutal hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-brutal-lg transition-all">
+    <div className="border-3 border-brutal-black bg-white shadow-brutal hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-brutal-lg transition-all relative group">
+      {/* Delete confirmation overlay */}
+      {showConfirm && (
+        <BrutalDeleteOverlay
+          onConfirm={handleDelete}
+          onCancel={() => setShowConfirm(false)}
+          isDeleting={isDeleting}
+          title="Delete this memory?"
+          confirmText="Yes, Delete It"
+          cancelText="Cancel"
+          layout="vertical"
+        />
+      )}
+
       <div className="p-4">
         {/* Header with badges */}
         <div className="flex items-start justify-between gap-3 mb-3">
@@ -171,33 +188,12 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
             )}
           </div>
 
-          {/* Delete button */}
-          {!showConfirm ? (
-            <button
-              onClick={() => setShowConfirm(true)}
-              className="flex-shrink-0 w-7 h-7 border-2 border-brutal-black hover:bg-brutal-black hover:text-white flex items-center justify-center font-bold text-brutal-black transition-all active:translate-x-[1px] active:translate-y-[1px] shadow-[2px_2px_0_0_#000000] active:shadow-none"
-              title="Delete memory"
-            >
-              ×
-            </button>
-          ) : (
-            <div className="flex gap-1">
-              <button
-                onClick={() => setShowConfirm(false)}
-                disabled={isDeleting}
-                className="px-2 py-1 border-2 border-brutal-black bg-white hover:bg-neutral-100 text-xs font-bold shadow-[2px_2px_0_0_#000000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all"
-              >
-                No
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={isDeleting}
-                className="px-2 py-1 border-2 border-brutal-black bg-brutal-black hover:bg-brutal-gray text-white text-xs font-bold shadow-[2px_2px_0_0_#000000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all"
-              >
-                {isDeleting ? '...' : 'Yes'}
-              </button>
-            </div>
-          )}
+          {/* Delete button - only visible on hover */}
+          <BrutalDeleteButton
+            onClick={() => setShowConfirm(true)}
+            className="flex-shrink-0 w-7 h-7 opacity-0 group-hover:opacity-100 transition-opacity"
+            title="Delete memory"
+          />
         </div>
 
         {/* Content */}

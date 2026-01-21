@@ -20,19 +20,25 @@ from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.routing import Route
 
-from suzent.logger import setup_logging, get_logger
+from suzent.logger import get_logger, setup_logging
 from suzent.routes.chat_routes import (
     chat,
-    stop_chat,
-    get_chats,
-    get_chat,
     create_chat,
-    update_chat,
     delete_chat,
+    get_chat,
+    get_chats,
+    stop_chat,
+    update_chat,
 )
-from suzent.routes.plan_routes import get_plans, get_plan
-
-from suzent.routes.config_routes import get_config, save_preferences
+from suzent.routes.config_routes import (
+    get_api_keys_status,
+    get_config,
+    get_embedding_models,
+    save_api_keys,
+    save_preferences,
+    verify_provider,
+)
+from suzent.routes.plan_routes import get_plan, get_plans
 from suzent.routes.mcp_routes import (
     list_mcp_servers,
     add_mcp_server,
@@ -84,8 +90,24 @@ logger = get_logger(__name__)
 async def startup():
     """Initialize services on application startup."""
     from suzent.agent_manager import init_memory_system
+    from suzent.database import get_database
 
     logger.info("Application startup - initializing services")
+
+    # Load API keys from database into environment
+    db = get_database()
+    try:
+        api_keys = db.get_api_keys()
+        loaded_count = 0
+        for key, value in api_keys.items():
+            if value:
+                os.environ[key] = value
+                loaded_count += 1
+        if loaded_count > 0:
+            logger.info(f"Loaded {loaded_count} API keys from database")
+    except Exception as e:
+        logger.error(f"Failed to load API keys on startup: {e}")
+
     await init_memory_system()
 
 
@@ -115,6 +137,12 @@ app = Starlette(
         # Configuration endpoints
         Route("/config", get_config, methods=["GET"]),
         Route("/preferences", save_preferences, methods=["POST"]),
+        Route("/config/api-keys", get_api_keys_status, methods=["GET"]),
+        Route("/config/api-keys", save_api_keys, methods=["POST"]),
+        Route(
+            "/config/providers/{provider_id}/verify", verify_provider, methods=["POST"]
+        ),
+        Route("/config/embedding-models", get_embedding_models, methods=["GET"]),
         # MCP server management endpoints
         Route("/mcp_servers", list_mcp_servers, methods=["GET"]),
         Route("/mcp_servers", add_mcp_server, methods=["POST"]),

@@ -107,18 +107,16 @@ export const ArchivalMemoryList: React.FC = () => {
           <div className="flex gap-2">
             <button
               onClick={() => setIsCompact(!isCompact)}
-              className={`px-3 py-1 border-2 border-brutal-black font-bold text-xs uppercase transition-all shadow-[2px_2px_0_0_#000000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none ${
-                isCompact ? 'bg-brutal-black text-white' : 'bg-white hover:bg-neutral-100'
-              }`}
+              className={`px-3 py-1 border-2 border-brutal-black font-bold text-xs uppercase transition-all shadow-[2px_2px_0_0_#000000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none ${isCompact ? 'bg-brutal-black text-white' : 'bg-white hover:bg-neutral-100'
+                }`}
               title={isCompact ? "Switch to Card View" : "Switch to Compact View"}
             >
               {isCompact ? '☰ List' : '☷ Cards'}
             </button>
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`px-3 py-1 border-2 border-brutal-black font-bold text-xs uppercase transition-all shadow-[2px_2px_0_0_#000000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none ${
-                showFilters ? 'bg-brutal-black text-white' : 'bg-white hover:bg-neutral-100'
-              }`}
+              className={`px-3 py-1 border-2 border-brutal-black font-bold text-xs uppercase transition-all shadow-[2px_2px_0_0_#000000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none ${showFilters ? 'bg-brutal-black text-white' : 'bg-white hover:bg-neutral-100'
+                }`}
             >
               {showFilters ? '▲' : '▼'} Filters {activeFiltersCount > 0 && `(${activeFiltersCount})`}
             </button>
@@ -127,15 +125,12 @@ export const ArchivalMemoryList: React.FC = () => {
 
         {/* Search Bar */}
         <div className="relative mb-3">
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
-            🔍
-          </div>
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search memories... (try adding keywords)"
-            className="w-full pl-10 pr-10 py-2 border-3 border-brutal-black rounded-none focus:outline-none focus:ring-4 focus:ring-brutal-black text-sm font-sans transition-all"
+            className="w-full pl-3 pr-10 py-2 border-3 border-brutal-black rounded-none focus:outline-none focus:ring-4 focus:ring-brutal-black text-sm font-sans transition-all"
             style={{ backgroundColor: '#ffffff', color: '#000000' }}
           />
           {searchQuery && (
@@ -175,11 +170,10 @@ export const ArchivalMemoryList: React.FC = () => {
                   <button
                     key={option.value}
                     onClick={() => setSortBy(option.value as SortOption)}
-                    className={`px-3 py-2 border-2 border-brutal-black text-xs font-bold uppercase transition-all ${
-                      sortBy === option.value
-                        ? 'bg-brutal-black text-white'
-                        : 'bg-white hover:bg-neutral-100'
-                    }`}
+                    className={`px-3 py-2 border-2 border-brutal-black text-xs font-bold uppercase transition-all ${sortBy === option.value
+                      ? 'bg-brutal-black text-white'
+                      : 'bg-white hover:bg-neutral-100'
+                      }`}
                   >
                     {option.label}
                   </button>
@@ -202,11 +196,10 @@ export const ArchivalMemoryList: React.FC = () => {
                   <button
                     key={option.value}
                     onClick={() => setImportanceFilter(option.value as ImportanceFilter)}
-                    className={`px-3 py-2 border-2 border-brutal-black text-xs font-bold uppercase transition-all ${
-                      importanceFilter === option.value
-                        ? 'bg-brutal-black text-white'
-                        : 'bg-white hover:bg-neutral-100'
-                    }`}
+                    className={`px-3 py-2 border-2 border-brutal-black text-xs font-bold uppercase transition-all ${importanceFilter === option.value
+                      ? 'bg-brutal-black text-white'
+                      : 'bg-white hover:bg-neutral-100'
+                      }`}
                   >
                     {option.label}
                   </button>
@@ -265,8 +258,8 @@ export const ArchivalMemoryList: React.FC = () => {
             {debouncedQuery
               ? 'Try different search terms or adjust your filters'
               : importanceFilter !== 'all'
-              ? `No ${importanceFilter} importance memories found. Try changing the filter.`
-              : 'Start a conversation and important facts will be automatically saved here'}
+                ? `No ${importanceFilter} importance memories found. Try changing the filter.`
+                : 'Start a conversation and important facts will be automatically saved here'}
           </p>
           {(debouncedQuery || importanceFilter !== 'all') && (
             <button

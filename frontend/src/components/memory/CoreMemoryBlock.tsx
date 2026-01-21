@@ -113,9 +113,8 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
   };
 
   return (
-    <div className={`border-3 border-brutal-black bg-white shadow-brutal rounded-none p-4 transition-all ${
-      hasUnsavedChanges && isEditing ? 'ring-4 ring-brutal-black' : ''
-    } hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-brutal-lg`}>
+    <div className={`border-3 border-brutal-black bg-white shadow-brutal rounded-none p-4 transition-all ${hasUnsavedChanges && isEditing ? 'ring-4 ring-brutal-black' : ''
+      } hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-brutal-lg`}>
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
           <div className="flex items-center gap-2">
@@ -137,13 +136,13 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
                 onClick={handleCopy}
                 className="px-3 py-1 border-2 border-brutal-black bg-white hover:bg-neutral-100 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none shadow-[2px_2px_0_0_#000000] font-bold text-xs uppercase transition-all"
               >
-                {copied ? '✓ Copied' : '📋 Copy'}
+                {copied ? '✓ Copied' : 'Copy'}
               </button>
               <button
                 onClick={() => setIsEditing(true)}
                 className="px-3 py-1 border-2 border-brutal-black bg-white hover:bg-neutral-100 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none shadow-[2px_2px_0_0_#000000] font-bold text-xs uppercase transition-all"
               >
-                ✏️ Edit
+                Edit
               </button>
             </>
           ) : (
@@ -160,7 +159,7 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
                 disabled={isSaving || isOverLimit || !hasUnsavedChanges}
                 className="px-3 py-1 border-2 border-brutal-black bg-brutal-black text-brutal-white hover:bg-neutral-800 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none shadow-[2px_2px_0_0_#000000] font-bold text-xs uppercase transition-all disabled:opacity-50"
               >
-                {isSaving ? '⏳ Saving...' : '💾 Save'}
+                {isSaving ? 'Saving...' : 'Save'}
               </button>
             </>
           )}
@@ -187,17 +186,16 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
               e.target.style.height = 'auto';
               e.target.style.height = e.target.scrollHeight + 'px';
             }}
-            className={`w-full min-h-[150px] p-3 border-3 rounded-none font-mono text-sm resize-y focus:outline-none focus:ring-4 transition-all scrollbar-thin ${
-              isOverLimit
-                ? 'border-brutal-black focus:ring-brutal-black'
-                : 'border-brutal-black focus:ring-brutal-black'
-            }`}
+            className={`w-full min-h-[150px] p-3 border-3 rounded-none font-mono text-sm resize-y focus:outline-none focus:ring-4 transition-all scrollbar-thin ${isOverLimit
+              ? 'border-brutal-black focus:ring-brutal-black'
+              : 'border-brutal-black focus:ring-brutal-black'
+              }`}
             style={{ backgroundColor: '#ffffff', color: '#000000' }}
             placeholder={`Enter ${title.toLowerCase()}...`}
             autoFocus
             onFocus={(e) => {
-               e.target.style.height = 'auto';
-               e.target.style.height = e.target.scrollHeight + 'px';
+              e.target.style.height = 'auto';
+              e.target.style.height = e.target.scrollHeight + 'px';
             }}
           />
 

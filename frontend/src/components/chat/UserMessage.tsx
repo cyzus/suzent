@@ -6,6 +6,11 @@ interface UserMessageProps {
 }
 
 export const UserMessage: React.FC<UserMessageProps> = ({ message }) => {
+  // Don't render empty messages (no content and no images)
+  if (!message.content?.trim() && (!message.images || message.images.length === 0)) {
+    return null;
+  }
+
   return (
     <div className="w-full max-w-3xl space-y-3 pl-8 md:pl-16">
       {/* Images */}

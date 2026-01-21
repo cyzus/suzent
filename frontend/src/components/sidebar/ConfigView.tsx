@@ -1,18 +1,32 @@
-
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { useChatStore } from '../../hooks/useChatStore';
-import { fetchMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled } from '../../lib/api';
-import { BrutalSelect } from '../BrutalSelect';
 
+import { useChatStore } from '../../hooks/useChatStore';
+import { addMcpServer, fetchMcpServers, removeMcpServer, setMcpServerEnabled } from '../../lib/api';
+import { BrutalMultiSelect } from '../BrutalMultiSelect';
+import { BrutalSelect } from '../BrutalSelect';
 import { FilePicker } from '../FilePicker';
 
-type MCPServer =
-  | { type: 'url'; name: string; url: string; enabled: boolean }
-  | { type: 'stdio'; name: string; command: string; args?: string[]; env?: Record<string, string>; enabled: boolean };
+type MCPUrlServer = {
+  type: 'url';
+  name: string;
+  url: string;
+  enabled: boolean;
+};
 
-export const ConfigView: React.FC = () => {
-  const { config, setConfig, backendConfig, resetChat } = useChatStore();
+type MCPStdioServer = {
+  type: 'stdio';
+  name: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  enabled: boolean;
+};
+
+type MCPServer = MCPUrlServer | MCPStdioServer;
+
+export function ConfigView(): React.ReactElement {
+  const { config, setConfig, backendConfig } = useChatStore();
 
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [srvName, setSrvName] = useState('');
@@ -22,19 +36,25 @@ export const ConfigView: React.FC = () => {
   const [stdioEnv, setStdioEnv] = useState('');
   const [addType, setAddType] = useState<'url' | 'stdio'>('url');
   const [loading, setLoading] = useState(false);
-
-  // File Picker state
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [mountHostPath, setMountHostPath] = useState('');
   const [mountContainerPath, setMountContainerPath] = useState('');
 
-  // Load from backend
+  const prevMcpStateRef = useRef<string>('');
+
   useEffect(() => {
     fetchMcpServers().then(data => {
       const urls = data.urls || {};
       const stdio = data.stdio || {};
       const enabled = data.enabled || {};
-      const urlServers: MCPServer[] = Object.entries(urls).map(([name, url]: [string, unknown]) => ({ type: 'url', name, url: String(url), enabled: !!enabled[name] }));
+
+      const urlServers: MCPServer[] = Object.entries(urls).map(([name, url]) => ({
+        type: 'url',
+        name,
+        url: String(url),
+        enabled: !!enabled[name]
+      }));
+
       const stdioServers: MCPServer[] = Object.entries(stdio).map(([name, params]: [string, any]) => ({
         type: 'stdio',
         name,
@@ -43,21 +63,21 @@ export const ConfigView: React.FC = () => {
         env: params.env,
         enabled: !!enabled[name],
       }));
+
       setServers([...urlServers, ...stdioServers]);
     });
   }, []);
 
-  // Track previous values to prevent infinite loops
-  const prevMcpStateRef = useRef<string>('');
-
-  // Sync enabled server urls and enabled state for all servers back to config
   useEffect(() => {
-    const enabledUrls = servers.filter(s => s.enabled && s.type === 'url').map(s => (s as any).url);
-    // mcp_enabled: { [name]: boolean }
-    const mcp_enabled: Record<string, boolean> = {};
-    servers.forEach(s => { mcp_enabled[s.name] = s.enabled; });
+    const enabledUrls = servers
+      .filter((s): s is MCPUrlServer => s.enabled && s.type === 'url')
+      .map(s => s.url);
 
-    // Only update if values actually changed
+    const mcp_enabled: Record<string, boolean> = {};
+    for (const server of servers) {
+      mcp_enabled[server.name] = server.enabled;
+    }
+
     const currentState = JSON.stringify({ enabledUrls, mcp_enabled });
     if (currentState !== prevMcpStateRef.current) {
       prevMcpStateRef.current = currentState;
@@ -65,69 +85,88 @@ export const ConfigView: React.FC = () => {
     }
   }, [servers, setConfig]);
 
-  if (!backendConfig) {
-    return <div className="text-xs text-brutal-black font-bold uppercase animate-brutal-blink">Loading config...</div>;
-  }
-
   const update = useCallback((patch: Partial<typeof config>) => {
     setConfig(prevConfig => ({ ...prevConfig, ...patch }));
   }, [setConfig]);
 
-  const toggleTool = (tool: string) => {
+  function toggleTool(tool: string): void {
     flushSync(() => {
       setConfig(prevConfig => {
         const currentTools = prevConfig.tools || [];
         const isActive = currentTools.includes(tool);
-
         const newTools = isActive
           ? currentTools.filter((t: string) => t !== tool)
           : [...currentTools, tool];
-
         return { ...prevConfig, tools: newTools };
       });
     });
-  };
+  }
 
+  const refreshServers = useCallback(async () => {
+    const data = await fetchMcpServers();
+    const urls = data.urls || {};
+    const stdio = data.stdio || {};
+    const enabled = data.enabled || {};
+
+    const urlServers: MCPServer[] = Object.entries(urls).map(([name, url]) => ({
+      type: 'url',
+      name,
+      url: String(url),
+      enabled: !!enabled[name]
+    }));
+
+    const stdioServers: MCPServer[] = Object.entries(stdio).map(([name, params]: [string, any]) => ({
+      type: 'stdio',
+      name,
+      command: params.command,
+      args: params.args,
+      env: params.env,
+      enabled: !!enabled[name],
+    }));
+
+    setServers([...urlServers, ...stdioServers]);
+  }, []);
 
   const addServer = useCallback(async () => {
     setLoading(true);
     try {
       if (addType === 'url') {
         if (!srvUrl.trim()) return;
-        try { new URL(srvUrl); } catch { return; }
+        try {
+          new URL(srvUrl);
+        } catch {
+          return;
+        }
         await addMcpServer(srvName.trim() || new URL(srvUrl).host, srvUrl.trim());
       } else {
         if (!stdioCmd.trim()) return;
-        const args = stdioArgs.trim() ? stdioArgs.split(',').map(s => s.trim()).filter(Boolean) : undefined;
-        let env: Record<string, string> | undefined = undefined;
+        const args = stdioArgs.trim()
+          ? stdioArgs.split(',').map(s => s.trim()).filter(Boolean)
+          : undefined;
+
+        let env: Record<string, string> | undefined;
         if (stdioEnv.trim()) {
           env = {};
-          stdioEnv.split(',').forEach(pair => {
+          for (const pair of stdioEnv.split(',')) {
             const [k, v] = pair.split('=').map(s => s.trim());
-            if (k && v && env) env[k] = v;
-          });
+            if (k && v) {
+              env[k] = v;
+            }
+          }
         }
         await addMcpServer(srvName.trim() || stdioCmd.trim(), undefined, { command: stdioCmd.trim(), args, env });
       }
-      setSrvName(''); setSrvUrl(''); setStdioCmd(''); setStdioArgs(''); setStdioEnv('');
-      const data = await fetchMcpServers();
-      const urls = data.urls || {};
-      const stdio = data.stdio || {};
-      const enabled = data.enabled || {};
-      const urlServers: MCPServer[] = Object.entries(urls).map(([name, url]: [string, unknown]) => ({ type: 'url', name, url: String(url), enabled: !!enabled[name] }));
-      const stdioServers: MCPServer[] = Object.entries(stdio).map(([name, params]: [string, any]) => ({
-        type: 'stdio',
-        name,
-        command: params.command,
-        args: params.args,
-        env: params.env,
-        enabled: !!enabled[name],
-      }));
-      setServers([...urlServers, ...stdioServers]);
+
+      setSrvName('');
+      setSrvUrl('');
+      setStdioCmd('');
+      setStdioArgs('');
+      setStdioEnv('');
+      await refreshServers();
     } finally {
       setLoading(false);
     }
-  }, [addType, srvName, srvUrl, stdioCmd, stdioArgs, stdioEnv]);
+  }, [addType, srvName, srvUrl, stdioCmd, stdioArgs, stdioEnv, refreshServers]);
 
   const toggleServer = useCallback(async (name: string) => {
     setLoading(true);
@@ -135,13 +174,15 @@ export const ConfigView: React.FC = () => {
       const server = servers.find(s => s.name === name);
       if (!server) return;
       await setMcpServerEnabled(name, !server.enabled);
-      setServers(prev => prev.map(s => s.name === name ? { ...s, enabled: !s.enabled } : s));
+      setServers(prev => prev.map(s =>
+        s.name === name ? { ...s, enabled: !s.enabled } : s
+      ));
     } finally {
       setLoading(false);
     }
   }, [servers]);
 
-  const removeServer = useCallback(async (name: string) => {
+  const removeServerHandler = useCallback(async (name: string) => {
     setLoading(true);
     try {
       await removeMcpServer(name);
@@ -151,17 +192,21 @@ export const ConfigView: React.FC = () => {
     }
   }, []);
 
-  const handleAddVolume = () => {
-    if (mountHostPath && mountContainerPath) {
-      const val = `${mountHostPath}:${mountContainerPath}`;
-      const current = config.sandbox_volumes || [];
-      if (!current.includes(val)) {
-        update({ sandbox_volumes: [...current, val] });
-      }
-      setMountHostPath('');
-      setMountContainerPath('');
+  function handleAddVolume(): void {
+    if (!mountHostPath || !mountContainerPath) return;
+
+    const val = `${mountHostPath}:${mountContainerPath}`;
+    const current = config.sandbox_volumes || [];
+    if (!current.includes(val)) {
+      update({ sandbox_volumes: [...current, val] });
     }
-  };
+    setMountHostPath('');
+    setMountContainerPath('');
+  }
+
+  if (!backendConfig) {
+    return <div className="text-xs text-brutal-black font-bold uppercase animate-brutal-blink">Loading config...</div>;
+  }
 
   return (
     <div className="space-y-6 text-xs">
@@ -189,37 +234,19 @@ export const ConfigView: React.FC = () => {
       </div>
       <div className="space-y-2">
         <label className="block font-bold tracking-wide text-brutal-black uppercase">Tools</label>
-        <div className="flex flex-wrap gap-2">
-          <div className="flex flex-col gap-2 w-full bg-neutral-50 border-2 border-brutal-black p-2 max-h-60 overflow-y-auto scrollbar-thin scrollbar-track-neutral-200 scrollbar-thumb-brutal-black">
-            {backendConfig.tools
-              .filter((t: string) => !['MemorySearchTool', 'MemoryBlockUpdateTool', 'BashTool'].includes(t))
-              .map((tool: string) => {
-                const active = (config.tools || []).includes(tool);
-                // Format name: EditFileTool -> EDIT FILE
-                const displayName = tool.replace(/Tool$/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase();
-
-                return (
-                  <button
-                    key={tool}
-                    type="button"
-                    onClick={() => toggleTool(tool)}
-                    className={`flex items-center gap-3 px-3 py-2 border-2 text-xs font-bold uppercase transition-all duration-100 w-full text-left group ${active
-                      ? 'bg-brutal-green text-brutal-black border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[-1px] translate-y-[-1px]'
-                      : 'border-brutal-black text-brutal-black bg-white hover:bg-neutral-100 hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]'
-                      }`}
-                  >
-                    <div className={`w-4 h-4 border-2 border-brutal-black flex items-center justify-center transition-colors ${active ? 'bg-brutal-black' : 'bg-white'}`}>
-                      {active && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
-                    </div>
-                    <span>{displayName}</span>
-                  </button>
-                );
-              })}
-            {(backendConfig.tools || []).length === 0 && (
-              <div className="text-center py-4 text-gray-500 font-bold uppercase text-xs">No tools available</div>
-            )}
-          </div>
-        </div>
+        <BrutalMultiSelect
+          variant="list"
+          value={config.tools || []}
+          onChange={(newTools) => update({ tools: newTools })}
+          options={backendConfig.tools
+            .filter((t: string) => !['MemorySearchTool', 'MemoryBlockUpdateTool', 'BashTool'].includes(t))
+            .map((tool: string) => ({
+              value: tool,
+              label: tool.replace(/Tool$/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase()
+            }))
+          }
+          emptyMessage="No tools available"
+        />
       </div>
       <div className="space-y-2">
         <label className="block font-bold tracking-wide text-brutal-black uppercase">Memory System</label>
@@ -247,6 +274,9 @@ export const ConfigView: React.FC = () => {
           )}
         </div>
       </div>
+
+
+
       <div className="space-y-2">
         <label className="block font-bold tracking-wide text-brutal-black uppercase">Sandbox System</label>
         <button
@@ -444,7 +474,7 @@ export const ConfigView: React.FC = () => {
                     </div>
                   )}
                 </div>
-                <button type="button" onClick={() => removeServer(s.name)} className="text-white bg-brutal-red border-2 border-brutal-black text-xs font-bold px-1.5 py-0.5 hover:bg-red-600 transition-colors" title="Remove" disabled={loading}>×</button>
+                <button type="button" onClick={() => removeServerHandler(s.name)} className="text-white bg-brutal-red border-2 border-brutal-black text-xs font-bold px-1.5 py-0.5 hover:bg-red-600 transition-colors" title="Remove" disabled={loading}>×</button>
               </li>
             ))}
           </ul>
@@ -453,6 +483,6 @@ export const ConfigView: React.FC = () => {
           )}
         </div>
       </div>
-    </div >
+    </div>
   );
 };

@@ -1,37 +1,14 @@
-"""
-Unit tests for SQLModel database layer.
-"""
-
-import os
-import tempfile
+"""Unit tests for SQLModel database layer."""
 
 import pytest
 
-from suzent.database import (
-    ChatDatabase,
-    ChatSummaryModel,
-    PlanModel,
-    UserPreferencesModel,
-)
+from suzent.database import ChatSummaryModel, PlanModel, UserPreferencesModel
 
 
 @pytest.fixture
-def db():
-    """Create a temporary database for testing."""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        db_path = f.name
-
-    database = ChatDatabase(db_path)
-    yield database
-
-    # Dispose engine to release file locks (Windows)
-    database.engine.dispose()
-
-    # Cleanup
-    try:
-        os.unlink(db_path)
-    except PermissionError:
-        pass  # Windows may still hold locks briefly
+def db(temp_db):
+    """Use shared database fixture."""
+    return temp_db
 
 
 class TestChatOperations:
@@ -166,6 +143,18 @@ class TestUserPreferences:
 
         prefs = db.get_user_preferences()
         assert prefs.model == "claude-3"
+
+    def test_save_embedding_and_extraction_models(self, db):
+        """Test that embedding and extraction models can be saved and retrieved."""
+        db.save_memory_config(
+            embedding_model="gemini/gemini-embedding-001",
+            extraction_model="gemini/gemini-2.5-flash",
+        )
+
+        config = db.get_memory_config()
+        assert config is not None
+        assert config.embedding_model == "gemini/gemini-embedding-001"
+        assert config.extraction_model == "gemini/gemini-2.5-flash"
 
 
 class TestMCPServers:
