@@ -278,7 +278,7 @@ class OllamaProvider(BaseProvider):
                     data = await resp.json()
                     models = []
                     for m in data.get("models", []):
-                        name = m["name"]
+                        name = f"ollama/{m['name']}"
                         models.append(Model(id=name, name=name))
                     return models
             except Exception as e:
