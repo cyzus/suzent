@@ -5,6 +5,9 @@ import os
 import aiohttp
 import asyncio
 import logging
+from suzent.config import CONFIG
+import json
+
 
 logger = logging.getLogger(__name__)
 
@@ -121,9 +124,6 @@ PROVIDER_CONFIG = [
         ],
     },
 ]
-
-from suzent.config import CONFIG
-import json
 
 
 def get_enabled_models_from_db() -> List[str]:
@@ -343,7 +343,7 @@ class LiteLLMProvider(BaseProvider):
 
     async def validate_credentials(self) -> bool:
         if self.config.get("base_url"):
-            models = await self.list_models()
+            _ = await self.list_models()
             return True
         return True
 
