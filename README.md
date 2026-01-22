@@ -137,4 +137,7 @@ SUZENT is built upon the collective intelligence and innovation of the open-sour
 
 **[APACHE 2.0](LICENSE)** © 2026 Yizhou Chi.
 
+**Exception for Creative Assets:**
+The creative assets, including the **Robot Avatar design**, **character animations**, and **project logos**, are subject to separate license terms. See [LICENSE-ASSETS](LICENSE-ASSETS) for details.
+
 **RECLAIM YOUR DIGITAL SOVEREIGNTY.**

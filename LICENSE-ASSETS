@@ -1,0 +1,29 @@
+# Asset License: Proprietary / All Rights Reserved
+
+While the source code of **Suzent** is open source (Apache 2.0), the visual identity—specifically the **Robot Avatar** and its associated animations—are proprietary works.
+
+## Protected Assets
+
+The following assets and their visual implementations are **NOT** covered by the Apache 2.0 license:
+
+- **The Robot Avatar Character:** Including all visual designs, variants, and character-specific code.
+- **Brand Identity:** Including the project logo, banner, and unique animation choreography associated with the character.
+
+These assets are primarily located in, but not limited to:
+- `frontend/src/components/chat/RobotAvatar.tsx`
+- `frontend/src/robot-animations.css`
+- `frontend/src/styles.css` (Robot-specific keyframes)
+- `docs/assets/*`
+
+## License Terms
+
+**Copyright © 2026 Yizhou Chi. All Rights Reserved.**
+
+### Usage Rights
+
+1.  **Personal Use:** You are permitted to use the Suzent software containing these assets for your own personal, non-commercial use.
+2.  **No Redistribution:** You may not extract, redistribute, or use these assets in any other project, codebase, artwork, or product.
+3.  **Forks:** If you fork this codebase to create a derivative project (publicly or commercially), **you must replace the Robot Avatar and its animations with your own assets.** You may not use the Suzent Robot Avatar to represent your fork.
+
+### Why this distinction?
+This model (similar to Firefox or VS Code) allows the code to remain fully open and free (Apache 2.0) while protecting the project's unique "Brand Identity" from impersonation or confusion.

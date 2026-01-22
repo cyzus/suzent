@@ -1,3 +1,8 @@
+/*
+ * LICENSE EXCEPTION
+ * Use of this file (Robot Character Design) is governed by the terms in LICENSE-ASSETS.
+ * It is NOT covered by the project's standard Apache 2.0 license.
+ */
 import React from 'react';
 
 export type RobotVariant =
