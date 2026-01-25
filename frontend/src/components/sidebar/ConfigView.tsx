@@ -3,9 +3,9 @@ import { flushSync } from 'react-dom';
 
 import { useChatStore } from '../../hooks/useChatStore';
 import { addMcpServer, fetchMcpServers, removeMcpServer, setMcpServerEnabled } from '../../lib/api';
+import { open } from '@tauri-apps/plugin-dialog';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalSelect } from '../BrutalSelect';
-import { FilePicker } from '../FilePicker';
 
 type MCPUrlServer = {
   type: 'url';
@@ -36,9 +36,22 @@ export function ConfigView(): React.ReactElement {
   const [stdioEnv, setStdioEnv] = useState('');
   const [addType, setAddType] = useState<'url' | 'stdio'>('url');
   const [loading, setLoading] = useState(false);
-  const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [mountHostPath, setMountHostPath] = useState('');
   const [mountContainerPath, setMountContainerPath] = useState('');
+
+  const handleBrowse = useCallback(async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+      });
+      if (selected && typeof selected === 'string') {
+        setMountHostPath(selected);
+      }
+    } catch (err) {
+      console.error('Failed to open native dialog', err);
+    }
+  }, []);
 
   const prevMcpStateRef = useRef<string>('');
 
@@ -210,11 +223,6 @@ export function ConfigView(): React.ReactElement {
 
   return (
     <div className="space-y-6 text-xs">
-      <FilePicker
-        isOpen={isPickerOpen}
-        onClose={() => setIsPickerOpen(false)}
-        onSelect={(path) => setMountHostPath(path)}
-      />
 
       <div className="space-y-1">
         <label className="block font-bold tracking-wide text-brutal-black uppercase">Agent</label>
@@ -341,7 +349,7 @@ export function ConfigView(): React.ReactElement {
                     className="flex-1 bg-white border-2 border-brutal-black px-1.5 py-1 font-mono font-bold text-xs focus:outline-none focus:shadow-[2px_2px_0_0_#000] w-full"
                   />
                   <button
-                    onClick={() => setIsPickerOpen(true)}
+                    onClick={handleBrowse}
                     className="px-2 bg-white border-2 border-brutal-black font-bold text-xs hover:bg-neutral-100"
                     title="Browse"
                   >

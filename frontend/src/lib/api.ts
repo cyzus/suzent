@@ -7,19 +7,16 @@ import { ConfigOptions } from '../types/api';
 // Get backend port injected by Tauri (available in both dev and prod modes)
 // Falls back to empty string for browser mode (uses relative URLs via Vite proxy)
 function getApiBase(): string {
-  if (typeof window === 'undefined') return '';
+  // We strictly target Tauri desktop environment
+  // The backend port is injected by the main process
   const port = window.__SUZENT_BACKEND_PORT__;
 
   if (port) {
     return `http://localhost:${port}`;
   }
 
-  // If no port is injected but we are in Tauri, default to 8000 (standard dev port)
-  if (window.__TAURI__) {
-    return 'http://localhost:8000';
-  }
-
-  return '';
+  // Fallback for standard dev port if injection missing (e.g. during early init or HMR)
+  return 'http://localhost:8000';
 }
 
 export const API_BASE = getApiBase();

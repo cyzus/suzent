@@ -12,6 +12,7 @@
     "@headlessui/react": "^1.7.18",
     "@heroicons/react": "^2.1.5",
     "@tailwindcss/typography": "^0.5.16",
+    "@tauri-apps/plugin-dialog": "^2.6.0",
     "@types/marked": "^5.0.2",
     "clsx": "^2.1.1",
     "marked": "^16.4.0",

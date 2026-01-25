@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { ChatList } from './components/ChatList';
 import { ChatWindow } from './components/ChatWindow';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { RobotAvatar } from './components/chat/RobotAvatar';
 import { RobotShowcase } from './components/chat/RobotShowcase';
 import { MemoryView } from './components/memory/MemoryView';
 import { SettingsModal } from './components/settings/SettingsModal';
@@ -237,6 +238,26 @@ function AppInner(): React.ReactElement {
 };
 
 export default function App() {
+  // Enforce desktop environment
+  if (!window.__TAURI__) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-brutal-yellow font-sans p-8 text-center border-8 border-brutal-black">
+        <div className="bg-white p-8 border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md flex flex-col items-center">
+          <div className="w-32 h-32 mb-6">
+            <RobotAvatar variant="ghost" className="w-full h-full" />
+          </div>
+          <h1 className="text-4xl font-brutal font-black uppercase mb-4 text-brutal-black">Desktop Required</h1>
+          <p className="font-bold text-lg mb-6 leading-tight">
+            SUZENT is a desktop-only application. Please run this application using the native desktop launcher.
+          </p>
+          <div className="font-mono text-xs bg-neutral-100 p-4 border-2 border-brutal-black text-left w-full">
+            $ npm run tauri dev
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <ChatProvider>
