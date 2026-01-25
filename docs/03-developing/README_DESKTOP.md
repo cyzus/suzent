@@ -6,8 +6,7 @@ SUZENT has been wrapped with Tauri 2.0 to create native desktop applications for
 
 | Document | Purpose |
 |----------|---------|
-| [START_DEV.md](./START_DEV.md) | Quick start guide (2 minutes) |
-| [DEV_GUIDE.md](./DEV_GUIDE.md) | Complete development guide |
+| [DEV_GUIDE.md](./DEV_GUIDE.md) | Complete development guide (includes Quick Start) |
 | [TAURI_BUILD.md](./TAURI_BUILD.md) | Production build and deployment |
 
 ## Architecture

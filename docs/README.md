@@ -10,4 +10,4 @@
 - [Skills](02-concepts/skills/skills.md): Extend agent capabilities with custom skills.
 
 ## Development
-- (Coming Soon)
+- [Developer Guide](03-developing/DEV_GUIDE.md): Setup, workflow, and architecture.

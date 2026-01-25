@@ -1,8 +1,15 @@
 # Development Guide
 
-Complete guide for developing the SUZENT Tauri desktop application.
+## Quick Start
 
-For a quick 2-minute setup, see [START_DEV.md](./START_DEV.md) instead.
+Get SUZENT running in development mode in under 2 minutes.
+
+| Mode | What opens | Rust required | Command |
+|------|------------|---------------|---------|
+| **Desktop app** | Native window | Yes | `python src/suzent/server.py` AND `cd src-tauri && npm run dev` |
+| **Browser** | Web browser tab | No | `python src/suzent/server.py` AND `cd frontend && npm run dev` |
+
+> **Note**: For Windows users, you can simply run `start-tauri-dev.ps1` or `start-browser-dev.ps1` from the root directory.
 
 ## Prerequisites
 
