@@ -3,7 +3,6 @@ import { flushSync } from 'react-dom';
 
 import { useChatStore } from '../../hooks/useChatStore';
 import { addMcpServer, fetchMcpServers, removeMcpServer, setMcpServerEnabled } from '../../lib/api';
-import { open } from '@tauri-apps/plugin-dialog';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalSelect } from '../BrutalSelect';
 
@@ -36,22 +35,6 @@ export function ConfigView(): React.ReactElement {
   const [stdioEnv, setStdioEnv] = useState('');
   const [addType, setAddType] = useState<'url' | 'stdio'>('url');
   const [loading, setLoading] = useState(false);
-  const [mountHostPath, setMountHostPath] = useState('');
-  const [mountContainerPath, setMountContainerPath] = useState('');
-
-  const handleBrowse = useCallback(async () => {
-    try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-      });
-      if (selected && typeof selected === 'string') {
-        setMountHostPath(selected);
-      }
-    } catch (err) {
-      console.error('Failed to open native dialog', err);
-    }
-  }, []);
 
   const prevMcpStateRef = useRef<string>('');
 
@@ -205,17 +188,7 @@ export function ConfigView(): React.ReactElement {
     }
   }, []);
 
-  function handleAddVolume(): void {
-    if (!mountHostPath || !mountContainerPath) return;
 
-    const val = `${mountHostPath}:${mountContainerPath}`;
-    const current = config.sandbox_volumes || [];
-    if (!current.includes(val)) {
-      update({ sandbox_volumes: [...current, val] });
-    }
-    setMountHostPath('');
-    setMountContainerPath('');
-  }
 
   if (!backendConfig) {
     return <div className="text-xs text-brutal-black font-bold uppercase animate-brutal-blink">Loading config...</div>;
@@ -337,47 +310,10 @@ export function ConfigView(): React.ReactElement {
           <div className="text-[9px] font-bold uppercase text-brutal-black opacity-60">Per-Chat (this chat only)</div>
 
           <div className="flex flex-col gap-2 p-2 border-2 border-brutal-black bg-neutral-50">
-            {/* Host Path Input with Picker */}
-            <div className="flex gap-2">
-              <div className="flex-1 min-w-0">
-                <label className="text-[9px] font-bold uppercase mb-0.5 block">Host Path</label>
-                <div className="flex gap-1">
-                  <input
-                    value={mountHostPath}
-                    onChange={(e) => setMountHostPath(e.target.value)}
-                    placeholder="C:\Users\..."
-                    className="flex-1 bg-white border-2 border-brutal-black px-1.5 py-1 font-mono font-bold text-xs focus:outline-none focus:shadow-[2px_2px_0_0_#000] w-full"
-                  />
-                  <button
-                    onClick={handleBrowse}
-                    className="px-2 bg-white border-2 border-brutal-black font-bold text-xs hover:bg-neutral-100"
-                    title="Browse"
-                  >
-                    📂
-                  </button>
-                </div>
+            <div className="flex flex-col gap-2 p-2 border-2 border-brutal-black bg-neutral-50">
+              <div className="text-[10px] text-brutal-black opacity-60 italic">
+                Manage volumes from the chat input "Folder" button.
               </div>
-            </div>
-
-            {/* Container Path Input */}
-            <div className="flex gap-2 items-end">
-              <div className="flex-1">
-                <label className="text-[9px] font-bold uppercase mb-0.5 block">Sandbox Path</label>
-                <input
-                  value={mountContainerPath}
-                  onChange={(e) => setMountContainerPath(e.target.value)}
-                  placeholder="/mnt/data"
-                  className="w-full bg-white border-2 border-brutal-black px-1.5 py-1 font-mono font-bold text-xs focus:outline-none focus:shadow-[2px_2px_0_0_#000]"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={handleAddVolume}
-                disabled={!mountHostPath || !mountContainerPath}
-                className="px-3 py-1 h-[26px] bg-brutal-green border-2 border-brutal-black text-brutal-black text-xs font-bold uppercase hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:opacity-50"
-              >
-                Add
-              </button>
             </div>
           </div>
 

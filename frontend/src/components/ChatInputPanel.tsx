@@ -1,8 +1,10 @@
 import React from 'react';
 import { BrutalSelect } from './BrutalSelect';
 import { ConfigOptions, ChatConfig } from '../types/api';
+import { open } from '@tauri-apps/plugin-dialog';
 import { FileIcon } from './FileIcon';
-import { PaperClipIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { PaperClipIcon, XMarkIcon, FolderIcon } from '@heroicons/react/24/outline';
+import { FolderContextPicker } from './chat/FolderContextPicker';
 
 interface ChatInputPanelProps {
     input: string;
@@ -81,6 +83,63 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     onPaste,
     onImageClick,
 }) => {
+    // --- Volume Mounting Logic ---
+    const handleMountFolder = React.useCallback((paths: string[]) => {
+        try {
+            if (!paths || paths.length === 0) return;
+
+            setConfig((prev) => {
+                const currentVolumes = prev.sandbox_volumes || [];
+                const newVolumes = [...currentVolumes];
+
+                paths.forEach((hostPath) => {
+                    // Normalize path separators
+                    const normalizedHost = hostPath.replace(/\\/g, '/');
+                    // Extract safe folder name
+                    const folderName = normalizedHost.split('/').pop() || 'data';
+
+                    // Simple collision handling
+                    let containerPath = `/mnt/${folderName}`;
+                    let counter = 1;
+
+                    // Check if this container path is already taken by a DIFFERENT host path
+                    // Or if we just want uniqueness in the container list
+                    while (newVolumes.some(v => {
+                        const lastSemi = v.lastIndexOf(':');
+                        const existContainer = v.substring(lastSemi + 1);
+                        return existContainer === containerPath;
+                    })) {
+                        containerPath = `/mnt/${folderName}-${counter}`;
+                        counter++;
+                    }
+
+                    // Avoid re-mounting same host path (update its container mapping if changed, or skip)
+                    // For simplicity, if host path exists, we assume user might want to re-add? 
+                    // Let's filter out existing host path first to be safe or just skip
+                    const existsIndex = newVolumes.findIndex(v => v.substring(0, v.lastIndexOf(':')) === hostPath);
+                    if (existsIndex === -1) {
+                        newVolumes.push(`${hostPath}:${containerPath}`);
+                    }
+                });
+
+                return { ...prev, sandbox_volumes: newVolumes };
+            });
+
+        } catch (err) {
+            console.error('Failed to mount folder', err);
+        }
+    }, [setConfig]);
+
+    const removeVolume = (index: number) => {
+        setConfig((prev) => {
+            const current = prev.sandbox_volumes || [];
+            return {
+                ...prev,
+                sandbox_volumes: current.filter((_, i) => i !== index),
+            };
+        });
+    };
+
     return (
         <form
             onSubmit={(e) => { e.preventDefault(); send(); }}
@@ -202,8 +261,16 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             />
 
             {/* Button row */}
-            <div className="flex flex-wrap gap-2 items-center justify-between pt-1">
-                <div className="flex gap-4 items-center pl-2 shrink-0">
+            <div className="flex flex-nowrap gap-2 items-center justify-between pt-1 overflow-hidden">
+                <div className="flex gap-2 items-center pl-2 shrink-0">
+                    {/* Folder Context Button */}
+                    <FolderContextPicker
+                        onMount={handleMountFolder}
+                        activeVolumes={config.sandbox_volumes || []}
+                        onRemoveVolume={removeVolume}
+                        disabled={!configReady || isStreaming || isUploading}
+                    />
+
                     {/* Unified file input (all types) */}
                     <input
                         ref={fileInputRef}
@@ -216,7 +283,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                     <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="text-brutal-black hover:text-brutal-blue transition-colors disabled:opacity-40"
+                        className="text-brutal-black hover:text-brutal-blue transition-colors disabled:opacity-40 shrink-0"
                         title="Attach files (images, PDFs, documents, etc.)"
                         disabled={!configReady || isStreaming || isUploading}
                     >
@@ -224,8 +291,8 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                     </button>
                 </div>
 
-                <div className="flex flex-wrap gap-2 items-center justify-end flex-1 min-w-0">
-                    <div className="text-[10px] text-brutal-black font-mono font-bold select-none uppercase opacity-50 hidden sm:block whitespace-nowrap mr-2">
+                <div className="flex flex-nowrap gap-2 items-center justify-end flex-1 min-w-0">
+                    <div className="text-[10px] text-brutal-black font-mono font-bold select-none uppercase opacity-50 hidden sm:block whitespace-nowrap mr-2 shrink-0">
                         ↵ SEND • ⇧↵ NEW LINE
                     </div>
 
@@ -241,14 +308,14 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                     )}
 
                     {configReady && (
-                        <div className="relative shrink-0 max-w-[120px] sm:max-w-none">
+                        <div className="relative shrink min-w-0 max-w-[150px] sm:max-w-none">
                             <BrutalSelect
                                 value={config.model}
                                 onChange={(val) => setConfig(prev => ({ ...prev, model: val }))}
                                 options={backendConfig!.models}
                                 placeholder="MODEL"
                                 dropUp={modelSelectDropUp}
-                                className="h-10 text-sm w-full sm:min-w-[120px]"
+                                className="h-10 text-sm w-full min-w-0 truncate"
                                 dropdownClassName="min-w-[200px] right-0"
                             />
                         </div>
