@@ -143,7 +143,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     return (
         <form
             onSubmit={(e) => { e.preventDefault(); send(); }}
-            className="bg-neutral-50 border-2 border-brutal-black shadow-brutal-sm p-2 flex flex-col gap-2 relative group focus-within:shadow-brutal focus-within:-translate-y-[1px] transition-all duration-200"
+            className="bg-neutral-50 border-2 border-brutal-black shadow-brutal-sm p-2 flex flex-col gap-2 relative group focus-within:shadow-brutal focus-within:-translate-y-[1px] transition-all duration-200 z-20"
         >
             {/* Unified file preview section */}
             {selectedFiles.length > 0 && (
@@ -261,7 +261,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             />
 
             {/* Button row */}
-            <div className="flex flex-nowrap gap-2 items-center justify-between pt-1 overflow-hidden">
+            <div className="flex flex-nowrap gap-2 items-center justify-between pt-1">
                 <div className="flex gap-2 items-center pl-2 shrink-0">
                     {/* Folder Context Button */}
                     <FolderContextPicker
@@ -308,14 +308,14 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                     )}
 
                     {configReady && (
-                        <div className="relative shrink min-w-0 max-w-[150px] sm:max-w-none">
+                        <div className="relative shrink-0">
                             <BrutalSelect
                                 value={config.model}
                                 onChange={(val) => setConfig(prev => ({ ...prev, model: val }))}
                                 options={backendConfig!.models}
                                 placeholder="MODEL"
                                 dropUp={modelSelectDropUp}
-                                className="h-10 text-sm w-full min-w-0 truncate"
+                                className="h-10 text-sm"
                                 dropdownClassName="min-w-[200px] right-0"
                             />
                         </div>

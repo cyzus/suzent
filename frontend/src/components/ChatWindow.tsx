@@ -345,7 +345,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   return (
     <div
-      className="flex flex-row flex-1 h-full overflow-hidden bg-neutral-50 relative"
+      className="flex flex-row flex-1 h-full overflow-x-hidden bg-neutral-50 relative"
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
@@ -405,7 +405,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
         {/* Input Panel (shown when messages exist) */}
         {safeMessages.length > 0 && (
-          <div className="p-4 flex flex-col gap-3 bg-neutral-50">
+          <div className="p-4 flex flex-col gap-3 bg-neutral-50 z-30">
             <PlanProgress
               plan={plan}
               isDocked={false}
