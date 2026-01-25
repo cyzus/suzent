@@ -12,6 +12,7 @@ import { SkillsView } from './components/skills/SkillsView';
 import { StatusBar } from './components/StatusBar';
 import { ChatProvider, useChatStore } from './hooks/useChatStore.js';
 import { PlanProvider, usePlan } from './hooks/usePlan';
+import { TitleBar } from './components/TitleBar';
 
 interface HeaderTitleProps {
   text?: string;
@@ -91,7 +92,7 @@ function AppInner(): React.ReactElement {
   React.useEffect(() => {
     console.log('Loading plan for chat:', currentChatId);
     refresh(currentChatId);
-    
+
     // Auto-collapse right sidebar on new chat
     if (!currentChatId) {
       setIsRightSidebarOpen(false);
@@ -117,7 +118,8 @@ function AppInner(): React.ReactElement {
 
   return (
     <div className="h-full w-full bg-neutral-50 text-brutal-black font-sans">
-      <div className="flex h-full relative">
+      <TitleBar />
+      <div className={`flex h-full relative ${window.__TAURI__ ? 'pt-8' : ''}`}>
         <Sidebar
           activeTab={sidebarTab}
           onTabChange={setSidebarTab}

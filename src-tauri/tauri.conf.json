@@ -15,8 +15,11 @@
         "title": "SUZENT - Your Personal Agent",
         "width": 1400,
         "height": 900,
+        "height": 900,
         "resizable": true,
         "fullscreen": false,
+        "decorations": false,
+        "transparent": false,
         "minWidth": 800,
         "minHeight": 600
       }
