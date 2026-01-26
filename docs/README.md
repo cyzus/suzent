@@ -10,4 +10,6 @@
 - [Skills](02-concepts/skills/skills.md): Extend agent capabilities with custom skills.
 
 ## Development
+- **[Utility Scripts](03-developing/scripts.md)**: Maintenance scripts.
+- **[Release Guide](03-developing/releasing.md)**: How to bump versions and release.
 - [Developer Guide](03-developing/development-guide.md): Setup, workflow, and architecture.
