@@ -7,9 +7,8 @@ Get SUZENT running in development mode in under 2 minutes.
 | Mode | What opens | Rust required | Command |
 |------|------------|---------------|---------|
 | **Desktop app** | Native window | Yes | `python src/suzent/server.py` AND `cd src-tauri && npm run dev` |
-| **Browser** | Web browser tab | No | `python src/suzent/server.py` AND `cd frontend && npm run dev` |
 
-> **Note**: For Windows users, you can simply run `start-tauri-dev.ps1` or `start-browser-dev.ps1` from the root directory.
+> **Note**: For Windows users, you can simply run `start-tauri-dev.ps1` from the root directory.
 
 ## Prerequisites
 
@@ -66,6 +65,7 @@ INFO:     Application startup complete.
 **Terminal 2** - Start Tauri:
 ```bash
 cd src-tauri
+npm install
 npm run dev
 ```
 
@@ -75,22 +75,6 @@ This will:
 3. Open a native desktop window
 4. Frontend connects to backend on port 8000
 
-### Browser Mode
-
-No Rust required. Frontend runs in your web browser.
-
-**Terminal 1** - Start backend:
-```bash
-python src/suzent/server.py
-```
-
-**Terminal 2** - Start frontend:
-```bash
-cd frontend
-npm run dev
-```
-
-Open http://localhost:5173 in your browser.
 
 ## Configuration
 
@@ -203,4 +187,4 @@ The first Rust build takes 5-10 minutes to compile all dependencies. Subsequent 
 
 ---
 
-For production builds, see [TAURI_BUILD.md](./TAURI_BUILD.md).
+For production builds, see [README_DESKTOP.md](./README_DESKTOP.md#production-build).

@@ -1,66 +1,40 @@
-# Docker Compose Setup
+# Docker Services
 
-This Docker Compose configuration provides all the infrastructure services needed for Suzent:
+This directory contains optional Docker configurations for auxiliary services used during development or for enhanced privacy.
 
-- **Redis (Valkey)** - Cache for SearXNG
-- **SearXNG** - Privacy-respecting metasearch engine
+## Available Services
 
-The memory system now uses **LanceDB** (embedded vector database), which requires no separate service - data is stored in the mounted `data/memory` volume.
+**`services.yml`** provides:
+- **Redis (Valkey)**: Caching
+- **SearXNG**: Privacy-respecting metasearch engine (Optional, Suzent falls back to `ddgs` if not available)
 
-## Quick Start
+## Usage
 
-### 1. Configure Environment
-
-The Docker Compose setup uses the `.env` file from the project root. Make sure you have it configured:
+To run these services locally:
 
 ```bash
-# Copy example if needed
-cp .env.example .env
-
-# Edit configuration
-nano .env  # or use your preferred editor
-
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/services.yml up -d
 ```
 
-## Sandbox (Optional)
+Ensure your `.env` file is configured (copy from `.env.example`).
 
-The sandbox provides isolated Python code execution for the agent. 
+## Sandbox
+
+The `microsandbox` is used for isolated Python execution.
 
 ### Windows
 
-It requires:
-- WSL2 with nested virtualization enabled
-- KVM support (`/dev/kvm`)
-
-**Optimized Startup**: The first run will build a custom image with pre-installed dependencies and kernels (Python/Node.js). usage:
+Requires WSL2 and KVM.
 
 ```bash
-# Start sandbox server (separate from main services)
-# docker compose -f docker/sandbox-compose.yml up -d 
-# or if you have an override file:
-docker compose -f docker/sandbox-compose.yml -f docker/sandbox-compose.override.yml up -d
-
-# Check logs
-docker logs suzent-microsandbox --tail 50
+docker compose -f docker/sandbox-compose.yml up -d
 ```
 
-### Linux / MacOS
+### Linux / macOS
 
+We recommend using the standard installation script:
 
 ```bash
 curl -sSL https://get.microsandbox.dev | sh
-
 msb server start --dev
-
-msb pull microsandbox/python
-```
-
-
-### Config
-
-
-Enable sandbox in `config/default.yaml`:
-```yaml
-sandbox_enabled: true
 ```

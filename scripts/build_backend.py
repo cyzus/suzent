@@ -7,9 +7,31 @@ import platform
 from pathlib import Path
 
 
+def get_target_triple() -> str:
+    """Get the Rust target triple for the current platform."""
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+
+    if system == "windows":
+        return "x86_64-pc-windows-msvc"
+    elif system == "darwin":
+        return "aarch64-apple-darwin" if machine == "arm64" else "x86_64-apple-darwin"
+    elif system == "linux":
+        return "x86_64-unknown-linux-gnu"
+    
+    # Fallback/Unknown
+    print(f"Warning: Unknown platform {system}/{machine}, asking rustc...")
+    try:
+        return subprocess.check_output(["rustc", "-vV"], text=True).split("host: ")[1].split("\n")[0].strip()
+    except Exception:
+        return "unknown"
+
+
 def get_output_name() -> str:
-    """Get platform-specific executable name."""
-    return "suzent-backend.exe" if platform.system() == "Windows" else "suzent-backend"
+    """Get platform-specific executable name with target triple."""
+    triple = get_target_triple()
+    ext = ".exe" if platform.system() == "Windows" else ""
+    return f"suzent-backend-{triple}{ext}"
 
 
 def get_platform_flags() -> list[str]:
