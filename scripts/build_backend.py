@@ -18,11 +18,16 @@ def get_target_triple() -> str:
         return "aarch64-apple-darwin" if machine == "arm64" else "x86_64-apple-darwin"
     elif system == "linux":
         return "x86_64-unknown-linux-gnu"
-    
+
     # Fallback/Unknown
     print(f"Warning: Unknown platform {system}/{machine}, asking rustc...")
     try:
-        return subprocess.check_output(["rustc", "-vV"], text=True).split("host: ")[1].split("\n")[0].strip()
+        return (
+            subprocess.check_output(["rustc", "-vV"], text=True)
+            .split("host: ")[1]
+            .split("\n")[0]
+            .strip()
+        )
     except Exception:
         return "unknown"
 
@@ -55,7 +60,9 @@ def build_backend() -> None:
     print(f"Building backend for {system}...")
 
     cmd = [
-        sys.executable, "-m", "nuitka",
+        sys.executable,
+        "-m",
+        "nuitka",
         "--standalone",
         "--onefile",
         "--python-flag=no_site",

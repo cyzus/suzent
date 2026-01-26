@@ -16,7 +16,7 @@ def get_project_root() -> Path:
     """Get project root, handling both dev and bundled scenarios."""
 
     # Check if running as bundled executable (Nuitka/PyInstaller)
-    if getattr(sys, 'frozen', False):
+    if getattr(sys, "frozen", False):
         # Running as compiled executable
         # Use app data directory passed from Tauri
         if os.getenv("SUZENT_APP_DATA"):
