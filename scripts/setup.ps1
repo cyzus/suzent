@@ -60,6 +60,18 @@ if ($currentPath -notlike "*$scriptsDir*") {
     Write-Host "✅ Added 'suzent' command to PATH" -ForegroundColor Green
 }
 
+# 8. Check for C++ Build Tools (Linker)
+if (-not (Get-Command "link.exe" -ErrorAction SilentlyContinue)) {
+    Write-Host "⚠️  C++ Linker (link.exe) not found!" -ForegroundColor Yellow
+    Write-Host "   This is required for compiling Rust dependencies."
+    Write-Host "   Running auto-installer..." -ForegroundColor Cyan
+    
+    # We use 'uv run suzent' because 'suzent' might not be in the current shell's PATH yet
+    uv run suzent setup-build-tools
+
+    Write-Host "⚠️  Please RESTART your terminal after installation to ensure the linker is in PATH." -ForegroundColor Yellow
+}
+
 Write-Host "✅ Setup Complete!" -ForegroundColor Green
 Write-Host "To start Suzent, run:"
-Write-Host "  suzent" -ForegroundColor Cyan
+Write-Host "  suzent start" -ForegroundColor Cyan

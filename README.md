@@ -90,6 +90,7 @@ Unlike most agents, **SUZENT** features dual workspaces: a cross-session workspa
  You can also run:
  - `suzent doctor` : Check system health
  - `suzent upgrade` : Update to the latest version
+ - `suzent setup-build-tools` : Install required build tools (Windows)
  - `suzent --help` : See all commands
  
  ### **UNINSTALLING**

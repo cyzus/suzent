@@ -72,6 +72,9 @@ def doctor():
         "uv": ["uv", "--version"],
     }
 
+    if sys.platform == "win32":
+        checks["linker"] = ["where", "link.exe"]
+
     all_ok = True
     for name, cmd in checks.items():
         try:
@@ -117,6 +120,37 @@ def upgrade():
     subprocess.run(["npm", "install"], cwd=frontend_dir, check=True, shell=sys.platform == "win32")
 
     typer.echo("\n✨ Suzent successfully upgraded!")
+
+@app.command()
+def setup_build_tools():
+    """Install Visual Studio Build Tools (Windows Only)."""
+    if sys.platform != "win32":
+        typer.echo("❌ This command is only for Windows.")
+        raise typer.Exit(code=1)
+
+    typer.echo("🛠️  Installing Visual Studio Build Tools...")
+    typer.echo("   (This will open a UAC prompt and may take a while)")
+
+    # Check for winget
+    try:
+        subprocess.run(["winget", "--version"], capture_output=True, check=True)
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        typer.echo("❌ 'winget' not found. Please update App Installer from Microsoft Store.")
+        raise typer.Exit(code=1)
+
+    # Command to install VS Build Tools with C++ workload
+    cmd = [
+        "winget", "install", 
+        "--id", "Microsoft.VisualStudio.2022.BuildTools", 
+        "--override", "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+    ]
+    
+    try:
+        subprocess.run(cmd, check=True)
+        typer.echo("\n✅ Build Tools installed successfully! Please RESTART your terminal.")
+    except subprocess.CalledProcessError:
+        typer.echo("\n❌ Installation failed. You may need to run this as Administrator.")
+        raise typer.Exit(code=1)
 
 if __name__ == "__main__":
     app()
