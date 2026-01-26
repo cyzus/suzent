@@ -71,30 +71,16 @@ Unlike most agents, **SUZENT** features dual workspaces: a cross-session workspa
 ## **QUICK START**
 
 ### **NATIVE SETUP (RECOMMENDED)**
-
-The fastest path to getting started. Requires **Python 3.12+**, **[Node.js 20+](https://nodejs.org/en/download)**, and **[uv](https://docs.astral.sh/uv/)**.
-
-```bash
-# 1. CLONE YOUR NEW CO-WORKER
-git clone https://github.com/cyzus/suzent.git
-cd suzent
-
-# 2. CONFIGURE (ADD KEYS)
-cp .env.example .env
-# Edit .env with your favorite API key
-
-# 3. INSTALL DEPENDENCIES
-uv sync
-cd frontend
-npm install
-cd ..
-
-# 4. WAKE UP SUZENT
-# Windows:
-scripts\start-tauri-dev.ps1
-# Mac/Linux:
-./scripts/start-tauri-dev.sh
-```
+ 
+ The fastest path to getting started. Requires **Git** and **Node.js 20+**.
+ 
+ ```bash
+ # WINDOWS (PowerShell)
+ powershell -c "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
+ 
+ # MAC / LINUX
+ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | bash
+ ```
 
 ---
 
