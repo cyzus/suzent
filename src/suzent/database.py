@@ -821,7 +821,7 @@ def get_database() -> ChatDatabase:
     """Get the global database instance."""
     global _db_instance
     if _db_instance is None:
-        db_path = os.getenv("CHATS_DB_PATH", "chats.db")
+        db_path = os.getenv("CHATS_DB_PATH", None)
         _db_instance = ChatDatabase(db_path)
     return _db_instance
 
