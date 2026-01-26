@@ -1,5 +1,10 @@
 # Suzent Changelog
 
+## v0.1.4
+
+### Fix
+- fix: upgrade workflow
+
 ## v0.1.2
 
 ### Desktop App

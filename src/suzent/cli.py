@@ -122,7 +122,9 @@ def upgrade():
     try:
         run_command(["git", "pull"], cwd=root)
     except subprocess.CalledProcessError:
-        typer.echo("  ⚠️  Git pull failed. This is usually due to local file changes (e.g. lockfiles).")
+        typer.echo(
+            "  ⚠️  Git pull failed. This is usually due to local file changes (e.g. lockfiles)."
+        )
         if typer.confirm("  Discard local changes and force upgrade?"):
             typer.echo("  🔄 Resetting local changes...")
             run_command(["git", "reset", "--hard"], cwd=root)
