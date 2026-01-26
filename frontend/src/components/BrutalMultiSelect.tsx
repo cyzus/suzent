@@ -71,7 +71,7 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
                         {label}
                     </label>
                 )}
-                <div className={`flex flex-col gap-2 w-full bg-neutral-50 border-2 border-brutal-black p-2 max-h-60 overflow-y-auto scrollbar-thin scrollbar-track-neutral-200 scrollbar-thumb-brutal-black ${dropdownClassName}`}>
+                <div className={`flex flex-col gap-2 w-full bg-neutral-50 border-2 border-brutal-black p-2 max-h-60 overflow-y-auto scrollbar-thin ${dropdownClassName}`}>
                     {normalizedOptions.length === 0 && (
                         <div className="text-center py-8 text-neutral-500 font-bold uppercase text-xs">
                             {emptyMessage}
@@ -137,7 +137,7 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
             </button>
 
             {isOpen && (
-                <div className={`absolute z-50 w-full bg-white border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-60 overflow-y-auto overflow-x-hidden animate-brutal-drop ${showScrollbar ? 'scrollbar-thin scrollbar-track-neutral-200 scrollbar-thumb-brutal-black' : 'scrollbar-none'} ${dropUp ? 'bottom-full mb-1' : 'mt-1'} ${dropdownClassName}`}>
+                <div className={`absolute z-50 w-full bg-white border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-60 overflow-y-auto overflow-x-hidden animate-brutal-drop scrollbar-thin ${dropUp ? 'bottom-full mb-1' : 'mt-1'} ${dropdownClassName}`}>
                     {normalizedOptions.length === 0 && (
                         <div className="p-3 text-xs text-neutral-500 font-bold uppercase text-center">{emptyMessage}</div>
                     )}

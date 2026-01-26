@@ -269,6 +269,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         activeVolumes={config.sandbox_volumes || []}
                         onRemoveVolume={removeVolume}
                         disabled={!configReady || isStreaming || isUploading}
+                        dropUp={modelSelectDropUp}
                     />
 
                     {/* Unified file input (all types) */}

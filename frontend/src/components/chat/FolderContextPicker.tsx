@@ -14,6 +14,7 @@ interface FolderContextPickerProps {
     activeVolumes?: string[];
     onRemoveVolume?: (index: number) => void;
     disabled?: boolean;
+    dropUp?: boolean;
 }
 
 const HISTORY_KEY = 'suzent_folder_history';
@@ -23,7 +24,8 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
     onMount,
     activeVolumes = [],
     onRemoveVolume,
-    disabled = false
+    disabled = false,
+    dropUp = true
 }) => {
     const [history, setHistory] = useState<RecentFolder[]>([]);
 
@@ -106,7 +108,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
                                 </span>
                             )}
                             <ChevronDownIcon
-                                className={`w-3 h-3 ml-0.5 opacity-60 group-hover:opacity-100 transition-transform duration-200 ${open ? '' : 'rotate-180'}`}
+                                className={`w-3 h-3 ml-0.5 opacity-60 group-hover:opacity-100 transition-transform duration-200 ${open ? (dropUp ? 'rotate-0' : 'rotate-180') : (dropUp ? 'rotate-180' : 'rotate-0')}`}
                             />
                         </Menu.Button>
                     </div>
@@ -120,7 +122,10 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
                         leaveFrom="transform opacity-100 scale-100"
                         leaveTo="transform opacity-0 scale-95"
                     >
-                        <Menu.Items className="absolute bottom-full left-0 mb-2 w-72 origin-bottom-left bg-white border-2 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:outline-none flex flex-col z-50 max-h-[400px] overflow-y-auto">
+                        <Menu.Items className={`absolute left-0 w-72 bg-white border-2 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:outline-none flex flex-col z-50 max-h-[400px] overflow-y-auto scrollbar-thin ${dropUp
+                            ? 'bottom-full mb-1'
+                            : 'mt-1'
+                            }`}>
 
                             {/* ACTIVE CONTEXTS SECTION */}
                             <div className="p-2 border-b-2 border-brutal-black bg-neutral-100">
