@@ -93,5 +93,30 @@ def doctor():
         typer.echo("\n⚠️  Some tools are missing. Please install them.")
 
 
+@app.command()
+def upgrade():
+    """Update Suzent to the latest version."""
+    typer.echo("🔄 Upgrading Suzent...")
+    root = get_project_root()
+    
+    # 1. Git Pull
+    typer.echo("  • Pulling latest changes...")
+    try:
+        subprocess.run(["git", "pull"], cwd=root, check=True)
+    except subprocess.CalledProcessError:
+        typer.echo("  ❌ Git pull failed. Please check for local conflicts.")
+        raise typer.Exit(code=1)
+
+    # 2. Update Backend Deps
+    typer.echo("  • Updating backend dependencies...")
+    subprocess.run(["uv", "sync"], cwd=root, check=True, shell=sys.platform == "win32")
+
+    # 3. Update Frontend Deps
+    typer.echo("  • Updating frontend dependencies...")
+    frontend_dir = root / "src-tauri"
+    subprocess.run(["npm", "install"], cwd=frontend_dir, check=True, shell=sys.platform == "win32")
+
+    typer.echo("\n✨ Suzent successfully upgraded!")
+
 if __name__ == "__main__":
     app()
