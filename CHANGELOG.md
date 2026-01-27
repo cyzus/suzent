@@ -4,6 +4,13 @@
 
 ### Fix
 - fix: upgrade workflow
+- fix: markdown code block rendering
+- fix: macos path not found
+
+## v0.1.3
+
+### Packaging
+- release executable.
 
 ## v0.1.2
 

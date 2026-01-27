@@ -67,10 +67,42 @@ EOF
 chmod +x "$INSTALL_DIR/suzent"
 
 # Check PATH
+# Check PATH
 if [[ ":\$PATH:" != *":$INSTALL_DIR:"* ]]; then
     echo -e "\033[0;33mWarning: $INSTALL_DIR is not in your PATH.\033[0m"
-    echo "Add this to your shell config (.bashrc / .zshrc):"
-    echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
+    
+    # Detect shell config
+    SHELL_NAME=$(basename "$SHELL")
+    CONFIG_FILE=""
+    
+    if [ "$SHELL_NAME" = "zsh" ]; then
+        CONFIG_FILE="$HOME/.zshrc"
+    elif [ "$SHELL_NAME" = "bash" ]; then
+        if [ -f "$HOME/.bash_profile" ]; then
+            CONFIG_FILE="$HOME/.bash_profile"
+        else
+            CONFIG_FILE="$HOME/.bashrc"
+        fi
+    fi
+
+    if [ -n "$CONFIG_FILE" ]; then
+        echo -e "Do you want to add $INSTALL_DIR to your PATH in $CONFIG_FILE? (y/n)"
+        read -r choice
+        if [[ "$choice" =~ ^[Yy]$ ]]; then
+             echo "" >> "$CONFIG_FILE"
+             echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$CONFIG_FILE"
+             echo -e "\033[0;32mAdded to $CONFIG_FILE\033[0m"
+             echo "Please run: source $CONFIG_FILE"
+             # Try to export for current session if possible (though limited in script)
+             export PATH="$INSTALL_DIR:$PATH"
+        else
+             echo "Please add the following to your shell config manually:"
+             echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
+        fi
+    else
+        echo "Could not detect shell setup. Please add this to your shell config:"
+        echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
+    fi
 fi
 
 echo -e "\033[0;32m✅ Setup Complete!\033[0m"
