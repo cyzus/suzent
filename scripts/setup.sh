@@ -21,6 +21,14 @@ if ! command -v "uv" &> /dev/null; then
     curl -LsSf https://astral.sh/uv/install.sh | sh
     source $HOME/.cargo/env 2>/dev/null || true
     export PATH="$HOME/.cargo/bin:$PATH"
+    export PATH="$HOME/.cargo/bin:$PATH"
+fi
+
+# 2.5. Install Rust (Required for Tauri)
+if ! command -v "cargo" &> /dev/null; then
+    echo -e "\033[0;33mRust is missing. Installing Rust (rustup)...\033[0m"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    source "$HOME/.cargo/env"
 fi
 
 # 3. Clone Repo (if needed)
