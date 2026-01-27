@@ -67,7 +67,6 @@ EOF
 chmod +x "$INSTALL_DIR/suzent"
 
 # Check PATH
-# Check PATH
 if [[ ":\$PATH:" != *":$INSTALL_DIR:"* ]]; then
     echo -e "\033[0;33mWarning: $INSTALL_DIR is not in your PATH.\033[0m"
     
@@ -87,7 +86,11 @@ if [[ ":\$PATH:" != *":$INSTALL_DIR:"* ]]; then
 
     if [ -n "$CONFIG_FILE" ]; then
         echo -e "Do you want to add $INSTALL_DIR to your PATH in $CONFIG_FILE? (y/n)"
-        read -r choice
+        if [ -t 0 ]; then
+             read -r choice
+        else
+             read -r choice < /dev/tty
+        fi
         if [[ "$choice" =~ ^[Yy]$ ]]; then
              echo "" >> "$CONFIG_FILE"
              echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$CONFIG_FILE"
