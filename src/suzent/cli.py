@@ -70,15 +70,21 @@ def start(
 
     # 2. Start Frontend
     typer.echo("  • Starting Frontend...")
-    frontend_dir = root / "src-tauri"
+    frontend_app_dir = root / "frontend"
+    src_tauri_dir = root / "src-tauri"
 
-    # Check if node_modules exists
-    if not (frontend_dir / "node_modules").exists():
-        typer.echo("    Installing dependencies...")
-        run_command(["npm", "install"], cwd=frontend_dir, shell_on_windows=True)
+    # Check if frontend node_modules exists
+    if not (frontend_app_dir / "node_modules").exists():
+        typer.echo("    Installing frontend app dependencies...")
+        run_command(["npm", "install"], cwd=frontend_app_dir, shell_on_windows=True)
+
+    # Check if src-tauri node_modules exists
+    if not (src_tauri_dir / "node_modules").exists():
+        typer.echo("    Installing tauri dependencies...")
+        run_command(["npm", "install"], cwd=src_tauri_dir, shell_on_windows=True)
 
     # Start dev server
-    run_command(["npm", "run", "dev"], cwd=frontend_dir, shell_on_windows=True)
+    run_command(["npm", "run", "dev"], cwd=src_tauri_dir, shell_on_windows=True)
 
 
 @app.command()
