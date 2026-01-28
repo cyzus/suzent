@@ -86,21 +86,22 @@ def start(
 
     typer.echo("🚀 Starting SUZENT...")
 
-    # Check port 8000
-    pid = get_pid_on_port(8000)
-    if pid:
-        typer.echo(f"\n⚠️  Port 8000 is already in use by PID {pid}.")
-        if typer.confirm("   Do you want to kill this process to continue?"):
-            typer.echo(f"   🔪 Killing PID {pid}...")
-            try:
-                kill_process(pid)
-                typer.echo("   ✅ Process killed.")
-            except Exception as e:
-                typer.echo(f"   ❌ Failed to kill process: {e}")
+    # Check ports 8000 (Backend) and 5173 (Frontend)
+    for port, name in [(8000, "Backend"), (5173, "Frontend")]:
+        pid = get_pid_on_port(port)
+        if pid:
+            typer.echo(f"\n⚠️  {name} Port {port} is already in use by PID {pid}.")
+            if typer.confirm("   Do you want to kill this process to continue?"):
+                typer.echo(f"   🔪 Killing PID {pid}...")
+                try:
+                    kill_process(pid)
+                    typer.echo("   ✅ Process killed.")
+                except Exception as e:
+                    typer.echo(f"   ❌ Failed to kill process: {e}")
+                    raise typer.Exit(code=1)
+            else:
+                typer.echo("   ❌ Startup aborted.")
                 raise typer.Exit(code=1)
-        else:
-            typer.echo("   ❌ Startup aborted.")
-            raise typer.Exit(code=1)
 
     # 1. Start Backend
     backend_cmd = ["python", "src/suzent/server.py"]
