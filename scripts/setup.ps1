@@ -13,6 +13,28 @@ function Check-Command($cmd, $name) {
 Check-Command "git" "Git"
 Check-Command "node" "Node.js"
 
+# 1.5. Check/Install Rust
+if (-not (Get-Command "cargo" -ErrorAction SilentlyContinue)) {
+    Write-Host "⚠️  Rust (cargo) not found!" -ForegroundColor Yellow
+    Write-Host "   Installing Rust via rustup-init..." -ForegroundColor Cyan
+    
+    $exe = "$env:TEMP\rustup-init.exe"
+    try {
+        Invoke-WebRequest "https://win.rustup.rs/x86_64" -OutFile $exe
+        Start-Process -FilePath $exe -ArgumentList "-y" -Wait
+        
+        # Add to PATH for current session
+        $cargo_bin = "$env:USERPROFILE\.cargo\bin"
+        if (Test-Path $cargo_bin) {
+            $env:Path = "$cargo_bin;$env:Path"
+            Write-Host "✅ Rust installed and added to PATH." -ForegroundColor Green
+        }
+    } catch {
+        Write-Error "Failed to install Rust automatically. Please install it manually from https://rustup.rs/"
+        exit 1
+    }
+}
+
 # 2. Install uv if missing
 if (-not (Get-Command "uv" -ErrorAction SilentlyContinue)) {
     Write-Host "Installing uv..." -ForegroundColor Yellow

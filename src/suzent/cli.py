@@ -18,15 +18,38 @@ def get_project_root() -> Path:
 
 
 def ensure_cargo_in_path():
-    """Ensure Rust's cargo is in PATH."""
-    cargo_bin = Path.home() / ".cargo" / "bin"
-    if cargo_bin.exists():
+    """Ensure Rust's cargo is in PATH and runnable."""
+    # 1. Check if cargo is already runnable
+    if shutil.which("cargo"):
+        return
+
+    # 2. Look in common locations
+    candidates = []
+    
+    # Standard location
+    candidates.append(Path.home() / ".cargo" / "bin")
+    
+    # CARGO_HOME env var
+    if os.environ.get("CARGO_HOME"):
+        candidates.append(Path(os.environ["CARGO_HOME"]) / "bin")
+
+    found_path = None
+    for path in candidates:
+        if path.exists() and (path / ("cargo.exe" if IS_WINDOWS else "cargo")).exists():
+            found_path = path
+            break
+    
+    if found_path:
+        typer.echo(f"📦 Found cargo at {found_path}, adding to PATH...")
         current_path = os.environ.get("PATH", "")
-        if str(cargo_bin) not in current_path:
-            if IS_WINDOWS:
-                os.environ["PATH"] = f"{cargo_bin};{current_path}"
-            else:
-                os.environ["PATH"] = f"{cargo_bin}:{current_path}"
+        # Prepend to ensure it's picked up
+        if IS_WINDOWS:
+            os.environ["PATH"] = f"{found_path};{current_path}"
+        else:
+            os.environ["PATH"] = f"{found_path}:{current_path}"
+    else:
+        typer.echo("⚠️  Could not find 'cargo' in standard locations.")
+        typer.echo("   Please ensure Rust is installed and 'cargo' is in your PATH.")
 
 
 def get_pid_on_port(port: int) -> int | None:
@@ -163,6 +186,9 @@ def start(
 def doctor():
     """Check if all requirements are installed and configured correctly."""
     typer.echo("🩺 QA Checking System Health...")
+    
+    # Ensure cargo path is loaded if possible
+    ensure_cargo_in_path()
 
     checks = {
         "git": ["git", "--version"],
@@ -187,11 +213,35 @@ def doctor():
             res = subprocess.run(cmd, capture_output=True, text=True, shell=use_shell)
 
             if res.returncode == 0:
-                typer.echo(f"  ✅ {name:<10} : {res.stdout.strip()}")
+                typer.echo(f"  ✅ {name:<10} : {res.stdout.strip().splitlines()[0]}")
             else:
+                # Special handling for linker on Windows via vswhere
+                if name == "linker" and IS_WINDOWS:
+                    vswhere = Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Microsoft Visual Studio/Installer/vswhere.exe"
+                    if vswhere.exists():
+                        vw_res = subprocess.run(
+                            [str(vswhere), "-latest", "-products", "*", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"],
+                            capture_output=True, text=True
+                        )
+                        if vw_res.returncode == 0 and vw_res.stdout.strip():
+                            typer.echo(f"  ✅ {name:<10} : Found via vswhere (PATH missing)")
+                            continue
+
                 typer.echo(f"  ❌ {name:<10} : Not found or error")
                 all_ok = False
         except FileNotFoundError:
+             # Special handling for linker on Windows via vswhere (redundant but safe)
+            if name == "linker" and IS_WINDOWS:
+                vswhere = Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Microsoft Visual Studio/Installer/vswhere.exe"
+                if vswhere.exists():
+                    vw_res = subprocess.run(
+                        [str(vswhere), "-latest", "-products", "*", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"],
+                        capture_output=True, text=True
+                    )
+                    if vw_res.returncode == 0 and vw_res.stdout.strip():
+                        typer.echo(f"  ✅ {name:<10} : Found via vswhere (PATH missing)")
+                        continue
+            
             typer.echo(f"  ❌ {name:<10} : Not installed")
             all_ok = False
 
