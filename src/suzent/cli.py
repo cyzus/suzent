@@ -18,12 +18,14 @@ def get_project_root() -> Path:
 
 
 def ensure_cargo_in_path():
-    """Ensure Rust's cargo is in PATH for non-Windows systems."""
-    if not IS_WINDOWS:
-        cargo_bin = Path.home() / ".cargo" / "bin"
-        if cargo_bin.exists():
-            current_path = os.environ.get("PATH", "")
-            if str(cargo_bin) not in current_path:
+    """Ensure Rust's cargo is in PATH."""
+    cargo_bin = Path.home() / ".cargo" / "bin"
+    if cargo_bin.exists():
+        current_path = os.environ.get("PATH", "")
+        if str(cargo_bin) not in current_path:
+            if IS_WINDOWS:
+                os.environ["PATH"] = f"{cargo_bin};{current_path}"
+            else:
                 os.environ["PATH"] = f"{cargo_bin}:{current_path}"
 
 
