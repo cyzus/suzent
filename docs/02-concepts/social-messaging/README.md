@@ -4,14 +4,15 @@ Suzent supports integration with social messaging platforms, allowing you to con
 
 ## Supported Platforms
 
--   **Telegram**: Full support for text, photos, and files.
--   **(Planned) Discord, Slack, WhatsApp, Feishu**: Architecture supports adding drivers.
+-   [Telegram](telegram.md): Full support for text, photos, and files.
+-   [Feishu (Lark)](feishu.md): Support for text and files via WebSocket.
+-   **(Planned) Discord, Slack, WhatsApp**: Architecture supports adding drivers.
 
 ## Configuration
 
 You can configure social channels using `config/social.json` or Environment Variables.
 
-### 1. `config/social.json` (Recommended)
+### `config/social.json`
 
 Create a file at `config/social.json` in your workspace root. You can copy `config/social.example.json` as a starting point.
 
@@ -20,26 +21,18 @@ Create a file at `config/social.json` in your workspace root. You can copy `conf
   "allowed_users": ["GLOBAL_ADMIN_ID"],
   "telegram": {
     "enabled": true,
-    "token": "YOUR_TELEGRAM_BOT_TOKEN",
-    "allowed_users": ["TELEGRAM_USER_ID"]
+    "token": "..."
   },
-  "discord": {
-    "enabled": false,
-    "token": "",
-    "allowed_users": []
+  "feishu": {
+    "enabled": true,
+    "app_id": "...",
+    "app_secret": "..."
   }
 }
 ```
 
 -   **Global `allowed_users`**: List of user IDs authorized to access the bot from *any* platform.
 -   **Platform `allowed_users`**: List of user IDs authorized *only* for that specific platform.
-
-### 2. Environment Variables
-
--   `TELEGRAM_TOKEN`: Your Telegram Bot API Token.
--   `ALLOWED_SOCIAL_USERS`: Comma-separated list of allowed User IDs (Global).
-
-*Note: `config/social.json` settings are merged with environment variables.*
 
 ## Features
 
@@ -70,8 +63,8 @@ Social chats share the same Sandbox environment as the web UI. You can ask Suzen
 ## Architecture
 
 The system uses a driver-based architecture:
-1.  **ChannelManager**: Central hub that manages platform drivers.
-2.  **SocialChannel (Driver)**: Platform-specific implementation (e.g., `TelegramChannel`). Handles API polling and format conversion.
+1.  **ChannelManager**: Central hub that manages platform drivers. Uses Dynamic Loading to load drivers specified in `social.json`.
+2.  **SocialChannel (Driver)**: Platform-specific implementation (e.g., `TelegramChannel`, `FeishuChannel`). Handles API polling/WebSockets and format conversion.
 3.  **UnifiedMessage**: comprehensive internal message format.
 4.  **SocialBrain**: Core logic that bridges the social message queue to the AI Agent. Handles:
     -   Security checks.

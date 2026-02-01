@@ -26,7 +26,6 @@ dependencies = [
     "ddgs>=9.10.0",
     "sqlmodel>=0.0.22",
     "typer>=0.9.0",
-    "python-telegram-bot>=22.6",
 ]
 
 [project.scripts]
@@ -35,7 +34,10 @@ suzent = "suzent.cli:app"
 
 [project.optional-dependencies]
 # Kept for backwards compatibility, but memory is now required
-memory = []
+social = [
+    "python-telegram-bot>=22.6",
+    "lark-oapi"
+]
 
 # Development dependencies
 dev = [
@@ -49,7 +51,7 @@ dev = [
 
 # All optional dependencies
 all = [
-    "suzent[memory,dev]",
+    "suzent[social,dev]",
 ]
 
 [tool.pytest.ini_options]

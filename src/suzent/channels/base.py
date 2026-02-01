@@ -6,6 +6,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 import time
+from pathlib import Path
+import asyncio
+
 
 
 @dataclass
@@ -60,6 +63,20 @@ class SocialChannel(ABC):
     async def send_file(self, target_id: str, file_path: str, caption: str = None, **kwargs) -> bool:
          """Send a file."""
          pass
+
+    async def _invoke_callback(self, message: UnifiedMessage):
+        """Helper to safely invoke the registered callback (sync or async)."""
+        if self.on_message:
+            if asyncio.iscoroutinefunction(self.on_message):
+                await self.on_message(message)
+            else:
+                self.on_message(message)
+    
+    def _get_upload_path(self, filename: str) -> Path:
+        """Get a standardized temp path for uploads."""
+        tmp_dir = Path(tempfile.gettempdir()) / "suzent_uploads"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        return tmp_dir / filename
 
     def set_callback(self, func: Callable[[UnifiedMessage], Any]):
         """Register the listener for incoming messages."""

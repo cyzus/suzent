@@ -5,6 +5,14 @@
         "token": "",
         "allowed_users": []
     },
+    "feishu": {
+        "enabled": false,
+        "app_id": "",
+        "app_secret": "",
+        "encrypt_key": "",
+        "verification_token": "",
+        "allowed_users": []
+    },
     "discord": {
         "enabled": false,
         "token": "",

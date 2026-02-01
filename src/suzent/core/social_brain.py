@@ -255,14 +255,36 @@ class SocialBrain:
                 except Exception as mem_err:
                     logger.error(f"Failed to extract social memories: {mem_err}")
 
-            # 5. Persist Agent State
+            # 5. Persist Agent State AND Message History
             try:
+                db = get_database()
                 agent_state = serialize_agent(agent)
-                if agent_state:
-                    db = get_database()
-                    db.update_chat(social_chat_id, agent_state=agent_state)
+                
+                # Retrieve current chat to get simple history list
+                # (Ideally we'd have a better history management than just a JSON blob)
+                current_chat = db.get_chat(social_chat_id)
+                messages = current_chat.messages if current_chat and current_chat.messages else []
+                
+                # Append User Message
+                messages.append({
+                    "role": "user",
+                    "content": message.content,
+                    # Add attachments context to hidden/system prompt if needed, 
+                    # but for history display we just show content + maybe "Attachments: ..."
+                    # The frontend likely just shows 'content'.
+                })
+                
+                # Append Assistant Message
+                messages.append({
+                    "role": "assistant",
+                    "content": full_response
+                })
+                
+                db.update_chat(social_chat_id, agent_state=agent_state, messages=messages)
+                logger.info("Persisted social chat history and state.")
+                
             except Exception as e:
-                logger.error(f"Error saving social agent state: {e}")
+                logger.error(f"Error saving social agent state/history: {e}")
 
         except Exception as e:
             logger.error(f"Failed to handle social message: {e}")

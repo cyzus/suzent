@@ -64,7 +64,7 @@ from suzent.routes.sandbox_routes import (
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
 from suzent.routes.system_routes import list_host_files, open_in_explorer
 from suzent.channels.manager import ChannelManager
-from suzent.channels.telegram import TelegramChannel
+# from suzent.channels.telegram import TelegramChannel # Loaded dynamically now
 from suzent.core.social_brain import SocialBrain
 
 # Load environment variables
@@ -140,22 +140,9 @@ async def startup():
             except Exception as e:
                 logger.error(f"Failed to load social config: {e}")
 
-        # Telegram
-        # Check Env first (priority) or Config? 
-        # Usually Config file allows complex structure, Env overrides secrets.
-        # Let's support both: Env overrides Config.
+        # Load Channels Dynamically
+        channel_manager.load_drivers_from_config(social_config)
         
-        tele_config = social_config.get("telegram", {})
-        telegram_token = os.environ.get("TELEGRAM_TOKEN") or tele_config.get("token")
-        
-        # Only enable if token exists AND (enabled in config OR token in env implies enabled)
-        tele_enabled = tele_config.get("enabled", True) # Default true if config missing, but we need token
-        
-        if telegram_token and tele_enabled:
-            logger.info("Initializing Telegram Channel...")
-            telegram = TelegramChannel(telegram_token)
-            channel_manager.register_channel(telegram)
-
         # Start Manager
         await channel_manager.start_all()
 

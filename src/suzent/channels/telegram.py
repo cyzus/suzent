@@ -101,19 +101,8 @@ class TelegramChannel(SocialChannel):
             logger.error(f"Failed to send Telegram file to {target_id}: {e}")
             return False
 
-    async def _invoke_callback(self, unified_msg: UnifiedMessage):
-        """Helper to invoke callback whether sync or async."""
-        if self.on_message:
-            if asyncio.iscoroutinefunction(self.on_message):
-                await self.on_message(unified_msg)
-            else:
-                self.on_message(unified_msg)
-
     async def _download_file_to_temp(self, file_id: str, suggested_name: str = None) -> tuple[str, str]:
         """Helper to download a file from Telegram to a temp directory."""
-        tmp_dir = Path(tempfile.gettempdir()) / "suzent_uploads"
-        tmp_dir.mkdir(parents=True, exist_ok=True)
-
         new_file = await self.app.bot.get_file(file_id)
 
         # Determine filename
@@ -126,7 +115,7 @@ class TelegramChannel(SocialChannel):
                 ext = os.path.splitext(new_file.file_path)[1] or ".jpg"
             filename = f"{file_id}{ext}"
 
-        local_path = tmp_dir / filename
+        local_path = self._get_upload_path(filename)
         await new_file.download_to_drive(custom_path=local_path)
 
         return str(local_path), filename

@@ -4,6 +4,7 @@ Responsible for driver registry and message routing.
 """
 
 import asyncio
+import os
 from typing import Dict, Optional, List
 from suzent.logger import get_logger
 from suzent.channels.base import SocialChannel, UnifiedMessage
@@ -20,6 +21,60 @@ class ChannelManager:
         self.channels: Dict[str, SocialChannel] = {}
         self.message_queue: asyncio.Queue = asyncio.Queue()
         self._running = False
+
+    def load_drivers_from_config(self, social_config: Dict):
+        """
+        Dynamically load channel drivers based on configuration.
+        """
+        import importlib
+        
+        # Mapping of config key to module.class
+        # This could also be discovered, but a map is safer for now.
+        driver_map = {
+            "telegram": "suzent.channels.telegram.TelegramChannel",
+            "feishu": "suzent.channels.feishu.FeishuChannel",
+            # Add future drivers here
+        }
+
+        for platform, settings in social_config.items():
+            if platform in driver_map and isinstance(settings, dict):
+                # Check enabled status (default True if present, but some require explicit enable)
+                if not settings.get("enabled", True):
+                    continue
+                
+                # Check required credentials exist
+                # (Driver should validate this, but we can do a quick check to avoid useless imports)
+                
+                module_path, class_name = driver_map[platform].rsplit(".", 1)
+                try:
+                    module = importlib.import_module(module_path)
+                    channel_class = getattr(module, class_name)
+                    
+                    # Instantiate with settings
+                    # Adjust constructor to accept config dict?
+                    # TelegramChannel currently takes just token.
+                    # We should standardize constructor or handle variations.
+                    
+                    # Standardization attempt: try passing config dict if constructor supports it,
+                    # else fallback to specific fields.
+                    
+                    if platform == "telegram":
+                        token = os.environ.get("TELEGRAM_TOKEN") or settings.get("token")
+                        if token:
+                            channel = channel_class(token)
+                            self.register_channel(channel)
+                    
+                    elif platform == "feishu":
+                         # Feishu needs app_id, app_secret
+                         # Let's assume FeishuChannel takes the config dict or specific args
+                         # We'll design FeishuChannel to take kwargs or config
+                         channel = channel_class(settings) # Pass full settings dict
+                         self.register_channel(channel)
+
+                except ImportError:
+                    logger.warning(f"Could not load driver for {platform}: Module {module_path} not found.")
+                except Exception as e:
+                    logger.error(f"Failed to initialize {platform} driver: {e}")
 
     def register_channel(self, channel: SocialChannel):
         """Add a channel driver to the manager."""
