@@ -213,3 +213,23 @@ export async function verifyProvider(
     return { success: false, models: [] };
   }
 }
+
+// -----------------------------------------------------------------------------
+// Sandbox
+// -----------------------------------------------------------------------------
+
+/**
+ * Helper to generate sandbox query parameters, including volumes from config.
+ * @param chatId The current chat ID
+ * @param path The path to access
+ * @param volumes Optional list of volume strings from config
+ */
+export function getSandboxParams(chatId: string, path: string, volumes?: string[]): string {
+  const params = new URLSearchParams();
+  if (chatId) params.append('chat_id', chatId);
+  if (path) params.append('path', path);
+  if (volumes && volumes.length > 0) {
+    params.append('volumes', JSON.stringify(volumes));
+  }
+  return params.toString();
+}

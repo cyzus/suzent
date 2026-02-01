@@ -208,6 +208,37 @@ async def stream_agent_responses(
         """Background worker that runs agent in thread."""
         stop_notified = False
 
+        class AgentStopException(Exception):
+            """Internal exception to stop agent execution."""
+
+            pass
+
+        class CancellationAwareModel:
+            """Proxy for the agent's model that checks for cancellation before execution."""
+
+            def __init__(self, model, control):
+                self.model = model
+                self.control = control
+
+            def _check_stop(self):
+                if self.control.thread_event.is_set():
+                    raise AgentStopException("Stream stopped by user")
+
+            def __call__(self, *args, **kwargs):
+                self._check_stop()
+                return self.model(*args, **kwargs)
+
+            def __getattr__(self, name):
+                attr = getattr(self.model, name)
+                if callable(attr) and name != "__class__":
+
+                    def wrapper(*args, **kwargs):
+                        self._check_stop()
+                        return attr(*args, **kwargs)
+
+                    return wrapper
+                return attr
+
         def notify_stop():
             nonlocal stop_notified
             if stop_notified:
@@ -216,6 +247,11 @@ async def stream_agent_responses(
             reason = control.reason or "Stream stopped by user"
             loop.call_soon_threadsafe(queue.put_nowait, _StopSignal(reason))
 
+        # Wrap the agent's model to intercept calls and check for stop signal
+        original_model = getattr(agent, "model", None)
+        if original_model:
+            agent.model = CancellationAwareModel(original_model, control)
+
         try:
             gen = agent.run(message, stream=True, reset=reset, images=images)
             for chunk in gen:
@@ -223,10 +259,17 @@ async def stream_agent_responses(
                     notify_stop()
                     break
                 loop.call_soon_threadsafe(queue.put_nowait, chunk)
+        except AgentStopException:
+            # Graceful stop triggered by model wrapper
+            notify_stop()
         except Exception as e:
             if not control.thread_event.is_set():
                 loop.call_soon_threadsafe(queue.put_nowait, e)
         finally:
+            # Restore the original model
+            if original_model:
+                agent.model = original_model
+
             if control.thread_event.is_set():
                 notify_stop()
             loop.call_soon_threadsafe(queue.put_nowait, None)  # sentinel

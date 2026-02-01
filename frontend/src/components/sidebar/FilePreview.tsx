@@ -8,7 +8,8 @@ import {
     isMermaidFile,
     getLanguageForFile
 } from '../../lib/fileUtils';
-import { API_BASE } from '../../lib/api';
+import { API_BASE, getSandboxParams } from '../../lib/api';
+import { useChatStore } from '../../hooks/useChatStore';
 
 interface FilePreviewProps {
     filename: string;
@@ -18,13 +19,20 @@ interface FilePreviewProps {
 }
 
 export const FilePreview: React.FC<FilePreviewProps> = ({ filename, content, chatId, path }) => {
+    const { config } = useChatStore();
+
     // Construct raw serve URL
     // Use the wildcard route to ensure relative paths in HTML/CSS/JS work correctly
     const serveUrl = useMemo(() => {
         // Remove leading slash for clean URL construction
         const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-        return `${API_BASE}/sandbox/serve/${chatId}/${cleanPath}`;
-    }, [chatId, path]);
+
+        // Get volume params only (empty chat_id/path as they are in the route)
+        const params = getSandboxParams('', '', config.sandbox_volumes);
+        const queryPart = params ? `?${params}` : '';
+
+        return `${API_BASE}/sandbox/serve/${chatId}/${cleanPath}${queryPart}`;
+    }, [chatId, path, config.sandbox_volumes]);
 
     // 1. Images
     if (isImageFile(filename)) {
