@@ -16,13 +16,10 @@ try:
     import lark_oapi as lark
     from lark_oapi.api.im.v1 import (
         P2ImMessageReceiveV1,
-        ReplyMessageRequest,
-        ReplyMessageRequestBody,
         CreateMessageRequest,
         CreateMessageRequestBody,
         GetMessageResourceRequest,
     )
-    from lark_oapi.ws import Client as WebSocketClient
 except ImportError:
     lark = None
 
@@ -182,12 +179,12 @@ class FeishuChannel(SocialChannel):
             if hasattr(msg.content, "decode"):
                 try:
                     msg.content = msg.content.decode("utf-8")
-                except:
+                except Exception:
                     pass
 
             try:
                 msg_content = json.loads(msg.content)
-            except:
+            except Exception:
                 msg_content = {}
                 text_content = msg.content
             text_content = ""
@@ -274,7 +271,7 @@ class FeishuChannel(SocialChannel):
                         line += elem.get("text", "")
                 lines.append(line)
             return "\n".join(lines)
-        except:
+        except Exception:
             return "[Rich Text Post]"
 
     async def _download_file(

@@ -8,7 +8,7 @@ from suzent.logger import get_logger
 from suzent.channels.base import SocialChannel, UnifiedMessage
 
 try:
-    from telegram import Update, Bot
+    from telegram import Update
     from telegram.ext import (
         Application,
         ApplicationBuilder,
