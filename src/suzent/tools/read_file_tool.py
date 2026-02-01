@@ -14,6 +14,7 @@ from suzent.tools.path_resolver import PathResolver
 
 logger = get_logger(__name__)
 
+
 class ReadFileTool(Tool):
     """
     Read file content from the filesystem.
@@ -178,6 +179,7 @@ Examples:
         try:
             if self._converter is None:
                 from markitdown import MarkItDown
+
                 logger.info("Initializing MarkItDown converter (lazy load)...")
                 self._converter = MarkItDown()
 

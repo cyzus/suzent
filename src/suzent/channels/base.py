@@ -10,12 +10,12 @@ from pathlib import Path
 import asyncio
 
 
-
 @dataclass
 class UnifiedMessage:
     """
     A standardized message format for all social platforms.
     """
+
     id: str
     content: str
     sender_id: str
@@ -58,11 +58,13 @@ class SocialChannel(ABC):
     async def send_message(self, target_id: str, content: str, **kwargs) -> bool:
         """Send text message."""
         pass
-    
+
     @abstractmethod
-    async def send_file(self, target_id: str, file_path: str, caption: str = None, **kwargs) -> bool:
-         """Send a file."""
-         pass
+    async def send_file(
+        self, target_id: str, file_path: str, caption: str = None, **kwargs
+    ) -> bool:
+        """Send a file."""
+        pass
 
     async def _invoke_callback(self, message: UnifiedMessage):
         """Helper to safely invoke the registered callback (sync or async)."""
@@ -71,7 +73,7 @@ class SocialChannel(ABC):
                 await self.on_message(message)
             else:
                 self.on_message(message)
-    
+
     def _get_upload_path(self, filename: str) -> Path:
         """Get a standardized temp path for uploads."""
         tmp_dir = Path(tempfile.gettempdir()) / "suzent_uploads"

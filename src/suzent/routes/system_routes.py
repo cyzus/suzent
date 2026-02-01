@@ -109,7 +109,7 @@ async def open_in_explorer(request: Request) -> JSONResponse:
             return JSONResponse({"error": "Path is required"}, status_code=400)
 
         path = None
-        
+
         # Try to resolve path if chat_id is provided (supports virtual paths)
         if chat_id:
             try:
@@ -130,11 +130,11 @@ async def open_in_explorer(request: Request) -> JSONResponse:
         if not path or not path.exists():
             logger.warning(f"Path not found: {path_str}")
             return JSONResponse({"error": "Path does not exist"}, status_code=404)
-        
+
         logger.info(f"Opening in explorer: {path}")
 
         system = platform.system()
-        
+
         if system == "Windows":
             # Windows: explorer /select, path handles both files (selects them) and dirs (opens them)
             # Note: The comma is important after /select

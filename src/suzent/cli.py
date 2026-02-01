@@ -16,7 +16,6 @@ def get_project_root() -> Path:
     return Path(__file__).parent.parent.parent
 
 
-
 def ensure_cargo_in_path():
     """Ensure Rust's cargo is in PATH and runnable."""
     # 1. Check if cargo is already runnable
@@ -25,10 +24,10 @@ def ensure_cargo_in_path():
 
     # 2. Look in common locations
     candidates = []
-    
+
     # Standard location
     candidates.append(Path.home() / ".cargo" / "bin")
-    
+
     # CARGO_HOME env var
     if os.environ.get("CARGO_HOME"):
         candidates.append(Path(os.environ["CARGO_HOME"]) / "bin")
@@ -38,7 +37,7 @@ def ensure_cargo_in_path():
         if path.exists() and (path / ("cargo.exe" if IS_WINDOWS else "cargo")).exists():
             found_path = path
             break
-    
+
     if found_path:
         typer.echo(f"📦 Found cargo at {found_path}, adding to PATH...")
         current_path = os.environ.get("PATH", "")
@@ -166,18 +165,20 @@ def start(
         run_command(["npm", "run", "dev"], cwd=src_tauri_dir, shell_on_windows=True)
     except subprocess.CalledProcessError:
         typer.echo("\n⚠️  Dev server failed to start.")
-        typer.echo("    Attempting to fix by performing a CLEAN install of dependencies...")
-        
+        typer.echo(
+            "    Attempting to fix by performing a CLEAN install of dependencies..."
+        )
+
         # Clean install: Remove node_modules first
         for d in [frontend_app_dir, src_tauri_dir]:
             nm = d / "node_modules"
             if nm.exists():
                 typer.echo(f"    🗑️  Removing {nm}...")
                 shutil.rmtree(nm, ignore_errors=True)
-            
+
             typer.echo(f"    📥 Installing dependencies in {d.name}...")
             run_command(["npm", "install"], cwd=d, shell_on_windows=True)
-        
+
         typer.echo("    Retrying dev server...")
         run_command(["npm", "run", "dev"], cwd=src_tauri_dir, shell_on_windows=True)
 
@@ -186,7 +187,7 @@ def start(
 def doctor():
     """Check if all requirements are installed and configured correctly."""
     typer.echo("🩺 QA Checking System Health...")
-    
+
     # Ensure cargo path is loaded if possible
     ensure_cargo_in_path()
 
@@ -217,31 +218,65 @@ def doctor():
             else:
                 # Special handling for linker on Windows via vswhere
                 if name == "linker" and IS_WINDOWS:
-                    vswhere = Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Microsoft Visual Studio/Installer/vswhere.exe"
+                    vswhere = (
+                        Path(
+                            os.environ.get(
+                                "ProgramFiles(x86)", "C:/Program Files (x86)"
+                            )
+                        )
+                        / "Microsoft Visual Studio/Installer/vswhere.exe"
+                    )
                     if vswhere.exists():
                         vw_res = subprocess.run(
-                            [str(vswhere), "-latest", "-products", "*", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"],
-                            capture_output=True, text=True
+                            [
+                                str(vswhere),
+                                "-latest",
+                                "-products",
+                                "*",
+                                "-requires",
+                                "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                                "-property",
+                                "installationPath",
+                            ],
+                            capture_output=True,
+                            text=True,
                         )
                         if vw_res.returncode == 0 and vw_res.stdout.strip():
-                            typer.echo(f"  ✅ {name:<10} : Found via vswhere (PATH missing)")
+                            typer.echo(
+                                f"  ✅ {name:<10} : Found via vswhere (PATH missing)"
+                            )
                             continue
 
                 typer.echo(f"  ❌ {name:<10} : Not found or error")
                 all_ok = False
         except FileNotFoundError:
-             # Special handling for linker on Windows via vswhere (redundant but safe)
+            # Special handling for linker on Windows via vswhere (redundant but safe)
             if name == "linker" and IS_WINDOWS:
-                vswhere = Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Microsoft Visual Studio/Installer/vswhere.exe"
+                vswhere = (
+                    Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)"))
+                    / "Microsoft Visual Studio/Installer/vswhere.exe"
+                )
                 if vswhere.exists():
                     vw_res = subprocess.run(
-                        [str(vswhere), "-latest", "-products", "*", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"],
-                        capture_output=True, text=True
+                        [
+                            str(vswhere),
+                            "-latest",
+                            "-products",
+                            "*",
+                            "-requires",
+                            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                            "-property",
+                            "installationPath",
+                        ],
+                        capture_output=True,
+                        text=True,
                     )
                     if vw_res.returncode == 0 and vw_res.stdout.strip():
-                        typer.echo(f"  ✅ {name:<10} : Found via vswhere (PATH missing)")
+                        typer.echo(
+                            f"  ✅ {name:<10} : Found via vswhere (PATH missing)"
+                        )
                         continue
-            
+
             typer.echo(f"  ❌ {name:<10} : Not installed")
             all_ok = False
 
@@ -317,17 +352,25 @@ def setup_build_tools():
     try:
         # Capture output to handle "already installed" cases
         result = subprocess.run(
-            cmd, capture_output=True, text=True, check=False, encoding="utf-8", errors="replace"
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+            encoding="utf-8",
+            errors="replace",
         )
-        
+
         # Check success or specific "failure" conditions that are actually success
         # Winget might return non-zero if no upgrade is found, depending on version
         if result.returncode == 0:
             typer.echo(
                 "\n✅ Build Tools installed successfully! Please RESTART your terminal."
             )
-        elif "No available upgrade found" in result.stdout or "Found an existing package already installed" in result.stdout:
-             typer.echo(
+        elif (
+            "No available upgrade found" in result.stdout
+            or "Found an existing package already installed" in result.stdout
+        ):
+            typer.echo(
                 "\n✅ Build Tools already installed. Please RESTART your terminal if 'link.exe' is not found."
             )
         else:

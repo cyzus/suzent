@@ -64,6 +64,7 @@ from suzent.routes.sandbox_routes import (
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
 from suzent.routes.system_routes import list_host_files, open_in_explorer
 from suzent.channels.manager import ChannelManager
+
 # from suzent.channels.telegram import TelegramChannel # Loaded dynamically now
 from suzent.core.social_brain import SocialBrain
 
@@ -123,15 +124,15 @@ async def startup():
     try:
         import json
         from pathlib import Path
-        
+
         channel_manager = ChannelManager()
-        
+
         # Load social config
         # Try finding it in config dir relative to cwd or source?
         # Assuming run from root, config/social.json
         config_path = Path("config/social.json")
         social_config = {}
-        
+
         if config_path.exists():
             try:
                 with open(config_path, "r") as f:
@@ -142,7 +143,7 @@ async def startup():
 
         # Load Channels Dynamically
         channel_manager.load_drivers_from_config(social_config)
-        
+
         # Start Manager
         await channel_manager.start_all()
 
@@ -150,21 +151,23 @@ async def startup():
         # Allowlist: Env overrides/merges with Config?
         # Global Allowlist
         allowed_users = set(social_config.get("allowed_users", []))
-        
+
         env_allowed = os.environ.get("ALLOWED_SOCIAL_USERS", "")
         if env_allowed:
-             allowed_users.update([u.strip() for u in env_allowed.split(",") if u.strip()])
-        
+            allowed_users.update(
+                [u.strip() for u in env_allowed.split(",") if u.strip()]
+            )
+
         # Per-Platform Allowlists
         platform_allowlists = {}
         for platform, settings in social_config.items():
             if isinstance(settings, dict) and "allowed_users" in settings:
-                 platform_allowlists[platform] = settings.get("allowed_users", [])
+                platform_allowlists[platform] = settings.get("allowed_users", [])
 
         social_brain = SocialBrain(
-            channel_manager, 
+            channel_manager,
             allowed_users=list(allowed_users),
-            platform_allowlists=platform_allowlists
+            platform_allowlists=platform_allowlists,
         )
         await social_brain.start()
 
@@ -177,7 +180,7 @@ async def shutdown():
     from suzent.agent_manager import shutdown_memory_system
 
     logger.info("Application shutdown - cleaning up services")
-    
+
     global social_brain, channel_manager
 
     if social_brain:

@@ -1,22 +1,26 @@
 """
 Telegram channel implementation.
 """
-import asyncio
+
 import os
-import tempfile
-from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 from suzent.logger import get_logger
 from suzent.channels.base import SocialChannel, UnifiedMessage
 
 try:
     from telegram import Update, Bot
-    from telegram.ext import Application, ApplicationBuilder, ContextTypes, MessageHandler, filters
+    from telegram.ext import (
+        Application,
+        ApplicationBuilder,
+        ContextTypes,
+        MessageHandler,
+        filters,
+    )
 except ImportError:
     # Handle optional dependency
     Update = Any
     Application = Any
-    
+
 logger = get_logger(__name__)
 
 
@@ -39,23 +43,31 @@ class TelegramChannel(SocialChannel):
 
         try:
             self.app = ApplicationBuilder().token(self.token).build()
-            
+
             # Register handlers
             # Handle text and captions
-            self.app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), self._handle_text_message))
+            self.app.add_handler(
+                MessageHandler(
+                    filters.TEXT & (~filters.COMMAND), self._handle_text_message
+                )
+            )
             # Handle photos/documents
-            self.app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, self._handle_media_message))
+            self.app.add_handler(
+                MessageHandler(
+                    filters.PHOTO | filters.Document.ALL, self._handle_media_message
+                )
+            )
 
-             # Initialize and start
+            # Initialize and start
             await self.app.initialize()
             await self.app.start()
-            
-            # Run polling in extended loop or use updater? 
-            # Since we are inside an existing generic async loop, we should use updater.start_polling() 
-            # BUT updater.start_polling() is blocking or designed for main thread usually? 
+
+            # Run polling in extended loop or use updater?
+            # Since we are inside an existing generic async loop, we should use updater.start_polling()
+            # BUT updater.start_polling() is blocking or designed for main thread usually?
             # python-telegram-bot v20+ async architecture:
             # app.updater.start_polling() starts a background task.
-            
+
             await self.app.updater.start_polling()
             self._running = True
             logger.info("Telegram polling started.")
@@ -77,7 +89,7 @@ class TelegramChannel(SocialChannel):
         """Send a message to a chat ID."""
         if not self.app:
             return False
-        
+
         try:
             # target_id in UnifiedMessage context is the user_id or chat_id
             await self.app.bot.send_message(chat_id=target_id, text=content, **kwargs)
@@ -86,7 +98,9 @@ class TelegramChannel(SocialChannel):
             logger.error(f"Failed to send Telegram message to {target_id}: {e}")
             return False
 
-    async def send_file(self, target_id: str, file_path: str, caption: str = None, **kwargs) -> bool:
+    async def send_file(
+        self, target_id: str, file_path: str, caption: str = None, **kwargs
+    ) -> bool:
         """Send a file."""
         if not self.app:
             return False
@@ -94,14 +108,18 @@ class TelegramChannel(SocialChannel):
         try:
             # Detect type or just send as document?
             # sending as document is safest for generic files
-            with open(file_path, 'rb') as file:
-                await self.app.bot.send_document(chat_id=target_id, document=file, caption=caption, **kwargs)
+            with open(file_path, "rb") as file:
+                await self.app.bot.send_document(
+                    chat_id=target_id, document=file, caption=caption, **kwargs
+                )
             return True
         except Exception as e:
             logger.error(f"Failed to send Telegram file to {target_id}: {e}")
             return False
 
-    async def _download_file_to_temp(self, file_id: str, suggested_name: str = None) -> tuple[str, str]:
+    async def _download_file_to_temp(
+        self, file_id: str, suggested_name: str = None
+    ) -> tuple[str, str]:
         """Helper to download a file from Telegram to a temp directory."""
         new_file = await self.app.bot.get_file(file_id)
 
@@ -120,7 +138,9 @@ class TelegramChannel(SocialChannel):
 
         return str(local_path), filename
 
-    async def _handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _handle_text_message(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ):
         """Internal handler for text messages."""
         if not update.effective_message:
             return
@@ -136,12 +156,14 @@ class TelegramChannel(SocialChannel):
             platform="telegram",
             timestamp=msg.date.timestamp() if msg.date else 0,
             thread_id=None,  # could be message_thread_id for topics
-            raw_data=update.to_dict()
+            raw_data=update.to_dict(),
         )
 
         await self._invoke_callback(unified_msg)
 
-    async def _handle_media_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _handle_media_message(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ):
         """Internal handler for media messages."""
         if not update.effective_message:
             return
@@ -156,15 +178,19 @@ class TelegramChannel(SocialChannel):
         if msg.photo:
             try:
                 largest_photo = msg.photo[-1]
-                local_path, filename = await self._download_file_to_temp(largest_photo.file_id)
+                local_path, filename = await self._download_file_to_temp(
+                    largest_photo.file_id
+                )
 
-                attachments.append({
-                    "type": "image",
-                    "path": local_path,
-                    "filename": filename,
-                    "size": largest_photo.file_size,
-                    "id": largest_photo.file_id
-                })
+                attachments.append(
+                    {
+                        "type": "image",
+                        "path": local_path,
+                        "filename": filename,
+                        "size": largest_photo.file_size,
+                        "id": largest_photo.file_id,
+                    }
+                )
                 logger.info(f"Downloaded Telegram photo to {local_path}")
             except Exception as e:
                 logger.error(f"Failed to download Telegram photo: {e}")
@@ -173,19 +199,23 @@ class TelegramChannel(SocialChannel):
         if msg.document:
             try:
                 doc = msg.document
-                local_path, filename = await self._download_file_to_temp(doc.file_id, suggested_name=doc.file_name)
+                local_path, filename = await self._download_file_to_temp(
+                    doc.file_id, suggested_name=doc.file_name
+                )
 
                 # Detect if image based on mime
                 is_image = doc.mime_type and doc.mime_type.startswith("image/")
 
-                attachments.append({
-                    "type": "image" if is_image else "file",
-                    "path": local_path,
-                    "filename": filename,
-                    "size": doc.file_size,
-                    "mime": doc.mime_type,
-                    "id": doc.file_id
-                })
+                attachments.append(
+                    {
+                        "type": "image" if is_image else "file",
+                        "path": local_path,
+                        "filename": filename,
+                        "size": doc.file_size,
+                        "mime": doc.mime_type,
+                        "id": doc.file_id,
+                    }
+                )
                 logger.info(f"Downloaded Telegram document to {local_path}")
             except Exception as e:
                 logger.error(f"Failed to download Telegram document: {e}")
@@ -197,7 +227,7 @@ class TelegramChannel(SocialChannel):
             sender_name=user.full_name or "Unknown",
             platform="telegram",
             attachments=attachments,
-            raw_data=update.to_dict()
+            raw_data=update.to_dict(),
         )
 
         await self._invoke_callback(unified_msg)
