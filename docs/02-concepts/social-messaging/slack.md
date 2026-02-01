@@ -68,7 +68,7 @@ settings:
 
 ## Configuration
 
-Add the tokens to your `config/social.json` (or use `.env` vars `SLACK_APP_TOKEN` and `SLACK_BOT_TOKEN`):
+Add the tokens to your `config/social.json` (Environment variables are no longer supported):
 
 ```json
 "slack": {
@@ -78,6 +78,10 @@ Add the tokens to your `config/social.json` (or use `.env` vars `SLACK_APP_TOKEN
     "allowed_users": []
 }
 ```
+
+> [!NOTE]
+> **Context Awareness**
+> Suzent is smart enough to handle **Threads**. If you reply to the bot in a thread, it will reply back in that same thread. If you talk in a channel, it will reply in the channel.
 
 ### Access Control
 To find your Slack User ID:

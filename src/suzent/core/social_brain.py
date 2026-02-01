@@ -255,8 +255,15 @@ class SocialBrain:
 
             # 3. Send Final Response
             if full_response.strip():
+                # Extract the correct target ID (could be Channel ID or User ID)
+                # get_chat_id returns "platform:target_id"
+                # The manager's send_message method is smart enough to handle "platform:id"
+                # OR we can just pass the suffix.
+                # Let's pass the suffix to correspond with "target_id".
+                target_id = message.get_chat_id().split(":", 1)[1]
+
                 await self.channel_manager.send_message(
-                    message.platform, message.sender_id, full_response
+                    message.platform, target_id, full_response
                 )
 
                 # 4. Background Memory Extraction (Fire and Forget)

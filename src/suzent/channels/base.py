@@ -32,7 +32,8 @@ class UnifiedMessage:
         Generate a unique chat ID for Suzent based on platform and sender.
         Format: "platform:sender_id"
         """
-        return f"{self.platform}:{self.sender_id}"
+        id_val = self.thread_id or self.sender_id
+        return f"{self.platform}:{id_val}"
 
 
 class SocialChannel(ABC):

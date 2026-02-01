@@ -123,6 +123,11 @@ class SlackChannel(SocialChannel):
                     )
                     # TODO: Implement file download using self.web_client and headers
 
+            # Determine conversation context (Channel ID or Channel:ThreadTS)
+            conversation_id = channel_id
+            if thread_ts:
+                conversation_id = f"{channel_id}:{thread_ts}"
+
             unified_msg = UnifiedMessage(
                 id=ts,
                 content=text,
@@ -130,60 +135,9 @@ class SlackChannel(SocialChannel):
                 sender_name=user_name,
                 platform="slack",
                 timestamp=float(ts),
-                thread_id=thread_ts
-                or channel_id,  # If no thread, use channel as context? Or just None?
-                # Actually, for chat history, channel_id is crucial context.
-                # But UnifiedMessage treats thread_id as conversation ID usually?
-                # Let's map thread_id to the actual thread, but we need to know the channel too.
-                # The `sender_id` usually maps to a user.
-                # In Slack, a "Chat" is a Channel.
-                # We might need to encode channel in sender_id or handle it differently.
-                # For now, let's assume DM or simple channel.
-                # NOTE: In Suzent's base.py, get_chat_id use "platform:sender_id".
-                # This works for DMs. For channels, everyone would have their own chat ID based on their user ID,
-                # which splits the channel history.
-                # Ideally, `sender_id` should be the user, but the Conversation ID should be the Channel ID.
-                # However, UnifiedMessage doesn't have a separate `chat_id` field, strictly.
-                # It has `get_chat_id()`.
-                # If we want shared channel history, we might need to hack this or update Base.
-                # For now, stick to the Base definition.
+                thread_id=conversation_id,
                 raw_data=event,
             )
-
-            # Special handling for channel context if needed:
-            # We can pack channel_id into raw_data or hack sender_id if we want group chat behavior.
-            # But the requirement is likely 1:1 agent interaction or just logging it.
-            # We'll stick to 1:1 semantics for now (User ID matches Chat ID).
-            # If this is a public channel, it might get confusing.
-
-            # Actually, `thread_id` in UnifiedMessage is Optional.
-            # If we are in a channel, `channel_id` is the conversation context.
-            # We will store `channel_id` in raw_data and let the Agent logic decide.
-            # But wait, send_message takes `target_id`.
-            # If I receive from User A in Channel X, I should reply to Channel X, not User A (DM).
-            # The current Base impl suggests `target_id` comes from `sender_id`.
-            # This implies `sender_id` MUST be the return address (Channel ID) for group contexts,
-            # OR the system is designed for DMs only.
-            # Let's set sender_id to the User, but we might need to route replies carefully.
-            # Modifying `get_chat_id` on the fly isn't ideal.
-            # Let's look at `send_message`: request takes `target_id`.
-            # If the logic calls `send_message(msg.sender_id)`, it goes to DM.
-            # If the user wants to reply in channel, we have a mismatch.
-            # I will use `channel_id` as the operational ID for replies in `raw_data` or similar.
-            # For now, I will map `sender_id` to `channel_id` if it's not a DM?
-            # No, that loses user info.
-            # I will assume `sender_id` is the user.
-            # Implication: The bot replies to the user via DM unless we change this.
-            # HACK: If it's a channel, maybe we combine them?
-            # Let's verify how Telegram does it.
-            # Telegram: sender_id = user.id.
-            # send_message(target_id) -> chat_id=target_id.
-            # If I get a message from a Group in Telegram, `update.effective_message.chat_id` is the group.
-            # `update.effective_user.id` is the user.
-            # The Telegram impl uses `str(user.id)` as `sender_id`.
-            # So if the bot replies to `sender_id`, it sends a DM to the user, IGNORING the group.
-            # This seems to be a limitation of the current Base/Telegram impl.
-            # I will follow the pattern: sender_id = user_id.
 
             await self._invoke_callback(unified_msg)
 
@@ -193,14 +147,23 @@ class SlackChannel(SocialChannel):
     async def send_message(self, target_id: str, content: str, **kwargs) -> bool:
         """
         Send a message.
-        target_id: can be a channel ID (C...) or user ID (U...).
+        target_id: can be a channel ID (C...), user ID (U...), or composite (C...:p...) for threads.
         """
         if not self.web_client:
             return False
 
         try:
+            channel = target_id
+            thread_ts = None
+
+            if ":" in target_id:
+                # Handle composite ID for threads
+                parts = target_id.split(":")
+                if len(parts) == 2:
+                    channel, thread_ts = parts
+
             await self.web_client.chat_postMessage(
-                channel=target_id, text=content, **kwargs
+                channel=channel, text=content, thread_ts=thread_ts, **kwargs
             )
             return True
         except Exception as e:

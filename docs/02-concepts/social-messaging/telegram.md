@@ -19,6 +19,14 @@ Add the following to your `config/social.json`:
 }
 ```
 
-Or use Environment Variables:
--   `TELEGRAM_TOKEN`: Your Telegram Bot API Token.
--   `ALLOWED_SOCIAL_USERS`: Your User ID.
+
+> [!IMPORTANT]
+> **Group Privacy Mode**
+> By default, Telegram bots cannot see messages in groups unless they are mentions or commands. To allow the bot to see all messages:
+> 1. Talk to **@BotFather**.
+> 2. Send `/mybots` > Select your bot > **Bot Settings** > **Group Privacy**.
+> 3. Select **Turn off**.
+> 4. Re-add the bot to the group if necessary.
+
+> [!NOTE]
+> Suzent now strictly uses `config/social.json` for credentials. Environment variables are no longer supported.

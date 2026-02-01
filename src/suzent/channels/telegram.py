@@ -48,7 +48,7 @@ class TelegramChannel(SocialChannel):
             # Handle text and captions
             self.app.add_handler(
                 MessageHandler(
-                    filters.TEXT & (~filters.COMMAND), self._handle_text_message
+                    filters.TEXT | filters.COMMAND, self._handle_text_message
                 )
             )
             # Handle photos/documents
@@ -87,12 +87,22 @@ class TelegramChannel(SocialChannel):
 
     async def send_message(self, target_id: str, content: str, **kwargs) -> bool:
         """Send a message to a chat ID."""
+        logger.info(f"Telegram sending message to {target_id}: {content[:20]}...")
         if not self.app:
+            logger.error("Telegram app not initialized.")
             return False
 
         try:
             # target_id in UnifiedMessage context is the user_id or chat_id
-            await self.app.bot.send_message(chat_id=target_id, text=content, **kwargs)
+            # Telegram IDs are integers (often negative for groups)
+            # Try to convert to int if possible, otherwise keep as str (for @usernames)
+            try:
+                chat_id_val = int(target_id)
+            except ValueError:
+                chat_id_val = target_id
+
+            await self.app.bot.send_message(chat_id=chat_id_val, text=content, **kwargs)
+            logger.info("Telegram message sent successfully.")
             return True
         except Exception as e:
             logger.error(f"Failed to send Telegram message to {target_id}: {e}")
@@ -142,11 +152,19 @@ class TelegramChannel(SocialChannel):
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ):
         """Internal handler for text messages."""
+        print(f"DEBUG: Telegram update received: {update}")
+        logger.debug(f"Telegram raw update: {update}")
         if not update.effective_message:
+            logger.debug("Telegram update verified: No effective message found.")
             return
 
         msg = update.effective_message
         user = update.effective_user
+
+        print(f"DEBUG: Processing message from {user.id}: {msg.text}")
+        logger.info(
+            f"Telegram message received from {user.id} in chat {msg.chat.id}: {msg.text}"
+        )
 
         unified_msg = UnifiedMessage(
             id=str(msg.message_id),
@@ -155,7 +173,7 @@ class TelegramChannel(SocialChannel):
             sender_name=user.full_name or user.username or "Unknown",
             platform="telegram",
             timestamp=msg.date.timestamp() if msg.date else 0,
-            thread_id=None,  # could be message_thread_id for topics
+            thread_id=str(msg.chat.id),
             raw_data=update.to_dict(),
         )
 

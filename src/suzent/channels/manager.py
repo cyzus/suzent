@@ -120,6 +120,15 @@ class ChannelManager:
         self, platform: str, target_id: str, content: str, **kwargs
     ) -> bool:
         """Route outgoing message to the correct driver."""
+        if not platform and ":" in target_id:
+            # Auto-detect platform from target_id if not provided
+            # NOTE: This assumes target_id is "platform:id"
+            platform, target_id = target_id.split(":", 1)
+        elif platform and ":" in target_id:
+            # Check if target_id starts with platform
+            if target_id.startswith(f"{platform}:"):
+                _, target_id = target_id.split(":", 1)
+
         return await self._route_to_channel(
             platform, "send message", "send_message", target_id, content, **kwargs
         )
@@ -133,6 +142,12 @@ class ChannelManager:
         **kwargs,
     ) -> bool:
         """Route outgoing file to the correct driver."""
+        if not platform and ":" in target_id:
+            platform, target_id = target_id.split(":", 1)
+        elif platform and ":" in target_id:
+            if target_id.startswith(f"{platform}:"):
+                _, target_id = target_id.split(":", 1)
+
         return await self._route_to_channel(
             platform,
             "send file",

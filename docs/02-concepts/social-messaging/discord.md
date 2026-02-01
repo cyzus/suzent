@@ -28,7 +28,7 @@ Suzent requires **Privileged Gateway Intents** to read messages.
 
 ## Configuration
 
-Add the following to your `config/social.json` (or use the `.env` variable `DISCORD_TOKEN`):
+Add the following to your `config/social.json` (Environment variables are no longer supported):
 
 ```json
 "discord": {
