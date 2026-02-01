@@ -6,7 +6,9 @@ Suzent supports integration with social messaging platforms, allowing you to con
 
 -   [Telegram](telegram.md): Full support for text, photos, and files.
 -   [Feishu (Lark)](feishu.md): Support for text and files via WebSocket.
--   **(Planned) Discord, Slack, WhatsApp**: Architecture supports adding drivers.
+-   [Slack](slack.md): Support for Socket Mode (Events API).
+-   [Discord](discord.md): Support for Bot interactions via Gateway.
+-   **(Planned) WhatsApp**: Architecture supports adding drivers.
 
 ## Configuration
 
@@ -26,7 +28,15 @@ Create a file at `config/social.json` in your workspace root. You can copy `conf
   "feishu": {
     "enabled": true,
     "app_id": "...",
-    "app_secret": "..."
+  },
+  "slack": {
+    "enabled": true,
+    "app_token": "xapp-...",
+    "bot_token": "xoxb-..."
+  },
+  "discord": {
+    "enabled": true,
+    "token": "..."
   }
 }
 ```

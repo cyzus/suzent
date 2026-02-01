@@ -693,6 +693,19 @@ wheels = [
 ]
 
 [[package]]
+name = "discord-py"
+version = "2.6.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ce/e7/9b1dbb9b2fc07616132a526c05af23cfd420381793968a189ee08e12e35f/discord_py-2.6.4.tar.gz", hash = "sha256:44384920bae9b7a073df64ae9b14c8cf85f9274b5ad5d1d07bd5a67539de2da9", size = 1092623, upload-time = "2025-10-08T21:45:43.593Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ca/ae/3d3a89b06f005dc5fa8618528dde519b3ba7775c365750f7932b9831ef05/discord_py-2.6.4-py3-none-any.whl", hash = "sha256:2783b7fb7f8affa26847bfc025144652c294e8fe6e0f8877c67ed895749eb227", size = 1209284, upload-time = "2025-10-08T21:45:41.679Z" },
+]
+
+[[package]]
 name = "distlib"
 version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3138,6 +3151,15 @@ wheels = [
 ]
 
 [[package]]
+name = "slack-sdk"
+version = "3.39.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b6/dd/645f3eb93fce38eadbb649e85684730b1fc3906c2674ca59bddc2ca2bd2e/slack_sdk-3.39.0.tar.gz", hash = "sha256:6a56be10dc155c436ff658c6b776e1c082e29eae6a771fccf8b0a235822bbcb1", size = 247207, upload-time = "2025-11-20T15:27:57.556Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ef/1f/32bcf088e535c1870b1a1f2e3b916129c66fdfe565a793316317241d41e5/slack_sdk-3.39.0-py2.py3-none-any.whl", hash = "sha256:b1556b2f5b8b12b94e5ea3f56c4f2c7f04462e4e1013d325c5764ff118044fa8", size = 309850, upload-time = "2025-11-20T15:27:55.729Z" },
+]
+
+[[package]]
 name = "smolagents"
 version = "1.24.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3339,6 +3361,7 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
+    { name = "discord-py" },
     { name = "lark-oapi" },
     { name = "nuitka" },
     { name = "pre-commit" },
@@ -3346,6 +3369,7 @@ all = [
     { name = "pytest-asyncio" },
     { name = "python-telegram-bot" },
     { name = "ruff" },
+    { name = "slack-sdk" },
     { name = "zstandard" },
 ]
 dev = [
@@ -3357,14 +3381,17 @@ dev = [
     { name = "zstandard" },
 ]
 social = [
+    { name = "discord-py" },
     { name = "lark-oapi" },
     { name = "python-telegram-bot" },
+    { name = "slack-sdk" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "crawl4ai", specifier = ">=0.7.3" },
     { name = "ddgs", specifier = ">=9.10.0" },
+    { name = "discord-py", marker = "extra == 'social'", specifier = ">=2.0.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "lancedb", specifier = ">=0.17.0" },
     { name = "lark-oapi", marker = "extra == 'social'" },
@@ -3379,6 +3406,7 @@ requires-dist = [
     { name = "python-dotenv" },
     { name = "python-telegram-bot", marker = "extra == 'social'", specifier = ">=22.6" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
+    { name = "slack-sdk", marker = "extra == 'social'", specifier = ">=3.0.0" },
     { name = "smolagents", extras = ["litellm", "mcp"] },
     { name = "sqlmodel", specifier = ">=0.0.22" },
     { name = "starlette" },

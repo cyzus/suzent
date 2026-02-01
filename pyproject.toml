@@ -36,7 +36,9 @@ suzent = "suzent.cli:app"
 # Kept for backwards compatibility, but memory is now required
 social = [
     "python-telegram-bot>=22.6",
-    "lark-oapi"
+    "lark-oapi",
+    "slack_sdk>=3.0.0",
+    "discord.py>=2.0.0",
 ]
 
 # Development dependencies

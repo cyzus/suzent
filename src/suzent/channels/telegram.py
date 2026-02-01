@@ -29,9 +29,9 @@ class TelegramChannel(SocialChannel):
     Driver for Telegram Bot API.
     """
 
-    def __init__(self, token: str):
-        super().__init__("telegram", {"token": token})
-        self.token = token
+    def __init__(self, config: dict[str, Any]):
+        super().__init__("telegram", config)
+        self.token = config.get("token")
         self.app: Optional[Application] = None
         self._running = False
 
