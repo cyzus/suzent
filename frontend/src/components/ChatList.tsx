@@ -194,15 +194,9 @@ export const ChatList: React.FC = () => {
       <div className="flex-1 overflow-y-auto scrollbar-thin">
         {displayedChats.length === 0 ? (
           <div className="p-8 text-center">
-            {searchQuery ? (
-              <div className="w-16 h-16 mx-auto mb-3">
-                <RobotAvatar variant="ghost" />
-              </div>
-            ) : (
-              <div className="w-12 h-12 bg-neutral-200 border-2 border-brutal-black mx-auto mb-3 flex items-center justify-center text-2xl">
-                {viewMode === 'social' ? '🌐' : '💬'}
-              </div>
-            )}
+            <div className="w-16 h-16 mx-auto mb-3">
+              <RobotAvatar variant={searchQuery ? "ghost" : "portal"} />
+            </div>
             <p className="text-brutal-black text-sm font-bold uppercase">
               {searchQuery ? 'No results found' : (viewMode === 'social' ? 'No social chats' : 'No chats yet')}
             </p>
