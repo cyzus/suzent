@@ -36,6 +36,9 @@ class SocialBrain:
         allowed_users: list = None,
         platform_allowlists: dict = None,
         model: str = None,
+        memory_enabled: bool = True,
+        tools: list = None,
+        mcp_enabled: dict = None,
     ):
         self.channel_manager = channel_manager
         self.allowed_users = set(allowed_users) if allowed_users else set()
@@ -45,6 +48,9 @@ class SocialBrain:
             else {}
         )
         self.model = model
+        self.memory_enabled = memory_enabled
+        self.tools = tools
+        self.mcp_enabled = mcp_enabled
         self._running = False
         self._task: Optional[asyncio.Task] = None
 
@@ -150,9 +156,14 @@ class SocialBrain:
             config = {
                 "_user_id": CONFIG.user_id,  # Default user
                 "_chat_id": social_chat_id,
-                "memory_enabled": True,  # Enable memory for social too
+                "memory_enabled": self.memory_enabled,
                 "model": self.model,
             }
+            # Add tool restrictions if configured
+            if self.tools is not None:
+                config["tools"] = self.tools
+            if self.mcp_enabled is not None:
+                config["mcp_enabled"] = self.mcp_enabled
 
             # Get Agent
             agent = await get_or_create_agent(config)

@@ -183,6 +183,9 @@ async def startup():
             allowed_users=list(allowed_users),
             platform_allowlists=platform_allowlists,
             model=social_model,
+            memory_enabled=social_config.get("memory_enabled", True),
+            tools=social_config.get("tools"),
+            mcp_enabled=social_config.get("mcp_enabled"),
         )
         # Expose social_brain to app state for dynamic updates
         # We need to access 'app' here. But 'app' is defined below.

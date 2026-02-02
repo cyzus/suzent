@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 
 import { useChatStore } from '../../hooks/useChatStore';
-import { addMcpServer, fetchMcpServers, removeMcpServer, setMcpServerEnabled } from '../../lib/api';
+import { fetchMcpServers, setMcpServerEnabled } from '../../lib/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalSelect } from '../BrutalSelect';
 
@@ -28,12 +28,6 @@ export function ConfigView(): React.ReactElement {
   const { config, setConfig, backendConfig } = useChatStore();
 
   const [servers, setServers] = useState<MCPServer[]>([]);
-  const [srvName, setSrvName] = useState('');
-  const [srvUrl, setSrvUrl] = useState('');
-  const [stdioCmd, setStdioCmd] = useState('');
-  const [stdioArgs, setStdioArgs] = useState('');
-  const [stdioEnv, setStdioEnv] = useState('');
-  const [addType, setAddType] = useState<'url' | 'stdio'>('url');
   const [loading, setLoading] = useState(false);
 
   const prevMcpStateRef = useRef<string>('');
@@ -98,72 +92,6 @@ export function ConfigView(): React.ReactElement {
     });
   }
 
-  const refreshServers = useCallback(async () => {
-    const data = await fetchMcpServers();
-    const urls = data.urls || {};
-    const stdio = data.stdio || {};
-    const enabled = data.enabled || {};
-
-    const urlServers: MCPServer[] = Object.entries(urls).map(([name, url]) => ({
-      type: 'url',
-      name,
-      url: String(url),
-      enabled: !!enabled[name]
-    }));
-
-    const stdioServers: MCPServer[] = Object.entries(stdio).map(([name, params]: [string, any]) => ({
-      type: 'stdio',
-      name,
-      command: params.command,
-      args: params.args,
-      env: params.env,
-      enabled: !!enabled[name],
-    }));
-
-    setServers([...urlServers, ...stdioServers]);
-  }, []);
-
-  const addServer = useCallback(async () => {
-    setLoading(true);
-    try {
-      if (addType === 'url') {
-        if (!srvUrl.trim()) return;
-        try {
-          new URL(srvUrl);
-        } catch {
-          return;
-        }
-        await addMcpServer(srvName.trim() || new URL(srvUrl).host, srvUrl.trim());
-      } else {
-        if (!stdioCmd.trim()) return;
-        const args = stdioArgs.trim()
-          ? stdioArgs.split(',').map(s => s.trim()).filter(Boolean)
-          : undefined;
-
-        let env: Record<string, string> | undefined;
-        if (stdioEnv.trim()) {
-          env = {};
-          for (const pair of stdioEnv.split(',')) {
-            const [k, v] = pair.split('=').map(s => s.trim());
-            if (k && v) {
-              env[k] = v;
-            }
-          }
-        }
-        await addMcpServer(srvName.trim() || stdioCmd.trim(), undefined, { command: stdioCmd.trim(), args, env });
-      }
-
-      setSrvName('');
-      setSrvUrl('');
-      setStdioCmd('');
-      setStdioArgs('');
-      setStdioEnv('');
-      await refreshServers();
-    } finally {
-      setLoading(false);
-    }
-  }, [addType, srvName, srvUrl, stdioCmd, stdioArgs, stdioEnv, refreshServers]);
-
   const toggleServer = useCallback(async (name: string) => {
     setLoading(true);
     try {
@@ -177,16 +105,6 @@ export function ConfigView(): React.ReactElement {
       setLoading(false);
     }
   }, [servers]);
-
-  const removeServerHandler = useCallback(async (name: string) => {
-    setLoading(true);
-    try {
-      await removeMcpServer(name);
-      setServers(prev => prev.filter(s => s.name !== name));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
 
 
@@ -341,55 +259,14 @@ export function ConfigView(): React.ReactElement {
         </div>
       </div>
       <div className="space-y-2">
-        <label className="block font-bold tracking-wide text-brutal-black uppercase">MCP Servers</label>
+        <div className="flex items-center justify-between">
+          <label className="block font-bold tracking-wide text-brutal-black uppercase">MCP Servers</label>
+          <span className="text-[9px] font-bold uppercase text-neutral-500">Manage in Settings</span>
+        </div>
         <div className="space-y-2">
-          <div className="flex gap-2 flex-wrap items-start">
-            <BrutalSelect
-              value={addType}
-              onChange={val => setAddType(val as 'url' | 'stdio')}
-              options={[{ value: 'url', label: 'URL' }, { value: 'stdio', label: 'Stdio' }]}
-              className="w-24"
-            />
-            <input
-              value={srvName}
-              onChange={e => setSrvName(e.target.value)}
-              placeholder="Name"
-              className="w-28 shrink-0 bg-white border-3 border-brutal-black px-2 py-1 font-mono font-bold text-xs placeholder:opacity-40 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-shadow"
-            />
-            {addType === 'url' ? (
-              <input
-                value={srvUrl}
-                onChange={e => setSrvUrl(e.target.value)}
-                placeholder="https://host/path"
-                className="flex-1 min-w-[140px] bg-white border-3 border-brutal-black px-2 py-1 font-mono font-bold text-xs placeholder:opacity-40 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-shadow"
-              />
-            ) : (
-              <>
-                <input
-                  value={stdioCmd}
-                  onChange={e => setStdioCmd(e.target.value)}
-                  placeholder="command"
-                  className="w-36 bg-white border-3 border-brutal-black px-2 py-1 font-mono font-bold text-xs placeholder:opacity-40 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-shadow"
-                />
-                <input
-                  value={stdioArgs}
-                  onChange={e => setStdioArgs(e.target.value)}
-                  placeholder="args"
-                  className="w-36 bg-white border-3 border-brutal-black px-2 py-1 font-mono font-bold text-xs placeholder:opacity-40 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-shadow"
-                />
-                <input
-                  value={stdioEnv}
-                  onChange={e => setStdioEnv(e.target.value)}
-                  placeholder="env"
-                  className="w-36 bg-white border-3 border-brutal-black px-2 py-1 font-mono font-bold text-xs placeholder:opacity-40 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-shadow"
-                />
-              </>
-            )}
-            <button type="button" onClick={addServer} className="shrink-0 px-3 py-1 bg-brutal-green border-3 border-brutal-black text-brutal-black text-xs font-bold uppercase disabled:opacity-50 brutal-btn transition-all" disabled={addType === 'url' ? !srvUrl : !stdioCmd}>Add</button>
-          </div>
           {servers.length === 0 && (
             <div className="text-[11px] text-brutal-black font-bold uppercase">
-              <span>No MCP servers configured.</span>
+              <span>No MCP servers configured. Add servers in Settings.</span>
             </div>
           )}
           <ul
@@ -412,13 +289,9 @@ export function ConfigView(): React.ReactElement {
                       {s.args && s.args.length > 0 && (
                         <span> <span className="break-all truncate max-w-full" title={s.args.join(', ')}>[{s.args.join(', ')}]</span></span>
                       )}
-                      {s.env && Object.keys(s.env).length > 0 && (
-                        <span> <span className="break-all truncate max-w-full" title={JSON.stringify(s.env)}>env:{JSON.stringify(s.env)}</span></span>
-                      )}
                     </div>
                   )}
                 </div>
-                <button type="button" onClick={() => removeServerHandler(s.name)} className="text-white bg-brutal-red border-2 border-brutal-black text-xs font-bold px-1.5 py-0.5 hover:bg-red-600 transition-colors" title="Remove" disabled={loading}>×</button>
               </li>
             ))}
           </ul>

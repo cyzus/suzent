@@ -241,6 +241,9 @@ export function getSandboxParams(chatId: string, path: string, volumes?: string[
 export interface SocialConfig {
   allowed_users: string[];
   model?: string;
+  memory_enabled?: boolean;
+  tools?: string[] | null;
+  mcp_enabled?: Record<string, boolean> | null;
   [key: string]: any;
 }
 

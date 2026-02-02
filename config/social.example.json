@@ -1,6 +1,9 @@
 {
     "allowed_users": [],
     "model": "gemini/gemini-2.5-flash",
+    "memory_enabled": true,
+    "tools": null,
+    "mcp_enabled": null,
     "telegram": {
         "enabled": true,
         "token": "",
