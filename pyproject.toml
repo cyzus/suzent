@@ -26,6 +26,8 @@ dependencies = [
     "ddgs>=9.10.0",
     "sqlmodel>=0.0.22",
     "typer>=0.9.0",
+    "playwright>=1.41.0",
+    "nest-asyncio>=1.6.0",
 ]
 
 [project.scripts]

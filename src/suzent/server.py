@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
-from starlette.routing import Route
+from starlette.routing import Route, WebSocketRoute
 
 from suzent.logger import get_logger, setup_logging
 from suzent.routes.chat_routes import (
@@ -65,6 +65,7 @@ from suzent.routes.sandbox_routes import (
 )
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
 from suzent.routes.system_routes import list_host_files, open_in_explorer
+from suzent.routes.browser_routes import browser_websocket_endpoint
 from suzent.channels.manager import ChannelManager
 
 # from suzent.channels.telegram import TelegramChannel # Loaded dynamically now
@@ -104,6 +105,14 @@ async def startup():
     from suzent.database import get_database
 
     logger.info("Application startup - initializing services")
+
+    # Initialize Browser Session Manager with Main Loop for thread safety
+    import asyncio
+    from suzent.tools.browsing_tool import BrowserSessionManager
+    try:
+        BrowserSessionManager.get_instance().set_main_loop(asyncio.get_running_loop())
+    except Exception as e:
+        logger.error(f"Failed to set browser session loop: {e}")
 
     # Load API keys from database into environment
     db = get_database()
@@ -145,7 +154,6 @@ async def startup():
 
         social_model = social_config.get("model")
 
-
         # Load Channels Dynamically
         channel_manager.load_drivers_from_config(social_config)
 
@@ -181,7 +189,7 @@ async def startup():
         # Actually startup is just a coroutine.
         # But 'app' is global in this file.
         app.state.social_brain = social_brain
-        
+
         await social_brain.start()
 
     except Exception as e:
@@ -203,6 +211,13 @@ async def shutdown():
         await channel_manager.stop_all()
 
     await shutdown_memory_system()
+
+    # Clean up browser session
+    try:
+        from suzent.tools.browsing_tool import BrowserSessionManager
+        await BrowserSessionManager.get_instance().close_session()
+    except Exception as e:
+        logger.error(f"Error shutting down browser session: {e}")
 
 
 # --- Application Setup ---
@@ -266,6 +281,8 @@ app = Starlette(
         Route("/skills", get_skills, methods=["GET"]),
         Route("/skills/reload", reload_skills, methods=["POST"]),
         Route("/skills/{skill_name}/toggle", toggle_skill, methods=["POST"]),
+        # Browser WebSocket
+        WebSocketRoute("/ws/browser", browser_websocket_endpoint),
     ],
     middleware=[
         Middleware(

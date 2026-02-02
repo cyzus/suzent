@@ -273,22 +273,24 @@ async def get_embedding_models(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e), "models": []}, status_code=500)
 
 
-
 def _mask_social_config(config: dict) -> dict:
     """Recursively mask secret fields in the configuration."""
     masked = {}
     for key, value in config.items():
         if isinstance(value, dict):
             masked[key] = _mask_social_config(value)
-        elif isinstance(value, str) and any(
-            s in key.lower() for s in ["token", "secret", "password", "key"]
-        ) and "public" not in key.lower() and key != "key": # "key" might be generic, but let's be safe. key usually implies secret.
+        elif (
+            isinstance(value, str)
+            and any(s in key.lower() for s in ["token", "secret", "password", "key"])
+            and "public" not in key.lower()
+            and key != "key"
+        ):  # "key" might be generic, but let's be safe. key usually implies secret.
             # allowed_users doesn't match 'key'/'secret' etc.
             # But wait, 'encrypt_key', 'app_secret', 'bot_token'
             if value:
                 masked[key] = "********"
             else:
-                 masked[key] = value
+                masked[key] = value
         else:
             masked[key] = value
     return masked
@@ -322,12 +324,15 @@ async def get_social_config(request: Request) -> JSONResponse:
             config = json.load(f)
 
         masked_config = _mask_social_config(config)
-        
+
         # Include active model from memory if available
         active_model = None
-        if hasattr(request.app.state, "social_brain") and request.app.state.social_brain:
-             active_model = request.app.state.social_brain.model
-        
+        if (
+            hasattr(request.app.state, "social_brain")
+            and request.app.state.social_brain
+        ):
+            active_model = request.app.state.social_brain.model
+
         return JSONResponse({"config": masked_config, "active_model": active_model})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -344,9 +349,9 @@ async def save_social_config(request: Request) -> JSONResponse:
         config_path = Path("config/social.json")
         existing_config = {}
         if config_path.exists():
-             with open(config_path, "r") as f:
+            with open(config_path, "r") as f:
                 existing_config = json.load(f)
-        
+
         # Merge incoming into existing (handling masks)
         _merge_social_config(existing_config, incoming_config)
 
@@ -354,9 +359,12 @@ async def save_social_config(request: Request) -> JSONResponse:
             json.dump(existing_config, f, indent=4)
 
         # Dynamic reload of model if available
-        if hasattr(request.app.state, "social_brain") and request.app.state.social_brain:
-             new_model = existing_config.get("model")
-             request.app.state.social_brain.update_model(new_model)
+        if (
+            hasattr(request.app.state, "social_brain")
+            and request.app.state.social_brain
+        ):
+            new_model = existing_config.get("model")
+            request.app.state.social_brain.update_model(new_model)
 
         return JSONResponse({"success": True})
     except Exception as e:
