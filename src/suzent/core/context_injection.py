@@ -79,25 +79,6 @@ def inject_chat_context(
     )
     workspace_root = _get_config_value(config, "workspace_root", CONFIG.workspace_root)
 
-    # Ensure BashTool is present
-    has_bash = any(t.__class__.__name__ == "BashTool" for t in agent._tool_instances)
-    if not has_bash:
-        try:
-            from suzent.tools.bash_tool import BashTool
-
-            bash_tool = BashTool()
-            agent._tool_instances.append(bash_tool)
-            if hasattr(agent, "tools") and isinstance(agent.tools, dict):
-                agent.tools["BashTool"] = bash_tool
-            if (
-                hasattr(agent, "toolbox")
-                and hasattr(agent.toolbox, "tools")
-                and isinstance(agent.toolbox.tools, dict)
-            ):
-                agent.toolbox.tools["BashTool"] = bash_tool
-        except Exception as e:
-            logger.error(f"Failed to dynamically equip BashTool: {e}")
-
     # Tool name sets for efficient lookup
     memory_tool_names = {"MemorySearchTool", "MemoryBlockUpdateTool"}
     file_tool_names = {
