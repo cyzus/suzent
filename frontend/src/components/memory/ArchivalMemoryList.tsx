@@ -136,7 +136,7 @@ export const ArchivalMemoryList: React.FC = () => {
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 border-2 border-brutal-black bg-white hover:bg-brutal-black hover:text-white flex items-center justify-center font-bold transition-all brutal-btn shadow-[2px_2px_0_0_#000]"
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 border-2 border-brutal-black bg-white hover:bg-brutal-black hover:text-white flex items-center justify-center font-bold transition-colors"
             >
               ×
             </button>
