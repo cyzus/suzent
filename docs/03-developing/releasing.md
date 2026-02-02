@@ -48,21 +48,43 @@ git tag v0.1.1
 git push && git push --tags
 ```
 
-## 3. Automated Build
+## 3. Update Changelog
+
+Before releasing, add an entry to `CHANGELOG.md` for the new version. Follow the [Keep a Changelog](https://keepachangelog.com/) format:
+
+```markdown
+## [v0.2.3] - 2026-02-03
+
+### 🚀 Added
+- **Feature**: Description of new features.
+
+### ⚡ Changed
+- **Component**: Description of changes.
+
+### 🐛 Fixed
+- **Bug**: Description of bug fixes.
+```
+
+> [!IMPORTANT]
+> The version in the changelog header (e.g., `[v0.2.3]`) must match the git tag exactly. Release notes are automatically extracted from this section.
+
+## 4. Automated Build & Release
 
 Once the tag is pushed, the **[Build Desktop Apps](../../.github/workflows/build-desktop.yml)** workflow will automatically trigger. It performs the following steps:
 
-1.  **Builds Backend**: Compiles the Python backend using Nuitka.
-2.  **Builds Frontend**: Builds the React frontend.
-3.  **Builds Desktop App**: Bundles everything into a Tauri application.
+1.  **Extracts Release Notes**: Reads the changelog entry for the tagged version from `CHANGELOG.md`.
+2.  **Builds Backend**: Compiles the Python backend using Nuitka.
+3.  **Builds Frontend**: Builds the React frontend.
+4.  **Builds Desktop App**: Bundles everything into a Tauri application.
     - **Windows**: `.msi`
     - **macOS**: `.dmg` (Intel & Apple Silicon)
     - **Linux**: `.AppImage` / `.deb` (Ubuntu)
-4.  **Publishes Release**: Creates a Draft Release on GitHub with all artifacts attached.
+5.  **Publishes Release**: Creates a GitHub Release with:
+    - Release notes from the changelog (fully automated!)
+    - All platform artifacts attached
 
-## 4. Finalize Release
+## 5. Verify Release
 
 1.  Go to the [GitHub Releases](https://github.com/cyzus/suzent/releases) page.
-2.  Find the new Draft Release.
-3.  Edit the release notes to include the changelog.
-4.  Click **Publish release**.
+2.  Verify the release was created with the correct version and release notes.
+3.  Download and test the artifacts if needed.

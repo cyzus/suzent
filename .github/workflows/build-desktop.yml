@@ -11,6 +11,22 @@ permissions:
 
 
 jobs:
+  # Extract release notes from CHANGELOG.md
+  changelog:
+    runs-on: ubuntu-latest
+    outputs:
+      release_notes: ${{ steps.changelog.outputs.changes }}
+      version: ${{ steps.changelog.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read Changelog
+        id: changelog
+        uses: mindsers/changelog-reader-action@v2
+        with:
+          version: ${{ github.ref_name }}
+          path: ./CHANGELOG.md
+
   build:
     strategy:
       fail-fast: false
@@ -74,15 +90,41 @@ jobs:
           cd src-tauri
           cargo tauri build --target ${{ matrix.target }}
 
-      # Upload artifacts to GitHub Release
-      - name: Release App
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Upload build artifacts for the release job
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
-          files: |
+          name: build-${{ matrix.target }}
+          path: |
             src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi
             src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
             src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
+          if-no-files-found: ignore
+
+  # Create GitHub Release with all artifacts and changelog-based release notes
+  release:
+    needs: [changelog, build]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: find artifacts -type f || echo "No artifacts found"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          name: ${{ github.ref_name }}
+          body: ${{ needs.changelog.outputs.release_notes }}
+          files: |
+            artifacts/**/*.msi
+            artifacts/**/*.dmg
+            artifacts/**/*.AppImage
 
