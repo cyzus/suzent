@@ -4,6 +4,7 @@ import { useChatStore } from '../../hooks/useChatStore';
 import { ApiProvider, fetchApiKeys, fetchEmbeddingModels, fetchSocialConfig, saveApiKeys, saveSocialConfig, saveUserPreferences, SocialConfig, UserConfig, verifyProvider } from '../../lib/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalSelect } from '../BrutalSelect';
+import { BrutalToggle } from '../BrutalToggle';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -534,18 +535,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                               </div>
 
                               <div className="p-6 space-y-4">
-                                <div className="flex items-center gap-2 mb-4">
-                                  <input
-                                    type="checkbox"
-                                    checked={isEnabled}
-                                    onChange={(e) => setSocialConfig(prev => ({
-                                      ...prev,
-                                      [key]: { ...platformConfig, enabled: e.target.checked }
-                                    }))}
-                                    className="w-5 h-5 border-2 border-brutal-black rounded-none focus:ring-0 text-brutal-black"
-                                  />
-                                  <label className="font-bold uppercase text-sm">Enable Integration</label>
-                                </div>
+                                <BrutalToggle
+                                  checked={isEnabled}
+                                  onChange={(checked) => setSocialConfig(prev => ({
+                                    ...prev,
+                                    [key]: { ...platformConfig, enabled: checked }
+                                  }))}
+                                  label="Enable"
+                                  className="mb-4"
+                                />
 
                                 {Object.entries(platformConfig).map(([fieldKey, fieldVal]) => {
                                   if (fieldKey === 'enabled' || fieldKey === 'allowed_users') return null;
