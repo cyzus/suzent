@@ -24,7 +24,14 @@ DEFAULT_TOOLS:
   - "BashTool"
 
 MCP_URLS:
+  # Simple format: just the URL
   "HF Space MCP": "https://evalstate-hf-mcp-server.hf.space/mcp"
+  # Nested format with headers
+  # "Authenticated MCP":
+  #   url: "https://api.example.com/mcp"
+  #   headers:
+  #     Authorization: "Bearer your-api-key"
+  #     X-Custom-Header: "custom-value"
 
 MCP_STDIO_PARAMS:
   mcp-arxiv:

@@ -62,11 +62,38 @@ const configsEqual = (a?: ChatConfig | null, b?: ChatConfig | null): boolean => 
     if (l.length !== r.length) return false;
     return l.every((value, index) => value === r[index]);
   };
+  const mcpUrlsEqual = (left?: string[] | Record<string, string>, right?: string[] | Record<string, string>) => {
+    if (left === right) return true;
+    if (!left || !right) return false;
+
+    // Check if both are arrays
+    const isLeftArray = Array.isArray(left);
+    const isRightArray = Array.isArray(right);
+
+    if (isLeftArray && isRightArray) {
+      return arrayEqual(left as string[], right as string[]);
+    }
+
+    // Check if both are objects (records)
+    if (!isLeftArray && !isRightArray) {
+      const l = left as Record<string, string>;
+      const r = right as Record<string, string>;
+      const lKeys = Object.keys(l).sort();
+      const rKeys = Object.keys(r).sort();
+
+      if (!arrayEqual(lKeys, rKeys)) return false;
+      return lKeys.every(key => l[key] === r[key]);
+    }
+
+    // Mismo types
+    return false;
+  };
+
   return (
     a.model === b.model &&
     a.agent === b.agent &&
     arrayEqual(a.tools, b.tools) &&
-    arrayEqual(a.mcp_urls, b.mcp_urls)
+    mcpUrlsEqual(a.mcp_urls, b.mcp_urls)
   );
 };
 
@@ -731,7 +758,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const effectiveConfig: ChatConfig = {
         ...baseConfig,
         tools: [...(baseConfig.tools || [])],
-        mcp_urls: [...(baseConfig.mcp_urls || [])]
+        mcp_urls: Array.isArray(baseConfig.mcp_urls)
+          ? [...baseConfig.mcp_urls]
+          : { ...(baseConfig.mcp_urls || {}) }
       };
 
       const firstUserMessage = chatMessages.find(msg => msg.role === 'user');

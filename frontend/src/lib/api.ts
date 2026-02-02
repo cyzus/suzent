@@ -62,6 +62,7 @@ interface StdioConfig {
 interface McpServersResponse {
   urls: Record<string, string>;
   stdio: Record<string, StdioConfig>;
+  headers: Record<string, Record<string, string>>;
   enabled: Record<string, boolean>;
 }
 
@@ -83,11 +84,13 @@ export async function fetchMcpServers(): Promise<McpServersResponse> {
 export async function addMcpServer(
   name: string,
   url?: string,
-  stdio?: StdioConfig
+  stdio?: StdioConfig,
+  headers?: Record<string, string>
 ): Promise<void> {
-  const body: { name: string; url?: string; stdio?: StdioConfig } = { name };
+  const body: { name: string; url?: string; stdio?: StdioConfig; headers?: Record<string, string> } = { name };
   if (url) body.url = url;
   if (stdio) body.stdio = stdio;
+  if (headers && Object.keys(headers).length > 0) body.headers = headers;
 
   const res = await fetch(`${API_BASE}/mcp_servers`, {
     method: 'POST',

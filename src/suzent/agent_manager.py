@@ -45,6 +45,78 @@ agent_config: Optional[dict] = None
 agent_lock = asyncio.Lock()
 
 
+def _build_mcp_tools(config: Dict[str, Any]) -> list:
+    """
+    Build MCP tools from the enabled servers in the configuration.
+
+    Supports both simple format: {"name": "url"}
+    and nested format: {"name": {"url": "...", "headers": {...}}}
+
+    Args:
+        config: Agent configuration dictionary containing:
+            - mcp_enabled: Dict mapping server names to enabled state
+            - mcp_urls: URL servers (simple or nested format)
+            - mcp_headers: Optional headers per server
+            - mcp_stdio_params: Stdio server parameters
+
+    Returns:
+        List of MCP tools from enabled servers.
+    """
+    mcp_enabled = config.get("mcp_enabled")
+
+    # If mcp_enabled is not provided, default to NO MCP servers
+    # This ensures fresh launch matches frontend tool display (only native tools)
+    if mcp_enabled is None:
+        return []
+
+    raw_mcp_urls = config.get("mcp_urls", CONFIG.mcp_urls)
+    mcp_headers = config.get("mcp_headers", {})
+    mcp_stdio_params = config.get("mcp_stdio_params", CONFIG.mcp_stdio_params)
+
+    # Parse mcp_urls to handle both simple and nested formats
+    mcp_urls = {}
+
+    # Handle list input (backward compatibility for array of strings)
+    if isinstance(raw_mcp_urls, list):
+        for i, url in enumerate(raw_mcp_urls):
+            # Use generated name if we can't infer it. Headers won't work for these.
+            # Ideally we could reverse-lookup global config but that's complex/unreliable if duplicates exist.
+            mcp_urls[f"mcp-url-{i}"] = url
+
+    # Handle dict input (standard format)
+    elif isinstance(raw_mcp_urls, dict):
+        for name, value in raw_mcp_urls.items():
+            if isinstance(value, str):
+                mcp_urls[name] = value
+            elif isinstance(value, dict):
+                mcp_urls[name] = value.get("url", "")
+                # Extract headers from nested format if not already provided
+                if value.get("headers") and name not in mcp_headers:
+                    mcp_headers[name] = value["headers"]
+
+    mcp_server_parameters = []
+
+    # Build URL server parameters
+    for name, url in mcp_urls.items():
+        if mcp_enabled.get(name, False):
+            server_params = {"url": url, "transport": "streamable-http"}
+            if name in mcp_headers and mcp_headers[name]:
+                server_params["headers"] = mcp_headers[name]
+            mcp_server_parameters.append(server_params)
+
+    # Build stdio server parameters
+    if mcp_stdio_params:
+        for name, params in mcp_stdio_params.items():
+            if mcp_enabled.get(name, False):
+                mcp_server_parameters.append(StdioServerParameters(**params))
+
+    if not mcp_server_parameters:
+        return []
+
+    mcp_client = MCPClient(server_parameters=mcp_server_parameters)
+    return mcp_client.get_tools()
+
+
 def create_agent(
     config: Dict[str, Any], memory_context: Optional[str] = None
 ) -> CodeAgent:
@@ -146,34 +218,9 @@ def create_agent(
         except Exception as e:
             logger.error(f"Failed to equip SkillTool: {e}")
 
-    # --- Filter MCP servers by enabled state if provided ---
-    # Accepts: config['mcp_enabled'] = {name: bool, ...}, config['mcp_urls'], config['mcp_stdio_params']
-    mcp_enabled = config.get("mcp_enabled")
-    mcp_urls = config.get("mcp_urls", CONFIG.mcp_urls)
-    mcp_stdio_params = config.get("mcp_stdio_params", CONFIG.mcp_stdio_params)
-
-    mcp_server_parameters = []
-    if mcp_enabled is not None:
-        # Only include explicitly enabled servers
-        # Default to False (disabled) if server not in mcp_enabled dict
-        if mcp_urls:
-            for name, url in (
-                mcp_urls.items() if isinstance(mcp_urls, dict) else enumerate(mcp_urls)
-            ):
-                if mcp_enabled.get(name, False):
-                    mcp_server_parameters.append(
-                        {"url": url, "transport": "streamable-http"}
-                    )
-        if mcp_stdio_params:
-            for name, params in mcp_stdio_params.items():
-                if mcp_enabled.get(name, False):
-                    mcp_server_parameters.append(StdioServerParameters(**params))
-    # Note: If mcp_enabled is not provided, default to NO MCP servers
-    # This ensures fresh launch matches frontend tool display (only native tools)
-
-    if mcp_server_parameters:
-        mcp_client = MCPClient(server_parameters=mcp_server_parameters)
-        tools.extend(mcp_client.get_tools())
+    # Load MCP tools from enabled servers
+    mcp_tools = _build_mcp_tools(config)
+    tools.extend(mcp_tools)
 
     agent_map = {"CodeAgent": CodeAgent, "ToolcallingAgent": ToolCallingAgent}
 

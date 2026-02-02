@@ -130,7 +130,8 @@ class ConfigModel(BaseModel):
     tool_options: Optional[List[str]] = None
 
     # No MCP endpoints by default; provide via YAML when needed
-    mcp_urls: Dict[str, str] = {}
+    # Supports both simple format: {"name": "url"} and nested: {"name": {"url": "...", "headers": {...}}}
+    mcp_urls: Dict[str, Any] = {}
 
     # MCP stdio params default empty; user can configure stdio-backed MCPs in YAML
     mcp_stdio_params: Dict[str, Any] = {}

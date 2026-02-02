@@ -56,22 +56,27 @@ export function ConfigView(): React.ReactElement {
 
       setServers([...urlServers, ...stdioServers]);
     });
-  }, []);
+  }, [backendConfig]);
 
   useEffect(() => {
-    const enabledUrls = servers
-      .filter((s): s is MCPUrlServer => s.enabled && s.type === 'url')
-      .map(s => s.url);
+    // Generate dictionary { [name]: url } for enabled URL servers
+    // This allows backend to look up headers by server name
+    const enabledUrlDict: Record<string, string> = {};
+    servers.forEach(s => {
+      if (s.enabled && s.type === 'url') {
+        enabledUrlDict[s.name] = s.url;
+      }
+    });
 
     const mcp_enabled: Record<string, boolean> = {};
     for (const server of servers) {
       mcp_enabled[server.name] = server.enabled;
     }
 
-    const currentState = JSON.stringify({ enabledUrls, mcp_enabled });
+    const currentState = JSON.stringify({ enabledUrls: enabledUrlDict, mcp_enabled });
     if (currentState !== prevMcpStateRef.current) {
       prevMcpStateRef.current = currentState;
-      setConfig(prevConfig => ({ ...prevConfig, mcp_urls: enabledUrls, mcp_enabled }));
+      setConfig(prevConfig => ({ ...prevConfig, mcp_urls: enabledUrlDict, mcp_enabled }));
     }
   }, [servers, setConfig]);
 
@@ -295,8 +300,10 @@ export function ConfigView(): React.ReactElement {
               </li>
             ))}
           </ul>
-          {config.mcp_urls && config.mcp_urls.length > 0 && (
-            <div className="text-xs text-brutal-black font-mono font-bold">ENABLED: {config.mcp_urls.length} URL(S)</div>
+          {config.mcp_urls && (
+            <div className="text-xs text-brutal-black font-mono font-bold">
+              ENABLED: {Array.isArray(config.mcp_urls) ? config.mcp_urls.length : Object.keys(config.mcp_urls).length} URL(S)
+            </div>
           )}
         </div>
       </div>

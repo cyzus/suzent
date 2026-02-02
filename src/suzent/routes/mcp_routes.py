@@ -12,15 +12,31 @@ def get_mcp_servers_merged() -> dict:
     """
     Get MCP servers merged from database and config file defaults.
     Database servers take precedence.
+    Config supports both simple format: {"name": "url"} and nested: {"name": {"url": "...", "headers": {...}}}
     """
     db = get_database()
     db_servers = db.get_mcp_servers()
 
     # Start with config defaults (servers default to DISABLED until user explicitly enables them)
     all_config_names = set(CONFIG.mcp_urls.keys()) | set(CONFIG.mcp_stdio_params.keys())
+
+    # Parse config mcp_urls - supports both simple and nested formats
+    config_urls = {}
+    config_headers = {}
+    for name, value in CONFIG.mcp_urls.items():
+        if isinstance(value, str):
+            # Simple format: "name": "url"
+            config_urls[name] = value
+        elif isinstance(value, dict):
+            # Nested format: "name": {"url": "...", "headers": {...}}
+            config_urls[name] = value.get("url", "")
+            if value.get("headers"):
+                config_headers[name] = value["headers"]
+
     merged = {
-        "urls": dict(CONFIG.mcp_urls),
+        "urls": config_urls,
         "stdio": dict(CONFIG.mcp_stdio_params),
+        "headers": config_headers,
         "enabled": {name: False for name in all_config_names},
     }
 
@@ -30,6 +46,8 @@ def get_mcp_servers_merged() -> dict:
 
         if server.type == "url" and server.url:
             merged["urls"][server.name] = server.url
+            if server.headers:
+                merged["headers"][server.name] = server.headers
         elif server.type == "stdio" and server.command:
             stdio_config = {"command": server.command}
             if server.args:
@@ -50,6 +68,7 @@ async def list_mcp_servers(request: Request) -> JSONResponse:
         {
             "urls": servers["urls"],
             "stdio": servers["stdio"],
+            "headers": servers.get("headers", {}),
             "enabled": servers["enabled"],
         }
     )
@@ -58,11 +77,12 @@ async def list_mcp_servers(request: Request) -> JSONResponse:
 async def add_mcp_server(request: Request) -> JSONResponse:
     """
     Add a new MCP server (URL or stdio).
-    Body: {"name": str, "url": str} or {"name": str, "stdio": dict}
+    Body: {"name": str, "url": str, "headers": dict} or {"name": str, "stdio": dict}
     """
     data = await request.json()
     name = data.get("name")
     url = data.get("url")
+    headers = data.get("headers")
     stdio = data.get("stdio")
 
     if not name or (not url and not stdio):
@@ -71,6 +91,8 @@ async def add_mcp_server(request: Request) -> JSONResponse:
     config = {}
     if url:
         config = {"type": "url", "url": url}
+        if headers:
+            config["headers"] = headers
     elif stdio:
         config = {
             "type": "stdio",

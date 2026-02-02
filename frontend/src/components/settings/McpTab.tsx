@@ -7,6 +7,7 @@ type MCPUrlServer = {
     type: 'url';
     name: string;
     url: string;
+    headers?: Record<string, string>;
     enabled: boolean;
 };
 
@@ -34,6 +35,7 @@ export function McpTab({
 }: McpTabProps): React.ReactElement {
     const [srvName, setSrvName] = useState('');
     const [srvUrl, setSrvUrl] = useState('');
+    const [srvHeaders, setSrvHeaders] = useState('');
     const [stdioCmd, setStdioCmd] = useState('');
     const [stdioArgs, setStdioArgs] = useState('');
     const [stdioEnv, setStdioEnv] = useState('');
@@ -46,7 +48,16 @@ export function McpTab({
             if (addType === 'url') {
                 if (!srvUrl.trim()) return;
                 try { new URL(srvUrl); } catch { return; }
-                await addMcpServer(srvName.trim() || new URL(srvUrl).host, srvUrl.trim());
+                // Parse headers from KEY=value format
+                let headers: Record<string, string> | undefined;
+                if (srvHeaders.trim()) {
+                    headers = {};
+                    for (const pair of srvHeaders.split(',')) {
+                        const [k, v] = pair.split('=').map(s => s.trim());
+                        if (k && v) headers[k] = v;
+                    }
+                }
+                await addMcpServer(srvName.trim() || new URL(srvUrl).host, srvUrl.trim(), undefined, headers);
             } else {
                 if (!stdioCmd.trim()) return;
                 const args = stdioArgs.trim()
@@ -65,6 +76,7 @@ export function McpTab({
             // Clear form
             setSrvName('');
             setSrvUrl('');
+            setSrvHeaders('');
             setStdioCmd('');
             setStdioArgs('');
             setStdioEnv('');
@@ -143,12 +155,20 @@ export function McpTab({
                     </div>
 
                     {addType === 'url' ? (
-                        <input
-                            value={srvUrl}
-                            onChange={e => setSrvUrl(e.target.value)}
-                            placeholder="https://host/path"
-                            className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
-                        />
+                        <div className="space-y-2">
+                            <input
+                                value={srvUrl}
+                                onChange={e => setSrvUrl(e.target.value)}
+                                placeholder="https://host/path"
+                                className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
+                            />
+                            <input
+                                value={srvHeaders}
+                                onChange={e => setSrvHeaders(e.target.value)}
+                                placeholder="Headers (Header-Name=value, X-Api-Key=abc123)"
+                                className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
+                            />
+                        </div>
                     ) : (
                         <div className="space-y-2">
                             <input
