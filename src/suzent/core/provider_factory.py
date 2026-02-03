@@ -1,15 +1,36 @@
-from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
-import os
-import aiohttp
 import asyncio
-import logging
-from suzent.config import CONFIG
 import json
+import os
+from abc import ABC, abstractmethod
+from contextlib import contextmanager
+from typing import List, Optional, Dict, Any
+
+import aiohttp
+from pydantic import BaseModel
+
+from suzent.config import CONFIG
+from suzent.logger import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+
+
+@contextmanager
+def _temporary_env(key: str, value: str):
+    """
+    Context manager to temporarily set an environment variable, restoring
+    the original value (or removing it) on exit.
+    """
+    original = os.environ.get(key)
+    os.environ[key] = value
+    try:
+        yield
+    finally:
+        if original is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = original
+
 
 # Provider Configuration Definition
 PROVIDER_CONFIG = [
@@ -127,14 +148,13 @@ PROVIDER_CONFIG = [
 
 
 def get_enabled_models_from_db() -> List[str]:
-    """
-    Helper to aggregate all enabled/available models from provider config.
-    """
+    """Aggregate all enabled/available models from provider config stored in the database."""
     from suzent.database import get_database
 
     db = get_database()
     api_keys = db.get_api_keys() or {}
     provider_config_blob = api_keys.get("_PROVIDER_CONFIG_")
+
     custom_config = {}
     if provider_config_blob:
         try:
@@ -142,32 +162,59 @@ def get_enabled_models_from_db() -> List[str]:
         except json.JSONDecodeError:
             pass
 
-    all_models = []
-
     if not custom_config:
-        # If user hasn't configured providers yet, check config.py defaults
         if CONFIG.model_options:
             return CONFIG.model_options
 
-        # Fallback to internal defaults from PROVIDER_CONFIG
-        defaults = []
-        for p in PROVIDER_CONFIG:
-            for m in p.get("default_models", []):
-                defaults.append(m["id"])
-        return sorted(list(set(defaults)))
+        # Fallback to built-in defaults from PROVIDER_CONFIG
+        defaults = [
+            m["id"] for p in PROVIDER_CONFIG for m in p.get("default_models", [])
+        ]
+        return sorted(set(defaults))
 
-    for p in PROVIDER_CONFIG:
-        pid = p["id"]
+    # Collect all user-enabled models across providers
+    all_models = [
+        model_id
+        for p in PROVIDER_CONFIG
+        for model_id in custom_config.get(p["id"], {}).get("enabled_models", [])
+    ]
 
-        user_conf = custom_config.get(pid, {})
-        enabled = set(user_conf.get("enabled_models", []))
+    return sorted(set(all_models))
 
-        # Add enabled models
-        for m in enabled:
-            all_models.append(m)
 
-    # Remove duplicates and sort
-    return sorted(list(set(all_models)))
+def get_effective_memory_config() -> Dict[str, str]:
+    """
+    Get the effective memory configuration, preferring user settings from DB
+    and falling back to global CONFIG defaults.
+
+    Returns:
+        Dict with keys 'embedding_model' and 'extraction_model'.
+    """
+    from suzent.database import get_database
+
+    try:
+        db = get_database()
+        memory_config = db.get_memory_config()
+
+        embedding_model = (
+            memory_config.embedding_model
+            if memory_config and memory_config.embedding_model
+            else CONFIG.embedding_model
+        )
+        extraction_model = (
+            memory_config.extraction_model
+            if memory_config and memory_config.extraction_model
+            else CONFIG.extraction_model
+        )
+    except Exception as e:
+        logger.warning(f"Failed to fetch memory config from DB, using defaults: {e}")
+        embedding_model = CONFIG.embedding_model
+        extraction_model = CONFIG.extraction_model
+
+    return {
+        "embedding_model": embedding_model,
+        "extraction_model": extraction_model,
+    }
 
 
 class Model(BaseModel):
@@ -195,30 +242,21 @@ class BaseProvider(ABC):
 
 class OpenAIProvider(BaseProvider):
     async def list_models(self) -> List[Model]:
-        # Use liteLLM's discovery which validates keys automatically
         api_key = self.config.get("api_key") or os.environ.get("OPENAI_API_KEY")
         if not api_key:
             return []
 
         try:
-            # Temporarily inject key into env if provided in config but not env
-            # litellm usually looks at env vars
-            original_key = os.environ.get("OPENAI_API_KEY")
-            os.environ["OPENAI_API_KEY"] = api_key
-
             from litellm import get_valid_models
 
-            # Simple synchronous call
-            # Using run_in_executor might be causing issues with context or pickling if not careful,
-            # though usually it's fine. Let's try direct call in executor but handle potential errors better.
-
-            loop = asyncio.get_running_loop()
-            models_list = await loop.run_in_executor(
-                None,
-                lambda: get_valid_models(
-                    check_provider_endpoint=True, custom_llm_provider="openai"
-                ),
-            )
+            with _temporary_env("OPENAI_API_KEY", api_key):
+                loop = asyncio.get_running_loop()
+                models_list = await loop.run_in_executor(
+                    None,
+                    lambda: get_valid_models(
+                        check_provider_endpoint=True, custom_llm_provider="openai"
+                    ),
+                )
 
             return [Model(id=m, name=m) for m in models_list]
 
@@ -226,52 +264,25 @@ class OpenAIProvider(BaseProvider):
             logger.error(
                 f"Error fetching OpenAI models via litellm: {e}", exc_info=True
             )
-            # Fallback to manual check if litellm fails?
             return []
-        finally:
-            if "original_key" in locals():
-                if original_key is None:
-                    if "OPENAI_API_KEY" in os.environ:
-                        del os.environ["OPENAI_API_KEY"]
-                else:
-                    os.environ["OPENAI_API_KEY"] = original_key
 
     async def validate_credentials(self) -> bool:
-        # validate using list_models which does a check
         models = await self.list_models()
         return len(models) > 0
 
 
 class OllamaProvider(BaseProvider):
     async def list_models(self) -> List[Model]:
-        # Currently litellm's get_valid_models doesn't explicitly support Ollama local endpoint checks
-        # in the same way as OpenAI (it usually checks keys).
-        # However, we can try using it if we set the custom_llm_provider="ollama" and base_url.
-        # But litellm documentation suggests it checks "endpoints" for specific providers.
-        # Let's see if we can use it. If not, fallback to manual logic?
-        # Actually, get_valid_models(check_provider_endpoint=True) for Ollama might need specific env vars.
-
-        # For now, let's keep the reliable manual HTTP check for Ollama, as it doesn't require an API key
-        # and litellm's focus is often on auth'd providers.
-        # But we CAN update LiteLLMProvider to be generic.
-
-        # Original simple logic for Ollama seems fine and robust for localhost.
-        # Reverting to manual list for Ollama to ensure stability unless I verify litellm supports it fully.
-        # But checking recent docs, litellm does support Ollama.
-
-        return await self._manual_list_models()
-
-    async def _manual_list_models(self) -> List[Model]:
+        """Fetch models directly from Ollama's /api/tags endpoint."""
         base_url = (
             self.config.get("base_url")
             or os.environ.get("OLLAMA_BASE_URL")
             or "http://localhost:11434"
         )
-        base_url = base_url.replace("/v1", "")
+        base_url = base_url.replace("/v1", "").rstrip("/")
 
         async with aiohttp.ClientSession() as session:
             try:
-                base_url = base_url.rstrip("/")
                 async with session.get(f"{base_url}/api/tags") as resp:
                     if resp.status != 200:
                         return []
@@ -286,115 +297,111 @@ class OllamaProvider(BaseProvider):
                 return []
 
     async def validate_credentials(self) -> bool:
-        # validate using list_models which does a check
         models = await self.list_models()
-        return len(models) >= 0
+        return len(models) > 0
 
 
 class LiteLLMProvider(BaseProvider):
-    async def list_models(self) -> List[Model]:
-        # Generic LiteLLM provider can now use the powerful get_valid_models helper!
-        # This will discover models for ANY provider if env vars are set properly?
-        # Or if we have a Proxy Base URL.
+    """Provider for LiteLLM Proxy -- queries the proxy's /v1/models endpoint."""
 
-        # If accessing a LiteLLM Proxy:
+    async def list_models(self) -> List[Model]:
         base_url = (
             self.config.get("base_url")
             or self.config.get("LITELLM_BASE_URL")
             or os.environ.get("LITELLM_PROXY_API_BASE")
         )
-        if base_url:
-            # Proxy /v1/models check is standard
-            async with aiohttp.ClientSession() as session:
-                try:
-                    target_url = base_url.rstrip("/")
-                    if not target_url.endswith("/v1"):
-                        target_url += "/v1"
+        if not base_url:
+            return []
 
-                    # Dummy key if needed
-                    api_key = (
-                        self.config.get("api_key")
-                        or self.config.get("LITELLM_MASTER_KEY")
-                        or os.environ.get("LITELLM_PROXY_API_KEY")
-                        or "sk-1234"
-                    )
-                    headers = {"Authorization": f"Bearer {api_key}"}
+        async with aiohttp.ClientSession() as session:
+            try:
+                target_url = base_url.rstrip("/")
+                if not target_url.endswith("/v1"):
+                    target_url += "/v1"
 
-                    async with session.get(
-                        f"{target_url}/models", headers=headers
-                    ) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            models = []
-                            for m in data.get("data", []):
-                                mid = m["id"]
-                                models.append(Model(id=mid, name=mid))
-                            return models
-                except Exception as e:
-                    logger.debug(f"LiteLLM auto-discovery failed: {e}")
+                api_key = (
+                    self.config.get("api_key")
+                    or self.config.get("LITELLM_MASTER_KEY")
+                    or os.environ.get("LITELLM_PROXY_API_KEY")
+                    or "sk-1234"
+                )
+                headers = {"Authorization": f"Bearer {api_key}"}
 
-        # If authenticating directly via keys (no proxy url), try to discover
-        # supported models for set keys?
-        # That's harder because we need to know WHICH provider to check.
-        # But we can try checking specific ones if keys are present.
+                async with session.get(f"{target_url}/models", headers=headers) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        return [
+                            Model(id=m["id"], name=m["id"])
+                            for m in data.get("data", [])
+                        ]
+            except Exception as e:
+                logger.debug(f"LiteLLM auto-discovery failed: {e}")
 
-        # For now, if no Proxy URL, return empty (custom models only)
         return []
 
     async def validate_credentials(self) -> bool:
         if self.config.get("base_url"):
-            _ = await self.list_models()
-            return True
+            models = await self.list_models()
+            return len(models) > 0
         return True
 
 
 class GenericLiteLLMProvider(BaseProvider):
-    async def list_models(self) -> List[Model]:
-        # import os # REMOVED: Global import
-        from litellm import get_valid_models
+    """Provider that uses litellm's get_valid_models for Anthropic, Gemini, DeepSeek, etc."""
 
-        provider_env_keys = {
-            "anthropic": "ANTHROPIC_API_KEY",
-            "gemini": "GEMINI_API_KEY",
-            "deepseek": "DEEPSEEK_API_KEY",
-        }
+    _provider_env_keys = {
+        "anthropic": "ANTHROPIC_API_KEY",
+        "gemini": "GEMINI_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
+    }
 
-        env_key = provider_env_keys.get(self.provider_id)
-        if not env_key:
-            env_key = f"{self.provider_id.upper()}_API_KEY"
+    def _resolve_api_key(self) -> tuple[str, Optional[str]]:
+        """
+        Resolve the environment variable name and API key value for this provider.
 
-        # Try to find api_key from config
+        Returns:
+            Tuple of (env_key, api_key_value). api_key_value may be None.
+        """
+        env_key = self._provider_env_keys.get(
+            self.provider_id, f"{self.provider_id.upper()}_API_KEY"
+        )
+
+        # Check config first (direct key or field name)
         api_key_val = self.config.get("api_key") or self.config.get(env_key)
 
-        # If not, try checking fields for anything that looks like a key
+        # Fallback: scan config for anything that looks like a key/token
         if not api_key_val:
             for k, v in self.config.items():
                 if isinstance(k, str) and ("KEY" in k or "TOKEN" in k) and v:
                     api_key_val = v
                     break
 
-        # Finally check os.environ if not in config
+        # Final fallback: environment variable
         if not api_key_val:
             api_key_val = os.environ.get(env_key)
 
+        return env_key, api_key_val
+
+    async def list_models(self) -> List[Model]:
+        from litellm import get_valid_models
+
+        env_key, api_key_val = self._resolve_api_key()
         if not api_key_val:
             return []
-
-        # Temporarily inject key
-        original_val = os.environ.get(env_key)
-        os.environ[env_key] = api_key_val
 
         try:
             logger.info(
                 f"Attempting discovery for {self.provider_id} with key length {len(api_key_val)}"
             )
-            loop = asyncio.get_running_loop()
-            models_list = await loop.run_in_executor(
-                None,
-                lambda: get_valid_models(
-                    check_provider_endpoint=True, custom_llm_provider=self.provider_id
-                ),
-            )
+            with _temporary_env(env_key, api_key_val):
+                loop = asyncio.get_running_loop()
+                models_list = await loop.run_in_executor(
+                    None,
+                    lambda: get_valid_models(
+                        check_provider_endpoint=True,
+                        custom_llm_provider=self.provider_id,
+                    ),
+                )
             logger.info(
                 f"Discovery for {self.provider_id} returned {len(models_list)} models: {models_list[:3]}..."
             )
@@ -404,12 +411,6 @@ class GenericLiteLLMProvider(BaseProvider):
                 f"Error discovering models for {self.provider_id}: {e}", exc_info=True
             )
             return []
-        finally:
-            if original_val is None:
-                if env_key in os.environ:
-                    del os.environ[env_key]
-            else:
-                os.environ[env_key] = original_val
 
     async def validate_credentials(self) -> bool:
         models = await self.list_models()

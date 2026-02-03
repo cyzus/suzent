@@ -64,10 +64,9 @@ def _build_mcp_tools(config: Dict[str, Any]) -> list:
     """
     mcp_enabled = config.get("mcp_enabled")
 
-    # If mcp_enabled is not provided, default to NO MCP servers
-    # This ensures fresh launch matches frontend tool display (only native tools)
+    # If mcp_enabled is not provided, fallback to global CONFIG defaults
     if mcp_enabled is None:
-        return []
+        mcp_enabled = CONFIG.mcp_enabled or {}
 
     raw_mcp_urls = config.get("mcp_urls", CONFIG.mcp_urls)
     mcp_headers = config.get("mcp_headers", {})

@@ -26,23 +26,17 @@ async def get_config(request: Request) -> JSONResponse:
     """Return frontend-consumable configuration merged with user preferences."""
     db = get_database()
     user_prefs = db.get_user_preferences()
-    memory_config = db.get_memory_config()
 
     sandbox_enabled = getattr(CONFIG, "sandbox_enabled", False)
     sandbox_volumes = CONFIG.sandbox_volumes or []
     available_models = get_enabled_models_from_db()
 
     # Get embedding/extraction models with fallback to CONFIG defaults
-    embedding_model = (
-        memory_config.embedding_model
-        if memory_config and memory_config.embedding_model
-        else CONFIG.embedding_model
-    )
-    extraction_model = (
-        memory_config.extraction_model
-        if memory_config and memory_config.extraction_model
-        else CONFIG.extraction_model
-    )
+    from suzent.core.provider_factory import get_effective_memory_config
+
+    mem_config = get_effective_memory_config()
+    embedding_model = mem_config["embedding_model"]
+    extraction_model = mem_config["extraction_model"]
 
     data: dict[str, Any] = {
         "title": CONFIG.title,

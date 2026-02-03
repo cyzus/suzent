@@ -1,5 +1,5 @@
 import os
-import importlib
+
 import json
 import sys
 from pathlib import Path
@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional
 
 from .logger import get_logger  # project logger required
 
-from smolagents import Tool as _SmolTool  # type: ignore
 
 from pydantic import BaseModel, ValidationError
 
@@ -53,31 +52,11 @@ def _normalize_keys(d: Dict[str, Any]) -> Dict[str, Any]:
 
 def get_tool_options() -> List[str]:
     """Discover Tool subclasses in the suzent.tools package and return their class names."""
-    tools_dir = PROJECT_DIR / "src" / "suzent" / "tools"
-    tool_options: List[str] = []
-    if not tools_dir.exists():
-        return tool_options
-    for f in os.listdir(tools_dir):
-        if f.endswith(".py") and not f.startswith("__"):
-            module_name = f"suzent.tools.{f[:-3]}"
-            try:
-                module = importlib.import_module(module_name)
-            except Exception:
-                continue
-            for attribute_name in dir(module):
-                attribute = getattr(module, attribute_name)
-                if (
-                    isinstance(attribute, type)
-                    and issubclass(attribute, _SmolTool)
-                    and attribute is not _SmolTool
-                    and getattr(attribute, "__module__", "").startswith("suzent.tools")
-                ):
-                    tool_options.append(attribute.__name__)
-
+    # Use centralized registry to avoid duplication
     # Note: Memory tools are added dynamically when memory system initializes
-    # See agent_manager.init_memory_system()
+    from suzent.tools.registry import list_available_tools
 
-    return tool_options
+    return list_available_tools()
 
 
 def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[str]:
@@ -136,16 +115,19 @@ class ConfigModel(BaseModel):
     # MCP stdio params default empty; user can configure stdio-backed MCPs in YAML
     mcp_stdio_params: Dict[str, Any] = {}
 
+    # Track enabled status of MCP servers
+    mcp_enabled: Dict[str, bool] = {}
+
     instructions: str = ""
     additional_authorized_imports: List[str] = []
 
     # Embedding configuration
-    embedding_model: str = None
+    embedding_model: Optional[str] = None
     embedding_dimension: int = 0
 
     # Memory system
     memory_enabled: bool = False
-    extraction_model: str = (
+    extraction_model: Optional[str] = (
         None  # LLM model for fact extraction (None = use heuristics)
     )
     user_id: str = "default-user"  # Default user identifier for memory system
@@ -163,6 +145,14 @@ class ConfigModel(BaseModel):
     # Defaults to DATA_DIR (.suzent) for security - agent can't modify source code
     # Use custom volumes to grant access to additional directories (skills, notebooks, etc.)
     workspace_root: str = str(DATA_DIR)  # Root directory for host mode bash execution
+
+    # Context management
+    max_history_steps: int = (
+        20  # Maximum number of conversation steps to keep before compressing
+    )
+    max_context_tokens: int = (
+        800000  # Maximum estimated tokens before compressing (default 800k)
+    )
 
     @classmethod
     def load_from_files(cls) -> "ConfigModel":

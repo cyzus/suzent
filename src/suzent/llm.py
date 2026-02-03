@@ -32,7 +32,10 @@ class EmbeddingGenerator:
             model: LiteLLM model identifier (e.g., 'text-embedding-3-small')
             dimension: Expected embedding dimension (0 = auto-detect from first response)
         """
-        self.model = model or CONFIG.embedding_model
+        from suzent.core.provider_factory import get_effective_memory_config
+
+        mem_config = get_effective_memory_config()
+        self.model = model or mem_config["embedding_model"]
         self.dimension = dimension or CONFIG.embedding_dimension
 
     async def generate(self, text: str) -> List[float]:

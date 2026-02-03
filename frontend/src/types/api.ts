@@ -28,6 +28,7 @@ export interface ChatConfig {
   agent: string;
   tools: string[];
   mcp_urls?: string[] | Record<string, string>;
+  mcp_enabled?: Record<string, boolean>;
   memory_enabled?: boolean;
   sandbox_enabled?: boolean;
   sandbox_volumes?: string[];
