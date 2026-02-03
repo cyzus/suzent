@@ -1,11 +1,29 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { API_BASE } from '../../lib/api';
 
-export function BrowserView() {
+import { BrutalButton } from '../BrutalButton';
+
+
+
+
+export interface BrowserViewProps {
+    onStreamActive?: (isActive: boolean) => void;
+}
+
+export function BrowserView({ onStreamActive }: BrowserViewProps) {
     const [status, setStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
     const [imageSrc, setImageSrc] = useState<string | null>(null);
+    const [isControlling, setIsControlling] = useState(false);
+    // Remove headerHover as we can rely on group-hover usually, but keeping for overlay logic if needed
+
     const wsRef = useRef<WebSocket | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    // Notify parent about stream status
+    useEffect(() => {
+        onStreamActive?.(!!imageSrc);
+    }, [imageSrc, onStreamActive]);
 
     useEffect(() => {
         connect();
@@ -55,24 +73,99 @@ export function BrowserView() {
         wsRef.current = ws;
     };
 
-    const handleInteraction = (e: React.MouseEvent<HTMLImageElement>) => {
-        if (!wsRef.current || status !== 'connected') return;
+    const toggleControl = () => {
+        const newState = !isControlling;
+        setIsControlling(newState);
+        if (newState) {
+            setTimeout(() => inputRef.current?.focus(), 100);
+        }
+    };
 
+    // Helper to check if control actions are allowed
+    const canControl = () => wsRef.current && status === 'connected' && isControlling;
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (!canControl()) return;
+
+        // Exit on Escape
+        if (e.key === 'Escape') {
+            setIsControlling(false);
+            return;
+        }
+
+        e.preventDefault();
+
+        // Handle special keys vs typing
+        if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+            wsRef.current!.send(JSON.stringify({
+                type: 'type',
+                text: e.key
+            }));
+        } else {
+            wsRef.current!.send(JSON.stringify({
+                type: 'key',
+                key: e.key
+            }));
+        }
+    };
+
+    const handleWheel = (e: React.WheelEvent) => {
+        if (!canControl()) return;
+
+        // Throttle? For now direct send, but maybe limit rate if needed
+        wsRef.current!.send(JSON.stringify({
+            type: 'scroll',
+            dx: e.deltaX,
+            dy: e.deltaY
+        }));
+    };
+
+    const mouseRef = useRef<{ isDown: boolean, lastMove: number }>({ isDown: false, lastMove: 0 });
+
+    const getCoords = (e: React.MouseEvent<HTMLImageElement>) => {
         const img = e.currentTarget;
         const rect = img.getBoundingClientRect();
-
-        // Calculate scale if image is resized via CSS
         const scaleX = img.naturalWidth / rect.width;
         const scaleY = img.naturalHeight / rect.height;
+        return {
+            x: (e.clientX - rect.left) * scaleX,
+            y: (e.clientY - rect.top) * scaleY
+        };
+    };
 
-        const x = (e.clientX - rect.left) * scaleX;
-        const y = (e.clientY - rect.top) * scaleY;
+    const handleMouseDown = (e: React.MouseEvent<HTMLImageElement>) => {
+        if (!canControl()) return;
+        mouseRef.current.isDown = true;
+        const { x, y } = getCoords(e);
 
-        wsRef.current.send(JSON.stringify({
-            type: 'click',
-            x,
-            y
-        }));
+        wsRef.current!.send(JSON.stringify({ type: 'mousedown', x, y }));
+
+        // Keep focus
+        inputRef.current?.focus();
+    };
+
+    const handleMouseUp = (e: React.MouseEvent<HTMLImageElement>) => {
+        if (!canControl()) return;
+        mouseRef.current.isDown = false;
+        const { x, y } = getCoords(e);
+        wsRef.current!.send(JSON.stringify({ type: 'mouseup', x, y }));
+    };
+
+    const handleMouseMove = (e: React.MouseEvent<HTMLImageElement>) => {
+        if (!canControl()) return;
+
+        // Always send move if controlling, allowing hover? 
+        // Or only when down for drag? User wants "select text", implies drag. 
+        // But to select, you move mouse. 
+        // Sending ALL moves is heavy. Let's send moves if down OR throttled hover?
+        // Let's settle on: Throttle all moves to 50ms.
+
+        const now = Date.now();
+        if (now - mouseRef.current.lastMove < 50) return; // 20fps cap
+
+        mouseRef.current.lastMove = now;
+        const { x, y } = getCoords(e);
+        wsRef.current!.send(JSON.stringify({ type: 'mousemove', x, y }));
     };
 
     return (
@@ -81,26 +174,78 @@ export function BrowserView() {
                 <span className="font-bold text-xs uppercase text-gray-500">
                     BROWSER STREAM
                 </span>
-                <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${status === 'connected' ? 'bg-green-500' :
+                <div className="flex items-center gap-4">
+                    {status === 'connected' && imageSrc && (
+                        <BrutalButton
+                            onClick={toggleControl}
+                            size="sm"
+                            variant={isControlling ? 'danger' : 'default'}
+                            className="text-[10px] py-0.5 h-6"
+                        >
+                            {isControlling ? 'EXIT CONTROL (ESC)' : 'TAKE CONTROL'}
+                        </BrutalButton>
+                    )}
+                    <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${status === 'connected' ? 'bg-green-500' :
                             status === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
-                        }`} />
-                    <span className="text-xs font-mono text-gray-400 capitalize">{status}</span>
+                            }`} />
+                        <span className="text-xs font-mono text-gray-400 capitalize">{status}</span>
+                    </div>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-auto flex items-center justify-center p-4">
+            <div className={`relative flex-1 overflow-hidden flex items-center justify-center bg-neutral-100 ${isControlling ? 'ring-4 ring-inset ring-green-500/50' : ''}`}>
+                {/* Hidden input for keyboard capture */}
+                <input
+                    ref={inputRef}
+                    type="text"
+                    className="absolute opacity-0 w-0 h-0"
+                    onKeyDown={handleKeyDown}
+                    autoFocus={isControlling}
+                />
+
                 {imageSrc ? (
-                    <img
-                        src={imageSrc}
-                        className="max-w-full shadow-lg border border-gray-300 cursor-crosshair"
-                        onClick={handleInteraction}
-                        alt="Browser Stream"
-                    />
+                    <div
+                        className="relative group max-w-full max-h-full flex items-center justify-center"
+                        onWheel={handleWheel}
+                    >
+                        <img
+                            src={imageSrc}
+                            className="max-w-full max-h-full shadow-2xl cursor-default"
+                            onMouseDown={handleMouseDown}
+                            onMouseUp={handleMouseUp}
+                            onMouseMove={handleMouseMove}
+                            alt="Browser Stream"
+                            draggable={false}
+                        />
+
+
+
+                        {/* Overlay when NOT controlling but connected */}
+                        {!isControlling && status === 'connected' && (
+                            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[1px]">
+                                <BrutalButton
+                                    onClick={toggleControl}
+                                    className="uppercase tracking-widest text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                                >
+                                    Take Control
+                                </BrutalButton>
+                            </div>
+                        )}
+
+                        {/* Visual indicator for control mode */}
+                        {isControlling && (
+                            <div className="absolute top-4 right-4 bg-green-500 text-white text-[10px] font-bold px-2 py-1 uppercase tracking-wider shadow-lg pointer-events-none animate-pulse">
+                                Live Control Active
+                            </div>
+                        )}
+                    </div>
                 ) : (
-                    <div className="text-gray-400 text-sm text-center">
-                        <p>Waiting for stream...</p>
-                        {status === 'connected' && <p className="text-xs mt-2">Browser might be hidden or sleeping.</p>}
+                    <div className="text-gray-500 text-sm text-center font-mono">
+                        <p className="mb-2">WAITING_FOR_STREAM</p>
+                        {status === 'connected' &&
+                            <p className="text-xs text-gray-600 opacity-70">Execute a browser command to start...</p>
+                        }
                     </div>
                 )}
             </div>

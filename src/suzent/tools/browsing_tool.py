@@ -102,6 +102,10 @@ class BrowserSessionManager:
                 # Setup Screencast
                 self._client.on("Page.screencastFrame", self._on_screencast_frame)
 
+                # If we have waiting clients, start streaming immediately
+                if self._websockets:
+                    await self.start_streaming()
+
         # Execute on main loop
         await self._run_on_main_loop(_launch())
 
@@ -327,6 +331,10 @@ class BrowserSessionManager:
         if not self._websockets:
             await self.stop_streaming()
 
+    def _get_mouse_coords(self, message: dict) -> tuple[float | None, float | None]:
+        """Extract and validate mouse coordinates from a message."""
+        return message.get("x"), message.get("y")
+
     async def handle_client_message(self, message: dict):
         """Process interaction events from the frontend."""
         action = message.get("type")
@@ -345,10 +353,22 @@ class BrowserSessionManager:
             return
 
         try:
-            if action == "click":
-                x, y = message.get("x"), message.get("y")
-                if x is not None and y is not None:
+            # Mouse actions with coordinate validation
+            if action in ("click", "mousedown", "mouseup", "mousemove"):
+                x, y = self._get_mouse_coords(message)
+                if x is None or y is None:
+                    return
+
+                if action == "click":
                     await self._page.mouse.click(x, y)
+                elif action == "mousedown":
+                    await self._page.mouse.move(x, y)
+                    await self._page.mouse.down()
+                elif action == "mouseup":
+                    await self._page.mouse.move(x, y)
+                    await self._page.mouse.up()
+                elif action == "mousemove":
+                    await self._page.mouse.move(x, y)
 
             elif action == "type":
                 text = message.get("text")
