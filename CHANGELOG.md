@@ -9,10 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🚀 Added
 - **MCP**: Support headers for streamable-http MCP servers.
+- **Context**: Add auto context compression.
 
 ### ⚡ Changed
-- **MCP**: Move MCP server management from Config View to Settings View.
+- **MCP**: 
+    - Move MCP server management from Config View to Settings View.
+    - support headers for streamable-http MCP servers.
 - **Refactor**: Refactor the settings view.
+- **Browser**: Allow taking control of the internal browser.
+
+### 🐛 Fixed
+- **MCP**: Fix the frontend/backend inconsistency for MCP server.
 
 ## [v0.2.2] - 2026-02-02
 ### 🚀 Added
