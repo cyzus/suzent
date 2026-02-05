@@ -31,8 +31,12 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": [],
-    "externalBin": [],
+    "resources": [
+      "binaries/*"
+    ],
+    "externalBin": [
+      "binaries/suzent-backend"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
