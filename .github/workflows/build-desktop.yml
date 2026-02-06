@@ -28,8 +28,10 @@ jobs:
           path: ./CHANGELOG.md
 
   build:
+    timeout-minutes: 90
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - os: ubuntu-22.04
@@ -50,16 +52,25 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          cache-on-failure: true
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
@@ -68,19 +79,58 @@ jobs:
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev \
             libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev javascriptcoregtk-4.1-dev
 
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            .venv
+          key: ${{ runner.os }}-python-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-python-
+
       - name: Install Python dependencies
         run: |
           pip install nuitka ordered-set zstandard
           pip install .
 
+      - name: Cache Tauri CLI
+        id: cache-tauri-cli
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-tauri*
+          key: ${{ runner.os }}-tauri-cli-2.0
+          restore-keys: |
+            ${{ runner.os }}-tauri-cli-
+
       - name: Install Tauri CLI
+        if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
         run: cargo install tauri-cli --version '^2.0.0'
+
+      - name: Cache frontend node_modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-frontend-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-frontend-
 
       - name: Build frontend
         run: |
           cd frontend
-          npm install
+          npm ci
           npm run build
+
+      - name: Cache Python backend build
+        uses: actions/cache@v4
+        with:
+          path: |
+            src-tauri/binaries/*.exe
+            src-tauri/binaries/*.bin
+            src-tauri/binaries/suzent-backend*
+          key: ${{ runner.os }}-backend-${{ hashFiles('suzent/**/*.py', 'pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-backend-
 
       - name: Build Python backend
         run: python scripts/build_backend.py
