@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.9.2">
 <title data-rh="true">Utility Scripts | SUZENT</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://cyzus.github.io/suzent/img/docusaurus-social-card.jpg"><meta data-rh="true" name="twitter:image" content="https://cyzus.github.io/suzent/img/docusaurus-social-card.jpg"><meta data-rh="true" property="og:url" content="https://cyzus.github.io/suzent/docs/developing/utility-scripts"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Utility Scripts | SUZENT"><meta data-rh="true" name="description" content="This directory contains automation scripts for the Suzent project."><meta data-rh="true" property="og:description" content="This directory contains automation scripts for the Suzent project."><link data-rh="true" rel="icon" href="/suzent/img/logo.svg"><link data-rh="true" rel="canonical" href="https://cyzus.github.io/suzent/docs/developing/utility-scripts"><link data-rh="true" rel="alternate" href="https://cyzus.github.io/suzent/docs/developing/utility-scripts" hreflang="en"><link data-rh="true" rel="alternate" href="https://cyzus.github.io/suzent/docs/developing/utility-scripts" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Utility Scripts","item":"https://cyzus.github.io/suzent/docs/developing/utility-scripts"}]}</script><link rel="stylesheet" href="/suzent/assets/css/styles.92074ac2.css">
-<script src="/suzent/assets/js/runtime~main.c90ca6d1.js" defer="defer"></script>
+<script src="/suzent/assets/js/runtime~main.33a2b752.js" defer="defer"></script>
 <script src="/suzent/assets/js/main.6c2a6383.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -23,7 +23,12 @@
 <p>Usage: <code>suzent start</code></p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="build">Build<a href="#build" class="hash-link" aria-label="Direct link to Build" title="Direct link to Build" translate="no">​</a></h2>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="build_backendpy"><code>build_backend.py</code><a href="#build_backendpy" class="hash-link" aria-label="Direct link to build_backendpy" title="Direct link to build_backendpy" translate="no">​</a></h3>
-<p>Compiles the Python backend into a standalone executable using Nuitka.</p>
+<p>Compiles the Python backend into a standalone executable using Nuitka. It handles:</p>
+<ul>
+<li class="">Platform-specific target triples (e.g., <code>x86_64-pc-windows-msvc</code>)</li>
+<li class="">Inclusion of critical data files (e.g., <code>litellm</code> configs)</li>
+<li class="">Automatic cleanup of previous build artifacts</li>
+</ul>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#F8F8F2;--prism-background-color:#282A36"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#F8F8F2;background-color:#282A36"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#F8F8F2"><span class="token plain">python scripts/build_backend.py</span><br></span></code></pre></div></div>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="build_tauri"><code>build_tauri</code><a href="#build_tauri" class="hash-link" aria-label="Direct link to build_tauri" title="Direct link to build_tauri" translate="no">​</a></h3>
 <p>Builds the complete desktop application (frontend + backend bundle).</p>
