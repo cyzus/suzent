@@ -115,7 +115,7 @@ const config: Config = {
       copyright: `Copyright © ${new Date().getFullYear()} Suzent. Built with Docusaurus.`,
     },
     prism: {
-      theme: prismThemes.github,
+      theme: prismThemes.dracula, // Use dark theme even for light mode to match frontend
       darkTheme: prismThemes.dracula,
     },
   } satisfies Preset.ThemeConfig,
