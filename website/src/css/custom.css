@@ -13,7 +13,8 @@
   --suzent-red: #FF0000;
   --suzent-black: #000000;
   --suzent-white: #FFFFFF;
-  --suzent-gray: #f8fafc; /* brand.50 */
+  --suzent-gray: #f8fafc;
+  /* brand.50 */
 
   /* Docusaurus Primary Color Overrides (Blue) */
   --ifm-color-primary: var(--suzent-blue);
@@ -23,14 +24,14 @@
   --ifm-color-primary-light: #1a75ff;
   --ifm-color-primary-lighter: #267dff;
   --ifm-color-primary-lightest: #4d94ff;
-  
+
   --ifm-code-font-size: 95%;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
 
   /* Navbar */
   --ifm-navbar-background-color: var(--suzent-white);
   --ifm-navbar-shadow: 4px 4px 0px var(--suzent-black);
-  
+
   /* Layout */
   --ifm-background-color: var(--suzent-gray);
   --ifm-font-family-base: 'Inter', system-ui, -apple-system, sans-serif;
@@ -39,7 +40,8 @@
 
 /* For readability concerns, you should choose a lighter palette in dark mode. */
 [data-theme='dark'] {
-  --ifm-color-primary: #38bdf8; /* Lighter blue for dark mode */
+  --ifm-color-primary: #38bdf8;
+  /* Lighter blue for dark mode */
   --ifm-color-primary-dark: #21af90;
   --ifm-color-primary-darker: #1fa588;
   --ifm-color-primary-darkest: #1a8870;
@@ -47,11 +49,14 @@
   --ifm-color-primary-lighter: #32d8b4;
   --ifm-color-primary-lightest: #4fddbf;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
-  
-  --suzent-gray: #1e293b; /* brand.800 */
+
+  --suzent-gray: #1e293b;
+  /* brand.800 */
   --ifm-background-color: var(--suzent-gray);
-  --ifm-navbar-background-color: #0f172a; /* brand.900 */
-  --ifm-navbar-shadow: 4px 4px 0px #ffffff; /* White shadow in dark mode */
+  --ifm-navbar-background-color: #0f172a;
+  /* brand.900 */
+  --ifm-navbar-shadow: 4px 4px 0px #ffffff;
+  /* White shadow in dark mode */
 }
 
 /* Neo-Brutalist Components */
@@ -80,6 +85,11 @@
   box-shadow: 2px 2px 0px var(--suzent-black);
 }
 
+.button--white {
+  background-color: var(--suzent-white) !important;
+  color: var(--suzent-black) !important;
+}
+
 /* Cards */
 .card {
   border: 3px solid var(--suzent-black);
@@ -89,17 +99,43 @@
 }
 
 [data-theme='dark'] .card {
-    background-color: #1e293b;
-    border-color: #ffffff;
-    box-shadow: 6px 6px 0px #ffffff;
+  background-color: #1e293b;
+  border-color: #ffffff;
+  box-shadow: 6px 6px 0px #ffffff;
+}
+
+/* Animations */
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-15px);
+  }
+
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+.robot-animation {
+  height: 200px;
+  width: auto;
+  animation: float 4s ease-in-out infinite;
+  margin: 2rem 0;
+  filter: drop-shadow(4px 4px 0px var(--suzent-black));
+}
+
+[data-theme='dark'] .robot-animation {
+  filter: drop-shadow(4px 4px 0px #ffffff);
 }
 
 [data-theme='dark'] .navbar {
-    border-bottom: 3px solid #ffffff;
+  border-bottom: 3px solid #ffffff;
 }
 
 [data-theme='dark'] .button {
-    border-color: #ffffff;
-    box-shadow: 4px 4px 0px #ffffff;
+  border-color: #ffffff;
+  box-shadow: 4px 4px 0px #ffffff;
 }
-

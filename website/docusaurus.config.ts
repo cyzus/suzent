@@ -5,8 +5,8 @@ import type * as Preset from '@docusaurus/preset-classic';
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
 const config: Config = {
-  title: 'Suzent',
-  tagline: 'Your personal Agent',
+  title: 'SUZENT',
+  tagline: 'Your sovereign digital coworker',
   favicon: 'img/logo.svg',
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
@@ -48,7 +48,11 @@ const config: Config = {
         },
         blog: false, // Disable blog for now
         theme: {
-          customCss: './src/css/custom.css',
+          customCss: [
+            './src/css/custom.css',
+            './src/css/robot-animations.css',
+            './src/css/tailwind-shim.css',
+          ],
         },
       } satisfies Preset.Options,
     ],
@@ -63,7 +67,7 @@ const config: Config = {
       respectPrefersColorScheme: true,
     },
     navbar: {
-      title: 'Suzent',
+      title: 'SUZENT',
       logo: {
         alt: 'Suzent Logo',
         src: 'img/logo.svg',

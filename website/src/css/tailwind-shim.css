@@ -1,0 +1,67 @@
+/* Minimal Tailwind Shim for RobotAvatar component */
+
+.w-full {
+    width: 100%;
+}
+
+.h-full {
+    height: 100%;
+}
+
+.w-\[90\%\] {
+    width: 90%;
+}
+
+.h-\[90\%\] {
+    height: 90%;
+}
+
+.flex {
+    display: flex;
+}
+
+.items-center {
+    align-items: center;
+}
+
+.justify-center {
+    justify-content: center;
+}
+
+.relative {
+    position: relative;
+}
+
+.absolute {
+    position: absolute;
+}
+
+.inset-0 {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+}
+
+.overflow-hidden {
+    overflow: hidden;
+}
+
+.z-20 {
+    z-index: 20;
+}
+
+.pointer-events-none {
+    pointer-events: none;
+}
+
+/* Gradient (simplified for scanner variant) */
+.bg-gradient-to-r {
+    background-image: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.5), transparent);
+}
+
+/* Eye positioning/coloring overrides if needed */
+.eye {
+    /* No specific styles needed if fills are inline, but ensuring box-sizing */
+    box-sizing: border-box;
+}
