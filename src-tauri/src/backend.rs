@@ -1,11 +1,12 @@
-use std::process::{Child, Command};
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+use tauri_plugin_shell::ShellExt;
 use std::net::TcpListener;
 use std::time::Duration;
 use std::thread;
 use tauri::Manager;
 
 pub struct BackendProcess {
-    child: Option<Child>,
+    child: Option<CommandChild>,
     pub port: u16,
 }
 
@@ -25,20 +26,7 @@ impl BackendProcess {
             .map_err(|e| format!("Failed to find available port: {}", e))
     }
 
-    /// Get the backend executable path based on the current platform.
-    fn get_backend_path(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-        let resource_path = app_handle.path()
-            .resource_dir()
-            .map_err(|e| format!("Failed to get resource dir: {}", e))?;
 
-        let binary_name = if cfg!(target_os = "windows") {
-            "suzent-backend.exe"
-        } else {
-            "suzent-backend"
-        };
-
-        Ok(resource_path.join("binaries").join(binary_name))
-    }
 
     /// Start the Python backend as a sidecar process.
     /// Only called in release builds - in debug mode the backend runs separately.
@@ -47,7 +35,7 @@ impl BackendProcess {
         let port = Self::find_available_port()?;
         self.port = port;
 
-        let backend_exe = Self::get_backend_path(app_handle)?;
+
         let app_data_dir = app_handle.path()
             .app_data_dir()
             .map_err(|e| format!("Failed to get app data dir: {}", e))?;
@@ -57,7 +45,9 @@ impl BackendProcess {
             .map_err(|e| format!("Failed to create app data dir: {}", e))?;
 
         // Start backend with environment variables for configuration
-        let child = Command::new(&backend_exe)
+        let (rx, child) = app_handle.shell()
+            .sidecar("binaries/suzent-backend")
+            .map_err(|e| format!("Failed to create sidecar command: {}", e))?
             .env("SUZENT_PORT", port.to_string())
             .env("SUZENT_HOST", "127.0.0.1")
             .env("SUZENT_APP_DATA", &app_data_dir)
@@ -67,6 +57,21 @@ impl BackendProcess {
             .env("SKILLS_DIR", app_data_dir.join("skills"))
             .spawn()
             .map_err(|e| format!("Failed to start backend: {}", e))?;
+
+        let mut rx = rx;
+        tauri::async_runtime::spawn(async move {
+            while let Some(event) = rx.recv().await {
+                match event {
+                    CommandEvent::Stdout(line) => {
+                        println!("BE: {}", String::from_utf8_lossy(&line));
+                    }
+                    CommandEvent::Stderr(line) => {
+                        println!("BE ERR: {}", String::from_utf8_lossy(&line));
+                    }
+                    _ => {}
+                }
+            }
+        });
 
         self.child = Some(child);
         self.wait_for_backend()?;
@@ -100,7 +105,7 @@ impl BackendProcess {
 
     /// Stop the backend process gracefully.
     pub fn stop(&mut self) {
-        if let Some(mut child) = self.child.take() {
+        if let Some(child) = self.child.take() {
             let _ = child.kill();
         }
     }

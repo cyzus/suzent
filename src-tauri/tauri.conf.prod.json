@@ -29,9 +29,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": [
-      "binaries/*"
-    ],
+    "resources": [],
     "externalBin": [
       "binaries/suzent-backend"
     ],

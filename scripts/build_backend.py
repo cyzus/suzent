@@ -56,8 +56,6 @@ def get_platform_flags() -> list[str]:
     flags = []
 
     if system == "Windows":
-        flags.append("--windows-console-mode=disable")
-        # Use Clang if available (much faster than MSVC)
         if is_clang_available():
             flags.append("--clang")
             print("[OK] Using Clang compiler (faster than MSVC)")
@@ -137,8 +135,8 @@ def build_backend() -> None:
         "--include-package=uvicorn",
         "--include-package=smolagents",
         "--include-package=litellm",
-        "--include-package=litellm",
         # Include litellm data files (endpoints.json, cost.json, etc.)
+        "--include-package-data=gradio_client",
         "--include-package-data=litellm",
         f"--include-data-dir={project_root / 'config'}=config",
         f"--include-data-dir={project_root / 'skills'}=skills",
