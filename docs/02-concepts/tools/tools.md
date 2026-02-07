@@ -67,7 +67,7 @@ Example output:
 
 **Setup:**
 
-For SearXNG setup, see the [SearXNG Setup Guide](searxng-setup.md).
+For SearXNG setup, see the [SearXNG Documentation](https://docs.searxng.org/).
 
 ---
 
