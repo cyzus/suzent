@@ -3,6 +3,7 @@
 Unified version bumper for Suzent.
 Updates version in:
 - src-tauri/tauri.conf.json
+- src-tauri/tauri.conf.prod.json
 - src-tauri/package.json
 - src-tauri/Cargo.toml
 - frontend/package.json
@@ -18,6 +19,7 @@ from pathlib import Path
 # Files to update
 FILES = {
     "tauri_conf": Path("src-tauri/tauri.conf.json"),
+    "tauri_conf_prod": Path("src-tauri/tauri.conf.prod.json"),
     "tauri_pkg": Path("src-tauri/package.json"),
     "cargo": Path("src-tauri/Cargo.toml"),
     "frontend_pkg": Path("frontend/package.json"),
@@ -134,6 +136,7 @@ def main():
 
     # Update files
     update_json(PATHS["tauri_conf"], new_version)
+    update_json(PATHS["tauri_conf_prod"], new_version)
     update_json(PATHS["tauri_pkg"], new_version)
     update_json(PATHS["frontend_pkg"], new_version)
     update_toml(PATHS["cargo"], new_version)
