@@ -8,29 +8,29 @@
 ├─────────────────────────────────┤
 │      MemoryManager              │  Orchestration & extraction
 ├─────────────────────────────────┤
-│      PostgresMemoryStore        │  Database operations
+│      LanceDBMemoryStore         │  Storage operations
 ├─────────────────────────────────┤
-│      PostgreSQL + pgvector      │  Storage & indexing
+│      LanceDB                    │  Vector & full-text storage
 └─────────────────────────────────┘
 ```
 
 ## Components
 
-### PostgresMemoryStore (postgres_store.py)
-**Database layer**
+### LanceDBMemoryStore (lancedb_store.py)
+**Storage layer**
 
 **Responsibilities:**
-- Connection pool management
+- LanceDB connection management
 - Core memory block CRUD
 - Archival memory with vector embeddings
-- Semantic and hybrid search
+- Semantic and hybrid search (vector + full-text)
 - Statistics
 
 **Key Methods:**
 - `get_all_memory_blocks()` - Retrieve with scoping priority
 - `add_memory()` - Store with embedding
 - `semantic_search()` - Pure vector similarity
-- `hybrid_search()` - Combined scoring
+- `hybrid_search()` - Combined vector + FTS scoring
 
 **Scoping:** chat-specific > user-level > global
 
@@ -148,11 +148,12 @@ Return formatted results
 ```
 src/suzent/memory/
 ├── __init__.py
-├── postgres_store.py    # Database layer
+├── lancedb_store.py     # Storage layer
 ├── manager.py           # Orchestration
 ├── memory_context.py    # Templates
 ├── tools.py             # Agent interface
-└── schema.sql           # Schema
+├── models.py            # Pydantic models
+└── lifecycle.py         # Initialization
 ```
 
 ## Design Principles
@@ -161,5 +162,5 @@ src/suzent/memory/
 2. **Async by Default** - Non-blocking I/O
 3. **Flexible Scoping** - Automatic priority resolution
 4. **Automatic Management** - Facts extracted without commands
-5. **Production Ready** - ACID, pooling, indexes
+5. **Production Ready** - File-based storage with vector + FTS indexing
 

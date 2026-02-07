@@ -92,14 +92,21 @@ await manager.get_memory_stats(user_id: str) -> Dict[str, Any]
 
 Returns: `{'total_memories': int, 'user_id': str}`
 
-## PostgresMemoryStore
+## LanceDBMemoryStore
 
 ### Initialization
 
 ```python
-PostgresMemoryStore(connection_string: str)
+LanceDBMemoryStore(
+    uri: str = ".suzent/data/memory",
+    embedding_dim: int = CONFIG.embedding_dimension
+)
 await store.connect()
 ```
+
+**Parameters:**
+- `uri`: Path to LanceDB storage directory (default: `.suzent/data/memory`)
+- `embedding_dim`: Dimension of embedding vectors (default: from CONFIG)
 
 ### Memory Blocks
 

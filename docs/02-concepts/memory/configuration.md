@@ -2,24 +2,24 @@
 
 ## Environment Variables
 
-### Database
+### LanceDB Storage
 ```bash
-POSTGRES_HOST=127.0.0.1
-POSTGRES_PORT=5430
-POSTGRES_DB=suzent
-POSTGRES_USER=suzent
-POSTGRES_PASSWORD=password
+# Path to LanceDB storage (default: .suzent/data/memory)
+# Can be relative or absolute path
+LANCEDB_URI=.suzent/data/memory
 ```
 
 ### Embedding
 ```bash
 EMBEDDING_MODEL=text-embedding-3-large  # or text-embedding-3-small
-EMBEDDING_DIMENSION=3072                # Auto-detected if omitted
+EMBEDDING_DIMENSION=3072                # Auto-detected from CONFIG if omitted
 ```
 
-### Extraction (Optional)
+### Memory System
 ```bash
-MEMORY_EXTRACTION_MODEL=gpt-4o-mini    # Enables automatic extraction
+MEMORY_ENABLED=true                    # Enable/disable memory system
+EXTRACTION_MODEL=gpt-4o-mini          # LLM for fact extraction (optional)
+USER_ID=default-user                   # Default user identifier
 ```
 
 ### API Keys
@@ -30,11 +30,13 @@ OPENAI_API_KEY=sk-xxx
 ## Manager Initialization
 
 ```python
-from suzent.memory import MemoryManager, PostgresMemoryStore
+from suzent.memory import MemoryManager, LanceDBMemoryStore
 
-connection_string = f"postgresql://{user}:{password}@{host}:{port}/{db}"
-
-store = PostgresMemoryStore(connection_string)
+# Initialize store
+store = LanceDBMemoryStore(
+    uri=".suzent/data/memory",
+    embedding_dim=3072
+)
 await store.connect()
 
 manager = MemoryManager(
@@ -44,22 +46,6 @@ manager = MemoryManager(
     llm_for_extraction="gpt-4o-mini"  # Optional
 )
 ```
-
-## Connection Pool
-
-```python
-store = PostgresMemoryStore(
-    connection_string,
-    min_size=2,
-    max_size=10,
-    command_timeout=60
-)
-```
-
-**Recommendations:**
-- Dev: min=1, max=5
-- Prod: min=5, max=20
-- High traffic: min=10, max=50
 
 ## System Constants
 
@@ -106,49 +92,24 @@ results = await store.hybrid_search(
 | text-embedding-3-small | 1536 | $0.02 | Development |
 | text-embedding-ada-002 | 1536 | $0.10 | Legacy |
 
-## Changing Embedding Model
+## Storage Management
 
-1. Update environment:
-```bash
-EMBEDDING_MODEL=text-embedding-3-small
-EMBEDDING_DIMENSION=1536
+### Check Storage Size
+```python
+import os
+from pathlib import Path
+
+db_path = Path(".suzent/data/memory")
+if db_path.exists():
+    total_size = sum(f.stat().st_size for f in db_path.rglob('*') if f.is_file())
+    print(f"Memory storage: {total_size / (1024**2):.2f} MB")
 ```
 
-2. Alter database:
-```sql
-ALTER TABLE archival_memories ALTER COLUMN embedding TYPE vector(1536);
-DROP INDEX idx_archival_memories_embedding;
-CREATE INDEX idx_archival_memories_embedding ON archival_memories
-USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+### Clear All Memories
+```python
+# Delete all memories for a user
+await store.delete_all_memories(user_id="user-123")
 ```
-
-3. Optional: Clear old embeddings:
-```sql
-TRUNCATE archival_memories;
-```
-
-## Docker Compose
-
-```yaml
-version: '3.8'
-services:
-  postgres:
-    image: pgvector/pgvector:pg18
-    environment:
-      POSTGRES_USER: suzent
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: suzent
-    ports:
-      - "5430:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
-
-volumes:
-  postgres_data:
-```
-
-Start: `docker-compose up -d`
 
 ## Debug Logging
 
@@ -156,3 +117,4 @@ Start: `docker-compose up -d`
 import logging
 logging.basicConfig(level=logging.DEBUG)
 ```
+

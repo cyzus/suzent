@@ -8,15 +8,15 @@ A Letta-inspired dual-tier memory architecture enabling AI agents to maintain wo
 **Archival Memory**: Unlimited searchable storage with vector embeddings
 **Automatic Management**: System extracts facts without explicit agent commands
 
-Built on PostgreSQL + pgvector for production-ready persistence.
+Built on LanceDB for efficient vector storage and search.
 
 ## Quick Example
 
 ```python
-from suzent.memory import MemoryManager, PostgresMemoryStore
+from suzent.memory import MemoryManager, LanceDBMemoryStore
 
 # Initialize
-store = PostgresMemoryStore(connection_string)
+store = LanceDBMemoryStore(uri=".suzent/data/memory")
 await store.connect()
 
 manager = MemoryManager(
