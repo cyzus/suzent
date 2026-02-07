@@ -15,6 +15,7 @@ import json
 import re
 import sys
 from pathlib import Path
+import subprocess
 
 # Files to update
 FILES = {
@@ -142,8 +143,33 @@ def main():
     update_toml(PATHS["cargo"], new_version)
     update_toml(PATHS["pyproject"], new_version)
 
-    print("\nDone! Don't forget to commit:")
-    print(f'git commit -am "chore: bump version to {new_version}"')
+    # Update lock files
+    print("\nUpdating lock files...")
+    try:
+        subprocess.run(
+            ["npm", "install"],
+            cwd=root / "frontend",
+            check=True,
+            capture_output=True,
+        )
+        print("  [OK] Updated frontend/package-lock.json")
+    except subprocess.CalledProcessError as e:
+        print(f"  [ERROR] Failed to update frontend lock: {e}")
+
+    try:
+        subprocess.run(
+            ["npm", "install"],
+            cwd=root / "src-tauri",
+            check=True,
+            capture_output=True,
+        )
+        print("  [OK] Updated src-tauri/package-lock.json")
+    except subprocess.CalledProcessError as e:
+        print(f"  [ERROR] Failed to update src-tauri lock: {e}")
+
+    print("\nDone! Lock files updated. Now commit and release:")
+    print("git add .")
+    print(f'git commit -m "chore: bump version to {new_version}"')
     print(f"git tag v{new_version}")
     print("git push && git push --tags")
 
