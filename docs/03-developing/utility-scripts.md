@@ -15,7 +15,10 @@ This directory contains automation scripts for the Suzent project.
 ## Build
 
 ### `build_backend.py`
-Compiles the Python backend into a standalone executable using Nuitka.
+Compiles the Python backend into a standalone executable using Nuitka. It handles:
+- Platform-specific target triples (e.g., `x86_64-pc-windows-msvc`)
+- Inclusion of critical data files (e.g., `litellm` configs)
+- Automatic cleanup of previous build artifacts
 
 ```bash
 python scripts/build_backend.py

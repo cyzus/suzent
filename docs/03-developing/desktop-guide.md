@@ -149,7 +149,7 @@ If you prefer to build step by step:
    ```bash
    python scripts/build_backend.py
    ```
-   Creates a standalone executable at `src-tauri/binaries/suzent-backend` (or `.exe` on Windows).
+   Creates a standalone executable at `src-tauri/binaries/suzent-backend-<target-triple>` (e.g., `suzent-backend-x86_64-pc-windows-msvc.exe`). Tauri requires this strict naming convention for sidecars.
 
 4. **Build Tauri Application**
    ```bash
