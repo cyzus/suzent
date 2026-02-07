@@ -1,0 +1,105 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ */
+
+/* Neo-Brutalist Theme Overrides */
+:root {
+  /* Suzent Brand Colors */
+  --suzent-blue: #0066FF;
+  --suzent-green: #A8E6A3;
+  --suzent-yellow: #FFE666;
+  --suzent-red: #FF0000;
+  --suzent-black: #000000;
+  --suzent-white: #FFFFFF;
+  --suzent-gray: #f8fafc; /* brand.50 */
+
+  /* Docusaurus Primary Color Overrides (Blue) */
+  --ifm-color-primary: var(--suzent-blue);
+  --ifm-color-primary-dark: #005ce6;
+  --ifm-color-primary-darker: #0057d9;
+  --ifm-color-primary-darkest: #0047b3;
+  --ifm-color-primary-light: #1a75ff;
+  --ifm-color-primary-lighter: #267dff;
+  --ifm-color-primary-lightest: #4d94ff;
+  
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+
+  /* Navbar */
+  --ifm-navbar-background-color: var(--suzent-white);
+  --ifm-navbar-shadow: 4px 4px 0px var(--suzent-black);
+  
+  /* Layout */
+  --ifm-background-color: var(--suzent-gray);
+  --ifm-font-family-base: 'Inter', system-ui, -apple-system, sans-serif;
+  --ifm-heading-font-family: 'Arial Black', 'Inter', sans-serif;
+}
+
+/* For readability concerns, you should choose a lighter palette in dark mode. */
+[data-theme='dark'] {
+  --ifm-color-primary: #38bdf8; /* Lighter blue for dark mode */
+  --ifm-color-primary-dark: #21af90;
+  --ifm-color-primary-darker: #1fa588;
+  --ifm-color-primary-darkest: #1a8870;
+  --ifm-color-primary-light: #29d5b0;
+  --ifm-color-primary-lighter: #32d8b4;
+  --ifm-color-primary-lightest: #4fddbf;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+  
+  --suzent-gray: #1e293b; /* brand.800 */
+  --ifm-background-color: var(--suzent-gray);
+  --ifm-navbar-background-color: #0f172a; /* brand.900 */
+  --ifm-navbar-shadow: 4px 4px 0px #ffffff; /* White shadow in dark mode */
+}
+
+/* Neo-Brutalist Components */
+
+/* Navbar */
+.navbar {
+  border-bottom: 3px solid var(--suzent-black);
+}
+
+/* Buttons */
+.button {
+  border: 3px solid var(--suzent-black);
+  box-shadow: 4px 4px 0px var(--suzent-black);
+  border-radius: 0;
+  font-weight: bold;
+  transition: all 0.15s ease-out;
+}
+
+.button:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 6px 6px 0px var(--suzent-black);
+}
+
+.button:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0px var(--suzent-black);
+}
+
+/* Cards */
+.card {
+  border: 3px solid var(--suzent-black);
+  box-shadow: 6px 6px 0px var(--suzent-black);
+  border-radius: 0;
+  background-color: var(--suzent-white);
+}
+
+[data-theme='dark'] .card {
+    background-color: #1e293b;
+    border-color: #ffffff;
+    box-shadow: 6px 6px 0px #ffffff;
+}
+
+[data-theme='dark'] .navbar {
+    border-bottom: 3px solid #ffffff;
+}
+
+[data-theme='dark'] .button {
+    border-color: #ffffff;
+    box-shadow: 4px 4px 0px #ffffff;
+}
+
