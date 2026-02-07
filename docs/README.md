@@ -10,6 +10,6 @@
 - [Social Messaging](02-concepts/social-messaging/README.md): Telegram & Feishu integration.
 
 ## Development
-- **[Utility Scripts](03-developing/scripts.md)**: Maintenance scripts.
+- **[Utility Scripts](03-developing/utility-scripts.md)**: Maintenance scripts.
 - **[Release Guide](03-developing/releasing.md)**: How to bump versions and release.
 - [Developer Guide](03-developing/development-guide.md): Setup, workflow, and architecture.
