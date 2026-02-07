@@ -149,7 +149,6 @@ def build_backend() -> None:
         "--nofollow-import-to=sqlalchemy.dialects.mssql",
         "--nofollow-import-to=pytest",  # Exclude testing framework
         "--nofollow-import-to=lancedb.conftest",  # Exclude lancedb test config
-        "--nofollow-import-to=litellm.proxy",  # Exclude litellm server/proxy components
         "--nofollow-import-to=pandas.tests",
         "--nofollow-import-to=numpy.tests",
         "--nofollow-import-to=sympy",  # Exclude sympy to prevent MSVC heap exhaustion
