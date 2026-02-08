@@ -115,8 +115,10 @@ def build_backend() -> None:
     # Clean previous build artifacts to avoid permission errors
     clean_build_artifacts(output_dir)
 
-    # Get number of CPU cores for parallel compilation
-    cpu_count = os.cpu_count() or 4
+    # Get number of CPU cores for parallel compilation, but cap to avoid OOM
+    # Pandas compilation is memory intensive, too many jobs causes clang to crash
+    sys_cores = os.cpu_count() or 4
+    cpu_count = min(sys_cores, 6)
 
     cmd = [
         sys.executable,
@@ -126,7 +128,7 @@ def build_backend() -> None:
         "--onefile",
         "--python-flag=no_site",
         "--assume-yes-for-downloads",  # Auto-accept downloads in CI/CD environments
-        f"--jobs={cpu_count}",  # Use all available CPU cores for parallel compilation
+        f"--jobs={cpu_count}",  # Cap concurrency to prevent OOM
         "--lto=no",  # Disable LTO - saves 30-40 min on Windows with minimal runtime impact
         "--include-package=suzent",
         "--include-package=crawl4ai",
