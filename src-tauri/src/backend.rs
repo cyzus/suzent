@@ -46,7 +46,7 @@ impl BackendProcess {
 
         // Start backend with environment variables for configuration
         let (rx, child) = app_handle.shell()
-            .sidecar("binaries/suzent-backend")
+            .sidecar("suzent-backend")
             .map_err(|e| format!("Failed to create sidecar command: {}", e))?
             .env("SUZENT_PORT", port.to_string())
             .env("SUZENT_HOST", "127.0.0.1")
