@@ -74,7 +74,7 @@ export function SocialTab({
                         <input
                             type="text"
                             className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
-                            value={socialConfig.allowed_users.join(', ')}
+                            value={(socialConfig.allowed_users || []).join(', ')}
                             onChange={(e) => onConfigChange({ ...socialConfig, allowed_users: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
                             placeholder="user123, 987654..."
                         />

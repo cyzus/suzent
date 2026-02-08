@@ -1,6 +1,6 @@
 {
   "name": "suzent-desktop",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "SUZENT - Your Personal Agent (Desktop Application)",
   "private": true,
   "scripts": {
@@ -8,7 +8,7 @@
     "dev": "tauri dev",
     "build": "tauri build --config tauri.conf.prod.json",
     "build:frontend": "cd ../frontend && npm install && npm run build",
-    "build:backend": "python ../scripts/build_backend.py",
+    "build:backend": "uv run python ../scripts/build_backend_fast.py",
     "build:full": "npm run build:backend && npm run build"
   },
   "devDependencies": {

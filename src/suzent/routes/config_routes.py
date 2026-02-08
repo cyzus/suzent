@@ -7,7 +7,9 @@ application settings including user preferences, API keys, and provider manageme
 
 import json
 import os
+import sys
 import traceback
+from pathlib import Path
 from typing import Any
 
 from starlette.requests import Request
@@ -20,6 +22,19 @@ from suzent.core.provider_factory import (
     get_enabled_models_from_db,
 )
 from suzent.database import get_database
+
+
+def get_resource_path(path: str) -> Path:
+    """Get absolute path to resource, working for dev and PyInstaller."""
+    if hasattr(sys, "_MEIPASS"):
+        # PyInstaller
+        base_path = Path(sys._MEIPASS)
+    else:
+        # Dev (relative to project root? or CWD?)
+        # If running from suzent root, CWD is root.
+        base_path = Path(".")
+
+    return base_path / path
 
 
 async def get_config(request: Request) -> JSONResponse:
@@ -316,6 +331,41 @@ async def get_social_config(request: Request) -> JSONResponse:
 
         with open(config_path, "r") as f:
             config = json.load(f)
+
+        with open(config_path, "r") as f:
+            config = json.load(f)
+
+        # Load defaults from example file to ensure all platforms are visible
+        # This keeps it DRY by using the example file as the source of truth
+        defaults_path = get_resource_path("config/social.example.json")
+        if defaults_path.exists():
+            try:
+                with open(defaults_path, "r") as f:
+                    defaults = json.load(f)
+
+                import copy
+
+                # Iterate over defaults (which includes all supported platforms)
+                for key, default_settings in defaults.items():
+                    # Skip top-level non-platform keys
+                    if not isinstance(default_settings, dict):
+                        continue
+
+                    # Prepare sanitized default (disabled by default)
+                    sanitized_default = copy.deepcopy(default_settings)
+                    if "enabled" in sanitized_default:
+                        sanitized_default["enabled"] = False
+
+                    if key not in config:
+                        config[key] = sanitized_default
+                    elif isinstance(config[key], dict):
+                        # Ensure all default fields exist
+                        for k, v in sanitized_default.items():
+                            if k not in config[key]:
+                                config[key][k] = v
+            except Exception as e:
+                # Log but continue if defaults load fails
+                print(f"Failed to load social defaults: {e}")
 
         masked_config = _mask_social_config(config)
 

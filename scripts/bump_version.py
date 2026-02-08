@@ -151,6 +151,7 @@ def main():
             cwd=root / "frontend",
             check=True,
             capture_output=True,
+            shell=True,
         )
         print("  [OK] Updated frontend/package-lock.json")
     except subprocess.CalledProcessError as e:
@@ -162,6 +163,7 @@ def main():
             cwd=root / "src-tauri",
             check=True,
             capture_output=True,
+            shell=True,
         )
         print("  [OK] Updated src-tauri/package-lock.json")
     except subprocess.CalledProcessError as e:

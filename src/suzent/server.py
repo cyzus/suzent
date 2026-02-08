@@ -129,7 +129,16 @@ async def startup():
     except Exception as e:
         logger.error(f"Failed to load API keys on startup: {e}")
 
-    await init_memory_system()
+    async def init_background_services(channel_manager, social_brain):
+        """Run heavy initialization tasks in background."""
+        logger.info("Starting background services...")
+        await init_memory_system()
+        try:
+            await channel_manager.start_all()
+            await social_brain.start()
+            logger.info("Background services started successfully")
+        except Exception as e:
+            logger.error(f"Failed to start background services: {e}")
 
     # Initialize Social Messaging System
     global social_brain, channel_manager
@@ -140,8 +149,6 @@ async def startup():
         channel_manager = ChannelManager()
 
         # Load social config
-        # Try finding it in config dir relative to cwd or source?
-        # Assuming run from root, config/social.json
         config_path = Path("config/social.json")
         social_config = {}
 
@@ -155,13 +162,9 @@ async def startup():
 
         social_model = social_config.get("model")
 
-        # Load Channels Dynamically
+        # Load Channels Dynamically (fast, just importing classes)
         channel_manager.load_drivers_from_config(social_config)
 
-        # Start Manager
-        await channel_manager.start_all()
-
-        # Start Brain
         # Allowlist: Env overrides/merges with Config?
         # Global Allowlist
         allowed_users = set(social_config.get("allowed_users", []))
@@ -187,14 +190,12 @@ async def startup():
             tools=social_config.get("tools"),
             mcp_enabled=social_config.get("mcp_enabled"),
         )
-        # Expose social_brain to app state for dynamic updates
-        # We need to access 'app' here. But 'app' is defined below.
-        # Startup functions in Starlette unfortunately don't receive 'app' as arg usually?
-        # Actually startup is just a coroutine.
-        # But 'app' is global in this file.
+
+        # Expose social_brain to app state immediately
         app.state.social_brain = social_brain
 
-        await social_brain.start()
+        # Start all heavy services in the background
+        asyncio.create_task(init_background_services(channel_manager, social_brain))
 
     except Exception as e:
         logger.error(f"Failed to initialize Social Messaging: {e}")
@@ -305,10 +306,88 @@ app = Starlette(
 if __name__ == "__main__":
     import uvicorn
     import os
+    import asyncio
+    import sys
 
     # Support dynamic port from environment (for Tauri)
+    # If set to 0, we let the OS pick a random available port
     port = int(os.getenv("SUZENT_PORT", "8000"))
     host = os.getenv("SUZENT_HOST", "0.0.0.0")  # localhost only in bundled mode
 
-    logger.info(f"Starting Suzent server on http://{host}:{port}")
-    uvicorn.run(app, host=host, port=port)
+    async def main():
+        # Use programmatic startup to access runtime info (like bound port)
+        config = uvicorn.Config(app, host=host, port=port, log_level=log_level.lower())
+        server = uvicorn.Server(config)
+
+        # We need to override the startup behavior to report the port
+        # Using a task allows us to inspect the server state after it binds
+        startup_task = asyncio.create_task(server.serve())
+
+        # Wait for the server to bind the socket
+        while not server.started:
+            await asyncio.sleep(0.1)
+
+        # Determine effective port
+        if port == 0:
+            # Start parent monitor thread for robust shutdown in production (sidecar mode)
+            # In this mode, the unexpected death of parent (Rust app) should kill us immediately
+            import threading
+            import psutil
+            import time
+
+            def monitor_parent(pid):
+                while True:
+                    if not psutil.pid_exists(pid):
+                        logger.critical(f"Parent process {pid} died. Shutting down.")
+                        os._exit(1)  # Force exit
+                    time.sleep(1)
+
+            parent_pid = os.getppid()
+            threading.Thread(
+                target=monitor_parent, args=(parent_pid,), daemon=True
+            ).start()
+
+            # Retrieve the actual port assigned by the OS
+            # uvicorn.Server stores sockets in server.servers[0].sockets
+            try:
+                # Wait a bit more to ensure servers list is populated
+                for _ in range(50):
+                    if server.servers and server.servers[0].sockets:
+                        break
+                    await asyncio.sleep(0.1)
+
+                if server.servers and server.servers[0].sockets:
+                    effective_port = server.servers[0].sockets[0].getsockname()[1]
+                    port_msg = f"SERVER_PORT:{effective_port}"
+
+                    # Triple redundancy for port reporting in frozen app
+                    logger.critical(port_msg)
+                    print(port_msg, flush=True)
+                    try:
+                        sys.stdout.buffer.write(f"{port_msg}\n".encode("utf-8"))
+                        sys.stdout.buffer.flush()
+                    except Exception:
+                        pass
+
+                    logger.info(f"Dynamic port assigned: {effective_port}")
+            except Exception as e:
+                logger.error(f"Failed to retrieve dynamic port: {e}")
+        else:
+            port_msg = f"SERVER_PORT:{port}"
+            logger.critical(port_msg)
+            print(port_msg, flush=True)
+            try:
+                sys.stdout.buffer.write(f"{port_msg}\n".encode("utf-8"))
+                sys.stdout.buffer.flush()
+            except Exception:
+                pass
+
+        # Wait for server to shutdown
+        await startup_task
+
+    if port == 0:
+        logger.info("Starting Suzent server with dynamic port assignment...")
+    else:
+        logger.info(f"Starting Suzent server on http://{host}:{port}")
+
+    asyncio.run(main())
