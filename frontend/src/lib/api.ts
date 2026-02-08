@@ -8,14 +8,19 @@ import { ConfigOptions } from '../types/api';
 // Falls back to empty string for browser mode (uses relative URLs via Vite proxy)
 function getApiBase(): string {
   // We strictly target Tauri desktop environment
-  // The backend port is injected by the main process
-  const port = window.__SUZENT_BACKEND_PORT__;
-
-  if (port) {
-    return `http://localhost:${port}`;
+  // The backend port is injected by the main process into sessionStorage
+  if (window.__TAURI__) {
+    const port = sessionStorage.getItem('SUZENT_PORT');
+    if (port) {
+      return `http://localhost:${port}`;
+    }
+    // If port is missing in Tauri, we return empty string.
+    // App.tsx should handle this by showing a loading screen.
+    return '';
   }
 
   // Fallback for standard dev port if injection missing (e.g. during early init or HMR)
+  // or running in browser mode
   return 'http://localhost:8000';
 }
 
