@@ -37,3 +37,45 @@ export interface MemorySearchResponse {
   offset: number;
   limit: number;
 }
+
+// --- Session & Transcript types (Phase 6: Frontend Integration) ---
+
+export interface TranscriptEntry {
+  ts: string;
+  role: string;
+  content: string;
+  actions?: Record<string, unknown>[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface TranscriptResponse {
+  session_id: string;
+  entries: TranscriptEntry[];
+  count: number;
+}
+
+export interface SessionStateResponse {
+  session_id: string;
+  state: Record<string, unknown>;
+}
+
+export interface DailyLogResponse {
+  date: string;
+  content: string;
+  size_bytes: number;
+}
+
+export interface DailyLogListResponse {
+  dates: string[];
+  count: number;
+}
+
+export interface MemoryFileResponse {
+  content: string;
+  size_bytes: number;
+}
+
+export interface ReindexResponse {
+  success: boolean;
+  stats: Record<string, unknown>;
+}

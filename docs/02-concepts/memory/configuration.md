@@ -1,49 +1,62 @@
 # Configuration
 
+## YAML Configuration
+
+All memory and session settings go in `config/default.yaml`:
+
+```yaml
+# Memory system
+MEMORY_ENABLED: true
+MARKDOWN_MEMORY_ENABLED: true      # Dual-write to /shared/memory/ markdown files
+EXTRACTION_MODEL: gpt-4o-mini      # LLM for fact extraction
+USER_ID: default-user
+
+# Embedding
+EMBEDDING_MODEL: text-embedding-3-large
+EMBEDDING_DIMENSION: 3072           # 0 = auto-detect
+
+# Session lifecycle
+SESSION_DAILY_RESET_HOUR: 0         # UTC hour for daily reset (0 = disabled)
+SESSION_IDLE_TIMEOUT_MINUTES: 0     # 0 = disabled
+JSONL_TRANSCRIPTS_ENABLED: true     # Write per-session JSONL transcripts
+TRANSCRIPT_INDEXING_ENABLED: false   # Index transcripts into LanceDB for search
+
+# Context management
+MAX_HISTORY_STEPS: 20               # Steps before compression triggers
+MAX_CONTEXT_TOKENS: 800000          # Token threshold for compression
+```
+
 ## Environment Variables
-
-### LanceDB Storage
-```bash
-# Path to LanceDB storage (default: .suzent/data/memory)
-# Can be relative or absolute path
-LANCEDB_URI=.suzent/data/memory
-```
-
-### Embedding
-```bash
-EMBEDDING_MODEL=text-embedding-3-large  # or text-embedding-3-small
-EMBEDDING_DIMENSION=3072                # Auto-detected from CONFIG if omitted
-```
-
-### Memory System
-```bash
-MEMORY_ENABLED=true                    # Enable/disable memory system
-EXTRACTION_MODEL=gpt-4o-mini          # LLM for fact extraction (optional)
-USER_ID=default-user                   # Default user identifier
-```
 
 ### API Keys
 ```bash
 OPENAI_API_KEY=sk-xxx
 ```
 
+### LanceDB Storage
+```bash
+# Path to LanceDB storage (default: .suzent/memory)
+LANCEDB_URI=.suzent/memory
+```
+
 ## Manager Initialization
 
 ```python
 from suzent.memory import MemoryManager, LanceDBMemoryStore
+from suzent.memory.markdown_store import MarkdownMemoryStore
 
-# Initialize store
-store = LanceDBMemoryStore(
-    uri=".suzent/data/memory",
-    embedding_dim=3072
-)
+# Initialize stores
+store = LanceDBMemoryStore(uri=".suzent/memory", embedding_dim=3072)
 await store.connect()
+
+markdown_store = MarkdownMemoryStore("/shared/memory")
 
 manager = MemoryManager(
     store=store,
     embedding_model="text-embedding-3-large",
-    embedding_dimension=3072,  # Optional
-    llm_for_extraction="gpt-4o-mini"  # Optional
+    embedding_dimension=3072,
+    llm_for_extraction="gpt-4o-mini",
+    markdown_store=markdown_store,
 )
 ```
 
@@ -84,6 +97,23 @@ results = await store.hybrid_search(
 )
 ```
 
+### Session Lifecycle
+```yaml
+# Reset sessions daily at 4am UTC
+SESSION_DAILY_RESET_HOUR: 4
+
+# Reset after 60 minutes of inactivity
+SESSION_IDLE_TIMEOUT_MINUTES: 60
+```
+
+### Transcript Indexing
+```yaml
+# Enable to allow searching across past session transcripts
+TRANSCRIPT_INDEXING_ENABLED: true
+```
+
+This chunks transcripts into ~400-token segments with 80-token overlap and stores them in LanceDB. Increases storage but enables cross-session semantic search.
+
 ## Embedding Models
 
 | Model | Dimension | Cost/1M tokens | Use Case |
@@ -92,29 +122,50 @@ results = await store.hybrid_search(
 | text-embedding-3-small | 1536 | $0.02 | Development |
 | text-embedding-ada-002 | 1536 | $0.10 | Legacy |
 
-## Storage Management
+## Storage Layout
 
-### Check Storage Size
-```python
-import os
-from pathlib import Path
+```
+data/sandbox-data/shared/memory/    # Markdown source of truth (agent-accessible)
+  MEMORY.md                         # Curated long-term memory
+  2026-02-08.md                     # Daily logs
 
-db_path = Path(".suzent/data/memory")
-if db_path.exists():
-    total_size = sum(f.stat().st_size for f in db_path.rglob('*') if f.is_file())
-    print(f"Memory storage: {total_size / (1024**2):.2f} MB")
+.suzent/
+  memory/                           # LanceDB search index
+  transcripts/{session_id}.jsonl    # Session transcripts
+  state/{session_id}.json           # Agent state snapshots
+  chats.db                          # SQLite metadata
 ```
 
-### Clear All Memories
+## Recovery
+
+### Rebuild LanceDB from Markdown
+
+If the LanceDB index is corrupted or lost:
+
 ```python
-# Delete all memories for a user
-await store.delete_all_memories(user_id="user-123")
+from suzent.memory import MarkdownIndexer
+
+indexer = MarkdownIndexer()
+stats = await indexer.reindex_from_markdown(
+    markdown_store=manager.markdown_store,
+    lancedb_store=manager.store,
+    embedding_gen=manager.embedding_gen,
+    user_id="default-user",
+    clear_existing=True,
+)
+print(f"Indexed {stats['indexed']} facts from {stats['total_files']} files")
+```
+
+Or via the API:
+
+```bash
+curl -X POST http://localhost:8000/memory/reindex \
+  -H "Content-Type: application/json" \
+  -d '{"clear_existing": true}'
 ```
 
 ## Debug Logging
 
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
+```bash
+LOG_LEVEL=DEBUG uv run suzent
 ```
-

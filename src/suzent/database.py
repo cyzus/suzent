@@ -54,6 +54,10 @@ class ChatModel(SQLModel, table=True):
     messages: list = Field(default_factory=list, sa_column=Column(JSON))
     agent_state: Optional[bytes] = None
 
+    # Session lifecycle fields
+    last_active_at: Optional[datetime] = None
+    turn_count: int = Field(default=0)
+
     plans: List["PlanModel"] = Relationship(
         back_populates="chat",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
@@ -204,6 +208,22 @@ class ChatDatabase:
                         text("ALTER TABLE mcp_servers ADD COLUMN headers TEXT")
                     )
                     conn.commit()
+
+        # Migration: Add session lifecycle columns to 'chats' table
+        if "chats" in inspector.get_table_names():
+            columns = [col["name"] for col in inspector.get_columns("chats")]
+            with self.engine.connect() as conn:
+                if "last_active_at" not in columns:
+                    conn.execute(
+                        text("ALTER TABLE chats ADD COLUMN last_active_at DATETIME")
+                    )
+                if "turn_count" not in columns:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE chats ADD COLUMN turn_count INTEGER DEFAULT 0"
+                        )
+                    )
+                conn.commit()
 
     def _session(self) -> Session:
         """Create a new database session."""

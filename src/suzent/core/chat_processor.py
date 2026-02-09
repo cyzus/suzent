@@ -191,10 +191,11 @@ class ChatProcessor:
             yield chunk
 
         # 7. Post-Processing (Background Tasks)
-        # We execute these serially here but they could be truly async tasks
-        # However, for consistency we typically await them currently.
 
-        # A. Memory Extraction
+        # A. Write JSONL transcript
+        await self._write_transcript(chat_id, message_content, full_response, agent)
+
+        # B. Memory Extraction
         await self._extract_memories(
             chat_id=chat_id,
             user_id=user_id,
@@ -203,13 +204,11 @@ class ChatProcessor:
             agent=agent,
         )
 
-        # B. Context Compression
-        # If compressed, the agent state in memory is updated
-        compressor = ContextCompressor()
+        # C. Context Compression (with pre-compaction memory flush)
+        compressor = ContextCompressor(chat_id=chat_id, user_id=user_id)
         await compressor.compress_context(agent)
 
-        # C. State Persistence
-        # Save state + History
+        # D. State Persistence
         await self._persist_state(
             chat_id=chat_id,
             agent=agent,
@@ -299,21 +298,75 @@ class ChatProcessor:
         except Exception as e:
             logger.error(f"Memory extraction failed for {chat_id}: {e}")
 
+    async def _write_transcript(self, chat_id, user_content, agent_content, agent):
+        """Write user and assistant turns to the JSONL transcript."""
+        try:
+            from suzent.session.transcript import TranscriptManager
+
+            tm = TranscriptManager()
+            await tm.append_turn(chat_id, "user", user_content)
+
+            # Extract tool calls from agent steps for the transcript
+            actions = []
+            if hasattr(agent, "memory") and hasattr(agent.memory, "steps"):
+                from smolagents.memory import ActionStep
+
+                for step in agent.memory.steps:
+                    if isinstance(step, ActionStep) and step.tool_calls:
+                        for tc in step.tool_calls:
+                            actions.append({"tool": tc.name, "args": tc.arguments})
+
+            await tm.append_turn(
+                chat_id, "assistant", agent_content, actions=actions or None
+            )
+
+        except Exception as e:
+            logger.debug(f"Transcript write failed for {chat_id}: {e}")
+
     async def _persist_state(self, chat_id, agent, user_content, agent_content):
         try:
+            from datetime import datetime
+
             db = get_database()
             agent_state = serialize_agent(agent)
 
-            # Simple history update
-            # (Note: In a real app we might not want to fetch the whole chat just to append,
-            # but our DB interface is simple currently)
             current_chat = db.get_chat(chat_id)
             messages = current_chat.messages if current_chat else []
+            prev_turn_count = getattr(current_chat, "turn_count", 0) or 0
 
             messages.append({"role": "user", "content": user_content})
             messages.append({"role": "assistant", "content": agent_content})
 
             db.update_chat(chat_id, agent_state=agent_state, messages=messages)
+
+            # Update session lifecycle fields
+            try:
+                from sqlalchemy import text as sql_text
+
+                with db._session() as session:
+                    session.exec(
+                        sql_text(
+                            "UPDATE chats SET last_active_at = :ts, turn_count = :tc WHERE id = :cid"
+                        ),
+                        params={
+                            "ts": datetime.now().isoformat(),
+                            "tc": prev_turn_count + 1,
+                            "cid": chat_id,
+                        },
+                    )
+                    session.commit()
+            except Exception as lc_err:
+                logger.debug(f"Lifecycle field update failed: {lc_err}")
+
+            # Mirror state to inspectable JSON file (.suzent/state/)
+            if agent_state:
+                try:
+                    from suzent.session.state_mirror import StateMirror
+
+                    StateMirror().mirror_state(chat_id, agent_state)
+                except Exception as mirror_err:
+                    logger.debug(f"State mirror failed: {mirror_err}")
+
             logger.info(f"Persisted state for chat {chat_id}")
 
         except Exception as e:
