@@ -8,6 +8,12 @@ import type {
   ArchivalMemory,
   MemoryStats,
   MemorySearchResponse,
+  TranscriptResponse,
+  SessionStateResponse,
+  DailyLogResponse,
+  DailyLogListResponse,
+  MemoryFileResponse,
+  ReindexResponse,
 } from '../types/memory';
 import { API_BASE } from './api';
 
@@ -105,6 +111,84 @@ export const memoryApi = {
       throw new Error(`Failed to fetch memory stats: ${response.statusText}`);
     }
 
+    return await response.json();
+  },
+
+  // --- Session & Memory File APIs (Phase 6) ---
+
+  /**
+   * List all available daily memory log dates
+   */
+  async listDailyLogs(): Promise<DailyLogListResponse> {
+    const response = await fetch(`${MEMORY_ENDPOINT}/daily`);
+    if (!response.ok) {
+      throw new Error(`Failed to list daily logs: ${response.statusText}`);
+    }
+    return await response.json();
+  },
+
+  /**
+   * Get a specific daily memory log by date
+   */
+  async getDailyLog(date: string): Promise<DailyLogResponse> {
+    const response = await fetch(`${MEMORY_ENDPOINT}/daily/${encodeURIComponent(date)}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch daily log: ${response.statusText}`);
+    }
+    return await response.json();
+  },
+
+  /**
+   * Get the curated MEMORY.md content
+   */
+  async getMemoryFile(): Promise<MemoryFileResponse> {
+    const response = await fetch(`${MEMORY_ENDPOINT}/file`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch MEMORY.md: ${response.statusText}`);
+    }
+    return await response.json();
+  },
+
+  /**
+   * Get session transcript entries
+   */
+  async getSessionTranscript(sessionId: string, lastN?: number): Promise<TranscriptResponse> {
+    const params = new URLSearchParams();
+    if (lastN !== undefined) {
+      params.set('last_n', lastN.toString());
+    }
+    const url = `${API_BASE}/session/${encodeURIComponent(sessionId)}/transcript`;
+    const qs = params.toString();
+    const response = await fetch(qs ? `${url}?${qs}` : url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch transcript: ${response.statusText}`);
+    }
+    return await response.json();
+  },
+
+  /**
+   * Get mirrored agent state for a session
+   */
+  async getSessionState(sessionId: string): Promise<SessionStateResponse> {
+    const response = await fetch(`${API_BASE}/session/${encodeURIComponent(sessionId)}/state`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch session state: ${response.statusText}`);
+    }
+    return await response.json();
+  },
+
+  /**
+   * Trigger re-index of markdown memories into LanceDB
+   */
+  async reindexMemories(clearExisting: boolean = false): Promise<ReindexResponse> {
+    const response = await fetch(`${MEMORY_ENDPOINT}/reindex`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clear_existing: clearExisting }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to reindex memories: ${response.statusText}`);
+    }
     return await response.json();
   },
 };

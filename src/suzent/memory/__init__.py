@@ -1,9 +1,16 @@
 """
 Memory system for Suzent - provides long-term memory with automatic extraction.
+
+Three storage layers:
+- Markdown files (/shared/memory/): Human-readable source of truth
+- LanceDB: Vector search index over memory content
+- Core memory blocks: Always-visible working memory injected into agent context
 """
 
 from .manager import MemoryManager
 from .lancedb_store import LanceDBMemoryStore
+from .markdown_store import MarkdownMemoryStore
+from .indexer import MarkdownIndexer, TranscriptIndexer
 from .tools import MemorySearchTool, MemoryBlockUpdateTool
 from . import memory_context
 from .models import (
@@ -27,6 +34,9 @@ from .lifecycle import (
 __all__ = [
     "MemoryManager",
     "LanceDBMemoryStore",
+    "MarkdownMemoryStore",
+    "MarkdownIndexer",
+    "TranscriptIndexer",
     "MemorySearchTool",
     "MemoryBlockUpdateTool",
     "memory_context",

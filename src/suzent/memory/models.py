@@ -237,6 +237,17 @@ class ExtractedFact(BaseModel):
         None, description="Summary of agent actions"
     )
 
+    # Transcript linkage (Phase 5) — traces where this fact came from
+    source_session_id: Optional[str] = Field(
+        None, description="Session/chat ID where this fact was extracted"
+    )
+    source_transcript_line: Optional[int] = Field(
+        None, description="Line number in the JSONL transcript"
+    )
+    source_timestamp: Optional[str] = Field(
+        None, description="ISO timestamp of the source conversation turn"
+    )
+
 
 class MemoryExtractionResult(BaseModel):
     """Result of processing a conversation turn for memories."""

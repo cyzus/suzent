@@ -65,6 +65,14 @@ from suzent.routes.sandbox_routes import (
 )
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
 from suzent.routes.system_routes import list_host_files, open_in_explorer
+from suzent.routes.session_routes import (
+    get_session_transcript,
+    get_session_state,
+    get_memory_daily_log,
+    list_memory_daily_logs,
+    get_memory_file,
+    reindex_memories,
+)
 from suzent.routes.browser_routes import browser_websocket_endpoint
 from suzent.channels.manager import ChannelManager
 
@@ -282,6 +290,21 @@ app = Starlette(
             "/memory/archival/{memory_id}", delete_archival_memory, methods=["DELETE"]
         ),
         Route("/memory/stats", get_memory_stats, methods=["GET"]),
+        Route("/memory/daily", list_memory_daily_logs, methods=["GET"]),
+        Route("/memory/daily/{date}", get_memory_daily_log, methods=["GET"]),
+        Route("/memory/file", get_memory_file, methods=["GET"]),
+        Route("/memory/reindex", reindex_memories, methods=["POST"]),
+        # Session inspection endpoints
+        Route(
+            "/session/{session_id}/transcript",
+            get_session_transcript,
+            methods=["GET"],
+        ),
+        Route(
+            "/session/{session_id}/state",
+            get_session_state,
+            methods=["GET"],
+        ),
         # Skill endpoints
         Route("/skills", get_skills, methods=["GET"]),
         Route("/skills/reload", reload_skills, methods=["POST"]),

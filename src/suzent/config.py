@@ -127,6 +127,9 @@ class ConfigModel(BaseModel):
 
     # Memory system
     memory_enabled: bool = False
+    markdown_memory_enabled: bool = (
+        True  # Write memories to markdown files in /shared/memory/
+    )
     extraction_model: Optional[str] = (
         None  # LLM model for fact extraction (None = use heuristics)
     )
@@ -145,6 +148,14 @@ class ConfigModel(BaseModel):
     # Defaults to DATA_DIR (.suzent) for security - agent can't modify source code
     # Use custom volumes to grant access to additional directories (skills, notebooks, etc.)
     workspace_root: str = str(DATA_DIR)  # Root directory for host mode bash execution
+
+    # Session lifecycle
+    session_daily_reset_hour: int = 0  # UTC hour for daily reset (0 = disabled)
+    session_idle_timeout_minutes: int = 0  # 0 = disabled
+    jsonl_transcripts_enabled: bool = True  # Write per-session JSONL transcripts
+    transcript_indexing_enabled: bool = (
+        False  # Index transcripts into LanceDB for search
+    )
 
     # Context management
     max_history_steps: int = (

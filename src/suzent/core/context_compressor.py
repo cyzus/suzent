@@ -1,5 +1,10 @@
 """
 Context Compressor: Manages agent memory by summarizing and pruning old turns.
+
+Supports pre-compaction memory flush: before compressing steps, extract
+important facts from the steps about to be removed and persist them
+to the memory system (LanceDB + markdown). This ensures no valuable
+context is lost when the context window is trimmed.
 """
 
 from typing import List, Optional
@@ -38,9 +43,18 @@ Please provide a concise but comprehensive summary of these events.
 
 
 class ContextCompressor:
-    """Handles compression of agent conversation history to manage context window size."""
+    """Handles compression of agent conversation history to manage context window size.
 
-    def __init__(self, llm_client: Optional[LLMClient] = None):
+    Supports pre-compaction memory flush: before compressing, extract facts from
+    steps about to be removed and feed them to the memory system.
+    """
+
+    def __init__(
+        self,
+        llm_client: Optional[LLMClient] = None,
+        chat_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ):
         if llm_client:
             self.llm_client = llm_client
         else:
@@ -48,10 +62,15 @@ class ContextCompressor:
             self.llm_client = LLMClient(model=config["extraction_model"])
 
         self.max_history_steps = CONFIG.max_history_steps
+        self.chat_id = chat_id
+        self.user_id = user_id
 
     async def compress_context(self, agent: CodeAgent) -> bool:
         """
         Check if context needs compression and perform it if necessary.
+
+        Before compressing, runs a pre-compaction memory flush to capture
+        important facts from the steps that will be removed.
 
         Returns:
             True if compression occurred, False otherwise.
@@ -104,8 +123,9 @@ class ContextCompressor:
 
         Strategy:
         1. Keep the initial TaskStep (steps[0]).
-        2. Summarize the compressible middle block into a single ActionStep.
-        3. Keep the most recent N steps intact.
+        2. Pre-compaction flush: extract facts from steps about to be removed.
+        3. Summarize the compressible middle block into a single ActionStep.
+        4. Keep the most recent N steps intact.
         """
         steps = agent.memory.steps
 
@@ -123,6 +143,10 @@ class ContextCompressor:
             return False
 
         steps_to_compress = steps[start_index:end_index]
+
+        # Pre-compaction memory flush: extract facts before they're lost
+        await self._pre_compaction_flush(steps_to_compress)
+
         steps_text = self._steps_to_text(steps_to_compress)
 
         summary = await self.llm_client.complete(
@@ -160,6 +184,108 @@ class ContextCompressor:
             f"Context compressed. Steps reduced from {len(steps)} to {len(new_memory)}."
         )
         return True
+
+    async def _pre_compaction_flush(self, steps_to_compress: List) -> None:
+        """
+        Extract memories from steps about to be compressed away.
+
+        Builds a synthetic ConversationTurn from the steps being removed
+        and feeds it to the memory manager. This ensures no important
+        facts are lost when context is trimmed.
+
+        Args:
+            steps_to_compress: List of agent steps about to be removed.
+        """
+        if not CONFIG.memory_enabled:
+            return
+
+        if not self.chat_id or not self.user_id:
+            logger.debug("Pre-compaction flush skipped: no chat_id/user_id")
+            return
+
+        try:
+            from suzent.memory.lifecycle import get_memory_manager
+            from suzent.memory import ConversationTurn, Message, AgentAction
+
+            memory_mgr = get_memory_manager()
+            if not memory_mgr:
+                return
+
+            # Build a synthetic turn from the steps about to be discarded
+            user_parts = []
+            assistant_parts = []
+            actions = []
+            reasoning = []
+
+            for step in steps_to_compress:
+                if isinstance(step, TaskStep):
+                    user_parts.append(step.task or "")
+
+                elif isinstance(step, ActionStep):
+                    if step.tool_calls:
+                        for tc in step.tool_calls:
+                            actions.append(
+                                AgentAction(
+                                    tool=tc.name,
+                                    args=tc.arguments or {},
+                                    output=str(step.action_output or "")[:200],
+                                )
+                            )
+                    elif step.action_output:
+                        output = str(step.action_output)
+                        if len(output) > 300:
+                            output = output[:300] + "..."
+                        assistant_parts.append(output)
+                    if step.error:
+                        assistant_parts.append(f"[Error: {step.error}]")
+
+                elif isinstance(step, PlanningStep):
+                    reasoning.append(step.plan or "")
+
+                elif isinstance(step, FinalAnswerStep):
+                    answer = str(getattr(step, "final_answer", "") or "")
+                    if answer:
+                        assistant_parts.append(answer)
+
+            # Only flush if there's meaningful content
+            user_text = "\n".join(p for p in user_parts if p).strip()
+            assistant_text = "\n".join(p for p in assistant_parts if p).strip()
+
+            if not user_text and not assistant_text:
+                logger.debug("Pre-compaction flush: no meaningful content to extract")
+                return
+
+            # Build synthetic conversation turn
+            turn = ConversationTurn(
+                user_message=Message(
+                    role="user",
+                    content=user_text or "(context from previous steps)",
+                ),
+                assistant_message=Message(
+                    role="assistant",
+                    content=assistant_text or "(actions taken in previous steps)",
+                ),
+                agent_actions=actions[:10],
+                agent_reasoning=reasoning[:5],
+            )
+
+            # Feed to memory system
+            result = await memory_mgr.process_conversation_turn_for_memories(
+                conversation_turn=turn,
+                chat_id=self.chat_id,
+                user_id=self.user_id,
+            )
+
+            extracted_count = len(result.extracted_facts) if result else 0
+            created_count = len(result.memories_created) if result else 0
+            logger.info(
+                f"Pre-compaction flush: extracted {extracted_count} facts, "
+                f"created {created_count} memories from {len(steps_to_compress)} steps"
+            )
+
+        except Exception as e:
+            # Pre-compaction flush should never block compression
+            logger.warning(f"Pre-compaction memory flush failed: {e}")
 
     def _steps_to_text(self, steps: List) -> str:
         """Convert a list of agent steps to a text representation for summarization."""

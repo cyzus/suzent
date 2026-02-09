@@ -8,6 +8,7 @@ from datetime import datetime
 from suzent.logger import get_logger
 from suzent.llm import EmbeddingGenerator, LLMClient
 from .lancedb_store import LanceDBMemoryStore
+from .markdown_store import MarkdownMemoryStore
 from . import memory_context
 from .models import (
     ConversationTurn,
@@ -49,6 +50,7 @@ class MemoryManager:
         embedding_model: str = None,
         embedding_dimension: int = 0,
         llm_for_extraction: Optional[str] = None,
+        markdown_store: Optional[MarkdownMemoryStore] = None,
     ):
         """Initialize memory manager.
 
@@ -57,8 +59,10 @@ class MemoryManager:
             embedding_model: LiteLLM model identifier for embeddings
             embedding_dimension: Expected embedding dimension (0 = auto-detect)
             llm_for_extraction: LLM model for fact extraction (uses LLM if provided)
+            markdown_store: Optional markdown-based memory store for human-readable persistence
         """
         self.store = store
+        self.markdown_store = markdown_store
         self.embedding_gen = EmbeddingGenerator(
             model=embedding_model, dimension=embedding_dimension
         )
@@ -67,7 +71,9 @@ class MemoryManager:
             LLMClient(model=llm_for_extraction) if llm_for_extraction else None
         )
         logger.info(
-            f"MemoryManager initialized with embedding model: {embedding_model}, extraction model: {llm_for_extraction}"
+            f"MemoryManager initialized with embedding model: {embedding_model}, "
+            f"extraction model: {llm_for_extraction}, "
+            f"markdown: {'enabled' if markdown_store else 'disabled'}"
         )
 
     # ===== Core Memory Blocks (Always visible to agent) =====
@@ -166,6 +172,14 @@ class MemoryManager:
                     await self.update_memory_block(
                         label="facts", content=final_content, user_id=user_id
                     )
+
+                    # Also write to MEMORY.md (human-readable long-term memory)
+                    if self.markdown_store:
+                        try:
+                            await self.markdown_store.write_memory_file(final_content)
+                        except Exception as md_err:
+                            logger.warning(f"Failed to write MEMORY.md: {md_err}")
+
                     logger.info(
                         f"Refreshed core memory 'facts' block for user {user_id}"
                     )
@@ -317,10 +331,13 @@ class MemoryManager:
 
             result.extracted_facts = [f.content for f in extracted_facts]
 
-            # Store memories
+            # Store memories in LanceDB (search index)
             await self._deduplicate_and_store_facts(
                 extracted_facts, user_id, chat_id, result
             )
+
+            # Dual-write to markdown (human-readable source of truth)
+            await self._write_facts_to_markdown(extracted_facts, chat_id)
 
             # Check for high importance facts to trigger core memory update
             for fact in extracted_facts:
@@ -375,6 +392,14 @@ class MemoryManager:
                 },
             }
 
+            # Transcript linkage (Phase 5)
+            if fact.source_session_id:
+                metadata["source_session_id"] = fact.source_session_id
+            if fact.source_transcript_line is not None:
+                metadata["source_transcript_line"] = fact.source_transcript_line
+            if fact.source_timestamp:
+                metadata["source_timestamp"] = fact.source_timestamp
+
             # Search for similar existing memories
             similar = await self.search_memories(
                 query=fact.content,
@@ -399,6 +424,33 @@ class MemoryManager:
                     user_id=user_id,
                 )
                 result.memories_created.append(memory_id)
+
+    async def _write_facts_to_markdown(self, facts: List[ExtractedFact], chat_id: str):
+        """Write extracted facts to the daily markdown log."""
+        if not self.markdown_store:
+            return
+
+        try:
+            fact_dicts = [
+                {
+                    "content": f.content,
+                    "category": f.category,
+                    "importance": f.importance,
+                    "tags": f.tags,
+                    "context": {
+                        "user_intent": f.context_user_intent,
+                        "agent_actions_summary": f.context_agent_actions_summary,
+                        "outcome": f.context_outcome,
+                    },
+                }
+                for f in facts
+            ]
+            await self.markdown_store.append_daily_log(
+                chat_id=chat_id, facts=fact_dicts
+            )
+        except Exception as e:
+            # Markdown write failure should not block the main flow
+            logger.warning(f"Failed to write facts to markdown daily log: {e}")
 
     async def process_message_for_memories(
         self, message: Dict[str, Any], chat_id: str, user_id: str
