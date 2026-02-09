@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.9.2">
 <title data-rh="true">Development Guide | SUZENT</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://suzent.com/img/docusaurus-social-card.jpg"><meta data-rh="true" name="twitter:image" content="https://suzent.com/img/docusaurus-social-card.jpg"><meta data-rh="true" property="og:url" content="https://suzent.com/docs/developing/development-guide"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Development Guide | SUZENT"><meta data-rh="true" name="description" content="Quick Start"><meta data-rh="true" property="og:description" content="Quick Start"><link data-rh="true" rel="icon" href="/img/logo.svg"><link data-rh="true" rel="canonical" href="https://suzent.com/docs/developing/development-guide"><link data-rh="true" rel="alternate" href="https://suzent.com/docs/developing/development-guide" hreflang="en"><link data-rh="true" rel="alternate" href="https://suzent.com/docs/developing/development-guide" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Development Guide","item":"https://suzent.com/docs/developing/development-guide"}]}</script><link rel="stylesheet" href="/assets/css/styles.92074ac2.css">
-<script src="/assets/js/runtime~main.d8785acb.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.dc6b592b.js" defer="defer"></script>
 <script src="/assets/js/main.94da8f0c.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -58,7 +58,7 @@
 </ol>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="configuration">Configuration<a href="#configuration" class="hash-link" aria-label="Direct link to Configuration" title="Direct link to Configuration" translate="no">​</a></h2>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="development-vs-production">Development vs Production<a href="#development-vs-production" class="hash-link" aria-label="Direct link to Development vs Production" title="Direct link to Development vs Production" translate="no">​</a></h3>
-<table><thead><tr><th>Config File</th><th>Mode</th><th>Backend</th></tr></thead><tbody><tr><td><code>tauri.conf.json</code></td><td>Development</td><td>External (port 8000)</td></tr><tr><td><code>tauri.conf.prod.json</code></td><td>Production</td><td>Bundled executable</td></tr></tbody></table>
+<table><thead><tr><th>Config File</th><th>Mode</th><th>Backend</th></tr></thead><tbody><tr><td><code>tauri.conf.json</code></td><td>Development</td><td>External (port 8000)</td></tr><tr><td><code>tauri.conf.prod.json</code></td><td>Production</td><td>Bundled Python + uv venv</td></tr></tbody></table>
 <p><strong>Development mode</strong> (<code>npm run dev</code>):</p>
 <ul>
 <li class="">No bundled backend - expects backend running on port 8000</li>
@@ -67,13 +67,13 @@
 </ul>
 <p><strong>Production mode</strong> (<code>npm run build</code>):</p>
 <ul>
-<li class="">Bundles Python backend as executable</li>
-<li class="">Backend auto-starts on dynamic port</li>
+<li class="">Bundles Python runtime + uv + suzent wheel as resources</li>
+<li class="">Creates venv on first launch, then auto-starts backend on dynamic port</li>
 <li class="">All assets bundled into single installer</li>
 </ul>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="environment-variables">Environment Variables<a href="#environment-variables" class="hash-link" aria-label="Direct link to Environment Variables" title="Direct link to Environment Variables" translate="no">​</a></h3>
 <p>The backend automatically detects bundled environment through:</p>
-<table><thead><tr><th>Variable</th><th>Purpose</th></tr></thead><tbody><tr><td><code>SUZENT_PORT</code></td><td>Dynamically assigned port</td></tr><tr><td><code>SUZENT_HOST</code></td><td>Bound to <code>127.0.0.1</code> in production</td></tr><tr><td><code>SUZENT_APP_DATA</code></td><td>Application data directory</td></tr></tbody></table>
+<table><thead><tr><th>Variable</th><th>Purpose</th></tr></thead><tbody><tr><td><code>SUZENT_PORT</code></td><td>Dynamically assigned port (0 = OS picks)</td></tr><tr><td><code>SUZENT_HOST</code></td><td>Bound to <code>127.0.0.1</code> in production</td></tr><tr><td><code>SUZENT_APP_DATA</code></td><td>Application data directory (set by Rust in bundled mode)</td></tr><tr><td><code>CHATS_DB_PATH</code></td><td>SQLite database path</td></tr><tr><td><code>LANCEDB_URI</code></td><td>LanceDB vector store path</td></tr><tr><td><code>SANDBOX_DATA_PATH</code></td><td>Sandbox data directory</td></tr><tr><td><code>SKILLS_DIR</code></td><td>Skills directory path</td></tr></tbody></table>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="tauri-configuration">Tauri Configuration<a href="#tauri-configuration" class="hash-link" aria-label="Direct link to Tauri Configuration" title="Direct link to Tauri Configuration" translate="no">​</a></h3>
 <p>Edit <code>src-tauri/tauri.conf.json</code> to customize:</p>
 <ul>
@@ -85,10 +85,7 @@
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="hot-reload-behavior">Hot Reload Behavior<a href="#hot-reload-behavior" class="hash-link" aria-label="Direct link to Hot Reload Behavior" title="Direct link to Hot Reload Behavior" translate="no">​</a></h2>
 <table><thead><tr><th>Component</th><th>Hot reload</th><th>Action on change</th></tr></thead><tbody><tr><td>Frontend (React)</td><td>Yes</td><td>Automatic</td></tr><tr><td>Backend (Python)</td><td>No</td><td>Restart manually</td></tr><tr><td>Rust code</td><td>No</td><td>Restart Tauri</td></tr></tbody></table>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="command-reference">Command Reference<a href="#command-reference" class="hash-link" aria-label="Direct link to Command Reference" title="Direct link to Command Reference" translate="no">​</a></h2>
-<table><thead><tr><th>Task</th><th>Command</th></tr></thead><tbody><tr><td>Start backend</td><td><code>python src/suzent/server.py</code></td></tr><tr><td>Start Tauri dev</td><td><code>cd src-tauri &amp;&amp; npm run dev</code></td></tr></tbody></table>
-<p>| Build full app | <code>cd src-tauri &amp;&amp; npm run build:full</code> |
-| Build backend only | <code>python scripts/build_backend.py</code> |
-| Build Tauri only | <code>cd src-tauri &amp;&amp; npm run build</code> |</p>
+<table><thead><tr><th>Task</th><th>Command</th></tr></thead><tbody><tr><td>Start backend</td><td><code>python src/suzent/server.py</code></td></tr><tr><td>Start Tauri dev</td><td><code>cd src-tauri &amp;&amp; npm run dev</code></td></tr><tr><td>Bundle Python backend</td><td><code>python scripts/bundle_python.py</code></td></tr><tr><td>Build full app</td><td><code>cd src-tauri &amp;&amp; npm run build:full</code></td></tr><tr><td>Build Tauri only</td><td><code>cd src-tauri &amp;&amp; npm run build</code></td></tr></tbody></table>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="troubleshooting">Troubleshooting<a href="#troubleshooting" class="hash-link" aria-label="Direct link to Troubleshooting" title="Direct link to Troubleshooting" translate="no">​</a></h2>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="backend-issues">Backend Issues<a href="#backend-issues" class="hash-link" aria-label="Direct link to Backend Issues" title="Direct link to Backend Issues" translate="no">​</a></h3>
 <p><strong>&quot;resource path doesn&#x27;t exist&quot; during <code>npm run dev</code></strong></p>
@@ -96,7 +93,7 @@
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#F8F8F2;--prism-background-color:#282A36"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#F8F8F2;background-color:#282A36"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#F8F8F2"><span class="token plain">python src/suzent/server.py</span><br></span></code></pre></div></div>
 <p><strong>Backend not responding</strong></p>
 <p>Verify backend is running:</p>
-<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#F8F8F2;--prism-background-color:#282A36"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#F8F8F2;background-color:#282A36"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#F8F8F2"><span class="token plain">curl http://localhost:8000/api/config</span><br></span></code></pre></div></div>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#F8F8F2;--prism-background-color:#282A36"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#F8F8F2;background-color:#282A36"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#F8F8F2"><span class="token plain">curl http://localhost:8000/config</span><br></span></code></pre></div></div>
 <p>Should return JSON configuration.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="rusttauri-issues">Rust/Tauri Issues<a href="#rusttauri-issues" class="hash-link" aria-label="Direct link to Rust/Tauri Issues" title="Direct link to Rust/Tauri Issues" translate="no">​</a></h3>
 <p><strong>&quot;cargo: command not found&quot;</strong></p>
@@ -107,7 +104,7 @@
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="frontend-issues">Frontend Issues<a href="#frontend-issues" class="hash-link" aria-label="Direct link to Frontend Issues" title="Direct link to Frontend Issues" translate="no">​</a></h3>
 <p><strong>Frontend shows connection errors</strong></p>
 <ol>
-<li class="">Verify backend is running: <code>curl http://localhost:8000/api/config</code></li>
+<li class="">Verify backend is running: <code>curl http://localhost:8000/config</code></li>
 <li class="">Check browser console for the actual error</li>
 <li class="">Ensure CORS is working (should be by default)</li>
 </ol>
