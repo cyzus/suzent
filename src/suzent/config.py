@@ -69,14 +69,44 @@ def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[st
     per_chat_volumes = custom_volumes or []
 
     # Merge and deduplicate
-    volumes = list(set(global_volumes + per_chat_volumes))
+    raw_volumes = list(set(global_volumes + per_chat_volumes))
+    volumes = []
+
+    from .tools.path_resolver import PathResolver
+
+    for vol in raw_volumes:
+        parsed = PathResolver.parse_volume_string(vol)
+        if parsed:
+            host, container = parsed
+            # If host path is relative, resolve it against PROJECT_DIR (or DATA_DIR parent)
+            # Actually, let's treat it relative to PROJECT_DIR for now as per plan
+            # But wait, PathResolver logic for host mode uses workspace_root.
+            # Here we want to fix the config issue where "config/..." or ".suzent/..." matches.
+
+            # Resolve relative host paths against PROJECT_DIR
+            # This ensures "config/foo" -> "/path/to/project/config/foo"
+
+            # Check if absolute using Path check (handles Windows/Linux)
+            # We use PathResolver logic to verify if it's already absolute
+            is_absolute = Path(host).is_absolute()
+
+            if not is_absolute:
+                # Resolve against PROJECT_DIR
+                host = str((PROJECT_DIR / host).resolve())
+                # Reconstruct volume string
+                vol = f"{host}:{container}"
+
+        volumes.append(vol)
 
     # Auto-mount skills directory
-    # Host path: relative 'skills' -> resolves to {container_workspace}/skills
-    # Container path: /mnt/skills
-    mount_str = "skills:/mnt/skills"
-    if mount_str not in volumes:
-        volumes.append(mount_str)
+    skills_resolved = str((PROJECT_DIR / "skills").resolve())
+    skills_mount = f"{skills_resolved}:/mnt/skills"
+
+    # Check if user already defined a skills mount
+    has_skills = any(v.endswith(":/mnt/skills") for v in volumes)
+
+    if not has_skills:
+        volumes.append(skills_mount)
 
     return volumes
 
