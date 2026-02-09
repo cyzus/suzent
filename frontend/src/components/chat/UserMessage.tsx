@@ -3,7 +3,7 @@ import type { Message } from '../../types/api';
 import { FileIcon } from '../FileIcon';
 import { ClickableContent } from '../ClickableContent';
 import { ArrowDownTrayIcon, EyeIcon } from '@heroicons/react/24/outline';
-import { getApiBase, getSandboxParams } from '../../lib/api'; // import { API_BASE, getSandboxParams } from '../../lib/api';
+import { getApiBase, getSandboxParams } from '../../lib/api';
 import { useChatStore } from '../../hooks/useChatStore';
 
 interface UserMessageProps {

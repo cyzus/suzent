@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Message, ChatConfig, ConfigOptions, Chat, ChatSummary } from '../types/api';
-import { getApiBase } from '../lib/api'; // import { API_BASE } from '../lib/api';
+import { getApiBase } from '../lib/api';
 
 interface ChatContextValue {
   messages: Message[];

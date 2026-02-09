@@ -150,7 +150,7 @@ export const TranscriptPanel: React.FC = () => {
           </div>
 
           {/* Last N filter */}
-          <div className="w-full md:w-48">
+          <div className="w-full md:w-auto">
             <label className="block text-xs font-bold uppercase text-neutral-600 mb-1">
               Last N Entries
             </label>

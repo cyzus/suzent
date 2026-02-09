@@ -157,7 +157,7 @@ export const memoryApi = {
     if (lastN !== undefined) {
       params.set('last_n', lastN.toString());
     }
-    const url = `${API_BASE}/session/${encodeURIComponent(sessionId)}/transcript`;
+    const url = `${getApiBase()}/session/${encodeURIComponent(sessionId)}/transcript`;
     const qs = params.toString();
     const response = await fetch(qs ? `${url}?${qs}` : url);
     if (!response.ok) {
@@ -170,7 +170,7 @@ export const memoryApi = {
    * Get mirrored agent state for a session
    */
   async getSessionState(sessionId: string): Promise<SessionStateResponse> {
-    const response = await fetch(`${API_BASE}/session/${encodeURIComponent(sessionId)}/state`);
+    const response = await fetch(`${getApiBase()}/session/${encodeURIComponent(sessionId)}/state`);
     if (!response.ok) {
       throw new Error(`Failed to fetch session state: ${response.statusText}`);
     }

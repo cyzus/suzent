@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { readFile } from '@tauri-apps/plugin-fs';
 import { FileAttachment, ImageAttachment } from '../types/api';
-import { getApiBase } from '../lib/api'; // import { API_BASE } from '../lib/api';
+import { getApiBase } from '../lib/api';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB per file
 const MAX_TOTAL_SIZE = 100 * 1024 * 1024; // 100 MB total

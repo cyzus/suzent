@@ -1,6 +1,6 @@
 import type { ChatConfig, FileAttachment } from '../types/api';
 import { useChatStore } from '../hooks/useChatStore'; // (Note: runtime import not used directly here, but kept for context)
-// import { API_BASE } from './api'; // Removed legacy import
+
 import { getApiBase } from './api';
 
 // Streaming implementation mirroring logic from Streamlit app.py
