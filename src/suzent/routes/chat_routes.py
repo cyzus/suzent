@@ -84,6 +84,9 @@ async def chat(request: Request) -> StreamingResponse:
 
         # Delegate to ChatProcessor
         try:
+            logger.info(
+                f"Chat request received - chat_id: {chat_id}, message_len: {len(message)}, files: {len(files_list)}"
+            )
             from suzent.core.chat_processor import ChatProcessor
 
             processor = ChatProcessor()

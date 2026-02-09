@@ -8,7 +8,7 @@ import {
     isMermaidFile,
     getLanguageForFile
 } from '../../lib/fileUtils';
-import { API_BASE, getSandboxParams } from '../../lib/api';
+import { getApiBase, getSandboxParams } from '../../lib/api';
 import { useChatStore } from '../../hooks/useChatStore';
 
 interface FilePreviewProps {
@@ -31,7 +31,7 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ filename, content, cha
         const params = getSandboxParams('', '', config.sandbox_volumes);
         const queryPart = params ? `?${params}` : '';
 
-        return `${API_BASE}/sandbox/serve/${chatId}/${cleanPath}${queryPart}`;
+        return `${getApiBase()}/sandbox/serve/${chatId}/${cleanPath}${queryPart}`;
     }, [chatId, path, config.sandbox_volumes]);
 
     // 1. Images

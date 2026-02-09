@@ -7,7 +7,6 @@ application settings including user preferences, API keys, and provider manageme
 
 import json
 import os
-import sys
 import traceback
 from pathlib import Path
 from typing import Any
@@ -25,16 +24,10 @@ from suzent.database import get_database
 
 
 def get_resource_path(path: str) -> Path:
-    """Get absolute path to resource, working for dev and PyInstaller."""
-    if hasattr(sys, "_MEIPASS"):
-        # PyInstaller
-        base_path = Path(sys._MEIPASS)
-    else:
-        # Dev (relative to project root? or CWD?)
-        # If running from suzent root, CWD is root.
-        base_path = Path(".")
+    """Get absolute path to resource, using PROJECT_DIR for bundled/dev mode."""
+    from suzent.config import PROJECT_DIR
 
-    return base_path / path
+    return PROJECT_DIR / path
 
 
 async def get_config(request: Request) -> JSONResponse:
@@ -322,10 +315,10 @@ def _merge_social_config(existing: dict, incoming: dict):
 async def get_social_config(request: Request) -> JSONResponse:
     """Get the current social configuration."""
     try:
-        from pathlib import Path
+        from suzent.config import PROJECT_DIR
 
-        # Assuming social config is in config/social.json
-        config_path = Path("config/social.json")
+        # Use PROJECT_DIR for correct path in frozen mode
+        config_path = PROJECT_DIR / "config" / "social.json"
         if not config_path.exists():
             return JSONResponse({"config": {}})
 
@@ -388,9 +381,9 @@ async def save_social_config(request: Request) -> JSONResponse:
         data = await request.json()
         incoming_config = data.get("config", {})
 
-        from pathlib import Path
+        from suzent.config import PROJECT_DIR
 
-        config_path = Path("config/social.json")
+        config_path = PROJECT_DIR / "config" / "social.json"
         existing_config = {}
         if config_path.exists():
             with open(config_path, "r") as f:

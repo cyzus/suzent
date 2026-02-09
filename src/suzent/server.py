@@ -71,8 +71,10 @@ from suzent.channels.manager import ChannelManager
 # from suzent.channels.telegram import TelegramChannel # Loaded dynamically now
 from suzent.core.social_brain import SocialBrain
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from PROJECT_DIR so .env is found regardless of CWD
+from suzent.config import PROJECT_DIR as _project_dir
+
+load_dotenv(_project_dir / ".env")
 
 # Ensure stdout/stderr use UTF-8 when possible to avoid encoding errors on Windows consoles
 try:
@@ -110,6 +112,15 @@ async def startup():
     import asyncio
     from suzent.tools.browsing_tool import BrowserSessionManager
 
+    # Reload config to ensure we have the latest files from ensure_app_data
+    # This addresses the issue where CONFIG is loaded at import time (before files exist)
+    from suzent.config import CONFIG
+
+    try:
+        CONFIG.reload()
+    except Exception as e:
+        logger.error(f"Failed to reload config: {e}")
+
     try:
         BrowserSessionManager.get_instance().set_main_loop(asyncio.get_running_loop())
     except Exception as e:
@@ -144,12 +155,13 @@ async def startup():
     global social_brain, channel_manager
     try:
         import json
-        from pathlib import Path
+        from suzent.config import PROJECT_DIR
 
         channel_manager = ChannelManager()
 
         # Load social config
-        config_path = Path("config/social.json")
+        # Use PROJECT_DIR to ensure we look in the correct AppData location
+        config_path = PROJECT_DIR / "config/social.json"
         social_config = {}
 
         if config_path.exists():
@@ -201,6 +213,37 @@ async def startup():
         logger.error(f"Failed to initialize Social Messaging: {e}")
 
 
+def ensure_app_data():
+    """
+    Ensure that required data directories (config, skills) exist in PROJECT_DIR.
+
+    In bundled mode (SUZENT_APP_DATA is set), the Rust side already syncs config/
+    and skills/ from bundled resources to the app data directory. This function
+    just verifies the directories exist and logs the result.
+
+    In dev mode, PROJECT_DIR points to the repo root where config/ and skills/
+    already live, so this is a no-op.
+    """
+    from suzent.config import PROJECT_DIR
+
+    print("INFO: Starting App Data Verification...", flush=True)
+
+    for dir_name in ["config", "skills"]:
+        target = PROJECT_DIR / dir_name
+        if target.exists():
+            logger.debug(f"Directory exists: {target}")
+        else:
+            logger.warning(f"Expected directory missing: {target}")
+            # Attempt to create it so the app doesn't crash
+            try:
+                target.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Created empty directory: {target}")
+            except Exception as e:
+                logger.error(f"Failed to create directory {target}: {e}")
+
+    print("INFO: App Data Verification Complete.", flush=True)
+
+
 async def shutdown():
     """Cleanup services on application shutdown."""
     from suzent.memory.lifecycle import shutdown_memory_system
@@ -249,7 +292,6 @@ app = Starlette(
         Route(
             "/config/providers/{provider_id}/verify", verify_provider, methods=["POST"]
         ),
-        Route("/config/embedding-models", get_embedding_models, methods=["GET"]),
         Route("/config/embedding-models", get_embedding_models, methods=["GET"]),
         Route("/config/social", get_social_config, methods=["GET"]),
         Route("/config/social", save_social_config, methods=["POST"]),
@@ -304,53 +346,99 @@ app = Starlette(
 
 
 if __name__ == "__main__":
-    import uvicorn
-    import os
     import asyncio
-    import sys
+    import datetime
+    from pathlib import Path
+
+    import uvicorn
+
+    # Add file logging when running in bundled mode (SUZENT_APP_DATA set)
+    # DO NOT redirect stdout - Tauri reads SERVER_PORT from stdout!
+    if os.getenv("SUZENT_APP_DATA"):
+        try:
+            debug_log = Path.home() / "suzent_startup.log"
+            from loguru import logger as _debug_logger
+
+            _debug_logger.add(
+                str(debug_log), rotation="10 MB", retention=2, level="DEBUG"
+            )
+            _debug_logger.info(
+                f"--- SERVER PROCESS STARTING AT {datetime.datetime.now()} ---"
+            )
+        except Exception:
+            pass
+
+    # Check/init data before server starts
+    ensure_app_data()
 
     # Support dynamic port from environment (for Tauri)
     # If set to 0, we let the OS pick a random available port
     port = int(os.getenv("SUZENT_PORT", "8000"))
     host = os.getenv("SUZENT_HOST", "0.0.0.0")  # localhost only in bundled mode
 
+    def report_port(effective_port: int) -> None:
+        """Report the server port via multiple channels for reliability."""
+        port_msg = f"SERVER_PORT:{effective_port}"
+        logger.critical(port_msg)
+        print(port_msg, flush=True)
+        try:
+            sys.stdout.buffer.write(f"{port_msg}\n".encode("utf-8"))
+            sys.stdout.buffer.flush()
+        except Exception:
+            pass
+
     async def main():
         # Use programmatic startup to access runtime info (like bound port)
         config = uvicorn.Config(app, host=host, port=port, log_level=log_level.lower())
         server = uvicorn.Server(config)
 
-        # We need to override the startup behavior to report the port
-        # Using a task allows us to inspect the server state after it binds
         startup_task = asyncio.create_task(server.serve())
 
         # Wait for the server to bind the socket
         while not server.started:
             await asyncio.sleep(0.1)
 
-        # Determine effective port
         if port == 0:
-            # Start parent monitor thread for robust shutdown in production (sidecar mode)
-            # In this mode, the unexpected death of parent (Rust app) should kill us immediately
+            # Start parent monitor threads for robust shutdown in sidecar mode
             import threading
-            import psutil
             import time
 
+            def monitor_stdin():
+                """Kill process if stdin is closed (parent died)."""
+                try:
+                    if not sys.stdin.read(1):
+                        os._exit(0)
+                except Exception:
+                    os._exit(0)
+
             def monitor_parent(pid):
-                while True:
-                    if not psutil.pid_exists(pid):
-                        logger.critical(f"Parent process {pid} died. Shutting down.")
-                        os._exit(1)  # Force exit
-                    time.sleep(1)
+                """Kill process if parent PID ceases to exist."""
+                try:
+                    import psutil
+
+                    logger.info(f"Starting parent monitor for PID {pid}")
+                    while True:
+                        if not psutil.pid_exists(pid):
+                            logger.critical(
+                                f"Parent process {pid} died. Shutting down."
+                            )
+                            os._exit(0)
+                        time.sleep(1)
+                except ImportError:
+                    logger.warning(
+                        "psutil not found, parent monitoring disabled (rely on stdin)."
+                    )
+                except Exception as e:
+                    logger.error(f"Parent monitor failed: {e}")
 
             parent_pid = os.getppid()
+            threading.Thread(target=monitor_stdin, daemon=True).start()
             threading.Thread(
                 target=monitor_parent, args=(parent_pid,), daemon=True
             ).start()
 
             # Retrieve the actual port assigned by the OS
-            # uvicorn.Server stores sockets in server.servers[0].sockets
             try:
-                # Wait a bit more to ensure servers list is populated
                 for _ in range(50):
                     if server.servers and server.servers[0].sockets:
                         break
@@ -358,29 +446,12 @@ if __name__ == "__main__":
 
                 if server.servers and server.servers[0].sockets:
                     effective_port = server.servers[0].sockets[0].getsockname()[1]
-                    port_msg = f"SERVER_PORT:{effective_port}"
-
-                    # Triple redundancy for port reporting in frozen app
-                    logger.critical(port_msg)
-                    print(port_msg, flush=True)
-                    try:
-                        sys.stdout.buffer.write(f"{port_msg}\n".encode("utf-8"))
-                        sys.stdout.buffer.flush()
-                    except Exception:
-                        pass
-
+                    report_port(effective_port)
                     logger.info(f"Dynamic port assigned: {effective_port}")
             except Exception as e:
                 logger.error(f"Failed to retrieve dynamic port: {e}")
         else:
-            port_msg = f"SERVER_PORT:{port}"
-            logger.critical(port_msg)
-            print(port_msg, flush=True)
-            try:
-                sys.stdout.buffer.write(f"{port_msg}\n".encode("utf-8"))
-                sys.stdout.buffer.flush()
-            except Exception:
-                pass
+            report_port(port)
 
         # Wait for server to shutdown
         await startup_task

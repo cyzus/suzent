@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
 import { streamChat } from '../lib/streaming';
-import { getSandboxParams } from '../lib/api';
+import { getApiBase, getSandboxParams } from '../lib/api';
 import type { Message, FileAttachment } from '../types/api';
 import { usePlan } from '../hooks/usePlan';
 import { useMemory } from '../hooks/useMemory';
@@ -316,7 +316,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     try {
       // Use helper to include volumes in existence check
       const queryParams = getSandboxParams(currentChatId || '', path, config.sandbox_volumes);
-      const response = await fetch(`/sandbox/serve?${queryParams}`, {
+      const response = await fetch(`${getApiBase()}/sandbox/serve?${queryParams}`, {
         method: 'HEAD'
       });
 

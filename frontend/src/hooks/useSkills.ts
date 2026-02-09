@@ -2,8 +2,10 @@
  * Skills state management hook using Zustand
  */
 
+
 import { create } from 'zustand';
-import { Skill, skillsApi } from '../lib/skillsApi';
+import { Skill } from '../types/skills';
+import * as skillsApi from '../lib/skillsApi';
 
 interface SkillsState {
     skills: Skill[];
@@ -16,7 +18,7 @@ interface SkillsState {
     toggle: (name: string) => Promise<void>;
 }
 
-export const useSkills = create<SkillsState>((set) => ({
+export const useSkills = create<SkillsState>((set, get) => ({
     skills: [],
     loading: false,
     error: null,
@@ -24,7 +26,7 @@ export const useSkills = create<SkillsState>((set) => ({
     loadSkills: async () => {
         set({ loading: true, error: null });
         try {
-            const skills = await skillsApi.getSkills();
+            const skills = await skillsApi.fetchSkills();
             set({ skills, loading: false });
         } catch (error) {
             set({
@@ -37,7 +39,8 @@ export const useSkills = create<SkillsState>((set) => ({
     reload: async () => {
         set({ loading: true, error: null });
         try {
-            const skills = await skillsApi.reloadSkills();
+            await skillsApi.reloadSkills();
+            const skills = await skillsApi.fetchSkills();
             set({ skills, loading: false });
         } catch (error) {
             set({
@@ -48,21 +51,21 @@ export const useSkills = create<SkillsState>((set) => ({
     },
 
     toggle: async (name: string) => {
+        const skill = get().skills.find(s => s.name === name);
+        if (!skill) return;
+
+        const newEnabled = !skill.enabled;
+
         // Optimistic update
         set((state) => ({
             skills: state.skills.map((s) =>
-                s.name === name ? { ...s, enabled: !s.enabled } : s
+                s.name === name ? { ...s, enabled: newEnabled } : s
             ),
         }));
 
         try {
-            const result = await skillsApi.toggleSkill(name);
-            // Confirm state matches server
-            set((state) => ({
-                skills: state.skills.map((s) =>
-                    s.name === result.name ? { ...s, enabled: result.enabled } : s
-                ),
-            }));
+            await skillsApi.toggleSkill(name, newEnabled);
+            // Success - keep optimistic update
         } catch (error) {
             // Revert on error
             set((state) => ({

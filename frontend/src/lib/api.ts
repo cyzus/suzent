@@ -6,7 +6,9 @@ import { ConfigOptions } from '../types/api';
 
 // Get backend port injected by Tauri (available in both dev and prod modes)
 // Falls back to empty string for browser mode (uses relative URLs via Vite proxy)
-function getApiBase(): string {
+// IMPORTANT: This is a function, not a constant, because the port may not be
+// set in sessionStorage when the module first loads.
+export function getApiBase(): string {
   // We strictly target Tauri desktop environment
   // The backend port is injected by the main process into sessionStorage
   if (window.__TAURI__) {
@@ -24,7 +26,9 @@ function getApiBase(): string {
   return 'http://localhost:8000';
 }
 
-export const API_BASE = getApiBase();
+// Legacy constant for backward compatibility - but callers should prefer getApiBase()
+// Legacy constant removed - callers must use getApiBase() to ensure dynamic port resolution
+// export const API_BASE = getApiBase();
 
 // -----------------------------------------------------------------------------
 // Types
@@ -81,7 +85,7 @@ interface VerifyProviderResponse {
 // -----------------------------------------------------------------------------
 
 export async function fetchMcpServers(): Promise<McpServersResponse> {
-  const res = await fetch(`${API_BASE}/mcp_servers`);
+  const res = await fetch(`${getApiBase()}/mcp_servers`);
   if (!res.ok) throw new Error('Failed to fetch MCP servers');
   return res.json();
 }
@@ -97,7 +101,8 @@ export async function addMcpServer(
   if (stdio) body.stdio = stdio;
   if (headers && Object.keys(headers).length > 0) body.headers = headers;
 
-  const res = await fetch(`${API_BASE}/mcp_servers`, {
+  /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+  const res = await fetch(`${getApiBase()}/mcp_servers`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -106,7 +111,7 @@ export async function addMcpServer(
 }
 
 export async function removeMcpServer(name: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/mcp_servers/remove`, {
+  const res = await fetch(`${getApiBase()}/mcp_servers/remove`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name })
@@ -115,7 +120,7 @@ export async function removeMcpServer(name: string): Promise<void> {
 }
 
 export async function setMcpServerEnabled(name: string, enabled: boolean): Promise<void> {
-  const res = await fetch(`${API_BASE}/mcp_servers/enabled`, {
+  const res = await fetch(`${getApiBase()}/mcp_servers/enabled`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, enabled })
@@ -129,7 +134,7 @@ export async function setMcpServerEnabled(name: string, enabled: boolean): Promi
 
 export async function fetchBackendConfig(): Promise<ConfigOptions | null> {
   try {
-    const res = await fetch(`${API_BASE}/config`);
+    const res = await fetch(`${getApiBase()}/config`);
     if (!res.ok) return null;
     return await res.json();
   } catch {
@@ -144,9 +149,10 @@ export async function saveUserPreferences(preferences: {
   memory_enabled?: boolean;
   embedding_model?: string;
   extraction_model?: string;
+  EXTRACTION_MODEL?: string;
 }): Promise<boolean> {
   try {
-    const res = await fetch(`${API_BASE}/preferences`, {
+    const res = await fetch(`${getApiBase()}/preferences`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(preferences)
@@ -164,7 +170,7 @@ export async function saveUserPreferences(preferences: {
 
 export async function fetchEmbeddingModels(): Promise<string[]> {
   try {
-    const res = await fetch(`${API_BASE}/config/embedding-models`);
+    const res = await fetch(`${getApiBase()}/config/embedding-models`);
     if (!res.ok) return [];
     const data = await res.json();
     return data.models || [];
@@ -180,7 +186,7 @@ export async function fetchEmbeddingModels(): Promise<string[]> {
 
 export async function fetchApiKeys(): Promise<{ providers: ApiProvider[] } | null> {
   try {
-    const res = await fetch(`${API_BASE}/config/api-keys`);
+    const res = await fetch(`${getApiBase()}/config/api-keys`);
     if (!res.ok) throw new Error('Failed to fetch API keys');
     return await res.json();
   } catch (e) {
@@ -191,7 +197,7 @@ export async function fetchApiKeys(): Promise<{ providers: ApiProvider[] } | nul
 
 export async function saveApiKeys(keys: Record<string, string>): Promise<boolean> {
   try {
-    const res = await fetch(`${API_BASE}/config/api-keys`, {
+    const res = await fetch(`${getApiBase()}/config/api-keys`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ keys })
@@ -209,7 +215,7 @@ export async function verifyProvider(
   config: Record<string, string>
 ): Promise<VerifyProviderResponse> {
   try {
-    const res = await fetch(`${API_BASE}/config/providers/${providerId}/verify`, {
+    const res = await fetch(`${getApiBase()}/config/providers/${providerId}/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ config })
@@ -257,7 +263,7 @@ export interface SocialConfig {
 
 export async function fetchSocialConfig(): Promise<SocialConfig> {
   try {
-    const res = await fetch(`${API_BASE}/config/social`);
+    const res = await fetch(`${getApiBase()}/config/social`);
     if (!res.ok) return { allowed_users: [] };
     const data = await res.json();
     return data.config || { allowed_users: [] };
@@ -269,7 +275,7 @@ export async function fetchSocialConfig(): Promise<SocialConfig> {
 
 export async function saveSocialConfig(config: SocialConfig): Promise<boolean> {
   try {
-    const res = await fetch(`${API_BASE}/config/social`, {
+    const res = await fetch(`${getApiBase()}/config/social`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ config })

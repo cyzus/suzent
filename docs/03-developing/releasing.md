@@ -105,7 +105,7 @@ git push && git push --tags
 Once the tag is pushed, the **[Build Desktop Apps](../../.github/workflows/build-desktop.yml)** workflow will automatically trigger. It performs the following steps:
 
 1.  **Extracts Release Notes**: Reads the changelog entry for the tagged version from `CHANGELOG.md`.
-2.  **Builds Backend**: Compiles the Python backend using Nuitka.
+2.  **Bundles Python Backend**: Downloads standalone Python + uv, builds suzent wheel into `src-tauri/resources/`.
 3.  **Builds Frontend**: Builds the React frontend.
 4.  **Builds Desktop App**: Bundles everything into a Tauri application.
     - **Windows**: `.msi`

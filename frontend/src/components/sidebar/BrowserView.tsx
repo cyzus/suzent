@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { API_BASE } from '../../lib/api';
+import { getApiBase } from '../../lib/api'; // import { API_BASE } from '../../lib/api';
 
 import { BrutalButton } from '../BrutalButton';
 
@@ -43,8 +43,9 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
         if (wsRef.current) return;
 
         setStatus('connecting');
+        setStatus('connecting');
         // Convert API_BASE (http) to ws
-        const url = new URL(API_BASE);
+        const url = new URL(getApiBase());
         url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
         url.pathname = '/ws/browser';
 

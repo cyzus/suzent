@@ -9,9 +9,9 @@ import type {
   MemoryStats,
   MemorySearchResponse,
 } from '../types/memory';
-import { API_BASE } from './api';
+import { getApiBase } from './api';
 
-const MEMORY_ENDPOINT = `${API_BASE}/memory`;
+const MEMORY_ENDPOINT = `${getApiBase()}/memory`;
 
 export const memoryApi = {
   /**

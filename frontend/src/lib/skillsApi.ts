@@ -2,48 +2,40 @@
  * Skills API client functions
  */
 
-import { API_BASE } from './api';
+import { getApiBase } from './api';
+import { Skill } from '../types/skills';
 
-export interface Skill {
-    name: string;
-    description: string;
-    path: string;
-    enabled: boolean;
+
+
+export async function fetchSkills(): Promise<Skill[]> {
+    const res = await fetch(`${getApiBase()}/skills`);
+    if (!res.ok) {
+        throw new Error(`Failed to fetch skills: ${res.statusText}`);
+    }
+    return await res.json();
 }
 
-const SKILLS_ENDPOINT = `${API_BASE}/skills`;
-
-export const skillsApi = {
-    /**
-     * Get all available skills
-     */
-    async getSkills(): Promise<Skill[]> {
-        const response = await fetch(SKILLS_ENDPOINT);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch skills: ${response.statusText}`);
-        }
-        return await response.json();
-    },
-
-    /**
-     * Reload skills from disk
-     */
-    async reloadSkills(): Promise<Skill[]> {
-        const response = await fetch(`${SKILLS_ENDPOINT}/reload`, { method: 'POST' });
-        if (!response.ok) {
-            throw new Error(`Failed to reload skills: ${response.statusText}`);
-        }
-        return await response.json();
-    },
-
-    /**
-     * Toggle a skill's enabled state
-     */
-    async toggleSkill(name: string): Promise<{ name: string; enabled: boolean }> {
-        const response = await fetch(`${SKILLS_ENDPOINT}/${name}/toggle`, { method: 'POST' });
-        if (!response.ok) {
-            throw new Error(`Failed to toggle skill: ${response.statusText}`);
-        }
-        return await response.json();
+export async function reloadSkills(): Promise<{ loaded: string[], failed: string[] }> {
+    const res = await fetch(`${getApiBase()}/skills/reload`, {
+        method: 'POST'
+    });
+    if (!res.ok) {
+        throw new Error(`Failed to reload skills: ${res.statusText}`);
     }
-};
+    return await res.json();
+}
+
+export async function toggleSkill(skillName: string, enabled: boolean): Promise<void> {
+    const res = await fetch(`${getApiBase()}/skills/${skillName}/toggle`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ enabled })
+    });
+    if (!res.ok) {
+        throw new Error(`Failed to toggle skill: ${res.statusText}`);
+    }
+    // No return value expected for void promise, but consume body if any
+    await res.text();
+}

@@ -1,26 +1,21 @@
-import os
-
 import json
-import sys
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .logger import get_logger  # project logger required
-
-
 from pydantic import BaseModel, ValidationError
+
+from .logger import get_logger
 
 
 def get_project_root() -> Path:
     """Get project root, handling both dev and bundled scenarios."""
 
-    # Check if running as bundled executable (Nuitka/PyInstaller)
-    if getattr(sys, "frozen", False):
-        # Running as compiled executable
-        # Use app data directory passed from Tauri
-        if os.getenv("SUZENT_APP_DATA"):
-            return Path(os.getenv("SUZENT_APP_DATA"))
-        return Path(sys.executable).parent
+    # In bundled mode, Tauri always sets SUZENT_APP_DATA to the app data directory
+    # where config/, skills/, etc. are synced by the Rust side
+    app_data = os.getenv("SUZENT_APP_DATA")
+    if app_data:
+        return Path(app_data)
 
     # Development mode
     # Project root (two levels above this file: src/suzent -> src -> project root)
@@ -172,14 +167,16 @@ class ConfigModel(BaseModel):
 
         def _read_file(p: Path) -> Dict[str, Any]:
             try:
-                try:
-                    import yaml  # type: ignore
+                import yaml  # type: ignore
 
-                    with p.open("r", encoding="utf-8") as fh:
-                        return yaml.safe_load(fh) or {}
-                except Exception:
-                    with p.open("r", encoding="utf-8") as fh:
-                        return json.load(fh)
+                with p.open("r", encoding="utf-8") as fh:
+                    return yaml.safe_load(fh) or {}
+            except Exception:
+                pass
+
+            try:
+                with p.open("r", encoding="utf-8") as fh:
+                    return json.load(fh)
             except Exception as exc:
                 logger.debug("Failed to parse config file {}: {}", p, exc)
                 return {}
@@ -220,10 +217,18 @@ class ConfigModel(BaseModel):
 
         if loaded_path is not None:
             logger.info("Loaded configuration overrides from {}", loaded_path)
-
         return cfg
+
+    def reload(self) -> None:
+        """Reload configuration from disk."""
+        new_config = self.load_from_files()
+        # Update current instance attributes
+        for field in self.model_fields:
+            setattr(self, field, getattr(new_config, field))
+
+        logger = get_logger(__name__)
+        logger.info("Configuration reloaded from disk.")
 
 
 # Load configuration at import time and expose typed CONFIG instance
 CONFIG = ConfigModel.load_from_files()
-# Export CONFIG (typed) and helper get_tool_options

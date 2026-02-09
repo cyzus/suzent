@@ -1,6 +1,6 @@
 # SUZENT Desktop Application
 
-SUZENT has been wrapped with Tauri 2.0 to create native desktop applications for Windows, macOS, and Linux. The Python backend is bundled as a standalone executable using Nuitka, and the React frontend is served through Tauri's native webview.
+SUZENT uses Tauri 2.0 to create native desktop applications for Windows, macOS, and Linux. The Python backend is bundled as a standalone Python distribution with `uv` for dependency management, and the React frontend is served through Tauri's native webview.
 
 ## Documentation
 
@@ -19,22 +19,46 @@ SUZENT has been wrapped with Tauri 2.0 to create native desktop applications for
 |  |              |    |  - Backend       | |
 |  |  Frontend    |--->|    Lifecycle     | |
 |  |  Built       |    |  - Port Mgmt     | |
-|  |  Assets      |    |  - IPC Bridge    | |
-|  +--------------+    +------------------+ |
-|         |                   |             |
+|  |  Assets      |    |  - First-Run     | |
+|  +--------------+    |    Setup         | |
+|         |            +------------------+ |
 |         +-----HTTP API------+             |
 |             (localhost:dynamic)           |
 +-------------------------------------------+
                     |
             +-------v--------+
             | Python Backend |
-            |  (Bundled exe) |
+            | (uv-managed    |
+            |  venv)         |
             |                |
             | - Starlette    |
             | - LanceDB      |
             | - SQLite       |
             +----------------+
 ```
+
+### Bundled Resources
+
+When built for production, the installer includes:
+
+```
+resources/
+├── python/          # Standalone Python 3.12 (~15MB compressed)
+│   ├── python.exe
+│   ├── python312.dll
+│   └── Lib/...
+├── wheel/           # Pre-built suzent wheel
+│   └── suzent-x.x.x-py3-none-any.whl
+├── config/          # Example config files
+├── skills/          # Bundled skills
+└── uv.exe           # uv package manager binary
+```
+
+On first launch, the Rust side:
+1. Creates a virtual environment using `uv` and the bundled Python
+2. Installs the suzent wheel into the venv
+3. Installs Playwright Chromium browser
+4. Copies config and skills to the app data directory
 
 ## Prerequisites
 
@@ -44,9 +68,9 @@ SUZENT has been wrapped with Tauri 2.0 to create native desktop applications for
 - Node.js 20.x or higher
 - Python 3.12 or higher
 - Rust 1.75 or higher (https://rustup.rs/)
-- Nuitka for Python compilation:
+- Python `build` package:
   ```bash
-  uv pip install nuitka orderedset zstandard
+  uv pip install build
   ```
 
 **Windows:**
@@ -100,9 +124,10 @@ npm run build:full
 ```
 
 This command automatically:
-1. Builds the frontend (`npm run build:frontend`)
-2. Builds the Python backend with Nuitka (`npm run build:backend`)
-3. Builds the Tauri application and bundles everything (`npm run build`)
+1. Bundles the Python runtime, uv, and suzent wheel (`npm run bundle:python`)
+2. Builds the Tauri application with bundled resources (`npm run build`)
+
+> **Note:** The frontend is built as part of the Tauri build step.
 
 Or use convenience scripts:
 
@@ -116,6 +141,11 @@ Or use convenience scripts:
 chmod +x scripts/build_tauri.sh
 ./scripts/build_tauri.sh
 ```
+
+The convenience scripts run 3 steps:
+1. Build the React frontend
+2. Bundle Python backend (`python scripts/bundle_python.py`)
+3. Build the Tauri application
 
 ### Build Artifacts
 
@@ -145,17 +175,25 @@ If you prefer to build step by step:
    cd ..
    ```
 
-3. **Build Python Backend**
+3. **Bundle Python Backend**
    ```bash
-   python scripts/build_backend.py
+   python scripts/bundle_python.py
    ```
-   Creates a standalone executable at `src-tauri/binaries/suzent-backend-<target-triple>` (e.g., `suzent-backend-x86_64-pc-windows-msvc.exe`). Tauri requires this strict naming convention for sidecars.
+   Downloads a standalone Python distribution, the `uv` binary, and builds a suzent wheel into `src-tauri/resources/`. Also copies example configs and skills.
 
 4. **Build Tauri Application**
    ```bash
    cd src-tauri
    npm run build
    ```
+
+## First-Run Behavior
+
+When the desktop app launches for the first time (or after an update):
+
+1. **Venv Creation** (~10-30 seconds): The Rust side runs `uv venv` with the bundled Python, then `uv pip install` with the bundled wheel. A version marker file prevents re-running on subsequent launches.
+2. **Playwright Install** (~1-2 minutes): Chromium browser is downloaded for the browsing tool. This is non-fatal — if it fails, Playwright will retry on first use.
+3. **Config Sync**: Example configs and skills are copied to the app data directory (only missing files are added, existing files are preserved).
 
 ## Application Data Location
 
@@ -168,6 +206,7 @@ When running as a bundled application, SUZENT stores all user data in the standa
 | Linux | `~/.config/com.suzent.app/` (or `$XDG_CONFIG_HOME`) |
 
 This directory contains:
+- `backend-venv/`: Python virtual environment with suzent installed
 - `chats.db`: SQLite database for chat history
 - `memory/`: LanceDB vector database for long-term memory
 - `skills/`: Custom user skills
@@ -188,14 +227,14 @@ suzent/
 ├── src-tauri/             # Tauri desktop wrapper
 │   ├── src/               # Rust code
 │   │   ├── main.rs        # App entry
-│   │   └── backend.rs     # Backend manager
-│   ├── binaries/          # Compiled Python backend (after build)
+│   │   └── backend.rs     # Backend manager (venv setup + process launch)
+│   ├── resources/         # Bundled resources (after bundle_python.py)
 │   ├── package.json       # Tauri CLI
 │   ├── Cargo.toml         # Rust deps
 │   ├── tauri.conf.json    # Dev config
 │   └── tauri.conf.prod.json  # Prod config
 ├── scripts/               # Build scripts
-│   ├── build_backend.py   # Nuitka build script
+│   ├── bundle_python.py   # Bundle Python + uv + wheel
 │   ├── build_tauri.sh     # Unix build script
 │   └── build_tauri.ps1    # Windows build script
 └── config/                # Configuration
@@ -203,17 +242,15 @@ suzent/
 
 ## Troubleshooting
 
-### Nuitka Build Fails
+### Bundle Script Fails
 
-**Missing dependencies:**
+**Missing `build` package:**
 ```bash
-uv pip install -r requirements.txt
+uv pip install build
 ```
 
-**Outdated Nuitka:**
-```bash
-uv pip install --upgrade nuitka
-```
+**Network issues downloading Python/uv:**
+Re-run `python scripts/bundle_python.py`. The script cleans and re-downloads everything.
 
 ### Cargo Build Fails
 
@@ -230,30 +267,27 @@ cargo clean
 
 ### Backend Fails to Start in Built App
 
-- Check `src-tauri/binaries/` contains the backend executable
-- Verify Python dependencies were bundled correctly
-- Check application logs in the app data directory
+- Check `~/suzent_startup.log` for backend startup logs
+- Verify `backend-venv/` exists in the app data directory
+- Delete `backend-venv/` to force venv re-creation on next launch
 
 ### Frontend Cannot Connect to Backend
 
 - Verify `window.__SUZENT_BACKEND_PORT__` is set in the browser console
-- Check that all API calls use `API_BASE` prefix
+- Check that all API calls use `getApiBase()` prefix
 - Ensure CSP settings in `tauri.conf.json` allow localhost connections
 
 ### Large Bundle Size
 
-The bundled application may be 200-500MB due to:
+The bundled application may be 80-150MB due to:
 - Python runtime and dependencies
-- Playwright/Chromium binaries (for crawl4ai)
+- uv binary
 - LanceDB native libraries
 
-Optimizations:
-- Selective Playwright binary inclusion
-- Strip debug symbols: `cargo tauri build --release`
-- Compress final installers
+Playwright/Chromium browsers (~300MB) are downloaded separately on first launch and stored in the user's data directory.
 
 ## Resources
 
 - [Tauri Documentation](https://v2.tauri.app/)
-- [Nuitka Documentation](https://nuitka.net/doc/user-manual.html)
-- [Embedding External Binaries in Tauri](https://v2.tauri.app/develop/sidecar/)
+- [uv Documentation](https://docs.astral.sh/uv/)
+- [python-build-standalone](https://github.com/indygreg/python-build-standalone)

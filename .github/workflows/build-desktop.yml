@@ -91,7 +91,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install nuitka ordered-set zstandard
+          pip install build
           pip install .
 
       - name: Cache Tauri CLI
@@ -121,24 +121,13 @@ jobs:
           npm ci
           npm run build
 
-      - name: Cache Python backend build
-        uses: actions/cache@v4
-        with:
-          path: |
-            src-tauri/binaries/*.exe
-            src-tauri/binaries/*.bin
-            src-tauri/binaries/suzent-backend*
-          key: ${{ runner.os }}-backend-${{ hashFiles('suzent/**/*.py', 'pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-backend-
-
-      - name: Build Python backend
-        run: python scripts/build_backend.py
+      - name: Bundle Python backend
+        run: python scripts/bundle_python.py
 
       - name: Build Tauri app
         run: |
           cd src-tauri
-          cargo tauri build --target ${{ matrix.target }}
+          cargo tauri build --config tauri.conf.prod.json --target ${{ matrix.target }}
 
       # Upload build artifacts for the release job
       - name: Upload build artifacts
@@ -177,4 +166,3 @@ jobs:
             artifacts/**/*.msi
             artifacts/**/*.dmg
             artifacts/**/*.AppImage
-

@@ -8,16 +8,7 @@
         "core:default",
         "dialog:default",
         "core:window:default",
-        {
-            "identifier": "shell:allow-execute",
-            "allow": [
-                {
-                    "args": true,
-                    "name": "binaries/suzent-backend",
-                    "sidecar": true
-                }
-            ]
-        },
+        "shell:allow-execute",
         "core:window:allow-start-dragging",
         "core:window:allow-close",
         "core:window:allow-minimize",

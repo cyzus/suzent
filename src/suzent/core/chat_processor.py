@@ -65,6 +65,7 @@ class ChatProcessor:
         """
 
         # 1. Configuration
+        logger.debug(f"[ChatProcessor] Starting process_turn for chat_id={chat_id}")
         config = {
             "_user_id": user_id,
             "_chat_id": chat_id,
@@ -74,7 +75,13 @@ class ChatProcessor:
             config.update(config_override)
 
         # 2. Get Agent (Default/Global)
-        agent = await get_or_create_agent(config)
+        logger.debug("[ChatProcessor] Calling get_or_create_agent")
+        try:
+            agent = await get_or_create_agent(config)
+            logger.debug(f"[ChatProcessor] Agent obtained: {type(agent)}")
+        except Exception as e:
+            logger.error(f"[ChatProcessor] get_or_create_agent failed: {e}")
+            raise
 
         # 2b. Restore State from DB (if exists)
         # This ensures we continue the specific conversation state
@@ -93,6 +100,7 @@ class ChatProcessor:
             logger.error(f"Error restoring agent state: {e}")
 
         # 3. Context Injection (Tools, Memory)
+        logger.debug("[ChatProcessor] Injecting chat context")
         inject_chat_context(agent, chat_id, user_id, config)
 
         # 4. Attachment Handling (Async)
@@ -103,6 +111,7 @@ class ChatProcessor:
         # Assuming `files` contains objects we can process or dicts
 
         if files:
+            logger.debug(f"[ChatProcessor] Processing {len(files)} files")
             # We need to setup sandbox path resolver here to move files
             try:
                 # Basic sandbox setup
@@ -154,6 +163,9 @@ class ChatProcessor:
 
         # 5. Prepare Prompt
         full_prompt = message_content + attachment_context
+        logger.debug(
+            f"[ChatProcessor] Prompt prepared. Length: {len(full_prompt)}. Calling stream_agent_responses"
+        )
 
         # 6. Stream Response
         full_response = ""

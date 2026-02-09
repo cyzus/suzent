@@ -6,8 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [v0.2.5]
+### ⚡ Changed
+- **Desktop Build**: Replace PyInstaller/Nuitka compilation with bundled Python + uv architecture
+  - Bundle standalone Python 3.12 distribution and uv package manager
+  - First-run venv creation via uv (~10-30s on first launch)
+  - All native dependencies (Playwright, lancedb, crawl4ai) now work natively
+  - Build time reduced from minutes/hours to ~30 seconds
+- **Playwright**: Auto-install Chromium browser on first launch (no manual setup needed)
+- **File Viewer**: Fix CSP to allow serving images and iframes from backend
+
 ### 🐛 Fixed
-- **Desktop**: fix window hanging whilst waiting for backend startup
+- **Desktop**: Fix window hanging whilst waiting for backend startup
+- **File Viewer**: Fix JSON parse error when backend returns non-JSON responses
 
 
 ## [v0.2.4] - 2026-02-08

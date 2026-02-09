@@ -86,9 +86,35 @@ class BrowserSessionManager:
                     f"--remote-debugging-port={self.PORT}",
                 ]
 
-                self._browser = await self._playwright.chromium.launch(
-                    headless=headless, args=args
-                )
+                try:
+                    self._browser = await self._playwright.chromium.launch(
+                        headless=headless, args=args
+                    )
+                except Exception as e:
+                    if "executable doesn't exist" in str(e).lower():
+                        logger.info(
+                            "Chromium not installed. Installing now (this may take a few minutes)..."
+                        )
+                        import subprocess
+                        import sys
+
+                        result = subprocess.run(
+                            [sys.executable, "-m", "playwright", "install", "chromium"],
+                            capture_output=True,
+                            text=True,
+                            timeout=300,
+                        )
+                        if result.returncode == 0:
+                            logger.info("Chromium installed successfully.")
+                            self._browser = await self._playwright.chromium.launch(
+                                headless=headless, args=args
+                            )
+                        else:
+                            raise RuntimeError(
+                                f"Failed to install Chromium: {result.stderr}"
+                            )
+                    else:
+                        raise
 
                 # Create context with video size tailored for sidebar
                 self._context = await self._browser.new_context(
