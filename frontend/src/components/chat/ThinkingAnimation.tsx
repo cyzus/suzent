@@ -46,26 +46,36 @@ const ThinkingAnimationComponent: React.FC<ThinkingAnimationProps> = ({ isThinki
 
   return (
     <div className={`
-      absolute inset-0 pointer-events-none
-      transition-opacity duration-500
+      absolute inset-0 pointer-events-none overflow-hidden
+      transition-opacity duration-500 rounded-lg
       ${isThinking ? 'opacity-100' : 'opacity-0'}
     `}>
-      <div className="scanner-beam"></div>
-      <div className="conveyor-track"></div>
+      {/* Background Pattern */}
+      <div className="absolute inset-0 bg-dot-pattern opacity-10"></div>
 
-      {variants.map((variant, i) => (
-        <div
-          key={i}
-          className="conveyor-item"
-          style={{ animationDelay: `${i * 0.7}s` }}
-        >
-          <div className="w-full h-full flex items-center justify-center text-white">
-            <div className="w-8 h-8">
-              <RobotAvatar variant={variant} />
+      {/* Edge Masking (Soft Fade) */}
+      <div className="absolute inset-0 bg-gradient-to-r from-white via-transparent to-white z-20"></div>
+
+      {/* Robots Layer */}
+      <div className="absolute inset-0 z-10">
+        {variants.map((variant, i) => (
+          <div
+            key={i}
+            className="conveyor-item"
+            style={{ animationDelay: `${i * 0.8}s` }}
+          >
+            <div className="w-full h-full flex items-center justify-center text-brutal-black relative">
+              <div className="robot-carrier"></div>
+              <div className="w-10 h-10 relative z-10">
+                <RobotAvatar variant={variant} />
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
+
+      {/* Scanner Layer (Must be top for blend mode) */}
+      <div className="scanner-beam z-30 mix-blend-difference"></div>
     </div>
   );
 };

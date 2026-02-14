@@ -115,8 +115,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
         border-3 border-brutal-black shadow-brutal-lg overflow-hidden relative
         transition-all duration-700 ease-out
         ${isThinking
-          ? 'w-[300px] h-[90px] bg-white'
-          : 'w-[90px] h-[40px] bg-white'
+          ? 'w-[400px] h-[80px] bg-white left-1/2 -translate-x-1/2'
+          : 'w-[90px] h-[40px] bg-white left-0 translate-x-0'
         }
       `}>
         {isThinking ? (
@@ -136,7 +136,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
         border-3 border-brutal-black shadow-brutal-lg overflow-hidden relative mt-3
         transition-all duration-700 ease-out
         ${isThinking
-          ? 'w-[300px] h-0 opacity-0'
+          ? 'w-[400px] h-0 opacity-0'
           : 'w-full h-auto bg-white px-6 py-5 opacity-100'
         }
       `}>
