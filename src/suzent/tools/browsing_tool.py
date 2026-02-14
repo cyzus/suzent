@@ -476,6 +476,7 @@ class BrowsingTool(Tool):
             "type": "array",
             "description": "Optional arguments for the command (e.g., url, selector).",
             "nullable": True,
+            "items": {"type": "string"},
         },
     }
     output_type = "string"
