@@ -197,5 +197,5 @@ CORE_MEMORY_SUMMARIZATION_PROMPT = """Condense these facts into a brief, scannab
 {facts_list}
 
 Group into sections (omit if empty): **Profile**, **Preferences**, **Stack**, **Constraints**.
-Max 200 words. Respond with the summary only.
+Max 2000 words. Respond with the summary only.
 """

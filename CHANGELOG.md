@@ -8,25 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### 🚀 Added
-- **Memory**: Markdown memory layer — human-readable source of truth in `/shared/memory/` with daily logs (`YYYY-MM-DD.md`) and curated `MEMORY.md`.
-- **Memory**: Dual-write architecture — every extracted fact persisted to both markdown and LanceDB.
-- **Memory**: `MarkdownIndexer` for rebuilding LanceDB from markdown source of truth.
-- **Memory**: `TranscriptIndexer` for chunking and embedding JSONL transcripts into LanceDB (opt-in via `transcript_indexing_enabled`).
-- **Memory**: Transcript-linked facts with `source_session_id`, `source_transcript_line`, `source_timestamp` fields.
-- **Session**: JSONL per-session transcripts at `.suzent/transcripts/{session_id}.jsonl`.
-- **Session**: Session lifecycle management with daily reset, idle timeout, and max turns policies.
-- **Session**: `StateMirror` writes inspectable JSON snapshots to `.suzent/state/{session_id}.json`.
+- **Memory**:
+  - Markdown memory layer — human-readable source of truth in `/shared/memory/` with daily logs (`YYYY-MM-DD.md`) and curated `MEMORY.md`.
+  - Dual-write architecture — every extracted fact persisted to both markdown and LanceDB.
+  - `MarkdownIndexer` for rebuilding LanceDB from markdown source of truth.
+  - `TranscriptIndexer` for chunking and embedding JSONL transcripts into LanceDB (opt-in via `transcript_indexing_enabled`).
+  - Transcript-linked facts with `source_session_id`, `source_transcript_line`, `source_timestamp` fields.
+- **Session**:
+  - JSONL per-session transcripts at `.suzent/transcripts/{session_id}.jsonl`.
+  - Session lifecycle management with daily reset, idle timeout, and max turns policies.
+  - `StateMirror` writes inspectable JSON snapshots to `.suzent/state/{session_id}.json`.
 - **Agent State**: JSON v2 serialization format replacing opaque pickle, with backward-compatible deserialization.
 - **Context**: Pre-compaction memory flush — extracts facts from steps before context compression discards them.
 - **API**: New endpoints: `/session/{id}/transcript`, `/session/{id}/state`, `/memory/daily`, `/memory/daily/{date}`, `/memory/file`, `/memory/reindex`.
-- **Frontend**: Memory view sub-navigation with Overview, Daily Logs, MEMORY.md, and Transcripts tabs.
-- **Frontend**: DailyLogsPanel, MemoryFilePanel, and TranscriptPanel components.
-- **Frontend**: Extended memoryApi with 6 new API client functions and TypeScript types.
+- **Frontend**:
+  - Memory view sub-navigation with Overview, Daily Logs, MEMORY.md, and Transcripts tabs.
+  - DailyLogsPanel, MemoryFilePanel, and TranscriptPanel components.
+  - Extended memoryApi with 6 new API client functions and TypeScript types.
 
 ### ⚡ Changed
-- **Memory**: Fact extraction prompts rewritten for concise one-sentence-per-fact output.
-- **Memory**: Core memory summarization capped at 200 words, bullet points only.
-- **Memory**: Retrieved memories formatted as single-line entries.
+- **Memory**: 
+  - Fact extraction prompts rewritten for concise one-sentence-per-fact output.
+  - Retrieved memories formatted as single-line entries.
 - **Context**: `ContextCompressor` now accepts `chat_id`/`user_id` for pre-compaction flush.
 - **Database**: `ChatModel` extended with `last_active_at` and `turn_count` fields (nullable migration).
 

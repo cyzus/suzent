@@ -161,7 +161,7 @@ class ConversationTurn(BaseModel):
         if self.agent_actions:
             actions_parts = []
             for action in self.agent_actions:
-                output_str = str(action.output or "")[:200]
+                output_str = str(action.output or "")
                 actions_parts.append(
                     f"- Tool: {action.tool}({action.args})\n  Result: {output_str}..."
                 )
