@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Retrieved memories formatted as single-line entries.
 - **Context**: `ContextCompressor` now accepts `chat_id`/`user_id` for pre-compaction flush.
 - **Database**: `ChatModel` extended with `last_active_at` and `turn_count` fields (nullable migration).
+- **Frontend**: improve thinking animation.
 
 ## [v0.2.5]
 ### ⚡ Changed
