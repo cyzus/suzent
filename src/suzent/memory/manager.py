@@ -557,15 +557,30 @@ class MemoryManager:
                     temperature=LLM_EXTRACTION_TEMPERATURE,
                 )
 
-                raw_facts = response.get("facts", [])
+                # Handle different return formats from extract_structured
+                raw_facts = []
+                if isinstance(response, list):
+                    # LLM returned a list directly
+                    raw_facts = response
+                elif isinstance(response, dict):
+                    # LLM returned a dict, look for "facts" key
+                    raw_facts = response.get("facts", [])
+                else:
+                    logger.warning(
+                        f"Unexpected response format in fallback extraction: {type(response)}"
+                    )
 
                 # Convert to Pydantic models with defaults
                 facts = []
                 for f in raw_facts:
+                    # validation: ensure f is a dict
+                    if not isinstance(f, dict):
+                        continue
+
                     # Build conversation context if present
                     ctx_data = f.get("conversation_context")
                     conversation_context = None
-                    if ctx_data:
+                    if ctx_data and isinstance(ctx_data, dict):
                         conversation_context = ConversationContext(
                             user_intent=ctx_data.get(
                                 "user_intent", "inferred from conversation"
