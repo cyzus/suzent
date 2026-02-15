@@ -1,6 +1,6 @@
 [package]
 name = "suzent"
-version = "0.2.5"
+version = "0.2.6"
 edition = "2021"
 description = "SUZENT - Your Personal Agent"
 authors = ["SUZENT Team"]
