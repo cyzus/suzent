@@ -119,43 +119,34 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
           : 'w-[90px] h-[40px] bg-white left-0 translate-x-0'
         }
       `}>
-        {isThinking ? (
-          <div className="w-full h-full flex items-center justify-center relative">
-            <ThinkingAnimation isThinking={true} />
-          </div>
-        ) : (
-          <AgentBadge
-            isThinking={false}
-            isStreaming={isStreamingThis}
-          />
-        )}
+        <ThinkingAnimation isThinking={isThinking} />
+        <AgentBadge
+          isThinking={isThinking}
+          isStreaming={isStreamingThis}
+        />
       </div>
 
-      {/* White Message Box */}
+      {/* White Message Box - smooth height reveal via CSS Grid 0fr→1fr */}
       <div className={`
-        border-3 border-brutal-black shadow-brutal-lg overflow-hidden relative mt-3
-        transition-all duration-700 ease-out
-        ${isThinking
-          ? 'w-[400px] h-0 opacity-0'
-          : 'w-full h-auto bg-white px-6 py-5 opacity-100'
-        }
+        grid mt-3 transition-[grid-template-rows] duration-500 ease-out
+        ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}
       `}>
-        {/* Copy button positioned relative to white box */}
-        {showCopyButton && !isThinking && (
-          <CopyButton
-            text={cleanContent}
-            className="absolute top-2 right-2 z-10"
-          />
-        )}
-        <div className={`
-          transition-opacity duration-500 delay-200 space-y-4
-          ${isThinking ? 'opacity-0 invisible absolute' : 'opacity-100 visible'}
-        `}>
-          {isStreamingThis ? (
-            <StreamingContent content={message.content} messageIndex={messageIndex} onFileClick={onFileClick} />
-          ) : (
-            <StaticContent blocks={blocks} messageIndex={messageIndex} onFileClick={onFileClick} />
-          )}
+        <div className="overflow-hidden min-h-0">
+          <div className="border-3 border-brutal-black shadow-brutal-lg bg-white px-6 py-5 relative">
+            {showCopyButton && !isThinking && (
+              <CopyButton
+                text={cleanContent}
+                className="absolute top-2 right-2 z-10"
+              />
+            )}
+            <div className="space-y-4">
+              {isStreamingThis ? (
+                <StreamingContent content={message.content} messageIndex={messageIndex} onFileClick={onFileClick} />
+              ) : (
+                <StaticContent blocks={blocks} messageIndex={messageIndex} onFileClick={onFileClick} />
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

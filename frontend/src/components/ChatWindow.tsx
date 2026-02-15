@@ -168,6 +168,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     [safeMessages, isStreaming]
   );
 
+  // Refresh plan when chat changes
+  useEffect(() => {
+    refreshPlan(currentChatId);
+  }, [currentChatId, refreshPlan]);
+
   // Auto-resize textarea
   useEffect(() => {
     const textarea = textareaRef.current;
