@@ -7,6 +7,7 @@ This module handles:
 - Configuration value resolution with fallbacks
 """
 
+import asyncio
 from typing import Optional, Any
 
 from smolagents import CodeAgent
@@ -126,3 +127,39 @@ def inject_chat_context(
             if hasattr(tool_instance, "set_context"):
                 resolver = _create_path_resolver(chat_id, config)
                 tool_instance.set_context(resolver)
+
+        # Inject social context into SocialMessageTool
+        elif tool_name == "SocialMessageTool":
+            runtime = _get_config_value(config, "_runtime", {})
+            social_ctx = _get_config_value(config, "social_context", {})
+
+            channel_manager = runtime.get("channel_manager")
+            event_loop = runtime.get("event_loop")
+
+            # Desktop mode fallback: use the active SocialBrain if running
+            if not channel_manager:
+                from suzent.core.social_brain import get_active_social_brain
+
+                brain = get_active_social_brain()
+                if brain:
+                    channel_manager = brain.channel_manager
+                    try:
+                        event_loop = asyncio.get_running_loop()
+                    except RuntimeError:
+                        event_loop = None
+
+            if channel_manager and event_loop:
+                tool_instance.set_social_context(
+                    channel_manager=channel_manager,
+                    event_loop=event_loop,
+                    default_platform=social_ctx.get("platform"),
+                    default_target=social_ctx.get("target_id"),
+                )
+                logger.debug(
+                    f"SocialMessageTool configured: platform={social_ctx.get('platform')}, "
+                    f"target={social_ctx.get('target_id')}"
+                )
+            else:
+                logger.debug(
+                    "SocialMessageTool present but no social channels are running"
+                )

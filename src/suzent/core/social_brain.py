@@ -12,6 +12,14 @@ from suzent.database import get_database
 
 logger = get_logger(__name__)
 
+# Module-level reference for desktop mode access
+_active_instance: Optional["SocialBrain"] = None
+
+
+def get_active_social_brain() -> Optional["SocialBrain"]:
+    """Return the active SocialBrain instance, or None if not running."""
+    return _active_instance
+
 
 class SocialBrain:
     """
@@ -49,12 +57,15 @@ class SocialBrain:
 
     async def start(self):
         """Start the processing loop."""
+        global _active_instance
         self._running = True
         self._task = asyncio.create_task(self._process_queue())
+        _active_instance = self
         logger.info("SocialBrain started.")
 
     async def stop(self):
         """Stop the processing loop."""
+        global _active_instance
         self._running = False
         if self._task:
             self._task.cancel()
@@ -62,6 +73,7 @@ class SocialBrain:
                 await self._task
             except asyncio.CancelledError:
                 pass
+        _active_instance = None
         logger.info("SocialBrain stopped.")
 
     async def _process_queue(self):
@@ -116,36 +128,51 @@ class SocialBrain:
             return
 
         try:
-            # 2. Resolve Chat ID
-            social_chat_id = f"social-{message.platform}-{message.sender_id}"
-            self._ensure_chat_exists(social_chat_id, message)
+            # 2. Resolve Chat ID and target
+            # target_id is thread/group ID when available, sender_id for DMs
+            target_id = message.get_chat_id().split(":", 1)[1]
+            social_chat_id = f"social-{message.platform}-{target_id}"
+            self._ensure_chat_exists(social_chat_id, message, target_id)
 
             logger.info(
                 f"Processing social message for {social_chat_id}: {message.content}"
             )
 
-            # 3. Setup Processor
+            # 3. Envelope header — prepend platform metadata to message
+            envelope = f"[{message.platform.title()} {message.sender_name} id:{message.sender_id}]"
+            enriched_content = f"{envelope}\n{message.content}"
+
+            # 4. Setup Processor
             from suzent.core.chat_processor import ChatProcessor
 
             processor = ChatProcessor()
 
-            # Prepare config overrides
+            # Capture the running event loop for sync-to-async bridging in tools
+            event_loop = asyncio.get_running_loop()
+
+            # Prepare config overrides with social context and runtime refs
             config_override = {
                 "model": self.model,
                 "tools": self.tools,
                 "mcp_enabled": self.mcp_enabled,
+                "social_context": {
+                    "platform": message.platform,
+                    "sender_name": message.sender_name,
+                    "sender_id": message.sender_id,
+                    "target_id": target_id,
+                },
+                "_runtime": {
+                    "channel_manager": self.channel_manager,
+                    "event_loop": event_loop,
+                },
             }
 
-            # 4. Process and Reply
-            # We iterate over the stream to find errors or forward chunks if we supported streaming typing.
-            # But social channels usually prefer a full message currently, or optimized updates.
-            # The current implementation accumulated the full response and sent it once.
-
+            # 5. Process and Reply
             full_response = ""
             async for chunk in processor.process_turn(
                 chat_id=social_chat_id,
                 user_id=CONFIG.user_id,
-                message_content=message.content,
+                message_content=enriched_content,
                 files=message.attachments,  # ChatProcessor handles dicts
                 config_override=config_override,
             ):
@@ -172,8 +199,6 @@ class SocialBrain:
                         pass
 
             # Send Final Response
-            # We need to target the correct ID.
-            target_id = message.get_chat_id().split(":", 1)[1]
             if full_response.strip():
                 await self.channel_manager.send_message(
                     message.platform, target_id, full_response
@@ -182,15 +207,25 @@ class SocialBrain:
         except Exception as e:
             logger.error(f"Failed to handle social message: {e}")
 
-    def _ensure_chat_exists(self, chat_id: str, message: UnifiedMessage):
+    def _ensure_chat_exists(
+        self, chat_id: str, message: UnifiedMessage, target_id: str
+    ):
         """Ensure a record exists in the DB for this chat."""
         db = get_database()
         chat = db.get_chat(chat_id)
         if not chat:
-            title = f"Chat with {message.sender_name} ({message.platform})"
+            is_group = target_id != message.sender_id
+            if is_group:
+                title = f"Group {target_id} ({message.platform})"
+            else:
+                title = f"Chat with {message.sender_name} ({message.platform})"
             logger.info(f"Creating new social chat: {title} ({chat_id})")
             db.create_chat(
                 title=title,
-                config={"platform": message.platform, "sender_id": message.sender_id},
+                config={
+                    "platform": message.platform,
+                    "sender_id": message.sender_id,
+                    "target_id": target_id,
+                },
                 chat_id=chat_id,
             )

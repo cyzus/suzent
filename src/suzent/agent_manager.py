@@ -18,7 +18,7 @@ from suzent.core.provider_factory import get_enabled_models_from_db
 
 from suzent.config import CONFIG
 from suzent.logger import get_logger
-from suzent.prompts import format_instructions
+from suzent.prompts import format_instructions, build_social_context
 from suzent.skills import get_skill_manager
 from suzent.config import get_effective_volumes
 
@@ -177,15 +177,17 @@ def create_agent(
     # Import tool registry for dynamic tool discovery
     from suzent.tools.registry import get_tool_class
 
-    # Load regular tools (excluding memory tools which are handled separately)
+    # Tools auto-equipped separately below
+    _auto_equipped = {
+        "MemorySearchTool",
+        "MemoryBlockUpdateTool",
+        "SkillTool",
+        "SocialMessageTool",
+    }
+
     for tool_name in tool_names:
         try:
-            # Skip memory tools and SkillTool - they are handled separately
-            if tool_name in [
-                "MemorySearchTool",
-                "MemoryBlockUpdateTool",
-                "SkillTool",
-            ]:
+            if tool_name in _auto_equipped:
                 continue
 
             tool_class = get_tool_class(tool_name)
@@ -217,6 +219,18 @@ def create_agent(
         except Exception as e:
             logger.error(f"Failed to equip SkillTool: {e}")
 
+    # Auto-equip SocialMessageTool (social mode via context, or desktop mode via tool list)
+    social_ctx = config.get("social_context")
+    if social_ctx or "SocialMessageTool" in tool_names:
+        try:
+            social_tool_class = get_tool_class("SocialMessageTool")
+            if social_tool_class and not any(
+                isinstance(t, social_tool_class) for t in tools
+            ):
+                tools.append(social_tool_class())
+        except Exception as e:
+            logger.error(f"Failed to equip SocialMessageTool: {e}")
+
     # Load MCP tools from enabled servers
     mcp_tools = _build_mcp_tools(config)
     tools.extend(mcp_tools)
@@ -234,7 +248,10 @@ def create_agent(
     custom_volumes = get_effective_volumes(sandbox_volumes)
 
     instructions = format_instructions(
-        base_instructions, memory_context=memory_context, custom_volumes=custom_volumes
+        base_instructions,
+        memory_context=memory_context,
+        custom_volumes=custom_volumes,
+        social_context=build_social_context(social_ctx) if social_ctx else "",
     )
 
     params = {
@@ -281,9 +298,19 @@ async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Co
     """
     global agent_instance, agent_config
 
+    # Keys that are transient per-request and should not trigger agent re-creation
+    # (_runtime contains live objects that can't be compared; _chat_id/_user_id are per-session)
+    _TRANSIENT_KEYS = {"_runtime", "_chat_id", "_user_id"}
+
+    def _stable_config(cfg: dict) -> dict:
+        """Return config dict without transient per-request keys."""
+        return {k: v for k, v in cfg.items() if k not in _TRANSIENT_KEYS}
+
     async with agent_lock:
         # Re-create agent if config changes, reset requested, or not initialized
-        config_changed = config != agent_config
+        config_changed = _stable_config(config) != (
+            _stable_config(agent_config) if agent_config else None
+        )
         if config_changed and agent_config is not None:
             logger.info("Config changed - creating new agent")
             logger.debug(f"Old config tools: {agent_config.get('tools', [])}")
