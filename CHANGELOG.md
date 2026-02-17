@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🚀 Added
 - **Social Messaging Tool**:
   - Now suzent could proactively send messages to any configured social platform.
+- **Voice**:
+  - Add voice support for suzent.
 
 ## [v0.2.6]
 
