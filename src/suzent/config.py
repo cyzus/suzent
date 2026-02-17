@@ -146,6 +146,10 @@ class ConfigModel(BaseModel):
     instructions: str = ""
     additional_authorized_imports: List[str] = []
 
+    # Text-to-Speech
+    tts_model: str = ""
+    tts_voice: str = ""
+
     # Embedding configuration
     embedding_model: Optional[str] = None
     embedding_dimension: int = 0

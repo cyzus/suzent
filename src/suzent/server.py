@@ -412,7 +412,9 @@ if __name__ == "__main__":
 
     async def main():
         # Use programmatic startup to access runtime info (like bound port)
-        config = uvicorn.Config(app, host=host, port=port, log_level=log_level.lower())
+        config = uvicorn.Config(
+            app, host=host, port=port, log_level=log_level.lower(), ws="wsproto"
+        )
         server = uvicorn.Server(config)
 
         startup_task = asyncio.create_task(server.serve())

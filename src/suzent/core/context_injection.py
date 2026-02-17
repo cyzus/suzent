@@ -129,7 +129,7 @@ def inject_chat_context(
                 tool_instance.set_context(resolver)
 
         # Inject social context into SocialMessageTool
-        elif tool_name == "SocialMessageTool":
+        elif tool_name in ("SocialMessageTool"):
             runtime = _get_config_value(config, "_runtime", {})
             social_ctx = _get_config_value(config, "social_context", {})
 
@@ -155,11 +155,6 @@ def inject_chat_context(
                     default_platform=social_ctx.get("platform"),
                     default_target=social_ctx.get("target_id"),
                 )
-                logger.debug(
-                    f"SocialMessageTool configured: platform={social_ctx.get('platform')}, "
-                    f"target={social_ctx.get('target_id')}"
-                )
+                logger.debug(f"{tool_name} configured with social context")
             else:
-                logger.debug(
-                    "SocialMessageTool present but no social channels are running"
-                )
+                logger.debug(f"{tool_name} present but no social channels are running")
