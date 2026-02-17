@@ -22,6 +22,7 @@ DEFAULT_TOOLS:
   - "GlobTool"
   - "GrepTool"
   - "BashTool"
+  - "SpeakTool"
 
 MCP_URLS:
   # Simple format: just the URL
@@ -48,7 +49,7 @@ ADDITIONAL_AUTHORIZED_IMPORTS: []
 
 # Text-to-Speech
 TTS_MODEL: "gemini/gemini-2.5-flash-preview-tts"
-TTS_VOICE: "Zubenelgenubi"
+TTS_VOICE: "Zephyr"
 
 # Memory System (requires PostgreSQL with pgvector - see .env for connection)
 MEMORY_ENABLED: true

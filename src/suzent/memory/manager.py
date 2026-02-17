@@ -540,7 +540,6 @@ class MemoryManager:
                     f"  Category: {fact.category}\n"
                     f"  Importance: {fact.importance}\n"
                     f"  Tags: {fact.tags}\n"
-                    f"  Tags: {fact.tags}\n"
                     f"  Context: intent={fact.context_user_intent}, outcome={fact.context_outcome}"
                 )
 

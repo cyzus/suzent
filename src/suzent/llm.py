@@ -170,7 +170,6 @@ class LLMClient:
         response_model: Type[T],
         system: Optional[str] = None,
         temperature: float = 0.3,
-        max_tokens: int = 2000,
     ) -> T:
         """Extract structured data using a Pydantic model schema.
 
@@ -202,7 +201,6 @@ class LLMClient:
                 model=self.model,
                 messages=messages,
                 temperature=temperature,
-                max_tokens=max_tokens,
                 response_format=response_model,
             )
 

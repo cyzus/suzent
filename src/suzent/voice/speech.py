@@ -52,7 +52,7 @@ class SpeechOutput:
     def is_speaking(self) -> bool:
         return self._speaking
 
-    async def speak(self, text: str) -> None:
+    async def speak(self, text: str, prompt: str = "") -> None:
         """Convert text to speech and play through audio sink."""
         if not text.strip():
             return
@@ -63,10 +63,13 @@ class SpeechOutput:
         try:
             import litellm
 
+            text = f"<TRANSCRIPT> {text} </TRANSCRIPT>"
             response = await litellm.aspeech(
                 model=self._tts_model,
                 input=text,
                 voice=self._tts_voice,
+                prompt=prompt
+                or "Speak the following text in a playful and engaging manner.",
             )
 
             audio_bytes = self._extract_audio_bytes(response)
@@ -83,6 +86,7 @@ class SpeechOutput:
 
         except Exception as e:
             logger.error(f"TTS/playback failed: {e}")
+            raise e
         finally:
             self._speaking = False
 
