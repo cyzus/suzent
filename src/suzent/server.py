@@ -410,6 +410,7 @@ if __name__ == "__main__":
         _sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
         _sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
         _sock.bind((host, 0))
+        _sock.listen()
         _sock.set_inheritable(True)
         effective_port = _sock.getsockname()[1]
         report_port(effective_port)
@@ -453,14 +454,22 @@ if __name__ == "__main__":
             threading.Thread(target=monitor_stdin, daemon=True).start()
             threading.Thread(target=monitor_parent, args=(parent_pid,), daemon=True).start()
 
-        # Use port=0 in config so uvicorn doesn't try to bind (we pass the socket)
+        # Use port=0 in config so uvicorn doesn't try to bind (we pass the socket).
+        # _sock is closed in the finally block if uvicorn never takes ownership.
         bind_port = 0 if _sock else effective_port
         config = uvicorn.Config(
             app, host=host, port=bind_port, log_level=log_level.lower(), ws="wsproto"
         )
         server = uvicorn.Server(config)
         sockets = [_sock] if _sock else None
-        await server.serve(sockets=sockets)
+        try:
+            await server.serve(sockets=sockets)
+        finally:
+            if _sock is not None:
+                try:
+                    _sock.close()
+                except Exception:
+                    pass
 
     if port == 0:
         logger.info(f"Starting Suzent server with dynamic port assignment (port={effective_port})...")
