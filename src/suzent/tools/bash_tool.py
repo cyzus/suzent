@@ -80,12 +80,8 @@ Returns the execution output or error message."""
         self._manager = None
         self.chat_id: Optional[str] = None
         self.custom_volumes: Optional[list] = None
-        self.sandbox_enabled: bool = (
-            True  # Default to sandbox mode, overridden by config
-        )
-        self.workspace_root: Optional[str] = (
-            None  # Set by inject_chat_context for host mode
-        )
+        self.sandbox_enabled: bool = True
+        self.workspace_root: Optional[str] = None
 
     @property
     def manager(self):
@@ -112,28 +108,15 @@ Returns the execution output or error message."""
         language: Optional[str] = None,
         timeout: Optional[int] = None,
     ) -> str:
-        """
-        Execute code or command in the sandbox or on host.
-
-        Args:
-            content: Code or command to execute
-            language: Execution language (python, nodejs, command)
-            timeout: Execution timeout in seconds
-
-        Returns:
-            Output from execution, or error message
-        """
+        """Execute code or command in the sandbox or on host."""
         if not self.chat_id:
             return "Error: No chat context. Cannot determine execution session."
 
-        # Default to Python if not specified
         lang = language or "python"
 
-        # Branch based on sandbox mode
         if self.sandbox_enabled:
             return self._execute_in_sandbox(content, lang, timeout)
-        else:
-            return self._execute_on_host(content, lang, timeout)
+        return self._execute_on_host(content, lang, timeout)
 
     def _execute_in_sandbox(
         self,
@@ -171,35 +154,21 @@ Returns the execution output or error message."""
         language: str,
         timeout: Optional[int] = None,
     ) -> str:
-        """
-        Execute code directly on host machine, restricted to workspace.
-
-        Args:
-            content: Code or command to execute
-            language: Execution language (python, nodejs, command)
-            timeout: Execution timeout in seconds (default: 120)
-
-        Returns:
-            Output from execution, or error message
-        """
+        """Execute code directly on host machine, restricted to workspace."""
         if not self.workspace_root:
             return "[Error: workspace_root not configured for host execution]"
 
-        # Build command based on language
         if language == "python":
             cmd = ["python", "-c", content]
         elif language == "nodejs":
             cmd = ["node", "-e", content]
-        else:  # command/bash/shell
-            if os.name == "nt":  # Windows
-                # Use PowerShell for better compatibility
-                cmd = ["powershell", "-NoProfile", "-Command", content]
-            else:
-                cmd = ["bash", "-c", content]
+        elif os.name == "nt":
+            cmd = ["powershell", "-NoProfile", "-Command", content]
+        else:
+            cmd = ["bash", "-c", content]
 
         effective_timeout = timeout or 120
 
-        # Use the persistence path as working directory (same as /persistence in sandbox)
         from suzent.config import CONFIG
 
         sandbox_data_path = Path(CONFIG.sandbox_data_path).resolve()
@@ -212,6 +181,7 @@ Returns the execution output or error message."""
                 cwd=str(working_dir),  # Working directory is /persistence equivalent
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=effective_timeout,
                 env=self._get_host_env(),
             )
@@ -238,30 +208,18 @@ Returns the execution output or error message."""
             return f"[Error: {str(e)}]"
 
     def _get_host_env(self) -> dict:
-        """
-        Get environment variables for host execution.
-
-        Includes:
-        - All current environment variables
-        - WORKSPACE_ROOT pointing to the workspace directory
-        - PERSISTENCE_PATH pointing to the session's persistence directory
-        - SHARED_PATH pointing to the shared directory
-        - Custom volume paths as MOUNT_* environment variables
-        """
-        env = os.environ.copy()
-        env["WORKSPACE_ROOT"] = str(Path(self.workspace_root).resolve())
-
-        # Expose persistence and shared paths (same as sandbox mode paths)
-        # Note: Directories are created in _execute_on_host before this is called
+        """Build environment variables for host execution."""
         from suzent.config import CONFIG
+
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["WORKSPACE_ROOT"] = str(Path(self.workspace_root).resolve())
 
         sandbox_data_path = Path(CONFIG.sandbox_data_path).resolve()
         if self.chat_id:
             env["PERSISTENCE_PATH"] = str(sandbox_data_path / "sessions" / self.chat_id)
-
         env["SHARED_PATH"] = str(sandbox_data_path / "shared")
 
-        # Expose custom volume paths as env vars
         if self.custom_volumes:
             from suzent.tools.path_resolver import PathResolver
 

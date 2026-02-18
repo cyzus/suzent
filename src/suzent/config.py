@@ -22,11 +22,8 @@ def get_project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-# Project root
 PROJECT_DIR = get_project_root()
 
-
-# Data directory
 DATA_DIR = PROJECT_DIR / ".suzent"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -46,9 +43,7 @@ def _normalize_keys(d: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def get_tool_options() -> List[str]:
-    """Discover Tool subclasses in the suzent.tools package and return their class names."""
-    # Use centralized registry to avoid duplication
-    # Note: Memory tools are added dynamically when memory system initializes
+    """Discover available tool class names from the centralized registry."""
     from suzent.tools.registry import list_available_tools
 
     return list_available_tools()
@@ -57,18 +52,11 @@ def get_tool_options() -> List[str]:
 def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[str]:
     """
     Calculate effective sandbox volumes by merging global config and per-chat volumes.
-    Also auto-mounts the 'skills' directory if not present.
-
-    Args:
-        custom_volumes: Optional list of per-chat volume strings.
-
-    Returns:
-        Merged list of volume strings.
+    Also auto-mounts the 'skills' directory if not already present.
     """
     global_volumes = CONFIG.sandbox_volumes or []
     per_chat_volumes = custom_volumes or []
 
-    # Merge and deduplicate
     raw_volumes = list(set(global_volumes + per_chat_volumes))
     volumes = []
 
@@ -78,35 +66,17 @@ def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[st
         parsed = PathResolver.parse_volume_string(vol)
         if parsed:
             host, container = parsed
-            # If host path is relative, resolve it against PROJECT_DIR (or DATA_DIR parent)
-            # Actually, let's treat it relative to PROJECT_DIR for now as per plan
-            # But wait, PathResolver logic for host mode uses workspace_root.
-            # Here we want to fix the config issue where "config/..." or ".suzent/..." matches.
-
             # Resolve relative host paths against PROJECT_DIR
-            # This ensures "config/foo" -> "/path/to/project/config/foo"
-
-            # Check if absolute using Path check (handles Windows/Linux)
-            # We use PathResolver logic to verify if it's already absolute
-            is_absolute = Path(host).is_absolute()
-
-            if not is_absolute:
-                # Resolve against PROJECT_DIR
+            if not Path(host).is_absolute():
                 host = str((PROJECT_DIR / host).resolve())
-                # Reconstruct volume string
                 vol = f"{host}:{container}"
 
         volumes.append(vol)
 
-    # Auto-mount skills directory
-    skills_resolved = str((PROJECT_DIR / "skills").resolve())
-    skills_mount = f"{skills_resolved}:/mnt/skills"
-
-    # Check if user already defined a skills mount
-    has_skills = any(v.endswith(":/mnt/skills") for v in volumes)
-
-    if not has_skills:
-        volumes.append(skills_mount)
+    # Auto-mount skills directory if not already mapped
+    if not any(v.endswith(":/mnt/skills") for v in volumes):
+        skills_resolved = str((PROJECT_DIR / "skills").resolve())
+        volumes.append(f"{skills_resolved}:/mnt/skills")
 
     return volumes
 
@@ -116,11 +86,9 @@ class ConfigModel(BaseModel):
     server_url: str = "http://localhost:8000/chat"
     code_tag: str = "<code>"
 
-    # Keep model options empty by default; prefer specifying models in YAML
     model_options: List[str] = []
     agent_options: List[str] = ["CodeAgent", "ToolcallingAgent"]
 
-    # Default tools available; discovery will merge with these if tool_options not set
     default_tools: List[str] = [
         "WebSearchTool",
         "PlanningTool",
@@ -133,14 +101,8 @@ class ConfigModel(BaseModel):
     ]
     tool_options: Optional[List[str]] = None
 
-    # No MCP endpoints by default; provide via YAML when needed
-    # Supports both simple format: {"name": "url"} and nested: {"name": {"url": "...", "headers": {...}}}
     mcp_urls: Dict[str, Any] = {}
-
-    # MCP stdio params default empty; user can configure stdio-backed MCPs in YAML
     mcp_stdio_params: Dict[str, Any] = {}
-
-    # Track enabled status of MCP servers
     mcp_enabled: Dict[str, bool] = {}
 
     instructions: str = ""
@@ -150,49 +112,39 @@ class ConfigModel(BaseModel):
     tts_model: str = ""
     tts_voice: str = ""
 
-    # Embedding configuration
+    # Embedding
     embedding_model: Optional[str] = None
     embedding_dimension: int = 0
 
-    # Memory system
+    # Memory
     memory_enabled: bool = False
-    markdown_memory_enabled: bool = (
-        True  # Write memories to markdown files in /shared/memory/
-    )
-    extraction_model: Optional[str] = (
-        None  # LLM model for fact extraction (None = use heuristics)
-    )
-    user_id: str = "default-user"  # Default user identifier for memory system
-    lancedb_uri: str = str(DATA_DIR / "memory")  # Path to LanceDB storage
+    markdown_memory_enabled: bool = True
+    extraction_model: Optional[str] = None
+    user_id: str = "default-user"
+    lancedb_uri: str = str(DATA_DIR / "memory")
 
-    # Sandbox system
+    # Sandbox
     sandbox_enabled: bool = False
     sandbox_server_url: str = "http://localhost:7263"
     sandbox_data_path: str = str(DATA_DIR / "sandbox")
-    sandbox_volumes: List[
-        str
-    ] = []  # Volume mounts (format: "host_path:container_path")
+    sandbox_volumes: List[str] = []
 
-    # Workspace configuration for non-sandbox (host) execution
-    # Defaults to DATA_DIR (.suzent) for security - agent can't modify source code
-    # Use custom volumes to grant access to additional directories (skills, notebooks, etc.)
-    workspace_root: str = str(DATA_DIR)  # Root directory for host mode bash execution
+    # Workspace (host mode execution root)
+    workspace_root: str = str(DATA_DIR)
+
+    # Node system
+    nodes_enabled: bool = True
+    node_auth_mode: str = "open"  # "open" | "approve" | "token"
 
     # Session lifecycle
-    session_daily_reset_hour: int = 0  # UTC hour for daily reset (0 = disabled)
-    session_idle_timeout_minutes: int = 0  # 0 = disabled
-    jsonl_transcripts_enabled: bool = True  # Write per-session JSONL transcripts
-    transcript_indexing_enabled: bool = (
-        False  # Index transcripts into LanceDB for search
-    )
+    session_daily_reset_hour: int = 0
+    session_idle_timeout_minutes: int = 0
+    jsonl_transcripts_enabled: bool = True
+    transcript_indexing_enabled: bool = False
 
     # Context management
-    max_history_steps: int = (
-        20  # Maximum number of conversation steps to keep before compressing
-    )
-    max_context_tokens: int = (
-        800000  # Maximum estimated tokens before compressing (default 800k)
-    )
+    max_history_steps: int = 20
+    max_context_tokens: int = 800_000
 
     @classmethod
     def load_from_files(cls) -> "ConfigModel":
@@ -238,7 +190,6 @@ class ConfigModel(BaseModel):
                 default_data = _normalize_keys(raw_default)
                 loaded_files.append(default_path)
 
-        # Merge with default_data taking precedence over example_data
         data = {**example_data, **default_data}
         loaded_path = loaded_files[-1] if loaded_files else None
 
@@ -251,7 +202,6 @@ class ConfigModel(BaseModel):
             logger.error("Config validation error: {}", ve)
             raise
 
-        # If tool_options missing or falsy, discover tools from disk and combine with defaults
         if not cfg.tool_options:
             try:
                 discovered = get_tool_options()
@@ -267,7 +217,6 @@ class ConfigModel(BaseModel):
     def reload(self) -> None:
         """Reload configuration from disk."""
         new_config = self.load_from_files()
-        # Update current instance attributes
         for field in self.model_fields:
             setattr(self, field, getattr(new_config, field))
 
@@ -275,5 +224,4 @@ class ConfigModel(BaseModel):
         logger.info("Configuration reloaded from disk.")
 
 
-# Load configuration at import time and expose typed CONFIG instance
 CONFIG = ConfigModel.load_from_files()

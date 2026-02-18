@@ -8,6 +8,7 @@
 - [Tools](02-concepts/tools/tools.md): Available tools and usage guides.
 - [Skills](02-concepts/skills/skills.md): Extend agent capabilities with custom skills.
 - [Social Messaging](02-concepts/social-messaging/README.md): Telegram & Feishu integration.
+- [Nodes](02-concepts/nodes/nodes.md): Connect and control companion devices remotely.
 
 ## Development
 - **[Utility Scripts](03-developing/utility-scripts.md)**: Maintenance scripts.

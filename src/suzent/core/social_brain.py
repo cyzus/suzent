@@ -150,9 +150,22 @@ class SocialBrain:
             # Capture the running event loop for sync-to-async bridging in tools
             event_loop = asyncio.get_running_loop()
 
+            # Determine effective model (prefer social.json config, fallback to user prefs)
+            model_id = self.model
+            if not model_id:
+                try:
+                    db = get_database()
+                    prefs = db.get_user_preferences()
+                    if prefs and prefs.model:
+                        model_id = prefs.model
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to load user preferences in SocialBrain: {e}"
+                    )
+
             # Prepare config overrides with social context and runtime refs
             config_override = {
-                "model": self.model,
+                "model": model_id,
                 "tools": self.tools,
                 "mcp_enabled": self.mcp_enabled,
                 "social_context": {

@@ -7,71 +7,57 @@ This module handles all chat endpoints including:
 - Stopping active streams
 """
 
+import json
+import traceback
+
+from starlette.requests import Request
+from starlette.responses import JSONResponse, StreamingResponse
+
 from suzent.config import CONFIG
 from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.streaming import stop_stream
 
-import json
-import traceback
-from starlette.requests import Request
-from starlette.responses import JSONResponse, StreamingResponse
-
 logger = get_logger(__name__)
-
-# Memory retrieval configuration
-AUTO_RETRIEVAL_MEMORY_LIMIT = 5
 
 
 async def chat(request: Request) -> StreamingResponse:
     """
-    Handles chat requests, streams agent responses, and manages the SSE stream.
+    Handle chat requests, stream agent responses, and manage the SSE stream.
 
-    Accepts POST requests with either:
-    1. JSON body containing:
-       - message: The user's message
-       - reset: Optional boolean to reset agent memory
-       - config: Optional agent configuration
-       - chat_id: Optional chat identifier for context
-
-    2. Multipart form-data containing:
-       - message: The user's message (text field)
-       - reset: Optional boolean as string (form field)
-       - config: Optional agent configuration as JSON string (form field)
-       - chat_id: Optional chat identifier (form field)
-       - files: Optional image files (file uploads)
-
-    Returns:
-        StreamingResponse with server-sent events.
+    Accepts POST with JSON body or multipart form-data containing:
+    - message: The user's message
+    - reset: Optional boolean to reset agent memory
+    - config: Optional agent configuration
+    - chat_id: Optional chat identifier
+    - stream: Optional boolean (default True, JSON only)
+    - files: Optional image files (multipart only)
     """
     try:
-        # Check content type to determine how to parse the request
         content_type = request.headers.get("content-type", "")
 
         if "multipart/form-data" in content_type:
-            # Handle multipart form data
             form = await request.form()
             message = form.get("message", "").strip()
-            reset = form.get("reset", "false").lower() == "true"
+            # reset = form.get("reset", "false").lower() == "true"
             config_str = form.get("config", "{}")
             chat_id = form.get("chat_id")
+            stream = True  # Multipart always streams
 
-            # Parse config from JSON string
             try:
                 config = json.loads(config_str)
             except json.JSONDecodeError:
                 config = {}
 
-            # Get list of UploadFile objects (no processing yet)
             files_list = form.getlist("files")
         else:
-            # Handle JSON (backward compatibility)
             data = await request.json()
             message = data.get("message", "").strip()
-            reset = data.get("reset", False)
+            # reset = data.get("reset", False)
             config = data.get("config", {})
             chat_id = data.get("chat_id")
-            files_list = []  # No file support in pure JSON mode yet (unless base64 encoded, but ChatProcessor handles UploadFile/dict)
+            stream = data.get("stream", True)
+            files_list = []
 
         if not message and not files_list:
             return StreamingResponse(
@@ -82,33 +68,41 @@ async def chat(request: Request) -> StreamingResponse:
                 status_code=400,
             )
 
-        # Delegate to ChatProcessor
+        logger.info(
+            f"Chat request received - chat_id: {chat_id}, "
+            f"message_len: {len(message)}, files: {len(files_list)}"
+        )
+
+        from suzent.core.chat_processor import ChatProcessor
+
+        processor = ChatProcessor()
+        config_override = config.copy() if config else {}
+
+        # Merge user preferences from DB if not provided in request
         try:
-            logger.info(
-                f"Chat request received - chat_id: {chat_id}, message_len: {len(message)}, files: {len(files_list)}"
-            )
-            from suzent.core.chat_processor import ChatProcessor
+            db = get_database()
+            user_prefs = db.get_user_preferences()
+            if user_prefs:
+                if not config_override.get("model") and user_prefs.model:
+                    config_override["model"] = user_prefs.model
+                if not config_override.get("agent") and user_prefs.agent:
+                    config_override["agent"] = user_prefs.agent
+                if "tools" not in config_override and user_prefs.tools:
+                    config_override["tools"] = user_prefs.tools
+        except Exception as e:
+            logger.warning(f"Failed to load user preferences in chat route: {e}")
 
-            processor = ChatProcessor()
+        generator = processor.process_turn(
+            chat_id=chat_id,
+            user_id=CONFIG.user_id,
+            message_content=message,
+            files=files_list,
+            config_override=config_override,
+        )
 
-            # Prepare config overrides from request body
-            # We pass the entire config object so that tools, mcp settings, etc. are respected.
-            config_override = config.copy() if config else {}
-
-            if reset:
-                # TODO: Implement explicit reset support via ChatProcessor
-                # Currently handled implicitly when config changes
-                pass
-
-            # Return StreamingResponse using the processor's generator
+        if stream:
             return StreamingResponse(
-                processor.process_turn(
-                    chat_id=chat_id,
-                    user_id=CONFIG.user_id,
-                    message_content=message,
-                    files=files_list,
-                    config_override=config_override,
-                ),
+                generator,
                 media_type="text/event-stream",
                 headers={
                     "Content-Type": "text/event-stream",
@@ -118,17 +112,22 @@ async def chat(request: Request) -> StreamingResponse:
                 },
             )
 
-        except Exception as e:
-            logger.error(f"Chat processing failed: {e}")
-            return StreamingResponse(
-                iter(
-                    [
-                        f'data: {{"type": "error", "data": "Processing failed: {e!s}"}}\n\n'
-                    ]
-                ),
-                media_type="text/event-stream",
-                status_code=500,
-            )
+        # Non-streaming: consume generator and return JSON
+        full_response = ""
+        async for chunk in generator:
+            try:
+                if chunk.startswith("data: "):
+                    event_data = json.loads(chunk[6:].strip())
+                    if event_data.get("type") == "final_answer":
+                        full_response = event_data.get("data", "")
+                    elif event_data.get("type") == "error":
+                        return JSONResponse(
+                            {"error": event_data.get("data")}, status_code=500
+                        )
+            except Exception:
+                pass
+
+        return JSONResponse({"response": full_response})
 
     except Exception as e:
         logger.error(f"Error handling chat request: {e}")
@@ -136,16 +135,7 @@ async def chat(request: Request) -> StreamingResponse:
 
 
 async def stop_chat(request: Request) -> JSONResponse:
-    """
-    Stop an active streaming session for the given chat.
-
-    Accepts POST requests with JSON body containing:
-    - chat_id: The chat identifier for the stream to stop
-    - reason: Optional reason for stopping (default: "Stream stopped by user")
-
-    Returns:
-        JSONResponse with status and reason.
-    """
+    """Stop an active streaming session for the given chat."""
     try:
         data = await request.json()
     except json.JSONDecodeError:
@@ -165,17 +155,7 @@ async def stop_chat(request: Request) -> JSONResponse:
 
 
 async def get_chats(request: Request) -> JSONResponse:
-    """
-    Return list of chat summaries.
-
-    Query parameters:
-    - limit: Maximum number of chats to return (default: 50)
-    - offset: Number of chats to skip (default: 0)
-    - search: Optional search query to filter chats by title or message content
-
-    Returns:
-        JSONResponse with chats list, total count, and pagination info.
-    """
+    """Return list of chat summaries with pagination and optional search."""
     try:
         db = get_database()
 
@@ -204,15 +184,7 @@ async def get_chats(request: Request) -> JSONResponse:
 
 
 async def get_chat(request: Request) -> JSONResponse:
-    """
-    Return a specific chat by ID.
-
-    Path parameter:
-    - chat_id: The chat identifier
-
-    Returns:
-        JSONResponse with chat details (excluding binary agent_state).
-    """
+    """Return a specific chat by ID (excluding binary agent_state)."""
     try:
         chat_id = request.path_params["chat_id"]
         db = get_database()
@@ -221,7 +193,6 @@ async def get_chat(request: Request) -> JSONResponse:
         if not chat:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
 
-        # Remove agent_state from response and use alias for camelCase timestamps
         response_chat = chat.model_dump(
             mode="json", by_alias=True, exclude={"agent_state"}
         )
@@ -234,17 +205,7 @@ async def get_chat(request: Request) -> JSONResponse:
 
 
 async def create_chat(request: Request) -> JSONResponse:
-    """
-    Create a new chat.
-
-    Accepts POST requests with JSON body containing:
-    - title: Chat title (default: "New Chat")
-    - config: Optional chat configuration
-    - messages: Optional initial messages list
-
-    Returns:
-        JSONResponse with created chat details.
-    """
+    """Create a new chat."""
     try:
         data = await request.json()
         title = data.get("title", "New Chat")
@@ -254,15 +215,14 @@ async def create_chat(request: Request) -> JSONResponse:
         db = get_database()
         chat_id = db.create_chat(title, config, messages)
 
-        # Return the created chat (excluding binary agent_state)
         chat = db.get_chat(chat_id)
-        if chat:
-            response_chat = chat.model_dump(
-                mode="json", by_alias=True, exclude={"agent_state"}
-            )
-            return JSONResponse(response_chat, status_code=201)
-        else:
+        if not chat:
             return JSONResponse({"error": "Failed to create chat"}, status_code=500)
+
+        response_chat = chat.model_dump(
+            mode="json", by_alias=True, exclude={"agent_state"}
+        )
+        return JSONResponse(response_chat, status_code=201)
     except Exception as e:
         logger.error(f"Error in create_chat: {e}")
         traceback.print_exc()
@@ -270,27 +230,13 @@ async def create_chat(request: Request) -> JSONResponse:
 
 
 async def update_chat(request: Request) -> JSONResponse:
-    """
-    Update an existing chat.
-
-    Path parameter:
-    - chat_id: The chat identifier
-
-    Accepts PUT requests with JSON body containing optional fields:
-    - title: Updated chat title
-    - config: Updated configuration
-    - messages: Updated messages list
-
-    Returns:
-        JSONResponse with updated chat details.
-    """
+    """Update an existing chat."""
     try:
         chat_id = request.path_params["chat_id"]
         data = await request.json()
 
         db = get_database()
 
-        # Extract update fields
         title = data.get("title")
         config = data.get("config")
         messages = data.get("messages")
@@ -299,17 +245,16 @@ async def update_chat(request: Request) -> JSONResponse:
         if not success:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
 
-        # Return updated chat (excluding binary agent_state)
         chat = db.get_chat(chat_id)
-        if chat:
-            response_chat = chat.model_dump(
-                mode="json", by_alias=True, exclude={"agent_state"}
-            )
-            return JSONResponse(response_chat)
-        else:
+        if not chat:
             return JSONResponse(
                 {"error": "Failed to retrieve updated chat"}, status_code=500
             )
+
+        response_chat = chat.model_dump(
+            mode="json", by_alias=True, exclude={"agent_state"}
+        )
+        return JSONResponse(response_chat)
     except Exception as e:
         logger.error(f"Error in update_chat: {e}")
         traceback.print_exc()
@@ -317,15 +262,7 @@ async def update_chat(request: Request) -> JSONResponse:
 
 
 async def delete_chat(request: Request) -> JSONResponse:
-    """
-    Delete a chat.
-
-    Path parameter:
-    - chat_id: The chat identifier
-
-    Returns:
-        JSONResponse with success message.
-    """
+    """Delete a chat."""
     try:
         chat_id = request.path_params["chat_id"]
         db = get_database()

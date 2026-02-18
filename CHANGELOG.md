@@ -12,6 +12,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Now suzent could proactively send messages to any configured social platform.
 - **Voice**:
   - Add voice support for suzent.
+- **Node System**: OpenClaw-inspired node architecture for controlling companion devices (phones, desktops, headless servers) remotely.
+  - `NodeBase` ABC and `NodeManager` for device registry, lookup, and command dispatch.
+  - `WebSocketNode` with JSON-RPC-style invoke/result protocol and heartbeat support.
+  - WebSocket endpoint (`/ws/node`) for node connections with Pydantic-validated handshake.
+  - REST endpoints for listing (`/nodes`), describing (`/nodes/{id}`), and invoking commands (`/nodes/{id}/invoke`).
+  - Pydantic models for all protocol messages and API schemas (`nodes/models.py`).
+  - `nodes_enabled` and `node_auth_mode` configuration fields.
+- **CLI Overhaul**: New subcommand groups alongside existing commands.
+  - `suzent nodes list|status|describe|invoke` — manage connected nodes.
+  - `suzent agent chat|status` — interact with the agent from the terminal.
+  - `suzent config show|get|set` — view and modify configuration.
+- **Skills**: New `nodes` skill teaching the agent to use `suzent nodes` commands via `BashTool`.
+
 
 ## [v0.2.6]
 

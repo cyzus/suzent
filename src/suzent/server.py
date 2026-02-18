@@ -74,24 +74,27 @@ from suzent.routes.session_routes import (
     reindex_memories,
 )
 from suzent.routes.browser_routes import browser_websocket_endpoint
+from suzent.routes.node_routes import (
+    node_websocket_endpoint,
+    list_nodes,
+    describe_node,
+    invoke_node_command,
+)
 from suzent.channels.manager import ChannelManager
+from suzent.nodes.manager import NodeManager
 
-# from suzent.channels.telegram import TelegramChannel # Loaded dynamically now
 from suzent.core.social_brain import SocialBrain
-
-# Load environment variables from PROJECT_DIR so .env is found regardless of CWD
 from suzent.config import PROJECT_DIR as _project_dir
 
 load_dotenv(_project_dir / ".env")
 
-# Ensure stdout/stderr use UTF-8 when possible to avoid encoding errors on Windows consoles
+# Ensure stdout/stderr use UTF-8 on Windows
 try:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     if hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 except Exception:
-    # Best-effort only; if reconfigure is unavailable, fall back to environment-level solutions
     pass
 
 # Setup logging
@@ -99,14 +102,14 @@ if "--debug" in sys.argv:
     os.environ["LOG_LEVEL"] = "DEBUG"
 
 log_level = os.getenv("LOG_LEVEL", "INFO")
-log_file = os.getenv("LOG_FILE")  # Optional: set LOG_FILE=/path/to/suzent.log
+log_file = os.getenv("LOG_FILE")
 setup_logging(level=log_level, log_file=log_file)
 
 logger = get_logger(__name__)
 
-# --- Social Messaging State ---
 social_brain: SocialBrain = None
 channel_manager: ChannelManager = None
+node_manager: NodeManager = None
 
 
 async def startup():
@@ -116,12 +119,8 @@ async def startup():
 
     logger.info("Application startup - initializing services")
 
-    # Initialize Browser Session Manager with Main Loop for thread safety
     import asyncio
     from suzent.tools.browsing_tool import BrowserSessionManager
-
-    # Reload config to ensure we have the latest files from ensure_app_data
-    # This addresses the issue where CONFIG is loaded at import time (before files exist)
     from suzent.config import CONFIG
 
     try:
@@ -134,7 +133,6 @@ async def startup():
     except Exception as e:
         logger.error(f"Failed to set browser session loop: {e}")
 
-    # Load API keys from database into environment
     db = get_database()
     try:
         api_keys = db.get_api_keys()
@@ -148,18 +146,32 @@ async def startup():
     except Exception as e:
         logger.error(f"Failed to load API keys on startup: {e}")
 
-    async def init_background_services(channel_manager, social_brain):
-        """Run heavy initialization tasks in background."""
-        logger.info("Starting background services...")
+    async def init_background_services(cm, sb):
+        """Run heavy initialization tasks (memory, channels, social) in background."""
         await init_memory_system()
         try:
-            await channel_manager.start_all()
-            await social_brain.start()
+            await cm.start_all()
+            await sb.start()
             logger.info("Background services started successfully")
         except Exception as e:
             logger.error(f"Failed to start background services: {e}")
 
-    # Initialize Social Messaging System
+    global node_manager
+    node_manager = NodeManager()
+    app.state.node_manager = node_manager
+
+    try:
+        from suzent.nodes.local_node import LocalNode
+
+        local_node = LocalNode(display_name="Local PC")
+        node_manager.register_node(local_node)
+        cap_names = ", ".join(c.name for c in local_node.capabilities)
+        logger.info(f"Local node registered: {cap_names}")
+    except Exception as e:
+        logger.warning(f"Failed to register local node: {e}")
+
+    logger.info("Node system initialized")
+
     global social_brain, channel_manager
     try:
         import json
@@ -167,8 +179,6 @@ async def startup():
 
         channel_manager = ChannelManager()
 
-        # Load social config
-        # Use PROJECT_DIR to ensure we look in the correct AppData location
         config_path = PROJECT_DIR / "config/social.json"
         social_config = {}
 
@@ -182,11 +192,8 @@ async def startup():
 
         social_model = social_config.get("model")
 
-        # Load Channels Dynamically (fast, just importing classes)
         channel_manager.load_drivers_from_config(social_config)
 
-        # Allowlist: Env overrides/merges with Config?
-        # Global Allowlist
         allowed_users = set(social_config.get("allowed_users", []))
 
         env_allowed = os.environ.get("ALLOWED_SOCIAL_USERS", "")
@@ -195,7 +202,6 @@ async def startup():
                 [u.strip() for u in env_allowed.split(",") if u.strip()]
             )
 
-        # Per-Platform Allowlists
         platform_allowlists = {}
         for platform, settings in social_config.items():
             if isinstance(settings, dict) and "allowed_users" in settings:
@@ -211,10 +217,7 @@ async def startup():
             mcp_enabled=social_config.get("mcp_enabled"),
         )
 
-        # Expose social_brain to app state immediately
         app.state.social_brain = social_brain
-
-        # Start all heavy services in the background
         asyncio.create_task(init_background_services(channel_manager, social_brain))
 
     except Exception as e:
@@ -222,16 +225,7 @@ async def startup():
 
 
 def ensure_app_data():
-    """
-    Ensure that required data directories (config, skills) exist in PROJECT_DIR.
-
-    In bundled mode (SUZENT_APP_DATA is set), the Rust side already syncs config/
-    and skills/ from bundled resources to the app data directory. This function
-    just verifies the directories exist and logs the result.
-
-    In dev mode, PROJECT_DIR points to the repo root where config/ and skills/
-    already live, so this is a no-op.
-    """
+    """Ensure required data directories (config, skills) exist in PROJECT_DIR."""
     from suzent.config import PROJECT_DIR
 
     print("INFO: Starting App Data Verification...", flush=True)
@@ -258,7 +252,7 @@ async def shutdown():
 
     logger.info("Application shutdown - cleaning up services")
 
-    global social_brain, channel_manager
+    global social_brain, channel_manager, node_manager
 
     if social_brain:
         await social_brain.stop()
@@ -266,9 +260,18 @@ async def shutdown():
     if channel_manager:
         await channel_manager.stop_all()
 
+    if node_manager:
+        for node in list(node_manager.nodes.values()):
+            if hasattr(node, "close"):
+                try:
+                    await node.close()
+                except Exception:
+                    pass
+            node_manager.unregister_node(node.node_id)
+        logger.info("Node system shut down")
+
     await shutdown_memory_system()
 
-    # Clean up browser session
     try:
         from suzent.tools.browsing_tool import BrowserSessionManager
 
@@ -277,11 +280,9 @@ async def shutdown():
         logger.error(f"Error shutting down browser session: {e}")
 
 
-# --- Application Setup ---
 app = Starlette(
     debug=True,
     routes=[
-        # Chat endpoints
         Route("/chat", chat, methods=["POST"]),
         Route("/chat/stop", stop_chat, methods=["POST"]),
         Route("/chats", get_chats, methods=["GET"]),
@@ -289,10 +290,8 @@ app = Starlette(
         Route("/chats/{chat_id}", get_chat, methods=["GET"]),
         Route("/chats/{chat_id}", update_chat, methods=["PUT"]),
         Route("/chats/{chat_id}", delete_chat, methods=["DELETE"]),
-        # Plan endpoints
         Route("/plans", get_plans, methods=["GET"]),
         Route("/plan", get_plan, methods=["GET"]),
-        # Configuration endpoints
         Route("/config", get_config, methods=["GET"]),
         Route("/preferences", save_preferences, methods=["POST"]),
         Route("/config/api-keys", get_api_keys_status, methods=["GET"]),
@@ -303,17 +302,13 @@ app = Starlette(
         Route("/config/embedding-models", get_embedding_models, methods=["GET"]),
         Route("/config/social", get_social_config, methods=["GET"]),
         Route("/config/social", save_social_config, methods=["POST"]),
-        # MCP server management endpoints
         Route("/mcp_servers", list_mcp_servers, methods=["GET"]),
         Route("/mcp_servers", add_mcp_server, methods=["POST"]),
         Route("/mcp_servers/remove", remove_mcp_server, methods=["POST"]),
         Route("/mcp_servers/enabled", set_mcp_server_enabled, methods=["POST"]),
-        # Sandbox endpoints
         Route("/sandbox/files", list_sandbox_files, methods=["GET"]),
         Route("/sandbox/read_file", read_sandbox_file, methods=["GET"]),
-        Route(
-            "/sandbox/file", write_sandbox_file, methods=["POST", "PUT"]
-        ),  # Support both for convenience
+        Route("/sandbox/file", write_sandbox_file, methods=["POST", "PUT"]),
         Route("/sandbox/file", delete_sandbox_file, methods=["DELETE"]),
         Route("/sandbox/serve", serve_sandbox_file, methods=["GET"]),
         Route(
@@ -322,10 +317,8 @@ app = Starlette(
             methods=["GET"],
         ),
         Route("/sandbox/upload", upload_files, methods=["POST"]),
-        # System endpoints
         Route("/system/files", list_host_files, methods=["GET"]),
         Route("/system/open_explorer", open_in_explorer, methods=["POST"]),
-        # Memory endpoints
         Route("/memory/core", get_core_memory, methods=["GET"]),
         Route("/memory/core", update_core_memory_block, methods=["PUT"]),
         Route("/memory/archival", search_archival_memory, methods=["GET"]),
@@ -337,7 +330,6 @@ app = Starlette(
         Route("/memory/daily/{date}", get_memory_daily_log, methods=["GET"]),
         Route("/memory/file", get_memory_file, methods=["GET"]),
         Route("/memory/reindex", reindex_memories, methods=["POST"]),
-        # Session inspection endpoints
         Route(
             "/session/{session_id}/transcript",
             get_session_transcript,
@@ -348,12 +340,14 @@ app = Starlette(
             get_session_state,
             methods=["GET"],
         ),
-        # Skill endpoints
         Route("/skills", get_skills, methods=["GET"]),
         Route("/skills/reload", reload_skills, methods=["POST"]),
         Route("/skills/{skill_name}/toggle", toggle_skill, methods=["POST"]),
-        # Browser WebSocket
         WebSocketRoute("/ws/browser", browser_websocket_endpoint),
+        WebSocketRoute("/ws/node", node_websocket_endpoint),
+        Route("/nodes", list_nodes, methods=["GET"]),
+        Route("/nodes/{node_id}", describe_node, methods=["GET"]),
+        Route("/nodes/{node_id}/invoke", invoke_node_command, methods=["POST"]),
     ],
     middleware=[
         Middleware(
@@ -375,8 +369,7 @@ if __name__ == "__main__":
 
     import uvicorn
 
-    # Add file logging when running in bundled mode (SUZENT_APP_DATA set)
-    # DO NOT redirect stdout - Tauri reads SERVER_PORT from stdout!
+    # File logging in bundled mode (stdout must stay clean for Tauri port detection)
     if os.getenv("SUZENT_APP_DATA"):
         try:
             debug_log = Path.home() / "suzent_startup.log"
@@ -391,13 +384,10 @@ if __name__ == "__main__":
         except Exception:
             pass
 
-    # Check/init data before server starts
     ensure_app_data()
 
-    # Support dynamic port from environment (for Tauri)
-    # If set to 0, we let the OS pick a random available port
     port = int(os.getenv("SUZENT_PORT", "8000"))
-    host = os.getenv("SUZENT_HOST", "0.0.0.0")  # localhost only in bundled mode
+    host = os.getenv("SUZENT_HOST", "0.0.0.0")
 
     def report_port(effective_port: int) -> None:
         """Report the server port via multiple channels for reliability."""
@@ -411,7 +401,6 @@ if __name__ == "__main__":
             pass
 
     async def main():
-        # Use programmatic startup to access runtime info (like bound port)
         config = uvicorn.Config(
             app, host=host, port=port, log_level=log_level.lower(), ws="wsproto"
         )
@@ -419,17 +408,14 @@ if __name__ == "__main__":
 
         startup_task = asyncio.create_task(server.serve())
 
-        # Wait for the server to bind the socket
         while not server.started:
             await asyncio.sleep(0.1)
 
         if port == 0:
-            # Start parent monitor threads for robust shutdown in sidecar mode
             import threading
             import time
 
             def monitor_stdin():
-                """Kill process if stdin is closed (parent died)."""
                 try:
                     if not sys.stdin.read(1):
                         os._exit(0)
@@ -437,7 +423,6 @@ if __name__ == "__main__":
                     os._exit(0)
 
             def monitor_parent(pid):
-                """Kill process if parent PID ceases to exist."""
                 try:
                     import psutil
 
@@ -462,7 +447,6 @@ if __name__ == "__main__":
                 target=monitor_parent, args=(parent_pid,), daemon=True
             ).start()
 
-            # Retrieve the actual port assigned by the OS
             try:
                 for _ in range(50):
                     if server.servers and server.servers[0].sockets:
@@ -478,7 +462,6 @@ if __name__ == "__main__":
         else:
             report_port(port)
 
-        # Wait for server to shutdown
         await startup_task
 
     if port == 0:
