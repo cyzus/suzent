@@ -400,21 +400,30 @@ if __name__ == "__main__":
         except Exception:
             pass
 
+    import socket as _socket
+    import threading
+
+    # When port=0, pre-bind a socket so the OS assigns a port immediately.
+    # We can then report the port before on_startup hooks run (which can be slow).
+    # The pre-bound socket is passed directly to uvicorn via serve(sockets=[...]).
+    if port == 0:
+        _sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        _sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+        _sock.bind((host, 0))
+        _sock.set_inheritable(True)
+        effective_port = _sock.getsockname()[1]
+        report_port(effective_port)
+        logger.info(f"Dynamic port assigned: {effective_port}")
+    else:
+        _sock = None
+        effective_port = port
+        report_port(effective_port)
+
     async def main():
-        config = uvicorn.Config(
-            app, host=host, port=port, log_level=log_level.lower(), ws="wsproto"
-        )
-        server = uvicorn.Server(config)
-
-        startup_task = asyncio.create_task(server.serve())
-
-        while not server.started:
-            await asyncio.sleep(0.1)
-
         if port == 0:
-            import threading
-            import time
-
+            # Start process-lifetime monitors only when launched by Tauri (port=0 mode).
+            # These threads must be started inside the async loop so os._exit() doesn't
+            # fire before the event loop is running.
             def monitor_stdin():
                 try:
                     if not sys.stdin.read(1):
@@ -425,13 +434,12 @@ if __name__ == "__main__":
             def monitor_parent(pid):
                 try:
                     import psutil
+                    import time
 
                     logger.info(f"Starting parent monitor for PID {pid}")
                     while True:
                         if not psutil.pid_exists(pid):
-                            logger.critical(
-                                f"Parent process {pid} died. Shutting down."
-                            )
+                            logger.critical(f"Parent process {pid} died. Shutting down.")
                             os._exit(0)
                         time.sleep(1)
                 except ImportError:
@@ -443,30 +451,20 @@ if __name__ == "__main__":
 
             parent_pid = os.getppid()
             threading.Thread(target=monitor_stdin, daemon=True).start()
-            threading.Thread(
-                target=monitor_parent, args=(parent_pid,), daemon=True
-            ).start()
+            threading.Thread(target=monitor_parent, args=(parent_pid,), daemon=True).start()
 
-            try:
-                for _ in range(50):
-                    if server.servers and server.servers[0].sockets:
-                        break
-                    await asyncio.sleep(0.1)
-
-                if server.servers and server.servers[0].sockets:
-                    effective_port = server.servers[0].sockets[0].getsockname()[1]
-                    report_port(effective_port)
-                    logger.info(f"Dynamic port assigned: {effective_port}")
-            except Exception as e:
-                logger.error(f"Failed to retrieve dynamic port: {e}")
-        else:
-            report_port(port)
-
-        await startup_task
+        # Use port=0 in config so uvicorn doesn't try to bind (we pass the socket)
+        bind_port = 0 if _sock else effective_port
+        config = uvicorn.Config(
+            app, host=host, port=bind_port, log_level=log_level.lower(), ws="wsproto"
+        )
+        server = uvicorn.Server(config)
+        sockets = [_sock] if _sock else None
+        await server.serve(sockets=sockets)
 
     if port == 0:
-        logger.info("Starting Suzent server with dynamic port assignment...")
+        logger.info(f"Starting Suzent server with dynamic port assignment (port={effective_port})...")
     else:
-        logger.info(f"Starting Suzent server on http://{host}:{port}")
+        logger.info(f"Starting Suzent server on http://{host}:{effective_port}")
 
     asyncio.run(main())
