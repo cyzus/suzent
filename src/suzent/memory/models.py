@@ -2,7 +2,7 @@
 Pydantic models for memory system data structures.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from pydantic import BaseModel, Field
 
 
@@ -17,7 +17,7 @@ class AgentAction(BaseModel):
     """Represents an agent tool call action."""
 
     tool: str = Field(..., description="Name of the tool that was called")
-    args: Dict[str, Any] = Field(
+    args: Union[Dict[str, Any], str] = Field(
         default_factory=dict, description="Arguments passed to the tool"
     )
     output: Optional[Any] = Field(None, description="Output returned by the tool")
