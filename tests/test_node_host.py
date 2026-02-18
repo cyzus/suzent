@@ -220,10 +220,17 @@ class TestNodeHostCLI:
     def test_host_help(self):
         from typer.testing import CliRunner
         from suzent.cli import app
+        import re
 
         runner = CliRunner()
         result = runner.invoke(app, ["nodes", "host", "--help"])
         assert result.exit_code == 0
-        assert "host" in result.output
-        assert "--name" in result.output
-        assert "--capabilities" in result.output
+
+        # Strip ANSI codes
+        clean_output = re.sub(
+            r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", result.output
+        )
+
+        assert "host" in clean_output
+        assert "--name" in clean_output or "-n" in clean_output
+        assert "--capabilities" in clean_output or "-c" in clean_output

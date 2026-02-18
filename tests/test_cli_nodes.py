@@ -175,12 +175,39 @@ class TestAgentSubcommand:
         assert "chat" in result.output
         assert "status" in result.output
 
-    @patch("suzent.cli.agent._http_post")
-    def test_agent_chat(self, mock_post):
-        mock_post.return_value = {"response": "Hello! I'm suzent."}
+    @patch("suzent.cli._http._http_post_stream")
+    def test_agent_chat(self, mock_post_stream):
+        import json
+
+        # Mock the stream iterator with SSE lines
+        mock_post_stream.return_value = iter(
+            [
+                b"data: "
+                + json.dumps(
+                    {"type": "stream_delta", "data": {"content": "Hello! "}}
+                ).encode()
+                + b"\n",
+                b"data: "
+                + json.dumps(
+                    {"type": "stream_delta", "data": {"content": "I'm "}}
+                ).encode()
+                + b"\n",
+                b"data: "
+                + json.dumps(
+                    {"type": "stream_delta", "data": {"content": "suzent"}}
+                ).encode()
+                + b"\n",
+                b"data: "
+                + json.dumps(
+                    {"type": "final_answer", "data": "Hello! I'm suzent"}
+                ).encode()
+                + b"\n",
+            ]
+        )
+
         result = runner.invoke(app, ["agent", "chat", "Hello"])
         assert result.exit_code == 0
-        assert "Hello! I'm suzent." in result.output
+        assert "Hello! I'm suzent" in result.output
 
     @patch("suzent.cli.agent._http_get")
     def test_agent_status_running(self, mock_get):

@@ -2,7 +2,6 @@
 Audio I/O implementations using sounddevice.
 """
 
-import sounddevice as sd
 import numpy as np
 from suzent.logger import get_logger
 from suzent.voice.types import AudioSink, AudioSource
@@ -14,6 +13,8 @@ class SoundDeviceSink(AudioSink):
     """Audio sink that plays through system default speakers via sounddevice."""
 
     def __init__(self, sample_rate: int = 16000):
+        import sounddevice as sd
+
         self._sample_rate = sample_rate
         self._stream = sd.OutputStream(
             samplerate=sample_rate,
@@ -51,6 +52,8 @@ class SoundDeviceSource(AudioSource):
         import queue
 
         self._queue = queue.Queue()
+
+        import sounddevice as sd
 
         self._stream = sd.InputStream(
             samplerate=sample_rate,
