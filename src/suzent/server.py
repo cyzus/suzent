@@ -407,14 +407,23 @@ if __name__ == "__main__":
     # We can then report the port before on_startup hooks run (which can be slow).
     # The pre-bound socket is passed directly to uvicorn via serve(sockets=[...]).
     if port == 0:
-        _sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-        _sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
-        _sock.bind((host, 0))
-        _sock.listen()
-        _sock.set_inheritable(True)
-        effective_port = _sock.getsockname()[1]
-        report_port(effective_port)
-        logger.info(f"Dynamic port assigned: {effective_port}")
+        _sock = None
+        try:
+            _sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+            _sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+            _sock.bind((host, 0))
+            _sock.listen()
+            _sock.set_inheritable(True)
+            effective_port = _sock.getsockname()[1]
+            report_port(effective_port)
+            logger.info(f"Dynamic port assigned: {effective_port}")
+        except Exception:
+            if _sock is not None:
+                try:
+                    _sock.close()
+                except Exception:
+                    pass
+            raise
     else:
         _sock = None
         effective_port = port
@@ -440,7 +449,9 @@ if __name__ == "__main__":
                     logger.info(f"Starting parent monitor for PID {pid}")
                     while True:
                         if not psutil.pid_exists(pid):
-                            logger.critical(f"Parent process {pid} died. Shutting down.")
+                            logger.critical(
+                                f"Parent process {pid} died. Shutting down."
+                            )
                             os._exit(0)
                         time.sleep(1)
                 except ImportError:
@@ -452,7 +463,9 @@ if __name__ == "__main__":
 
             parent_pid = os.getppid()
             threading.Thread(target=monitor_stdin, daemon=True).start()
-            threading.Thread(target=monitor_parent, args=(parent_pid,), daemon=True).start()
+            threading.Thread(
+                target=monitor_parent, args=(parent_pid,), daemon=True
+            ).start()
 
         # Use port=0 in config so uvicorn doesn't try to bind (we pass the socket).
         # _sock is closed in the finally block if uvicorn never takes ownership.
@@ -468,11 +481,16 @@ if __name__ == "__main__":
             if _sock is not None:
                 try:
                     _sock.close()
-                except Exception:
+                except OSError:
+                    # Expected: uvicorn already closed the socket on normal shutdown
                     pass
+                except Exception as e:
+                    logger.debug(f"Error closing pre-bound socket: {e}")
 
     if port == 0:
-        logger.info(f"Starting Suzent server with dynamic port assignment (port={effective_port})...")
+        logger.info(
+            f"Starting Suzent server with dynamic port assignment (port={effective_port})..."
+        )
     else:
         logger.info(f"Starting Suzent server on http://{host}:{effective_port}")
 
