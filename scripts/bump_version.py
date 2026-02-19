@@ -169,6 +169,19 @@ def main():
     except subprocess.CalledProcessError as e:
         print(f"  [ERROR] Failed to update src-tauri lock: {e}")
 
+    try:
+        print("Updating uv.lock...")
+        subprocess.run(
+            ["uv", "lock"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            shell=True,
+        )
+        print("  [OK] Updated uv.lock")
+    except subprocess.CalledProcessError as e:
+        print(f"  [ERROR] Failed to update uv lock: {e}")
+
     print("\nDone! Lock files updated. Now commit and release:")
     print("git add .")
     print(f'git commit -m "chore: bump version to {new_version}"')
