@@ -61,6 +61,7 @@ impl BackendProcess {
             .env("SKILLS_DIR", app_data_dir.join("skills"))
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .stdin(Stdio::piped())
             .spawn()
             .map_err(|e| format!("Failed to start Python backend: {}", e))?;
 
