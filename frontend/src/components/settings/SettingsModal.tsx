@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 
 import { useChatStore } from '../../hooks/useChatStore';
 import { ApiProvider, fetchApiKeys, fetchEmbeddingModels, fetchSocialConfig, fetchMcpServers, saveApiKeys, saveSocialConfig, saveUserPreferences, SocialConfig, UserConfig, verifyProvider } from '../../lib/api';
+import { AutomationTab } from './AutomationTab';
 import { McpTab } from './McpTab';
 import { MemoryTab } from './MemoryTab';
 import { ProvidersTab } from './ProvidersTab';
@@ -31,7 +32,7 @@ interface SettingsModalProps {
 }
 
 type ProviderTab = 'credentials' | 'models';
-type CategoryType = 'providers' | 'memory' | 'social' | 'mcp';
+type CategoryType = 'providers' | 'memory' | 'social' | 'mcp' | 'automation';
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
@@ -237,6 +238,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
         </svg>
       )
+    },
+    {
+      id: 'automation', label: 'Automation', icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      )
     }
   ];
 
@@ -350,6 +358,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                       serverList={mcpServerList}
                       onServerListChange={setMcpServerList}
                       onMcpServersRefresh={setMcpServers}
+                    />
+                  )}
+
+                  {activeCategory === 'automation' && (
+                    <AutomationTab
+                      models={backendConfig?.models || []}
                     />
                   )}
                 </>

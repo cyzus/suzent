@@ -80,10 +80,30 @@ from suzent.routes.node_routes import (
     describe_node,
     invoke_node_command,
 )
+from suzent.routes.cron_routes import (
+    list_cron_jobs,
+    create_cron_job,
+    update_cron_job,
+    delete_cron_job,
+    trigger_cron_job,
+    get_cron_status,
+    get_cron_notifications,
+    get_cron_job_runs,
+)
+from suzent.routes.heartbeat_routes import (
+    get_heartbeat_status,
+    enable_heartbeat,
+    disable_heartbeat,
+    trigger_heartbeat,
+    get_heartbeat_md,
+    save_heartbeat_md,
+)
 from suzent.channels.manager import ChannelManager
 from suzent.nodes.manager import NodeManager
 
 from suzent.core.social_brain import SocialBrain
+from suzent.core.scheduler import SchedulerBrain
+from suzent.core.heartbeat import HeartbeatRunner
 from suzent.config import PROJECT_DIR as _project_dir
 
 load_dotenv(_project_dir / ".env")
@@ -110,6 +130,8 @@ logger = get_logger(__name__)
 social_brain: SocialBrain = None
 channel_manager: ChannelManager = None
 node_manager: NodeManager = None
+scheduler_brain: SchedulerBrain = None
+heartbeat_runner: HeartbeatRunner = None
 
 
 async def startup():
@@ -147,7 +169,7 @@ async def startup():
         logger.error(f"Failed to load API keys on startup: {e}")
 
     async def init_background_services(cm, sb):
-        """Run heavy initialization tasks (memory, channels, social) in background."""
+        """Run heavy initialization tasks (memory, channels, social, scheduler) in background."""
         await init_memory_system()
         try:
             await cm.start_all()
@@ -155,6 +177,39 @@ async def startup():
             logger.info("Background services started successfully")
         except Exception as e:
             logger.error(f"Failed to start background services: {e}")
+
+        # Start scheduler
+        global scheduler_brain
+        try:
+            scheduler_brain = SchedulerBrain(tick_interval=30.0)
+            app.state.scheduler_brain = scheduler_brain
+            await scheduler_brain.start()
+            logger.info("SchedulerBrain started successfully")
+        except Exception as e:
+            logger.error(f"Failed to start SchedulerBrain: {e}")
+
+        # Start heartbeat
+        global heartbeat_runner
+        try:
+            heartbeat_runner = HeartbeatRunner(interval_minutes=30)
+            # Route heartbeat alerts through the scheduler notification deque
+            if scheduler_brain:
+                heartbeat_runner.set_notification_callback(
+                    lambda msg: scheduler_brain._pending_notifications.append(
+                        {
+                            "job_id": 0,
+                            "job_name": "Heartbeat",
+                            "result": msg[:500],
+                            "timestamp": __import__("datetime")
+                            .datetime.now()
+                            .isoformat(),
+                        }
+                    )
+                )
+            app.state.heartbeat_runner = heartbeat_runner
+            await heartbeat_runner.start()
+        except Exception as e:
+            logger.error(f"Failed to start HeartbeatRunner: {e}")
 
     global node_manager
     node_manager = NodeManager()
@@ -252,7 +307,18 @@ async def shutdown():
 
     logger.info("Application shutdown - cleaning up services")
 
-    global social_brain, channel_manager, node_manager
+    global \
+        social_brain, \
+        channel_manager, \
+        node_manager, \
+        scheduler_brain, \
+        heartbeat_runner
+
+    if heartbeat_runner:
+        await heartbeat_runner.stop()
+
+    if scheduler_brain:
+        await scheduler_brain.stop()
 
     if social_brain:
         await social_brain.stop()
@@ -278,6 +344,20 @@ async def shutdown():
         await BrowserSessionManager.get_instance().close_session()
     except Exception as e:
         logger.error(f"Error shutting down browser session: {e}")
+
+    # Gracefully shut down litellm's logging worker to avoid "Event loop is closed" noise
+    try:
+        from litellm.litellm_core_utils.logging_worker import GLOBAL_LOGGING_WORKER
+
+        task = GLOBAL_LOGGING_WORKER._worker_task
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 app = Starlette(
@@ -348,6 +428,20 @@ app = Starlette(
         Route("/nodes", list_nodes, methods=["GET"]),
         Route("/nodes/{node_id}", describe_node, methods=["GET"]),
         Route("/nodes/{node_id}/invoke", invoke_node_command, methods=["POST"]),
+        Route("/cron/jobs", list_cron_jobs, methods=["GET"]),
+        Route("/cron/jobs", create_cron_job, methods=["POST"]),
+        Route("/cron/jobs/{job_id:int}", update_cron_job, methods=["PUT"]),
+        Route("/cron/jobs/{job_id:int}", delete_cron_job, methods=["DELETE"]),
+        Route("/cron/jobs/{job_id:int}/trigger", trigger_cron_job, methods=["POST"]),
+        Route("/cron/status", get_cron_status, methods=["GET"]),
+        Route("/cron/notifications", get_cron_notifications, methods=["GET"]),
+        Route("/cron/jobs/{job_id:int}/runs", get_cron_job_runs, methods=["GET"]),
+        Route("/heartbeat/status", get_heartbeat_status, methods=["GET"]),
+        Route("/heartbeat/enable", enable_heartbeat, methods=["POST"]),
+        Route("/heartbeat/disable", disable_heartbeat, methods=["POST"]),
+        Route("/heartbeat/trigger", trigger_heartbeat, methods=["POST"]),
+        Route("/heartbeat/md", get_heartbeat_md, methods=["GET"]),
+        Route("/heartbeat/md", save_heartbeat_md, methods=["PUT"]),
     ],
     middleware=[
         Middleware(
