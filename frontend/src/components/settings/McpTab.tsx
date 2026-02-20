@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import { addMcpServer, fetchMcpServers, removeMcpServer, setMcpServerEnabled } from '../../lib/api';
+import { useI18n } from '../../i18n';
 import { BrutalSelect } from '../BrutalSelect';
 
 type MCPUrlServer = {
@@ -33,6 +34,7 @@ export function McpTab({
     onServerListChange,
     onMcpServersRefresh,
 }: McpTabProps): React.ReactElement {
+    const { t } = useI18n();
     const [srvName, setSrvName] = useState('');
     const [srvUrl, setSrvUrl] = useState('');
     const [srvHeaders, setSrvHeaders] = useState('');
@@ -123,7 +125,7 @@ export function McpTab({
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between mb-4">
-                <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black">MCP Servers</h2>
+                <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black">{t('settings.categories.mcp')}</h2>
             </div>
 
             {/* Add MCP Server Card */}
@@ -133,8 +135,8 @@ export function McpTab({
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
                     </div>
                     <div>
-                        <h3 className="text-xl font-bold uppercase">Add New Server</h3>
-                        <p className="text-sm text-neutral-600 mt-1">Add a new MCP server to connect external tools and resources.</p>
+                        <h3 className="text-xl font-bold uppercase">{t('settings.mcp.addNewServerTitle')}</h3>
+                        <p className="text-sm text-neutral-600 mt-1">{t('settings.mcp.addNewServerDesc')}</p>
                     </div>
                 </div>
 
@@ -143,13 +145,13 @@ export function McpTab({
                         <BrutalSelect
                             value={addType}
                             onChange={val => setAddType(val as 'url' | 'stdio')}
-                            options={[{ value: 'url', label: 'URL' }, { value: 'stdio', label: 'Stdio' }]}
+                            options={[{ value: 'url', label: t('config.mcp.url') }, { value: 'stdio', label: t('config.mcp.stdio') }]}
                             className="w-32"
                         />
                         <input
                             value={srvName}
                             onChange={e => setSrvName(e.target.value)}
-                            placeholder="Name (optional)"
+                            placeholder={t('settings.mcp.nameOptionalPlaceholder')}
                             className="w-40 bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
                         />
                     </div>
@@ -159,13 +161,13 @@ export function McpTab({
                             <input
                                 value={srvUrl}
                                 onChange={e => setSrvUrl(e.target.value)}
-                                placeholder="https://host/path"
+                                placeholder={t('config.mcp.urlPlaceholder')}
                                 className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
                             />
                             <input
                                 value={srvHeaders}
                                 onChange={e => setSrvHeaders(e.target.value)}
-                                placeholder="Headers (Header-Name=value, X-Api-Key=abc123)"
+                                placeholder={t('settings.mcp.headersPlaceholder')}
                                 className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
                             />
                         </div>
@@ -174,19 +176,19 @@ export function McpTab({
                             <input
                                 value={stdioCmd}
                                 onChange={e => setStdioCmd(e.target.value)}
-                                placeholder="Command (e.g., uv, npx, python)"
+                                placeholder={t('settings.mcp.commandPlaceholder')}
                                 className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
                             />
                             <input
                                 value={stdioArgs}
                                 onChange={e => setStdioArgs(e.target.value)}
-                                placeholder="Arguments (comma-separated: run, mcp-server, --option)"
+                                placeholder={t('settings.mcp.argsPlaceholder')}
                                 className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
                             />
                             <input
                                 value={stdioEnv}
                                 onChange={e => setStdioEnv(e.target.value)}
-                                placeholder="Environment (KEY=value, KEY2=value2)"
+                                placeholder={t('settings.mcp.envPlaceholder')}
                                 className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
                             />
                         </div>
@@ -197,7 +199,7 @@ export function McpTab({
                         disabled={loading || (addType === 'url' ? !srvUrl.trim() : !stdioCmd.trim())}
                         className="px-4 py-2 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-brutal-black hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
                     >
-                        {loading ? 'Adding...' : 'Add Server'}
+                        {loading ? t('settings.mcp.adding') : t('settings.mcp.addServer')}
                     </button>
                 </div>
             </div>
@@ -209,14 +211,14 @@ export function McpTab({
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" /></svg>
                     </div>
                     <div>
-                        <h3 className="text-xl font-bold uppercase">Configured Servers</h3>
-                        <p className="text-sm text-neutral-600 mt-1">Manage your MCP servers. Toggle to enable/disable for the current session.</p>
+                        <h3 className="text-xl font-bold uppercase">{t('settings.mcp.configuredServersTitle')}</h3>
+                        <p className="text-sm text-neutral-600 mt-1">{t('settings.mcp.configuredServersDesc')}</p>
                     </div>
                 </div>
 
                 {serverList.length === 0 ? (
                     <div className="text-center py-8 text-neutral-500 font-bold uppercase">
-                        No MCP servers configured yet.
+                        {t('settings.mcp.noneConfiguredYet')}
                     </div>
                 ) : (
                     <div className="space-y-3">
@@ -236,7 +238,7 @@ export function McpTab({
                                     <div className="flex items-center gap-2">
                                         <span className="font-bold text-brutal-black">{server.name}</span>
                                         <span className={`text-[10px] px-2 py-0.5 border-2 font-bold uppercase ${server.enabled ? 'border-brutal-black bg-brutal-green text-brutal-black' : 'border-brutal-black bg-neutral-200 text-brutal-black'}`}>
-                                            {server.enabled ? 'ON' : 'OFF'}
+                                            {server.enabled ? t('common.on') : t('common.off')}
                                         </span>
                                         <span className="text-[10px] px-2 py-0.5 border border-neutral-400 text-neutral-500 uppercase">
                                             {server.type}
@@ -256,7 +258,7 @@ export function McpTab({
                                     disabled={loading}
                                     className="px-3 py-1 bg-brutal-red text-white border-2 border-brutal-black font-bold text-xs uppercase hover:bg-red-600 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
                                 >
-                                    Remove
+                                    {t('common.remove')}
                                 </button>
                             </div>
                         ))}

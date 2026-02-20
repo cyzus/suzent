@@ -258,15 +258,16 @@ function AppInner(): React.ReactElement {
 
 
 function BackendLoadingScreen() {
+  const { t } = useI18n();
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-neutral-50 font-sans p-8 text-center border-8 border-brutal-black">
       <div className="bg-white p-8 border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md flex flex-col items-center animate-pulse">
         <div className="w-32 h-32 mb-6">
           <RobotAvatar variant="idle" className="w-full h-full" />
         </div>
-        <h1 className="text-4xl font-brutal font-black uppercase mb-4 text-brutal-black">INITIALIZING</h1>
+        <h1 className="text-4xl font-brutal font-black uppercase mb-4 text-brutal-black">{t('app.initializing')}</h1>
         <p className="font-bold text-lg mb-6 leading-tight">
-          Connecting to Neural Core...
+          {t('app.connectingToCore')}
         </p>
         <div className="w-full h-4 bg-neutral-200 border-2 border-brutal-black overflow-hidden relative">
           <div className="absolute top-0 left-0 h-full w-1/2 bg-brutal-black animate-[slide_1s_ease-in-out_infinite]"></div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getApiBase } from '../../lib/api';
+import { useI18n } from '../../i18n';
 
 import { BrutalButton } from '../BrutalButton';
 
@@ -11,6 +12,7 @@ export interface BrowserViewProps {
 }
 
 export function BrowserView({ onStreamActive }: BrowserViewProps) {
+    const { t } = useI18n();
     const [status, setStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
     const [imageSrc, setImageSrc] = useState<string | null>(null);
     const [isControlling, setIsControlling] = useState(false);
@@ -42,7 +44,6 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
     const connect = () => {
         if (wsRef.current) return;
 
-        setStatus('connecting');
         setStatus('connecting');
         // Convert API_BASE (http) to ws
         const url = new URL(getApiBase());
@@ -173,7 +174,7 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
         <div className="flex flex-col h-full bg-neutral-100" ref={containerRef}>
             <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200">
                 <span className="font-bold text-xs uppercase text-gray-500">
-                    BROWSER STREAM
+                    {t('browser.streamTitle')}
                 </span>
                 <div className="flex items-center gap-4">
                     {status === 'connected' && imageSrc && (
@@ -183,14 +184,20 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
                             variant={isControlling ? 'danger' : 'default'}
                             className="text-[10px] py-0.5 h-6"
                         >
-                            {isControlling ? 'EXIT CONTROL (ESC)' : 'TAKE CONTROL'}
+                            {isControlling ? t('browser.exitControl') : t('browser.takeControl')}
                         </BrutalButton>
                     )}
                     <div className="flex items-center gap-2">
                         <div className={`w-2 h-2 rounded-full ${status === 'connected' ? 'bg-green-500' :
                             status === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
                             }`} />
-                        <span className="text-xs font-mono text-gray-400 capitalize">{status}</span>
+                        <span className="text-xs font-mono text-gray-400 capitalize">
+                            {status === 'connected'
+                                ? t('browser.status.connected')
+                                : status === 'connecting'
+                                    ? t('browser.status.connecting')
+                                    : t('browser.status.disconnected')}
+                        </span>
                     </div>
                 </div>
             </div>
@@ -216,7 +223,7 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
                             onMouseDown={handleMouseDown}
                             onMouseUp={handleMouseUp}
                             onMouseMove={handleMouseMove}
-                            alt="Browser Stream"
+                            alt={t('browser.streamAlt')}
                             draggable={false}
                         />
 
@@ -229,7 +236,7 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
                                     onClick={toggleControl}
                                     className="uppercase tracking-widest text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                                 >
-                                    Take Control
+                                    {t('browser.takeControl')}
                                 </BrutalButton>
                             </div>
                         )}
@@ -237,15 +244,15 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
                         {/* Visual indicator for control mode */}
                         {isControlling && (
                             <div className="absolute top-4 right-4 bg-green-500 text-white text-[10px] font-bold px-2 py-1 uppercase tracking-wider shadow-lg pointer-events-none animate-pulse">
-                                Live Control Active
+                                {t('browser.liveControlActive')}
                             </div>
                         )}
                     </div>
                 ) : (
                     <div className="text-gray-500 text-sm text-center font-mono">
-                        <p className="mb-2">WAITING_FOR_STREAM</p>
+                        <p className="mb-2">{t('browser.waitingForStream')}</p>
                         {status === 'connected' &&
-                            <p className="text-xs text-gray-600 opacity-70">Execute a browser command to start...</p>
+                            <p className="text-xs text-gray-600 opacity-70">{t('browser.executeHint')}</p>
                         }
                     </div>
                 )}

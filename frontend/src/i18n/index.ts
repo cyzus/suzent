@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 
 import { en } from './messages/en';
 import { zhCN } from './messages/zh-CN';
-import { API_BASE } from '../lib/api';
+import { getApiBase } from '../lib/api';
 
 export type Locale = 'en' | 'zh-CN';
 
@@ -133,7 +133,14 @@ export function I18nProvider(props: { children: React.ReactNode }): React.ReactE
 
   const reloadLanguagePack = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/locales/${encodeURIComponent(locale)}.json`);
+      const apiBase = getApiBase();
+      if (!apiBase) {
+        setOverrideStrings(null);
+        setLanguagePackName(null);
+        return;
+      }
+
+      const res = await fetch(`${apiBase}/locales/${encodeURIComponent(locale)}.json`);
       if (!res.ok) {
         setOverrideStrings(null);
         setLanguagePackName(null);

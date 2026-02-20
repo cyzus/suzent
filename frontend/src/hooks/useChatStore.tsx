@@ -81,28 +81,28 @@ const extractSavedPreferences = (prefs: ConfigOptions['userPreferences']) => ({
 const configsEqual = (a?: ChatConfig | null, b?: ChatConfig | null): boolean => {
   if (a === b) return true;
   if (!a || !b) return false;
-  const arrayEqual = (left?: string[], right?: string[]) => {
-    const l = left ?? [];
-    const r = right ?? [];
+  const arrayEqual = (lhs?: string[], rhs?: string[]) => {
+    const l = lhs ?? [];
+    const r = rhs ?? [];
     if (l.length !== r.length) return false;
     return l.every((value, index) => value === r[index]);
   };
-  const mcpUrlsEqual = (left?: string[] | Record<string, string>, right?: string[] | Record<string, string>) => {
-    if (left === right) return true;
-    if (!left || !right) return false;
+  const mcpUrlsEqual = (lhs?: string[] | { [key: string]: string }, rhs?: string[] | { [key: string]: string }) => {
+    if (lhs === rhs) return true;
+    if (!lhs || !rhs) return false;
 
     // Check if both are arrays
-    const isLeftArray = Array.isArray(left);
-    const isRightArray = Array.isArray(right);
+    const isLeftArray = Array.isArray(lhs);
+    const isRightArray = Array.isArray(rhs);
 
     if (isLeftArray && isRightArray) {
-      return arrayEqual(left as string[], right as string[]);
+      return arrayEqual(lhs as string[], rhs as string[]);
     }
 
     // Check if both are objects (records)
     if (!isLeftArray && !isRightArray) {
-      const l = left as Record<string, string>;
-      const r = right as Record<string, string>;
+      const l = lhs as { [key: string]: string };
+      const r = rhs as { [key: string]: string };
       const lKeys = Object.keys(l).sort();
       const rKeys = Object.keys(r).sort();
 
