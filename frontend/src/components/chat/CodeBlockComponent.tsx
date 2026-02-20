@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useStatusStore } from '../../hooks/useStatusStore';
+import { useI18n } from '../../i18n';
 
 interface CodeBlockComponentProps {
   lang?: string;
@@ -10,13 +11,14 @@ interface CodeBlockComponentProps {
 export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, content, isStreaming }) => {
   const [expanded, setExpanded] = useState(true);
   const { setStatus } = useStatusStore();
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const lineCount = content.split('\n').length;
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(content);
-    setStatus('CODE_COPIED_TO_CLIPBOARD', 'success');
+    setStatus(t('status.codeCopiedToClipboard'), 'success');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -30,7 +32,7 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
           <button
             onClick={handleCopy}
             className="w-8 h-8 flex items-center justify-center bg-white text-brutal-black border-2 border-brutal-black hover:bg-brutal-yellow transition-colors shadow-sm"
-            title="Copy text"
+            title={t('codeBlock.copyText')}
           >
             {copied ? (
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -65,17 +67,17 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
             <span>{'{}'}</span>
           </div>
           <span className="text-white font-bold uppercase tracking-wider text-xs truncate">
-            {lang || 'CODE'}
+            {lang || t('codeBlock.code')}
           </span>
           <span className="text-neutral-400 text-[10px] font-bold shrink-0">
-            {lineCount} LINES
+            {t('codeBlock.lines', { count: lineCount })}
           </span>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={handleCopy}
             className="w-8 h-8 flex items-center justify-center bg-brutal-black text-white border-2 border-white hover:bg-white hover:text-brutal-black transition-colors"
-            title="Copy code"
+            title={t('codeBlock.copyCode')}
           >
             {copied ? (
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -91,7 +93,7 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
           <button
             onClick={() => setExpanded(!expanded)}
             className="w-8 h-8 flex items-center justify-center bg-brutal-black text-white text-lg font-bold border-2 border-white hover:bg-white hover:text-brutal-black transition-colors uppercase"
-            title={expanded ? "Collapse" : "Expand"}
+            title={expanded ? t('codeBlock.collapse') : t('codeBlock.expand')}
           >
             {expanded ? '−' : '+'}
           </button>

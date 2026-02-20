@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useI18n } from '../i18n';
 
 interface Option {
   value: string;
@@ -22,11 +23,12 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
   onChange,
   options,
   label,
-  placeholder = 'SELECT...',
+  placeholder,
   dropUp = false,
   className = '',
   dropdownClassName = '',
 }) => {
+  const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -39,6 +41,7 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
   );
 
   const selectedOption = normalizedOptions.find(opt => opt.value === value);
+  const resolvedPlaceholder = placeholder ?? t('select.placeholder');
 
   // Heuristic for scrollbar: average item height is ~38px. max-h-60 is 240px. 6 items ~ 228px.
   const showScrollbar = normalizedOptions.length > 6;
@@ -159,7 +162,7 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
         className={`w-full bg-white border-3 border-brutal-black px-3 py-2 font-bold text-sm text-left flex items-center justify-between transition-all duration-200 hover:bg-brutal-yellow focus:outline-none ${isOpen ? 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[1px] translate-y-[1px]' : 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn'}`}
       >
         <span className="truncate">
-          {selectedOption ? selectedOption.label : placeholder}
+          {selectedOption ? selectedOption.label : resolvedPlaceholder}
         </span>
         <svg
           className={`w-4 h-4 transition-transform duration-200 ${isOpen ? (effectiveDropUp ? 'rotate-0' : 'rotate-180') : (effectiveDropUp ? 'rotate-180' : 'rotate-0')}`}

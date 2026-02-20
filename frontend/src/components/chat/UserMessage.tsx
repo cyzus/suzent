@@ -5,6 +5,7 @@ import { ClickableContent } from '../ClickableContent';
 import { ArrowDownTrayIcon, EyeIcon } from '@heroicons/react/24/outline';
 import { API_BASE, getSandboxParams } from '../../lib/api';
 import { useChatStore } from '../../hooks/useChatStore';
+import { useI18n } from '../../i18n';
 
 interface UserMessageProps {
   message: Message;
@@ -14,6 +15,7 @@ interface UserMessageProps {
 }
 
 export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onImageClick, onFileClick }) => {
+  const { t } = useI18n();
   const { config } = useChatStore();
 
   // Don't render empty messages (no content, no images, and no files)
@@ -68,7 +70,7 @@ export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onIma
                     <button
                       onClick={(e) => onFileClick?.(file.path, file.filename, e.shiftKey)}
                       className="shrink-0 p-2 bg-brutal-yellow border-2 border-brutal-black text-brutal-black hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
-                      title="View file (Shift+Click for full screen)"
+                      title={t('chatMessage.viewFile')}
                     >
                       <EyeIcon className="w-4 h-4" />
                     </button>
@@ -76,7 +78,7 @@ export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onIma
                       href={downloadUrl}
                       download={file.filename}
                       className="shrink-0 p-2 bg-brutal-blue border-2 border-brutal-black text-white hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
-                      title="Download file"
+                      title={t('chatMessage.downloadFile')}
                     >
                       <ArrowDownTrayIcon className="w-4 h-4" />
                     </a>
@@ -101,7 +103,7 @@ export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onIma
 
       {/* User label */}
       <div className="text-[10px] font-bold text-neutral-400 uppercase text-right pr-1 opacity-0 group-hover/message:opacity-100 transition-opacity select-none">
-        User
+        {t('chatMessage.userLabel')}
       </div>
     </div>
   );

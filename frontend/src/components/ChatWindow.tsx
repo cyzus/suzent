@@ -7,6 +7,7 @@ import { usePlan } from '../hooks/usePlan';
 import { useMemory } from '../hooks/useMemory';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useUnifiedFileUpload } from '../hooks/useUnifiedFileUpload';
+import { useI18n } from '../i18n';
 import { PlanProgress } from './PlanProgress';
 import { NewChatView } from './NewChatView';
 import { ChatInputPanel } from './ChatInputPanel';
@@ -15,24 +16,24 @@ import { FileViewer } from './FileViewer';
 import { UserMessage, AssistantMessage, RightSidebar } from './chat';
 
 // Drag overlay component
-const DragOverlay: React.FC = () => (
+const DragOverlay: React.FC<{ title: string; desc: string }> = ({ title, desc }) => (
   <div className="absolute inset-0 z-50 bg-brutal-blue/20 border-4 border-dashed border-brutal-black flex items-center justify-center pointer-events-none">
     <div className="bg-brutal-yellow border-4 border-brutal-black shadow-brutal-xl px-8 py-6 flex flex-col items-center gap-3">
       <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-brutal-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
       </svg>
-      <span className="text-lg font-bold text-brutal-black uppercase">Drop Files Here</span>
-      <span className="text-sm text-brutal-black">Images, PDFs, Documents, etc.</span>
+      <span className="text-lg font-bold text-brutal-black uppercase">{title}</span>
+      <span className="text-sm text-brutal-black">{desc}</span>
     </div>
   </div>
 );
 
 // Scroll to bottom button
-const ScrollToBottomButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
+const ScrollToBottomButton: React.FC<{ onClick: () => void; title: string }> = ({ onClick, title }) => (
   <button
     onClick={onClick}
     className="absolute bottom-6 right-6 z-20 w-10 h-10 bg-brutal-black text-white border-2 border-white shadow-brutal-lg flex items-center justify-center hover:bg-brutal-blue transition-colors animate-brutal-pop"
-    title="Scroll to bottom"
+    title={title}
   >
     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
@@ -41,10 +42,10 @@ const ScrollToBottomButton: React.FC<{ onClick: () => void }> = ({ onClick }) =>
 );
 
 // Loading indicator
-const LoadingIndicator: React.FC = () => (
+const LoadingIndicator: React.FC<{ label: string }> = ({ label }) => (
   <div className="flex items-center justify-center p-4">
     <div className="bg-brutal-yellow border-2 border-brutal-black px-4 py-2 text-xs font-bold uppercase animate-pulse shadow-brutal-sm">
-      Connecting to Neural Core...
+      {label}
     </div>
   </div>
 );
@@ -103,6 +104,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   isRightSidebarOpen = false,
   onRightSidebarToggle = () => { }
 }) => {
+  const { t } = useI18n();
   // Store hooks
   const {
     messages,
@@ -353,7 +355,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      {isDragging && <DragOverlay />}
+      {isDragging && <DragOverlay title={t('chatWindow.dragDropTitle')} desc={t('chatWindow.dragDropDesc')} />}
 
       {/* Main Chat Column */}
       <div className="flex flex-col flex-1 min-w-0 h-full relative">
@@ -398,11 +400,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               />
             )}
 
-            {!configReady && <LoadingIndicator />}
+            {!configReady && <LoadingIndicator label={t('chatWindow.connecting')} />}
             <div ref={bottomRef} className="h-4" />
           </div>
 
-          {showScrollButton && <ScrollToBottomButton onClick={scrollToBottom} />}
+          {showScrollButton && <ScrollToBottomButton onClick={scrollToBottom} title={t('chatWindow.scrollToBottom')} />}
         </div>
 
         {/* Input Panel (shown when messages exist) */}

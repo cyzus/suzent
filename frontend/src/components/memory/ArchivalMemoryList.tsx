@@ -7,11 +7,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useMemory } from '../../hooks/useMemory';
 import { MemoryCard } from './MemoryCard';
 import type { ArchivalMemory } from '../../types/memory';
+import { useI18n } from '../../i18n';
 
 type SortOption = 'date-desc' | 'date-asc' | 'importance-desc' | 'importance-asc' | 'relevance' | 'access-desc';
 type ImportanceFilter = 'all' | 'high' | 'medium' | 'low';
 
 export const ArchivalMemoryList: React.FC = () => {
+  const { t } = useI18n();
   const {
     archivalMemories,
     archivalLoading,
@@ -95,6 +97,13 @@ export const ArchivalMemoryList: React.FC = () => {
   }, [archivalMemories, importanceFilter, sortBy]);
 
   const activeFiltersCount = (importanceFilter !== 'all' ? 1 : 0);
+  const importanceLabel = importanceFilter === 'high'
+    ? t('archival.importance.high')
+    : importanceFilter === 'medium'
+      ? t('archival.importance.medium')
+      : importanceFilter === 'low'
+        ? t('archival.importance.low')
+        : t('archival.importance.all');
 
   return (
     <div className="space-y-4">
@@ -102,23 +111,23 @@ export const ArchivalMemoryList: React.FC = () => {
       <div className="border-3 border-brutal-black bg-white shadow-brutal p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-brutal text-lg uppercase tracking-tight text-brutal-black">
-            Archival Memory
+            {t('archival.title')}
           </h3>
           <div className="flex gap-2">
             <button
               onClick={() => setIsCompact(!isCompact)}
               className={`px-3 py-1 border-2 border-brutal-black font-bold text-xs uppercase transition-all shadow-[2px_2px_0_0_#000000] brutal-btn ${isCompact ? 'bg-brutal-black text-white' : 'bg-white hover:bg-neutral-100'
                 }`}
-              title={isCompact ? "Switch to Card View" : "Switch to Compact View"}
+              title={isCompact ? t('archival.view.switchToCards') : t('archival.view.switchToList')}
             >
-              {isCompact ? '☰ List' : '☷ Cards'}
+              {isCompact ? `☰ ${t('archival.view.list')}` : `☷ ${t('archival.view.cards')}`}
             </button>
             <button
               onClick={() => setShowFilters(!showFilters)}
               className={`px-3 py-1 border-2 border-brutal-black font-bold text-xs uppercase transition-all shadow-[2px_2px_0_0_#000000] brutal-btn ${showFilters ? 'bg-brutal-black text-white' : 'bg-white hover:bg-neutral-100'
                 }`}
             >
-              {showFilters ? '▲' : '▼'} Filters {activeFiltersCount > 0 && `(${activeFiltersCount})`}
+              {showFilters ? '▲' : '▼'} {t('archival.filters')} {activeFiltersCount > 0 && `(${activeFiltersCount})`}
             </button>
           </div>
         </div>
@@ -129,7 +138,7 @@ export const ArchivalMemoryList: React.FC = () => {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search memories... (try adding keywords)"
+            placeholder={t('archival.searchPlaceholder')}
             className="w-full pl-3 pr-10 py-2 border-3 border-brutal-black rounded-none focus:outline-none focus:ring-4 focus:ring-brutal-black text-sm font-sans transition-all"
             style={{ backgroundColor: '#ffffff', color: '#000000' }}
           />
@@ -146,7 +155,7 @@ export const ArchivalMemoryList: React.FC = () => {
         {searchQuery !== debouncedQuery && (
           <div className="flex items-center gap-2 text-xs text-neutral-500">
             <div className="w-3 h-3 border-2 border-brutal-black border-t-transparent animate-spin rounded-full"></div>
-            <span>Searching...</span>
+            <span>{t('archival.searching')}</span>
           </div>
         )}
 
@@ -156,16 +165,16 @@ export const ArchivalMemoryList: React.FC = () => {
             {/* Sort By */}
             <div>
               <label className="block text-xs font-bold uppercase text-neutral-600 mb-2">
-                Sort By
+                {t('archival.sortBy')}
               </label>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 {[
-                  { value: 'date-desc', label: 'Newest First' },
-                  { value: 'date-asc', label: 'Oldest First' },
-                  { value: 'importance-desc', label: 'High → Low' },
-                  { value: 'importance-asc', label: 'Low → High' },
-                  { value: 'access-desc', label: 'Most Accessed' },
-                  { value: 'relevance', label: 'Most Relevant' },
+                  { value: 'date-desc', label: t('archival.sort.newestFirst') },
+                  { value: 'date-asc', label: t('archival.sort.oldestFirst') },
+                  { value: 'importance-desc', label: t('archival.sort.highToLow') },
+                  { value: 'importance-asc', label: t('archival.sort.lowToHigh') },
+                  { value: 'access-desc', label: t('archival.sort.mostAccessed') },
+                  { value: 'relevance', label: t('archival.sort.mostRelevant') },
                 ].map((option) => (
                   <button
                     key={option.value}
@@ -184,14 +193,14 @@ export const ArchivalMemoryList: React.FC = () => {
             {/* Importance Filter */}
             <div>
               <label className="block text-xs font-bold uppercase text-neutral-600 mb-2">
-                Importance Level
+                {t('archival.importanceLevel')}
               </label>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {[
-                  { value: 'all', label: 'All' },
-                  { value: 'high', label: 'High (≥0.8)' },
-                  { value: 'medium', label: 'Medium (0.5-0.8)' },
-                  { value: 'low', label: 'Low (<0.5)' },
+                  { value: 'all', label: t('archival.importance.all') },
+                  { value: 'high', label: t('archival.importance.highRange') },
+                  { value: 'medium', label: t('archival.importance.mediumRange') },
+                  { value: 'low', label: t('archival.importance.lowRange') },
                 ].map((option) => (
                   <button
                     key={option.value}
@@ -216,7 +225,7 @@ export const ArchivalMemoryList: React.FC = () => {
                 }}
                 className="w-full py-2 border-2 border-brutal-black bg-white hover:bg-neutral-100 font-bold text-xs uppercase transition-all"
               >
-                Clear Filters
+                {t('archival.clearFilters')}
               </button>
             )}
           </div>
@@ -227,8 +236,8 @@ export const ArchivalMemoryList: React.FC = () => {
       {processedMemories.length > 0 && (
         <div className="flex items-center justify-between text-xs text-neutral-600 px-1">
           <span>
-            Showing <span className="font-bold text-brutal-black">{processedMemories.length}</span> {processedMemories.length === 1 ? 'memory' : 'memories'}
-            {importanceFilter !== 'all' && ` (filtered by ${importanceFilter} importance)`}
+            {t('archival.showingCount', { count: processedMemories.length })}
+            {importanceFilter !== 'all' && ` (${t('archival.filteredBy', { importance: importanceLabel })})`}
           </span>
         </div>
       )}
@@ -239,7 +248,7 @@ export const ArchivalMemoryList: React.FC = () => {
           <div className="flex items-start gap-3">
             <span className="text-3xl">⚠️</span>
             <div>
-              <p className="font-bold text-brutal-black mb-1">Error Loading Memories</p>
+              <p className="font-bold text-brutal-black mb-1">{t('archival.errorTitle')}</p>
               <p className="text-sm text-brutal-black">{archivalError}</p>
             </div>
           </div>
@@ -251,15 +260,15 @@ export const ArchivalMemoryList: React.FC = () => {
         <div className="border-3 border-brutal-black bg-white p-12 text-center">
           <h4 className="font-brutal text-2xl uppercase mb-2">
             {debouncedQuery || importanceFilter !== 'all'
-              ? 'No Matches Found'
-              : 'No Memories Yet'}
+              ? t('archival.empty.noMatchesTitle')
+              : t('archival.empty.noMemoriesTitle')}
           </h4>
           <p className="text-neutral-600 text-sm max-w-md mx-auto">
             {debouncedQuery
-              ? 'Try different search terms or adjust your filters'
+              ? t('archival.empty.noMatchesDesc')
               : importanceFilter !== 'all'
-                ? `No ${importanceFilter} importance memories found. Try changing the filter.`
-                : 'Start a conversation and important facts will be automatically saved here'}
+                ? t('archival.empty.noImportanceDesc', { importance: importanceLabel })
+                : t('archival.empty.noMemoriesDesc')}
           </p>
           {(debouncedQuery || importanceFilter !== 'all') && (
             <button
@@ -269,7 +278,7 @@ export const ArchivalMemoryList: React.FC = () => {
               }}
               className="mt-4 px-4 py-2 border-2 border-brutal-black bg-white hover:bg-neutral-100 font-bold text-xs uppercase shadow-brutal-sm"
             >
-              Clear All Filters
+              {t('archival.clearAllFilters')}
             </button>
           )}
         </div>
@@ -293,7 +302,7 @@ export const ArchivalMemoryList: React.FC = () => {
         <div className="border-3 border-brutal-black bg-white p-8 text-center">
           <div className="flex items-center justify-center gap-3 mb-2">
             <div className="w-4 h-4 border-3 border-brutal-black border-t-transparent animate-spin rounded-full"></div>
-            <p className="text-neutral-800 font-bold uppercase">Loading memories...</p>
+            <p className="text-neutral-800 font-bold uppercase">{t('archival.loading')}</p>
           </div>
           <div className="flex gap-1 justify-center mt-3">
             {[0, 1, 2].map((i) => (
@@ -313,7 +322,7 @@ export const ArchivalMemoryList: React.FC = () => {
           onClick={handleLoadMore}
           className="w-full py-3 border-3 border-brutal-black bg-white hover:bg-neutral-100 brutal-btn shadow-[2px_2px_0_0_#000] font-bold uppercase transition-all"
         >
-          Load More
+          {t('archival.loadMore')}
         </button>
       )}
     </div>

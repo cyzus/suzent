@@ -5,6 +5,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { FileIcon } from './FileIcon';
 import { PaperClipIcon, XMarkIcon, FolderIcon } from '@heroicons/react/24/outline';
 import { FolderContextPicker } from './chat/FolderContextPicker';
+import { useI18n } from '../i18n';
 
 interface ChatInputPanelProps {
     input: string;
@@ -83,6 +84,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     onPaste,
     onImageClick,
 }) => {
+    const { t } = useI18n();
     // --- Volume Mounting Logic ---
     const handleMountFolder = React.useCallback((paths: string[]) => {
         try {
@@ -165,7 +167,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                                             type="button"
                                             onClick={() => removeFile(idx)}
                                             className="absolute -top-2 -right-2 w-6 h-6 bg-brutal-red border-2 border-brutal-black text-white text-sm flex items-center justify-center font-bold shadow-brutal-sm hover:shadow-none transition-all"
-                                            title="Remove file"
+                                            title={t('chatInput.removeFile')}
                                         >
                                             ×
                                         </button>
@@ -184,7 +186,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                                             type="button"
                                             onClick={() => removeFile(idx)}
                                             className="shrink-0 w-6 h-6 bg-brutal-red border-2 border-brutal-black text-white flex items-center justify-center hover:bg-red-600 transition-colors"
-                                            title="Remove file"
+                                            title={t('chatInput.removeFile')}
                                         >
                                             <XMarkIcon className="w-4 h-4" />
                                         </button>
@@ -233,7 +235,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         }
                     }
                 }}
-                placeholder={configReady ? 'How can I help you today?' : 'SYSTEM LOADING...'}
+                placeholder={configReady ? t('chatInput.placeholderReady') : t('chatInput.placeholderLoading')}
                 disabled={!configReady}
                 onPaste={(e) => {
                     if (onPaste && e.clipboardData) {
@@ -285,7 +287,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         className="text-brutal-black hover:text-brutal-blue transition-colors disabled:opacity-40 shrink-0"
-                        title="Attach files (images, PDFs, documents, etc.)"
+                        title={t('chatInput.attachFiles')}
                         disabled={!configReady || isStreaming || isUploading}
                     >
                         <PaperClipIcon className="w-6 h-6" />
@@ -299,7 +301,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                                 value={config.model}
                                 onChange={(val) => setConfig(prev => ({ ...prev, model: val }))}
                                 options={backendConfig!.models}
-                                placeholder="MODEL"
+                                placeholder={t('chatInput.modelPlaceholder')}
                                 dropUp={modelSelectDropUp}
                                 className="h-10 text-sm"
                                 dropdownClassName="min-w-[200px] right-0"
@@ -321,9 +323,9 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                                 ? stopInFlight
                                 : (isStreaming || !configReady)
                         }
-                        title={stopStreaming && streamingForCurrentChat ? "Stop Generating" : "Send Message"}
+                        title={stopStreaming && streamingForCurrentChat ? t('chatInput.stopGenerating') : t('chatInput.sendMessage')}
                     >
-                        {stopStreaming && streamingForCurrentChat ? 'STOP' : 'SEND'}
+                        {stopStreaming && streamingForCurrentChat ? t('chatInput.stop') : t('chatInput.send')}
                     </button>
                 </div>
             </div>

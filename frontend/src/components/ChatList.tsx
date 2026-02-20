@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
+import { useI18n } from '../i18n';
 import { ChatSummary } from '../types/api';
 import { RobotAvatar } from './chat/RobotAvatar';
 import { BrutalDeleteButton } from './BrutalDeleteButton';
 import { BrutalDeleteOverlay } from './BrutalDeleteOverlay';
 
 export const ChatList: React.FC = () => {
+  const { t } = useI18n();
   const {
     chats,
     loadingChats,
@@ -128,7 +130,7 @@ export const ChatList: React.FC = () => {
               type="text"
               value={localSearchQuery}
               onChange={(e) => setLocalSearchQuery(e.target.value)}
-              placeholder={viewMode === 'social' ? "SEARCH SOCIAL..." : "SEARCH CHATS..."}
+              placeholder={viewMode === 'social' ? t('chatList.searchSocialPlaceholder') : t('chatList.searchChatsPlaceholder')}
               className="w-full px-3 py-2 pl-9 bg-neutral-50 border-2 border-brutal-black font-bold text-xs uppercase placeholder-neutral-400 focus:outline-none focus:bg-white focus:shadow-brutal-sm transition-all"
             />
             <svg
@@ -144,7 +146,7 @@ export const ChatList: React.FC = () => {
               <button
                 onClick={() => setLocalSearchQuery('')}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-neutral-200 rounded transition-colors"
-                title="Clear Search"
+                title={t('chatList.clearSearch')}
               >
                 <svg className="w-3 h-3 text-brutal-black" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -161,7 +163,7 @@ export const ChatList: React.FC = () => {
                 if (switchToView) switchToView('chat');
               }}
               className="flex items-center justify-center w-[38px] bg-brutal-black text-white border-2 border-brutal-black shadow-[2px_2px_0_0_#000] hover:bg-brutal-blue hover:text-white hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[1px_1px_0_0_#000] active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all flex-shrink-0"
-              title="New Chat"
+              title={t('chatList.newChat')}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -183,7 +185,7 @@ export const ChatList: React.FC = () => {
                     : 'bg-white text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black'
                   }`}
               >
-                {mode === 'personal' ? 'Desktop' : 'Social'}
+                {mode === 'personal' ? t('chatList.view.desktop') : t('chatList.view.social')}
               </button>
             ))}
           </div>
@@ -198,10 +200,10 @@ export const ChatList: React.FC = () => {
               <RobotAvatar variant={searchQuery ? "ghost" : "portal"} />
             </div>
             <p className="text-brutal-black text-sm font-bold uppercase">
-              {searchQuery ? 'No results found' : (viewMode === 'social' ? 'No social chats' : 'No chats yet')}
+              {searchQuery ? t('chatList.empty.noResultsTitle') : (viewMode === 'social' ? t('chatList.empty.noSocialTitle') : t('chatList.empty.noChatsTitle'))}
             </p>
             <p className="text-neutral-500 text-xs mt-1">
-              {searchQuery ? 'Try a different search term' : (viewMode === 'social' ? 'Connect Telegram/Slack to see chats here' : 'Start a new conversation to begin')}
+              {searchQuery ? t('chatList.empty.noResultsDesc') : (viewMode === 'social' ? t('chatList.empty.noSocialDesc') : t('chatList.empty.noChatsDesc'))}
             </p>
           </div>
         ) : (
@@ -233,8 +235,8 @@ export const ChatList: React.FC = () => {
                     onConfirm={(e: any) => handleDeleteChat(chat.id, e)}
                     onCancel={handleCancelDelete}
                     isDeleting={deletingChatId === chat.id}
-                    title="Delete this chat?"
-                    confirmText="Delete"
+                    title={t('chatList.delete.confirmTitle')}
+                    confirmText={t('chatList.delete.confirm')}
                   />
                 )}
 
@@ -248,7 +250,7 @@ export const ChatList: React.FC = () => {
                         </span>
                       )}
                       <h3 className={`font-bold text-sm truncate uppercase ${currentChatId === chat.id ? 'text-brutal-black' : 'text-neutral-800'}`}>
-                        {chat.title || 'Untitled Chat'}
+                        {chat.title || t('chatList.untitled')}
                       </h3>
                     </div>
 
@@ -260,7 +262,7 @@ export const ChatList: React.FC = () => {
 
                     <div className={`flex items-center justify-between mt-3 pt-2 border-t-2 ${currentChatId === chat.id ? 'border-brutal-black/20' : 'border-neutral-200/50'}`}>
                       <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 border ${currentChatId === chat.id ? 'bg-white text-brutal-black border-brutal-black' : 'bg-neutral-100 text-neutral-500 border-neutral-300'}`}>
-                        {chat.messageCount} MSG
+                        {t('chatList.messagesCount', { count: chat.messageCount })}
                       </span>
                       <span className={`text-[10px] font-bold uppercase ${currentChatId === chat.id ? 'text-brutal-black/60' : 'text-neutral-400'}`}>
                         {formatDate(chat.updatedAt)}
@@ -271,7 +273,7 @@ export const ChatList: React.FC = () => {
                   {/* Delete Button */}
                   <div className="ml-2">
                     {deletingChatId === chat.id ? (
-                      <div className="w-7 h-7 flex items-center justify-center animate-brutal-blink text-brutal-black font-bold text-xs" title="Deleting...">
+                      <div className="w-7 h-7 flex items-center justify-center animate-brutal-blink text-brutal-black font-bold text-xs" title={t('chatList.delete.deleting')}>
                         X
                       </div>
                     ) : (
@@ -279,7 +281,7 @@ export const ChatList: React.FC = () => {
                         onClick={(e) => handleDeleteClick(chat.id, e)}
                         isActive={currentChatId === chat.id}
                         className="opacity-0 group-hover:opacity-100"
-                        title="Delete chat"
+                        title={t('chatList.delete.buttonTitle')}
                         disabled={deletingChatId === chat.id}
                       />
                     )}

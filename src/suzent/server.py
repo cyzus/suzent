@@ -66,6 +66,7 @@ from suzent.routes.sandbox_routes import (
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
 from suzent.routes.system_routes import list_host_files, open_in_explorer
 from suzent.routes.browser_routes import browser_websocket_endpoint
+from suzent.routes.locale_routes import get_language_pack
 from suzent.channels.manager import ChannelManager
 
 # from suzent.channels.telegram import TelegramChannel # Loaded dynamically now
@@ -283,6 +284,7 @@ app = Starlette(
         Route("/skills", get_skills, methods=["GET"]),
         Route("/skills/reload", reload_skills, methods=["POST"]),
         Route("/skills/{skill_name}/toggle", toggle_skill, methods=["POST"]),
+        Route("/locales/{locale}.json", get_language_pack, methods=["GET"]),
         # Browser WebSocket
         WebSocketRoute("/ws/browser", browser_websocket_endpoint),
     ],

@@ -1,5 +1,6 @@
 import React from 'react';
 import { RobotAvatar } from './chat/RobotAvatar';
+import { getInitialLocale, tForLocale } from '../i18n';
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -29,6 +30,8 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
   render() {
     if (this.state.hasError) {
+      const locale = getInitialLocale();
+      const t = (key: string, params?: Record<string, unknown>) => tForLocale(locale, key, params);
       // Return fallback UI or default error message
       return this.props.fallback || (
         <div className="flex flex-col items-center justify-center h-64 p-8 bg-white border-3 border-brutal-black shadow-brutal animate-brutal-shake">
@@ -36,19 +39,19 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
             <RobotAvatar variant="shaker" />
           </div>
           <div className="text-brutal-red text-lg font-brutal uppercase mb-2">
-            System Failure
+            {t('errorBoundary.systemFailure')}
           </div>
           <div className="text-brutal-black text-sm mb-4 text-center font-mono">
-            {this.state.error?.message || 'An unexpected error occurred'}
+            {this.state.error?.message || t('errorBoundary.unexpected')}
           </div>
           <button
             className="px-4 py-2 bg-brutal-red text-white border-2 border-brutal-black font-bold uppercase hover:bg-red-600 shadow-[2px_2px_0_0_#000] brutal-btn"
             onClick={() => this.setState({ hasError: false, error: undefined })}
           >
-            Reboot System
+            {t('errorBoundary.reboot')}
           </button>
           <details className="mt-4 text-xs text-brutal-black w-full">
-            <summary className="cursor-pointer font-bold uppercase">Error details</summary>
+            <summary className="cursor-pointer font-bold uppercase">{t('errorBoundary.details')}</summary>
             <pre className="mt-2 p-2 bg-neutral-100 border-2 border-brutal-black overflow-auto font-mono text-[10px]">
               {this.state.error?.stack}
             </pre>

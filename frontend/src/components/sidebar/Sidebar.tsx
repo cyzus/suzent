@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
+import { useI18n } from '../../i18n';
+
 type SidebarTab = 'chats' | 'config';
 
 interface SidebarProps {
@@ -12,11 +14,6 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
-const TAB_LABELS: Record<SidebarTab, string> = {
-  chats: 'Chats',
-  config: 'Config'
-};
-
 export function Sidebar({
   activeTab,
   onTabChange,
@@ -26,6 +23,7 @@ export function Sidebar({
   onOpenSettings,
   onClose
 }: SidebarProps): React.ReactElement {
+  const { t } = useI18n();
   const [animateContent, setAnimateContent] = useState(false);
   const [mountedTabs, setMountedTabs] = useState<Set<SidebarTab>>(() => new Set(['chats']));
 
@@ -66,8 +64,8 @@ export function Sidebar({
           <button
             onClick={onClose}
             className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 transition-colors text-brutal-black"
-            aria-label="Close Sidebar"
-            title="Close Sidebar"
+            aria-label={t('sidebar.close')}
+            title={t('sidebar.close')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <rect x="4" y="4" width="16" height="16" rx="2" />
@@ -79,7 +77,7 @@ export function Sidebar({
           <div className="h-6 w-[2px] bg-neutral-300 mx-2 rounded-full" />
 
           {/* Logo (Static) */}
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Suzent Logo" className="h-10 w-10">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label={t('app.logoAriaLabel')} className="h-10 w-10">
             <rect x="1.5" y="1.5" width="21" height="21" rx="3" fill="#FFFFFF" />
             <rect x="3.5" y="3.5" width="17" height="17" rx="3" fill="#000000" />
             <rect x="5.5" y="7" width="5" height="5" rx="1.5" fill="#FFFFFF" />
@@ -95,7 +93,7 @@ export function Sidebar({
                 onClick={() => onTabChange(tab)}
                 className={`flex-1 py-3 text-xs font-bold uppercase relative transition-all duration-200 ${active ? 'bg-brutal-black text-white' : 'bg-white text-brutal-black hover:bg-brutal-yellow border-r-3 border-brutal-black last:border-r-0'}`}
               >
-                {TAB_LABELS[tab]}
+                {tab === 'chats' ? t('sidebar.tabs.chats') : t('sidebar.tabs.config')}
               </button>
             );
           })}
@@ -124,8 +122,8 @@ export function Sidebar({
               </svg>
             </div>
             <div className="flex flex-col min-w-0">
-              <span className="font-bold text-sm truncate uppercase tracking-tight">Settings</span>
-              <span className="text-xs text-neutral-600 font-mono truncate">Configure models/social App</span>
+              <span className="font-bold text-sm truncate uppercase tracking-tight">{t('sidebar.settings')}</span>
+              <span className="text-xs text-neutral-600 font-mono truncate">{t('sidebar.settingsDesc')}</span>
             </div>
             <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

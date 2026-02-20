@@ -3,6 +3,7 @@ import { PlanProgress } from '../PlanProgress';
 import { SandboxFiles } from '../sidebar/SandboxFiles';
 import { BrowserView } from '../sidebar/BrowserView';
 import type { Plan } from '../../types/api';
+import { useI18n } from '../../i18n';
 
 interface RightSidebarProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   fileToPreview,
   onMaximizeFile
 }) => {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<'files' | 'browser'>('files');
   const [isFileExpanded, setIsFileExpanded] = useState(false);
 
@@ -56,7 +58,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               : 'bg-white hover:bg-neutral-100 text-brutal-black'
               }`}
           >
-            FILES
+            {t('sidebar.tabs.files')}
           </button>
           <button
             onClick={() => setActiveTab('browser')}
@@ -65,7 +67,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               : 'bg-white hover:bg-neutral-100 text-brutal-black'
               }`}
           >
-            BROWSER
+            {t('sidebar.tabs.browser')}
           </button>
         </div>
       </div>

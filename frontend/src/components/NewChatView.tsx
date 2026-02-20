@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { ChatInputPanel } from './ChatInputPanel';
 import { ConfigOptions, ChatConfig } from '../types/api';
 import { RobotAvatar, RobotVariant } from './chat/RobotAvatar';
+import { useI18n } from '../i18n';
 
 interface NewChatViewProps {
     input: string;
@@ -26,7 +27,7 @@ interface NewChatViewProps {
 }
 
 // Memoized greeting robot component to prevent animation restarts on input changes
-const GreetingRobot: React.FC = React.memo(() => {
+const GreetingRobot: React.FC<{ greeting: string }> = React.memo(({ greeting }) => {
     // Select a random friendly robot (only runs once per mount)
     const greetingRobot = useMemo(() => {
         const variants: RobotVariant[] = ['peeker', 'jumper', 'dj', 'party', 'snoozer'];
@@ -37,22 +38,13 @@ const GreetingRobot: React.FC = React.memo(() => {
         return friendly[Math.floor(Math.random() * friendly.length)] as RobotVariant;
     }, []);
 
-    const getGreeting = () => {
-        const hour = new Date().getHours();
-        if (hour < 5) return 'NIGHT OWL?';
-        if (hour < 12) return 'GOOD MORNING.';
-        if (hour < 17) return 'KEEP BUILDING.';
-        if (hour < 21) return 'GOOD EVENING.';
-        return 'BED TIME? OR MAYBE LATE NIGHT CODING?';
-    };
-
     return (
         <div className="mb-8 flex flex-col items-center gap-6">
             <div className="w-24 h-24">
                 <RobotAvatar variant={greetingRobot} />
             </div>
             <h2 className="text-4xl sm:text-5xl font-brutal font-bold text-brutal-black mb-2 tracking-tight">
-                {getGreeting()}
+                {greeting}
             </h2>
         </div>
     );
@@ -81,10 +73,22 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
     onPaste,
     onImageClick,
 }) => {
+    const { t } = useI18n();
+    const hour = new Date().getHours();
+    const greetingKey =
+        hour < 5
+            ? 'newChat.greetings.nightOwl'
+            : hour < 12
+              ? 'newChat.greetings.goodMorning'
+              : hour < 17
+                ? 'newChat.greetings.keepBuilding'
+                : hour < 21
+                  ? 'newChat.greetings.goodEvening'
+                  : 'newChat.greetings.bedTime';
 
     return (
         <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center p-8 animate-brutal-drop">
-            <GreetingRobot />
+            <GreetingRobot greeting={t(greetingKey)} />
 
             <div className="w-full max-w-2xl">
                 <ChatInputPanel
@@ -113,4 +117,3 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
         </div>
     );
 };
-

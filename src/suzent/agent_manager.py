@@ -45,6 +45,13 @@ agent_config: Optional[dict] = None
 agent_lock = asyncio.Lock()
 
 
+def _normalize_deepseek_base_url(url: str) -> str:
+    normalized = url.strip().rstrip("/")
+    if normalized in {"https://api.deepseek.com", "http://api.deepseek.com"}:
+        return f"{normalized}/v1"
+    return normalized
+
+
 def create_agent(
     config: Dict[str, Any], memory_context: Optional[str] = None
 ) -> CodeAgent:
@@ -99,7 +106,23 @@ def create_agent(
         config.get("additional_authorized_imports")
         or CONFIG.additional_authorized_imports
     )
-    model = LiteLLMModel(model_id=model_id)
+    runtime_model_id = model_id
+    model_kwargs: Dict[str, Any] = {}
+    api_base = None
+    api_key = None
+    if runtime_model_id.startswith("deepseek/"):
+        runtime_model_id = runtime_model_id.removeprefix("deepseek/")
+        model_kwargs["custom_llm_provider"] = "deepseek"
+        api_base = os.environ.get("DEEPSEEK_API_BASE")
+        if api_base:
+            api_base = _normalize_deepseek_base_url(api_base)
+        api_key = os.environ.get("DEEPSEEK_API_KEY")
+    model = LiteLLMModel(
+        model_id=runtime_model_id,
+        api_base=api_base,
+        api_key=api_key,
+        **model_kwargs,
+    )
 
     tools = []
 

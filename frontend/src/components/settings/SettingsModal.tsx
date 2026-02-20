@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
+import { useI18n } from '../../i18n';
 import { useChatStore } from '../../hooks/useChatStore';
 import { ApiProvider, fetchApiKeys, fetchEmbeddingModels, fetchSocialConfig, saveApiKeys, saveSocialConfig, saveUserPreferences, SocialConfig, UserConfig, verifyProvider } from '../../lib/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
@@ -14,6 +15,7 @@ interface SettingsModalProps {
 type ProviderTab = 'credentials' | 'models';
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.ReactElement | null {
+  const { t, locale, setLocale, reloadLanguagePack, languagePackName } = useI18n();
   const { refreshBackendConfig, backendConfig } = useChatStore();
   const [providers, setProviders] = useState<ApiProvider[]>([]);
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
@@ -140,7 +142,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
         p.id === provider.id ? { ...p, models: result.models } : p
       ));
     } else {
-      alert("Verification failed or no models found.");
+      alert(t('settings.verifyFailed'));
     }
 
     setVerifying(prev => ({ ...prev, [provider.id]: false }));
@@ -187,28 +189,28 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
         <div className="w-64 bg-white border-r-4 border-brutal-black flex flex-col flex-shrink-0">
           <div className="p-6 border-b-4 border-brutal-black bg-brutal-yellow">
             <h1 className="text-2xl font-brutal font-bold uppercase tracking-tighter text-brutal-black">
-              Using Suzent
+              {t('settings.usingSuzent')}
             </h1>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
             {[
               {
-                id: 'providers', label: 'Model Providers', icon: (
+                id: 'providers', label: t('settings.categories.providers'), icon: (
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                   </svg>
                 )
               },
               {
-                id: 'memory', label: 'Memory System', icon: (
+                id: 'memory', label: t('settings.categories.memory'), icon: (
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
                 )
               },
               {
-                id: 'social', label: 'Social Channels', icon: (
+                id: 'social', label: t('settings.categories.social'), icon: (
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                   </svg>
@@ -230,11 +232,29 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
           </div>
 
           <div className="p-4 border-t-4 border-brutal-black bg-neutral-50">
+            <div className="mb-3 space-y-2">
+              <BrutalSelect
+                value={locale}
+                onChange={val => setLocale(val as any)}
+                options={[
+                  { value: 'en', label: 'English' },
+                  { value: 'zh-CN', label: '中文' }
+                ]}
+                label={t('settings.language')}
+              />
+              <button
+                type="button"
+                onClick={reloadLanguagePack}
+                className="w-full px-4 py-2 bg-white border-2 border-brutal-black font-bold uppercase text-brutal-black hover:bg-neutral-100 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
+              >
+                {languagePackName ? t('settings.reloadLanguagePackWithName', { name: languagePackName }) : t('settings.reloadLanguagePack')}
+              </button>
+            </div>
             <button
               onClick={onClose}
               className="w-full px-4 py-3 bg-white border-2 border-brutal-black font-bold uppercase text-brutal-black hover:bg-neutral-100 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none mb-3"
             >
-              Close
+              {t('common.close')}
             </button>
             <button
               onClick={handleSave}
@@ -244,10 +264,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
               {saving ? (
                 <>
                   <div className="animate-spin h-4 w-4 border-2 border-brutal-black border-t-transparent rounded-full"></div>
-                  Saving...
+                  {t('settings.saving')}
                 </>
               ) : (
-                'Save Changes'
+                t('settings.saveChanges')
               )}
             </button>
           </div>
@@ -266,7 +286,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                   {activeCategory === 'providers' && (
                     <div className="space-y-6">
                       <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black">Model Providers</h2>
+                        <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black">{t('settings.categories.providers')}</h2>
                       </div>
 
                       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
@@ -309,13 +329,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                                   onClick={() => setActiveTabs(p => ({ ...p, [provider.id]: 'credentials' }))}
                                   className={`flex-1 p-2 font-bold uppercase text-xs tracking-wider transition-colors ${activeTab === 'credentials' ? 'bg-brutal-black text-white' : 'bg-white text-brutal-black hover:bg-neutral-100'}`}
                                 >
-                                  API Keys
+                                  {t('settings.providers.apiKeysTab')}
                                 </button>
                                 <button
                                   onClick={() => setActiveTabs(p => ({ ...p, [provider.id]: 'models' }))}
                                   className={`flex-1 p-2 font-bold uppercase text-xs tracking-wider transition-colors ${activeTab === 'models' ? 'bg-brutal-black text-white' : 'bg-white text-brutal-black hover:bg-neutral-100'}`}
                                 >
-                                  Models
+                                  {t('settings.providers.modelsTab')}
                                 </button>
                               </div>
 
@@ -366,7 +386,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                                       <div className="flex flex-1 gap-0">
                                         <input
                                           type="text"
-                                          placeholder="Add model ID..."
+                                          placeholder={t('settings.providers.addModelIdPlaceholder')}
                                           className="flex-1 bg-white border-2 border-brutal-black border-r-0 px-3 py-2 font-mono text-xs focus:outline-none"
                                           onKeyDown={(e) => {
                                             if (e.key === 'Enter') {
@@ -382,7 +402,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                                         disabled={verifying[provider.id]}
                                         className="text-xs bg-brutal-blue text-white px-4 py-2 font-black uppercase border-2 border-brutal-black hover:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none transition-all disabled:opacity-50 shrink-0"
                                       >
-                                        {verifying[provider.id] ? 'FETCHING...' : 'FETCH'}
+                                        {verifying[provider.id] ? t('settings.providers.fetching') : t('settings.providers.fetch')}
                                       </button>
                                     </div>
 
@@ -392,16 +412,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                                       value={conf.enabled_models}
                                       onChange={(newVal) => setUserConfigs(prev => ({ ...prev, [provider.id]: { ...conf, enabled_models: newVal } }))}
                                       options={allModels.map(m => ({ value: m.id, label: m.name || m.id }))}
-                                      emptyMessage="No models found"
+                                      emptyMessage={t('settings.providers.noModelsFound')}
                                       emptyAction={
-                                        <button onClick={() => handleVerify(provider)} className="underline hover:text-black">Fetch Models</button>
+                                        <button onClick={() => handleVerify(provider)} className="underline hover:text-black">{t('settings.providers.fetchModels')}</button>
                                       }
                                       dropdownClassName="max-h-80"
                                     />
 
                                     {/* Footer */}
                                     <div className="flex justify-between items-center px-1 mt-2">
-                                      <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider">{allModels.length} AVAILABLE</span>
+                                      <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider">{t('settings.providers.modelsAvailable', { count: allModels.length })}</span>
                                     </div>
 
                                   </div>
@@ -417,15 +437,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
 
                   {activeCategory === 'memory' && (
                     <div className="space-y-6">
-                      <h2 className="text-3xl font-brutal font-black uppercase text-brutal-black">Memory Configuration</h2>
+                      <h2 className="text-3xl font-brutal font-black uppercase text-brutal-black">{t('settings.memoryConfig.title')}</h2>
                       <div className="bg-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6">
                         <div className="flex items-start gap-4 mb-6">
                           <div className="w-12 h-12 bg-brutal-blue border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                             <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
                           </div>
                           <div>
-                            <h3 className="text-xl font-bold uppercase">System Configuration</h3>
-                            <p className="text-sm text-neutral-600 mt-1">Configure user preferences for memory and extraction. Changes here require a server restart to take full effect.</p>
+                            <h3 className="text-xl font-bold uppercase">{t('settings.memoryConfig.systemConfigTitle')}</h3>
+                            <p className="text-sm text-neutral-600 mt-1">{t('settings.memoryConfig.systemConfigDesc')}</p>
                           </div>
                         </div>
 
@@ -433,17 +453,17 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                           {/* Extraction Model */}
                           <div className="space-y-2">
                             <label className="text-sm font-bold uppercase text-neutral-800 flex justify-between">
-                              Extraction Model
-                              <span className="text-[10px] bg-neutral-200 px-2 py-0.5 border border-brutal-black">For Logic/Fact Extraction</span>
+                              {t('settings.memoryConfig.extractionModelLabel')}
+                              <span className="text-[10px] bg-neutral-200 px-2 py-0.5 border border-brutal-black">{t('settings.memoryConfig.extractionModelHint')}</span>
                             </label>
                             <BrutalSelect
                               value={selectedExtractionModel}
                               onChange={setSelectedExtractionModel}
                               options={[
-                                { value: '', label: 'Use heuristics (no LLM)' },
+                                { value: '', label: t('settings.memoryConfig.extractionModelHeuristics') },
                                 ...((backendConfig?.models || []).map((model: string) => ({ value: model, label: model })))
                               ]}
-                              placeholder="SELECT EXTRACTION MODEL..."
+                              placeholder={t('settings.memoryConfig.extractionModelPlaceholder')}
                               className="z-20"
                             />
                           </div>
@@ -451,17 +471,17 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                           {/* Embedding Model */}
                           <div className="space-y-2">
                             <label className="text-sm font-bold uppercase text-neutral-800 flex justify-between">
-                              Embedding Model
-                              <span className="text-[10px] bg-neutral-200 px-2 py-0.5 border border-brutal-black">For Vector Search</span>
+                              {t('settings.memoryConfig.embeddingModelLabel')}
+                              <span className="text-[10px] bg-neutral-200 px-2 py-0.5 border border-brutal-black">{t('settings.memoryConfig.embeddingModelHint')}</span>
                             </label>
                             <BrutalSelect
                               value={selectedEmbeddingModel}
                               onChange={setSelectedEmbeddingModel}
                               options={[
-                                { value: '', label: 'None (Default)' },
+                                { value: '', label: t('settings.memoryConfig.embeddingModelNoneDefault') },
                                 ...embeddingModels.map((model) => ({ value: model, label: model }))
                               ]}
-                              placeholder="SELECT EMBEDDING MODEL..."
+                              placeholder={t('settings.memoryConfig.embeddingModelPlaceholder')}
                               className="z-10"
                             />
                           </div>
@@ -473,7 +493,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                   {activeCategory === 'social' && (
                     <div className="space-y-6">
                       <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black">Social Channels</h2>
+                        <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black">{t('settings.social.title')}</h2>
                       </div>
 
                       <div className="bg-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
@@ -482,37 +502,37 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                           </div>
                           <div>
-                            <h3 className="text-xl font-bold uppercase">General Settings</h3>
-                            <p className="text-sm text-neutral-600 mt-1">Configure global settings for social interactions.</p>
+                            <h3 className="text-xl font-bold uppercase">{t('settings.social.generalTitle')}</h3>
+                            <p className="text-sm text-neutral-600 mt-1">{t('settings.social.generalDesc')}</p>
                           </div>
                         </div>
 
                         <div className="space-y-4">
                           <div className="space-y-2">
                             <label className="text-sm font-bold uppercase text-neutral-800">
-                              Social Model
+                              {t('settings.social.socialModelLabel')}
                             </label>
                             <BrutalSelect
                               value={socialConfig.model || ''}
                               onChange={(val) => setSocialConfig(prev => ({ ...prev, model: val }))}
                               options={[
-                                { value: '', label: 'Use Default System Model' },
+                                { value: '', label: t('settings.social.useDefaultSystemModel') },
                                 ...((backendConfig?.models || []).map((model: string) => ({ value: model, label: model })))
                               ]}
-                              placeholder="SELECT MODEL..."
+                              placeholder={t('settings.social.selectModelPlaceholder')}
                             />
                           </div>
 
                           <div className="space-y-2">
                             <label className="text-sm font-bold uppercase text-neutral-800">
-                              Global Allowed Users (comma separated IDs)
+                              {t('settings.social.globalAllowedUsers')}
                             </label>
                             <input
                               type="text"
                               className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
                               value={socialConfig.allowed_users.join(', ')}
                               onChange={(e) => setSocialConfig(prev => ({ ...prev, allowed_users: e.target.value.split(',').map(s => s.trim()).filter(Boolean) }))}
-                              placeholder="user123, 987654..."
+                              placeholder={t('settings.social.globalAllowedUsersPlaceholder')}
                             />
                           </div>
                         </div>
@@ -541,7 +561,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                                     ...prev,
                                     [key]: { ...platformConfig, enabled: checked }
                                   }))}
-                                  label="Enable"
+                                  label={t('settings.social.enableToggle')}
                                   className="mb-4"
                                 />
 
@@ -570,7 +590,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
 
                                 <div className="space-y-1 pt-2 border-t-2 border-dashed border-neutral-300">
                                   <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">
-                                    Allowed Users (Specific to {key})
+                                    {t('settings.social.allowedUsersSpecific', { platform: key })}
                                   </label>
                                   <input
                                     type="text"
@@ -582,7 +602,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                                         allowed_users: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
                                       }
                                     }))}
-                                    placeholder="user_id_1, user_id_2..."
+                                    placeholder={t('settings.social.allowedUsersPlaceholder')}
                                     className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
                                   />
                                 </div>

@@ -4,6 +4,7 @@ import { BrutalButton } from '../BrutalButton';
 import { useChatStore } from '../../hooks/useChatStore';
 import { FilePreview } from './FilePreview';
 import { isBinaryServedFile, isImageFile, isMarkdownFile, isCodeFile } from '../../lib/fileUtils';
+import { useI18n } from '../../i18n';
 import {
     FolderIcon,
     DocumentIcon,
@@ -44,6 +45,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
     externalFileName,
     onMaximize
 }) => {
+    const { t } = useI18n();
     const { currentChatId, config } = useChatStore();
     const [currentPath, setCurrentPath] = useState<string>('/persistence');
     const [items, setItems] = useState<FileItem[]>([]);
@@ -247,7 +249,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
     };
 
     if (!currentChatId) {
-        return <div className="text-xs font-mono p-4 text-center border-2 border-brutal-black m-2 bg-brutal-yellow">SELECT A CHAT</div>;
+        return <div className="text-xs font-mono p-4 text-center border-2 border-brutal-black m-2 bg-brutal-yellow">{t('sandbox.selectChat')}</div>;
     }
 
     // if (!config.sandbox_enabled) {
@@ -265,7 +267,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                 <div className="flex items-center gap-3 p-3 border-b-3 border-brutal-black bg-white shrink-0 sticky top-0 z-20 shadow-[0_2px_0_0_rgba(0,0,0,1)]">
                     <BrutalButton
                         onClick={handleBack}
-                        title="Back"
+                        title={t('sandbox.back')}
                         size="icon"
                     >
                         <ChevronLeftIcon className="w-5 h-5 stroke-2" />
@@ -280,7 +282,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                             variant="warning"
                             size="icon"
                             onClick={() => onMaximize(selectedFile, filename)}
-                            title="Maximize (full screen)"
+                            title={t('sandbox.maximize')}
                         >
                             <ArrowsPointingOutIcon className="w-5 h-5 stroke-2" />
                         </BrutalButton>
@@ -295,7 +297,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                         </div>
                     ) : error ? (
                         <div className="p-4 bg-red-100 border-2 border-brutal-black text-red-700 text-xs font-bold font-mono">
-                            ERROR: {error}
+                            {t('sandbox.errorPrefix')}{error}
                         </div>
                     ) : (
                         <div className="h-full">
@@ -320,21 +322,21 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                 <BrutalButton
                     onClick={() => fetchFiles(currentPath)}
                     className={loading ? 'animate-spin' : ''}
-                    title="Refresh"
+                    title={t('sandbox.refresh')}
                     size="icon"
                 >
                     <ArrowPathIcon className="w-4 h-4 stroke-2" />
                 </BrutalButton>
                 <BrutalButton
                     onClick={openCurrentInExplorer}
-                    title="Open in Explorer"
+                    title={t('sandbox.openInExplorer')}
                     size="icon"
                 >
                     <ArrowTopRightOnSquareIcon className="w-4 h-4 stroke-2" />
                 </BrutalButton>
                 <BrutalButton
                     onClick={handleUploadClick}
-                    title="Upload File"
+                    title={t('sandbox.uploadFile')}
                     size="icon"
                 >
                     <ArrowUpTrayIcon className="w-4 h-4 stroke-2" />
@@ -358,7 +360,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                 {loading && items.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full opacity-50 space-y-4">
                         <div className="animate-spin w-8 h-8 border-4 border-brutal-black border-t-neutral-400 rounded-full"></div>
-                        <span className="font-bold text-xs font-mono">SCANNING...</span>
+                        <span className="font-bold text-xs font-mono">{t('sandbox.scanning')}</span>
                     </div>
                 ) : error ? (
                     <div className="p-3 bg-red-100 border-2 border-brutal-black text-red-600 text-xs font-mono shadow-[4px_4px_0_0_#000]">
@@ -372,14 +374,14 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                                 className="flex items-center gap-3 p-3 bg-white border-2 border-brutal-black hover:bg-neutral-100 brutal-btn transition-all group text-left w-full"
                             >
                                 <ArrowUturnLeftIcon className="w-5 h-5 stroke-2" />
-                                <span className="font-bold text-xs font-mono uppercase">.. / UP</span>
+                                <span className="font-bold text-xs font-mono uppercase">{t('sandbox.up')}</span>
                             </button>
                         )}
 
                         {items.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-12 text-neutral-400 space-y-2 border-2 border-dashed border-neutral-300 m-2">
                                 <FolderIcon className="w-12 h-12 opacity-20" />
-                                <span className="text-xs font-mono font-bold">EMPTY DIRECTORY</span>
+                                <span className="text-xs font-mono font-bold">{t('sandbox.emptyDirectory')}</span>
                             </div>
                         ) : (
                             items.map((item, idx) => (
@@ -411,10 +413,10 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
 
             {/* Status Footer */}
             <div className="bg-white text-brutal-black p-2 flex justify-between items-center text-[10px] font-mono border-t-3 border-brutal-black select-none">
-                <span className="font-bold tracking-wider">{items.length} ITEMS</span>
+                <span className="font-bold tracking-wider">{t('sandbox.itemsCount', { count: items.length })}</span>
                 <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-none border border-black ${loading ? 'bg-neutral-400 animate-pulse' : 'bg-brutal-green'}`}></div>
-                    <span className="uppercase">{loading ? 'SYNCING' : 'READY'}</span>
+                    <span className="uppercase">{loading ? t('sandbox.status.syncing') : t('sandbox.status.ready')}</span>
                 </div>
             </div>
         </div>

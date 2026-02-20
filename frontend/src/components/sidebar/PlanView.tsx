@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Plan } from '../../types/api';
+import { useI18n } from '../../i18n';
 
 interface PlanViewProps {
   plan: Plan | null;
@@ -26,6 +27,7 @@ const formatTimestamp = (input?: string | null) => {
 };
 
 export const PlanView: React.FC<PlanViewProps> = ({ plan, currentPlan, snapshotPlan, plans, selectedPlanKey, onSelectPlan }) => {
+  const { t } = useI18n();
   const [isNewPlan, setIsNewPlan] = React.useState(false);
   const prevPlanKeyRef = React.useRef<string | null>(null);
 
@@ -57,20 +59,26 @@ export const PlanView: React.FC<PlanViewProps> = ({ plan, currentPlan, snapshotP
   const createdAtLabel = formatTimestamp(plan?.createdAt);
   const updatedAtLabel = formatTimestamp(plan?.updatedAt);
   const activeKey = plan ? (isSnapshot ? plan.versionKey : getPlanKey(plan)) : null;
+  const statusLabel = React.useCallback((status: string) => {
+    if (status === 'pending') return t('plan.status.pending');
+    if (status === 'in_progress') return t('plan.status.inProgress');
+    if (status === 'completed') return t('plan.status.completed');
+    return status;
+  }, [t]);
 
   return (
     <div className="space-y-4 relative z-0">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-brutal text-sm tracking-tight text-brutal-black uppercase">Plan Overview</h2>
+        <h2 className="font-brutal text-sm tracking-tight text-brutal-black uppercase">{t('plan.overviewTitle')}</h2>
       </div>
 
       {plan ? (
         <>
           <div className={`text-[10px] text-brutal-black font-bold uppercase space-y-0.5 ${isNewPlan ? 'animate-brutal-slide' : ''}`}>
-            <div>{isSnapshot ? 'LIVE SNAPSHOT' : plan.id != null ? `PLAN #${plan.id}` : 'PLAN'}</div>
-            {!isSnapshot && plan.versionKey && <div>· VERSION {plan.versionKey}</div>}
-            {createdAtLabel && <div>· CREATED {createdAtLabel}</div>}
-            {updatedAtLabel && <div>· UPDATED {updatedAtLabel}</div>}
+            <div>{isSnapshot ? t('plan.liveSnapshot') : plan.id != null ? t('plan.planNumber', { id: plan.id }) : t('plan.plan')}</div>
+            {!isSnapshot && plan.versionKey && <div>· {t('plan.version', { version: plan.versionKey })}</div>}
+            {createdAtLabel && <div>· {t('plan.created', { time: createdAtLabel })}</div>}
+            {updatedAtLabel && <div>· {t('plan.updated', { time: updatedAtLabel })}</div>}
           </div>
           <div className={`text-sm font-medium leading-snug text-brutal-black ${isNewPlan ? 'animate-brutal-drop' : ''}`}>
             {plan.objective}
@@ -82,7 +90,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ plan, currentPlan, snapshotP
             />
           </div>
           <div className={`text-[10px] text-brutal-black font-bold uppercase ${isNewPlan ? 'animate-brutal-slide' : ''}`}>
-            {completed}/{totalPhases} phases completed
+            {t('plan.phasesCompleted', { completed, total: totalPhases })}
           </div>
           <ul className="space-y-3 text-[11px]">
             {plan.phases.map((phase, index) => {
@@ -118,7 +126,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ plan, currentPlan, snapshotP
                       )}
                     </div>
                     <span className={`shrink-0 text-[9px] font-bold border-2 border-brutal-black px-1.5 py-0.5 bg-white text-brutal-black ${phase.status === 'in_progress' ? 'animate-pulse' : ''}`}>
-                      {phase.status.toUpperCase()}
+                      {statusLabel(phase.status)}
                     </span>
                   </div>
                   {phase.note && <div className={`mt-2 ${textColor} text-xs font-medium italic opacity-80 border-l-2 ${phase.status === 'in_progress' ? 'border-white' : 'border-brutal-black'} pl-2`}>{phase.note}</div>}
@@ -128,7 +136,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ plan, currentPlan, snapshotP
           </ul>
         </>
       ) : (
-        <div className="text-xs text-brutal-black font-bold uppercase">No plan loaded.</div>
+        <div className="text-xs text-brutal-black font-bold uppercase">{t('plan.empty')}</div>
       )}
 
     </div>

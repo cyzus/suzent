@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Plan } from '../types/api';
+import { useI18n } from '../i18n';
 
 interface PlanProgressProps {
     plan: Plan | null;
@@ -13,13 +14,14 @@ interface PlanProgressProps {
 const getPlanKey = (plan: Plan) => (plan.id != null ? `plan:${plan.id}` : plan.versionKey);
 
 export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onToggleDock, isExpanded, onToggleExpand, isSidebarOpen }) => {
+    const { t } = useI18n();
 
     if (!plan && !isDocked) {
         return null;
     }
 
     if (!plan) {
-        return <div className="text-xs text-neutral-500 italic p-4 text-center">No active plan.</div>;
+        return <div className="text-xs text-neutral-500 italic p-4 text-center">{t('planProgress.noActivePlan')}</div>;
     }
 
     const completed = plan.phases.filter(phase => phase.status === 'completed').length;
@@ -46,9 +48,9 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
                 {/* Compact Header Info */}
                 <div className="text-[10px] text-brutal-black font-bold uppercase border-b border-brutal-black pb-2">
                     <div className="flex flex-wrap gap-x-2 opacity-70">
-                        <span>{plan.id != null ? `PLAN #${plan.id}` : 'PLAN'}</span>
+                        <span>{plan.id != null ? t('plan.planNumber', { id: plan.id }) : t('plan.plan')}</span>
                         {plan.versionKey && !plan.versionKey.startsWith('snapshot:') && <span>· v{plan.versionKey}</span>}
-                        {plan.updatedAt && <span>· UPDATED {formatTimestamp(plan.updatedAt)}</span>}
+                        {plan.updatedAt && <span>· {t('plan.updated', { time: formatTimestamp(plan.updatedAt) })}</span>}
                     </div>
                     <div className="mt-1 text-sm font-black leading-tight">
                         {plan.objective}
@@ -58,7 +60,7 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
                 {/* Progress Bar */}
                 <div className="space-y-1">
                     <div className="flex justify-between text-[10px] font-bold uppercase">
-                        <span>Progress</span>
+                        <span>{t('planProgress.progress')}</span>
                         <span>{Math.round(progress * 100)}%</span>
                     </div>
                     <div className="w-full h-2 bg-neutral-200 border border-brutal-black overflow-hidden relative">
@@ -150,11 +152,11 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
 
                         <div className="flex flex-col">
                             <span className="font-brutal font-bold uppercase text-xs tracking-wider whitespace-nowrap">
-                                Task Progress {completed}/{totalPhases}
+                                {t('planProgress.taskProgress', { completed, total: totalPhases })}
                             </span>
                             {!isExpanded && !isDocked && activePhase && (
                                 <span className="text-[10px] font-bold truncate text-neutral-600">
-                                    Current: {activePhase.title || activePhase.description}
+                                    {t('planProgress.current', { title: activePhase.title || activePhase.description })}
                                 </span>
                             )}
                         </div>
@@ -166,7 +168,7 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
                     <button
                         onClick={onToggleDock}
                         className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black hover:bg-neutral-200 transition-colors bg-white text-brutal-black"
-                        title={isDocked || isSidebarOpen ? "Close Sidebar" : "Open Sidebar"}
+                        title={isDocked || isSidebarOpen ? t('sidebar.close') : t('sidebar.open')}
                     >
                         {isDocked || isSidebarOpen ? (
                             /* Point Right (Close/Push Right) */
@@ -236,7 +238,7 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
                                     {phase.status === 'in_progress' && (
                                         <div className="shrink-0">
                                             <span className="text-[9px] font-bold bg-brutal-blue text-white px-1.5 py-0.5 border border-brutal-blue rounded-full animate-pulse">
-                                                ACTIVE
+                                                {t('planProgress.active')}
                                             </span>
                                         </div>
                                     )}

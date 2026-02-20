@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import type { CoreMemoryLabel } from '../../types/memory';
+import { useI18n } from '../../i18n';
 
 interface CoreMemoryBlockProps {
   label: CoreMemoryLabel;
@@ -13,45 +14,13 @@ interface CoreMemoryBlockProps {
   maxLength?: number;
 }
 
-// Default labels with descriptions (can be extended dynamically)
-const DEFAULT_LABEL_INFO: Record<string, { title: string; description: string }> = {
-  persona: {
-    title: 'Persona',
-    description: 'Your identity, role, and capabilities',
-  },
-  user: {
-    title: 'User',
-    description: 'Information about the current user',
-  },
-  facts: {
-    title: 'Facts',
-    description: 'Key facts to always remember',
-  },
-  context: {
-    title: 'Context',
-    description: 'Current session context and goals',
-  },
-};
-
-// Helper to get label info with fallback for unknown labels
-const getLabelInfo = (label: string): { title: string; description: string } => {
-  if (DEFAULT_LABEL_INFO[label]) {
-    return DEFAULT_LABEL_INFO[label];
-  }
-  // Fallback for unknown labels - capitalize first letter
-  const title = label.charAt(0).toUpperCase() + label.slice(1);
-  return {
-    title,
-    description: `Custom memory block: ${title}`,
-  };
-};
-
 export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
   label,
   content,
   onUpdate,
   maxLength = 2048,
 }) => {
+  const { t } = useI18n();
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(content);
   const [isSaving, setIsSaving] = useState(false);
@@ -101,7 +70,13 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const { title, description } = getLabelInfo(label);
+  const titleKey = `coreMemory.labels.${label}.title`;
+  const descKey = `coreMemory.labels.${label}.desc`;
+  const titleCandidate = t(titleKey);
+  const descCandidate = t(descKey);
+  const fallbackTitle = label.charAt(0).toUpperCase() + label.slice(1);
+  const title = titleCandidate === titleKey ? fallbackTitle : titleCandidate;
+  const description = descCandidate === descKey ? '' : descCandidate;
   const characterCount = editContent.length;
   const isOverLimit = characterCount > maxLength;
   const usagePercent = (characterCount / maxLength) * 100;
@@ -123,7 +98,7 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
             </h3>
             {hasUnsavedChanges && isEditing && (
               <span className="px-2 py-0.5 border-2 border-brutal-black bg-brutal-black text-white text-xs font-bold uppercase animate-brutal-blink">
-                Unsaved
+                {t('common.unsaved')}
               </span>
             )}
           </div>
@@ -136,13 +111,13 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
                 onClick={handleCopy}
                 className="px-3 py-1 border-2 border-brutal-black bg-white hover:bg-neutral-100 brutal-btn shadow-[2px_2px_0_0_#000000] font-bold text-xs uppercase transition-all"
               >
-                {copied ? '✓ Copied' : 'Copy'}
+                {copied ? `✓ ${t('common.copied')}` : t('common.copy')}
               </button>
               <button
                 onClick={() => setIsEditing(true)}
                 className="px-3 py-1 border-2 border-brutal-black bg-white hover:bg-neutral-100 brutal-btn shadow-[2px_2px_0_0_#000000] font-bold text-xs uppercase transition-all"
               >
-                Edit
+                {t('common.edit')}
               </button>
             </>
           ) : (
@@ -152,14 +127,14 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
                 disabled={isSaving}
                 className="px-3 py-1 border-2 border-brutal-black bg-white hover:bg-neutral-100 brutal-btn shadow-[2px_2px_0_0_#000000] font-bold text-xs uppercase transition-all disabled:opacity-50"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 onClick={handleSave}
                 disabled={isSaving || isOverLimit || !hasUnsavedChanges}
                 className="px-3 py-1 border-2 border-brutal-black bg-brutal-black text-brutal-white hover:bg-neutral-800 brutal-btn shadow-[2px_2px_0_0_#000000] font-bold text-xs uppercase transition-all disabled:opacity-50"
               >
-                {isSaving ? 'Saving...' : 'Save'}
+                {isSaving ? t('common.saving') : t('common.save')}
               </button>
             </>
           )}
@@ -170,7 +145,7 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
         <div className="mb-3 p-3 border-3 border-brutal-black bg-white text-brutal-black text-sm flex items-start gap-2">
           <span className="text-lg">⚠️</span>
           <div>
-            <p className="font-bold text-brutal-black">Save Failed</p>
+            <p className="font-bold text-brutal-black">{t('coreMemory.saveFailed')}</p>
             <p className="text-xs mt-1">{error}</p>
           </div>
         </div>
@@ -191,7 +166,7 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
               : 'border-brutal-black focus:ring-brutal-black'
               }`}
             style={{ backgroundColor: '#ffffff', color: '#000000' }}
-            placeholder={`Enter ${title.toLowerCase()}...`}
+            placeholder={t('coreMemory.placeholder', { title })}
             autoFocus
             onFocus={(e) => {
               e.target.style.height = 'auto';
@@ -203,10 +178,10 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
           <div className="mt-2">
             <div className="flex items-center justify-between text-xs mb-1">
               <span className={isOverLimit ? 'text-brutal-black font-bold' : 'text-neutral-500'}>
-                {characterCount} / {maxLength} characters
-                {isOverLimit && ' ⚠️ Over limit!'}
+                {t('coreMemory.charactersOfMax', { current: characterCount, max: maxLength })}
+                {isOverLimit && ` ⚠️ ${t('coreMemory.overLimit')}`}
               </span>
-              <span className="text-neutral-500">{usagePercent.toFixed(0)}% used</span>
+              <span className="text-neutral-500">{t('coreMemory.usedPercent', { percent: usagePercent.toFixed(0) })}</span>
             </div>
             <div className="h-1.5 bg-white border-3 border-brutal-black">
               <div
@@ -225,15 +200,15 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
             {content || (
               <span className="text-neutral-400 italic flex items-center gap-2">
                 <span>📝</span>
-                No content yet - click Edit to add
+                {t('coreMemory.noContent')}
               </span>
             )}
           </pre>
           {content && (
             <div className="text-xs text-neutral-500 mt-2 flex items-center gap-3">
-              <span>{characterCount} characters</span>
+              <span>{t('coreMemory.charactersCount', { count: characterCount })}</span>
               <span>•</span>
-              <span>{Math.ceil(characterCount / 5)} words (approx)</span>
+              <span>{t('coreMemory.wordsApprox', { count: Math.ceil(characterCount / 5) })}</span>
             </div>
           )}
         </div>

@@ -5,6 +5,7 @@ import rehypePrism from 'rehype-prism-plus';
 import { CodeBlockComponent } from './CodeBlockComponent';
 import { ClickableContent } from '../ClickableContent';
 import { DocumentTextIcon } from '@heroicons/react/24/outline';
+import { useI18n } from '../../i18n';
 
 const ALLOWED_LANGUAGES = new Set([
   'python', 'javascript', 'typescript', 'java', 'cpp', 'c', 'go', 'rust', 'sql',
@@ -23,8 +24,9 @@ interface MarkdownRendererProps {
 const FileButton: React.FC<{
   path: string;
   displayName: string;
+  title: string;
   onFileClick: (path: string, fileName: string, shiftKey?: boolean) => void;
-}> = ({ path, displayName, onFileClick }) => {
+}> = ({ path, displayName, title, onFileClick }) => {
   const fileName = path.split('/').pop() || displayName;
 
   return (
@@ -35,7 +37,7 @@ const FileButton: React.FC<{
         onFileClick(path, fileName, e.shiftKey);
       }}
       className="inline-flex items-center gap-1 bg-brutal-yellow border-2 border-brutal-black px-2 py-0.5 font-mono text-xs font-bold text-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn transition-all cursor-pointer"
-      title={`Click to view ${path} (Shift+Click for full screen)`}
+      title={title}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
@@ -52,6 +54,7 @@ const FileButton: React.FC<{
 };
 
 export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, onFileClick }) => {
+  const { t } = useI18n();
   const RM: any = ReactMarkdown;
 
   // Normalize content
@@ -140,14 +143,14 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
               const fileLinkMatch = codeContent.match(/^\[([^\]]+)\]\(file:\/\/([^\)]+)\)$/);
               if (fileLinkMatch) {
                 const [, displayName, path] = fileLinkMatch;
-                return <FileButton path={path} displayName={displayName} onFileClick={onFileClick} />;
+                return <FileButton path={path} displayName={displayName} title={t('fileLink.clickToView', { path })} onFileClick={onFileClick} />;
               }
 
               // Pattern 2: Plain absolute path in backticks: `/persistence/file.txt`
               const absolutePathMatch = codeContent.match(/^\/[\w\-./]+\.\w{2,5}$/);
               if (absolutePathMatch) {
                 const path = codeContent.trim();
-                return <FileButton path={path} displayName={path} onFileClick={onFileClick} />;
+                return <FileButton path={path} displayName={path} title={t('fileLink.clickToView', { path })} onFileClick={onFileClick} />;
               }
             }
 
@@ -170,7 +173,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
             // Handle file:// links and absolute paths as clickable file buttons
             if (onFileClick && (hrefStr.startsWith('file://') || hrefStr.startsWith('/persistence/') || hrefStr.startsWith('/mnt/'))) {
               const path = hrefStr.startsWith('file://') ? hrefStr.replace('file://', '') : hrefStr;
-              return <FileButton path={path} displayName={String(children)} onFileClick={onFileClick} />;
+              return <FileButton path={path} displayName={String(children)} title={t('fileLink.clickToView', { path })} onFileClick={onFileClick} />;
             }
 
             // Regular external links

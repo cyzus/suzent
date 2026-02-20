@@ -10,8 +10,10 @@ import { CoreMemoryBlock } from './CoreMemoryBlock';
 import { ArchivalMemoryList } from './ArchivalMemoryList';
 import { MemoryStatsComponent } from './MemoryStats';
 import type { CoreMemoryLabel } from '../../types/memory';
+import { useI18n } from '../../i18n';
 
 export const MemoryView: React.FC = () => {
+  const { t } = useI18n();
   const {
     coreMemory,
     coreMemoryLoading,
@@ -47,20 +49,20 @@ export const MemoryView: React.FC = () => {
         <div className="max-w-md w-full space-y-4">
           <div className="border-3 border-brutal-black bg-white p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
             <h2 className="font-brutal text-2xl uppercase mb-4 animate-pulse">
-              Initializing Memory System...
+              {t('memoryView.initializing')}
             </h2>
             <div className="space-y-2 font-mono text-xs text-brutal-black">
               <div className="flex justify-between">
-                <span>{'>'} CONNECTING_TO_CORE</span>
-                <span>[OK]</span>
+                <span>{'>'} {t('memoryView.connectingToCore')}</span>
+                <span>{`[${t('common.ok')}]`}</span>
               </div>
               <div className="flex justify-between">
-                <span>{'>'} LOADING_VECTORS</span>
+                <span>{'>'} {t('memoryView.loadingVectors')}</span>
                 <span className="animate-pulse">...</span>
               </div>
               <div className="flex justify-between opacity-50">
-                <span>{'>'} INDEXING_ARCHIVES</span>
-                <span>WAITING</span>
+                <span>{'>'} {t('memoryView.indexingArchives')}</span>
+                <span>{t('memoryView.waiting')}</span>
               </div>
             </div>
             <div className="mt-6 h-4 border-2 border-brutal-black p-0.5">
@@ -79,13 +81,13 @@ export const MemoryView: React.FC = () => {
           <div className="flex items-start gap-4">
             <span className="text-4xl">⚠️</span>
             <div className="flex-1">
-              <h3 className="font-brutal text-xl text-brutal-red mb-2 uppercase">System Error</h3>
+              <h3 className="font-brutal text-xl text-brutal-red mb-2 uppercase">{t('memoryView.systemError')}</h3>
               <p className="text-brutal-black font-mono text-sm mb-4">{coreMemoryError}</p>
               <button
                 onClick={() => loadCoreMemory()}
                 className="px-6 py-2 border-3 border-brutal-black bg-white hover:bg-neutral-100 font-bold uppercase shadow-[2px_2px_0_0_#000] brutal-btn transition-all"
               >
-                🔄 Retry Connection
+                🔄 {t('memoryView.retryConnection')}
               </button>
             </div>
           </div>
@@ -107,10 +109,10 @@ export const MemoryView: React.FC = () => {
           <div className="flex items-center justify-between bg-brutal-black text-white p-3 border-3 border-brutal-black">
             <div>
               <h3 className="font-brutal text-xl uppercase tracking-tight">
-                Core Memory
+                {t('memoryView.coreMemoryTitle')}
               </h3>
               <p className="text-xs text-neutral-300 font-mono">
-                READ_WRITE_ACCESS
+                {t('memoryView.coreMemoryDesc')}
               </p>
             </div>
             <button
@@ -141,10 +143,10 @@ export const MemoryView: React.FC = () => {
         <div className="xl:col-span-7 space-y-4">
           <div className="bg-white p-1 border-b-3 border-brutal-black mb-2">
             <h3 className="font-brutal text-xl uppercase tracking-tight text-brutal-black">
-              Archival Database
+              {t('memoryView.archivalTitle')}
             </h3>
             <p className="text-xs text-neutral-600 font-mono">
-              READ_ONLY_SEARCH_INDEX
+              {t('memoryView.archivalDesc')}
             </p>
           </div>
           <ArchivalMemoryList />

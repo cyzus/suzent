@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useI18n } from '../i18n';
 
 interface Option {
     value: string;
@@ -25,14 +26,15 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
     onChange,
     options,
     label,
-    placeholder = 'SELECT TOOLS...',
+    placeholder,
     dropUp = false,
     className = '',
     dropdownClassName = '',
     variant = 'dropdown',
-    emptyMessage = 'No Options',
+    emptyMessage,
     emptyAction,
 }) => {
+    const { t } = useI18n();
     const [isOpen, setIsOpen] = useState(false);
     const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -43,6 +45,8 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
     const normalizedOptions: Option[] = options.map(opt =>
         typeof opt === 'string' ? { value: opt, label: opt } : opt
     );
+    const resolvedPlaceholder = placeholder ?? t('multiSelect.placeholder');
+    const resolvedEmptyMessage = emptyMessage ?? t('multiSelect.emptyMessage');
 
     // Auto-flip determination
     const [effectiveDropUp, setEffectiveDropUp] = useState(dropUp);
@@ -137,7 +141,7 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
                 <div className={`flex flex-col gap-2 w-full bg-neutral-50 border-2 border-brutal-black p-2 max-h-60 overflow-y-auto scrollbar-thin ${dropdownClassName}`}>
                     {normalizedOptions.length === 0 && (
                         <div className="text-center py-8 text-neutral-500 font-bold uppercase text-xs">
-                            {emptyMessage}
+                            {resolvedEmptyMessage}
                             {emptyAction && <div className="mt-2">{emptyAction}</div>}
                         </div>
                     )}
@@ -167,7 +171,7 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
 
     const selectedCount = value.length;
     const displayLabel = selectedCount === 0
-        ? placeholder
+        ? resolvedPlaceholder
         : selectedCount === 1
             ? normalizedOptions.find(o => o.value === value[0])?.label || value[0]
             : `${selectedCount} ITEMS SELECTED`;
@@ -184,7 +188,7 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
             }}
         >
             {normalizedOptions.length === 0 && (
-                <div className="p-3 text-xs text-neutral-500 font-bold uppercase text-center">{emptyMessage}</div>
+                <div className="p-3 text-xs text-neutral-500 font-bold uppercase text-center">{resolvedEmptyMessage}</div>
             )}
             {normalizedOptions.map((option) => {
                 const isSelected = value.includes(option.value);

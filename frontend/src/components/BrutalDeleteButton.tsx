@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from '../i18n';
 
 interface BrutalDeleteButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
     isActive?: boolean;
@@ -7,8 +8,11 @@ interface BrutalDeleteButtonProps extends React.ButtonHTMLAttributes<HTMLButtonE
 export const BrutalDeleteButton: React.FC<BrutalDeleteButtonProps> = ({
     isActive = false,
     className = '',
+    title,
     ...props
 }) => {
+    const { t } = useI18n();
+    const resolvedTitle = title ?? t('deleteOverlay.buttonTitle');
     return (
         <button
             type="button"
@@ -22,7 +26,7 @@ export const BrutalDeleteButton: React.FC<BrutalDeleteButtonProps> = ({
                 }
         ${className}
       `}
-            title="Delete"
+            title={resolvedTitle}
             {...props}
         >
             <svg

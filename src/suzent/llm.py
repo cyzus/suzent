@@ -6,6 +6,7 @@ Provides unified interface for:
 - LLM completions (for fact extraction, etc.)
 """
 
+import os
 from typing import List, Dict, Any, Optional, Type, TypeVar
 import litellm
 from pydantic import BaseModel
@@ -20,6 +21,26 @@ litellm.drop_params = True
 
 # Type variable for Pydantic models
 T = TypeVar("T", bound=BaseModel)
+
+
+def _normalize_deepseek_base_url(url: str) -> str:
+    normalized = url.strip().rstrip("/")
+    if normalized in {"https://api.deepseek.com", "http://api.deepseek.com"}:
+        return f"{normalized}/v1"
+    return normalized
+
+
+def _litellm_model_and_kwargs(model: str) -> tuple[str, dict]:
+    if model and model.startswith("deepseek/"):
+        base_url = os.environ.get("DEEPSEEK_API_BASE")
+        api_key = os.environ.get("DEEPSEEK_API_KEY")
+        kwargs: dict[str, Any] = {"custom_llm_provider": "deepseek"}
+        if base_url:
+            kwargs["base_url"] = _normalize_deepseek_base_url(base_url)
+        if api_key:
+            kwargs["api_key"] = api_key
+        return model.removeprefix("deepseek/"), kwargs
+    return model, {}
 
 
 class EmbeddingGenerator:
@@ -51,7 +72,10 @@ class EmbeddingGenerator:
             return [0.0] * self.dimension
 
         try:
-            response = await litellm.aembedding(model=self.model, input=text)
+            model, extra_kwargs = _litellm_model_and_kwargs(self.model)
+            response = await litellm.aembedding(
+                model=model, input=text, **extra_kwargs
+            )
 
             embedding = response.data[0]["embedding"]
 
@@ -96,7 +120,10 @@ class EmbeddingGenerator:
             batch = texts[i : i + batch_size]
 
             try:
-                response = await litellm.aembedding(model=self.model, input=batch)
+                model, extra_kwargs = _litellm_model_and_kwargs(self.model)
+                response = await litellm.aembedding(
+                    model=model, input=batch, **extra_kwargs
+                )
 
                 batch_embeddings = [item["embedding"] for item in response.data]
                 all_embeddings.extend(batch_embeddings)
@@ -147,12 +174,14 @@ class LLMClient:
         messages.append({"role": "user", "content": prompt})
 
         try:
+            model, extra_kwargs = _litellm_model_and_kwargs(self.model)
             response = await litellm.acompletion(
-                model=self.model,
+                model=model,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 response_format=response_format,
+                **extra_kwargs,
             )
 
             return response.choices[0].message.content
@@ -193,14 +222,16 @@ class LLMClient:
         messages.append({"role": "user", "content": prompt})
 
         try:
+            model, extra_kwargs = _litellm_model_and_kwargs(self.model)
             # Use Pydantic model directly as response_format
             # LiteLLM converts this to json_schema format automatically
             response = await litellm.acompletion(
-                model=self.model,
+                model=model,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 response_format=response_model,
+                **extra_kwargs,
             )
 
             content = response.choices[0].message.content

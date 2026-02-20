@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 
+import { useI18n } from '../../i18n';
 import { useChatStore } from '../../hooks/useChatStore';
 import { addMcpServer, fetchMcpServers, removeMcpServer, setMcpServerEnabled } from '../../lib/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
@@ -25,6 +26,7 @@ type MCPStdioServer = {
 type MCPServer = MCPUrlServer | MCPStdioServer;
 
 export function ConfigView(): React.ReactElement {
+  const { t } = useI18n();
   const { config, setConfig, backendConfig } = useChatStore();
 
   const [servers, setServers] = useState<MCPServer[]>([]);
@@ -191,14 +193,14 @@ export function ConfigView(): React.ReactElement {
 
 
   if (!backendConfig) {
-    return <div className="text-xs text-brutal-black font-bold uppercase animate-brutal-blink">Loading config...</div>;
+    return <div className="text-xs text-brutal-black font-bold uppercase animate-brutal-blink">{t('config.loading')}</div>;
   }
 
   return (
     <div className="space-y-6 text-xs">
 
       <div className="space-y-1">
-        <label className="block font-bold tracking-wide text-brutal-black uppercase">Agent</label>
+        <label className="block font-bold tracking-wide text-brutal-black uppercase">{t('config.agentLabel')}</label>
         <BrutalSelect
           value={config.agent}
           onChange={val => update({ agent: val })}
@@ -206,15 +208,15 @@ export function ConfigView(): React.ReactElement {
         />
         <div className="text-xs text-brutal-black mt-1 leading-relaxed font-medium">
           {config.agent === 'CodeAgent' && (
-            <span>📝 Writes and executes Python code</span>
+            <span>{t('config.agent.code')}</span>
           )}
           {config.agent === 'ToolcallingAgent' && (
-            <span>🔧 Direct tool calling without code</span>
+            <span>{t('config.agent.toolcalling')}</span>
           )}
         </div>
       </div>
       <div className="space-y-2">
-        <label className="block font-bold tracking-wide text-brutal-black uppercase">Tools</label>
+        <label className="block font-bold tracking-wide text-brutal-black uppercase">{t('config.toolsLabel')}</label>
         <BrutalMultiSelect
           variant="list"
           value={config.tools || []}
@@ -226,11 +228,11 @@ export function ConfigView(): React.ReactElement {
               label: tool.replace(/Tool$/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase()
             }))
           }
-          emptyMessage="No tools available"
+          emptyMessage={t('config.toolsEmpty')}
         />
       </div>
       <div className="space-y-2">
-        <label className="block font-bold tracking-wide text-brutal-black uppercase">Memory System</label>
+        <label className="block font-bold tracking-wide text-brutal-black uppercase">{t('config.memory.label')}</label>
         <button
           type="button"
           onClick={() => update({ memory_enabled: !config.memory_enabled })}
@@ -239,19 +241,19 @@ export function ConfigView(): React.ReactElement {
             : 'border-brutal-black text-brutal-black bg-white hover:bg-brutal-yellow hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
             }`}
         >
-          <span>🧠 Memory Tools</span>
+          <span>{t('config.memory.button')}</span>
           <span className={`text-[10px] px-2 py-1 border-2 font-bold ${config.memory_enabled
             ? 'border-brutal-black bg-white text-brutal-black'
             : 'border-brutal-black bg-neutral-200 text-brutal-black'
             }`}>
-            {config.memory_enabled ? 'ENABLED' : 'DISABLED'}
+            {config.memory_enabled ? t('common.enabled') : t('common.disabled')}
           </span>
         </button>
         <div className="text-[11px] text-brutal-black font-medium leading-relaxed">
           {config.memory_enabled ? (
-            <span>✓ Agent can search and update memory</span>
+            <span>{t('config.memory.enabledDesc')}</span>
           ) : (
-            <span>Memory tools are disabled</span>
+            <span>{t('config.memory.disabledDesc')}</span>
           )}
         </div>
       </div>
@@ -259,7 +261,7 @@ export function ConfigView(): React.ReactElement {
 
 
       <div className="space-y-2">
-        <label className="block font-bold tracking-wide text-brutal-black uppercase">Sandbox System</label>
+        <label className="block font-bold tracking-wide text-brutal-black uppercase">{t('config.sandbox.label')}</label>
         <button
           type="button"
           onClick={() => update({ sandbox_enabled: !config.sandbox_enabled })}
@@ -268,36 +270,36 @@ export function ConfigView(): React.ReactElement {
             : 'border-brutal-black text-brutal-black bg-white hover:bg-brutal-yellow hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
             }`}
         >
-          <span>📦 Sandbox Execution</span>
+          <span>{t('config.sandbox.button')}</span>
           <span className={`text-[10px] px-2 py-1 border-2 font-bold ${config.sandbox_enabled
             ? 'border-brutal-black bg-white text-brutal-black'
             : 'border-brutal-black bg-neutral-200 text-brutal-black'
             }`}>
-            {config.sandbox_enabled ? 'ENABLED' : 'DISABLED'}
+            {config.sandbox_enabled ? t('common.enabled') : t('common.disabled')}
           </span>
         </button>
         <div className="text-[11px] text-brutal-black font-medium leading-relaxed">
           {config.sandbox_enabled ? (
-            <span>✓ Agent can run code in isolated sandbox</span>
+            <span>{t('config.sandbox.enabledDesc')}</span>
           ) : (
-            <span>Sandbox execution is disabled</span>
+            <span>{t('config.sandbox.disabledDesc')}</span>
           )}
         </div>
       </div>
 
       <div className="space-y-2">
-        <div className="text-[10px] font-bold uppercase text-brutal-black">Volume Mounts</div>
+        <div className="text-[10px] font-bold uppercase text-brutal-black">{t('config.volumeMounts.label')}</div>
 
         {/* Global volumes from config file (read-only) */}
         {backendConfig?.globalSandboxVolumes && backendConfig.globalSandboxVolumes.length > 0 && (
           <div className="space-y-1">
-            <div className="text-[9px] font-bold uppercase text-brutal-black opacity-60">Global (from config.yaml)</div>
+            <div className="text-[9px] font-bold uppercase text-brutal-black opacity-60">{t('config.volumeMounts.globalFromConfig')}</div>
             <ul className="space-y-1">
               {backendConfig.globalSandboxVolumes.map((vol: string, idx: number) => (
                 <li key={`global-${idx}`} className="flex items-center gap-2 bg-brutal-yellow border-3 border-brutal-black px-2 py-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                   <span className="flex-1 font-mono text-xs font-bold truncate" title={vol}>{vol}</span>
                   <span className="text-[9px] font-bold uppercase bg-brutal-black text-white px-1.5 py-0.5 border-2 border-brutal-black">
-                    🌍 Global
+                    🌍 {t('config.volumeMounts.globalBadge')}
                   </span>
                 </li>
               ))}
@@ -307,12 +309,12 @@ export function ConfigView(): React.ReactElement {
 
         {/* Per-chat volumes (editable) */}
         <div className="space-y-2">
-          <div className="text-[9px] font-bold uppercase text-brutal-black opacity-60">Per-Chat (this chat only)</div>
+          <div className="text-[9px] font-bold uppercase text-brutal-black opacity-60">{t('config.volumeMounts.perChat')}</div>
 
           <div className="flex flex-col gap-2 p-2 border-2 border-brutal-black bg-neutral-50">
             <div className="flex flex-col gap-2 p-2 border-2 border-brutal-black bg-neutral-50">
               <div className="text-[10px] text-brutal-black opacity-60 italic">
-                Manage volumes from the chat input "Folder" button.
+                {t('config.volumeMounts.manageFromFolder')}
               </div>
             </div>
           </div>
@@ -330,7 +332,7 @@ export function ConfigView(): React.ReactElement {
                       update({ sandbox_volumes: current.filter((_: string, i: number) => i !== idx) });
                     }}
                     className="text-white bg-brutal-red border-2 border-brutal-black text-xs font-bold px-1.5 py-0.5 hover:bg-red-600 transition-colors"
-                    title="Remove"
+                    title={t('common.remove')}
                   >
                     ×
                   </button>
@@ -341,26 +343,26 @@ export function ConfigView(): React.ReactElement {
         </div>
       </div>
       <div className="space-y-2">
-        <label className="block font-bold tracking-wide text-brutal-black uppercase">MCP Servers</label>
+        <label className="block font-bold tracking-wide text-brutal-black uppercase">{t('config.mcp.label')}</label>
         <div className="space-y-2">
           <div className="flex gap-2 flex-wrap items-start">
             <BrutalSelect
               value={addType}
               onChange={val => setAddType(val as 'url' | 'stdio')}
-              options={[{ value: 'url', label: 'URL' }, { value: 'stdio', label: 'Stdio' }]}
+              options={[{ value: 'url', label: t('config.mcp.url') }, { value: 'stdio', label: t('config.mcp.stdio') }]}
               className="w-24"
             />
             <input
               value={srvName}
               onChange={e => setSrvName(e.target.value)}
-              placeholder="Name"
+              placeholder={t('config.mcp.name')}
               className="w-28 shrink-0 bg-white border-3 border-brutal-black px-2 py-1 font-mono font-bold text-xs placeholder:opacity-40 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-shadow"
             />
             {addType === 'url' ? (
               <input
                 value={srvUrl}
                 onChange={e => setSrvUrl(e.target.value)}
-                placeholder="https://host/path"
+                placeholder={t('config.mcp.urlPlaceholder')}
                 className="flex-1 min-w-[140px] bg-white border-3 border-brutal-black px-2 py-1 font-mono font-bold text-xs placeholder:opacity-40 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-shadow"
               />
             ) : (
@@ -368,28 +370,28 @@ export function ConfigView(): React.ReactElement {
                 <input
                   value={stdioCmd}
                   onChange={e => setStdioCmd(e.target.value)}
-                  placeholder="command"
+                  placeholder={t('config.mcp.commandPlaceholder')}
                   className="w-36 bg-white border-3 border-brutal-black px-2 py-1 font-mono font-bold text-xs placeholder:opacity-40 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-shadow"
                 />
                 <input
                   value={stdioArgs}
                   onChange={e => setStdioArgs(e.target.value)}
-                  placeholder="args"
+                  placeholder={t('config.mcp.argsPlaceholder')}
                   className="w-36 bg-white border-3 border-brutal-black px-2 py-1 font-mono font-bold text-xs placeholder:opacity-40 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-shadow"
                 />
                 <input
                   value={stdioEnv}
                   onChange={e => setStdioEnv(e.target.value)}
-                  placeholder="env"
+                  placeholder={t('config.mcp.envPlaceholder')}
                   className="w-36 bg-white border-3 border-brutal-black px-2 py-1 font-mono font-bold text-xs placeholder:opacity-40 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-shadow"
                 />
               </>
             )}
-            <button type="button" onClick={addServer} className="shrink-0 px-3 py-1 bg-brutal-green border-3 border-brutal-black text-brutal-black text-xs font-bold uppercase disabled:opacity-50 brutal-btn transition-all" disabled={addType === 'url' ? !srvUrl : !stdioCmd}>Add</button>
+            <button type="button" onClick={addServer} className="shrink-0 px-3 py-1 bg-brutal-green border-3 border-brutal-black text-brutal-black text-xs font-bold uppercase disabled:opacity-50 brutal-btn transition-all" disabled={addType === 'url' ? !srvUrl : !stdioCmd}>{t('common.add')}</button>
           </div>
           {servers.length === 0 && (
             <div className="text-[11px] text-brutal-black font-bold uppercase">
-              <span>No MCP servers configured.</span>
+              <span>{t('config.mcp.noneConfigured')}</span>
             </div>
           )}
           <ul
@@ -398,11 +400,11 @@ export function ConfigView(): React.ReactElement {
           >
             {servers.map((s, idx) => (
               <li key={s.name} className="flex items-center gap-2 bg-white border-3 border-brutal-black px-2 py-1 group shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn transition-transform animate-brutal-drop" style={{ animationDelay: `${idx * 0.05}s` }}>
-                <input aria-label="Enable server" type="checkbox" checked={s.enabled} onChange={() => toggleServer(s.name)} disabled={loading} className="w-4 h-4 border-2 border-brutal-black accent-brutal-black" />
+                <input aria-label={t('config.mcp.enableServer')} type="checkbox" checked={s.enabled} onChange={() => toggleServer(s.name)} disabled={loading} className="w-4 h-4 border-2 border-brutal-black accent-brutal-black" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <div className="truncate font-bold text-brutal-black text-xs" title={s.name}>{s.name}</div>
-                    <span className={`text-[10px] px-1.5 py-0.5 border-2 font-bold uppercase ${s.enabled ? 'border-brutal-black bg-brutal-green text-brutal-black' : 'border-brutal-black bg-neutral-200 text-brutal-black'}`}>{s.enabled ? 'ON' : 'OFF'}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 border-2 font-bold uppercase ${s.enabled ? 'border-brutal-black bg-brutal-green text-brutal-black' : 'border-brutal-black bg-neutral-200 text-brutal-black'}`}>{s.enabled ? t('common.on') : t('common.off')}</span>
                   </div>
                   {s.type === 'url' ? (
                     <div className="truncate text-brutal-black text-[11px] font-mono font-bold opacity-50" title={s.url}>{s.url}</div>
@@ -413,17 +415,17 @@ export function ConfigView(): React.ReactElement {
                         <span> <span className="break-all truncate max-w-full" title={s.args.join(', ')}>[{s.args.join(', ')}]</span></span>
                       )}
                       {s.env && Object.keys(s.env).length > 0 && (
-                        <span> <span className="break-all truncate max-w-full" title={JSON.stringify(s.env)}>env:{JSON.stringify(s.env)}</span></span>
+                        <span> <span className="break-all truncate max-w-full" title={JSON.stringify(s.env)}>{t('config.mcp.envPrefix', { json: JSON.stringify(s.env) })}</span></span>
                       )}
                     </div>
                   )}
                 </div>
-                <button type="button" onClick={() => removeServerHandler(s.name)} className="text-white bg-brutal-red border-2 border-brutal-black text-xs font-bold px-1.5 py-0.5 hover:bg-red-600 transition-colors" title="Remove" disabled={loading}>×</button>
+                <button type="button" onClick={() => removeServerHandler(s.name)} className="text-white bg-brutal-red border-2 border-brutal-black text-xs font-bold px-1.5 py-0.5 hover:bg-red-600 transition-colors" title={t('common.remove')} disabled={loading}>×</button>
               </li>
             ))}
           </ul>
           {config.mcp_urls && config.mcp_urls.length > 0 && (
-            <div className="text-xs text-brutal-black font-mono font-bold">ENABLED: {config.mcp_urls.length} URL(S)</div>
+            <div className="text-xs text-brutal-black font-mono font-bold">{t('config.mcp.enabledUrls', { count: config.mcp_urls.length })}</div>
           )}
         </div>
       </div>

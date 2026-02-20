@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
+import { useI18n } from '../i18n';
 
 interface MCPServer { name: string; url: string; enabled: boolean }
 
 const STORAGE_KEY = 'suzent_mcp_servers';
 
 export const MCPServers: React.FC = () => {
+  const { t } = useI18n();
   const { config, setConfig } = useChatStore();
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [name, setName] = useState('');
@@ -75,11 +77,11 @@ export const MCPServers: React.FC = () => {
 
   return (
     <div className="space-y-3 text-xs">
-      <div className="font-medium">MCP Servers</div>
+      <div className="font-medium">{t('config.mcp.label')}</div>
       <div className="flex gap-2">
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="Name" className="flex-1 bg-neutral-800 border border-neutral-700 rounded px-2 py-1" />
-        <input value={url} onChange={e => setUrl(e.target.value)} placeholder="URL" className="flex-[2] bg-neutral-800 border border-neutral-700 rounded px-2 py-1" />
-        <button onClick={add} className="bg-brand-600 px-2 rounded">Add</button>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder={t('config.mcp.name')} className="flex-1 bg-neutral-800 border border-neutral-700 rounded px-2 py-1" />
+        <input value={url} onChange={e => setUrl(e.target.value)} placeholder={t('config.mcp.url')} className="flex-[2] bg-neutral-800 border border-neutral-700 rounded px-2 py-1" />
+        <button onClick={add} className="bg-brand-600 px-2 rounded">{t('common.add')}</button>
       </div>
       <ul className="space-y-2">
         {servers.map((s, i) => (
