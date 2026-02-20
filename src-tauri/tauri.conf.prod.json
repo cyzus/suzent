@@ -41,6 +41,34 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "linux": {
+      "deb": {
+        "files": {}
+      },
+      "rpm": {
+        "files": {}
+      }
+    },
+    "macOS": {
+      "frameworks": [],
+      "files": {},
+      "minimumSystemVersion": "10.13"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine",
+        "installerHooks": "./nsis/hooks.nsh"
+      },
+      "wix": {
+        "language": "en-US",
+        "fragmentPaths": [
+          "./wix/path.wxs"
+        ],
+        "componentGroupRefs": [
+          "PathGroup"
+        ]
+      }
+    }
   }
 }

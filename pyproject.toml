@@ -32,6 +32,7 @@ dependencies = [
     "fastapi>=0.128.5",
     "wsproto>=1.3.2",
     "sounddevice>=0.5.5",
+    "opencv-python>=4.8.0",
 ]
 
 [project.scripts]

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed
 - **Desktop App**: Fix MacOS window hanging whilst waiting for backend startup
+- **Desktop App**: Fix Environment Path for desktop app
+- **CLI**: Fixed recursive execution hang by nullifying stdin for backend subprocesses.
+- **CLI**: Fixed connectivity issues by correctly handling dynamic port allocation in nested environments.
+- **CLI**: Fixed `AuthenticationError` in CLI tools (like `speak`) by loading API keys from the database into the CLI environment.
+- **Backend Setup**: Added lock check during backend environment setup to prevent `uv venv` from corrupting the virtual environment if the CLI attempts an upgrade while the GUI server is running.
+- **CLI/Backend**: Fixed an issue where new configuration keys (like `TTS_MODEL` for Gemini support) were not being deployed to existing users. The backend now consistently deploys example fallback configurations so they can be seamlessly queried by tools like `suzent agent speak`.
+- **Installer/Startup**: Fixed an issue where the application would hang in the "Initializing" state when auto-launched by the NSIS installer or from the Start Menu on a fresh install. The application now properly sanitizes its working directory and standard I/O streams for setup subprocesses.
 
 ## [v0.2.7] 
 

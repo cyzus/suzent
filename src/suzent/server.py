@@ -389,6 +389,27 @@ if __name__ == "__main__":
     port = int(os.getenv("SUZENT_PORT", "8000"))
     host = os.getenv("SUZENT_HOST", "0.0.0.0")
 
+    def write_port_file(effective_port: int) -> None:
+        """Write the effective port to a file for CLI discovery."""
+        from suzent.config import DATA_DIR
+
+        port_file = DATA_DIR / "server.port"
+        try:
+            port_file.write_text(str(effective_port), encoding="utf-8")
+        except Exception:
+            pass
+
+    def remove_port_file() -> None:
+        """Remove the port file on shutdown."""
+        from suzent.config import DATA_DIR
+
+        port_file = DATA_DIR / "server.port"
+        try:
+            if port_file.exists():
+                port_file.unlink()
+        except Exception:
+            pass
+
     def report_port(effective_port: int) -> None:
         """Report the server port via multiple channels for reliability."""
         port_msg = f"SERVER_PORT:{effective_port}"
@@ -399,6 +420,9 @@ if __name__ == "__main__":
             sys.stdout.buffer.flush()
         except Exception:
             pass
+
+        # Write to file for CLI discovery
+        write_port_file(effective_port)
 
     import socket as _socket
     import threading
@@ -486,6 +510,9 @@ if __name__ == "__main__":
                     pass
                 except Exception as e:
                     logger.debug(f"Error closing pre-bound socket: {e}")
+
+            # Clean up port file
+            remove_port_file()
 
     if port == 0:
         logger.info(

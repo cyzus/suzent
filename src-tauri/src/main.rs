@@ -1,5 +1,5 @@
 // Prevents additional console window on Windows in release builds
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// REMOVED: #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod backend;
 
@@ -23,9 +23,99 @@ fn get_backend_port(state: State<AppState>) -> Result<u16, String> {
     }
 }
 
+// Minimal logging helper for debugging CLI hangs
+
+
 
 
 fn main() {
+    // Force the working directory to the executable's directory.
+    // This fixes issues where NSIS installers launch the app with an invalid CWD (like System32 or %TEMP%).
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let _ = std::env::set_current_dir(exe_dir);
+        }
+    }
+
+    // Check for CLI arguments
+    let args: Vec<String> = std::env::args().collect();
+
+    // If we have no arguments, we are likely running as a GUI.
+    // Since we are now a Console app (to support blocking CLI), we must hide the console window
+    // that Windows automatically created for us.
+    if args.len() == 1 {
+        #[cfg(windows)]
+        unsafe {
+            use windows_sys::Win32::System::Console::FreeConsole;
+            FreeConsole();
+        }
+    }
+
+    if args.len() > 1 {
+        // We have arguments, run as CLI.
+        // Since we are a Console subsystem app, we are ALREADY attached to the console.
+        // No need to AttachConsole.
+
+
+        // Try to locate the backend venv in AppData (Roaming)
+        // backend.rs uses app.path().app_data_dir() which maps to Roaming/com.suzent.app on Windows
+        if let Some(app_data) = std::env::var_os("APPDATA") {
+            let app_data_root = std::path::PathBuf::from(app_data);
+            // Default bundle identifier
+            let suzent_app_data = app_data_root.join("com.suzent.app");
+            let python_exe = suzent_app_data.join("backend-venv").join("Scripts").join("python.exe");
+
+            // Always attempt to validate/setup the environment first
+            // This ensures integrity checks (like missing entry points) are run
+            if let Ok(exe_path) = std::env::current_exe() {
+                 if let Some(exe_dir) = exe_path.parent() {
+                    // suzent_app_data is already defined above as Local/com.suzent.app
+                    
+                    // We use the exe directory as the resource directory
+                    if let Err(e) = backend::ensure_backend_setup(exe_dir, &suzent_app_data) {
+                        eprintln!("Warning: Environment setup failed: {}", e);
+                    }
+                    
+                    if let Err(e) = backend::sync_app_data(exe_dir, &suzent_app_data) {
+                         eprintln!("Warning: Failed to sync app data: {}", e);
+                    }
+                 }
+            }
+
+            if python_exe.exists() {
+                // Pass all arguments to python -m suzent.cli
+                // Skip the first argument (executable name)
+                let cli_args = &args[1..];
+                
+                let status = std::process::Command::new(python_exe)
+                    .args(["-m", "suzent.cli"])
+                    .env("SUZENT_APP_DATA", &suzent_app_data)
+                    .stdin(std::process::Stdio::null())
+                    .args(cli_args)
+                    .status();
+
+                match status {
+                    Ok(exit_status) => {
+                        std::process::exit(exit_status.code().unwrap_or(1));
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to execute CLI: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                eprintln!("Error: Suzent environment not initialized and setup failed.");
+                eprintln!("Please run the application from the Start Menu once to ensure environment is set up.");
+                std::process::exit(1);
+            }
+        } else {
+             // Non-Windows or weird environment, fall through to GUI? 
+             // Or just print error. For now, let's assume if args > 1 we WANT cli.
+             eprintln!("Error: Could not determine APPDATA location.");
+             std::process::exit(1);
+        }
+    }
+
     tauri::Builder::default()
         .setup(|app| {
             let window = app.get_webview_window("main")

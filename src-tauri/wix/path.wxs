@@ -1,0 +1,13 @@
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="PathEnv" Guid="58253194-9467-463d-a51f-e9466549c716" KeyPath="yes">
+        <CreateFolder />
+        <Environment Id="PATH" Name="PATH" Value="[INSTALLDIR]" Permanent="no" Part="last" Action="set" System="yes" />
+      </Component>
+    </DirectoryRef>
+    <ComponentGroup Id="PathGroup">
+      <ComponentRef Id="PathEnv" />
+    </ComponentGroup>
+  </Fragment>
+</Wix>

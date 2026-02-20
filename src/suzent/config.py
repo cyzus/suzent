@@ -9,17 +9,54 @@ from .logger import get_logger
 
 
 def get_project_root() -> Path:
-    """Get project root, handling both dev and bundled scenarios."""
+    """Get project root, handling dev, bundled, and installed CLI scenarios."""
 
+    # 1. Explicit override (e.g. set by Tauri backend)
     # In bundled mode, Tauri always sets SUZENT_APP_DATA to the app data directory
-    # where config/, skills/, etc. are synced by the Rust side
     app_data = os.getenv("SUZENT_APP_DATA")
     if app_data:
         return Path(app_data)
 
-    # Development mode
-    # Project root (two levels above this file: src/suzent -> src -> project root)
-    return Path(__file__).resolve().parents[2]
+    # 2. Dev mode detection
+    # Check if we are running from source by looking for pyproject.toml
+    current_file = Path(__file__).resolve()
+    dev_root = current_file.parents[2]
+    if (dev_root / "pyproject.toml").exists():
+        return dev_root
+
+    # 3. Installed CLI / Headless mode
+    # Determine the standard user data directory for the platform
+    import platform
+
+    system = platform.system()
+    home = Path.home()
+
+    canonical_path = None
+    if system == "Windows":
+        local_app_data = os.getenv("LOCALAPPDATA")
+        if local_app_data:
+            canonical_path = Path(local_app_data) / "com.suzent.app"
+    elif system == "Darwin":
+        canonical_path = home / "Library/Application Support/com.suzent.app"
+    else:
+        # Linux
+        xdg = os.getenv("XDG_DATA_HOME")
+        if xdg:
+            canonical_path = Path(xdg) / "com.suzent.app"
+        else:
+            canonical_path = home / ".local/share/com.suzent.app"
+
+    # If the directory exists (created by GUI or previous run), use it
+    if canonical_path and canonical_path.exists():
+        return canonical_path
+
+    # 4. Fallback: Use the canonical path (will be created)
+    # This supports first-run headless usage
+    if canonical_path:
+        return canonical_path
+
+    # Last resort (shouldn't happen on standard OS)
+    return dev_root
 
 
 PROJECT_DIR = get_project_root()

@@ -13,6 +13,53 @@ import typer
 IS_WINDOWS = sys.platform == "win32"
 
 
+def configure_logging(verbose: bool = False):
+    """Configure logging for the CLI."""
+    from suzent.logger import setup_logging
+
+    log_level = "DEBUG" if verbose else "WARNING"
+    setup_logging(level=log_level)
+
+    # If not verbose, silence all other loggers or set them to WARNING
+    if not verbose:
+        os.environ["LOGURU_LEVEL"] = "WARNING"
+
+
+def load_environment():
+    """Load API keys from the database into environment variables."""
+    try:
+        from suzent.database import get_database
+
+        # Initialize DB and fetch keys
+        db = get_database()
+        api_keys = db.get_api_keys() or {}
+
+        count = 0
+        for key, value in api_keys.items():
+            # Skip internal config keys
+            if key.startswith("_"):
+                continue
+
+            # Only set if not already set (allow manual override)
+            if key not in os.environ and value:
+                os.environ[key] = value
+                count += 1
+
+        if count > 0:
+            from suzent.logger import get_logger
+
+            logger = get_logger(__name__)
+            logger.debug(f"Loaded {count} API keys from database into environment")
+
+    except Exception as e:
+        # Don't crash if DB fails, just log warning
+        # We might be running 'setup-build-tools' or 'doctor' where DB isn't needed
+        from suzent.logger import get_logger
+
+        logger = get_logger(__name__)
+        logger.debug(f"Failed to load environment from database: {e}")
+
+
 def get_project_root() -> Path:
     """Get the root directory of the project."""
     return Path(__file__).parent.parent.parent.parent
@@ -163,6 +210,33 @@ def register_commands(app: typer.Typer):
 
             typer.echo("    Retrying dev server...")
             run_command(["npm", "run", "dev"], cwd=src_tauri_dir, shell_on_windows=True)
+
+    @app.command()
+    def serve(
+        host: str = typer.Option("127.0.0.1", help="Host to bind to"),
+        port: int = typer.Option(8000, help="Port to bind to"),
+        debug: bool = typer.Option(False, "--debug", help="Run in debug mode"),
+    ):
+        """Start the Suzent backend server (headless/standalone mode)."""
+        typer.echo(f"🚀 Starting Suzent Server on {host}:{port}...")
+
+        env = os.environ.copy()
+        env["SUZENT_HOST"] = host
+        env["SUZENT_PORT"] = str(port)
+
+        # Launch the server module using the same python interpreter
+        cmd = [sys.executable, "-m", "suzent.server"]
+        if debug:
+            cmd.append("--debug")
+
+        try:
+            # Run directly (blocking)
+            subprocess.run(cmd, env=env, check=True)
+        except KeyboardInterrupt:
+            typer.echo("\n🛑 Server stopped.")
+        except Exception as e:
+            typer.echo(f"❌ Server failed: {e}")
+            raise typer.Exit(code=1)
 
     @app.command()
     def doctor():

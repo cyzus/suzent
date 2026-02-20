@@ -3,13 +3,73 @@ Shared HTTP helpers for CLI commands that talk to the running server.
 """
 
 import os
+from pathlib import Path
 
 import typer
 
 
 def get_server_url() -> str:
     """Get the server URL from environment or default."""
-    port = os.getenv("SUZENT_PORT", "8000")
+
+    # 1. Environment variable (explicit override)
+    port = os.getenv("SUZENT_PORT")
+
+    if port == "0":
+        port = None
+
+    # 2. File (running instance)
+    if not port:
+        try:
+            from suzent.config import DATA_DIR
+
+            # Primary check: Active DATA_DIR (Dev or Prod depending on config.py)
+            port_file = DATA_DIR / "server.port"
+            if port_file.exists():
+                port = port_file.read_text(encoding="utf-8").strip()
+
+            # Secondary check: Production AppData (GUI might be running there while CLI is in Dev mode)
+            if not port:
+                import platform
+
+                system = platform.system()
+                prod_dir = None
+
+                if system == "Windows":
+                    # Backend uses Tauri's app_data_dir() which maps to Roaming on Windows
+                    roaming = os.getenv("APPDATA")
+                    if roaming:
+                        prod_dir = Path(roaming) / "com.suzent.app"
+                elif system == "Darwin":
+                    prod_dir = (
+                        Path.home() / "Library/Application Support/com.suzent.app"
+                    )
+                else:  # Linux
+                    xdg = os.getenv("XDG_DATA_HOME")
+                    if xdg:
+                        prod_dir = Path(xdg) / "com.suzent.app"
+                    else:
+                        prod_dir = Path.home() / ".local/share/com.suzent.app"
+
+                if prod_dir:
+                    prod_port_file = prod_dir / "server.port"
+                    # Note: Backend writes to app_data_dir directly, check where sync_app_data writes
+                    # backend.rs: env("SUZENT_APP_DATA", &app_data_dir) matches this
+
+                    if prod_port_file.exists():
+                        port = prod_port_file.read_text(encoding="utf-8").strip()
+                    else:
+                        # try nested .suzent if ancient logic exists?
+                        nested = prod_dir / ".suzent" / "server.port"
+                        if nested.exists():
+                            port = nested.read_text(encoding="utf-8").strip()
+
+        except Exception:
+            pass
+
+    # 3. Default
+    if not port:
+        port = "8000"
+
     host = os.getenv("SUZENT_HOST", "localhost")
     return os.getenv("SUZENT_SERVER_URL", f"http://{host}:{port}")
 

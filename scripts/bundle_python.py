@@ -11,6 +11,7 @@ Instead of compiling Python with PyInstaller/Nuitka, we bundle:
 At first launch, the Rust side uses uv to create a venv and install the wheel.
 """
 
+import os
 import platform
 import shutil
 import subprocess
@@ -236,6 +237,33 @@ def copy_config_and_skills(target_dir: Path) -> None:
         print("  WARNING: No skills directory found")
 
 
+def generate_shims(target_dir: Path) -> None:
+    """Generate CLI shims (suzent.cmd and suzent) in the target directory.
+
+    These shims are moved to the installation root by NSIS hooks (Windows)
+    or expected to be in the PATH (Linux/macOS).
+    """
+    # Windows CMD shim
+    cmd_shim = target_dir / "suzent.cmd"
+    # %~dp0 returns the drive and path to the batch script.
+    # We call SUZENT.exe which should be in the same directory after installation moves.
+    cmd_content = '@echo off\r\n"%~dp0SUZENT.exe" %*'
+    cmd_shim.write_text(cmd_content, encoding="utf-8")
+    print(f"  Generated Windows shim: {cmd_shim.name}")
+
+    # Unix Shell shim
+    sh_shim = target_dir / "suzent"
+    # $0 is the script path. dirname $0 gets the directory.
+    # We assume the binary is named 'suzent' on Linux/macOS
+    sh_content = '#!/bin/sh\nexec "$(dirname "$0")/suzent" "$@"'
+    sh_shim.write_text(sh_content, encoding="utf-8")
+    # Make executable
+    if hasattr(os, "chmod"):
+        current_mode = sh_shim.stat().st_mode
+        sh_shim.chmod(current_mode | 0o111)
+    print(f"  Generated Unix shim: {sh_shim.name}")
+
+
 def bundle_python() -> None:
     """Main bundling function. Creates src-tauri/resources/ with everything needed."""
     print("=" * 50)
@@ -271,6 +299,10 @@ def bundle_python() -> None:
     # Step 4: Copy config and skills
     print("\n[4/4] Copying config and skills...")
     copy_config_and_skills(RESOURCES_DIR)
+
+    # Step 5: Generate CLI shims
+    print("\n[5/5] Generating CLI shims...")
+    generate_shims(RESOURCES_DIR)
 
     # Summary
     total_size = sum(f.stat().st_size for f in RESOURCES_DIR.rglob("*") if f.is_file())
