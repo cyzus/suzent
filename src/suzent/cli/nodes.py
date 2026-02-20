@@ -169,7 +169,7 @@ def nodes_host(
         "Local PC", "--name", "-n", help="Display name for this node"
     ),
     url: str = typer.Option(
-        "ws://localhost:8000/ws/node", "--url", help="Gateway WebSocket URL"
+        "ws://localhost:25314/ws/node", "--url", help="Gateway WebSocket URL"
     ),
     capabilities: Optional[str] = typer.Option(
         None,

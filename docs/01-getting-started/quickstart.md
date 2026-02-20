@@ -79,7 +79,7 @@ suzent start
 
 This will:
 - Check system health.
-- Start the Backend (Brain) on port `8000`.
+- Start the Backend (Brain) on port `25314`.
 - Start the Frontend (UI) on port `5173`.
 - Automatically manage local processes.
 

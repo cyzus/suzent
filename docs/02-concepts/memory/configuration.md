@@ -159,7 +159,7 @@ print(f"Indexed {stats['indexed']} facts from {stats['total_files']} files")
 Or via the API:
 
 ```bash
-curl -X POST http://localhost:8000/memory/reindex \
+curl -X POST http://localhost:25314/memory/reindex \
   -H "Content-Type: application/json" \
   -d '{"clear_existing": true}'
 ```

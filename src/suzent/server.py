@@ -480,7 +480,8 @@ if __name__ == "__main__":
 
     ensure_app_data()
 
-    port = int(os.getenv("SUZENT_PORT", "8000"))
+    _port_str = os.getenv("SUZENT_PORT", "").strip()
+    port = int(_port_str) if _port_str else 25314
     host = os.getenv("SUZENT_HOST", "0.0.0.0")
 
     def write_port_file(effective_port: int) -> None:
@@ -521,31 +522,41 @@ if __name__ == "__main__":
     import socket as _socket
     import threading
 
-    # When port=0, pre-bind a socket so the OS assigns a port immediately.
-    # We can then report the port before on_startup hooks run (which can be slow).
-    # The pre-bound socket is passed directly to uvicorn via serve(sockets=[...]).
-    if port == 0:
-        _sock = None
-        try:
-            _sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-            _sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
-            _sock.bind((host, 0))
-            _sock.listen()
-            _sock.set_inheritable(True)
-            effective_port = _sock.getsockname()[1]
-            report_port(effective_port)
-            logger.info(f"Dynamic port assigned: {effective_port}")
-        except Exception:
-            if _sock is not None:
-                try:
-                    _sock.close()
-                except Exception:
-                    pass
-            raise
-    else:
-        _sock = None
-        effective_port = port
+    # Pre-bind a socket before entering the asyncio event loop.
+    # For port=0, this lets the OS choose a port dynamically so we can report it early.
+    # For explicit ports (e.g., 8000), this verifies the port is available immediately,
+    # and if it fails (e.g., Windows Hyper-V reserved ports), we can forceful exit
+    # before uvicorn/tokio start up, avoiding PyO3 panics during graceful shutdown.
+    _sock = None
+    try:
+        _sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        _sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+        _sock.bind((host, port))
+        _sock.listen()
+        _sock.set_inheritable(True)
+        effective_port = _sock.getsockname()[1]
         report_port(effective_port)
+        if port == 0:
+            logger.info(f"Dynamic port assigned: {effective_port}")
+    except OSError as e:
+        logger.critical(f"Failed to bind to {host}:{port}: {e}")
+        logger.critical(
+            "Please set the SUZENT_PORT environment variable to a different port (e.g. set SUZENT_PORT=8001)"
+        )
+        if _sock is not None:
+            try:
+                _sock.close()
+            except Exception:
+                pass
+        # Exit forcefully to prevent PyO3 panics during graceful shutdown if we haven't fully initialized
+        os._exit(1)
+    except Exception:
+        if _sock is not None:
+            try:
+                _sock.close()
+            except Exception:
+                pass
+        raise
 
     async def main():
         if port == 0:

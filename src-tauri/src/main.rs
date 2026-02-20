@@ -173,7 +173,7 @@ fn main() {
 
 /// Returns (port, BackendProcess) based on build configuration.
 /// - Release: Starts bundled backend and returns its dynamically allocated port
-/// - Debug: Returns default port 8000 (expects manually-run backend)
+/// - Debug: Returns default port 25314 (expects manually-run backend)
 #[cfg(not(debug_assertions))]
 fn get_backend_config(app: &tauri::AppHandle) -> Result<(u16, BackendProcess), String> {
     let mut backend = BackendProcess::new();
@@ -183,8 +183,13 @@ fn get_backend_config(app: &tauri::AppHandle) -> Result<(u16, BackendProcess), S
 
 #[cfg(debug_assertions)]
 fn get_backend_config(_app: &tauri::AppHandle) -> Result<(u16, BackendProcess), String> {
+    let port = std::env::var("SUZENT_PORT")
+        .unwrap_or_else(|_| "25314".to_string())
+        .parse::<u16>()
+        .unwrap_or(25314);
+
     println!("Development mode: Please start backend manually with:");
-    println!("  python src/suzent/server.py");
-    println!("Expected backend URL: http://localhost:8000");
-    Ok((8000, BackendProcess::new()))
+    println!("  set SUZENT_PORT={} && python src/suzent/server.py", port);
+    println!("Expected backend URL: http://localhost:{}", port);
+    Ok((port, BackendProcess::new()))
 }

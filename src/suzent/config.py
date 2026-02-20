@@ -120,7 +120,7 @@ def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[st
 
 class ConfigModel(BaseModel):
     title: str = "SUZENT"
-    server_url: str = "http://localhost:8000/chat"
+    server_url: str = "http://localhost:25314/chat"
     code_tag: str = "<code>"
 
     model_options: List[str] = []

@@ -19,7 +19,7 @@ The React-based user interface for Suzent.
    ```
    The app will run at `http://localhost:5173`.
    
-   > **Note**: This requires the backend to be running on port 8000.
+   > **Note**: This requires the backend to be running on port 25314.
 
 ## Building for Production
 

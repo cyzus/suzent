@@ -56,7 +56,7 @@ python src/suzent/server.py
 
 Expected output:
 ```
-INFO:     Starting Suzent server on http://127.0.0.1:8000
+INFO:     Starting Suzent server on http://127.0.0.1:25314
 INFO:     Application startup complete.
 ```
 
@@ -71,7 +71,7 @@ This will:
 1. Start Vite dev server (frontend) on http://localhost:5173
 2. Compile the Rust code (first time only, takes a few minutes)
 3. Open a native desktop window
-4. Frontend connects to backend on port 8000
+4. Frontend connects to backend on port 25314
 
 
 ## Configuration
@@ -80,11 +80,11 @@ This will:
 
 | Config File | Mode | Backend |
 |-------------|------|---------|
-| `tauri.conf.json` | Development | External (port 8000) |
+| `tauri.conf.json` | Development | External (port 25314) |
 | `tauri.conf.prod.json` | Production | Bundled Python + uv venv |
 
 **Development mode** (`npm run dev`):
-- No bundled backend - expects backend running on port 8000
+- No bundled backend - expects backend running on port 25314
 - Frontend hot-reload enabled
 - DevTools available (right-click in window)
 
@@ -148,7 +148,7 @@ python src/suzent/server.py
 
 Verify backend is running:
 ```bash
-curl http://localhost:8000/config
+curl http://localhost:25314/config
 ```
 Should return JSON configuration.
 
@@ -170,7 +170,7 @@ cd src-tauri && cargo clean
 
 **Frontend shows connection errors**
 
-1. Verify backend is running: `curl http://localhost:8000/config`
+1. Verify backend is running: `curl http://localhost:25314/config`
 2. Check browser console for the actual error
 3. Ensure CORS is working (should be by default)
 

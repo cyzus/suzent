@@ -138,7 +138,7 @@ Nodes connect to the server at `ws://<host>:<port>/ws/node` and follow a JSON-RP
 
 To connect a device as a node, implement a WebSocket client that:
 
-1. Connects to `ws://<suzent-host>:8000/ws/node`
+1. Connects to `ws://<suzent-host>:25314/ws/node`
 2. Sends a `connect` message with capabilities
 3. Waits for `connected` acknowledgment
 4. Listens for `invoke` messages and responds with `result` messages
@@ -151,7 +151,7 @@ import json
 import websockets
 
 async def run_node():
-    uri = "ws://localhost:8000/ws/node"
+    uri = "ws://localhost:25314/ws/node"
     async with websockets.connect(uri) as ws:
         # Handshake
         await ws.send(json.dumps({

@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # ─── Default config ──────────────────────────────────────────────────
 
-DEFAULT_GATEWAY_URL = "ws://localhost:8000/ws/node"
+DEFAULT_GATEWAY_URL = "ws://localhost:25314/ws/node"
 DEFAULT_DISPLAY_NAME = "Local PC"
 DEFAULT_PLATFORM = sys.platform
 RECONNECT_DELAY = 5  # seconds between reconnect attempts

@@ -68,7 +68,7 @@ def get_server_url() -> str:
 
     # 3. Default
     if not port:
-        port = "8000"
+        port = "25314"
 
     host = os.getenv("SUZENT_HOST", "localhost")
     return os.getenv("SUZENT_SERVER_URL", f"http://{host}:{port}")

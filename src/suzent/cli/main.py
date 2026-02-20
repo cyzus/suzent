@@ -148,7 +148,7 @@ def register_commands(app: typer.Typer):
 
         typer.echo("🚀 Starting SUZENT...")
 
-        for port, name in [(8000, "Backend"), (5173, "Frontend")]:
+        for port, name in [(25314, "Backend"), (5173, "Frontend")]:
             pid = get_pid_on_port(port)
             if pid:
                 typer.echo(f"\n⚠️  {name} Port {port} is already in use by PID {pid}.")
@@ -214,7 +214,7 @@ def register_commands(app: typer.Typer):
     @app.command()
     def serve(
         host: str = typer.Option("127.0.0.1", help="Host to bind to"),
-        port: int = typer.Option(8000, help="Port to bind to"),
+        port: int = typer.Option(25314, help="Port to bind to"),
         debug: bool = typer.Option(False, "--debug", help="Run in debug mode"),
     ):
         """Start the Suzent backend server (headless/standalone mode)."""
