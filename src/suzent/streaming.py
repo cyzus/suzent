@@ -21,6 +21,7 @@ from smolagents.models import ChatMessageStreamDelta
 
 from suzent.plan import read_plan_from_database, plan_to_dict, auto_complete_current
 from suzent.utils import to_serializable
+from loguru import logger
 
 
 class StreamControl:
@@ -253,8 +254,13 @@ async def stream_agent_responses(
             agent.model = CancellationAwareModel(original_model, control)
 
         try:
+            logger.info(f"Starting agent.run for message length {len(message)}")
             gen = agent.run(message, stream=True, reset=reset, images=images)
+            chunk_count = 0
             for chunk in gen:
+                chunk_count += 1
+                if chunk_count == 1:
+                    logger.info("First chunk received from agent.run")
                 if control.thread_event.is_set():
                     notify_stop()
                     break

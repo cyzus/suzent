@@ -1,0 +1,823 @@
+/* =========================================
+   LICENSE EXCEPTION:
+   Use of this file (Animation Choreography) is governed by the terms in LICENSE-ASSETS.
+   It is NOT covered by the project's standard Apache 2.0 license.
+   ========================================= */
+
+/* =========================================
+   ROBOT AVATAR ANIMATIONS
+   Imported in main.tsx or styles.css
+   ========================================= */
+
+/* --- V14: OBSERVER (Active/Searching) --- */
+@keyframes robot-look-around {
+    0% {
+        transform: translate(0, 0);
+    }
+
+    10% {
+        transform: translate(-2px, 0);
+    }
+
+    20% {
+        transform: translate(-2px, 0);
+    }
+
+    25% {
+        transform: translate(2px, 0);
+    }
+
+    40% {
+        transform: translate(2px, 0);
+    }
+
+    50% {
+        transform: translate(0, -2px);
+    }
+
+    60% {
+        transform: translate(0, 0);
+    }
+
+    75% {
+        transform: translate(0, 0) scaleY(0.1);
+        transform-origin: center;
+    }
+
+    80% {
+        transform: translate(0, 0) scaleY(1);
+        transform-origin: center;
+    }
+
+    100% {
+        transform: translate(0, 0);
+    }
+}
+
+/* --- V15: JUMPER (Action) --- */
+@keyframes robot-jump-body {
+    0% {
+        transform: translateY(0) scale(1.15, 0.85);
+        transform-origin: 12px 24px;
+        animation-timing-function: ease-out;
+    }
+
+    10% {
+        transform: translateY(0) scale(0.9, 1.1);
+        transform-origin: 12px 24px;
+        animation-timing-function: ease-out;
+        /* Launch */
+    }
+
+    45% {
+        transform: translateY(-25%) scale(1);
+        transform-origin: 12px 24px;
+        animation-timing-function: cubic-bezier(0.2, 0, 0.4, 1);
+        /* Hangtime */
+    }
+
+    55% {
+        transform: translateY(-25%) scale(1);
+        transform-origin: 12px 24px;
+        animation-timing-function: ease-in;
+        /* Fall */
+    }
+
+    90% {
+        transform: translateY(0) scale(0.9, 1.1);
+        transform-origin: 12px 24px;
+        animation-timing-function: ease-out;
+        /* Impact */
+    }
+
+    100% {
+        transform: translateY(0) scale(1.15, 0.85);
+        transform-origin: 12px 24px;
+        animation-timing-function: ease-out;
+        /* Recover */
+    }
+}
+
+@keyframes robot-jump-shadow {
+
+    0%,
+    100% {
+        transform: scale(1.2);
+        opacity: 0.8;
+        transform-origin: center;
+    }
+
+    10%,
+    90% {
+        transform: scale(1);
+        opacity: 0.8;
+        transform-origin: center;
+    }
+
+    50% {
+        transform: scale(0.6);
+        opacity: 0.3;
+        transform-origin: center;
+    }
+}
+
+/* --- V16: SNOOZER (Idle) --- */
+@keyframes robot-breathe-eyes {
+
+    0%,
+    100% {
+        transform: scaleY(0.1);
+    }
+
+    50% {
+        transform: scaleY(0.15);
+    }
+}
+
+@keyframes robot-breathe-body {
+
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.02);
+    }
+}
+
+@keyframes robot-float-z {
+    0% {
+        transform: translateY(0) rotate(-10deg);
+        opacity: 0;
+    }
+
+    20% {
+        opacity: 1;
+    }
+
+    80% {
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateY(-30%) rotate(10deg);
+        opacity: 0;
+    }
+}
+
+/* --- V17: PEEKER (Active) --- */
+@keyframes robot-peek-up {
+    0% {
+        transform: translateY(110%);
+    }
+
+    10% {
+        transform: translateY(0);
+        /* Pop up */
+    }
+
+    20% {
+        transform: translateY(0) rotate(-10deg);
+        /* Look Left */
+    }
+
+    40% {
+        transform: translateY(0) rotate(10deg);
+        /* Look Right */
+    }
+
+    60% {
+        transform: translateY(0) rotate(0deg);
+    }
+
+    70% {
+        transform: translateY(40%);
+        /* Duck partial */
+    }
+
+    80% {
+        transform: translateY(0);
+        /* Quick check */
+    }
+
+    100% {
+        transform: translateY(110%);
+        /* Hide */
+    }
+}
+
+@keyframes robot-peek-eyes {
+
+    0%,
+    10% {
+        transform: translateX(0);
+    }
+
+    20% {
+        transform: translateX(-3px);
+    }
+
+    /* Look Left */
+    40% {
+        transform: translateX(3px);
+    }
+
+    /* Look Right */
+    60% {
+        transform: translateX(0);
+    }
+
+    100% {
+        transform: translateX(0);
+    }
+}
+
+/* ... (Shaker omitted) ... */
+
+/* --- V27: PORTAL (Reaction) --- */
+@keyframes robot-teleport {
+    0% {
+        transform: translateY(-20px) scale(0) rotate(-90deg);
+        transform-origin: 12px 12px;
+        opacity: 0;
+    }
+
+    20% {
+        transform: translateY(0) scale(0.6) rotate(0deg);
+        transform-origin: 12px 12px;
+        opacity: 1;
+    }
+
+    50% {
+        transform: translateY(0) scale(0.6) rotate(0deg);
+        transform-origin: 12px 12px;
+        opacity: 1;
+    }
+
+    80% {
+        transform: translateY(20px) scale(0) rotate(90deg);
+        transform-origin: 12px 12px;
+        opacity: 0;
+    }
+
+    100% {
+        transform: translateY(22px) scale(0);
+        transform-origin: 12px 12px;
+        opacity: 0;
+    }
+}
+
+/* Top portal: opens as robot emerges (0-20%), then closes */
+@keyframes robot-hole-top {
+    0% {
+        transform: scale(0.8);
+        transform-origin: 12px -6px;
+    }
+
+    20% {
+        transform: scale(1.1);
+        transform-origin: 12px -6px;
+    }
+
+    40%,
+    100% {
+        transform: scale(0.8);
+        transform-origin: 12px -6px;
+    }
+}
+
+/* Bottom portal: small initially, big when robot enters (80%), then closes */
+@keyframes robot-hole-bottom {
+
+    0%,
+    60% {
+        transform: scale(0.8);
+        transform-origin: 12px 30px;
+    }
+
+    80% {
+        transform: scale(1.1);
+        transform-origin: 12px 30px;
+    }
+
+    100% {
+        transform: scale(0.8);
+        transform-origin: 12px 30px;
+    }
+}
+
+/* --- V18: SHAKER (Error/Panic) --- */
+@keyframes robot-shake-hard {
+    0% {
+        transform: translate(0.5px, 0.5px) rotate(0deg);
+    }
+
+    10% {
+        transform: translate(-0.5px, -1px) rotate(-1deg);
+    }
+
+    20% {
+        transform: translate(-1.5px, 0px) rotate(0deg);
+    }
+
+    30% {
+        transform: translate(1.5px, 1px) rotate(1deg);
+    }
+
+    40% {
+        transform: translate(0.5px, -0.5px) rotate(0deg);
+    }
+
+    50% {
+        transform: translate(-0.5px, 1px) rotate(-1deg);
+    }
+
+    60% {
+        transform: translate(-1.5px, 0.5px) rotate(0deg);
+    }
+
+    70% {
+        transform: translate(1.5px, 0.5px) rotate(1deg);
+    }
+
+    80% {
+        transform: translate(-0.5px, -0.5px) rotate(0deg);
+    }
+
+    90% {
+        transform: translate(0.5px, 1px) rotate(-1deg);
+    }
+
+    100% {
+        transform: translate(0.5px, -1px) rotate(0deg);
+    }
+}
+
+@keyframes robot-sweat-drop {
+    0% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateY(15px) scale(0.5);
+        opacity: 0;
+    }
+}
+
+@keyframes robot-dilate {
+    from {
+        transform: scale(1);
+    }
+
+    to {
+        transform: scale(1.3);
+    }
+}
+
+/* --- V19: SKEPTIC (Thinking) --- */
+@keyframes robot-ponder-tilt {
+
+    0%,
+    100% {
+        transform: rotate(0deg);
+    }
+
+    50% {
+        transform: rotate(-5deg) translateX(-2px);
+    }
+}
+
+@keyframes robot-squint {
+
+    0%,
+    100% {
+        transform: scaleY(1);
+    }
+
+    50% {
+        transform: scaleY(0.6);
+    }
+}
+
+@keyframes robot-raise-brow {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-2px);
+    }
+}
+
+@keyframes robot-float-q {
+
+    0%,
+    100% {
+        transform: translateY(0) scale(1);
+        opacity: 0;
+    }
+
+    50% {
+        transform: translateY(-1px) scale(1.2);
+        opacity: 1;
+    }
+}
+
+/* --- V20: LOVE (Reaction) --- */
+@keyframes robot-heartbeat {
+
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    15% {
+        transform: scale(1.1);
+    }
+
+    30% {
+        transform: scale(1);
+    }
+
+    45% {
+        transform: scale(1.1);
+    }
+
+    60% {
+        transform: scale(1);
+    }
+}
+
+@keyframes robot-pulse-eye {
+    from {
+        transform: scale(1);
+    }
+
+    to {
+        transform: scale(1.3);
+    }
+}
+
+@keyframes robot-float-up {
+    0% {
+        transform: translateY(10px);
+        opacity: 0;
+    }
+
+    20% {
+        opacity: 1;
+    }
+
+    80% {
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateY(-30px);
+        opacity: 0;
+    }
+}
+
+/* --- V21: RAGE (Error) --- */
+@keyframes robot-seethe {
+
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.05);
+    }
+}
+
+@keyframes robot-steam-rise {
+    0% {
+        transform: translateY(0) scale(1);
+        opacity: 0.8;
+    }
+
+    100% {
+        transform: translateY(-20px) scale(2);
+        opacity: 0;
+    }
+}
+
+/* --- V22: PARTY (Success/Cool) --- */
+@keyframes robot-bounce-beat {
+
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.1);
+    }
+}
+
+@keyframes robot-slide-glasses {
+    0% {
+        top: -50px;
+    }
+
+    80% {
+        top: 34%;
+    }
+
+    100% {
+        top: 34%;
+    }
+}
+
+@keyframes robot-strobe {
+    0% {
+        filter: brightness(1);
+    }
+
+    50% {
+        filter: brightness(1.2);
+    }
+
+    100% {
+        filter: brightness(1);
+    }
+}
+
+@keyframes robot-glasses-bounce {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-2px);
+    }
+}
+
+/* --- V23: EATER (Action) --- */
+/* Top Jaw: Pivot at back (x=4 approx for hinge) or center */
+/* Top Jaw: Pivot at back (x=4 approx for hinge) or center */
+@keyframes robot-eat-top {
+
+    0%,
+    90% {
+        transform: rotate(0deg);
+    }
+
+    10% {
+        transform: rotate(-30deg);
+    }
+
+    /* Open Wide (Faster/Earlier) */
+    40% {
+        transform: rotate(0deg);
+    }
+
+    /* SNAP SHUT */
+    55% {
+        transform: translateY(1px);
+    }
+
+    /* Chew */
+    65% {
+        transform: translateY(0px);
+    }
+}
+
+/* Bottom Jaw - Sync with Top (10% open, 40% close) */
+@keyframes robot-eat-bottom {
+
+    0%,
+    90% {
+        transform: rotate(0deg);
+    }
+
+    10% {
+        transform: rotate(30deg);
+    }
+
+    /* Open Wide matches top */
+    40% {
+        transform: rotate(0deg);
+    }
+
+    /* SNAP SHUT matches top */
+    55% {
+        transform: translateY(-1px);
+    }
+
+    /* Chew */
+    65% {
+        transform: translateY(0px);
+    }
+}
+
+/* Multi-bit Train animation: 12s total cycle (1.5s * 8 bites) */
+/* Action happens in first 1.5s. Snap is at 40% of 1.5s = 0.6s */
+/* 0.6s / 12s = 5.0% */
+/* "Goes in later": Start at 2.5% (0.3s) instead of 0% */
+@keyframes robot-feed-train {
+    0% {
+        transform: translateX(50px) scale(0.8);
+        opacity: 0;
+    }
+
+    2% {
+        opacity: 1;
+    }
+
+    5.0% {
+        /* 0.60s: Arrive inside mouth (x=0) exactly at snap */
+        transform: translateX(0px) scale(0.8);
+        opacity: 1;
+    }
+
+    5.1% {
+        /* SNAP */
+        transform: translateX(0px) scale(0);
+        opacity: 0;
+    }
+
+    100% {
+        transform: translateX(0px) scale(0);
+        opacity: 0;
+    }
+}
+
+/* --- V24: DJ (Action) --- */
+@keyframes robot-head-bop {
+    from {
+        transform: translateY(0) rotate(-2deg);
+    }
+
+    to {
+        transform: translateY(5px) rotate(2deg);
+    }
+}
+
+@keyframes robot-equalizer {
+
+    0%,
+    100% {
+        height: 25%;
+        opacity: 0.5;
+    }
+
+    50% {
+        height: 100%;
+        opacity: 1;
+    }
+}
+
+/* --- V25: GHOST (404/Error) --- */
+@keyframes robot-float-ghost {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-15%);
+    }
+}
+
+@keyframes robot-boo-fade {
+    0% {
+        opacity: 0;
+        transform: translate(0, 0);
+    }
+
+    50% {
+        opacity: 1;
+        transform: translate(5px, -5px);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(10px, -10px);
+    }
+}
+
+/* --- V26: WORKOUT (Action) --- */
+/* HTML-based animations (legacy) */
+@keyframes robot-lift {
+
+    0%,
+    100% {
+        top: 30%;
+    }
+
+    50% {
+        top: 0%;
+    }
+}
+
+@keyframes robot-lift-arms {
+
+    0%,
+    100% {
+        height: 15%;
+    }
+
+    50% {
+        height: 50%;
+    }
+}
+
+@keyframes robot-squat {
+
+    0%,
+    100% {
+        transform: scaleY(0.9);
+    }
+
+    50% {
+        transform: scaleY(1);
+    }
+}
+
+/* SVG-based animations */
+@keyframes robot-lift-svg {
+
+    0%,
+    100% {
+        transform: translateY(4px);
+    }
+
+    50% {
+        transform: translateY(-8px);
+    }
+}
+
+
+
+/* Left arm: rotates from leaned out (-15deg) to straight (0deg) at top */
+@keyframes robot-arm-left {
+
+    0%,
+    100% {
+        transform: rotate(-15deg);
+    }
+
+    50% {
+        transform: rotate(0deg);
+    }
+}
+
+/* Right arm: rotates from leaned out (15deg) to straight (0deg) at top */
+@keyframes robot-arm-right {
+
+    0%,
+    100% {
+        transform: rotate(15deg);
+    }
+
+    50% {
+        transform: rotate(0deg);
+    }
+}
+
+@keyframes robot-sweat-fall {
+    0% {
+        opacity: 0;
+        transform: translateY(0);
+    }
+
+    50% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+}
+
+/* --- V28: SCANNER (Thinking) --- */
+@keyframes robot-scan-pass {
+    0% {
+        transform: translateX(-100%);
+        opacity: 0;
+    }
+
+    10% {
+        opacity: 1;
+    }
+
+    90% {
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}

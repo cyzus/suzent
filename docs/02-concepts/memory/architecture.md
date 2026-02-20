@@ -7,82 +7,133 @@
 │      Agent Tools                │  memory_search, memory_block_update
 ├─────────────────────────────────┤
 │      MemoryManager              │  Orchestration & extraction
-├─────────────────────────────────┤
-│      PostgresMemoryStore        │  Database operations
-├─────────────────────────────────┤
-│      PostgreSQL + pgvector      │  Storage & indexing
+├─────────────┬───────────────────┤
+│  LanceDB    │  MarkdownStore    │  Dual-write storage
+│  (search)   │  (source of truth)│
+├─────────────┴───────────────────┤
+│      Session Layer              │  Transcripts, state, lifecycle
 └─────────────────────────────────┘
 ```
 
+## Storage Tiers
+
+### Markdown Files (`/shared/memory/`)
+**Human-readable source of truth.** Agent-facing — the agent can read/write these files directly via `ReadFileTool`/`WriteFileTool`.
+
+- **Daily logs** (`YYYY-MM-DD.md`): Append-only, timestamped facts per conversation turn
+- **MEMORY.md**: Curated long-term summary, auto-updated by `refresh_core_memory_facts()`
+
+### LanceDB (`.suzent/memory/`)
+**Vector search index.** Rebuilt from markdown if corrupted via `MarkdownIndexer.reindex_from_markdown()`.
+
+- Core memory blocks (persona, user, facts, context)
+- Archival memories with vector embeddings
+- Hybrid search: semantic + full-text + importance + recency
+
+### Session Data (`.suzent/`)
+**Internal operational data.** Not agent-facing — accessed via API endpoints.
+
+- **Transcripts** (`.suzent/transcripts/{id}.jsonl`): Append-only per-session conversation logs
+- **State snapshots** (`.suzent/state/{id}.json`): Inspectable JSON agent state mirrors
+
 ## Components
 
-### PostgresMemoryStore (postgres_store.py)
-**Database layer**
+### MarkdownMemoryStore (markdown_store.py)
+**Human-readable persistence layer**
 
-**Responsibilities:**
-- Connection pool management
-- Core memory block CRUD
+- Manages files in `/shared/memory/` (cross-session, agent-accessible)
+- Daily log format: lean single-line-per-fact (`- [category] content \`tag1 tag2\``)
+- Methods: `append_daily_log()`, `get_recent_logs()`, `write_memory_file()`, `read_memory_file()`
+
+### LanceDBMemoryStore (lancedb_store.py)
+**Search index layer**
+
+- LanceDB connection management
+- Core memory block CRUD with scoping priority (chat > user > global)
 - Archival memory with vector embeddings
 - Semantic and hybrid search
-- Statistics
-
-**Key Methods:**
-- `get_all_memory_blocks()` - Retrieve with scoping priority
-- `add_memory()` - Store with embedding
-- `semantic_search()` - Pure vector similarity
-- `hybrid_search()` - Combined scoring
-
-**Scoping:** chat-specific > user-level > global
 
 ### MemoryManager (manager.py)
 **Orchestration layer**
 
-**Responsibilities:**
-- Core memory formatting
-- Automatic fact extraction
-- Deduplication
-- Embedding generation
+- **Dual-write**: every extracted fact goes to both LanceDB and markdown
+- Automatic LLM-based fact extraction (one concise sentence per fact)
+- Deduplication via similarity threshold (0.85)
+- Core memory refresh when high-importance facts are found
+- Transcript linkage: facts track `source_session_id`, `source_transcript_line`, `source_timestamp`
 
-**Key Methods:**
-- `get_core_memory()` - All blocks with defaults
-- `format_core_memory_for_context()` - Prompt injection
-- `retrieve_relevant_memories()` - Auto-retrieval
-- `process_conversation_turn_for_memories()` - Extract from full context
-- `refresh_core_memory_facts()` - Auto-summarize core memory
-- `search_memories()` - Agent-facing search
+### MarkdownIndexer (indexer.py)
+**Recovery mechanism**
 
-**Extraction Process:**
-1. Full Conversation Turn (User + Agent Steps + Response)
-2. LLM extraction with "Rich Context" prompts
-3. Deduplication check
-4. Store unique facts
-5. Monitor for high-importance facts -> Trigger Core Memory Refresh
+- `reindex_from_markdown()`: Rebuilds LanceDB from markdown daily logs
+- Parses facts from markdown format, generates embeddings, stores in LanceDB
+
+### TranscriptIndexer (indexer.py)
+**Cross-session search**
+
+- Chunks JSONL transcripts (~400 tokens, 80 overlap) into LanceDB
+- Enables semantic search across past session conversations
+- Opt-in via `transcript_indexing_enabled` config
+
+### ContextCompressor (context_compressor.py)
+**Context window management with pre-compaction flush**
+
+- Before compressing steps, extracts facts from steps about to be removed
+- Feeds synthetic `ConversationTurn` to `MemoryManager` for dual-write
+- Ensures no valuable context is lost when the context window is trimmed
 
 ### Memory Tools (tools.py)
 **Agent interface**
 
-**MemorySearchTool:**
-- Semantic search across archival
-- Formatted results with scores
-- Thread-safe execution
-
-**MemoryBlockUpdateTool:**
-- Update core blocks
-- Operations: replace, append, search_replace
-- Auto-scoping (user vs chat level)
-
-**Thread Safety:**
-Uses `asyncio.run_coroutine_threadsafe()` for safe execution from worker threads.
+- `MemorySearchTool`: Semantic search across archival memory
+- `MemoryBlockUpdateTool`: Update core blocks (replace, append, search_replace)
+- Thread-safe via `asyncio.run_coroutine_threadsafe()`
 
 ### Memory Context (memory_context.py)
 **Prompt templates**
 
-- `format_core_memory_section()` - Agent context
-- `format_retrieved_memories_section()` - Search results with intent/outcome
-- `FACT_EXTRACTION_SYSTEM_PROMPT` - Rich extraction instructions
-- `CORE_MEMORY_SUMMARIZATION_PROMPT` - Auto-summary instructions
+- `FACT_EXTRACTION_SYSTEM_PROMPT`: One concise sentence per fact, no filler
+- `CORE_MEMORY_SUMMARIZATION_PROMPT`: Max 200 words, bullet points only
+- `format_core_memory_section()`: Includes Memory Workspace location (`/shared/memory/`)
+- `format_retrieved_memories_section()`: Single-line format per memory
+
+## Session Components
+
+### TranscriptManager (session/transcript.py)
+- Append-only JSONL files at `.suzent/transcripts/{session_id}.jsonl`
+- Each line: `{"ts", "role", "content", "actions", "meta"}`
+- Thread-safe with async locks per session
+
+### StateMirror (session/state_mirror.py)
+- Writes inspectable JSON snapshots to `.suzent/state/{session_id}.json`
+- Parses JSON v2 agent state; writes placeholder for legacy pickle
+
+### SessionLifecycle (session/lifecycle.py)
+- `SessionPolicy`: daily reset hour, idle timeout, max turns
+- `should_reset()`: checks all policies against session metadata
+
+### Agent Serializer (core/agent_serializer.py)
+- **JSON v2 format**: Human-readable, inspectable agent state
+- Backward-compatible: auto-detects and loads legacy pickle format
+- Serializes smolagents step objects (ActionStep, PlanningStep, TaskStep, FinalAnswerStep)
 
 ## Data Flow
+
+### Write Path (Extraction + Dual-Write)
+```
+Conversation Turn (User + Agent + Response)
+  ↓
+manager.process_conversation_turn_for_memories()
+  ↓
+LLM extracts concise facts
+  ↓
+┌────────────────┬─────────────────────┐
+│ LanceDB store  │ Markdown daily log  │
+│ (search index) │ (source of truth)   │
+└────────────────┴─────────────────────┘
+  ↓
+If High Importance → refresh_core_memory_facts() → MEMORY.md
+```
 
 ### Read Path (Memory Injection)
 ```
@@ -90,35 +141,39 @@ User Query
   ↓
 manager.retrieve_relevant_memories()
   ↓
-Generate embedding → Hybrid search
+Generate embedding → Hybrid search (LanceDB)
   ↓
-Format results (Content + Context + Outcome)
+Format results (single-line per memory)
   ↓
 Inject into agent prompt
 ```
 
-### Write Path (Extraction)
+### Pre-Compaction Flush
 ```
-Conversation Turn (User + Agent + Response)
+Context compression triggered
   ↓
-manager.process_conversation_turn_for_memories()
+_pre_compaction_flush(steps_to_compress)
   ↓
-LLM extracts facts + context
+Build synthetic ConversationTurn from steps
   ↓
-Store unique facts
+Feed to memory extraction pipeline (dual-write)
   ↓
-If High Importance -> refresh_core_memory_facts()
+Compress steps into summary
 ```
 
-### Tool Usage
+### Session Lifecycle
 ```
-Agent decides to search
+New message arrives
   ↓
-Calls memory_search(query)
+Write JSONL transcript entry
   ↓
-Execute in main loop
+Extract memories (dual-write)
   ↓
-Return formatted results
+Check compression → pre-compaction flush if needed
+  ↓
+Persist state (JSON v2 + StateMirror)
+  ↓
+Update last_active_at, turn_count
 ```
 
 ## Memory Scoping
@@ -147,19 +202,55 @@ Return formatted results
 
 ```
 src/suzent/memory/
+├── __init__.py          # Exports
+├── lancedb_store.py     # LanceDB search index
+├── markdown_store.py    # Markdown source of truth (/shared/memory/)
+├── indexer.py           # MarkdownIndexer + TranscriptIndexer
+├── manager.py           # Orchestration & dual-write
+├── memory_context.py    # Prompt templates
+├── tools.py             # Agent tools
+├── models.py            # Pydantic models
+└── lifecycle.py         # Initialization
+
+src/suzent/session/
 ├── __init__.py
-├── postgres_store.py    # Database layer
-├── manager.py           # Orchestration
-├── memory_context.py    # Templates
-├── tools.py             # Agent interface
-└── schema.sql           # Schema
+├── transcript.py        # JSONL transcripts
+├── state_mirror.py      # Agent state snapshots
+└── lifecycle.py         # Session reset policies
+
+src/suzent/core/
+├── agent_serializer.py  # JSON v2 agent state
+├── context_compressor.py # Pre-compaction flush
+└── chat_processor.py    # Integration point
+
+src/suzent/routes/
+└── session_routes.py    # Transcript/state/memory APIs
+```
+
+## Data Layout
+
+```
+data/sandbox-data/
+  shared/                           # Cross-session workspace (agent sees /shared/)
+    memory/
+      MEMORY.md                     # Curated long-term memory
+      2026-02-08.md                 # Daily append-only logs
+
+.suzent/
+  chats.db                          # SQLite + session lifecycle fields
+  memory/                           # LanceDB search index
+  transcripts/
+    {session_id}.jsonl              # Per-session conversation logs
+  state/
+    {session_id}.json               # Agent state snapshots
 ```
 
 ## Design Principles
 
-1. **Separation of Concerns** - Clear layer boundaries
-2. **Async by Default** - Non-blocking I/O
-3. **Flexible Scoping** - Automatic priority resolution
-4. **Automatic Management** - Facts extracted without commands
-5. **Production Ready** - ACID, pooling, indexes
-
+1. **Markdown as Source of Truth** - Human-readable, git-friendly, recoverable
+2. **Dual-Write** - Every fact persisted to both markdown and LanceDB
+3. **No Context Loss** - Pre-compaction flush captures facts before compression
+4. **Inspectable State** - JSON v2 replaces opaque pickle; state mirrors on disk
+5. **Separation of Concerns** - Agent-facing (`/shared/`) vs internal (`.suzent/`)
+6. **Async by Default** - Non-blocking I/O throughout
+7. **Backward Compatible** - Legacy pickle deserialization, nullable migrations

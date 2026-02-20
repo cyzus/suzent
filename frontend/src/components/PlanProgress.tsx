@@ -24,8 +24,14 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
         return <div className="text-xs text-neutral-500 italic p-4 text-center">{t('planProgress.noActivePlan')}</div>;
     }
 
-    const completed = plan.phases.filter(phase => phase.status === 'completed').length;
     const totalPhases = plan.phases.length;
+
+    // Don't show empty plans (no phases yet)
+    if (totalPhases === 0 && !isDocked) {
+        return null;
+    }
+
+    const completed = plan.phases.filter(phase => phase.status === 'completed').length;
 
     // Find current phase (first in_progress) or last completed if all done
     const currentPhaseIndex = plan.phases.findIndex(p => p.status === 'in_progress');

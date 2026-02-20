@@ -86,9 +86,35 @@ class BrowserSessionManager:
                     f"--remote-debugging-port={self.PORT}",
                 ]
 
-                self._browser = await self._playwright.chromium.launch(
-                    headless=headless, args=args
-                )
+                try:
+                    self._browser = await self._playwright.chromium.launch(
+                        headless=headless, args=args
+                    )
+                except Exception as e:
+                    if "executable doesn't exist" in str(e).lower():
+                        logger.info(
+                            "Chromium not installed. Installing now (this may take a few minutes)..."
+                        )
+                        import subprocess
+                        import sys
+
+                        result = subprocess.run(
+                            [sys.executable, "-m", "playwright", "install", "chromium"],
+                            capture_output=True,
+                            text=True,
+                            timeout=300,
+                        )
+                        if result.returncode == 0:
+                            logger.info("Chromium installed successfully.")
+                            self._browser = await self._playwright.chromium.launch(
+                                headless=headless, args=args
+                            )
+                        else:
+                            raise RuntimeError(
+                                f"Failed to install Chromium: {result.stderr}"
+                            )
+                    else:
+                        raise
 
                 # Create context with video size tailored for sidebar
                 self._context = await self._browser.new_context(
@@ -101,6 +127,10 @@ class BrowserSessionManager:
 
                 # Setup Screencast
                 self._client.on("Page.screencastFrame", self._on_screencast_frame)
+
+                # If we have waiting clients, start streaming immediately
+                if self._websockets:
+                    await self.start_streaming()
 
         # Execute on main loop
         await self._run_on_main_loop(_launch())
@@ -327,6 +357,10 @@ class BrowserSessionManager:
         if not self._websockets:
             await self.stop_streaming()
 
+    def _get_mouse_coords(self, message: dict) -> tuple[float | None, float | None]:
+        """Extract and validate mouse coordinates from a message."""
+        return message.get("x"), message.get("y")
+
     async def handle_client_message(self, message: dict):
         """Process interaction events from the frontend."""
         action = message.get("type")
@@ -345,10 +379,22 @@ class BrowserSessionManager:
             return
 
         try:
-            if action == "click":
-                x, y = message.get("x"), message.get("y")
-                if x is not None and y is not None:
+            # Mouse actions with coordinate validation
+            if action in ("click", "mousedown", "mouseup", "mousemove"):
+                x, y = self._get_mouse_coords(message)
+                if x is None or y is None:
+                    return
+
+                if action == "click":
                     await self._page.mouse.click(x, y)
+                elif action == "mousedown":
+                    await self._page.mouse.move(x, y)
+                    await self._page.mouse.down()
+                elif action == "mouseup":
+                    await self._page.mouse.move(x, y)
+                    await self._page.mouse.up()
+                elif action == "mousemove":
+                    await self._page.mouse.move(x, y)
 
             elif action == "type":
                 text = message.get("text")
@@ -430,6 +476,7 @@ class BrowsingTool(Tool):
             "type": "array",
             "description": "Optional arguments for the command (e.g., url, selector).",
             "nullable": True,
+            "items": {"type": "string"},
         },
     }
     output_type = "string"

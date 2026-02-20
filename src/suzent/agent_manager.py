@@ -18,7 +18,7 @@ from suzent.core.provider_factory import get_enabled_models_from_db
 
 from suzent.config import CONFIG
 from suzent.logger import get_logger
-from suzent.prompts import format_instructions
+from suzent.prompts import format_instructions, build_social_context
 from suzent.skills import get_skill_manager
 from suzent.config import get_effective_volumes
 
@@ -50,6 +50,76 @@ def _normalize_deepseek_base_url(url: str) -> str:
     if normalized in {"https://api.deepseek.com", "http://api.deepseek.com"}:
         return f"{normalized}/v1"
     return normalized
+
+def _build_mcp_tools(config: Dict[str, Any]) -> list:
+    """
+    Build MCP tools from the enabled servers in the configuration.
+
+    Supports both simple format: {"name": "url"}
+    and nested format: {"name": {"url": "...", "headers": {...}}}
+
+    Args:
+        config: Agent configuration dictionary containing:
+            - mcp_enabled: Dict mapping server names to enabled state
+            - mcp_urls: URL servers (simple or nested format)
+            - mcp_headers: Optional headers per server
+            - mcp_stdio_params: Stdio server parameters
+
+    Returns:
+        List of MCP tools from enabled servers.
+    """
+    mcp_enabled = config.get("mcp_enabled")
+
+    # If mcp_enabled is not provided, fallback to global CONFIG defaults
+    if mcp_enabled is None:
+        mcp_enabled = CONFIG.mcp_enabled or {}
+
+    raw_mcp_urls = config.get("mcp_urls", CONFIG.mcp_urls)
+    mcp_headers = config.get("mcp_headers", {})
+    mcp_stdio_params = config.get("mcp_stdio_params", CONFIG.mcp_stdio_params)
+
+    # Parse mcp_urls to handle both simple and nested formats
+    mcp_urls = {}
+
+    # Handle list input (backward compatibility for array of strings)
+    if isinstance(raw_mcp_urls, list):
+        for i, url in enumerate(raw_mcp_urls):
+            # Use generated name if we can't infer it. Headers won't work for these.
+            # Ideally we could reverse-lookup global config but that's complex/unreliable if duplicates exist.
+            mcp_urls[f"mcp-url-{i}"] = url
+
+    # Handle dict input (standard format)
+    elif isinstance(raw_mcp_urls, dict):
+        for name, value in raw_mcp_urls.items():
+            if isinstance(value, str):
+                mcp_urls[name] = value
+            elif isinstance(value, dict):
+                mcp_urls[name] = value.get("url", "")
+                # Extract headers from nested format if not already provided
+                if value.get("headers") and name not in mcp_headers:
+                    mcp_headers[name] = value["headers"]
+
+    mcp_server_parameters = []
+
+    # Build URL server parameters
+    for name, url in mcp_urls.items():
+        if mcp_enabled.get(name, False):
+            server_params = {"url": url, "transport": "streamable-http"}
+            if name in mcp_headers and mcp_headers[name]:
+                server_params["headers"] = mcp_headers[name]
+            mcp_server_parameters.append(server_params)
+
+    # Build stdio server parameters
+    if mcp_stdio_params:
+        for name, params in mcp_stdio_params.items():
+            if mcp_enabled.get(name, False):
+                mcp_server_parameters.append(StdioServerParameters(**params))
+
+    if not mcp_server_parameters:
+        return []
+
+    mcp_client = MCPClient(server_parameters=mcp_server_parameters)
+    return mcp_client.get_tools()
 
 
 def create_agent(
@@ -129,15 +199,17 @@ def create_agent(
     # Import tool registry for dynamic tool discovery
     from suzent.tools.registry import get_tool_class
 
-    # Load regular tools (excluding memory tools which are handled separately)
+    # Tools auto-equipped separately below
+    _auto_equipped = {
+        "MemorySearchTool",
+        "MemoryBlockUpdateTool",
+        "SkillTool",
+        "SocialMessageTool",
+    }
+
     for tool_name in tool_names:
         try:
-            # Skip memory tools and SkillTool - they are handled separately
-            if tool_name in [
-                "MemorySearchTool",
-                "MemoryBlockUpdateTool",
-                "SkillTool",
-            ]:
+            if tool_name in _auto_equipped:
                 continue
 
             tool_class = get_tool_class(tool_name)
@@ -169,34 +241,21 @@ def create_agent(
         except Exception as e:
             logger.error(f"Failed to equip SkillTool: {e}")
 
-    # --- Filter MCP servers by enabled state if provided ---
-    # Accepts: config['mcp_enabled'] = {name: bool, ...}, config['mcp_urls'], config['mcp_stdio_params']
-    mcp_enabled = config.get("mcp_enabled")
-    mcp_urls = config.get("mcp_urls", CONFIG.mcp_urls)
-    mcp_stdio_params = config.get("mcp_stdio_params", CONFIG.mcp_stdio_params)
-
-    mcp_server_parameters = []
-    if mcp_enabled is not None:
-        # Only include explicitly enabled servers
-        # Default to False (disabled) if server not in mcp_enabled dict
-        if mcp_urls:
-            for name, url in (
-                mcp_urls.items() if isinstance(mcp_urls, dict) else enumerate(mcp_urls)
+    # Auto-equip SocialMessageTool (social mode via context, or desktop mode via tool list)
+    social_ctx = config.get("social_context")
+    if social_ctx or "SocialMessageTool" in tool_names:
+        try:
+            social_tool_class = get_tool_class("SocialMessageTool")
+            if social_tool_class and not any(
+                isinstance(t, social_tool_class) for t in tools
             ):
-                if mcp_enabled.get(name, False):
-                    mcp_server_parameters.append(
-                        {"url": url, "transport": "streamable-http"}
-                    )
-        if mcp_stdio_params:
-            for name, params in mcp_stdio_params.items():
-                if mcp_enabled.get(name, False):
-                    mcp_server_parameters.append(StdioServerParameters(**params))
-    # Note: If mcp_enabled is not provided, default to NO MCP servers
-    # This ensures fresh launch matches frontend tool display (only native tools)
+                tools.append(social_tool_class())
+        except Exception as e:
+            logger.error(f"Failed to equip SocialMessageTool: {e}")
 
-    if mcp_server_parameters:
-        mcp_client = MCPClient(server_parameters=mcp_server_parameters)
-        tools.extend(mcp_client.get_tools())
+    # Load MCP tools from enabled servers
+    mcp_tools = _build_mcp_tools(config)
+    tools.extend(mcp_tools)
 
     agent_map = {"CodeAgent": CodeAgent, "ToolcallingAgent": ToolCallingAgent}
 
@@ -211,7 +270,10 @@ def create_agent(
     custom_volumes = get_effective_volumes(sandbox_volumes)
 
     instructions = format_instructions(
-        base_instructions, memory_context=memory_context, custom_volumes=custom_volumes
+        base_instructions,
+        memory_context=memory_context,
+        custom_volumes=custom_volumes,
+        social_context=build_social_context(social_ctx) if social_ctx else "",
     )
 
     params = {
@@ -258,9 +320,19 @@ async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Co
     """
     global agent_instance, agent_config
 
+    # Keys that are transient per-request and should not trigger agent re-creation
+    # (_runtime contains live objects that can't be compared; _chat_id/_user_id are per-session)
+    _TRANSIENT_KEYS = {"_runtime", "_chat_id", "_user_id"}
+
+    def _stable_config(cfg: dict) -> dict:
+        """Return config dict without transient per-request keys."""
+        return {k: v for k, v in cfg.items() if k not in _TRANSIENT_KEYS}
+
     async with agent_lock:
         # Re-create agent if config changes, reset requested, or not initialized
-        config_changed = config != agent_config
+        config_changed = _stable_config(config) != (
+            _stable_config(agent_config) if agent_config else None
+        )
         if config_changed and agent_config is not None:
             logger.info("Config changed - creating new agent")
             logger.debug(f"Old config tools: {agent_config.get('tools', [])}")

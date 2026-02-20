@@ -1,6 +1,6 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { Plan, PlanPhaseStatus } from '../types/api';
-import { API_BASE } from '../lib/api';
+import { getApiBase } from '../lib/api';
 
 const getPlanKey = (plan: Plan) => (plan.id != null ? `plan:${plan.id}` : plan.versionKey);
 
@@ -21,31 +21,44 @@ export const PlanProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [plans, setPlans] = useState<Plan[]>([]);
   const [selectedPlanKey, setSelectedPlanKey] = useState<string | null>(null);
   const [snapshotPlan, setSnapshotPlan] = useState<Plan | null>(null);
+  const snapshotPlanRef = useRef(snapshotPlan);
+  snapshotPlanRef.current = snapshotPlan;
+  const lastChatIdRef = useRef<string | null>(null);
 
   const refresh = useCallback(async (chatId?: string | null) => {
+    // Clear stale snapshot when switching to a different chat
+    if (chatId && lastChatIdRef.current && chatId !== lastChatIdRef.current) {
+      setSnapshotPlan(null);
+    }
+    if (chatId) {
+      lastChatIdRef.current = chatId;
+    }
+
     if (!chatId) {
       setPlans([]);
       setSelectedPlanKey(null);
       setSnapshotPlan(null);
+      lastChatIdRef.current = null;
       return;
     }
 
     try {
-      const res = await fetch(`${API_BASE}/plans?chat_id=${chatId}`);
+      const res = await fetch(`${getApiBase()}/plans?chat_id=${chatId}`);
       if (res.ok) {
         const data: Plan[] = await res.json();
         setPlans(data);
 
+        const currentSnapshot = snapshotPlanRef.current;
         const snapshotMatchesPersisted = Boolean(
-          snapshotPlan &&
+          currentSnapshot &&
           data.some(planEntry => {
-            if (snapshotPlan.id != null && planEntry.id === snapshotPlan.id) return true;
-            if (snapshotPlan.versionKey && snapshotPlan.versionKey === getPlanKey(planEntry)) return true;
+            if (currentSnapshot.id != null && planEntry.id === currentSnapshot.id) return true;
+            if (currentSnapshot.versionKey && currentSnapshot.versionKey === getPlanKey(planEntry)) return true;
             return false;
           }),
         );
 
-        const effectiveSnapshot = snapshotMatchesPersisted ? null : snapshotPlan;
+        const effectiveSnapshot = snapshotMatchesPersisted ? null : currentSnapshot;
         if (snapshotMatchesPersisted) {
           setSnapshotPlan(null);
         }
@@ -74,7 +87,7 @@ export const PlanProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setPlans([]);
       setSelectedPlanKey(null);
     }
-  }, [snapshotPlan]);
+  }, []);
 
   useEffect(() => {
     refresh();

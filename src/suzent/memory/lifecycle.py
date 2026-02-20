@@ -38,12 +38,23 @@ async def init_memory_system() -> bool:
     try:
         # Import memory modules (local imports to avoid circular deps)
         from suzent.memory import MemoryManager, LanceDBMemoryStore
+        from suzent.memory.markdown_store import MarkdownMemoryStore
 
-        # Initialize LanceDB store
+        # Initialize LanceDB store (search index)
         memory_store = LanceDBMemoryStore(
             CONFIG.lancedb_uri, embedding_dim=CONFIG.embedding_dimension
         )
         await memory_store.connect()
+
+        # Initialize markdown store (human-readable source of truth)
+        # Lives in /shared/memory/ so the agent can directly read/write via file tools
+        markdown_store = None
+        if getattr(CONFIG, "markdown_memory_enabled", True):
+            from pathlib import Path
+
+            shared_memory_dir = Path(CONFIG.sandbox_data_path) / "shared" / "memory"
+            markdown_store = MarkdownMemoryStore(str(shared_memory_dir))
+            logger.info(f"Markdown memory store initialized at {shared_memory_dir}")
 
         # Initialize memory manager
         memory_manager = MemoryManager(
@@ -51,10 +62,13 @@ async def init_memory_system() -> bool:
             embedding_model=CONFIG.embedding_model,
             embedding_dimension=CONFIG.embedding_dimension,
             llm_for_extraction=CONFIG.extraction_model,
+            markdown_store=markdown_store,
         )
 
         logger.info(
-            f"Memory system initialized successfully (extraction: {'LLM' if CONFIG.extraction_model else 'heuristic'})"
+            f"Memory system initialized successfully "
+            f"(extraction: {'LLM' if CONFIG.extraction_model else 'heuristic'}, "
+            f"markdown: {'enabled' if markdown_store else 'disabled'})"
         )
 
         # Add memory tools to CONFIG.tool_options so they appear in frontend

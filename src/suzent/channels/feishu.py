@@ -22,6 +22,10 @@ try:
     )
 except ImportError:
     lark = None
+    P2ImMessageReceiveV1 = object  # Fallback for type hinting
+    CreateMessageRequest = object
+    CreateMessageRequestBody = object
+    GetMessageResourceRequest = object
 
 logger = get_logger(__name__)
 

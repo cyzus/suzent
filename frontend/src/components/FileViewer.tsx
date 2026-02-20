@@ -12,7 +12,7 @@ interface FileViewerProps {
     onClose: () => void;
 }
 
-import { API_BASE } from '../lib/api';
+import { getApiBase } from '../lib/api';
 
 export const FileViewer: React.FC<FileViewerProps> = ({ filePath, fileName, chatId, onClose }) => {
     const { t } = useI18n();
@@ -52,7 +52,22 @@ export const FileViewer: React.FC<FileViewerProps> = ({ filePath, fileName, chat
                 return;
             }
 
-            const response = await fetch(`${API_BASE}/sandbox/read_file?chat_id=${chatId}&path=${encodeURIComponent(filePath)}`);
+            const base = getApiBase();
+            if (!base) {
+                setError("Backend not ready");
+                return;
+            }
+            const response = await fetch(`${base}/sandbox/read_file?chat_id=${chatId}&path=${encodeURIComponent(filePath)}`);
+            if (!response.ok) {
+                const text = await response.text();
+                try {
+                    const data = JSON.parse(text);
+                    setError(data.error || `Server error: ${response.status}`);
+                } catch {
+                    setError(`Server error: ${response.status}`);
+                }
+                return;
+            }
             const data = await response.json();
 
             if (data.error) {
@@ -70,7 +85,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({ filePath, fileName, chat
     const openInExplorer = async () => {
         if (!filePath) return;
         try {
-            await fetch(`${API_BASE}/system/open_explorer`, {
+            await fetch(`${getApiBase()}/system/open_explorer`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

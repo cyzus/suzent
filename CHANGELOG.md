@@ -5,6 +5,95 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.7]
+
+### 🚀 Added
+- **Social Messaging Tool**:
+  - Now suzent could proactively send messages to any configured social platform.
+- **Voice**:
+  - Add voice support for suzent.
+- **Node System**: OpenClaw-inspired node architecture for controlling companion devices (phones, desktops, headless servers) remotely.
+  - `NodeBase` ABC and `NodeManager` for device registry, lookup, and command dispatch.
+  - `WebSocketNode` with JSON-RPC-style invoke/result protocol and heartbeat support.
+  - WebSocket endpoint (`/ws/node`) for node connections with Pydantic-validated handshake.
+  - REST endpoints for listing (`/nodes`), describing (`/nodes/{id}`), and invoking commands (`/nodes/{id}/invoke`).
+  - Pydantic models for all protocol messages and API schemas (`nodes/models.py`).
+  - `nodes_enabled` and `node_auth_mode` configuration fields.
+- **CLI Overhaul**: New subcommand groups alongside existing commands.
+  - `suzent nodes list|status|describe|invoke` — manage connected nodes.
+  - `suzent agent chat|status` — interact with the agent from the terminal.
+  - `suzent config show|get|set` — view and modify configuration.
+- **Skills**: New `nodes` skill teaching the agent to use `suzent nodes` commands via `BashTool`.
+
+
+## [v0.2.6]
+
+### 🚀 Added
+- **Memory**:
+  - Markdown memory layer — human-readable source of truth in `/shared/memory/` with daily logs (`YYYY-MM-DD.md`) and curated `MEMORY.md`.
+  - Dual-write architecture — every extracted fact persisted to both markdown and LanceDB.
+  - `MarkdownIndexer` for rebuilding LanceDB from markdown source of truth.
+  - `TranscriptIndexer` for chunking and embedding JSONL transcripts into LanceDB (opt-in via `transcript_indexing_enabled`).
+  - Transcript-linked facts with `source_session_id`, `source_transcript_line`, `source_timestamp` fields.
+- **Session**:
+  - JSONL per-session transcripts at `.suzent/transcripts/{session_id}.jsonl`.
+  - Session lifecycle management with daily reset, idle timeout, and max turns policies.
+  - `StateMirror` writes inspectable JSON snapshots to `.suzent/state/{session_id}.json`.
+- **Agent State**: JSON v2 serialization format replacing opaque pickle, with backward-compatible deserialization.
+- **Context**: Pre-compaction memory flush — extracts facts from steps before context compression discards them.
+- **API**: New endpoints: `/session/{id}/transcript`, `/session/{id}/state`, `/memory/daily`, `/memory/daily/{date}`, `/memory/file`, `/memory/reindex`.
+- **Frontend**:
+  - Memory view sub-navigation with Overview, Daily Logs, MEMORY.md, and Transcripts tabs.
+  - DailyLogsPanel, MemoryFilePanel, and TranscriptPanel components.
+  - Extended memoryApi with 6 new API client functions and TypeScript types.
+
+### ⚡ Changed
+- **Memory**: 
+  - Fact extraction prompts rewritten for concise one-sentence-per-fact output.
+  - Retrieved memories formatted as single-line entries.
+- **Context**: `ContextCompressor` now accepts `chat_id`/`user_id` for pre-compaction flush.
+- **Database**: `ChatModel` extended with `last_active_at` and `turn_count` fields (nullable migration).
+- **Frontend**: improve thinking animation.
+
+## [v0.2.5]
+### ⚡ Changed
+- **Desktop Build**: Replace PyInstaller/Nuitka compilation with bundled Python + uv architecture
+  - Bundle standalone Python 3.12 distribution and uv package manager
+  - First-run venv creation via uv (~10-30s on first launch)
+  - All native dependencies (Playwright, lancedb, crawl4ai) now work natively
+  - Build time reduced from minutes/hours to ~30 seconds
+- **Playwright**: Auto-install Chromium browser on first launch (no manual setup needed)
+- **File Viewer**: Fix CSP to allow serving images and iframes from backend
+
+### 🐛 Fixed
+- **Desktop**: Fix window hanging whilst waiting for backend startup
+- **File Viewer**: Fix JSON parse error when backend returns non-JSON responses
+
+
+## [v0.2.4] - 2026-02-08
+### ⚡ Changed
+- **Port**: use dynamic port for backend in release mode
+- **Desktop App**: use pyinstaller for faster build
+
+### 🐛 Fixed
+- **Social Messaging**: fix social messaging setting's view crashes
+
+## [v0.2.3] - 2026-02-03
+
+### 🚀 Added
+- **MCP**: Support headers for streamable-http MCP servers.
+- **Context**: Add auto context compression.
+
+### ⚡ Changed
+- **MCP**: 
+    - Move MCP server management from Config View to Settings View.
+    - support headers for streamable-http MCP servers.
+- **Refactor**: Refactor the settings view.
+- **Browser**: Allow taking control of the internal browser.
+
+### 🐛 Fixed
+- **MCP**: Fix the frontend/backend inconsistency for MCP server.
+
 ## [v0.2.2] - 2026-02-02
 ### 🚀 Added
 - **Browser**: Add browser tool and include a browser tab in the right sidebar.

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 from sqlalchemy.orm import selectinload
+from sqlalchemy import text, inspect
 from sqlmodel import (
     Column,
     Field,
@@ -52,6 +53,10 @@ class ChatModel(SQLModel, table=True):
     config: dict = Field(default_factory=dict, sa_column=Column(JSON))
     messages: list = Field(default_factory=list, sa_column=Column(JSON))
     agent_state: Optional[bytes] = None
+
+    # Session lifecycle fields
+    last_active_at: Optional[datetime] = None
+    turn_count: int = Field(default=0)
 
     plans: List["PlanModel"] = Relationship(
         back_populates="chat",
@@ -118,6 +123,7 @@ class MCPServerModel(SQLModel, table=True):
     name: str = Field(primary_key=True)
     type: str  # "url" or "stdio"
     url: Optional[str] = None
+    headers: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     command: Optional[str] = None
     args: Optional[list] = Field(default=None, sa_column=Column(JSON))
     env: Optional[dict] = Field(default=None, sa_column=Column(JSON))
@@ -185,6 +191,39 @@ class ChatDatabase:
 
         # Create all tables
         SQLModel.metadata.create_all(self.engine)
+
+        # Run migrations for new columns
+        self._run_migrations()
+
+    def _run_migrations(self):
+        """Run database migrations for new columns."""
+        inspector = inspect(self.engine)
+
+        # Migration: Add 'headers' column to 'mcp_servers' table
+        if "mcp_servers" in inspector.get_table_names():
+            columns = [col["name"] for col in inspector.get_columns("mcp_servers")]
+            if "headers" not in columns:
+                with self.engine.connect() as conn:
+                    conn.execute(
+                        text("ALTER TABLE mcp_servers ADD COLUMN headers TEXT")
+                    )
+                    conn.commit()
+
+        # Migration: Add session lifecycle columns to 'chats' table
+        if "chats" in inspector.get_table_names():
+            columns = [col["name"] for col in inspector.get_columns("chats")]
+            with self.engine.connect() as conn:
+                if "last_active_at" not in columns:
+                    conn.execute(
+                        text("ALTER TABLE chats ADD COLUMN last_active_at DATETIME")
+                    )
+                if "turn_count" not in columns:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE chats ADD COLUMN turn_count INTEGER DEFAULT 0"
+                        )
+                    )
+                conn.commit()
 
     def _session(self) -> Session:
         """Create a new database session."""
@@ -717,6 +756,7 @@ class ChatDatabase:
                 name=name,
                 type=config.get("type", "stdio"),
                 url=config.get("url"),
+                headers=config.get("headers"),
                 command=config.get("command"),
                 args=config.get("args"),
                 env=config.get("env"),
@@ -742,6 +782,8 @@ class ChatDatabase:
                     server.type = config["type"]
                 if "url" in config:
                     server.url = config["url"]
+                if "headers" in config:
+                    server.headers = config["headers"]
                 if "command" in config:
                     server.command = config["command"]
                 if "args" in config:

@@ -26,9 +26,14 @@ export const MCPServers: React.FC = () => {
       console.warn('Failed to load MCP servers from localStorage', e);
     }
 
-    // Fallback: if config has mcp_urls, populate servers list with empty names
-    if (config && config.mcp_urls && config.mcp_urls.length) {
-      setServers(config.mcp_urls.map(u => ({ name: '', url: u, enabled: true })));
+    // Fallback: if config has mcp_urls, populate servers list
+    const mcpUrls = config?.mcp_urls;
+    if (mcpUrls) {
+      if (Array.isArray(mcpUrls) && mcpUrls.length > 0) {
+        setServers(mcpUrls.map(u => ({ name: '', url: u, enabled: true })));
+      } else if (!Array.isArray(mcpUrls) && Object.keys(mcpUrls).length > 0) {
+        setServers(Object.entries(mcpUrls).map(([n, u]) => ({ name: n, url: u, enabled: true })));
+      }
     }
   }, []); // run once
 
@@ -40,12 +45,35 @@ export const MCPServers: React.FC = () => {
       console.warn('Failed to save MCP servers to localStorage', e);
     }
 
-    const enabledUrls = servers.filter(s => s.enabled).map(s => s.url);
-    // Only update config if it changed to avoid noisy saves
-    const prev = config.mcp_urls ?? [];
-    const equal = prev.length === enabledUrls.length && prev.every((v, i) => v === enabledUrls[i]);
-    if (!equal) {
-      setConfig(prevConfig => ({ ...prevConfig, mcp_urls: enabledUrls }));
+    // Generate dictionary { [name]: url } for enabled servers
+    const enabledUrlDict: Record<string, string> = {};
+    servers.forEach(s => {
+      if (s.enabled) {
+        // Fallback to URL as name if name is missing (legacy)
+        enabledUrlDict[s.name || s.url] = s.url;
+      }
+    });
+
+    // Only update config if it changed
+    const prev = config.mcp_urls;
+    let changed = false;
+
+    if (!prev) {
+      changed = Object.keys(enabledUrlDict).length > 0;
+    } else if (Array.isArray(prev)) {
+      // Changed if we now support dictionary or if lengths differ (simplification: just switch to dict)
+      changed = true;
+    } else {
+      // Compare dicts
+      const prevKeys = Object.keys(prev).sort();
+      const newKeys = Object.keys(enabledUrlDict).sort();
+      if (prevKeys.length !== newKeys.length || !prevKeys.every((k, i) => k === newKeys[i] && prev[k] === enabledUrlDict[k])) {
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      setConfig(prevConfig => ({ ...prevConfig, mcp_urls: enabledUrlDict }));
     }
   }, [servers, config, setConfig]);
 
@@ -61,14 +89,32 @@ export const MCPServers: React.FC = () => {
   // If the global config changes externally (e.g., loading a chat), reflect enabled state
   useEffect(() => {
     if (!config) return;
-    const urls = new Set(config.mcp_urls ?? []);
+    const mcpUrls = config.mcp_urls;
+
+    // Normalize to set of URLs for checking existence
+    const configUrlSet = new Set<string>();
+    const configEntries: { name: string, url: string }[] = [];
+
+    if (Array.isArray(mcpUrls)) {
+      mcpUrls.forEach(u => {
+        configUrlSet.add(u);
+        configEntries.push({ name: '', url: u });
+      });
+    } else if (mcpUrls) {
+      Object.entries(mcpUrls).forEach(([n, u]) => {
+        configUrlSet.add(u);
+        configEntries.push({ name: n, url: u });
+      });
+    }
+
     setServers(prev => {
       // Keep existing servers, but update enabled flags based on config
-      const updated = prev.map(s => ({ ...s, enabled: urls.has(s.url) }));
+      const updated = prev.map(s => ({ ...s, enabled: configUrlSet.has(s.url) }));
+
       // Add any urls from config that are missing locally
-      (config.mcp_urls ?? []).forEach(u => {
-        if (!updated.find(s => s.url === u)) {
-          updated.push({ name: '', url: u, enabled: true });
+      configEntries.forEach(entry => {
+        if (!updated.find(s => s.url === entry.url)) {
+          updated.push({ name: entry.name, url: entry.url, enabled: true });
         }
       });
       return updated;

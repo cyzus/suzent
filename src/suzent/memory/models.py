@@ -2,7 +2,7 @@
 Pydantic models for memory system data structures.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from pydantic import BaseModel, Field
 
 
@@ -17,7 +17,7 @@ class AgentAction(BaseModel):
     """Represents an agent tool call action."""
 
     tool: str = Field(..., description="Name of the tool that was called")
-    args: Dict[str, Any] = Field(
+    args: Union[Dict[str, Any], str] = Field(
         default_factory=dict, description="Arguments passed to the tool"
     )
     output: Optional[Any] = Field(None, description="Output returned by the tool")
@@ -161,7 +161,7 @@ class ConversationTurn(BaseModel):
         if self.agent_actions:
             actions_parts = []
             for action in self.agent_actions:
-                output_str = str(action.output or "")[:200]
+                output_str = str(action.output or "")
                 actions_parts.append(
                     f"- Tool: {action.tool}({action.args})\n  Result: {output_str}..."
                 )
@@ -235,6 +235,17 @@ class ExtractedFact(BaseModel):
     )
     context_agent_actions_summary: Optional[str] = Field(
         None, description="Summary of agent actions"
+    )
+
+    # Transcript linkage (Phase 5) — traces where this fact came from
+    source_session_id: Optional[str] = Field(
+        None, description="Session/chat ID where this fact was extracted"
+    )
+    source_transcript_line: Optional[int] = Field(
+        None, description="Line number in the JSONL transcript"
+    )
+    source_timestamp: Optional[str] = Field(
+        None, description="ISO timestamp of the source conversation turn"
     )
 
 

@@ -1,5 +1,4 @@
 from smolagents.tools import Tool
-from suzent.skills import get_skill_manager
 
 
 class SkillTool(Tool):
@@ -16,6 +15,8 @@ class SkillTool(Tool):
 
     def __init__(self):
         super().__init__()
+        from suzent.skills import get_skill_manager
+
         self.skill_manager = get_skill_manager()
         # Update description with available skills dynamically at instantiation
         self.description = f"""Load a skill to gain specialized knowledge for a task.

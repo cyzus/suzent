@@ -47,19 +47,10 @@ python src/suzent/server.py
 
 ### Frontend Setup
 ```bash
-cd frontend
+cd src-tauri
 npm install
 npm run dev
 ```
-
-### Running with Docker (Services)
-For development, you likely only need the infrastructure services (Postgres, Redis), while running the app code locally for hot-reloading.
-
-```bash
-# Start ONLY infrastructure (DB, Redis, Search)
-docker compose -f docker/docker-compose.dev.yml up -d
-```
-
 
 ## 📝 Code Style
 
@@ -67,7 +58,7 @@ docker compose -f docker/docker-compose.dev.yml up -d
 - Follow PEP 8 guidelines
 - Use type hints where possible
 - Keep functions focused and well-documented
-- Run `ruff check` before committing
+- Run `pre-commit run --all-files` before committing
 
 ### TypeScript/React
 - Use functional components with hooks
@@ -98,21 +89,15 @@ docker compose -f docker/docker-compose.dev.yml up -d
 - [ ] Documentation updated if needed
 - [ ] No unnecessary changes to unrelated files
 
-## 📁 Project Structure
+## Roadmap
 
-```
-suzent/
-├── src/suzent/          # Python backend
-│   ├── routes/          # API endpoints
-│   ├── tools/           # Agent tools
-│   └── memory/          # Memory system
-├── frontend/            # React frontend
-│   ├── src/components/  # UI components
-│   ├── src/hooks/       # React contexts
-│   └── src/lib/         # API clients
-├── docker/              # Docker configurations
-└── docs/                # Documentation
-```
+Suzent is evolving rapidly and trying to keep up with the cutting-edge agent development.
+We are prioritizing:
+
+- Stability - fix bugs
+- UX - providing a unique and intuitive user experience
+- Memory Management - improving the memory/workspace logic
+
 
 ## ❓ Questions?
 

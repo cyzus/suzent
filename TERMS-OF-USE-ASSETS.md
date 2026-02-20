@@ -1,5 +1,7 @@
 # Asset License: Proprietary / All Rights Reserved
 
+SPDX-License-Identifier: LicenseRef-Suzent-Assets-Proprietary
+
 While the source code of **Suzent** is open source (Apache 2.0), the visual identity—specifically the **Robot Avatar** and its associated animations—are proprietary works.
 
 ## Protected Assets

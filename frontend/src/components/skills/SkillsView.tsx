@@ -75,7 +75,7 @@ export const SkillsView: React.FC = () => {
                             </p>
                         </div>
                         <div className="border-t-2 border-neutral-100 pt-3">
-                            <MarkdownRenderer content={skill.description} />
+                            <MarkdownRenderer content={skill.description || ''} />
                         </div>
                     </div>
                 ))}

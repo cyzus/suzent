@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { API_BASE } from '../../lib/api';
+import { getApiBase } from '../../lib/api';
 import { BrutalButton } from '../BrutalButton';
 import { useChatStore } from '../../hooks/useChatStore';
 import { FilePreview } from './FilePreview';
@@ -61,8 +61,14 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
         setLoading(true);
         setError(null);
         try {
+            const base = getApiBase();
             const volumesParam = JSON.stringify(config.sandbox_volumes || []);
-            const res = await fetch(`/sandbox/files?chat_id=${currentChatId}&path=${encodeURIComponent(path)}&volumes=${encodeURIComponent(volumesParam)}`);
+            const res = await fetch(`${base}/sandbox/files?chat_id=${currentChatId}&path=${encodeURIComponent(path)}&volumes=${encodeURIComponent(volumesParam)}`);
+            if (!res.ok) {
+                setError(`Server error: ${res.status}`);
+                setItems([]);
+                return;
+            }
             const data: FileListResponse = await res.json();
 
             if (data.error) {
@@ -91,8 +97,13 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
         setLoadingFile(true);
         setError(null);
         try {
+            const base = getApiBase();
             const volumesParam = JSON.stringify(config.sandbox_volumes || []);
-            const response = await fetch(`/sandbox/read_file?chat_id=${currentChatId}&path=${encodeURIComponent(path)}&volumes=${encodeURIComponent(volumesParam)}`);
+            const response = await fetch(`${base}/sandbox/read_file?chat_id=${currentChatId}&path=${encodeURIComponent(path)}&volumes=${encodeURIComponent(volumesParam)}`);
+            if (!response.ok) {
+                setError(`Server error: ${response.status}`);
+                return;
+            }
             const data = await response.json();
             if (data.error) {
                 setError(data.error);
@@ -110,7 +121,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
         if (!currentChatId) return;
 
         try {
-            await fetch(`${API_BASE}/system/open_explorer`, {
+            await fetch(`${getApiBase()}/system/open_explorer`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -165,8 +176,9 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                 const text = await file.text();
 
                 // Upload
+                const base = getApiBase();
                 const volumesParam = JSON.stringify(config.sandbox_volumes || []);
-                const res = await fetch(`/sandbox/file?chat_id=${currentChatId}&volumes=${encodeURIComponent(volumesParam)}`, {
+                const res = await fetch(`${base}/sandbox/file?chat_id=${currentChatId}&volumes=${encodeURIComponent(volumesParam)}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

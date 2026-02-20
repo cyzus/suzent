@@ -53,7 +53,10 @@ class EmbeddingGenerator:
             model: LiteLLM model identifier (e.g., 'text-embedding-3-small')
             dimension: Expected embedding dimension (0 = auto-detect from first response)
         """
-        self.model = model or CONFIG.embedding_model
+        from suzent.core.provider_factory import get_effective_memory_config
+
+        mem_config = get_effective_memory_config()
+        self.model = model or mem_config["embedding_model"]
         self.dimension = dimension or CONFIG.embedding_dimension
 
     async def generate(self, text: str) -> List[float]:
@@ -196,7 +199,6 @@ class LLMClient:
         response_model: Type[T],
         system: Optional[str] = None,
         temperature: float = 0.3,
-        max_tokens: int = 2000,
     ) -> T:
         """Extract structured data using a Pydantic model schema.
 
@@ -229,7 +231,6 @@ class LLMClient:
                 model=model,
                 messages=messages,
                 temperature=temperature,
-                max_tokens=max_tokens,
                 response_format=response_model,
                 **extra_kwargs,
             )

@@ -3,7 +3,7 @@ import type { Message } from '../../types/api';
 import { FileIcon } from '../FileIcon';
 import { ClickableContent } from '../ClickableContent';
 import { ArrowDownTrayIcon, EyeIcon } from '@heroicons/react/24/outline';
-import { API_BASE, getSandboxParams } from '../../lib/api';
+import { getApiBase, getSandboxParams } from '../../lib/api';
 import { useChatStore } from '../../hooks/useChatStore';
 import { useI18n } from '../../i18n';
 
@@ -54,7 +54,7 @@ export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onIma
           {message.files.map((file, fileIdx) => {
             // Generate download URL with volumes
             const downloadParams = getSandboxParams(chatId || '', file.path, config.sandbox_volumes);
-            const downloadUrl = `${API_BASE}/sandbox/serve?${downloadParams}`;
+            const downloadUrl = `${getApiBase()}/sandbox/serve?${downloadParams}`;
 
             return (
               <div key={fileIdx} className="bg-white border-3 border-brutal-black shadow-brutal px-4 py-3 flex items-center gap-3 max-w-md w-full animate-brutal-pop">

@@ -3,6 +3,7 @@
 Unified version bumper for Suzent.
 Updates version in:
 - src-tauri/tauri.conf.json
+- src-tauri/tauri.conf.prod.json
 - src-tauri/package.json
 - src-tauri/Cargo.toml
 - frontend/package.json
@@ -14,10 +15,12 @@ import json
 import re
 import sys
 from pathlib import Path
+import subprocess
 
 # Files to update
 FILES = {
     "tauri_conf": Path("src-tauri/tauri.conf.json"),
+    "tauri_conf_prod": Path("src-tauri/tauri.conf.prod.json"),
     "tauri_pkg": Path("src-tauri/package.json"),
     "cargo": Path("src-tauri/Cargo.toml"),
     "frontend_pkg": Path("frontend/package.json"),
@@ -134,13 +137,41 @@ def main():
 
     # Update files
     update_json(PATHS["tauri_conf"], new_version)
+    update_json(PATHS["tauri_conf_prod"], new_version)
     update_json(PATHS["tauri_pkg"], new_version)
     update_json(PATHS["frontend_pkg"], new_version)
     update_toml(PATHS["cargo"], new_version)
     update_toml(PATHS["pyproject"], new_version)
 
-    print("\nDone! Don't forget to commit:")
-    print(f'git commit -am "chore: bump version to {new_version}"')
+    # Update lock files
+    print("\nUpdating lock files...")
+    try:
+        subprocess.run(
+            ["npm", "install"],
+            cwd=root / "frontend",
+            check=True,
+            capture_output=True,
+            shell=True,
+        )
+        print("  [OK] Updated frontend/package-lock.json")
+    except subprocess.CalledProcessError as e:
+        print(f"  [ERROR] Failed to update frontend lock: {e}")
+
+    try:
+        subprocess.run(
+            ["npm", "install"],
+            cwd=root / "src-tauri",
+            check=True,
+            capture_output=True,
+            shell=True,
+        )
+        print("  [OK] Updated src-tauri/package-lock.json")
+    except subprocess.CalledProcessError as e:
+        print(f"  [ERROR] Failed to update src-tauri lock: {e}")
+
+    print("\nDone! Lock files updated. Now commit and release:")
+    print("git add .")
+    print(f'git commit -m "chore: bump version to {new_version}"')
     print(f"git tag v{new_version}")
     print("git push && git push --tags")
 

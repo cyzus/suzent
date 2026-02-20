@@ -1,7 +1,7 @@
 {
   "name": "suzent-frontend",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.2.7",
   "type": "module",
   "scripts": {
     "dev": "vite",

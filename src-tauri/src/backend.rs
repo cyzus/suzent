@@ -1,11 +1,13 @@
-use std::process::{Child, Command};
-use std::net::TcpListener;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::time::Duration;
 use std::thread;
+use std::io::{BufRead, BufReader};
+
 use tauri::Manager;
 
 pub struct BackendProcess {
-    child: Option<Child>,
+    child: Option<std::process::Child>,
     pub port: u16,
 }
 
@@ -17,77 +19,123 @@ impl BackendProcess {
         }
     }
 
-    /// Find an available port on localhost by binding to port 0.
-    fn find_available_port() -> Result<u16, String> {
-        TcpListener::bind("127.0.0.1:0")
-            .and_then(|listener| listener.local_addr())
-            .map(|addr| addr.port())
-            .map_err(|e| format!("Failed to find available port: {}", e))
-    }
-
-    /// Get the backend executable path based on the current platform.
-    fn get_backend_path(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-        let resource_path = app_handle.path()
-            .resource_dir()
-            .map_err(|e| format!("Failed to get resource dir: {}", e))?;
-
-        let binary_name = if cfg!(target_os = "windows") {
-            "suzent-backend.exe"
-        } else {
-            "suzent-backend"
-        };
-
-        Ok(resource_path.join("binaries").join(binary_name))
-    }
-
-    /// Start the Python backend as a sidecar process.
+    /// Start the Python backend by launching the bundled Python interpreter.
     /// Only called in release builds - in debug mode the backend runs separately.
-    #[allow(dead_code)] // Only used in release builds via cfg
+    #[allow(dead_code)]
     pub fn start(&mut self, app_handle: &tauri::AppHandle) -> Result<u16, String> {
-        let port = Self::find_available_port()?;
-        self.port = port;
-
-        let backend_exe = Self::get_backend_path(app_handle)?;
         let app_data_dir = app_handle.path()
             .app_data_dir()
             .map_err(|e| format!("Failed to get app data dir: {}", e))?;
 
-        // Ensure app data directory exists for persistent storage
         std::fs::create_dir_all(&app_data_dir)
             .map_err(|e| format!("Failed to create app data dir: {}", e))?;
 
-        // Start backend with environment variables for configuration
-        let child = Command::new(&backend_exe)
-            .env("SUZENT_PORT", port.to_string())
+        let resource_dir = app_handle.path()
+            .resource_dir()
+            .map_err(|e| format!("Failed to get resource dir: {}", e))?;
+
+        // First-run setup: create/update venv from bundled wheel
+        ensure_backend_setup(&resource_dir, &app_data_dir)?;
+
+        // Copy config and skills to app data dir if needed
+        sync_app_data(&resource_dir, &app_data_dir)?;
+
+        // Resolve python executable inside the venv
+        let venv_dir = app_data_dir.join("backend-venv");
+        let python_exe = get_venv_python(&venv_dir);
+
+        if !python_exe.exists() {
+            return Err(format!("Python not found at {:?}", python_exe));
+        }
+
+        // Launch: python -m suzent.server
+        let mut child = Command::new(&python_exe)
+            .args(["-m", "suzent.server"])
+            .env("VIRTUAL_ENV", &venv_dir)
+            .env("SUZENT_PORT", "0")
             .env("SUZENT_HOST", "127.0.0.1")
             .env("SUZENT_APP_DATA", &app_data_dir)
             .env("CHATS_DB_PATH", app_data_dir.join("chats.db"))
             .env("LANCEDB_URI", app_data_dir.join("memory"))
             .env("SANDBOX_DATA_PATH", app_data_dir.join("sandbox-data"))
             .env("SKILLS_DIR", app_data_dir.join("skills"))
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .stdin(Stdio::piped())
             .spawn()
-            .map_err(|e| format!("Failed to start backend: {}", e))?;
+            .map_err(|e| format!("Failed to start Python backend: {}", e))?;
+
+        // Read stdout in a thread to extract the port
+        let stdout = child.stdout.take()
+            .ok_or("Failed to capture stdout")?;
+        let stderr = child.stderr.take()
+            .ok_or("Failed to capture stderr")?;
+
+        let (tx, rx_port) = std::sync::mpsc::channel();
+
+        // Stdout reader thread — extracts SERVER_PORT and prints output
+        thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            let mut port_found = false;
+            for line in reader.lines() {
+                match line {
+                    Ok(line_str) => {
+                        println!("BE: {}", line_str);
+                        if !port_found {
+                            if let Some(idx) = line_str.find("SERVER_PORT:") {
+                                let after = &line_str[idx + "SERVER_PORT:".len()..];
+                                if let Some(token) = after.split_whitespace().next() {
+                                    if let Ok(port) = token.parse::<u16>() {
+                                        let _ = tx.send(port);
+                                        port_found = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        // Stderr reader thread
+        thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines().flatten() {
+                println!("BE ERR: {}", line);
+            }
+        });
 
         self.child = Some(child);
-        self.wait_for_backend()?;
 
-        Ok(port)
+        // Wait for the port (timeout 60s — first-run may be slow)
+        match rx_port.recv_timeout(Duration::from_secs(60)) {
+            Ok(port) => {
+                self.port = port;
+                println!("Backend reported port: {}", port);
+                self.wait_for_backend()?;
+                Ok(port)
+            }
+            Err(_) => {
+                self.stop();
+                Err("Timed out waiting for backend to report port".to_string())
+            }
+        }
     }
 
     /// Poll the backend health endpoint until it responds or timeout.
     fn wait_for_backend(&self) -> Result<(), String> {
-        let url = format!("http://127.0.0.1:{}/api/config", self.port);
+        let url = format!("http://127.0.0.1:{}/config", self.port);
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(2))
             .build()
             .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-        // 60 attempts * 500ms = 30 seconds timeout
-        for attempt in 1..=60 {
+        // 30 attempts * 500ms = 15 seconds timeout
+        for attempt in 1..=30 {
             thread::sleep(Duration::from_millis(500));
 
             if let Ok(resp) = client.get(&url).send() {
-                // Accept success or 404 (endpoint exists but might not have data yet)
                 if resp.status().is_success() || resp.status().as_u16() == 404 {
                     println!("Backend ready after {} attempts", attempt);
                     return Ok(());
@@ -95,13 +143,14 @@ impl BackendProcess {
             }
         }
 
-        Err("Backend failed to start within 30 seconds".to_string())
+        Err("Backend failed to respond to health check within 15 seconds".to_string())
     }
 
     /// Stop the backend process gracefully.
     pub fn stop(&mut self) {
         if let Some(mut child) = self.child.take() {
             let _ = child.kill();
+            let _ = child.wait();
         }
     }
 }
@@ -110,4 +159,263 @@ impl Drop for BackendProcess {
     fn drop(&mut self) {
         self.stop();
     }
+}
+
+// --- First-run setup helpers ---
+
+/// Get the path to the Python executable inside a venv.
+fn get_venv_python(venv_dir: &Path) -> PathBuf {
+    if cfg!(windows) {
+        venv_dir.join("Scripts").join("python.exe")
+    } else {
+        venv_dir.join("bin").join("python")
+    }
+}
+
+/// Ensure the backend venv exists and is up-to-date.
+/// On first run (or version change), creates a venv and installs the suzent wheel.
+fn ensure_backend_setup(resource_dir: &Path, app_data_dir: &Path) -> Result<(), String> {
+    let venv_dir = app_data_dir.join("backend-venv");
+    let marker = venv_dir.join(".suzent-version");
+
+    let current_version = env!("CARGO_PKG_VERSION");
+
+    let needs_setup = if marker.exists() {
+        let stored = std::fs::read_to_string(&marker).unwrap_or_default();
+        stored.trim() != current_version
+    } else {
+        true
+    };
+
+    if !needs_setup {
+        println!("Backend venv is up-to-date (v{})", current_version);
+        return Ok(());
+    }
+
+    println!("Setting up backend venv (v{})...", current_version);
+
+    // Locate uv binary
+    let uv_exe = find_uv(resource_dir)?;
+    // Locate bundled Python
+    let bundled_python = find_bundled_python(resource_dir)?;
+
+    // Step 1: Create venv
+    println!("  Creating venv at {:?}...", venv_dir);
+    let status = Command::new(&uv_exe)
+        .args(["venv", &venv_dir.to_string_lossy(), "--python", &bundled_python.to_string_lossy()])
+        .status()
+        .map_err(|e| format!("Failed to run uv venv: {}", e))?;
+
+    if !status.success() {
+        return Err("uv venv creation failed".to_string());
+    }
+
+    // Step 2: Find the wheel
+    let wheel_dir = resource_dir.join("resources").join("wheel");
+    // Also try directly under resource_dir (depends on Tauri resource flattening)
+    let wheel_path = find_wheel(&wheel_dir)
+        .or_else(|_| find_wheel(&resource_dir.join("wheel")))
+        .or_else(|_| find_wheel(resource_dir))?;
+
+    // Step 3: Install the wheel into the venv
+    let venv_python = get_venv_python(&venv_dir);
+    println!("  Installing suzent wheel...");
+    let status = Command::new(&uv_exe)
+        .args([
+            "pip", "install",
+            &wheel_path.to_string_lossy(),
+            "--python", &venv_python.to_string_lossy(),
+        ])
+        .status()
+        .map_err(|e| format!("Failed to run uv pip install: {}", e))?;
+
+    if !status.success() {
+        return Err("uv pip install failed".to_string());
+    }
+
+    // Step 4: Install Playwright Chromium browser
+    println!("  Installing Playwright Chromium (this may take a few minutes)...");
+    let playwright_status = Command::new(&venv_python)
+        .args(["-m", "playwright", "install", "chromium"])
+        .status();
+
+    match playwright_status {
+        Ok(status) if status.success() => {
+            println!("  Playwright Chromium installed successfully.");
+        }
+        Ok(status) => {
+            // Non-fatal: browsing tool will retry on first use
+            println!("  WARNING: Playwright install exited with code {:?} (will retry on first use)", status.code());
+        }
+        Err(e) => {
+            println!("  WARNING: Failed to run playwright install: {} (will retry on first use)", e);
+        }
+    }
+
+    // Write version marker
+    std::fs::write(&marker, current_version)
+        .map_err(|e| format!("Failed to write version marker: {}", e))?;
+
+    println!("  Backend setup complete!");
+    Ok(())
+}
+
+/// Find the uv binary inside the resource directory.
+fn find_uv(resource_dir: &Path) -> Result<PathBuf, String> {
+    let exe_name = if cfg!(windows) { "uv.exe" } else { "uv" };
+
+    // Check directly in resources/
+    let direct = resource_dir.join(exe_name);
+    if direct.exists() {
+        return Ok(direct);
+    }
+
+    // Check in resources/resources/ (Tauri nesting)
+    let nested = resource_dir.join("resources").join(exe_name);
+    if nested.exists() {
+        return Ok(nested);
+    }
+
+    Err(format!("uv binary not found in {:?}", resource_dir))
+}
+
+/// Find the bundled Python executable.
+fn find_bundled_python(resource_dir: &Path) -> Result<PathBuf, String> {
+    let candidates = if cfg!(windows) {
+        vec![
+            resource_dir.join("resources").join("python").join("python.exe"),
+            resource_dir.join("python").join("python.exe"),
+        ]
+    } else {
+        vec![
+            resource_dir.join("resources").join("python").join("bin").join("python3"),
+            resource_dir.join("python").join("bin").join("python3"),
+            resource_dir.join("resources").join("python").join("bin").join("python"),
+            resource_dir.join("python").join("bin").join("python"),
+        ]
+    };
+
+    for p in &candidates {
+        if p.exists() {
+            return Ok(p.clone());
+        }
+    }
+
+    Err(format!("Bundled Python not found in {:?}", resource_dir))
+}
+
+/// Find a .whl file in the given directory.
+fn find_wheel(dir: &Path) -> Result<PathBuf, String> {
+    if !dir.exists() {
+        return Err(format!("Wheel directory not found: {:?}", dir));
+    }
+
+    for entry in std::fs::read_dir(dir).map_err(|e| format!("Failed to read dir: {}", e))? {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "whl") {
+                return Ok(path);
+            }
+        }
+    }
+
+    Err(format!("No .whl file found in {:?}", dir))
+}
+
+/// Sync config and skills from bundled resources to app data directory.
+fn sync_app_data(resource_dir: &Path, app_data_dir: &Path) -> Result<(), String> {
+    // Try both direct and nested resource paths
+    let prefixes = [
+        resource_dir.join("resources"),
+        resource_dir.to_path_buf(),
+    ];
+
+    for dir_name in &["config", "skills"] {
+        let dest_dir = app_data_dir.join(dir_name);
+
+        // Find source
+        let mut src_dir = None;
+        for prefix in &prefixes {
+            let candidate = prefix.join(dir_name);
+            if candidate.exists() {
+                src_dir = Some(candidate);
+                break;
+            }
+        }
+
+        let src_dir = match src_dir {
+            Some(d) => d,
+            None => {
+                println!("  WARNING: Bundled {} directory not found, skipping", dir_name);
+                continue;
+            }
+        };
+
+        if !dest_dir.exists() {
+            // First install: copy everything, renaming .example. files
+            println!("  Initializing {} directory...", dir_name);
+            copy_dir_recursive(&src_dir, &dest_dir, true)
+                .map_err(|e| format!("Failed to copy {}: {}", dir_name, e))?;
+        } else {
+            // Subsequent runs: only copy missing files
+            copy_missing_files(&src_dir, &dest_dir)
+                .map_err(|e| format!("Failed to sync {}: {}", dir_name, e))?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Recursively copy a directory, optionally renaming .example. files.
+fn copy_dir_recursive(src: &Path, dest: &Path, rename_examples: bool) -> std::io::Result<()> {
+    std::fs::create_dir_all(dest)?;
+
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let file_name = entry.file_name().to_string_lossy().to_string();
+
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dest.join(&file_name), rename_examples)?;
+        } else {
+            let dest_name = if rename_examples && file_name.contains(".example.") {
+                file_name.replace(".example.", ".")
+            } else {
+                file_name
+            };
+            std::fs::copy(&src_path, &dest.join(&dest_name))?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Copy only files that don't exist in the destination.
+fn copy_missing_files(src: &Path, dest: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dest)?;
+
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let file_name = entry.file_name().to_string_lossy().to_string();
+
+        if src_path.is_dir() {
+            copy_missing_files(&src_path, &dest.join(&file_name))?;
+        } else {
+            // For example files, check if the non-example version exists
+            let dest_name = if file_name.contains(".example.") {
+                file_name.replace(".example.", ".")
+            } else {
+                file_name
+            };
+
+            let dest_path = dest.join(&dest_name);
+            if !dest_path.exists() {
+                std::fs::copy(&src_path, &dest_path)?;
+                println!("  Restored missing file: {:?}", dest_path);
+            }
+        }
+    }
+
+    Ok(())
 }

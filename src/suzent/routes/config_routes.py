@@ -8,6 +8,7 @@ application settings including user preferences, API keys, and provider manageme
 import json
 import os
 import traceback
+from pathlib import Path
 from typing import Any
 
 from starlette.requests import Request
@@ -22,27 +23,28 @@ from suzent.core.provider_factory import (
 from suzent.database import get_database
 
 
+def get_resource_path(path: str) -> Path:
+    """Get absolute path to resource, using PROJECT_DIR for bundled/dev mode."""
+    from suzent.config import PROJECT_DIR
+
+    return PROJECT_DIR / path
+
+
 async def get_config(request: Request) -> JSONResponse:
     """Return frontend-consumable configuration merged with user preferences."""
     db = get_database()
     user_prefs = db.get_user_preferences()
-    memory_config = db.get_memory_config()
 
     sandbox_enabled = getattr(CONFIG, "sandbox_enabled", False)
     sandbox_volumes = CONFIG.sandbox_volumes or []
     available_models = get_enabled_models_from_db()
 
     # Get embedding/extraction models with fallback to CONFIG defaults
-    embedding_model = (
-        memory_config.embedding_model
-        if memory_config and memory_config.embedding_model
-        else CONFIG.embedding_model
-    )
-    extraction_model = (
-        memory_config.extraction_model
-        if memory_config and memory_config.extraction_model
-        else CONFIG.extraction_model
-    )
+    from suzent.core.provider_factory import get_effective_memory_config
+
+    mem_config = get_effective_memory_config()
+    embedding_model = mem_config["embedding_model"]
+    extraction_model = mem_config["extraction_model"]
 
     data: dict[str, Any] = {
         "title": CONFIG.title,
@@ -313,15 +315,50 @@ def _merge_social_config(existing: dict, incoming: dict):
 async def get_social_config(request: Request) -> JSONResponse:
     """Get the current social configuration."""
     try:
-        from pathlib import Path
+        from suzent.config import PROJECT_DIR
 
-        # Assuming social config is in config/social.json
-        config_path = Path("config/social.json")
+        # Use PROJECT_DIR for correct path in frozen mode
+        config_path = PROJECT_DIR / "config" / "social.json"
         if not config_path.exists():
             return JSONResponse({"config": {}})
 
         with open(config_path, "r") as f:
             config = json.load(f)
+
+        with open(config_path, "r") as f:
+            config = json.load(f)
+
+        # Load defaults from example file to ensure all platforms are visible
+        # This keeps it DRY by using the example file as the source of truth
+        defaults_path = get_resource_path("config/social.example.json")
+        if defaults_path.exists():
+            try:
+                with open(defaults_path, "r") as f:
+                    defaults = json.load(f)
+
+                import copy
+
+                # Iterate over defaults (which includes all supported platforms)
+                for key, default_settings in defaults.items():
+                    # Skip top-level non-platform keys
+                    if not isinstance(default_settings, dict):
+                        continue
+
+                    # Prepare sanitized default (disabled by default)
+                    sanitized_default = copy.deepcopy(default_settings)
+                    if "enabled" in sanitized_default:
+                        sanitized_default["enabled"] = False
+
+                    if key not in config:
+                        config[key] = sanitized_default
+                    elif isinstance(config[key], dict):
+                        # Ensure all default fields exist
+                        for k, v in sanitized_default.items():
+                            if k not in config[key]:
+                                config[key][k] = v
+            except Exception as e:
+                # Log but continue if defaults load fails
+                print(f"Failed to load social defaults: {e}")
 
         masked_config = _mask_social_config(config)
 
@@ -344,9 +381,9 @@ async def save_social_config(request: Request) -> JSONResponse:
         data = await request.json()
         incoming_config = data.get("config", {})
 
-        from pathlib import Path
+        from suzent.config import PROJECT_DIR
 
-        config_path = Path("config/social.json")
+        config_path = PROJECT_DIR / "config" / "social.json"
         existing_config = {}
         if config_path.exists():
             with open(config_path, "r") as f:

@@ -72,13 +72,26 @@ ruff format .
 > pre-commit install
 > ```
 
-## 4. Trigger Release (commit & tag)
+## 4. Update Lock Files
 
-After bumping the version, updating the changelog, and running pre-commit, commit the changes and create a git tag. The GitHub Action workflow listens for tags starting with `v` (e.g., `v0.1.1`).
+After bumping the version, the lock files need to be regenerated to reflect the new version numbers:
 
 ```bash
-# 1. Commit the version bump and changelog
-git commit -am "chore: bump version to 0.1.1"
+# Update npm lock files
+cd frontend && npm install && cd ..
+cd src-tauri && npm install && cd ..
+
+# Update Cargo.lock (will be done automatically on next cargo build)
+```
+
+## 5. Trigger Release (commit & tag)
+
+After bumping the version, updating lock files, updating the changelog, and running pre-commit, commit the changes and create a git tag. The GitHub Action workflow listens for tags starting with `v` (e.g., `v0.1.1`).
+
+```bash
+# 1. Commit the version bump, lock files, and changelog
+git add .
+git commit -m "chore: bump version to 0.1.1"
 
 # 2. Create a tag
 git tag v0.1.1
@@ -87,12 +100,12 @@ git tag v0.1.1
 git push && git push --tags
 ```
 
-## 5. Automated Build & Release
+## 6. Automated Build & Release
 
 Once the tag is pushed, the **[Build Desktop Apps](../../.github/workflows/build-desktop.yml)** workflow will automatically trigger. It performs the following steps:
 
 1.  **Extracts Release Notes**: Reads the changelog entry for the tagged version from `CHANGELOG.md`.
-2.  **Builds Backend**: Compiles the Python backend using Nuitka.
+2.  **Bundles Python Backend**: Downloads standalone Python + uv, builds suzent wheel into `src-tauri/resources/`.
 3.  **Builds Frontend**: Builds the React frontend.
 4.  **Builds Desktop App**: Bundles everything into a Tauri application.
     - **Windows**: `.msi`
@@ -102,7 +115,7 @@ Once the tag is pushed, the **[Build Desktop Apps](../../.github/workflows/build
     - Release notes from the changelog (fully automated!)
     - All platform artifacts attached
 
-## 6. Verify Release
+## 7. Verify Release
 
 1.  Go to the [GitHub Releases](https://github.com/cyzus/suzent/releases) page.
 2.  Verify the release was created with the correct version and release notes.

@@ -22,9 +22,17 @@ DEFAULT_TOOLS:
   - "GlobTool"
   - "GrepTool"
   - "BashTool"
+  - "SpeakTool"
 
 MCP_URLS:
+  # Simple format: just the URL
   "HF Space MCP": "https://evalstate-hf-mcp-server.hf.space/mcp"
+  # Nested format with headers
+  # "Authenticated MCP":
+  #   url: "https://api.example.com/mcp"
+  #   headers:
+  #     Authorization: "Bearer your-api-key"
+  #     X-Custom-Header: "custom-value"
 
 MCP_STDIO_PARAMS:
   mcp-arxiv:
@@ -38,6 +46,10 @@ MCP_STDIO_PARAMS:
 
 INSTRUCTIONS: ""
 ADDITIONAL_AUTHORIZED_IMPORTS: []
+
+# Text-to-Speech
+TTS_MODEL: "gemini/gemini-2.5-flash-preview-tts"
+TTS_VOICE: "Zephyr"
 
 # Memory System (requires PostgreSQL with pgvector - see .env for connection)
 MEMORY_ENABLED: true

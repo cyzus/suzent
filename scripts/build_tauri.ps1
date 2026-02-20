@@ -8,7 +8,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 
 # Step 1: Build frontend
-Write-Host "`n[1/4] Building frontend..." -ForegroundColor Yellow
+Write-Host "`n[1/3] Building frontend..." -ForegroundColor Yellow
 Push-Location "$ProjectRoot\frontend"
 try {
     npm install
@@ -17,19 +17,12 @@ try {
     Pop-Location
 }
 
-# Step 2: Build Python backend
-Write-Host "`n[2/4] Building Python backend..." -ForegroundColor Yellow
-python "$ProjectRoot\scripts\build_backend.py"
+# Step 2: Bundle Python backend
+Write-Host "`n[2/3] Bundling Python backend..." -ForegroundColor Yellow
+python "$ProjectRoot\scripts\bundle_python.py"
 
-# Step 3: Prepare resources
-Write-Host "`n[3/4] Preparing resources..." -ForegroundColor Yellow
-$BinariesDir = "$ProjectRoot\src-tauri\binaries"
-if (-not (Test-Path $BinariesDir)) {
-    New-Item -ItemType Directory -Force -Path $BinariesDir | Out-Null
-}
-
-# Step 4: Build Tauri application
-Write-Host "`n[4/4] Building Tauri application..." -ForegroundColor Yellow
+# Step 3: Build Tauri application
+Write-Host "`n[3/3] Building Tauri application..." -ForegroundColor Yellow
 Push-Location "$ProjectRoot\src-tauri"
 try {
     npm run build

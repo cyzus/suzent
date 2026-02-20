@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Message, ChatConfig, ConfigOptions, Chat, ChatSummary } from '../types/api';
-import { API_BASE } from '../lib/api';
+import { getApiBase } from '../lib/api';
 
 interface ChatContextValue {
   messages: Message[];
@@ -45,6 +45,7 @@ const defaultConfig: ChatConfig = {
   agent: '',
   tools: [],
   mcp_urls: [],
+  mcp_enabled: {},
   sandbox_enabled: true // Default to true to match backend
 };
 
@@ -52,21 +53,72 @@ const UNSAVED_CHAT_KEY = '__unsaved__';
 const LAST_CONFIG_KEY = 'suzent_last_config';
 const keyForChat = (chatId: string | null) => chatId ?? UNSAVED_CHAT_KEY;
 
+/** Build a ChatConfig from user preferences and backend defaults. */
+const buildConfigFromPreferences = (
+  prefs: ConfigOptions['userPreferences'],
+  backendDefaults: ConfigOptions
+): ChatConfig => ({
+  model: prefs?.model || backendDefaults.models[0] || '',
+  agent: prefs?.agent || backendDefaults.agents[0] || '',
+  tools: prefs?.tools || backendDefaults.defaultTools || [],
+  memory_enabled: prefs?.memory_enabled,
+  sandbox_enabled: prefs?.sandbox_enabled ?? backendDefaults.sandboxEnabled ?? true,
+  sandbox_volumes: prefs?.sandbox_volumes || [],
+  mcp_urls: [],
+  mcp_enabled: {}
+});
+
+/** Extract the preference fields we track for dirty-checking. */
+const extractSavedPreferences = (prefs: ConfigOptions['userPreferences']) => ({
+  model: prefs?.model ?? '',
+  agent: prefs?.agent ?? '',
+  tools: prefs?.tools ?? [],
+  memory_enabled: prefs?.memory_enabled,
+  sandbox_enabled: prefs?.sandbox_enabled,
+  sandbox_volumes: prefs?.sandbox_volumes
+});
+
 const configsEqual = (a?: ChatConfig | null, b?: ChatConfig | null): boolean => {
   if (a === b) return true;
   if (!a || !b) return false;
   const arrayEqual = (left?: string[], right?: string[]) => {
-
     const l = left ?? [];
     const r = right ?? [];
     if (l.length !== r.length) return false;
     return l.every((value, index) => value === r[index]);
   };
+  const mcpUrlsEqual = (left?: string[] | Record<string, string>, right?: string[] | Record<string, string>) => {
+    if (left === right) return true;
+    if (!left || !right) return false;
+
+    // Check if both are arrays
+    const isLeftArray = Array.isArray(left);
+    const isRightArray = Array.isArray(right);
+
+    if (isLeftArray && isRightArray) {
+      return arrayEqual(left as string[], right as string[]);
+    }
+
+    // Check if both are objects (records)
+    if (!isLeftArray && !isRightArray) {
+      const l = left as Record<string, string>;
+      const r = right as Record<string, string>;
+      const lKeys = Object.keys(l).sort();
+      const rKeys = Object.keys(r).sort();
+
+      if (!arrayEqual(lKeys, rKeys)) return false;
+      return lKeys.every(key => l[key] === r[key]);
+    }
+
+    // Mismatched types
+    return false;
+  };
+
   return (
     a.model === b.model &&
     a.agent === b.agent &&
     arrayEqual(a.tools, b.tools) &&
-    arrayEqual(a.mcp_urls, b.mcp_urls)
+    mcpUrlsEqual(a.mcp_urls, b.mcp_urls)
   );
 };
 
@@ -123,26 +175,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const computeDefaultConfig = useCallback((): ChatConfig => {
     // First priority: user preferences from backend database
-    if (backendConfig && (backendConfig as any).userPreferences) {
-      const prefs = (backendConfig as any).userPreferences;
-      // Track these as the last saved preferences to avoid re-saving
-      lastSavedPreferencesRef.current = {
-        model: prefs.model,
-        agent: prefs.agent,
-        tools: prefs.tools,
-        memory_enabled: prefs.memory_enabled,
-        sandbox_enabled: prefs.sandbox_enabled,
-        sandbox_volumes: prefs.sandbox_volumes
-      };
-      return {
-        model: prefs.model || backendConfig.models[0] || '',
-        agent: prefs.agent || backendConfig.agents[0] || '',
-        tools: prefs.tools || backendConfig.defaultTools || [],
-        memory_enabled: prefs.memory_enabled,
-        sandbox_enabled: prefs.sandbox_enabled ?? backendConfig.sandboxEnabled ?? true,
-        sandbox_volumes: prefs.sandbox_volumes || [],
-        mcp_urls: []
-      };
+    if (backendConfig && backendConfig.userPreferences) {
+      const prefs = backendConfig.userPreferences;
+      lastSavedPreferencesRef.current = extractSavedPreferences(prefs);
+      return buildConfigFromPreferences(prefs, backendConfig);
     }
 
     // Second priority: load last used config from localStorage
@@ -170,7 +206,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         agent: backendConfig.agents[0] || '',
         tools: backendConfig.defaultTools || [],
         sandbox_enabled: backendConfig.sandboxEnabled ?? true,
-        mcp_urls: []
+        mcp_urls: [],
+        mcp_enabled: {}
       };
     }
     return defaultConfig;
@@ -228,7 +265,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Fetch backend config with retry logic
   const fetchConfigWithRetry = useCallback(async (attempt = 1, maxAttempts = 5) => {
     try {
-      const res = await fetch(`${API_BASE}/config`);
+      const res = await fetch(`${getApiBase()}/config`);
       if (res.ok) {
         const data: ConfigOptions = await res.json();
 
@@ -244,32 +281,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.warn('Failed to set memory userId from backend config:', e);
         }
 
-        // Use user preferences if available, otherwise use defaults
-        const firstConfig: ChatConfig = (data as any).userPreferences ? {
-          model: (data as any).userPreferences.model || data.models[0] || '',
-          agent: (data as any).userPreferences.agent || data.agents[0] || '',
-          tools: (data as any).userPreferences.tools || data.defaultTools || [],
-          memory_enabled: (data as any).userPreferences.memory_enabled,
-          sandbox_enabled: (data as any).userPreferences.sandbox_enabled ?? data.sandboxEnabled ?? true,
-          sandbox_volumes: (data as any).userPreferences.sandbox_volumes || [],
-          mcp_urls: []
-        } : {
-          model: data.models[0] || '',
-          agent: data.agents[0] || '',
-          tools: data.defaultTools || [],
-          mcp_urls: []
-        };
+        // Build initial config from user preferences or backend defaults
+        const firstConfig: ChatConfig = buildConfigFromPreferences(
+          data.userPreferences,
+          data
+        );
 
         // Track saved preferences to avoid re-saving on initial load
-        if ((data as any).userPreferences) {
-          lastSavedPreferencesRef.current = {
-            model: (data as any).userPreferences.model,
-            agent: (data as any).userPreferences.agent,
-            tools: (data as any).userPreferences.tools,
-            memory_enabled: (data as any).userPreferences.memory_enabled,
-            sandbox_enabled: (data as any).userPreferences.sandbox_enabled,
-            sandbox_volumes: (data as any).userPreferences.sandbox_volumes
-          };
+        if (data.userPreferences) {
+          lastSavedPreferencesRef.current = extractSavedPreferences(data.userPreferences);
         }
 
         setConfigState(firstConfig);
@@ -313,7 +333,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const currentMessages = currentChatId ? getMessagesForChat(currentChatId) : null;
     try {
       const searchParam = search !== undefined ? search : searchQuery;
-      const url = searchParam ? `${API_BASE}/chats?search=${encodeURIComponent(searchParam)}` : `${API_BASE}/chats`;
+      // Use getApiBase() to ensure dynamic port resolution
+      const apiBase = getApiBase();
+      const url = searchParam ? `${apiBase}/chats?search=${encodeURIComponent(searchParam)}` : `${apiBase}/chats`;
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
@@ -398,7 +420,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (chatMessages.length === 0) return;
       const chatTitle = chatMessages[0].role === 'user' ? generateChatTitle(chatMessages[0].content) : 'New Chat';
       try {
-        const res = await fetch(`${API_BASE}/chats`, {
+        const res = await fetch(`${getApiBase()}/chats`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title: chatTitle, config: chatConfig, messages: chatMessages })
@@ -444,7 +466,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const payload: any = { config: chatConfig, messages: chatMessages };
       if (updateTitle) payload.title = updateTitle;
 
-      const res = await fetch(`${API_BASE}/chats/${chatId}`, {
+      const res = await fetch(`${getApiBase()}/chats/${chatId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -538,7 +560,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (prefsChanged) {
       // Save preferences to backend database (async, don't await)
-      // Save preferences to backend database (async, don't await)
       import('../lib/api').then(({ saveUserPreferences }) => {
         saveUserPreferences(newPrefs).then(() => {
           // Update ref after successful save
@@ -579,11 +600,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [currentChatId, scheduleSave, setMessagesForChat]);
 
   const updateLastUserMessageImages = useCallback((images: any[], chatId: string | null = currentChatId) => {
-    console.log('[Images] updateLastUserMessageImages called with', images.length, 'images for chat', chatId);
     setMessagesForChat(chatId, prev => {
-      console.log('[Images] Current messages count:', prev.length);
       if (!prev.length) {
-        console.log('[Images] No messages to update');
         return prev;
       }
 
@@ -597,14 +615,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (userMessageIndex === -1) {
-        console.log('[Images] No user message found');
         return prev;
       }
 
-      console.log('[Images] Found user message at index', userMessageIndex);
       const updated = [...prev];
       updated[userMessageIndex] = { ...updated[userMessageIndex], images };
-      console.log('[Images] Updated user message with images:', updated[userMessageIndex]);
       return updated;
     });
     scheduleSave(chatId, 800);
@@ -731,14 +746,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const effectiveConfig: ChatConfig = {
         ...baseConfig,
         tools: [...(baseConfig.tools || [])],
-        mcp_urls: [...(baseConfig.mcp_urls || [])]
+        mcp_urls: Array.isArray(baseConfig.mcp_urls)
+          ? [...baseConfig.mcp_urls]
+          : { ...(baseConfig.mcp_urls || {}) }
       };
 
       const firstUserMessage = chatMessages.find(msg => msg.role === 'user');
       const chatTitle = firstUserMessage ? generateChatTitle(firstUserMessage.content) : 'New Chat';
 
       try {
-        const res = await fetch(`${API_BASE}/chats`, {
+        const res = await fetch(`${getApiBase()}/chats`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -834,7 +851,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const res = await fetch(`${API_BASE}/chats/${chatId}`);
+      const res = await fetch(`${getApiBase()}/chats/${chatId}`);
       if (res.ok) {
         const chat: Chat = await res.json();
         setCurrentChatTitle(chat.title);
@@ -861,9 +878,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error loading chat:', error);
     }
-  }, [chats, configByChat, currentChatId, clearScheduledSave]); const deleteChat = useCallback(async (chatId: string) => {
+  }, [chats, configByChat, currentChatId, clearScheduledSave]);
+
+  const deleteChat = useCallback(async (chatId: string) => {
     try {
-      const res = await fetch(`${API_BASE}/chats/${chatId}`, { method: 'DELETE' });
+      const res = await fetch(`${getApiBase()}/chats/${chatId}`, { method: 'DELETE' });
       if (res.ok) {
         const key = keyForChat(chatId);
         setMessagesByChat(prev => {

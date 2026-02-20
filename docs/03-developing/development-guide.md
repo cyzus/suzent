@@ -81,7 +81,7 @@ This will:
 | Config File | Mode | Backend |
 |-------------|------|---------|
 | `tauri.conf.json` | Development | External (port 8000) |
-| `tauri.conf.prod.json` | Production | Bundled executable |
+| `tauri.conf.prod.json` | Production | Bundled Python + uv venv |
 
 **Development mode** (`npm run dev`):
 - No bundled backend - expects backend running on port 8000
@@ -89,8 +89,8 @@ This will:
 - DevTools available (right-click in window)
 
 **Production mode** (`npm run build`):
-- Bundles Python backend as executable
-- Backend auto-starts on dynamic port
+- Bundles Python runtime + uv + suzent wheel as resources
+- Creates venv on first launch, then auto-starts backend on dynamic port
 - All assets bundled into single installer
 
 ### Environment Variables
@@ -99,9 +99,13 @@ The backend automatically detects bundled environment through:
 
 | Variable | Purpose |
 |----------|---------|
-| `SUZENT_PORT` | Dynamically assigned port |
+| `SUZENT_PORT` | Dynamically assigned port (0 = OS picks) |
 | `SUZENT_HOST` | Bound to `127.0.0.1` in production |
-| `SUZENT_APP_DATA` | Application data directory |
+| `SUZENT_APP_DATA` | Application data directory (set by Rust in bundled mode) |
+| `CHATS_DB_PATH` | SQLite database path |
+| `LANCEDB_URI` | LanceDB vector store path |
+| `SANDBOX_DATA_PATH` | Sandbox data directory |
+| `SKILLS_DIR` | Skills directory path |
 
 ### Tauri Configuration
 
@@ -125,9 +129,8 @@ Edit `src-tauri/tauri.conf.json` to customize:
 |------|---------|
 | Start backend | `python src/suzent/server.py` |
 | Start Tauri dev | `cd src-tauri && npm run dev` |
-
+| Bundle Python backend | `python scripts/bundle_python.py` |
 | Build full app | `cd src-tauri && npm run build:full` |
-| Build backend only | `python scripts/build_backend.py` |
 | Build Tauri only | `cd src-tauri && npm run build` |
 
 ## Troubleshooting
@@ -145,7 +148,7 @@ python src/suzent/server.py
 
 Verify backend is running:
 ```bash
-curl http://localhost:8000/api/config
+curl http://localhost:8000/config
 ```
 Should return JSON configuration.
 
@@ -167,7 +170,7 @@ cd src-tauri && cargo clean
 
 **Frontend shows connection errors**
 
-1. Verify backend is running: `curl http://localhost:8000/api/config`
+1. Verify backend is running: `curl http://localhost:8000/config`
 2. Check browser console for the actual error
 3. Ensure CORS is working (should be by default)
 
