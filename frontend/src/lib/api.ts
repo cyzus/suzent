@@ -273,6 +273,177 @@ export async function fetchSocialConfig(): Promise<SocialConfig> {
   }
 }
 
+// -----------------------------------------------------------------------------
+// Cron Jobs / Automation
+// -----------------------------------------------------------------------------
+
+export interface CronJob {
+  id: number;
+  name: string;
+  cron_expr: string;
+  prompt: string;
+  active: boolean;
+  delivery_mode: 'announce' | 'none';
+  model_override: string | null;
+  retry_count: number;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  last_result: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CronNotification {
+  job_id: number;
+  job_name: string;
+  result: string;
+  timestamp: string;
+}
+
+export async function fetchCronJobs(): Promise<CronJob[]> {
+  const res = await fetch(`${getApiBase()}/cron/jobs`);
+  if (!res.ok) throw new Error('Failed to fetch cron jobs');
+  const data = await res.json();
+  return data.jobs || [];
+}
+
+export async function createCronJob(job: {
+  name: string;
+  cron_expr: string;
+  prompt: string;
+  active?: boolean;
+  delivery_mode?: string;
+  model_override?: string | null;
+}): Promise<CronJob> {
+  const res = await fetch(`${getApiBase()}/cron/jobs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(job),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to create cron job');
+  }
+  const data = await res.json();
+  return data.job;
+}
+
+export async function updateCronJob(jobId: number, updates: Partial<CronJob>): Promise<CronJob> {
+  const res = await fetch(`${getApiBase()}/cron/jobs/${jobId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to update cron job');
+  }
+  const data = await res.json();
+  return data.job;
+}
+
+export async function deleteCronJob(jobId: number): Promise<void> {
+  const res = await fetch(`${getApiBase()}/cron/jobs/${jobId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete cron job');
+}
+
+export async function triggerCronJob(jobId: number): Promise<void> {
+  const res = await fetch(`${getApiBase()}/cron/jobs/${jobId}/trigger`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to trigger cron job');
+}
+
+export async function fetchCronStatus(): Promise<{
+  scheduler_running: boolean;
+  total_jobs: number;
+  active_jobs: number;
+}> {
+  const res = await fetch(`${getApiBase()}/cron/status`);
+  if (!res.ok) throw new Error('Failed to fetch cron status');
+  return res.json();
+}
+
+export async function drainCronNotifications(): Promise<CronNotification[]> {
+  try {
+    const res = await fetch(`${getApiBase()}/cron/notifications`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.notifications || [];
+  } catch {
+    return [];
+  }
+}
+
+export interface CronRun {
+  id: number;
+  job_id: number;
+  started_at: string;
+  finished_at: string | null;
+  status: 'running' | 'success' | 'error';
+  result: string | null;
+  error: string | null;
+}
+
+export async function fetchCronJobRuns(jobId: number, limit = 20): Promise<CronRun[]> {
+  const res = await fetch(`${getApiBase()}/cron/jobs/${jobId}/runs?limit=${limit}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.runs || [];
+}
+
+// -----------------------------------------------------------------------------
+// Heartbeat
+// -----------------------------------------------------------------------------
+
+export interface HeartbeatStatus {
+  enabled: boolean;
+  running: boolean;
+  interval_minutes: number;
+  heartbeat_md_exists: boolean;
+  last_run_at: string | null;
+  last_result: string | null;
+  last_error: string | null;
+}
+
+export async function fetchHeartbeatStatus(): Promise<HeartbeatStatus> {
+  const res = await fetch(`${getApiBase()}/heartbeat/status`);
+  if (!res.ok) throw new Error('Failed to fetch heartbeat status');
+  return res.json();
+}
+
+export async function enableHeartbeat(): Promise<void> {
+  const res = await fetch(`${getApiBase()}/heartbeat/enable`, { method: 'POST' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to enable heartbeat');
+  }
+}
+
+export async function disableHeartbeat(): Promise<void> {
+  const res = await fetch(`${getApiBase()}/heartbeat/disable`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to disable heartbeat');
+}
+
+export async function triggerHeartbeat(): Promise<void> {
+  const res = await fetch(`${getApiBase()}/heartbeat/trigger`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to trigger heartbeat');
+}
+
+export async function fetchHeartbeatMd(): Promise<{ content: string; exists: boolean }> {
+  const res = await fetch(`${getApiBase()}/heartbeat/md`);
+  if (!res.ok) return { content: '', exists: false };
+  return res.json();
+}
+
+export async function saveHeartbeatMd(content: string): Promise<boolean> {
+  const res = await fetch(`${getApiBase()}/heartbeat/md`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+  return res.ok;
+}
+
 export async function saveSocialConfig(config: SocialConfig): Promise<boolean> {
   try {
     const res = await fetch(`${getApiBase()}/config/social`, {

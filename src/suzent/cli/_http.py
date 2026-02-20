@@ -118,6 +118,50 @@ def _http_post(path: str, data: dict = None) -> dict:
         raise typer.Exit(code=1)
 
 
+def _http_put(path: str, data: dict = None) -> dict:
+    """Make a PUT request to the running server."""
+    import httpx
+
+    url = f"{get_server_url()}{path}"
+    try:
+        resp = httpx.put(url, json=data or {}, timeout=10.0)
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.ConnectError:
+        typer.echo("Cannot connect to Suzent server. Is it running?")
+        raise typer.Exit(code=1)
+    except httpx.HTTPStatusError as e:
+        try:
+            detail = e.response.json().get("error", str(e))
+        except Exception:
+            detail = str(e)
+        typer.echo(f"Server error: {detail}")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        typer.echo(f"Error: {e}")
+        raise typer.Exit(code=1)
+
+
+def _http_delete(path: str) -> dict:
+    """Make a DELETE request to the running server."""
+    import httpx
+
+    url = f"{get_server_url()}{path}"
+    try:
+        resp = httpx.delete(url, timeout=10.0)
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.ConnectError:
+        typer.echo("Cannot connect to Suzent server. Is it running?")
+        raise typer.Exit(code=1)
+    except httpx.HTTPStatusError as e:
+        typer.echo(f"Server error: {e.response.status_code}")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        typer.echo(f"Error: {e}")
+        raise typer.Exit(code=1)
+
+
 def _http_post_stream(path: str, data: dict = None):
     """Make a streaming POST request to the running server, yielding lines."""
     import httpx

@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.3.0]
+
+### 🚀 Added
+- **Automation**: Two independent automation systems for proactive agent execution.
+  - **Cron Jobs**: Schedule prompts to run on a cron expression in isolated sessions (`cron-{id}`).
+    - Full CRUD via Settings > Automation UI, CLI (`suzent cron`), and REST API.
+    - Delivery modes: `announce` (status bar notification) or `none` (silent).
+    - Per-job model override; falls back to user preference.
+    - Exponential backoff retry with auto-deactivation after 5 consecutive failures.
+    - Run history stored in `cron_runs` table — viewable per-job in UI and via `suzent cron history`.
+    - Inline edit form in the job list card.
+  - **Heartbeat**: Periodic ambient monitoring in a persistent `heartbeat-main` chat.
+    - Reads `/shared/HEARTBEAT.md` checklist on each tick (default 30-minute interval).
+    - `HEARTBEAT_OK` sentinel suppresses notifications when nothing needs attention.
+    - Checklist editable directly in Settings > Automation or by the agent via file tools.
+    - Enable/disable toggle and "Run Now" button in UI; `suzent heartbeat` CLI subcommand group.
+- **CLI**: New subcommand groups for automation.
+  - `suzent cron list|add|edit|remove|toggle|trigger|history|status`
+  - `suzent heartbeat status|enable|disable|run`
+- **Skills**: New `automation` skill documenting both systems for agent-driven scheduling.
+- **Database**: `cron_jobs` table for job configuration; `cron_runs` table for execution history.
+- **Docs**: [Automation guide](docs/02-concepts/automation/automation.md) covering cron expressions, heartbeat format, CLI reference, API reference, architecture, and troubleshooting.
+
+### ⚡ Changed
+- **Memory**: Cron and heartbeat now run with memory fully enabled — agent can read and write long-term memory during scheduled tasks.
+- **Subprocess**: `BashTool` now uses `errors="replace"` when decoding subprocess output, preventing crashes on non-UTF-8 output (e.g. GBK on Chinese Windows).
+
+### 🐛 Fixed
+- **Database**: Added migration to drop legacy `is_heartbeat` column from `cron_jobs` table.
+
+
 ## [v0.2.8]
 
 ### 🐛 Fixed
@@ -17,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI/Backend**: Fixed an issue where new configuration keys (like `TTS_MODEL` for Gemini support) were not being deployed to existing users. The backend now consistently deploys example fallback configurations so they can be seamlessly queried by tools like `suzent agent speak`.
 - **Installer/Startup**: Fixed an issue where the application would hang in the "Initializing" state when auto-launched by the NSIS installer or from the Start Menu on a fresh install. The application now properly sanitizes its working directory and standard I/O streams for setup subprocesses.
 
-## [v0.2.7] 
+## [v0.2.7]
 
 ### 🚀 Added
 - **Social Messaging Tool**:

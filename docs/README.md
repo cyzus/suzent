@@ -9,6 +9,7 @@
 - [Skills](02-concepts/skills/skills.md): Extend agent capabilities with custom skills.
 - [Social Messaging](02-concepts/social-messaging/README.md): Telegram & Feishu integration.
 - [Nodes](02-concepts/nodes/nodes.md): Connect and control companion devices remotely.
+- [Automation](02-concepts/automation/automation.md): Cron jobs and heartbeat monitoring.
 
 ## Development
 - **[Utility Scripts](03-developing/utility-scripts.md)**: Maintenance scripts.

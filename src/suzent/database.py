@@ -153,6 +153,41 @@ class MemoryConfigModel(SQLModel, table=True):
     updated_at: datetime = Field(serialization_alias="updatedAt")
 
 
+class CronJobModel(SQLModel, table=True):
+    """Scheduled cron job for automated task execution."""
+
+    __tablename__ = "cron_jobs"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    cron_expr: str
+    prompt: str
+    active: bool = Field(default=True)
+    delivery_mode: str = Field(default="announce")  # "announce" | "none"
+    model_override: Optional[str] = None
+    retry_count: int = Field(default=0)
+    last_run_at: Optional[datetime] = None
+    next_run_at: Optional[datetime] = None
+    last_result: Optional[str] = None
+    last_error: Optional[str] = None
+    created_at: datetime = Field(serialization_alias="createdAt")
+    updated_at: datetime = Field(serialization_alias="updatedAt")
+
+
+class CronRunModel(SQLModel, table=True):
+    """History record for a single cron job execution."""
+
+    __tablename__ = "cron_runs"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    job_id: int = Field(index=True)
+    started_at: datetime
+    finished_at: Optional[datetime] = None
+    status: str = Field(default="running")  # "running" | "success" | "error"
+    result: Optional[str] = None
+    error: Optional[str] = None
+
+
 # -----------------------------------------------------------------------------
 # Database Management
 # -----------------------------------------------------------------------------
@@ -208,6 +243,20 @@ class ChatDatabase:
                         text("ALTER TABLE mcp_servers ADD COLUMN headers TEXT")
                     )
                     conn.commit()
+
+        # Migration: Add retry_count and drop legacy is_heartbeat from cron_jobs
+        if "cron_jobs" in inspector.get_table_names():
+            columns = [col["name"] for col in inspector.get_columns("cron_jobs")]
+            with self.engine.connect() as conn:
+                if "retry_count" not in columns:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE cron_jobs ADD COLUMN retry_count INTEGER DEFAULT 0"
+                        )
+                    )
+                if "is_heartbeat" in columns:
+                    conn.execute(text("ALTER TABLE cron_jobs DROP COLUMN is_heartbeat"))
+                conn.commit()
 
         # Migration: Add session lifecycle columns to 'chats' table
         if "chats" in inspector.get_table_names():
@@ -821,6 +870,148 @@ class ChatDatabase:
             session.add(server)
             session.commit()
             return True
+
+    # -------------------------------------------------------------------------
+    # Cron Job Operations
+    # -------------------------------------------------------------------------
+
+    def list_cron_jobs(self, active_only: bool = False) -> List[CronJobModel]:
+        """List all cron jobs, optionally filtered to active only."""
+        with self._session() as session:
+            statement = select(CronJobModel).order_by(CronJobModel.created_at.desc())
+            if active_only:
+                statement = statement.where(CronJobModel.active.is_(True))  # noqa: E712
+            return session.exec(statement).all()
+
+    def get_cron_job(self, job_id: int) -> Optional[CronJobModel]:
+        """Get a cron job by ID."""
+        with self._session() as session:
+            return session.get(CronJobModel, job_id)
+
+    def create_cron_job(
+        self,
+        name: str,
+        cron_expr: str,
+        prompt: str,
+        active: bool = True,
+        delivery_mode: str = "announce",
+        model_override: Optional[str] = None,
+    ) -> int:
+        """Create a new cron job and return its ID."""
+        now = datetime.now()
+        job = CronJobModel(
+            name=name,
+            cron_expr=cron_expr,
+            prompt=prompt,
+            active=active,
+            delivery_mode=delivery_mode,
+            model_override=model_override,
+            created_at=now,
+            updated_at=now,
+        )
+        with self._session() as session:
+            session.add(job)
+            session.commit()
+            session.refresh(job)
+            return job.id
+
+    def update_cron_job(self, job_id: int, **kwargs) -> bool:
+        """Update a cron job's configuration fields."""
+        with self._session() as session:
+            job = session.get(CronJobModel, job_id)
+            if not job:
+                return False
+            for key, value in kwargs.items():
+                if hasattr(job, key) and key not in ("id", "created_at"):
+                    setattr(job, key, value)
+            job.updated_at = datetime.now()
+            session.add(job)
+            session.commit()
+            return True
+
+    def delete_cron_job(self, job_id: int) -> bool:
+        """Delete a cron job by ID."""
+        with self._session() as session:
+            job = session.get(CronJobModel, job_id)
+            if not job:
+                return False
+            session.delete(job)
+            session.commit()
+            return True
+
+    def update_cron_job_run_state(
+        self,
+        job_id: int,
+        last_run_at: Optional[datetime] = None,
+        next_run_at: Optional[datetime] = None,
+        last_result: Optional[str] = None,
+        last_error: Optional[str] = None,
+        retry_count: Optional[int] = None,
+    ) -> bool:
+        """Update cron job run metadata (used by scheduler)."""
+        with self._session() as session:
+            job = session.get(CronJobModel, job_id)
+            if not job:
+                return False
+            if last_run_at is not None:
+                job.last_run_at = last_run_at
+            if next_run_at is not None:
+                job.next_run_at = next_run_at
+            if last_result is not None:
+                job.last_result = last_result[:2000]
+            if last_error is not None:
+                job.last_error = last_error[:1000]
+            if retry_count is not None:
+                job.retry_count = retry_count
+            job.updated_at = datetime.now()
+            session.add(job)
+            session.commit()
+            return True
+
+    # -------------------------------------------------------------------------
+    # Cron Run History
+    # -------------------------------------------------------------------------
+
+    def create_cron_run(self, job_id: int, started_at: datetime) -> int:
+        """Create a run history record, return its ID."""
+        run = CronRunModel(job_id=job_id, started_at=started_at)
+        with self._session() as session:
+            session.add(run)
+            session.commit()
+            session.refresh(run)
+            return run.id
+
+    def finish_cron_run(
+        self,
+        run_id: int,
+        status: str,
+        result: Optional[str] = None,
+        error: Optional[str] = None,
+    ):
+        """Mark a run as finished."""
+        with self._session() as session:
+            run = session.get(CronRunModel, run_id)
+            if not run:
+                return
+            run.finished_at = datetime.now()
+            run.status = status
+            if result is not None:
+                run.result = result[:2000]
+            if error is not None:
+                run.error = error[:1000]
+            session.add(run)
+            session.commit()
+
+    def list_cron_runs(self, job_id: int, limit: int = 20) -> List[CronRunModel]:
+        """List recent runs for a job."""
+        with self._session() as session:
+            statement = (
+                select(CronRunModel)
+                .where(CronRunModel.job_id == job_id)
+                .order_by(CronRunModel.started_at.desc())
+                .limit(limit)
+            )
+            return session.exec(statement).all()
 
     # -------------------------------------------------------------------------
     # API Key Operations

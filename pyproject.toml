@@ -33,6 +33,7 @@ dependencies = [
     "wsproto>=1.3.2",
     "sounddevice>=0.5.5",
     "opencv-python>=4.8.0",
+    "croniter>=2.0.0",
 ]
 
 [project.scripts]

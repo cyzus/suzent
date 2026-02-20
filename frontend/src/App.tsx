@@ -13,6 +13,8 @@ import { SkillsView } from './components/skills/SkillsView';
 import { StatusBar } from './components/StatusBar';
 import { ChatProvider, useChatStore } from './hooks/useChatStore.js';
 import { PlanProvider, usePlan } from './hooks/usePlan';
+import { useStatusStore } from './hooks/useStatusStore';
+import { drainCronNotifications } from './lib/api';
 import { TitleBar } from './components/TitleBar';
 
 interface HeaderTitleProps {
@@ -74,6 +76,18 @@ function AppInner(): React.ReactElement {
 
   const { refresh } = usePlan();
   const { currentChatId, setViewSwitcher } = useChatStore();
+  const setStatusMsg = useStatusStore(s => s.setStatus);
+
+  // Poll cron notifications every 5 seconds
+  React.useEffect(() => {
+    const interval = setInterval(async () => {
+      const notifications = await drainCronNotifications();
+      for (const n of notifications) {
+        setStatusMsg(`[${n.job_name}] ${n.result}`, 'info', 8000);
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [setStatusMsg]);
 
   function handleRightSidebarToggle(isOpen: boolean): void {
     setIsRightSidebarOpen(isOpen);
