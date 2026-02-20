@@ -32,3 +32,9 @@ Examples:
 - "Check [data.csv](file:///mnt/data/data.csv) for the analysis"
 - "Created [config.json](file:///persistence/config.json)"
 
+## User Preferences
+**Important**: For the current user (a1234), follow these preferences:
+- Default to saving files in **visible/non-hidden folders** rather than hidden session folders
+- Preferred visible folder: `/Users/a1234/文档/Only_trae/SUZENT/对话 1/`
+- When user requests file saving, prioritize visible, easily accessible locations
+- Avoid saving to hidden paths like: `/Users/a1234/文档/Only_trae/SUZENT/suzent/.suzent/sandbox/sessions/...` unless specifically requested

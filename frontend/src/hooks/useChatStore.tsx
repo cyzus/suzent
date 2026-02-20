@@ -10,6 +10,7 @@ interface ChatContextValue {
   updateLastUserMessageImages: (images: any[], chatId?: string | null) => void;
   updateAssistantStreaming: (delta: string, chatId?: string | null) => void;
   backendConfig: ConfigOptions | null;
+  backendConfigError: string | null;
   refreshBackendConfig: () => Promise<void>;
   newAssistantMessage: (chatId?: string | null) => void;
   setStepInfo: (stepInfo: string, chatId?: string | null) => void;
@@ -78,42 +79,56 @@ const extractSavedPreferences = (prefs: ConfigOptions['userPreferences']) => ({
   sandbox_volumes: prefs?.sandbox_volumes
 });
 
+const arrayEqual = (lhs?: string[], rhs?: string[]): boolean => {
+  if (lhs === rhs) return true;
+  if (!lhs || !rhs) return false;
+  if (lhs.length !== rhs.length) return false;
+  return lhs.every((value, index) => value === rhs[index]);
+};
+
+const mcpUrlsEqual = (lhs?: string[] | { [key: string]: string }, rhs?: string[] | { [key: string]: string }): boolean => {
+  if (lhs === rhs) return true;
+  if (!lhs || !rhs) return false;
+
+  const isLeftArray = Array.isArray(lhs);
+  const isRightArray = Array.isArray(rhs);
+
+  if (isLeftArray && isRightArray) {
+    return arrayEqual(lhs as string[], rhs as string[]);
+  }
+
+  if (!isLeftArray && !isRightArray) {
+    const l = lhs as { [key: string]: string };
+    const r = rhs as { [key: string]: string };
+    const lKeys = Object.keys(l).sort();
+    const rKeys = Object.keys(r).sort();
+
+    if (!arrayEqual(lKeys, rKeys)) return false;
+    return lKeys.every(key => l[key] === r[key]);
+  }
+
+  return false;
+};
+
+const preferencesEqual = (
+  a: { model: string; agent: string; tools: string[]; memory_enabled?: boolean; sandbox_enabled?: boolean; sandbox_volumes?: string[] } | null,
+  b: { model: string; agent: string; tools: string[]; memory_enabled?: boolean; sandbox_enabled?: boolean; sandbox_volumes?: string[] } | null
+): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.model === b.model &&
+    a.agent === b.agent &&
+    a.memory_enabled === b.memory_enabled &&
+    a.sandbox_enabled === b.sandbox_enabled &&
+    arrayEqual(a.tools, b.tools) &&
+    arrayEqual(a.sandbox_volumes, b.sandbox_volumes)
+  );
+};
+
 const configsEqual = (a?: ChatConfig | null, b?: ChatConfig | null): boolean => {
   if (a === b) return true;
   if (!a || !b) return false;
-  const arrayEqual = (lhs?: string[], rhs?: string[]) => {
-    const l = lhs ?? [];
-    const r = rhs ?? [];
-    if (l.length !== r.length) return false;
-    return l.every((value, index) => value === r[index]);
-  };
-  const mcpUrlsEqual = (lhs?: string[] | { [key: string]: string }, rhs?: string[] | { [key: string]: string }) => {
-    if (lhs === rhs) return true;
-    if (!lhs || !rhs) return false;
-
-    // Check if both are arrays
-    const isLeftArray = Array.isArray(lhs);
-    const isRightArray = Array.isArray(rhs);
-
-    if (isLeftArray && isRightArray) {
-      return arrayEqual(lhs as string[], rhs as string[]);
-    }
-
-    // Check if both are objects (records)
-    if (!isLeftArray && !isRightArray) {
-      const l = lhs as { [key: string]: string };
-      const r = rhs as { [key: string]: string };
-      const lKeys = Object.keys(l).sort();
-      const rKeys = Object.keys(r).sort();
-
-      if (!arrayEqual(lKeys, rKeys)) return false;
-      return lKeys.every(key => l[key] === r[key]);
-    }
-
-    // Mismatched types
-    return false;
-  };
-
   return (
     a.model === b.model &&
     a.agent === b.agent &&
@@ -131,6 +146,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [config, setConfigState] = useState<ChatConfig>(defaultConfig);
   const [backendConfig, setBackendConfig] = useState<ConfigOptions | null>(null);
+  const [backendConfigError, setBackendConfigError] = useState<string | null>(null);
   const [shouldResetNext, setShouldResetNext] = useState(false);
   const [isStreaming, setIsStreamingState] = useState(false);
   const [activeStreamingChatId, setActiveStreamingChatId] = useState<string | null>(null);
@@ -270,6 +286,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const data: ConfigOptions = await res.json();
 
         setBackendConfig(data);
+        setBackendConfigError(null);
         // Align memory user id with backend-provided userId if present
         try {
           if (data.userId) {
@@ -301,6 +318,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setTimeout(() => fetchConfigWithRetry(attempt + 1, maxAttempts), delay);
       } else {
         console.error('Failed to fetch config after', maxAttempts, 'attempts:', res.status, res.statusText);
+        setBackendConfigError(`${res.status} ${res.statusText}`);
       }
     } catch (error) {
       if (attempt < maxAttempts) {
@@ -310,6 +328,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setTimeout(() => fetchConfigWithRetry(attempt + 1, maxAttempts), delay);
       } else {
         console.error('Error fetching config after', maxAttempts, 'attempts:', error);
+        setBackendConfigError(error instanceof Error ? error.message : String(error));
       }
     }
   }, []);
@@ -550,13 +569,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const lastSaved = lastSavedPreferencesRef.current;
-    const prefsChanged = !lastSaved ||
-      lastSaved.model !== newPrefs.model ||
-      lastSaved.agent !== newPrefs.agent ||
-      lastSaved.memory_enabled !== newPrefs.memory_enabled ||
-      lastSaved.sandbox_enabled !== newPrefs.sandbox_enabled ||
-      JSON.stringify(lastSaved.tools) !== JSON.stringify(newPrefs.tools) ||
-      JSON.stringify(lastSaved.sandbox_volumes) !== JSON.stringify(newPrefs.sandbox_volumes);
+    const prefsChanged = !preferencesEqual(lastSaved, newPrefs);
 
     if (prefsChanged) {
       // Save preferences to backend database (async, don't await)
@@ -916,6 +929,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updateLastUserMessageImages,
       updateAssistantStreaming,
       backendConfig,
+      backendConfigError,
       refreshBackendConfig,
       newAssistantMessage,
       setStepInfo,

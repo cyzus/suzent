@@ -55,13 +55,18 @@ fn main() {
                         }
 
 
-                        // Inject port and notify frontend
-                        // We use sessionStorage because window variables are lost on reload,
-                        // and we MUST reload to ensure the frontend picks up the new port in API_BASE constant.
-                        let _ = window.eval(&format!(
-                            "sessionStorage.setItem('SUZENT_PORT', '{}'); window.location.reload();", 
-                            port
-                        ));
+                        // Inject port for frontend runtime (prefer window variable; storage best-effort)
+                        let js = format!(
+                            r#"
+window.__SUZENT_BACKEND_PORT__ = {port};
+try {{ sessionStorage.setItem('SUZENT_PORT', '{port}'); }} catch (e) {{}}
+try {{ localStorage.setItem('SUZENT_PORT', '{port}'); }} catch (e) {{}}
+"#
+                        );
+                        if let Err(e) = window.eval(&js) {
+                            eprintln!("Failed to inject backend port: {}", e);
+                            let _ = window.emit("backend-error", format!("Failed to inject backend port: {}", e));
+                        }
                     }
                     Err(e) => {
                         eprintln!("Failed to start backend: {}", e);

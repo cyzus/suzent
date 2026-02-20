@@ -176,10 +176,6 @@ export function I18nProvider(props: { children: React.ReactNode }): React.ReactE
     }
   }, [locale]);
 
-  useEffect(() => {
-    reloadLanguagePack();
-  }, [reloadLanguagePack]);
-
   const value = useMemo<I18nContextValue>(
     () => ({ locale, setLocale, t, reloadLanguagePack, languagePackName }),
     [locale, setLocale, t, reloadLanguagePack, languagePackName]

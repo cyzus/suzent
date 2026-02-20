@@ -257,11 +257,11 @@ function AppInner(): React.ReactElement {
 };
 
 
-function BackendLoadingScreen() {
+function BackendLoadingScreen({ error, onRetry }: { error?: string | null; onRetry?: () => void }) {
   const { t } = useI18n();
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-neutral-50 font-sans p-8 text-center border-8 border-brutal-black">
-      <div className="bg-white p-8 border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md flex flex-col items-center animate-pulse">
+      <div className={`bg-white p-8 border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md flex flex-col items-center ${error ? '' : 'animate-pulse'}`}>
         <div className="w-32 h-32 mb-6">
           <RobotAvatar variant="idle" className="w-full h-full" />
         </div>
@@ -269,11 +269,127 @@ function BackendLoadingScreen() {
         <p className="font-bold text-lg mb-6 leading-tight">
           {t('app.connectingToCore')}
         </p>
+        {error && (
+          <div className="w-full text-left bg-neutral-100 border-2 border-brutal-black p-3 mb-4">
+            <div className="text-xs font-bold uppercase text-brutal-black mb-1">{t('common.error')}</div>
+            <div className="text-xs font-mono text-brutal-black break-all">{error}</div>
+          </div>
+        )}
         <div className="w-full h-4 bg-neutral-200 border-2 border-brutal-black overflow-hidden relative">
           <div className="absolute top-0 left-0 h-full w-1/2 bg-brutal-black animate-[slide_1s_ease-in-out_infinite]"></div>
         </div>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-6 w-full px-4 py-3 bg-white border-2 border-brutal-black font-bold uppercase text-brutal-black hover:bg-neutral-100 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
+          >
+            {t('common.retry')}
+          </button>
+        )}
       </div>
     </div>
+  );
+}
+
+function getBackendPortFromRuntime(): number | null {
+  const injectedPort = (window as any).__SUZENT_BACKEND_PORT__;
+  if (typeof injectedPort === 'number' && Number.isFinite(injectedPort)) return injectedPort;
+
+  const readStoragePort = (storage: Storage): number | null => {
+    try {
+      const raw = storage.getItem('SUZENT_PORT');
+      if (!raw) return null;
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n <= 0) return null;
+      return n;
+    } catch {
+      return null;
+    }
+  };
+
+  return readStoragePort(sessionStorage) ?? readStoragePort(localStorage);
+}
+
+function setBackendPortRuntime(port: number): void {
+  (window as any).__SUZENT_BACKEND_PORT__ = port;
+  try {
+    sessionStorage.setItem('SUZENT_PORT', String(port));
+  } catch { }
+  try {
+    localStorage.setItem('SUZENT_PORT', String(port));
+  } catch { }
+}
+
+function TauriBackendGate() {
+  const [ready, setReady] = React.useState(() => getBackendPortFromRuntime() !== null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const tryConnect = React.useCallback(async () => {
+    const existing = getBackendPortFromRuntime();
+    if (existing !== null) {
+      setBackendPortRuntime(existing);
+      setReady(true);
+      return;
+    }
+
+    const invoke: undefined | ((cmd: string, args?: any) => Promise<any>) =
+      (window as any).__TAURI__?.core?.invoke || (window as any).__TAURI__?.invoke;
+
+    if (!invoke) return;
+
+    for (let i = 0; i < 60; i++) {
+      try {
+        const port = await invoke('get_backend_port');
+        if (typeof port === 'number' && Number.isFinite(port) && port > 0) {
+          setBackendPortRuntime(port);
+          setReady(true);
+          return;
+        }
+      } catch { }
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (ready) return;
+
+    let cancelled = false;
+    let unlisten: undefined | (() => void);
+
+    const listen = (window as any).__TAURI__?.event?.listen;
+    if (listen) {
+      listen('backend-error', (event: any) => {
+        if (cancelled) return;
+        const payload = event?.payload;
+        setError(typeof payload === 'string' ? payload : JSON.stringify(payload));
+      }).then((unsub: any) => {
+        unlisten = typeof unsub === 'function' ? unsub : undefined;
+      }).catch(() => { });
+    }
+
+    tryConnect().catch(() => { });
+
+    return () => {
+      cancelled = true;
+      try {
+        unlisten?.();
+      } catch { }
+    };
+  }, [ready, tryConnect]);
+
+  if (!ready) {
+    return <BackendLoadingScreen error={error} onRetry={() => { setError(null); tryConnect(); }} />;
+  }
+
+  return (
+    <ErrorBoundary>
+      <ChatProvider>
+        <PlanProvider>
+          <AppInner />
+        </PlanProvider>
+      </ChatProvider>
+    </ErrorBoundary>
   );
 }
 
@@ -298,24 +414,5 @@ export default function App() {
       </div>
     );
   }
-
-  // Check for backend connection (Tauri specific)
-  // In browser dev mode, we skip this check as api.ts falls back to 8000
-  // But inside Tauri, api.ts returns empty string if port is missing.
-  const isBackendReady = !!sessionStorage.getItem('SUZENT_PORT');
-
-  if (!isBackendReady) {
-    return <BackendLoadingScreen />;
-  }
-
-
-  return (
-    <ErrorBoundary>
-      <ChatProvider>
-        <PlanProvider>
-          <AppInner />
-        </PlanProvider>
-      </ChatProvider>
-    </ErrorBoundary>
-  );
+  return <TauriBackendGate />;
 }

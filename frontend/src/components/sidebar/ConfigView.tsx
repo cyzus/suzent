@@ -26,7 +26,7 @@ type MCPStdioServer = {
 type MCPServer = MCPUrlServer | MCPStdioServer;
 
 export function ConfigView(): React.ReactElement {
-  const { config, setConfig, backendConfig } = useChatStore();
+  const { config, setConfig, backendConfig, backendConfigError, refreshBackendConfig } = useChatStore();
   const { t } = useI18n();
 
   const [servers, setServers] = useState<MCPServer[]>([]);
@@ -116,7 +116,23 @@ export function ConfigView(): React.ReactElement {
 
 
   if (!backendConfig) {
-    return <div className="text-xs text-brutal-black font-bold uppercase animate-brutal-blink">{t('config.loading')}</div>;
+    return (
+      <div className="space-y-2">
+        <div className="text-xs text-brutal-black font-bold uppercase animate-brutal-blink">{t('config.loading')}</div>
+        {backendConfigError && (
+          <div className="text-[10px] text-brutal-black font-mono font-bold break-all">
+            {t('common.error')}: {backendConfigError}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={refreshBackendConfig}
+          className="w-full px-3 py-2 bg-white border-2 border-brutal-black font-bold uppercase text-brutal-black hover:bg-neutral-100 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
+        >
+          {t('common.retry')}
+        </button>
+      </div>
+    );
   }
 
   return (
