@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
+#[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::thread;
 use std::io::{BufRead, BufReader};
