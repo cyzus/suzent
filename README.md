@@ -109,13 +109,6 @@ Unlike most agents, **SUZENT** features dual workspaces: a cross-session workspa
 
 ---
 
-### **ADVANCED**
-
-- **[Docker Services](docs/03-developing/docker-services.md)**: Optional setup for running SearXNG locally.
-- **[Utility Scripts](docs/03-developing/scripts.md)**: Guide to build and maintenance scripts.
-
----
-
 ## **TECH STACK**
 
 *   **BACKEND**: Python 3.12, smolagents, litellm, Starlette, SQLite.
