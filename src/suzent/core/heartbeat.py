@@ -117,6 +117,22 @@ class HeartbeatRunner:
             self._task = None
         logger.info("HeartbeatRunner disabled.")
 
+    async def set_interval(self, minutes: int):
+        """Update the heartbeat interval. Restarts the loop if running."""
+        if minutes < 1:
+            raise ValueError("Interval must be at least 1 minute")
+        self.interval_minutes = minutes
+        logger.info(f"Heartbeat interval updated to {minutes} minutes")
+        # Restart loop so the new interval takes effect immediately
+        if self._running:
+            if self._task:
+                self._task.cancel()
+                try:
+                    await self._task
+                except asyncio.CancelledError:
+                    pass
+            self._task = asyncio.create_task(self._run_loop())
+
     async def _run_loop(self):
         """Main loop — fires heartbeat at fixed intervals."""
         while self._running:

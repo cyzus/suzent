@@ -98,6 +98,7 @@ from suzent.routes.heartbeat_routes import (
     trigger_heartbeat,
     get_heartbeat_md,
     save_heartbeat_md,
+    set_heartbeat_interval,
 )
 from suzent.channels.manager import ChannelManager
 from suzent.nodes.manager import NodeManager
@@ -444,6 +445,7 @@ app = Starlette(
         Route("/heartbeat/trigger", trigger_heartbeat, methods=["POST"]),
         Route("/heartbeat/md", get_heartbeat_md, methods=["GET"]),
         Route("/heartbeat/md", save_heartbeat_md, methods=["PUT"]),
+        Route("/heartbeat/interval", set_heartbeat_interval, methods=["PUT"]),
     ],
     middleware=[
         Middleware(

@@ -16,6 +16,7 @@ import {
   enableHeartbeat,
   disableHeartbeat,
   triggerHeartbeat,
+  setHeartbeatInterval,
   fetchHeartbeatMd,
   saveHeartbeatMd,
 } from '../../lib/api';
@@ -274,6 +275,35 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
               >
                 {t('settings.automation.runNow')}
               </button>
+              <div className="flex items-center gap-1 ml-auto">
+                <label className="text-xs font-bold uppercase text-neutral-600">{t('settings.automation.heartbeatIntervalLabel')}</label>
+                <input
+                  type="number"
+                  min={1}
+                  defaultValue={heartbeat.interval_minutes}
+                  key={heartbeat.interval_minutes}
+                  onBlur={async (e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!val || val < 1 || val === heartbeat.interval_minutes) return;
+                    setLoading(true);
+                    try {
+                      await setHeartbeatInterval(val);
+                      await refresh();
+                    } catch (err: any) {
+                      alert(err.message);
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter') {
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
+                  className="w-16 bg-white border-2 border-brutal-black px-2 py-1 font-mono text-xs text-center focus:outline-none focus:bg-neutral-50"
+                />
+                <span className="text-xs text-neutral-500">{t('settings.automation.heartbeatMinutesUnit')}</span>
+              </div>
             </div>
 
             {/* HEARTBEAT.md Editor */}

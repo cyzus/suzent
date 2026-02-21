@@ -83,3 +83,18 @@ def heartbeat_run():
         typer.echo("Heartbeat triggered.")
     else:
         typer.echo(f"Failed: {data.get('error', 'unknown error')}")
+
+
+@heartbeat_app.command("interval")
+def heartbeat_interval(
+    minutes: int = typer.Argument(..., help="Interval in minutes (minimum 1)"),
+):
+    """Set the heartbeat interval in minutes."""
+    if minutes < 1:
+        typer.echo("Error: interval must be at least 1 minute.")
+        raise typer.Exit(1)
+    data = _http_post("/heartbeat/interval", data={"interval_minutes": minutes})
+    if data.get("success"):
+        typer.echo(f"Heartbeat interval set to {minutes} minutes.")
+    else:
+        typer.echo(f"Failed: {data.get('error', 'unknown error')}")

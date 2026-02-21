@@ -118,7 +118,7 @@ suzent cron status
 
 1. Create a checklist at `/shared/HEARTBEAT.md` (via Settings > Automation editor or file tools)
 2. Enable the heartbeat system
-3. HeartbeatRunner fires every 30 minutes in a persistent `heartbeat-main` chat
+3. HeartbeatRunner fires at a configurable interval (default 30 minutes) in a persistent `heartbeat-main` chat
 4. Agent reads the checklist, checks each item
 5. If nothing needs attention, agent replies `HEARTBEAT_OK` (notification suppressed)
 6. If something is actionable, it surfaces via the status bar
@@ -166,7 +166,7 @@ When the agent determines nothing needs attention, it replies with `HEARTBEAT_OK
 
 The heartbeat card in **Settings > Automation** shows:
 - Current status (enabled/disabled/running)
-- Interval and whether HEARTBEAT.md exists
+- Configurable interval (editable inline) and whether HEARTBEAT.md exists
 - Enable/Disable toggle and Run Now button
 - Inline HEARTBEAT.md editor
 - Last run time, result, and errors
@@ -183,6 +183,9 @@ suzent heartbeat enable
 # Disable heartbeat
 suzent heartbeat disable
 
+# Set the heartbeat interval (in minutes)
+suzent heartbeat interval 15
+
 # Trigger an immediate heartbeat tick
 suzent heartbeat run
 ```
@@ -197,6 +200,7 @@ suzent heartbeat run
 | POST | `/heartbeat/trigger` | Trigger immediate tick |
 | GET | `/heartbeat/md` | Read HEARTBEAT.md content |
 | PUT | `/heartbeat/md` | Update HEARTBEAT.md content |
+| PUT | `/heartbeat/interval` | Set interval (`{"interval_minutes": N}`) |
 
 ## Architecture
 

@@ -203,6 +203,8 @@ export const zhCN = {
       runNow: '立即运行',
       collapse: '收起',
       heartbeatMdEdit: '编辑',
+      heartbeatIntervalLabel: '间隔',
+      heartbeatMinutesUnit: '分钟',
       lastRun: '上次运行：',
       result: '结果：',
       resultOk: 'OK（无需关注的事项）',

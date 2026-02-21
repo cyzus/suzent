@@ -203,6 +203,8 @@ export const en = {
       runNow: 'Run Now',
       collapse: 'collapse',
       heartbeatMdEdit: 'edit',
+      heartbeatIntervalLabel: 'Interval',
+      heartbeatMinutesUnit: 'min',
       lastRun: 'Last run:',
       result: 'Result:',
       resultOk: 'OK (nothing needed attention)',

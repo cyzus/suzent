@@ -99,3 +99,26 @@ async def save_heartbeat_md(request: Request) -> JSONResponse:
         return JSONResponse({"success": True})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def set_heartbeat_interval(request: Request) -> JSONResponse:
+    """Set the heartbeat interval in minutes."""
+    if not (runner := _get_runner()):
+        return _not_initialized()
+
+    body = await request.json()
+    minutes = body.get("interval_minutes")
+
+    if not isinstance(minutes, int) or minutes < 1:
+        return JSONResponse(
+            {"error": "interval_minutes must be a positive integer"},
+            status_code=400,
+        )
+
+    try:
+        await runner.set_interval(minutes)
+        return JSONResponse({"success": True, "interval_minutes": minutes})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)

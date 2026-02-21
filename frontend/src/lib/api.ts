@@ -444,6 +444,18 @@ export async function triggerHeartbeat(): Promise<void> {
   if (!res.ok) throw new Error('Failed to trigger heartbeat');
 }
 
+export async function setHeartbeatInterval(minutes: number): Promise<void> {
+  const res = await fetch(`${getApiBase()}/heartbeat/interval`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ interval_minutes: minutes }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to set heartbeat interval');
+  }
+}
+
 export async function fetchHeartbeatMd(): Promise<{ content: string; exists: boolean }> {
   const res = await fetch(`${getApiBase()}/heartbeat/md`);
   if (!res.ok) return { content: '', exists: false };

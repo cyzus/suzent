@@ -13,7 +13,7 @@ Suzent has two separate automation systems:
 |---|---|---|
 | **Purpose** | Execute a specific task at a specific time | Periodic "wake up, check if anything needs attention" |
 | **Session** | Isolated (`cron-{id}`) — fresh, stateless | Persistent (`heartbeat-main`) — accumulates context |
-| **Timing** | Cron expression (precise) | Fixed interval (default 30 min) |
+| **Timing** | Cron expression (precise) | Configurable interval (default 30 min) |
 | **Config** | Per-job prompt | Single `/shared/HEARTBEAT.md` checklist |
 | **Batching** | One job = one task | One tick can check multiple things |
 | **Context** | No conversation history | Sees recent check history |
@@ -69,7 +69,7 @@ You should use the Bash tool to run these CLI commands.
 ### How It Works
 
 1. User creates `/shared/HEARTBEAT.md` (via Settings > Automation editor or file tools)
-2. HeartbeatRunner fires every 30 minutes in a persistent `heartbeat-main` chat
+2. HeartbeatRunner fires at a configurable interval (default 30 minutes) in a persistent `heartbeat-main` chat
 3. Agent reads the checklist, checks each item
 4. If nothing needs attention → reply `HEARTBEAT_OK` (notification suppressed)
 5. If something is actionable → surface it via the status bar
@@ -100,6 +100,7 @@ suzent heartbeat status
 suzent heartbeat enable
 suzent heartbeat disable
 suzent heartbeat run
+suzent heartbeat interval <minutes>   # set the check-in interval (e.g. 15)
 ```
 
 ## Important Notes
@@ -108,5 +109,5 @@ suzent heartbeat run
 - Heartbeat is **persistent and context-aware** — sees its own recent history
 - **Memory is disabled** for both to avoid polluting the knowledge base
 - Cron jobs that fail 5 times are **automatically deactivated**
-- The cron scheduler ticks every 30 seconds; heartbeat interval is configurable (default 30 min)
+- The cron scheduler ticks every 30 seconds; heartbeat interval is configurable via CLI (`suzent heartbeat interval <minutes>`), Settings UI, or REST API (default 30 min)
 - HEARTBEAT.md is stored in `/shared/` so both the agent and the frontend can access it
