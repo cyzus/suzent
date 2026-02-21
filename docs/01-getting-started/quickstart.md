@@ -83,7 +83,7 @@ This will:
 - Start the Frontend (UI) on port `5173`.
 - Automatically manage local processes.
 
-**Start Chatting:** Open your browser to [**http://localhost:5173**](http://localhost:5173).
+**Start Chatting**
 
 ---
 
