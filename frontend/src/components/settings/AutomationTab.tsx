@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
+import { useI18n } from '../../i18n';
 import {
   CronJob,
   CronRun,
@@ -25,6 +26,7 @@ interface AutomationTabProps {
 }
 
 export function AutomationTab({ models }: AutomationTabProps): React.ReactElement {
+  const { t } = useI18n();
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [status, setStatus] = useState<{ scheduler_running: boolean; total_jobs: number; active_jobs: number } | null>(null);
   const [heartbeat, setHeartbeat] = useState<HeartbeatStatus | null>(null);
@@ -92,7 +94,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
       setIsActive(true);
       await refresh();
     } catch (e: any) {
-      alert(e.message || 'Failed to create job');
+      alert(e.message || t('settings.automation.failedToCreateJob'));
     } finally {
       setLoading(false);
     }
@@ -153,7 +155,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
       setEditFields({});
       await refresh();
     } catch (e: any) {
-      alert(e.message || 'Failed to update job');
+      alert(e.message || t('settings.automation.failedToUpdateJob'));
     } finally {
       setLoading(false);
     }
@@ -180,14 +182,14 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
   };
 
   const modelOptions = [
-    { value: '', label: 'Default' },
+    { value: '', label: t('settings.automation.defaultModel') },
     ...models.map(m => ({ value: m, label: m })),
   ];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black">Automation</h2>
+        <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black">{t('settings.automation.title')}</h2>
       </div>
 
       {/* Status Card */}
@@ -199,14 +201,14 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
             </svg>
           </div>
           <div>
-            <h3 className="text-xl font-bold uppercase">Scheduler Status</h3>
+            <h3 className="text-xl font-bold uppercase">{t('settings.automation.schedulerStatusTitle')}</h3>
             <p className="text-sm text-neutral-600 mt-1">
               {status?.scheduler_running ? (
-                <span className="text-green-700 font-bold">Running</span>
+                <span className="text-green-700 font-bold">{t('settings.automation.running')}</span>
               ) : (
-                <span className="text-red-700 font-bold">Stopped</span>
+                <span className="text-red-700 font-bold">{t('settings.automation.stopped')}</span>
               )}
-              {status && ` \u2014 ${status.active_jobs} active / ${status.total_jobs} total jobs`}
+              {status && ` \u2014 ${t('settings.automation.activeOfTotal', { active: String(status.active_jobs), total: String(status.total_jobs) })}`}
             </p>
           </div>
         </div>
@@ -221,14 +223,14 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
             </svg>
           </div>
           <div className="flex-1">
-            <h3 className="text-xl font-bold uppercase">Heartbeat</h3>
+            <h3 className="text-xl font-bold uppercase">{t('settings.automation.heartbeatTitle')}</h3>
             <p className="text-sm text-neutral-600 mt-1">
-              Periodic agent check-in using <span className="font-mono text-xs">/shared/HEARTBEAT.md</span> checklist.
+              {t('settings.automation.heartbeatDesc')} <span className="font-mono text-xs">/shared/HEARTBEAT.md</span> {t('settings.automation.heartbeatChecklist')}
               {heartbeat?.enabled
-                ? ` Running every ${heartbeat.interval_minutes}m in a persistent session.`
+                ? ` ${t('settings.automation.heartbeatRunning', { minutes: String(heartbeat.interval_minutes) })}`
                 : heartbeat?.heartbeat_md_exists
-                  ? ' Disabled. Enable to start periodic check-ins.'
-                  : ' Create /shared/HEARTBEAT.md to enable.'}
+                  ? ` ${t('settings.automation.heartbeatDisabled')}`
+                  : ` ${t('settings.automation.heartbeatCreate')}`}
             </p>
           </div>
         </div>
@@ -255,7 +257,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                 disabled={loading || !heartbeat.heartbeat_md_exists}
                 className={`px-4 py-2 border-2 border-brutal-black font-bold uppercase text-xs transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50 ${heartbeat.enabled ? 'bg-neutral-200 text-brutal-black' : 'bg-brutal-green text-brutal-black'}`}
               >
-                {heartbeat.enabled ? 'Disable' : 'Enable'}
+                {heartbeat.enabled ? t('settings.automation.disable') : t('settings.social.enable')}
               </button>
               <button
                 onClick={async () => {
@@ -270,7 +272,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                 disabled={loading || !heartbeat.heartbeat_md_exists}
                 className="px-4 py-2 bg-brutal-blue text-white border-2 border-brutal-black font-bold uppercase text-xs transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
               >
-                Run Now
+                {t('settings.automation.runNow')}
               </button>
             </div>
 
@@ -288,7 +290,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                 className="w-full px-3 py-2 text-left text-xs font-bold uppercase bg-neutral-100 hover:bg-neutral-200 transition-colors flex items-center justify-between"
               >
                 <span>HEARTBEAT.md</span>
-                <span className="text-neutral-400">{mdEditing ? 'collapse' : 'edit'}</span>
+                <span className="text-neutral-400">{mdEditing ? t('settings.automation.collapse') : t('settings.automation.heartbeatMdEdit')}</span>
               </button>
               {mdEditing && (
                 <div className="p-3 space-y-2">
@@ -314,7 +316,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                       disabled={mdSaving || !mdDirty}
                       className="px-4 py-1.5 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
                     >
-                      {mdSaving ? 'Saving...' : 'Save'}
+                      {mdSaving ? t('common.saving') : t('common.save')}
                     </button>
                   </div>
                 </div>
@@ -323,15 +325,15 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
 
             {heartbeat.last_run_at && (
               <div className="text-xs text-neutral-500 space-y-1">
-                <div>Last run: {formatDate(heartbeat.last_run_at)}</div>
+                <div>{t('settings.automation.lastRun')} {formatDate(heartbeat.last_run_at)}</div>
                 {heartbeat.last_result && (
                   <div className="truncate" title={heartbeat.last_result}>
-                    Result: {heartbeat.last_result === 'HEARTBEAT_OK' ? 'OK (nothing needed attention)' : heartbeat.last_result.substring(0, 120)}
+                    {t('settings.automation.result')} {heartbeat.last_result === 'HEARTBEAT_OK' ? t('settings.automation.resultOk') : heartbeat.last_result.substring(0, 120)}
                   </div>
                 )}
                 {heartbeat.last_error && (
                   <div className="text-red-600 truncate" title={heartbeat.last_error}>
-                    Error: {heartbeat.last_error}
+                    {t('settings.automation.errorLabel')} {heartbeat.last_error}
                   </div>
                 )}
               </div>
@@ -347,8 +349,8 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
           </div>
           <div>
-            <h3 className="text-xl font-bold uppercase">Add New Job</h3>
-            <p className="text-sm text-neutral-600 mt-1">Schedule a prompt to run automatically on a cron schedule.</p>
+            <h3 className="text-xl font-bold uppercase">{t('settings.automation.addNewJobTitle')}</h3>
+            <p className="text-sm text-neutral-600 mt-1">{t('settings.automation.addNewJobDesc')}</p>
           </div>
         </div>
 
@@ -357,13 +359,13 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
             <input
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="Job name"
+              placeholder={t('settings.automation.jobNamePlaceholder')}
               className="flex-1 bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
             />
             <input
               value={cronExpr}
               onChange={e => setCronExpr(e.target.value)}
-              placeholder="Cron expr (e.g. */5 * * * *)"
+              placeholder={t('settings.automation.cronExprPlaceholder')}
               className="w-52 bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
             />
           </div>
@@ -371,7 +373,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
           <textarea
             value={prompt}
             onChange={e => setPrompt(e.target.value)}
-            placeholder="Prompt to execute on schedule..."
+            placeholder={t('settings.automation.promptPlaceholder')}
             rows={3}
             className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 resize-y"
           />
@@ -381,10 +383,10 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
               value={deliveryMode}
               onChange={val => setDeliveryMode(val as 'announce' | 'none')}
               options={[
-                { value: 'announce', label: 'Announce' },
-                { value: 'none', label: 'Silent' },
+                { value: 'announce', label: t('settings.automation.announce') },
+                { value: 'none', label: t('settings.automation.silent') },
               ]}
-              label="Delivery"
+              label={t('settings.automation.delivery')}
               className="w-36"
             />
 
@@ -392,7 +394,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
               value={modelOverride}
               onChange={setModelOverride}
               options={modelOptions}
-              label="Model"
+              label={t('settings.automation.model')}
               className="w-48"
             />
 
@@ -403,7 +405,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                 onChange={e => setIsActive(e.target.checked)}
                 className="w-5 h-5 border-2 border-brutal-black accent-brutal-black"
               />
-              <span className="font-bold text-xs uppercase">Active</span>
+              <span className="font-bold text-xs uppercase">{t('settings.automation.active')}</span>
             </label>
           </div>
 
@@ -412,7 +414,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
             disabled={loading || !name.trim() || !cronExpr.trim() || !prompt.trim()}
             className="px-4 py-2 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-brutal-black hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
           >
-            {loading ? 'Creating...' : 'Add Job'}
+            {loading ? t('settings.automation.creating') : t('settings.automation.addJob')}
           </button>
         </div>
       </div>
@@ -426,14 +428,14 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
             </svg>
           </div>
           <div>
-            <h3 className="text-xl font-bold uppercase">Scheduled Jobs</h3>
-            <p className="text-sm text-neutral-600 mt-1">Manage your automated tasks. Toggle, trigger, edit, or remove jobs.</p>
+            <h3 className="text-xl font-bold uppercase">{t('settings.automation.scheduledJobsTitle')}</h3>
+            <p className="text-sm text-neutral-600 mt-1">{t('settings.automation.scheduledJobsDesc')}</p>
           </div>
         </div>
 
         {jobs.length === 0 ? (
           <div className="text-center py-8 text-neutral-500 font-bold uppercase">
-            No cron jobs configured yet.
+            {t('settings.automation.noCronJobs')}
           </div>
         ) : (
           <div className="space-y-3">
@@ -449,13 +451,13 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                       <input
                         value={editFields.name || ''}
                         onChange={e => setEditFields({ ...editFields, name: e.target.value })}
-                        placeholder="Job name"
+                        placeholder={t('settings.automation.jobNamePlaceholder')}
                         className="flex-1 bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
                       />
                       <input
                         value={editFields.cron_expr || ''}
                         onChange={e => setEditFields({ ...editFields, cron_expr: e.target.value })}
-                        placeholder="Cron expression"
+                        placeholder={t('settings.automation.cronExpression')}
                         className="w-52 bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
                       />
                     </div>
@@ -470,17 +472,17 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                         value={editFields.delivery_mode || 'announce'}
                         onChange={val => setEditFields({ ...editFields, delivery_mode: val as 'announce' | 'none' })}
                         options={[
-                          { value: 'announce', label: 'Announce' },
-                          { value: 'none', label: 'Silent' },
+                          { value: 'announce', label: t('settings.automation.announce') },
+                          { value: 'none', label: t('settings.automation.silent') },
                         ]}
-                        label="Delivery"
+                        label={t('settings.automation.delivery')}
                         className="w-36"
                       />
                       <BrutalSelect
                         value={editFields.model_override || ''}
                         onChange={val => setEditFields({ ...editFields, model_override: val || null })}
                         options={modelOptions}
-                        label="Model"
+                        label={t('settings.automation.model')}
                         className="w-48"
                       />
                     </div>
@@ -490,13 +492,13 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                         disabled={loading}
                         className="px-4 py-1.5 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
                       >
-                        Save
+                        {t('common.save')}
                       </button>
                       <button
                         onClick={cancelEdit}
                         className="px-4 py-1.5 bg-neutral-200 border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
                       >
-                        Cancel
+                        {t('common.cancel')}
                       </button>
                     </div>
                   </div>
@@ -515,7 +517,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-bold text-brutal-black">{job.name}</span>
                           <span className={`text-[10px] px-2 py-0.5 border-2 font-bold uppercase ${job.active ? 'border-brutal-black bg-brutal-green text-brutal-black' : 'border-brutal-black bg-neutral-200 text-brutal-black'}`}>
-                            {job.active ? 'ON' : 'OFF'}
+                            {job.active ? t('common.on') : t('common.off')}
                           </span>
                           <span className="text-[10px] px-2 py-0.5 border border-neutral-400 text-neutral-500 uppercase">
                             {job.delivery_mode}
@@ -532,21 +534,21 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                           disabled={loading}
                           className="px-3 py-1 bg-neutral-200 text-brutal-black border-2 border-brutal-black font-bold text-xs uppercase hover:bg-neutral-300 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
                         >
-                          Edit
+                          {t('common.edit')}
                         </button>
                         <button
                           onClick={() => handleTrigger(job)}
                           disabled={loading}
                           className="px-3 py-1 bg-brutal-blue text-white border-2 border-brutal-black font-bold text-xs uppercase hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
                         >
-                          Run
+                          {t('settings.automation.run')}
                         </button>
                         <button
                           onClick={() => handleDelete(job)}
                           disabled={loading}
                           className="px-3 py-1 bg-brutal-red text-white border-2 border-brutal-black font-bold text-xs uppercase hover:bg-red-600 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
                         >
-                          Remove
+                          {t('common.remove')}
                         </button>
                       </div>
                     </div>
@@ -554,15 +556,15 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                     {/* Run details */}
                     <div className="text-xs text-neutral-500 mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
                       <div>Last run: {formatDate(job.last_run_at)}</div>
-                      <div>Next run: {formatDate(job.next_run_at)}</div>
+                      <div>{t('settings.automation.nextRun')} {formatDate(job.next_run_at)}</div>
                       {job.last_result && (
                         <div className="col-span-2 truncate" title={job.last_result}>
-                          Result: {job.last_result.substring(0, 120)}{job.last_result.length > 120 ? '...' : ''}
+                          {t('settings.automation.result')} {job.last_result.substring(0, 120)}{job.last_result.length > 120 ? '...' : ''}
                         </div>
                       )}
                       {job.last_error && (
                         <div className="col-span-2 text-red-600 truncate" title={job.last_error}>
-                          Error: {job.last_error}
+                          {t('settings.automation.errorLabel')} {job.last_error}
                         </div>
                       )}
                     </div>
@@ -577,13 +579,13 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                       onClick={() => toggleHistory(job.id)}
                       className="mt-2 text-[10px] font-bold uppercase text-neutral-400 hover:text-neutral-600 transition-colors"
                     >
-                      {historyJobId === job.id ? 'Hide History' : 'Show History'}
+                      {historyJobId === job.id ? t('settings.automation.hideHistory') : t('settings.automation.showHistory')}
                     </button>
 
                     {historyJobId === job.id && (
                       <div className="mt-2 border-t border-neutral-200 pt-2">
                         {historyRuns.length === 0 ? (
-                          <div className="text-xs text-neutral-400">No run history yet.</div>
+                          <div className="text-xs text-neutral-400">{t('settings.automation.noRunHistory')}</div>
                         ) : (
                           <div className="space-y-1">
                             {historyRuns.map(run => (

@@ -64,6 +64,7 @@ from suzent.routes.sandbox_routes import (
     upload_files,
 )
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
+from suzent.routes.locale_routes import get_language_pack
 from suzent.routes.system_routes import list_host_files, open_in_explorer
 from suzent.routes.session_routes import (
     get_session_transcript,
@@ -423,6 +424,7 @@ app = Starlette(
         Route("/skills", get_skills, methods=["GET"]),
         Route("/skills/reload", reload_skills, methods=["POST"]),
         Route("/skills/{skill_name}/toggle", toggle_skill, methods=["POST"]),
+        Route("/locales/{locale}.json", get_language_pack, methods=["GET"]),
         WebSocketRoute("/ws/browser", browser_websocket_endpoint),
         WebSocketRoute("/ws/node", node_websocket_endpoint),
         Route("/nodes", list_nodes, methods=["GET"]),

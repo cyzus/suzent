@@ -1,9 +1,11 @@
 import React, { useEffect } from 'react';
 import { useSkills } from '../../hooks/useSkills';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
+import { useI18n } from '../../i18n';
 
 export const SkillsView: React.FC = () => {
     const { skills, loading, error, loadSkills, reload, toggle } = useSkills();
+    const { t } = useI18n();
 
     useEffect(() => {
         loadSkills();
@@ -13,7 +15,7 @@ export const SkillsView: React.FC = () => {
         return (
             <div className="h-full w-full flex flex-col items-center justify-center p-8">
                 <div className="border-3 border-brutal-black bg-white p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-                    <h2 className="font-brutal text-2xl uppercase mb-4 animate-pulse">Loading Skills...</h2>
+                    <h2 className="font-brutal text-2xl uppercase mb-4 animate-pulse">{t('skills.loading')}</h2>
                 </div>
             </div>
         );
@@ -23,13 +25,13 @@ export const SkillsView: React.FC = () => {
         return (
             <div className="p-6">
                 <div className="border-3 border-brutal-red bg-white p-6 shadow-brutal">
-                    <h3 className="font-brutal text-xl text-brutal-red mb-2 uppercase">Error</h3>
+                    <h3 className="font-brutal text-xl text-brutal-red mb-2 uppercase">{t('skills.errorTitle')}</h3>
                     <p className="font-mono text-sm">{error}</p>
                     <button
                         onClick={() => loadSkills()}
                         className="mt-4 px-4 py-2 border-2 border-brutal-black font-bold uppercase hover:bg-neutral-100"
                     >
-                        Retry
+                        {t('skills.retry')}
                     </button>
                 </div>
             </div>
@@ -40,12 +42,12 @@ export const SkillsView: React.FC = () => {
         <div className="h-full w-full overflow-y-auto px-4 md:px-8 py-8 space-y-8 max-w-7xl mx-auto scrollbar-thin">
             <div className="bg-white p-3 border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex justify-between items-center">
                 <div>
-                    <h2 className="font-brutal text-3xl uppercase tracking-tighter">Skills Library</h2>
-                    <p className="text-sm font-mono text-neutral-600">AVAILABLE_CAPABILITIES_INDEX</p>
+                    <h2 className="font-brutal text-3xl uppercase tracking-tighter">{t('skills.title')}</h2>
+                    <p className="text-sm font-mono text-neutral-600">{t('skills.subtitle')}</p>
                 </div>
                 <button
                     onClick={() => reload()}
-                    title="Reload from disk"
+                    title={t('skills.reload')}
                     className="p-2 border-2 border-brutal-black hover:bg-neutral-100 brutal-btn transition-all"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -62,7 +64,7 @@ export const SkillsView: React.FC = () => {
                             <button
                                 onClick={() => toggle(skill.name)}
                                 className={`w-12 h-6 flex items-center border-2 border-brutal-black p-0.5 transition-colors ${skill.enabled ? 'bg-brutal-black justify-end' : 'bg-white justify-start'}`}
-                                title={skill.enabled ? "Disable Skill" : "Enable Skill"}
+                                title={skill.enabled ? t('skills.disableSkill') : t('skills.enableSkill')}
                             >
                                 <div className={`w-4 h-4 border-2 border-brutal-black ${skill.enabled ? 'bg-white' : 'bg-neutral-300'}`} />
                             </button>
@@ -79,8 +81,8 @@ export const SkillsView: React.FC = () => {
                 ))}
                 {skills.length === 0 && (
                     <div className="col-span-full text-center border-3 border-dashed border-neutral-300 p-12">
-                        <p className="font-mono text-neutral-400 text-lg">NO_SKILLS_FOUND</p>
-                        <p className="text-sm text-neutral-400 mt-2">Add skills to the 'skills' directory to see them here.</p>
+                        <p className="font-mono text-neutral-400 text-lg">{t('skills.emptyTitle')}</p>
+                        <p className="text-sm text-neutral-400 mt-2">{t('skills.emptyDesc')}</p>
                     </div>
                 )}
             </div>

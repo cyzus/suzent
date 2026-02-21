@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "i18n:check-ui": "node scripts/check-ui-english.mjs"
   },
   "dependencies": {
     "@headlessui/react": "^1.7.18",

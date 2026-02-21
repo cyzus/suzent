@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { FolderIcon, PlusIcon, ClockIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { ChevronDownIcon } from '@heroicons/react/24/solid';
 import { open } from '@tauri-apps/plugin-dialog';
+import { useI18n } from '../../i18n';
 
 interface RecentFolder {
     path: string;
@@ -27,6 +28,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
     disabled = false,
     dropUp = true
 }) => {
+    const { t } = useI18n();
     const [history, setHistory] = useState<RecentFolder[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width?: number } | null>(null);
@@ -183,12 +185,12 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
             {/* ACTIVE CONTEXTS SECTION */}
             <div className="p-2 border-b-2 border-brutal-black bg-neutral-100">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-brutal-black mb-1 flex justify-between items-center opacity-60">
-                    <span>Active Contexts</span>
+                    <span>{t('folderContext.activeContexts')}</span>
                     <span>{activeCount}</span>
                 </div>
 
                 {activeCount === 0 ? (
-                    <div className="text-xs text-neutral-500 italic py-1 pl-1">No folders mounted</div>
+                    <div className="text-xs text-neutral-500 italic py-1 pl-1">{t('folderContext.noFoldersMounted')}</div>
                 ) : (
                     <div className="space-y-1 mb-1">
                         {activeVolumes.map((vol, idx) => {
@@ -207,7 +209,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
                                             <div className="text-[9px] text-neutral-500 truncate font-mono" title={hostPath}>{hostPath}</div>
                                         </div>
                                     </div>
-                                    <div className="text-brutal-red text-xs font-black px-1 hover:bg-neutral-100 rounded">Remove</div>
+                                    <div className="text-brutal-red text-xs font-black px-1 hover:bg-neutral-100 rounded">{t('folderContext.remove')}</div>
                                 </div>
                             );
                         })}
@@ -218,10 +220,10 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
             {/* RECENT FOLDERS SECTION */}
             <div className="p-2 border-b-2 border-brutal-black bg-white">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-brutal-black opacity-60 mb-1 pl-1">
-                    Recent Folders
+                    {t('folderContext.recentFolders')}
                 </div>
                 {history.length === 0 ? (
-                    <div className="text-xs text-neutral-500 italic py-1 pl-1">No recent folders</div>
+                    <div className="text-xs text-neutral-500 italic py-1 pl-1">{t('folderContext.noRecentFolders')}</div>
                 ) : (
                     <div className="space-y-0.5">
                         {history.map((item) => {
@@ -265,7 +267,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
                     `}
                 >
                     <PlusIcon className="w-4 h-4" />
-                    Choose a different folder...
+                    {t('folderContext.chooseDifferent')}
                 </button>
             </div>
         </div>,
@@ -285,7 +287,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
                 `}
             >
                 <FolderIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">Context</span>
+                <span className="hidden sm:inline">{t('folderContext.context')}</span>
                 {activeCount > 0 && (
                     <span className="bg-brutal-black text-white px-1.5 rounded-full text-[10px] min-w-[1.2em] text-center font-bold">
                         {activeCount}

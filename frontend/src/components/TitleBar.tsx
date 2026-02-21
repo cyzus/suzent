@@ -1,8 +1,10 @@
 import React from 'react';
+import { useI18n } from '../i18n';
 
 export const TitleBar: React.FC = () => {
     const [isTauri, setIsTauri] = React.useState(false);
     const [isMaximized, setIsMaximized] = React.useState(false);
+    const { t } = useI18n();
 
     React.useEffect(() => {
         setIsTauri(!!window.__TAURI__);
@@ -25,7 +27,7 @@ export const TitleBar: React.FC = () => {
             {/* Drag Region & Title */}
             <div className="flex-1 h-full flex items-center pl-4" data-tauri-drag-region>
                 <span className="font-brutal text-sm uppercase tracking-tight text-brutal-black pointer-events-none mt-0.5">
-                    SUZENT
+                    {t('app.title').toUpperCase()}
                 </span>
             </div>
 
@@ -35,7 +37,7 @@ export const TitleBar: React.FC = () => {
                 <button
                     onClick={() => appWindow?.minimize()}
                     className="h-full w-11 flex items-center justify-center hover:bg-brutal-black hover:text-brutal-white transition-colors"
-                    title="Minimize"
+                    title={t('titlebar.minimize')}
                 >
                     <svg width="10" height="2" viewBox="0 0 10 2" fill="currentColor">
                         <rect width="10" height="2" />
@@ -46,7 +48,7 @@ export const TitleBar: React.FC = () => {
                 <button
                     onClick={handleMaximize}
                     className="h-full w-11 flex items-center justify-center hover:bg-brutal-black hover:text-brutal-white transition-colors"
-                    title={isMaximized ? "Restore" : "Maximize"}
+                    title={isMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
                 >
                     {isMaximized ? (
                         // Restore icon: two overlapping squares
@@ -67,7 +69,7 @@ export const TitleBar: React.FC = () => {
                 <button
                     onClick={() => appWindow?.close()}
                     className="h-full w-11 flex items-center justify-center hover:bg-brutal-red hover:text-white transition-colors"
-                    title="Close"
+                    title={t('titlebar.close')}
                 >
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2">
                         <line x1="0" y1="0" x2="10" y2="10" />

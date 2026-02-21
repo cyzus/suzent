@@ -7,6 +7,8 @@ import { McpTab } from './McpTab';
 import { MemoryTab } from './MemoryTab';
 import { ProvidersTab } from './ProvidersTab';
 import { SocialTab } from './SocialTab';
+import { useI18n, type Locale } from '../../i18n';
+import { BrutalSelect } from '../BrutalSelect';
 
 type MCPUrlServer = {
   type: 'url';
@@ -36,6 +38,7 @@ type CategoryType = 'providers' | 'memory' | 'social' | 'mcp' | 'automation';
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
+  const { t, locale, setLocale, reloadLanguagePack, languagePackName } = useI18n();
   const [providers, setProviders] = useState<ApiProvider[]>([]);
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
   const [userConfigs, setUserConfigs] = useState<Record<string, UserConfig>>({});
@@ -175,7 +178,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
         p.id === provider.id ? { ...p, models: result.models } : p
       ));
     } else {
-      alert("Verification failed or no models found.");
+      alert(t('settings.verifyFailed'));
     }
 
     setVerifying(prev => ({ ...prev, [provider.id]: false }));
@@ -211,36 +214,32 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
   if (!isOpen) return null;
 
   const categories = [
-    {
-      id: 'providers', label: 'Model Providers', icon: (
+    { id: 'providers', label: t('settings.categories.providers'), icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
         </svg>
       )
     },
-    {
-      id: 'memory', label: 'Memory System', icon: (
+    { id: 'memory', label: t('settings.categories.memory'), icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
         </svg>
       )
     },
-    {
-      id: 'social', label: 'Social Channels', icon: (
+    { id: 'social', label: t('settings.categories.social'), icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
         </svg>
       )
     },
-    {
-      id: 'mcp', label: 'MCP Servers', icon: (
+    { id: 'mcp', label: t('settings.categories.mcp'), icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
         </svg>
       )
     },
     {
-      id: 'automation', label: 'Automation', icon: (
+      id: 'automation', label: t('settings.categories.automation'), icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
@@ -257,8 +256,29 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
         <div className="w-64 bg-white border-r-4 border-brutal-black flex flex-col flex-shrink-0">
           <div className="p-6 border-b-4 border-brutal-black bg-brutal-yellow">
             <h1 className="text-2xl font-brutal font-bold uppercase tracking-tighter text-brutal-black">
-              Using Suzent
+              {t('settings.usingSuzent')}
             </h1>
+          </div>
+
+          {/* Language Selector */}
+          <div className="px-4 pt-4 pb-2 border-b-2 border-neutral-200">
+            <BrutalSelect
+              value={locale}
+              onChange={(val) => setLocale(val as Locale)}
+              options={[
+                { value: 'en', label: 'English' },
+                { value: 'zh-CN', label: '简体中文' },
+              ]}
+              label={t('settings.language')}
+            />
+            {languagePackName && (
+              <button
+                onClick={reloadLanguagePack}
+                className="mt-1 text-[10px] text-brutal-blue font-bold uppercase hover:underline"
+              >
+                {t('settings.reloadLanguagePackWithName', { name: languagePackName })}
+              </button>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
@@ -282,7 +302,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
               onClick={onClose}
               className="w-full px-4 py-3 bg-white border-2 border-brutal-black font-bold uppercase text-brutal-black hover:bg-neutral-100 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none mb-3"
             >
-              Close
+              {t('common.close')}
             </button>
             <button
               onClick={handleSave}
@@ -292,10 +312,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
               {saving ? (
                 <>
                   <div className="animate-spin h-4 w-4 border-2 border-brutal-black border-t-transparent rounded-full"></div>
-                  Saving...
+                  {t('settings.saving')}
                 </>
               ) : (
-                'Save Changes'
+                t('settings.saveChanges')
               )}
             </button>
           </div>

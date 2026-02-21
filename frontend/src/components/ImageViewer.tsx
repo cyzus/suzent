@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useI18n } from '../i18n';
 
 interface ImageViewerProps {
     src: string | null;
@@ -6,6 +7,8 @@ interface ImageViewerProps {
 }
 
 export const ImageViewer: React.FC<ImageViewerProps> = ({ src, onClose }) => {
+    const { t } = useI18n();
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
@@ -34,7 +37,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({ src, onClose }) => {
             <div className="relative max-w-full max-h-full flex flex-col items-center">
                 <img
                     src={src}
-                    alt="Full screen preview"
+                    alt={t('imageViewer.fullScreenAlt')}
                     className="max-w-full max-h-[85vh] object-contain border-4 border-brutal-black shadow-brutal-xl bg-white"
                     onClick={(e) => e.stopPropagation()}
                 />

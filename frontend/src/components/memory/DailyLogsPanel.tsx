@@ -5,17 +5,18 @@
 
 import { useState, useEffect } from 'react';
 import { memoryApi } from '../../lib/memoryApi';
+import { useI18n } from '../../i18n';
 
-function formatDateLabel(dateStr: string): string {
+function formatDateLabel(dateStr: string, t: (key: string, params?: Record<string, string>) => string): string {
   try {
     const date = new Date(dateStr + 'T00:00:00');
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const diff = Math.floor((today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
 
-    if (diff === 0) return 'Today';
-    if (diff === 1) return 'Yesterday';
-    if (diff < 7) return `${diff} days ago`;
+    if (diff === 0) return t('dailyLogs.today');
+    if (diff === 1) return t('dailyLogs.yesterday');
+    if (diff < 7) return t('dailyLogs.daysAgo', { count: String(diff) });
 
     return date.toLocaleDateString('en-US', {
       weekday: 'short',
@@ -32,11 +33,12 @@ function LogContentArea({ loading, error, content }: {
   error: string | null;
   content: string | null;
 }): JSX.Element | null {
+  const { t } = useI18n();
   if (loading) {
     return (
       <div className="border-3 border-brutal-black bg-white p-8 text-center">
         <div className="w-4 h-4 border-3 border-brutal-black border-t-transparent animate-spin rounded-full mx-auto mb-2"></div>
-        <p className="text-sm font-bold uppercase">Loading...</p>
+        <p className="text-sm font-bold uppercase">{t('dailyLogs.loading')}</p>
       </div>
     );
   }
@@ -63,6 +65,7 @@ function LogContentArea({ loading, error, content }: {
 }
 
 export const DailyLogsPanel: React.FC = () => {
+  const { t } = useI18n();
   const [dates, setDates] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [content, setContent] = useState<string | null>(null);
@@ -79,7 +82,7 @@ export const DailyLogsPanel: React.FC = () => {
       setContent(result.content);
     } catch (err) {
       setContent(null);
-      setError(err instanceof Error ? err.message : 'Failed to load log');
+      setError(err instanceof Error ? err.message : t('dailyLogs.loadLogFailed'));
     } finally {
       setLoading(false);
     }
@@ -95,7 +98,7 @@ export const DailyLogsPanel: React.FC = () => {
         loadLog(result.dates[0]);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load daily logs');
+      setError(err instanceof Error ? err.message : t('dailyLogs.loadDatesFailed'));
     } finally {
       setListLoading(false);
     }
@@ -110,7 +113,7 @@ export const DailyLogsPanel: React.FC = () => {
       <div className="border-3 border-brutal-black bg-white p-6 shadow-brutal">
         <div className="flex items-center gap-3">
           <div className="w-4 h-4 border-3 border-brutal-black border-t-transparent animate-spin rounded-full"></div>
-          <span className="font-bold uppercase text-sm">Loading daily logs...</span>
+          <span className="font-bold uppercase text-sm">{t('dailyLogs.loading')}</span>
         </div>
       </div>
     );
@@ -119,13 +122,13 @@ export const DailyLogsPanel: React.FC = () => {
   if (error && dates.length === 0) {
     return (
       <div className="border-3 border-brutal-black bg-white p-6 shadow-brutal">
-        <h3 className="font-brutal text-xl text-brutal-black mb-2 uppercase">Error</h3>
+        <h3 className="font-brutal text-xl text-brutal-black mb-2 uppercase">{t('common.error')}</h3>
         <p className="text-sm text-brutal-black font-mono mb-4">{error}</p>
         <button
           onClick={loadDates}
           className="px-6 py-2 border-3 border-brutal-black bg-white hover:bg-neutral-100 font-bold uppercase shadow-[2px_2px_0_0_#000] brutal-btn transition-all"
         >
-          Retry
+          {t('common.retry')}
         </button>
       </div>
     );
@@ -134,9 +137,9 @@ export const DailyLogsPanel: React.FC = () => {
   if (dates.length === 0) {
     return (
       <div className="border-3 border-brutal-black bg-white p-12 text-center shadow-brutal">
-        <h4 className="font-brutal text-2xl uppercase mb-2">No Daily Logs Yet</h4>
+        <h4 className="font-brutal text-2xl uppercase mb-2">{t('dailyLogs.emptyTitle')}</h4>
         <p className="text-neutral-600 text-sm max-w-md mx-auto">
-          Daily memory logs will appear here as the agent extracts facts from conversations.
+          {t('dailyLogs.emptyDesc')}
         </p>
       </div>
     );
@@ -147,8 +150,8 @@ export const DailyLogsPanel: React.FC = () => {
       {/* Date List */}
       <div className="lg:col-span-3 space-y-2">
         <div className="bg-brutal-black text-white p-3 border-3 border-brutal-black">
-          <h3 className="font-brutal text-lg uppercase tracking-tight">Daily Logs</h3>
-          <p className="text-xs text-neutral-300 font-mono">{dates.length} ENTRIES</p>
+          <h3 className="font-brutal text-lg uppercase tracking-tight">{t('dailyLogs.title')}</h3>
+          <p className="text-xs text-neutral-300 font-mono">{t('dailyLogs.entries', { count: String(dates.length) })}</p>
         </div>
         <div className="border-3 border-brutal-black bg-white shadow-brutal max-h-[60vh] overflow-y-auto scrollbar-thin">
           {dates.map((date) => (
@@ -162,7 +165,7 @@ export const DailyLogsPanel: React.FC = () => {
               }`}
             >
               <div className="font-mono text-sm font-bold">{date}</div>
-              <div className="text-xs mt-0.5 opacity-70">{formatDateLabel(date)}</div>
+              <div className="text-xs mt-0.5 opacity-70">{formatDateLabel(date, t)}</div>
             </button>
           ))}
         </div>
@@ -178,7 +181,7 @@ export const DailyLogsPanel: React.FC = () => {
                   {selectedDate}
                 </h3>
                 <p className="text-xs text-neutral-600 font-mono">
-                  {formatDateLabel(selectedDate)}
+                  {formatDateLabel(selectedDate, t)}
                 </p>
               </div>
               <button

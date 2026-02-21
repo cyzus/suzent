@@ -75,7 +75,7 @@ const extractSavedPreferences = (prefs: ConfigOptions['userPreferences']) => ({
   tools: prefs?.tools ?? [],
   memory_enabled: prefs?.memory_enabled,
   sandbox_enabled: prefs?.sandbox_enabled,
-  sandbox_volumes: prefs?.sandbox_volumes
+  sandbox_volumes: prefs?.sandbox_volumes ?? [],
 });
 
 const configsEqual = (a?: ChatConfig | null, b?: ChatConfig | null): boolean => {
@@ -122,6 +122,35 @@ const configsEqual = (a?: ChatConfig | null, b?: ChatConfig | null): boolean => 
   );
 };
 
+const arraysEqual = (a?: string[], b?: string[]): boolean => {
+  const l = a ?? [];
+  const r = b ?? [];
+  if (l.length !== r.length) return false;
+  return l.every((v, i) => v === r[i]);
+};
+
+interface SavedPreferences {
+  model?: string;
+  agent?: string;
+  tools?: string[];
+  memory_enabled?: boolean;
+  sandbox_enabled?: boolean;
+  sandbox_volumes?: string[];
+}
+
+const preferencesEqual = (a: SavedPreferences | null, b: SavedPreferences | null): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.model === b.model &&
+    a.agent === b.agent &&
+    arraysEqual(a.tools, b.tools) &&
+    a.memory_enabled === b.memory_enabled &&
+    a.sandbox_enabled === b.sandbox_enabled &&
+    arraysEqual(a.sandbox_volumes, b.sandbox_volumes)
+  );
+};
+
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [messagesByChat, setMessagesByChat] = useState<Record<string, Message[]>>({
     [UNSAVED_CHAT_KEY]: []
@@ -131,6 +160,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [config, setConfigState] = useState<ChatConfig>(defaultConfig);
   const [backendConfig, setBackendConfig] = useState<ConfigOptions | null>(null);
+  const [backendConfigError, setBackendConfigError] = useState<string | null>(null);
   const [shouldResetNext, setShouldResetNext] = useState(false);
   const [isStreaming, setIsStreamingState] = useState(false);
   const [activeStreamingChatId, setActiveStreamingChatId] = useState<string | null>(null);
@@ -550,13 +580,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const lastSaved = lastSavedPreferencesRef.current;
-    const prefsChanged = !lastSaved ||
-      lastSaved.model !== newPrefs.model ||
-      lastSaved.agent !== newPrefs.agent ||
-      lastSaved.memory_enabled !== newPrefs.memory_enabled ||
-      lastSaved.sandbox_enabled !== newPrefs.sandbox_enabled ||
-      JSON.stringify(lastSaved.tools) !== JSON.stringify(newPrefs.tools) ||
-      JSON.stringify(lastSaved.sandbox_volumes) !== JSON.stringify(newPrefs.sandbox_volumes);
+    const prefsChanged = !preferencesEqual(lastSaved, newPrefs);
 
     if (prefsChanged) {
       // Save preferences to backend database (async, don't await)

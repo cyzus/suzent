@@ -5,6 +5,7 @@ import rehypePrism from 'rehype-prism-plus';
 import { CodeBlockComponent } from './CodeBlockComponent';
 import { ClickableContent } from '../ClickableContent';
 import { DocumentTextIcon } from '@heroicons/react/24/outline';
+import { useI18n } from '../../i18n';
 
 const ALLOWED_LANGUAGES = new Set([
   'python', 'javascript', 'typescript', 'java', 'cpp', 'c', 'go', 'rust', 'sql',
@@ -25,6 +26,7 @@ const FileButton: React.FC<{
   displayName: string;
   onFileClick: (path: string, fileName: string, shiftKey?: boolean) => void;
 }> = ({ path, displayName, onFileClick }) => {
+  const { t } = useI18n();
   const fileName = path.split('/').pop() || displayName;
 
   return (
@@ -35,7 +37,7 @@ const FileButton: React.FC<{
         onFileClick(path, fileName, e.shiftKey);
       }}
       className="inline-flex items-center gap-1 bg-brutal-yellow border-2 border-brutal-black px-2 py-0.5 font-mono text-xs font-bold text-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn transition-all cursor-pointer"
-      title={`Click to view ${path} (Shift+Click for full screen)`}
+      title={t('fileLink.clickToView', { path })}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {

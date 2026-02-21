@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useStatusStore } from '../../hooks/useStatusStore';
+import { useI18n } from '../../i18n';
 
 interface CopyButtonProps {
   text: string;
@@ -10,15 +11,17 @@ interface CopyButtonProps {
 export const CopyButton: React.FC<CopyButtonProps> = ({
   text,
   className,
-  statusMessage = 'COPIED_TO_CLIPBOARD'
+  statusMessage
 }) => {
   const { setStatus } = useStatusStore();
+  const { t } = useI18n();
+  const effectiveStatusMessage = statusMessage ?? t('status.copiedToClipboard');
   const [copied, setCopied] = useState(false);
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(text);
-    setStatus(statusMessage, 'success');
+    setStatus(effectiveStatusMessage, 'success');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -27,7 +30,7 @@ export const CopyButton: React.FC<CopyButtonProps> = ({
     <button
       onClick={handleCopy}
       className={`w-8 h-8 flex items-center justify-center bg-transparent rounded hover:bg-neutral-100 transition-colors text-neutral-400 hover:text-brutal-black ${className || 'absolute top-2 right-2'}`}
-      title="Copy to clipboard"
+      title={t('status.copyToClipboard')}
       type="button"
     >
       {copied ? (
