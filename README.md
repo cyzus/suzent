@@ -4,7 +4,10 @@
 ![Suzent Banner](docs/assets/banner.svg)
 
 # **SUZENT: YOUR SOVEREIGN DIGITAL CO-WORKER**
-**[ LICENSE :: APACHE 2.0 ] • [ STATUS :: READY ] • [ SYSTEM :: AGENTIC ]**
+
+![Status](https://img.shields.io/badge/STATUS-READY-black?style=flat-square) ![System](https://img.shields.io/badge/SYSTEM-AGENTIC-black?style=flat-square)
+
+[![Version](https://img.shields.io/github/v/release/cyzus/suzent?style=flat-square&label=version)](https://github.com/cyzus/suzent/releases) [![License](https://img.shields.io/github/license/cyzus/suzent?style=flat-square)](LICENSE) [![Python](https://img.shields.io/badge/python-3.12%2B-yellow?style=flat-square)](https://python.org)
 
 
 **[QUICKSTART](docs/01-getting-started/quickstart.md)** • **[DOCS](docs/README.md)** • **[CONTRIBUTING](./CONTRIBUTING.md)**
@@ -53,11 +56,27 @@ Unlike most agents, **SUZENT** features dual workspaces: a cross-session workspa
 
 ### <img src="docs/assets/robot-thinking.svg" width="28" style="vertical-align: middle;" /> **MEMORY**
 
-**SUZENT** implements a MemGPT-like global memory system that persists across sessions. This allows you to accumulate knowledge and context across conversations, making it easier to maintain a consistent and coherent conversation history.
+**SUZENT** implements a global memory system that persists across sessions. This allows you to accumulate knowledge and context across conversations, making it easier to maintain a consistent and coherent conversation history.
+
+### <img src="docs/assets/robot-clock.svg" width="28" style="vertical-align: middle;" /> **AUTOMATION**
+
+**SUZENT** supports two independent automation systems for proactive, scheduled agent execution:
+- **Cron Jobs** — Schedule prompts to run on any cron expression in isolated sessions. Full CRUD via the Settings UI, CLI (`suzent cron`), and REST API.
+- **Heartbeat** — Periodic ambient monitoring that reads a checklist from your shared workspace and notifies you only when something needs attention.
+
+Both systems run with full memory enabled, so the agent retains context across scheduled tasks.
+
+### <img src="docs/assets/robot-chat.svg" width="28" style="vertical-align: middle;" /> **SOCIAL INTEGRATIONS**
+
+**SUZENT** connects to your messaging platforms so you can interact with your agent wherever you already communicate:
+- **Telegram** — Chat with your agent via a Telegram bot.
+- **Slack** — Integrate as a Slack app in your workspace.
+- **Discord** — Run as a Discord bot in your server.
+- **Lark (Feishu)** — Connect via the Lark Open Platform.
 
 ### <img src="docs/assets/robot-snooze.svg" width="28" style="vertical-align: middle;" /> **PRIVATE & LOCAL**
 
-**SUZENT** runs entirely on your device with privacy-focused web search (using SearXNG when configured, or DDGS as the default fallback), LanceDB for local vector storage, and MicroSandbox isolation for safe code execution. Your data never leaves your machine.
+**SUZENT** runs entirely on your device with privacy-focused web search, LanceDB for local vector storage, and MicroSandbox isolation for safe code execution. Your data never leaves your machine.
 
 ### <img src="docs/assets/robot-party.svg" width="28" style="vertical-align: middle;" /> **UI READY**
 
@@ -87,26 +106,6 @@ Unlike most agents, **SUZENT** features dual workspaces: a cross-session workspa
  suzent start
  ```
  
- You can also run:
- - `suzent doctor` : Check system health
- - `suzent upgrade` : Update to the latest version
- - `suzent setup-build-tools` : Install required build tools (Windows)
- - `suzent --help` : See all commands
- 
- ### **UNINSTALLING**
- 
- To remove the global `suzent` command:
- 
- **Windows**:
- ```powershell
- .\scripts\uninstall.ps1
- ```
- 
- **Mac/Linux**:
- ```bash
- ./scripts/uninstall.sh
- ```
-
 ---
 
 ## **TECH STACK**
@@ -129,6 +128,6 @@ SUZENT is built upon the collective intelligence and innovation of the open-sour
 **[APACHE 2.0](LICENSE)** © 2026 Yizhou Chi.
 
 **Exception for Creative Assets:**
-The creative assets, including the **Robot Avatar design**, **character animations**, and **project logos**, are subject to separate license terms. See [TERMS-OF-USE-ASSETS](TERMS-OF-USE-ASSETS) for details.
+The creative assets, including the **Robot Avatar design**, **character animations**, and **project logos**, are subject to separate license terms. See [TERMS-OF-USE-ASSETS](TERMS-OF-USE-ASSETS.md) for details.
 
 **RECLAIM YOUR DIGITAL SOVEREIGNTY.**
