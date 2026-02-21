@@ -25,7 +25,9 @@ const FileButton: React.FC<{
   path: string;
   displayName: string;
   onFileClick: (path: string, fileName: string, shiftKey?: boolean) => void;
-}> = ({ path, displayName, onFileClick }) => {  const { t } = useI18n();  const fileName = path.split('/').pop() || displayName;
+}> = ({ path, displayName, onFileClick }) => {
+  const { t } = useI18n();
+  const fileName = path.split('/').pop() || displayName;
 
   return (
     <span
