@@ -1,8 +1,7 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
 import { en } from './messages/en';
 import { zhCN } from './messages/zh-CN';
-import { getApiBase } from '../lib/api';
 
 export type Locale = 'en' | 'zh-CN';
 
@@ -93,11 +92,7 @@ export function tForLocale(
   locale: Locale,
   key: string,
   params?: Record<string, unknown>,
-  overrides?: Record<string, string>
 ): string {
-  const override = overrides?.[key];
-  if (override != null) return interpolate(override, params);
-
   const primary = getByKey(messages[locale], key);
   if (primary != null) return interpolate(primary, params);
 
@@ -111,16 +106,12 @@ type I18nContextValue = {
   locale: Locale;
   setLocale: (locale: Locale) => void;
   t: (key: string, params?: Record<string, unknown>) => string;
-  reloadLanguagePack: () => Promise<void>;
-  languagePackName: string | null;
 };
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider(props: { children: React.ReactNode }): React.ReactElement {
   const [locale, setLocaleState] = useState<Locale>(() => getInitialLocale());
-  const [overrideStrings, setOverrideStrings] = useState<Record<string, string> | null>(null);
-  const [languagePackName, setLanguagePackName] = useState<string | null>(null);
 
   const setLocale = useCallback((next: Locale) => {
     setLocaleState(next);
@@ -128,66 +119,14 @@ export function I18nProvider(props: { children: React.ReactNode }): React.ReactE
   }, []);
 
   const t = useCallback((key: string, params?: Record<string, unknown>) => {
-    return tForLocale(locale, key, params, overrideStrings ?? undefined);
-  }, [locale, overrideStrings]);
-
-  const reloadLanguagePack = useCallback(async () => {
-    try {
-      const apiBase = getApiBase();
-      if (!apiBase) {
-        setOverrideStrings(null);
-        setLanguagePackName(null);
-        return;
-      }
-
-      const res = await fetch(`${apiBase}/locales/${encodeURIComponent(locale)}.json`);
-      if (!res.ok) {
-        setOverrideStrings(null);
-        setLanguagePackName(null);
-        return;
-      }
-
-      const data = (await res.json()) as unknown;
-      if (!data || typeof data !== 'object') {
-        setOverrideStrings(null);
-        setLanguagePackName(null);
-        return;
-      }
-
-      // Accept both { meta, strings } shape and flat { key: value } shape
-      const meta = (data as any).meta as unknown;
-      const strings = (data as any).strings as unknown;
-
-      const name = meta && typeof meta === 'object' ? (meta as any).name : undefined;
-      setLanguagePackName(typeof name === 'string' ? name : null);
-
-      // If the response has a "strings" key, use it; otherwise treat the whole object as strings
-      const stringSource = (strings && typeof strings === 'object') ? strings : data;
-
-      const out: Record<string, string> = {};
-      for (const [k, v] of Object.entries(stringSource as Record<string, unknown>)) {
-        if (k === 'meta') continue; // skip meta key when using flat shape
-        if (typeof v === 'string') out[k] = v;
-      }
-      setOverrideStrings(Object.keys(out).length > 0 ? out : null);
-    } catch {
-      setOverrideStrings(null);
-      setLanguagePackName(null);
-    }
+    return tForLocale(locale, key, params);
   }, [locale]);
-
-  // Reload language pack when locale changes
-  useEffect(() => {
-    reloadLanguagePack();
-  }, [reloadLanguagePack]);
 
   const value = useMemo<I18nContextValue>(() => ({
     locale,
     setLocale,
     t,
-    reloadLanguagePack,
-    languagePackName,
-  }), [locale, setLocale, t, reloadLanguagePack, languagePackName]);
+  }), [locale, setLocale, t]);
 
   return React.createElement(I18nContext.Provider, { value }, props.children);
 }

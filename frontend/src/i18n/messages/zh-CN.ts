@@ -160,8 +160,6 @@ export const zhCN = {
     saveChanges: '保存更改',
     saving: '正在保存...',
     verifyFailed: '验证失败或未找到可用模型。',
-    reloadLanguagePack: '刷新语言补丁',
-    reloadLanguagePackWithName: '刷新：{name}',
     social: {
       title: '社交频道',
       generalSettingsTitle: '通用设置',

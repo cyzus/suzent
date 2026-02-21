@@ -38,7 +38,7 @@ type CategoryType = 'providers' | 'memory' | 'social' | 'mcp' | 'automation';
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
-  const { t, locale, setLocale, reloadLanguagePack, languagePackName } = useI18n();
+  const { t, locale, setLocale } = useI18n();
   const [providers, setProviders] = useState<ApiProvider[]>([]);
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
   const [userConfigs, setUserConfigs] = useState<Record<string, UserConfig>>({});
@@ -271,14 +271,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
               ]}
               label={t('settings.language')}
             />
-            {languagePackName && (
-              <button
-                onClick={reloadLanguagePack}
-                className="mt-1 text-[10px] text-brutal-blue font-bold uppercase hover:underline"
-              >
-                {t('settings.reloadLanguagePackWithName', { name: languagePackName })}
-              </button>
-            )}
+
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-2">

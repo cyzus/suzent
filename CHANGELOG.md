@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Run history stored in `cron_runs` table — viewable per-job in UI and via `suzent cron history`.
     - Inline edit form in the job list card.
   - **Heartbeat**: Periodic ambient monitoring in a persistent `heartbeat-main` chat.
-    - Reads `/shared/HEARTBEAT.md` checklist on each tick (default 30-minute interval).
+    - Reads `/shared/HEARTBEAT.md` checklist on each tick (configurable and default 30-minute interval).
     - `HEARTBEAT_OK` sentinel suppresses notifications when nothing needs attention.
     - Checklist editable directly in Settings > Automation or by the agent via file tools.
     - Enable/disable toggle and "Run Now" button in UI; `suzent heartbeat` CLI subcommand group.
@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Skills**: New `automation` skill documenting both systems for agent-driven scheduling.
 - **Database**: `cron_jobs` table for job configuration; `cron_runs` table for execution history.
 - **Docs**: [Automation guide](docs/02-concepts/automation/automation.md) covering cron expressions, heartbeat format, CLI reference, API reference, architecture, and troubleshooting.
+- **i18n**: Support zh-CN in desktop app
 
 ### ⚡ Changed
 - **Memory**: Cron and heartbeat now run with memory fully enabled — agent can read and write long-term memory during scheduled tasks.

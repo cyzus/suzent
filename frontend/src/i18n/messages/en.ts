@@ -160,8 +160,6 @@ export const en = {
     saveChanges: 'Save Changes',
     saving: 'Saving...',
     verifyFailed: 'Verification failed or no models found.',
-    reloadLanguagePack: 'Reload language pack',
-    reloadLanguagePackWithName: 'Reload: {name}',
     social: {
       title: 'Social Channels',
       generalSettingsTitle: 'General Settings',
