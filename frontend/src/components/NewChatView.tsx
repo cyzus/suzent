@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { ChatInputPanel } from './ChatInputPanel';
 import { ConfigOptions, ChatConfig } from '../types/api';
 import { RobotAvatar, RobotVariant } from './chat/RobotAvatar';
+import { useI18n } from '../i18n';
 
 interface NewChatViewProps {
     input: string;
@@ -27,6 +28,7 @@ interface NewChatViewProps {
 
 // Memoized greeting robot component to prevent animation restarts on input changes
 const GreetingRobot: React.FC = React.memo(() => {
+    const { t } = useI18n();
     // Select a random friendly robot (only runs once per mount)
     const greetingRobot = useMemo(() => {
         const variants: RobotVariant[] = ['peeker', 'jumper', 'dj', 'party', 'snoozer'];
@@ -39,11 +41,11 @@ const GreetingRobot: React.FC = React.memo(() => {
 
     const getGreeting = () => {
         const hour = new Date().getHours();
-        if (hour < 5) return 'NIGHT OWL?';
-        if (hour < 12) return 'GOOD MORNING.';
-        if (hour < 17) return 'KEEP BUILDING.';
-        if (hour < 21) return 'GOOD EVENING.';
-        return 'BED TIME? OR MAYBE LATE NIGHT CODING?';
+        if (hour < 5) return t('newChat.greetings.nightOwl').toUpperCase();
+        if (hour < 12) return t('newChat.greetings.goodMorning').toUpperCase();
+        if (hour < 17) return t('newChat.greetings.keepBuilding').toUpperCase();
+        if (hour < 21) return t('newChat.greetings.goodEvening').toUpperCase();
+        return t('newChat.greetings.bedTime').toUpperCase();
     };
 
     return (

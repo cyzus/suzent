@@ -1,5 +1,6 @@
 import React from 'react';
 import { RobotAvatar, RobotVariant } from './RobotAvatar';
+import { useI18n } from '../../i18n';
 
 const variants: RobotVariant[] = [
     'idle', 'observer', 'jumper', 'snoozer',
@@ -9,11 +10,12 @@ const variants: RobotVariant[] = [
 ];
 
 export const RobotShowcase: React.FC = () => {
+    const { t } = useI18n();
     return (
         <div className="flex-1 overflow-y-auto bg-neutral-100 p-8">
             <div className="max-w-6xl mx-auto">
                 <h2 className="text-4xl font-brutal font-bold mb-8 uppercase tracking-tighter">
-                    Robot Animation Gallery
+                    {t('views.robotGallery')}
                 </h2>
 
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">

@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import type { ArchivalMemory } from '../../types/memory';
 import { BrutalDeleteButton } from '../BrutalDeleteButton';
 import { BrutalDeleteOverlay } from '../BrutalDeleteOverlay';
+import { useI18n } from '../../i18n';
 
 interface MemoryCardProps {
   memory: ArchivalMemory;
@@ -16,6 +17,7 @@ interface MemoryCardProps {
 }
 
 export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, searchQuery, compact = false }) => {
+  const { t } = useI18n();
   const [isDeleting, setIsDeleting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -37,9 +39,9 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
       const now = new Date();
       const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
 
-      if (diffDays === 0) return 'Today';
-      if (diffDays === 1) return 'Yesterday';
-      if (diffDays < 7) return `${diffDays} days ago`;
+      if (diffDays === 0) return t('memoryCard.today');
+      if (diffDays === 1) return t('memoryCard.yesterday');
+      if (diffDays < 7) return t('memoryCard.daysAgo', { count: String(diffDays) });
 
       return date.toLocaleDateString('en-US', {
         year: 'numeric',
@@ -52,9 +54,9 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
   };
 
   const getImportanceLabel = (importance: number) => {
-    if (importance >= 0.8) return 'HIGH';
-    if (importance >= 0.5) return 'MED';
-    return 'LOW';
+    if (importance >= 0.8) return t('memoryCard.importance.highShort');
+    if (importance >= 0.5) return t('memoryCard.importance.medShort');
+    return t('memoryCard.importance.lowShort');
   };
 
   const isRecent = () => {
@@ -105,8 +107,8 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
             onConfirm={handleDelete}
             onCancel={() => setShowConfirm(false)}
             isDeleting={isDeleting}
-            title="Delete?"
-            confirmText="Yes"
+            title={t('memoryCard.delete.confirmTitleCompact')}
+            confirmText={t('memoryCard.delete.confirmYes')}
             layout="vertical"
           />
         )}
@@ -115,7 +117,7 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
           {/* Importance Indicator */}
           <div className={`w-1.5 h-8 flex-shrink-0 ${memory.importance >= 0.8 ? 'bg-brutal-black' :
             memory.importance >= 0.5 ? 'bg-neutral-400' : 'bg-neutral-200'
-            }`} title={`Importance: ${memory.importance.toFixed(2)}`}></div>
+            }`} title={t('memoryCard.importance.tooltip', { value: memory.importance.toFixed(2) })}></div>
 
           {/* Content Preview */}
           <div className="flex-1 min-w-0">
@@ -134,7 +136,7 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
             <BrutalDeleteButton
               onClick={() => setShowConfirm(true)}
               className="w-6 h-6 border opacity-0 group-hover:opacity-100 transition-opacity"
-              title="Delete"
+              title={t('memoryCard.delete.button')}
             />
           </div>
         </div>
@@ -150,9 +152,9 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
           onConfirm={handleDelete}
           onCancel={() => setShowConfirm(false)}
           isDeleting={isDeleting}
-          title="Delete this memory?"
-          confirmText="Yes, Delete It"
-          cancelText="Cancel"
+          title={t('memoryCard.delete.confirmTitle')}
+          confirmText={t('memoryCard.delete.confirmDelete')}
+          cancelText={t('memoryCard.delete.cancel')}
           layout="vertical"
         />
       )}
@@ -176,14 +178,14 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
             {/* Recent indicator */}
             {isRecent() && (
               <span className="text-xs font-bold uppercase text-brutal-black border border-brutal-black px-1 bg-yellow-200">
-                NEW
+                {t('memoryCard.badges.new')}
               </span>
             )}
 
             {/* Frequently accessed indicator */}
             {isFrequentlyAccessed && (
               <span className="text-xs font-bold uppercase text-white bg-brutal-black px-1">
-                HOT
+                {t('memoryCard.badges.hot')}
               </span>
             )}
           </div>
@@ -192,7 +194,7 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
           <BrutalDeleteButton
             onClick={() => setShowConfirm(true)}
             className="flex-shrink-0 w-7 h-7 opacity-0 group-hover:opacity-100 transition-opacity"
-            title="Delete memory"
+            title={t('memoryCard.delete.buttonTitle')}
           />
         </div>
 
@@ -206,7 +208,7 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
               onClick={() => setIsExpanded(!isExpanded)}
               className="mt-2 text-xs font-bold text-brutal-black hover:underline uppercase border-b-2 border-transparent hover:border-brutal-black inline-block"
             >
-              {isExpanded ? '▲ Show Less' : '▼ Show More'}
+              {isExpanded ? `▲ ${t('memoryCard.showLess')}` : `▼ ${t('memoryCard.showMore')}`}
             </button>
           )}
         </div>
@@ -214,18 +216,18 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
         {/* Metadata row */}
         <div className="flex items-center gap-4 text-xs text-neutral-600 flex-wrap mb-2 border-t-2 border-neutral-100 pt-2">
           <span className="flex items-center gap-1">
-            <span className="font-bold">CREATED:</span>
+            <span className="font-bold">{t('memoryCard.meta.created')}</span>
             {formatDate(memory.created_at)}
           </span>
 
           <span className="flex items-center gap-1">
-            <span className="font-bold">VIEWS:</span>
+            <span className="font-bold">{t('memoryCard.meta.views')}</span>
             {memory.access_count}
           </span>
 
           {memory.similarity !== undefined && (
             <span className="flex items-center gap-1 text-brutal-black font-bold bg-yellow-100 px-1">
-              <span className="font-bold">MATCH:</span>
+              <span className="font-bold">{t('memoryCard.meta.match')}</span>
               {(memory.similarity * 100).toFixed(0)}%
             </span>
           )}

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { DocumentTextIcon } from '@heroicons/react/24/outline';
+import { useI18n } from '../i18n';
 
 interface ClickableContentProps {
     content: string;
@@ -12,6 +13,7 @@ interface ClickableContentProps {
  * Agent messages should use markdown links with file:// protocol instead.
  */
 export const ClickableContent: React.FC<ClickableContentProps> = ({ content, onFileClick }) => {
+    const { t } = useI18n();
     const segments = useMemo(() => {
         if (!content || !onFileClick) return [];
 
@@ -78,7 +80,7 @@ export const ClickableContent: React.FC<ClickableContentProps> = ({ content, onF
                                 onFileClick?.(segment.path, fileName, e.shiftKey);
                             }}
                             className="inline-flex items-center gap-1 bg-brutal-yellow border-2 border-brutal-black px-2 py-0.5 font-mono text-xs font-bold text-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn cursor-pointer align-middle"
-                            title={`Click to view ${segment.path} (Shift+Click for full screen)`}
+                            title={t('fileLink.clickToView', { path: segment.path })}
                         >
                             <DocumentTextIcon className="w-3 h-3 stroke-[3]" />
                             <span className="break-all">{segment.path}</span>

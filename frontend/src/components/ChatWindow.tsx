@@ -13,41 +13,51 @@ import { ChatInputPanel } from './ChatInputPanel';
 import { ImageViewer } from './ImageViewer';
 import { FileViewer } from './FileViewer';
 import { UserMessage, AssistantMessage, RightSidebar } from './chat';
+import { useI18n } from '../i18n';
 
 // Drag overlay component
-const DragOverlay: React.FC = () => (
-  <div className="absolute inset-0 z-50 bg-brutal-blue/20 border-4 border-dashed border-brutal-black flex items-center justify-center pointer-events-none">
-    <div className="bg-brutal-yellow border-4 border-brutal-black shadow-brutal-xl px-8 py-6 flex flex-col items-center gap-3">
-      <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-brutal-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-      </svg>
-      <span className="text-lg font-bold text-brutal-black uppercase">Drop Files Here</span>
-      <span className="text-sm text-brutal-black">Images, PDFs, Documents, etc.</span>
+const DragOverlay: React.FC = () => {
+  const { t } = useI18n();
+  return (
+    <div className="absolute inset-0 z-50 bg-brutal-blue/20 border-4 border-dashed border-brutal-black flex items-center justify-center pointer-events-none">
+      <div className="bg-brutal-yellow border-4 border-brutal-black shadow-brutal-xl px-8 py-6 flex flex-col items-center gap-3">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-brutal-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+        </svg>
+        <span className="text-lg font-bold text-brutal-black uppercase">{t('chatWindow.dragDropTitle')}</span>
+        <span className="text-sm text-brutal-black">{t('chatWindow.dragDropDesc')}</span>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // Scroll to bottom button
-const ScrollToBottomButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
-  <button
-    onClick={onClick}
-    className="absolute bottom-6 right-6 z-20 w-10 h-10 bg-brutal-black text-white border-2 border-white shadow-brutal-lg flex items-center justify-center hover:bg-brutal-blue transition-colors animate-brutal-pop"
-    title="Scroll to bottom"
-  >
-    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-    </svg>
-  </button>
-);
+const ScrollToBottomButton: React.FC<{ onClick: () => void }> = ({ onClick }) => {
+  const { t } = useI18n();
+  return (
+    <button
+      onClick={onClick}
+      className="absolute bottom-6 right-6 z-20 w-10 h-10 bg-brutal-black text-white border-2 border-white shadow-brutal-lg flex items-center justify-center hover:bg-brutal-blue transition-colors animate-brutal-pop"
+      title={t('chatWindow.scrollToBottom')}
+    >
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+      </svg>
+    </button>
+  );
+};
 
 // Loading indicator
-const LoadingIndicator: React.FC = () => (
-  <div className="flex items-center justify-center p-4">
-    <div className="bg-brutal-yellow border-2 border-brutal-black px-4 py-2 text-xs font-bold uppercase animate-pulse shadow-brutal-sm">
-      Connecting to Neural Core...
+const LoadingIndicator: React.FC = () => {
+  const { t } = useI18n();
+  return (
+    <div className="flex items-center justify-center p-4">
+      <div className="bg-brutal-yellow border-2 border-brutal-black px-4 py-2 text-xs font-bold uppercase animate-pulse shadow-brutal-sm">
+        {t('chatWindow.connecting')}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 
 

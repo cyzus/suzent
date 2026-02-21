@@ -3,6 +3,7 @@ import { XMarkIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outlin
 import { BrutalButton } from './BrutalButton';
 import { FilePreview } from './sidebar/FilePreview';
 import { isBinaryServedFile } from '../lib/fileUtils';
+import { useI18n } from '../i18n';
 
 interface FileViewerProps {
     filePath: string | null;
@@ -14,6 +15,7 @@ interface FileViewerProps {
 import { getApiBase } from '../lib/api';
 
 export const FileViewer: React.FC<FileViewerProps> = ({ filePath, fileName, chatId, onClose }) => {
+    const { t } = useI18n();
     const [fileContent, setFileContent] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -74,7 +76,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({ filePath, fileName, chat
                 setFileContent(data.content);
             }
         } catch (err) {
-            setError("Failed to fetch file content");
+            setError(t('fileViewer.fetchFailed'));
         } finally {
             setLoading(false);
         }
@@ -110,14 +112,14 @@ export const FileViewer: React.FC<FileViewerProps> = ({ filePath, fileName, chat
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b-4 border-brutal-black bg-brutal-yellow shrink-0">
                     <h2 className="text-lg font-bold text-brutal-black truncate font-mono uppercase tracking-wider">
-                        {fileName || 'File Preview'}
+                        {fileName || t('fileViewer.title')}
                     </h2>
                     <div className="flex gap-2">
                         <BrutalButton
                             variant="primary"
                             size="icon"
                             onClick={openInExplorer}
-                            title="Reveal in Explorer"
+                            title={t('fileViewer.revealInExplorer')}
                         >
                             <ArrowTopRightOnSquareIcon className="w-5 h-5" />
                         </BrutalButton>
@@ -125,7 +127,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({ filePath, fileName, chat
                             variant="danger"
                             size="icon"
                             onClick={onClose}
-                            title="Close (Esc)"
+                            title={t('fileViewer.closeEsc')}
                         >
                             <XMarkIcon className="w-5 h-5" />
                         </BrutalButton>
@@ -140,7 +142,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({ filePath, fileName, chat
                         </div>
                     ) : error ? (
                         <div className="p-8 m-8 bg-brutal-red/10 border-3 border-brutal-red text-brutal-red text-sm font-bold font-mono">
-                            ERROR: {error}
+                            {t('fileViewer.errorPrefix')}{error}
                         </div>
                     ) : (
                         <FilePreview

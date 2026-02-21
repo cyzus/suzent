@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { useI18n } from '../../i18n';
 import { ApiProvider, UserConfig } from '../../lib/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 
@@ -34,10 +35,12 @@ export function ProvidersTab({
     onAddCustomModel,
     onVerify,
 }: ProvidersTabProps): React.ReactElement {
+    const { t } = useI18n();
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between mb-4">
-                <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black">Model Providers</h2>
+                <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black">{t('settings.providers.title')}</h2>
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
@@ -80,13 +83,13 @@ export function ProvidersTab({
                                     onClick={() => onTabChange(provider.id, 'credentials')}
                                     className={`flex-1 p-2 font-bold uppercase text-xs tracking-wider transition-colors ${activeTab === 'credentials' ? 'bg-brutal-black text-white' : 'bg-white text-brutal-black hover:bg-neutral-100'}`}
                                 >
-                                    API Keys
+                                    {t('settings.providers.apiKeysTab')}
                                 </button>
                                 <button
                                     onClick={() => onTabChange(provider.id, 'models')}
                                     className={`flex-1 p-2 font-bold uppercase text-xs tracking-wider transition-colors ${activeTab === 'models' ? 'bg-brutal-black text-white' : 'bg-white text-brutal-black hover:bg-neutral-100'}`}
                                 >
-                                    Models
+                                    {t('settings.providers.modelsTab')}
                                 </button>
                             </div>
 
@@ -135,7 +138,7 @@ export function ProvidersTab({
                                             <div className="flex flex-1 gap-0">
                                                 <input
                                                     type="text"
-                                                    placeholder="Add model ID..."
+                                                    placeholder={t('settings.providers.addModelIdPlaceholder')}
                                                     className="flex-1 bg-white border-2 border-brutal-black border-r-0 px-3 py-2 font-mono text-xs focus:outline-none"
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Enter') {
@@ -151,7 +154,7 @@ export function ProvidersTab({
                                                 disabled={verifying[provider.id]}
                                                 className="text-xs bg-brutal-blue text-white px-4 py-2 font-black uppercase border-2 border-brutal-black hover:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none transition-all disabled:opacity-50 shrink-0"
                                             >
-                                                {verifying[provider.id] ? 'FETCHING...' : 'FETCH'}
+                                                {verifying[provider.id] ? t('settings.providers.fetching') : t('settings.providers.fetch')}
                                             </button>
                                         </div>
 
@@ -161,16 +164,16 @@ export function ProvidersTab({
                                             value={conf.enabled_models}
                                             onChange={(newVal) => onConfigChange(provider.id, { ...conf, enabled_models: newVal })}
                                             options={allModels.map(m => ({ value: m.id, label: m.name || m.id }))}
-                                            emptyMessage="No models found"
+                                            emptyMessage={t('settings.providers.noModelsFound')}
                                             emptyAction={
-                                                <button onClick={() => onVerify(provider)} className="underline hover:text-black">Fetch Models</button>
+                                                <button onClick={() => onVerify(provider)} className="underline hover:text-black">{t('settings.providers.fetchModels')}</button>
                                             }
                                             dropdownClassName="max-h-80"
                                         />
 
                                         {/* Footer */}
                                         <div className="flex justify-between items-center px-1 mt-2">
-                                            <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider">{allModels.length} AVAILABLE</span>
+                                            <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider">{t('settings.providers.modelsAvailable', { count: String(allModels.length) })}</span>
                                         </div>
                                     </div>
                                 )}

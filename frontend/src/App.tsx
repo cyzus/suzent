@@ -16,6 +16,7 @@ import { PlanProvider, usePlan } from './hooks/usePlan';
 import { useStatusStore } from './hooks/useStatusStore';
 import { drainCronNotifications } from './lib/api';
 import { TitleBar } from './components/TitleBar';
+import { useI18n, getInitialLocale, tForLocale } from './i18n';
 
 interface HeaderTitleProps {
   text?: string;
@@ -77,6 +78,7 @@ function AppInner(): React.ReactElement {
   const { refresh } = usePlan();
   const { currentChatId, setViewSwitcher } = useChatStore();
   const setStatusMsg = useStatusStore(s => s.setStatus);
+  const { t } = useI18n();
 
   // Poll cron notifications every 5 seconds
   React.useEffect(() => {
@@ -138,11 +140,11 @@ function AppInner(): React.ReactElement {
   function getTitle(): string | undefined {
     switch (mainView) {
       case 'memory':
-        return 'MEMORY SYSTEM';
+        return t('views.memorySystem');
       case 'skills':
-        return 'SKILLS LIBRARY';
+        return t('views.skillsLibrary');
       case 'emotes':
-        return 'ROBOT GALLERY';
+        return t('views.robotGallery');
       default:
         return undefined;
     }
@@ -171,8 +173,8 @@ function AppInner(): React.ReactElement {
                   className="mr-3 group cursor-pointer"
                   onClick={toggleLeftSidebar}
                   role="button"
-                  aria-label="Open Sidebar"
-                  title="Open Sidebar"
+                  aria-label={t('sidebar.open')}
+                  title={t('sidebar.open')}
                 >
                   <div className="group-hover:hidden">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Suzent Logo" className="h-10 w-10">
@@ -198,9 +200,9 @@ function AppInner(): React.ReactElement {
             <div className="flex items-center gap-3">
               <div className="flex border-3 border-brutal-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                 {[
-                  { id: 'chat' as MainView, label: 'Chat' },
-                  { id: 'memory' as MainView, label: 'Memory' },
-                  { id: 'skills' as MainView, label: 'Skills' }
+                  { id: 'chat' as MainView, label: t('nav.chat') },
+                  { id: 'memory' as MainView, label: t('nav.memory') },
+                  { id: 'skills' as MainView, label: t('nav.skills') }
                 ].map((view) => (
                   <button
                     key={view.id}
@@ -222,8 +224,8 @@ function AppInner(): React.ReactElement {
                     h-10 w-10 flex items-center justify-center rounded-md transition-colors
                     ${isRightSidebarOpen ? 'bg-neutral-200 text-brutal-black' : 'hover:bg-neutral-200 text-brutal-black'}
                   `}
-                  aria-label={isRightSidebarOpen ? "Close Sidebar" : "Open Sidebar"}
-                  title={isRightSidebarOpen ? "Close Sidebar" : "Open Sidebar"}
+                  aria-label={isRightSidebarOpen ? t('sidebar.close') : t('sidebar.open')}
+                  title={isRightSidebarOpen ? t('sidebar.close') : t('sidebar.open')}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <rect x="4" y="4" width="16" height="16" rx="2" />
@@ -269,26 +271,43 @@ function AppInner(): React.ReactElement {
 };
 
 
-function BackendLoadingScreen() {
+function BackendLoadingScreen({ error, onRetry }: { error?: string | null; onRetry?: () => void }) {
+  const locale = getInitialLocale();
+  const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
+
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-neutral-50 font-sans p-8 text-center border-8 border-brutal-black">
       <div className="bg-white p-8 border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md flex flex-col items-center animate-pulse">
         <div className="w-32 h-32 mb-6">
-          <RobotAvatar variant="idle" className="w-full h-full" />
+          <RobotAvatar variant={error ? 'ghost' : 'idle'} className="w-full h-full" />
         </div>
-        <h1 className="text-4xl font-brutal font-black uppercase mb-4 text-brutal-black">INITIALIZING</h1>
+        <h1 className="text-4xl font-brutal font-black uppercase mb-4 text-brutal-black">
+          {error ? t('app.backendErrorTitle') : t('app.initializing')}
+        </h1>
         <p className="font-bold text-lg mb-6 leading-tight">
-          Connecting to Neural Core...
+          {error || t('app.connectingToCore')}
         </p>
-        <div className="w-full h-4 bg-neutral-200 border-2 border-brutal-black overflow-hidden relative">
-          <div className="absolute top-0 left-0 h-full w-1/2 bg-brutal-black animate-[slide_1s_ease-in-out_infinite]"></div>
-        </div>
+        {error && onRetry ? (
+          <button
+            onClick={onRetry}
+            className="px-6 py-3 bg-brutal-black text-white font-bold uppercase border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
+          >
+            {t('common.retry')}
+          </button>
+        ) : (
+          <div className="w-full h-4 bg-neutral-200 border-2 border-brutal-black overflow-hidden relative">
+            <div className="absolute top-0 left-0 h-full w-1/2 bg-brutal-black animate-[slide_1s_ease-in-out_infinite]"></div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 export default function App() {
+  const locale = getInitialLocale();
+  const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
+
   // Enforce desktop environment
   if (!window.__TAURI__) {
     return (
@@ -297,9 +316,9 @@ export default function App() {
           <div className="w-32 h-32 mb-6">
             <RobotAvatar variant="ghost" className="w-full h-full" />
           </div>
-          <h1 className="text-4xl font-brutal font-black uppercase mb-4 text-brutal-black">Desktop Required</h1>
+          <h1 className="text-4xl font-brutal font-black uppercase mb-4 text-brutal-black">{t('app.desktopRequiredTitle')}</h1>
           <p className="font-bold text-lg mb-6 leading-tight">
-            SUZENT is a desktop-only application. Please run this application using the native desktop launcher.
+            {t('app.desktopRequiredDesc')}
           </p>
           <div className="font-mono text-xs bg-neutral-100 p-4 border-2 border-brutal-black text-left w-full">
             $ npm run tauri dev
@@ -309,10 +328,11 @@ export default function App() {
     );
   }
 
-  // Check for backend connection (Tauri specific)
-  // In browser dev mode, we skip this check as api.ts falls back to 8000
-  // But inside Tauri, api.ts returns empty string if port is missing.
-  const isBackendReady = !!sessionStorage.getItem('SUZENT_PORT');
+  // Check for backend connection
+  const port = (window as any).__SUZENT_BACKEND_PORT__
+    || sessionStorage.getItem('SUZENT_PORT')
+    || localStorage.getItem('SUZENT_PORT');
+  const isBackendReady = !!port;
 
   if (!isBackendReady) {
     return <BackendLoadingScreen />;

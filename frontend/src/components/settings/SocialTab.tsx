@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { useI18n } from '../../i18n';
 import { SocialConfig } from '../../lib/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalSelect } from '../BrutalSelect';
@@ -34,10 +35,11 @@ export function SocialTab({
     onUseCustomToolsChange,
     onUseCustomMcpChange,
 }: SocialTabProps): React.ReactElement {
+    const { t } = useI18n();
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between mb-4">
-                <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black">Social Channels</h2>
+                <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black">{t('settings.social.title')}</h2>
             </div>
 
             <div className="bg-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
@@ -46,37 +48,37 @@ export function SocialTab({
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                     </div>
                     <div>
-                        <h3 className="text-xl font-bold uppercase">General Settings</h3>
-                        <p className="text-sm text-neutral-600 mt-1">Configure global settings for social interactions.</p>
+                        <h3 className="text-xl font-bold uppercase">{t('settings.social.generalSettingsTitle')}</h3>
+                        <p className="text-sm text-neutral-600 mt-1">{t('settings.social.generalSettingsDesc')}</p>
                     </div>
                 </div>
 
                 <div className="space-y-4">
                     <div className="space-y-2">
                         <label className="text-sm font-bold uppercase text-neutral-800">
-                            Social Model
+                            {t('settings.social.socialModel')}
                         </label>
                         <BrutalSelect
                             value={socialConfig.model || ''}
                             onChange={(val) => onConfigChange({ ...socialConfig, model: val })}
                             options={[
-                                { value: '', label: 'Use Default System Model' },
+                                { value: '', label: t('settings.social.useDefaultModel') },
                                 ...models.map((model) => ({ value: model, label: model }))
                             ]}
-                            placeholder="SELECT MODEL..."
+                            placeholder={t('settings.social.selectModelPlaceholder')}
                         />
                     </div>
 
                     <div className="space-y-2">
                         <label className="text-sm font-bold uppercase text-neutral-800">
-                            Global Allowed Users (comma separated IDs)
+                            {t('settings.social.globalAllowedUsers')}
                         </label>
                         <input
                             type="text"
                             className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
                             value={(socialConfig.allowed_users || []).join(', ')}
                             onChange={(e) => onConfigChange({ ...socialConfig, allowed_users: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-                            placeholder="user123, 987654..."
+                            placeholder={t('settings.social.allowedUsersPlaceholder')}
                         />
                     </div>
                 </div>
@@ -89,8 +91,8 @@ export function SocialTab({
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                     </div>
                     <div>
-                        <h3 className="text-xl font-bold uppercase">Agent Capabilities</h3>
-                        <p className="text-sm text-neutral-600 mt-1">Configure which tools the social agent can use.</p>
+                        <h3 className="text-xl font-bold uppercase">{t('settings.social.agentCapabilitiesTitle')}</h3>
+                        <p className="text-sm text-neutral-600 mt-1">{t('settings.social.agentCapabilitiesDesc')}</p>
                     </div>
                 </div>
 
@@ -99,13 +101,13 @@ export function SocialTab({
                     <BrutalToggle
                         checked={socialConfig.memory_enabled !== false}
                         onChange={(checked) => onConfigChange({ ...socialConfig, memory_enabled: checked })}
-                        label="Enable Memory Tools"
+                        label={t('settings.social.enableMemoryTools')}
                     />
 
                     {/* Tools Section */}
                     <div className="space-y-3">
                         <div className="flex items-center justify-between">
-                            <label className="text-sm font-bold uppercase text-neutral-800">Tools</label>
+                            <label className="text-sm font-bold uppercase text-neutral-800">{t('settings.social.tools')}</label>
                             <div className="flex gap-2">
                                 <button
                                     onClick={() => {
@@ -114,7 +116,7 @@ export function SocialTab({
                                     }}
                                     className={`px-3 py-1 text-xs font-bold uppercase border-2 border-brutal-black transition-all ${!useCustomTools ? 'bg-brutal-black text-white' : 'bg-white text-brutal-black hover:bg-neutral-100'}`}
                                 >
-                                    All Tools
+                                    {t('settings.social.allTools')}
                                 </button>
                                 <button
                                     onClick={() => {
@@ -123,7 +125,7 @@ export function SocialTab({
                                     }}
                                     className={`px-3 py-1 text-xs font-bold uppercase border-2 border-brutal-black transition-all ${useCustomTools ? 'bg-brutal-black text-white' : 'bg-white text-brutal-black hover:bg-neutral-100'}`}
                                 >
-                                    Custom
+                                    {t('settings.social.custom')}
                                 </button>
                             </div>
                         </div>
@@ -133,7 +135,7 @@ export function SocialTab({
                                 value={socialConfig.tools || []}
                                 onChange={(newVal) => onConfigChange({ ...socialConfig, tools: newVal })}
                                 options={tools.map((t) => ({ value: t, label: t }))}
-                                emptyMessage="No tools available"
+                                emptyMessage={t('settings.social.noToolsAvailable')}
                                 dropdownClassName="max-h-48"
                             />
                         )}
@@ -143,7 +145,7 @@ export function SocialTab({
                     {mcpServers && Object.keys(mcpServers.urls).length + Object.keys(mcpServers.stdio).length > 0 && (
                         <div className="space-y-3">
                             <div className="flex items-center justify-between">
-                                <label className="text-sm font-bold uppercase text-neutral-800">MCP Servers</label>
+                                <label className="text-sm font-bold uppercase text-neutral-800">{t('settings.social.mcpServers')}</label>
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => {
@@ -152,7 +154,7 @@ export function SocialTab({
                                         }}
                                         className={`px-3 py-1 text-xs font-bold uppercase border-2 border-brutal-black transition-all ${!useCustomMcp ? 'bg-brutal-black text-white' : 'bg-white text-brutal-black hover:bg-neutral-100'}`}
                                     >
-                                        System Default
+                                        {t('settings.social.systemDefault')}
                                     </button>
                                     <button
                                         onClick={() => {
@@ -164,7 +166,7 @@ export function SocialTab({
                                         }}
                                         className={`px-3 py-1 text-xs font-bold uppercase border-2 border-brutal-black transition-all ${useCustomMcp ? 'bg-brutal-black text-white' : 'bg-white text-brutal-black hover:bg-neutral-100'}`}
                                     >
-                                        Custom
+                                        {t('settings.social.custom')}
                                     </button>
                                 </div>
                             </div>
@@ -211,7 +213,7 @@ export function SocialTab({
                                         ...socialConfig,
                                         [key]: { ...platformConfig, enabled: checked }
                                     })}
-                                    label="Enable"
+                                    label={t('settings.social.enable')}
                                     className="mb-4"
                                 />
 
@@ -240,7 +242,7 @@ export function SocialTab({
 
                                 <div className="space-y-1 pt-2 border-t-2 border-dashed border-neutral-300">
                                     <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">
-                                        Allowed Users (Specific to {key})
+                                        {t('settings.social.allowedUsersSpecific', { platform: key })}
                                     </label>
                                     <input
                                         type="text"
@@ -252,7 +254,7 @@ export function SocialTab({
                                                 allowed_users: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
                                             }
                                         })}
-                                        placeholder="user_id_1, user_id_2..."
+                                        placeholder={t('settings.social.allowedUsersSpecificPlaceholder')}
                                         className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
                                     />
                                 </div>

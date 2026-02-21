@@ -12,10 +12,25 @@ export function getApiBase(): string {
   // We strictly target Tauri desktop environment
   // The backend port is injected by the main process into sessionStorage
   if (window.__TAURI__) {
-    const port = sessionStorage.getItem('SUZENT_PORT');
-    if (port) {
-      return `http://localhost:${port}`;
+    const injectedPort = (window as any).__SUZENT_BACKEND_PORT__;
+    if (typeof injectedPort === 'number' && Number.isFinite(injectedPort)) {
+      return `http://localhost:${injectedPort}`;
     }
+
+    let port: string | null = null;
+    try {
+      port = sessionStorage.getItem('SUZENT_PORT');
+    } catch {
+      port = null;
+    }
+    if (!port) {
+      try {
+        port = localStorage.getItem('SUZENT_PORT');
+      } catch {
+        port = null;
+      }
+    }
+    if (port) return `http://localhost:${port}`;
     // If port is missing in Tauri, we return empty string.
     // App.tsx should handle this by showing a loading screen.
     return '';

@@ -5,6 +5,7 @@
 
 import { useState, useEffect, Fragment } from 'react';
 import { memoryApi } from '../../lib/memoryApi';
+import { useI18n } from '../../i18n';
 import { useChatStore } from '../../hooks/useChatStore';
 import type { TranscriptEntry } from '../../types/memory';
 
@@ -60,6 +61,7 @@ function formatEntryContent(content: string): string {
 }
 
 export const TranscriptPanel: React.FC = () => {
+  const { t } = useI18n();
   const { currentChatId, chats } = useChatStore();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [entries, setEntries] = useState<TranscriptEntry[]>([]);
@@ -82,7 +84,7 @@ export const TranscriptPanel: React.FC = () => {
       const result = await memoryApi.getSessionTranscript(sessionId, lastN);
       setEntries(result.entries);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to load transcript';
+      const msg = err instanceof Error ? err.message : t('transcripts.loadFailed');
       if (msg.includes('404') || msg.includes('Not Found')) {
         setEntries([]);
         setError(null);
@@ -123,8 +125,8 @@ export const TranscriptPanel: React.FC = () => {
     <div className="space-y-6">
       {/* Header & Controls */}
       <div className="bg-brutal-black text-white p-3 border-3 border-brutal-black">
-        <h3 className="font-brutal text-xl uppercase tracking-tight">Session Transcripts</h3>
-        <p className="text-xs text-neutral-300 font-mono">JSONL_CONVERSATION_LOG</p>
+        <h3 className="font-brutal text-xl uppercase tracking-tight">{t('transcripts.title')}</h3>
+        <p className="text-xs text-neutral-300 font-mono">{t('transcripts.desc')}</p>
       </div>
 
       {/* Session selector + filter */}
@@ -133,14 +135,14 @@ export const TranscriptPanel: React.FC = () => {
           {/* Session selector */}
           <div className="flex-1">
             <label className="block text-xs font-bold uppercase text-neutral-600 mb-1">
-              Session
+              {t('transcripts.sessionLabel')}
             </label>
             <select
               value={selectedSessionId || ''}
               onChange={(e) => setSelectedSessionId(e.target.value || null)}
               className="w-full px-3 py-2 border-3 border-brutal-black bg-white text-sm font-mono focus:outline-none focus:ring-4 focus:ring-brutal-black"
             >
-              <option value="">Select a session...</option>
+              <option value="">{t('transcripts.selectPlaceholder')}</option>
               {sessionOptions.map((opt) => (
                 <option key={opt.id} value={opt.id}>
                   {opt.label}
@@ -152,7 +154,7 @@ export const TranscriptPanel: React.FC = () => {
           {/* Last N filter */}
           <div className="w-full md:w-auto">
             <label className="block text-xs font-bold uppercase text-neutral-600 mb-1">
-              Last N Entries
+              {t('transcripts.lastNLabel')}
             </label>
             <form onSubmit={handleLastNSubmit} className="flex gap-2">
               <input
@@ -160,14 +162,14 @@ export const TranscriptPanel: React.FC = () => {
                 min="1"
                 value={lastNInput}
                 onChange={(e) => setLastNInput(e.target.value)}
-                placeholder="All"
+                placeholder={t('transcripts.all')}
                 className="flex-1 px-3 py-2 border-3 border-brutal-black bg-white text-sm font-mono focus:outline-none focus:ring-4 focus:ring-brutal-black"
               />
               <button
                 type="submit"
                 className="px-3 py-2 border-3 border-brutal-black bg-brutal-black text-white font-bold text-xs uppercase hover:bg-neutral-800 transition-colors"
               >
-                Go
+                {t('common.go')}
               </button>
             </form>
           </div>
@@ -177,8 +179,8 @@ export const TranscriptPanel: React.FC = () => {
         {selectedSessionId && (
           <div className="flex items-center justify-between text-xs text-neutral-600">
             <span>
-              {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
-              {lastN !== undefined && ` (last ${lastN})`}
+              {t('transcripts.entriesCount', { count: String(entries.length) })}
+              {lastN !== undefined && ` (${t('transcripts.lastN', { n: String(lastN) })})`}
             </span>
             <button
               onClick={() => loadTranscript(selectedSessionId)}
@@ -194,7 +196,7 @@ export const TranscriptPanel: React.FC = () => {
       {loading && (
         <div className="border-3 border-brutal-black bg-white p-8 text-center">
           <div className="w-4 h-4 border-3 border-brutal-black border-t-transparent animate-spin rounded-full mx-auto mb-2"></div>
-          <p className="text-sm font-bold uppercase">Loading transcript...</p>
+          <p className="text-sm font-bold uppercase">{t('transcripts.loading')}</p>
         </div>
       )}
 
@@ -208,9 +210,9 @@ export const TranscriptPanel: React.FC = () => {
       {/* No session selected */}
       {!selectedSessionId && !loading && (
         <div className="border-3 border-brutal-black bg-white p-12 text-center">
-          <h4 className="font-brutal text-2xl uppercase mb-2">Select a Session</h4>
+          <h4 className="font-brutal text-2xl uppercase mb-2">{t('transcripts.selectTitle')}</h4>
           <p className="text-neutral-600 text-sm max-w-md mx-auto">
-            Choose a session from the dropdown above to view its conversation transcript.
+            {t('transcripts.selectDesc')}
           </p>
         </div>
       )}
@@ -218,9 +220,9 @@ export const TranscriptPanel: React.FC = () => {
       {/* Empty state */}
       {selectedSessionId && !loading && !error && entries.length === 0 && (
         <div className="border-3 border-brutal-black bg-white p-12 text-center">
-          <h4 className="font-brutal text-2xl uppercase mb-2">No Transcript Data</h4>
+          <h4 className="font-brutal text-2xl uppercase mb-2">{t('transcripts.emptyTitle')}</h4>
           <p className="text-neutral-600 text-sm max-w-md mx-auto">
-            This session does not have a transcript yet. Transcripts are created when JSONL transcript logging is enabled.
+            {t('transcripts.emptyDesc')}
           </p>
         </div>
       )}
@@ -257,7 +259,7 @@ export const TranscriptPanel: React.FC = () => {
                   {entry.actions && entry.actions.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-neutral-200">
                       <span className="text-[10px] font-bold uppercase text-neutral-500">
-                        {entry.actions.length} action{entry.actions.length !== 1 ? 's' : ''}
+                        {t('transcripts.actionsCount', { count: String(entry.actions.length) })}
                       </span>
                     </div>
                   )}

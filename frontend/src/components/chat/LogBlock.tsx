@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useStatusStore } from '../../hooks/useStatusStore';
+import { useI18n } from '../../i18n';
 
 interface LogBlockProps {
   title?: string;
@@ -11,13 +12,14 @@ export const LogBlock: React.FC<LogBlockProps> = ({ title, content }) => {
     return content.length < 300 && content.split('\n').length <= 5;
   });
   const { setStatus } = useStatusStore();
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const lineCount = content.split('\n').length;
 
   const copyToClipboard = (e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(content);
-    setStatus('LOG_COPIED_TO_CLIPBOARD', 'success');
+    setStatus(t('status.logCopiedToClipboard'), 'success');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -31,17 +33,17 @@ export const LogBlock: React.FC<LogBlockProps> = ({ title, content }) => {
             <span>{'>_'}</span>
           </div>
           <span className="text-white font-bold uppercase tracking-wider text-xs truncate">
-            {title || 'System Log'}
+            {title || t('logBlock.systemLog')}
           </span>
           <span className="text-neutral-400 text-[10px] font-bold shrink-0">
-            {lineCount} LINES
+            {t('logBlock.lines', { count: lineCount })}
           </span>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={copyToClipboard}
             className="w-8 h-8 flex items-center justify-center bg-brutal-black text-white border-2 border-white hover:bg-white hover:text-brutal-black transition-colors"
-            title="Copy to clipboard"
+            title={t('status.copyToClipboard')}
           >
             {copied ? (
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -57,7 +59,7 @@ export const LogBlock: React.FC<LogBlockProps> = ({ title, content }) => {
           <button
             onClick={() => setExpanded(!expanded)}
             className="w-8 h-8 flex items-center justify-center bg-brutal-black text-white text-lg font-bold border-2 border-white hover:bg-white hover:text-brutal-black transition-colors uppercase"
-            title={expanded ? "Collapse" : "Expand"}
+            title={expanded ? t('logBlock.collapse') : t('logBlock.expand')}
           >
             {expanded ? '−' : '+'}
           </button>
@@ -75,7 +77,7 @@ export const LogBlock: React.FC<LogBlockProps> = ({ title, content }) => {
 
       {/* Footer/Status Bar */}
       <div className="px-2 py-1 bg-neutral-200 border-t-2 border-brutal-black text-[10px] text-neutral-500 flex justify-between items-center">
-        <span>{content.length} chars</span>
+        <span>{t('logBlock.chars', { count: content.length })}</span>
         <span>UTF-8</span>
       </div>
     </div>
