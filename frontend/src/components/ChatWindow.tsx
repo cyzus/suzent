@@ -68,10 +68,9 @@ const MessageList: React.FC<{
   isStreaming: boolean;
   streamingForCurrentChat: boolean;
   chatId?: string;
-  hideToolCalls?: boolean;
   onImageClick?: (src: string) => void;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-}> = ({ messages, isStreaming, streamingForCurrentChat, chatId, hideToolCalls, onImageClick, onFileClick }) => (
+}> = ({ messages, isStreaming, streamingForCurrentChat, chatId, onImageClick, onFileClick }) => (
   <div className="space-y-6">
     {(() => {
       // Pre-compute tool-only groups: consecutive tool-only assistant messages
@@ -153,7 +152,7 @@ const MessageList: React.FC<{
                         toolName={b.toolName || 'unknown'}
                         toolArgs={b.toolArgs}
                         output={b.content || undefined}
-                        defaultCollapsed={hideToolCalls}
+                        defaultCollapsed
                       />
                     ) : null
                   ))}
@@ -188,7 +187,6 @@ const MessageList: React.FC<{
                   isStreaming={streamingForCurrentChat}
                   isLastMessage={isLastMessage}
                   onFileClick={onFileClick}
-                  hideToolCalls={hideToolCalls}
                 />
               )}
             </div>
@@ -236,7 +234,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     removeEmptyAssistantMessage,
     isStreaming,
     activeStreamingChatId,
-    hideToolCalls,
   } = useChatStore();
 
   const { refresh: refreshPlan, applySnapshot: applyPlanSnapshot, plan } = usePlan();
@@ -513,7 +510,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 isStreaming={isStreaming}
                 streamingForCurrentChat={streamingForCurrentChat}
                 chatId={currentChatId ?? undefined}
-                hideToolCalls={hideToolCalls}
                 onImageClick={setViewingImage}
                 onFileClick={handleFileClick}
               />

@@ -16,7 +16,6 @@ interface AssistantMessageProps {
   isStreaming: boolean;
   isLastMessage: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-  hideToolCalls?: boolean;
 }
 
 // Names that should be filtered out from tool call display
@@ -41,13 +40,12 @@ function isToolOnlyMessage(blocks: ContentBlock[]): boolean {
 const ToolCallPills: React.FC<{
   blocks: ContentBlock[];
   messageIndex: number;
-  hideToolCalls?: boolean;
-}> = ({ blocks, messageIndex, hideToolCalls }) => (
+}> = ({ blocks, messageIndex }) => (
   <>
     {blocks.map((b, bi) => {
       const blockKey = generateBlockKey(b, bi, messageIndex);
       if (b.type === 'toolCall') {
-        return <ToolCallBlock key={blockKey} toolName={b.toolName || 'unknown'} toolArgs={b.toolArgs} output={b.content || undefined} defaultCollapsed={hideToolCalls} />;
+        return <ToolCallBlock key={blockKey} toolName={b.toolName || 'unknown'} toolArgs={b.toolArgs} output={b.content || undefined} defaultCollapsed />;
       }
       return null;
     })}
@@ -59,8 +57,7 @@ const StreamingContent: React.FC<{
   content: string;
   messageIndex: number;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-  hideToolCalls?: boolean;
-}> = ({ content, messageIndex, onFileClick, hideToolCalls }) => {
+}> = ({ content, messageIndex, onFileClick }) => {
   const displayedContent = useTypewriter(content, 10, true);
   const blocks = filterBlocks(splitAssistantContent(displayedContent));
 
@@ -80,7 +77,7 @@ const StreamingContent: React.FC<{
         } else if (b.type === 'log') {
           return <LogBlock key={blockKey} title={b.title} content={b.content} />;
         } else if (b.type === 'toolCall') {
-          return <ToolCallBlock key={blockKey} toolName={b.toolName || 'unknown'} toolArgs={b.toolArgs} output={b.content || undefined} defaultCollapsed={hideToolCalls ? true : false} />;
+          return <ToolCallBlock key={blockKey} toolName={b.toolName || 'unknown'} toolArgs={b.toolArgs} output={b.content || undefined} defaultCollapsed />;
         } else {
           return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} isStreaming={isLastBlock} />;
         }
@@ -94,8 +91,7 @@ const StaticContent: React.FC<{
   blocks: ContentBlock[];
   messageIndex: number;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-  hideToolCalls?: boolean;
-}> = ({ blocks, messageIndex, onFileClick, hideToolCalls }) => {
+}> = ({ blocks, messageIndex, onFileClick }) => {
   return (
     <>
       {blocks.map((b, bi) => {
@@ -105,7 +101,7 @@ const StaticContent: React.FC<{
         } else if (b.type === 'log') {
           return <LogBlock key={blockKey} title={b.title} content={b.content} />;
         } else if (b.type === 'toolCall') {
-          return <ToolCallBlock key={blockKey} toolName={b.toolName || 'unknown'} toolArgs={b.toolArgs} output={b.content || undefined} defaultCollapsed={hideToolCalls} />;
+          return <ToolCallBlock key={blockKey} toolName={b.toolName || 'unknown'} toolArgs={b.toolArgs} output={b.content || undefined} defaultCollapsed />;
         } else {
           return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} />;
         }
@@ -120,7 +116,6 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   isStreaming,
   isLastMessage,
   onFileClick,
-  hideToolCalls,
 }) => {
   const isStreamingThis = isStreaming && isLastMessage;
   const isThinking = isStreamingThis && !message.content;
@@ -143,7 +138,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   if (toolOnly) {
     return (
       <div className="w-full max-w-4xl text-sm leading-relaxed pl-2">
-        <ToolCallPills blocks={blocks} messageIndex={messageIndex} hideToolCalls={hideToolCalls} />
+        <ToolCallPills blocks={blocks} messageIndex={messageIndex} />
       </div>
     );
   }
@@ -159,7 +154,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   if (!hasContent && toolCallBlocks.length > 0) {
     return (
       <div className="w-full max-w-4xl text-sm leading-relaxed pl-2">
-        <ToolCallPills blocks={toolCallBlocks} messageIndex={messageIndex} hideToolCalls={hideToolCalls} />
+        <ToolCallPills blocks={toolCallBlocks} messageIndex={messageIndex} />
       </div>
     );
   }
@@ -190,7 +185,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
       {/* Tool call pills rendered outside the box, before the badge */}
       {toolCallBlocks.length > 0 && (
         <div className="mb-2 pl-1">
-          <ToolCallPills blocks={toolCallBlocks} messageIndex={messageIndex} hideToolCalls={hideToolCalls} />
+          <ToolCallPills blocks={toolCallBlocks} messageIndex={messageIndex} />
         </div>
       )}
 
@@ -225,9 +220,9 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
             )}
             <div className="space-y-4">
               {isStreamingThis ? (
-                <StreamingContent content={message.content} messageIndex={messageIndex} onFileClick={onFileClick} hideToolCalls={hideToolCalls} />
+                <StreamingContent content={message.content} messageIndex={messageIndex} onFileClick={onFileClick} />
               ) : (
-                <StaticContent blocks={contentBlocks} messageIndex={messageIndex} onFileClick={onFileClick} hideToolCalls={hideToolCalls} />
+                <StaticContent blocks={contentBlocks} messageIndex={messageIndex} onFileClick={onFileClick} />
               )}
             </div>
           </div>

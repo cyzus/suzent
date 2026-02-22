@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### ⚡ Changed
 - **Memory**: Cron and heartbeat now run with memory fully enabled — agent can read and write long-term memory during scheduled tasks.
 - **Subprocess**: `BashTool` now uses `errors="replace"` when decoding subprocess output, preventing crashes on non-UTF-8 output (e.g. GBK on Chinese Windows).
+- **Frontend**: Update the visuals of toolcalling agent.
 
 ### 🐛 Fixed
 - **Database**: Added migration to drop legacy `is_heartbeat` column from `cron_jobs` table.
