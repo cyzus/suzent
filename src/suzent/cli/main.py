@@ -2,6 +2,7 @@
 Top-level CLI commands: start, doctor, upgrade, setup-build-tools.
 """
 
+import io
 import os
 import shutil
 import subprocess
@@ -11,6 +12,35 @@ from pathlib import Path
 import typer
 
 IS_WINDOWS = sys.platform == "win32"
+
+
+def _configure_console_encoding():
+    """Configure console encoding for Windows to handle Unicode (emoji) output.
+
+    Windows consoles using non-UTF-8 code pages (e.g. GBK for Chinese locale)
+    will raise UnicodeEncodeError when printing emoji characters. This function
+    reconfigures stdout/stderr to use UTF-8 with a 'replace' error handler so
+    unsupported characters degrade gracefully instead of crashing.
+    """
+    if not IS_WINDOWS:
+        return
+
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name)
+        if stream is None or not hasattr(stream, "buffer"):
+            continue
+        try:
+            encoding = getattr(stream, "encoding", "") or ""
+            if encoding.lower().replace("-", "") != "utf8":
+                wrapped = io.TextIOWrapper(
+                    stream.buffer,
+                    encoding="utf-8",
+                    errors="replace",
+                    line_buffering=stream.line_buffering,
+                )
+                setattr(sys, stream_name, wrapped)
+        except Exception:
+            pass  # Don't crash if reconfiguration fails
 
 
 def configure_logging(verbose: bool = False):
@@ -302,21 +332,61 @@ def register_commands(app: typer.Typer):
             run_command(["npm", "run", "dev"], cwd=src_tauri_dir, shell_on_windows=True)
         except subprocess.CalledProcessError:
             typer.echo("\n⚠️  Dev server failed to start.")
-            typer.echo(
-                "    Attempting to fix by performing a CLEAN install of dependencies..."
-            )
 
-            for d in [frontend_app_dir, src_tauri_dir]:
-                nm = d / "node_modules"
-                if nm.exists():
-                    typer.echo(f"    🗑️  Removing {nm}...")
-                    shutil.rmtree(nm, ignore_errors=True)
+            # Check for common non-dependency errors before blindly retrying
+            # Read recent cargo build output to detect specific failures
+            known_fixes = []
 
-                typer.echo(f"    📥 Installing dependencies in {d.name}...")
-                run_command(["npm", "install"], cwd=d, shell_on_windows=True)
+            # Check for missing linker (should have been caught by pre-flight)
+            if IS_WINDOWS and not shutil.which("link.exe"):
+                known_fixes.append(
+                    "MSVC linker (link.exe) not found. "
+                    "Run 'suzent setup-build-tools' and restart your terminal."
+                )
 
-            typer.echo("    Retrying dev server...")
-            run_command(["npm", "run", "dev"], cwd=src_tauri_dir, shell_on_windows=True)
+            # Check for missing resource files
+            for res_name in ["suzent.cmd", "suzent"]:
+                res_path = src_tauri_dir / "resources" / res_name
+                if not res_path.exists():
+                    known_fixes.append(
+                        f"Missing resource file: resources/{res_name}. "
+                        f"Creating placeholder..."
+                    )
+                    res_path.parent.mkdir(parents=True, exist_ok=True)
+                    if res_name.endswith(".cmd"):
+                        res_path.write_text(
+                            "@echo off\nREM Placeholder — real shim generated at runtime.\n"
+                        )
+                    else:
+                        res_path.write_text(
+                            "#!/bin/sh\n# Placeholder — real shim generated at runtime.\n"
+                        )
+
+            if known_fixes:
+                typer.echo("    Diagnosed the following issues:")
+                for fix in known_fixes:
+                    typer.echo(f"    • {fix}")
+                typer.echo("    Retrying dev server...")
+                run_command(
+                    ["npm", "run", "dev"], cwd=src_tauri_dir, shell_on_windows=True
+                )
+            else:
+                typer.echo(
+                    "    Attempting to fix by performing a CLEAN install of dependencies..."
+                )
+                for d in [frontend_app_dir, src_tauri_dir]:
+                    nm = d / "node_modules"
+                    if nm.exists():
+                        typer.echo(f"    🗑️  Removing {nm}...")
+                        shutil.rmtree(nm, ignore_errors=True)
+
+                    typer.echo(f"    📥 Installing dependencies in {d.name}...")
+                    run_command(["npm", "install"], cwd=d, shell_on_windows=True)
+
+                typer.echo("    Retrying dev server...")
+                run_command(
+                    ["npm", "run", "dev"], cwd=src_tauri_dir, shell_on_windows=True
+                )
 
     @app.command()
     def serve(
@@ -349,6 +419,32 @@ def register_commands(app: typer.Typer):
     def doctor():
         """Check if all requirements are installed and configured correctly."""
         typer.echo("🩺 QA Checking System Health...")
+
+        # Refresh PATH from registry so newly-installed tools are found
+        if IS_WINDOWS:
+            machine_path = os.environ.get("Path", "")
+            try:
+                import winreg
+
+                with winreg.OpenKey(
+                    winreg.HKEY_LOCAL_MACHINE,
+                    r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+                ) as key:
+                    machine_path = winreg.QueryValueEx(key, "Path")[0]
+            except Exception:
+                pass
+
+            user_path = ""
+            try:
+                import winreg
+
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment") as key:
+                    user_path = winreg.QueryValueEx(key, "Path")[0]
+            except Exception:
+                pass
+
+            if machine_path or user_path:
+                os.environ["PATH"] = f"{machine_path};{user_path}"
 
         ensure_cargo_in_path()
 

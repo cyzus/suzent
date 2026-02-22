@@ -10,6 +10,11 @@ function Check-Command($cmd, $name) {
     }
 }
 
+# Helper: refresh PATH from system/user environment so newly-installed tools are visible
+function Refresh-Path {
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+}
+
 Check-Command "git" "Git"
 Check-Command "node" "Node.js"
 
@@ -29,6 +34,7 @@ if (-not (Get-Command "cargo" -ErrorAction SilentlyContinue)) {
             $env:Path = "$cargo_bin;$env:Path"
             Write-Host "✅ Rust installed and added to PATH." -ForegroundColor Green
         }
+        Refresh-Path
     } catch {
         Write-Error "Failed to install Rust automatically. Please install it manually from https://rustup.rs/"
         exit 1
@@ -39,7 +45,7 @@ if (-not (Get-Command "cargo" -ErrorAction SilentlyContinue)) {
 if (-not (Get-Command "uv" -ErrorAction SilentlyContinue)) {
     Write-Host "Installing uv..." -ForegroundColor Yellow
     powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","User") + ";" + [System.Environment]::GetEnvironmentVariable("Path","Machine")
+    Refresh-Path
 }
 
 # 3. Clone Repo (if needed)

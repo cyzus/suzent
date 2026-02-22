@@ -13,7 +13,12 @@ import typer
 from suzent.cli._http import _http_get, _http_post  # noqa: F401 — re-export for test patching
 from suzent.cli.agent import agent_app
 from suzent.cli.config import config_app
-from suzent.cli.main import register_commands, configure_logging, load_environment
+from suzent.cli.main import (
+    register_commands,
+    configure_logging,
+    load_environment,
+    _configure_console_encoding,
+)
 from suzent.cli.cron import cron_app
 from suzent.cli.heartbeat import heartbeat_app
 from suzent.cli.nodes import nodes_app
@@ -30,6 +35,7 @@ def main(
     """
     Suzent CLI - Your Digital Co-worker Manager.
     """
+    _configure_console_encoding()
     configure_logging(verbose)
     load_environment()
 

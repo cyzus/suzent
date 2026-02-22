@@ -1,4 +1,4 @@
-# Python-generated files
+# Python
 __pycache__/
 *.py[oc]
 *$py.class
@@ -7,25 +7,21 @@ dist/
 wheels/
 *.egg-info
 .eggs/
-
-# Virtual environments
-.venv
-.env
-venv/
-
-# Byte-compiled / cache
 .python-version
 .mypy_cache/
 .pytest_cache/
 .dmypy.json
-
-# Coverage / test
 .coverage
 .coverage.*
 htmlcov/
 .tox/
 .nox/
 pytest-debug.log
+
+# Virtual environments
+.venv
+.env
+venv/
 
 # Logs
 logs/
@@ -36,52 +32,48 @@ logs/
 .idea/
 .claude/
 
-# Node.js / npm
+# Node.js
 node_modules/
-**/node_modules/
-**/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Frontend artifacts
+# Frontend
 frontend/dist
 frontend/.dist
 frontend/vite-cache
 *.tsbuildinfo
 
-# Database files
+# Tauri
+src-tauri/target/
+src-tauri/binaries/
+src-tauri/resources/
+!src-tauri/resources/suzent
+!src-tauri/resources/suzent.cmd
+src-tauri/browsers/
+src-tauri/gen/
+
+# Database
 *.db
 *.sqlite
 *.sqlite3
 
-# Tauri build artifacts
-src-tauri/target/
-src-tauri/binaries/
-src-tauri/resources/
-src-tauri/browsers/
-src-tauri/gen/
-
-# Rust
-
-# Misc
-.DS_Store
-Thumbs.db
-
-# Config
+# Config & data
 config/default.yaml
-
-# Persisted data (chats, sandbox sessions, etc.)
-data/
-
-# Docker compose overrides
-*.override.yml
 config/skills.json
+config/social.json
+data/
 .suzent/
 
-# Skills
+# Docker
+*.override.yml
+
+# Skills (generated)
 skills/docx
 skills/pdf
 skills/xlsx
 skills/pptx
-config/social.json
+
+# OS
+.DS_Store
+Thumbs.db
