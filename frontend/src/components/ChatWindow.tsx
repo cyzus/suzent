@@ -237,7 +237,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     isStreaming,
     activeStreamingChatId,
     hideToolCalls,
-    toggleHideToolCalls,
   } = useChatStore();
 
   const { refresh: refreshPlan, applySnapshot: applyPlanSnapshot, plan } = usePlan();
@@ -525,25 +524,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
 
           {showScrollButton && <ScrollToBottomButton onClick={scrollToBottom} />}
-
-          {/* Tool call collapse toggle (only shown when messages exist) */}
-          {safeMessages.length > 0 && (
-            <button
-              onClick={toggleHideToolCalls}
-              className={`absolute top-3 right-6 z-20 flex items-center gap-1.5 px-3 py-1.5 border-2 border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-xs font-bold uppercase tracking-wider transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] ${
-                hideToolCalls
-                  ? 'bg-brutal-blue text-white'
-                  : 'bg-white text-brutal-black hover:bg-neutral-50'
-              }`}
-              title={hideToolCalls ? t('chatWindow.showToolCalls') : t('chatWindow.hideToolCalls')}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17l-5.84-3.17a1 1 0 010-1.74l5.84-3.17a1 1 0 011.16 0l5.84 3.17a1 1 0 010 1.74l-5.84 3.17a1 1 0 01-1.16 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2 1m14-1l-2 1m-7 4l-2-1m2 1l2-1" />
-              </svg>
-              {hideToolCalls ? t('chatWindow.showToolCalls') : t('chatWindow.hideToolCalls')}
-            </button>
-          )}
         </div>
 
         {/* Input Panel (shown when messages exist) */}

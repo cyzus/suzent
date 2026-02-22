@@ -181,9 +181,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const viewSwitcherRef = useRef<((view: 'chat' | 'memory') => void) | null>(null);
   const [hideToolCalls, setHideToolCalls] = useState(() => {
     try {
-      return localStorage.getItem('suzent_hide_tool_calls') === 'true';
+      const stored = localStorage.getItem('suzent_hide_tool_calls');
+      return stored === null ? true : stored === 'true';
     } catch {
-      return false;
+      return true;
     }
   });
   const toggleHideToolCalls = useCallback(() => {
