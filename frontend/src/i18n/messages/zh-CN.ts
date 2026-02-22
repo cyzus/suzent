@@ -277,6 +277,8 @@ export const zhCN = {
     dragDropDesc: '支持图片、PDF、文档等',
     scrollToBottom: '滚动到底部',
     connecting: '正在连接核心服务...',
+    hideToolCalls: '折叠工具',
+    showToolCalls: '展开工具',
   },
   newChat: {
     greetings: {
@@ -411,6 +413,11 @@ export const zhCN = {
     expand: '展开',
     lines: '{count} 行',
     chars: '{count} 字符',
+  },
+  toolCallBlock: {
+    done: '完成',
+    arguments: '参数',
+    output: '输出',
   },
   sandbox: {
     selectChat: '请选择一个对话',

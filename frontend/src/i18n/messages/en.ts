@@ -350,6 +350,8 @@ export const en = {
     dragDropDesc: 'Images, PDFs, documents, etc.',
     scrollToBottom: 'Scroll to bottom',
     connecting: 'Connecting to Neural Core...',
+    hideToolCalls: 'Collapse Tools',
+    showToolCalls: 'Expand Tools',
   },
   newChat: {
     greetings: {
@@ -484,6 +486,11 @@ export const en = {
     expand: 'Expand',
     lines: '{count} lines',
     chars: '{count} chars',
+  },
+  toolCallBlock: {
+    done: 'Done',
+    arguments: 'Arguments',
+    output: 'Output',
   },
   sandbox: {
     selectChat: 'Select a chat',

@@ -21,9 +21,11 @@ export interface StreamCallbacks {
 let detectedAgentType: 'code' | 'toolcalling' | null = null;
 
 interface ContentBlock {
-  type: 'markdown' | 'code' | 'log';
+  type: 'markdown' | 'code' | 'log' | 'toolCall';
   content: string;
   title?: string; // For log blocks
+  toolName?: string;
+  toolArgs?: string;
 }
 
 function escapeHtml(unsafe: string) {
@@ -218,15 +220,22 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
           if (toolCall?.function?.name) {
             const toolName = toolCall.function.name;
             const toolArgs = toolCall.function.arguments || '';
-            blocks[blocks.length - 1].content += `\n\n**🔧 Calling Tool:** \`${toolName}\`\n\n`;
+            let formattedArgs = '';
             if (toolArgs && toolArgs !== '{}') {
               try {
                 const parsedArgs = typeof toolArgs === 'string' ? JSON.parse(toolArgs) : toolArgs;
-                blocks[blocks.length - 1].content += `**Arguments:**\n\`\`\`json\n${JSON.stringify(parsedArgs, null, 2)}\n\`\`\`\n\n`;
+                formattedArgs = JSON.stringify(parsedArgs, null, 2);
               } catch {
-                blocks[blocks.length - 1].content += `**Arguments:** ${toolArgs}\n\n`;
+                formattedArgs = toolArgs;
               }
             }
+            // Push as a log block with tool-call title prefix (delta-safe, append-only)
+            blocks.push({
+              type: 'log',
+              content: formattedArgs ? escapeHtml(formattedArgs) : '',
+              title: `\u{1F527} ${toolName}`,
+            });
+            blocks.push({ type: 'markdown', content: '' });
             emitDiff();
           }
           continue;
@@ -302,12 +311,13 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
 
         if (output && !data?.is_final_answer) {
           const escapedOutput = formatLogContent(output);
-          // Push a log block instead of appending HTML string
           if (isInCodeBlock) { isInCodeBlock = false; blocks.push({ type: 'markdown', content: '' }); }
+
+          // Push as a separate log block with tool-output title prefix (delta-safe, append-only)
           blocks.push({
             type: 'log',
             content: escapedOutput,
-            title: `📦 Tool Output: \`${toolName}\``
+            title: `\u{1F4E6} ${toolName}`,
           });
           blocks.push({ type: 'markdown', content: '' });
           emitDiff();

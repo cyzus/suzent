@@ -3,6 +3,7 @@ import { useChatStore } from '../hooks/useChatStore';
 import { streamChat } from '../lib/streaming';
 import { getApiBase, getSandboxParams } from '../lib/api';
 import type { Message, FileAttachment } from '../types/api';
+import { isToolOnlyContent, splitAssistantContent, mergeToolCallPairs, type ContentBlock } from '../lib/chatUtils';
 import { usePlan } from '../hooks/usePlan';
 import { useMemory } from '../hooks/useMemory';
 import { useAutoScroll } from '../hooks/useAutoScroll';
@@ -12,7 +13,7 @@ import { NewChatView } from './NewChatView';
 import { ChatInputPanel } from './ChatInputPanel';
 import { ImageViewer } from './ImageViewer';
 import { FileViewer } from './FileViewer';
-import { UserMessage, AssistantMessage, RightSidebar } from './chat';
+import { UserMessage, AssistantMessage, ToolCallBlock, RightSidebar } from './chat';
 import { useI18n } from '../i18n';
 
 // Drag overlay component
@@ -67,40 +68,142 @@ const MessageList: React.FC<{
   isStreaming: boolean;
   streamingForCurrentChat: boolean;
   chatId?: string;
+  hideToolCalls?: boolean;
   onImageClick?: (src: string) => void;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-}> = ({ messages, isStreaming, streamingForCurrentChat, chatId, onImageClick, onFileClick }) => (
-  <div className="space-y-8">
-    {messages.map((m, idx) => {
-      const isUser = m.role === 'user';
-      const isLastMessage = idx === messages.length - 1;
+}> = ({ messages, isStreaming, streamingForCurrentChat, chatId, hideToolCalls, onImageClick, onFileClick }) => (
+  <div className="space-y-6">
+    {(() => {
+      // Pre-compute tool-only groups: consecutive tool-only assistant messages
+      // are rendered as a single merged pill group instead of individual messages
+      const IGNORED_TOOL_NAMES = ['final_answer', 'final answer'];
 
-      return (
-        <div key={idx} className="w-full flex flex-col group/message">
-          <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} w-full`}>
-            {isUser ? (
-              <UserMessage message={m} chatId={chatId} onImageClick={onImageClick} onFileClick={onFileClick} />
-            ) : (
-              <AssistantMessage
-                message={m}
-                messageIndex={idx}
-                isStreaming={streamingForCurrentChat}
-                isLastMessage={isLastMessage}
-                onFileClick={onFileClick}
-              />
-            )}
-          </div>
-          {!isUser && m.stepInfo && m.content?.trim() && (
-            <div className="flex justify-start w-full mt-2 pl-4">
-              <div className="inline-flex items-center gap-2 text-[10px] text-brutal-black font-mono font-bold px-3 py-1 bg-neutral-100 border-2 border-brutal-black shadow-sm select-none">
-                <span className="text-brutal-blue">⚡</span>
-                <span>{m.stepInfo}</span>
+      const filterIgnored = (blocks: ContentBlock[]) =>
+        blocks.filter(b => {
+          if (b.type !== 'toolCall') return true;
+          return !IGNORED_TOOL_NAMES.includes((b.toolName || '').toLowerCase());
+        });
+
+      // Build a set of message indices that belong to tool-only groups
+      // and determine which index is the "representative" that renders the merged pills
+      const skipIndices = new Set<number>();
+      const groupRenders = new Map<number, { mergedBlocks: ContentBlock[]; stepSummary: string | null }>();
+
+      let i = 0;
+      while (i < messages.length) {
+        const m = messages[i];
+        if (m.role !== 'user' && isToolOnlyContent(m.content)) {
+          // Start of a tool-only group — collect all consecutive tool-only messages
+          const groupStart = i;
+          const allBlocks: ContentBlock[] = [];
+          const allStepInfos: string[] = [];
+          while (i < messages.length && messages[i].role !== 'user' && isToolOnlyContent(messages[i].content)) {
+            const parsed = filterIgnored(splitAssistantContent(messages[i].content));
+            allBlocks.push(...parsed.filter(b => b.type === 'toolCall'));
+            if (messages[i].stepInfo) allStepInfos.push(messages[i].stepInfo!);
+            if (i > groupStart) skipIndices.add(i); // skip non-representative messages
+            i++;
+          }
+          // Merge invocations with outputs across all messages in the group
+          const merged = mergeToolCallPairs(allBlocks);
+
+          // Also check if the next message is a content message — collect its stepInfo too
+          if (i < messages.length && messages[i].role !== 'user' && !isToolOnlyContent(messages[i].content)) {
+            if (messages[i].stepInfo) allStepInfos.push(messages[i].stepInfo!);
+          }
+
+          let stepSummary: string | null = null;
+          if (allStepInfos.length > 0) {
+            let totalInput = 0;
+            let totalOutput = 0;
+            for (const info of allStepInfos) {
+              const inputMatch = info.match(/Input\s+tokens:\s+([\d,]+)/i);
+              const outputMatch = info.match(/Output\s+tokens:\s+([\d,]+)/i);
+              if (inputMatch) totalInput += parseInt(inputMatch[1].replace(/,/g, ''), 10);
+              if (outputMatch) totalOutput += parseInt(outputMatch[1].replace(/,/g, ''), 10);
+            }
+            const fmtNum = (n: number) => n.toLocaleString();
+            stepSummary = `${allStepInfos.length} steps | Input: ${fmtNum(totalInput)} tokens | Output: ${fmtNum(totalOutput)} tokens`;
+          }
+
+          groupRenders.set(groupStart, { mergedBlocks: merged, stepSummary });
+        } else {
+          i++;
+        }
+      }
+
+      return messages.map((m, idx) => {
+        if (skipIndices.has(idx)) return null; // Part of a group, rendered by representative
+
+        const isUser = m.role === 'user';
+        const isLastMessage = idx === messages.length - 1;
+        const isAssistant = !isUser;
+        const group = groupRenders.get(idx);
+
+        // Tool-only group representative: render merged pills + step summary
+        if (group) {
+          return (
+            <div key={idx} className="w-full flex flex-col group/message">
+              <div className="flex justify-start w-full">
+                <div className="w-full max-w-4xl text-sm leading-relaxed pl-2">
+                  {group.mergedBlocks.map((b, bi) => (
+                    b.type === 'toolCall' ? (
+                      <ToolCallBlock
+                        key={`group-${idx}-${bi}`}
+                        toolName={b.toolName || 'unknown'}
+                        toolArgs={b.toolArgs}
+                        output={b.content || undefined}
+                        defaultCollapsed={hideToolCalls}
+                      />
+                    ) : null
+                  ))}
+                </div>
               </div>
             </div>
-          )}
-        </div>
-      );
-    })}
+          );
+        }
+
+        // Regular message rendering
+        // For content messages after a tool-only group, show the group's step summary
+        const precedingGroup = isAssistant && !isUser ? (() => {
+          for (let j = idx - 1; j >= 0; j--) {
+            if (groupRenders.has(j)) return groupRenders.get(j)!;
+            if (skipIndices.has(j)) continue;
+            break;
+          }
+          return null;
+        })() : null;
+
+        const stepSummary = precedingGroup?.stepSummary || null;
+
+        return (
+          <div key={idx} className="w-full flex flex-col group/message">
+            <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} w-full`}>
+              {isUser ? (
+                <UserMessage message={m} chatId={chatId} onImageClick={onImageClick} onFileClick={onFileClick} />
+              ) : (
+                <AssistantMessage
+                  message={m}
+                  messageIndex={idx}
+                  isStreaming={streamingForCurrentChat}
+                  isLastMessage={isLastMessage}
+                  onFileClick={onFileClick}
+                  hideToolCalls={hideToolCalls}
+                />
+              )}
+            </div>
+            {isAssistant && stepSummary && (
+              <div className="flex justify-start w-full mt-2 pl-4">
+                <div className="inline-flex items-center gap-2 text-[10px] text-brutal-black font-mono font-bold px-3 py-1 bg-neutral-100 border-2 border-brutal-black shadow-sm select-none">
+                  <span className="text-brutal-blue">⚡</span>
+                  <span>{stepSummary}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      });
+    })()}
   </div>
 );
 
@@ -133,10 +236,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     removeEmptyAssistantMessage,
     isStreaming,
     activeStreamingChatId,
+    hideToolCalls,
+    toggleHideToolCalls,
   } = useChatStore();
 
   const { refresh: refreshPlan, applySnapshot: applyPlanSnapshot, plan } = usePlan();
   const { loadCoreMemory, loadStats } = useMemory();
+  const { t } = useI18n();
 
   // Local state
   const [input, setInput] = useState('');
@@ -408,6 +514,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 isStreaming={isStreaming}
                 streamingForCurrentChat={streamingForCurrentChat}
                 chatId={currentChatId ?? undefined}
+                hideToolCalls={hideToolCalls}
                 onImageClick={setViewingImage}
                 onFileClick={handleFileClick}
               />
@@ -418,6 +525,25 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
 
           {showScrollButton && <ScrollToBottomButton onClick={scrollToBottom} />}
+
+          {/* Tool call collapse toggle (only shown when messages exist) */}
+          {safeMessages.length > 0 && (
+            <button
+              onClick={toggleHideToolCalls}
+              className={`absolute top-3 right-6 z-20 flex items-center gap-1.5 px-3 py-1.5 border-2 border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-xs font-bold uppercase tracking-wider transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] ${
+                hideToolCalls
+                  ? 'bg-brutal-blue text-white'
+                  : 'bg-white text-brutal-black hover:bg-neutral-50'
+              }`}
+              title={hideToolCalls ? t('chatWindow.showToolCalls') : t('chatWindow.hideToolCalls')}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17l-5.84-3.17a1 1 0 010-1.74l5.84-3.17a1 1 0 011.16 0l5.84 3.17a1 1 0 010 1.74l-5.84 3.17a1 1 0 01-1.16 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2 1m14-1l-2 1m-7 4l-2-1m2 1l2-1" />
+              </svg>
+              {hideToolCalls ? t('chatWindow.showToolCalls') : t('chatWindow.hideToolCalls')}
+            </button>
+          )}
         </div>
 
         {/* Input Panel (shown when messages exist) */}

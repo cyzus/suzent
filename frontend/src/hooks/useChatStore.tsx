@@ -36,6 +36,8 @@ interface ChatContextValue {
   refreshChatList: (searchQuery?: string) => Promise<void>;
   setViewSwitcher?: (switcher: (view: 'chat' | 'memory') => void) => void;
   switchToView?: (view: 'chat' | 'memory') => void;
+  hideToolCalls: boolean;
+  toggleHideToolCalls: () => void;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -177,6 +179,20 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const messagesByChatRef = useRef(messagesByChat);
   const configByChatRef = useRef(configByChat);
   const viewSwitcherRef = useRef<((view: 'chat' | 'memory') => void) | null>(null);
+  const [hideToolCalls, setHideToolCalls] = useState(() => {
+    try {
+      return localStorage.getItem('suzent_hide_tool_calls') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const toggleHideToolCalls = useCallback(() => {
+    setHideToolCalls(prev => {
+      const next = !prev;
+      try { localStorage.setItem('suzent_hide_tool_calls', String(next)); } catch {}
+      return next;
+    });
+  }, []);
   const lastSavedPreferencesRef = useRef<{ model: string, agent: string, tools: string[], memory_enabled?: boolean, sandbox_enabled?: boolean, sandbox_volumes?: string[] } | null>(null);
 
   // Keep refs in sync with state
@@ -965,7 +981,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       deleteChat,
       refreshChatList,
       setViewSwitcher,
-      switchToView
+      switchToView,
+      hideToolCalls,
+      toggleHideToolCalls
     }}>
       {children}
     </ChatContext.Provider>
