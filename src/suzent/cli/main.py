@@ -91,6 +91,110 @@ def ensure_cargo_in_path():
         typer.echo("   Please ensure Rust is installed and 'cargo' is in your PATH.")
 
 
+def ensure_msvc_linker():
+    """Ensure the MSVC linker is available on Windows, or offer to install it."""
+    if not IS_WINDOWS:
+        return
+
+    if shutil.which("link.exe"):
+        return
+
+    # Try to find via vswhere and add to PATH for this session
+    vswhere = (
+        Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)"))
+        / "Microsoft Visual Studio"
+        / "Installer"
+        / "vswhere.exe"
+    )
+
+    if vswhere.exists():
+        result = subprocess.run(
+            [
+                str(vswhere),
+                "-latest",
+                "-products",
+                "*",
+                "-requires",
+                "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                "-property",
+                "installationPath",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        vs_path = result.stdout.strip() if result.returncode == 0 else ""
+        if vs_path:
+            # Try to find linker binary and add to PATH
+            vc_tools = Path(vs_path) / "VC" / "Tools" / "MSVC"
+            if vc_tools.exists():
+                versions = sorted(vc_tools.iterdir(), reverse=True)
+                for ver_dir in versions:
+                    link_dir = ver_dir / "bin" / "Hostx64" / "x64"
+                    if (link_dir / "link.exe").exists():
+                        typer.echo(
+                            f"📦 Found MSVC linker at {link_dir}, adding to PATH..."
+                        )
+                        os.environ["PATH"] = f"{link_dir};{os.environ.get('PATH', '')}"
+                        return
+
+            typer.echo(
+                "⚠️  MSVC Build Tools are installed but 'link.exe' could not be located."
+            )
+            typer.echo(
+                "   Try running from a Developer Command Prompt, or reinstall Build Tools."
+            )
+            raise typer.Exit(code=1)
+
+    # Not installed at all
+    typer.echo("❌ MSVC linker (link.exe) not found!")
+    typer.echo("   This is required for compiling Tauri/Rust on Windows.")
+    typer.echo(
+        "   Run 'suzent setup-build-tools' to install, then restart your terminal."
+    )
+
+    if typer.confirm("   Would you like to install Build Tools now?"):
+        # Delegate to the setup_build_tools command logic
+        try:
+            subprocess.run(["winget", "--version"], capture_output=True, check=True)
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            typer.echo(
+                "❌ 'winget' not found. Please install Build Tools manually from:"
+            )
+            typer.echo("   https://visualstudio.microsoft.com/visual-cpp-build-tools/")
+            raise typer.Exit(code=1)
+
+        typer.echo(
+            "🛠️  Installing Visual Studio Build Tools (this may take several minutes)..."
+        )
+        install_result = subprocess.run(
+            [
+                "winget",
+                "install",
+                "--id",
+                "Microsoft.VisualStudio.2022.BuildTools",
+                "--override",
+                "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if install_result.returncode == 0:
+            typer.echo(
+                "✅ Build Tools installed! Please RESTART your terminal and run 'suzent start' again."
+            )
+        else:
+            typer.echo(
+                f"⚠️  Installation finished with code {install_result.returncode}."
+            )
+            typer.echo("   Please restart your terminal and try again.")
+        raise typer.Exit(code=0)
+    else:
+        raise typer.Exit(code=1)
+
+
 def get_pid_on_port(port: int) -> int | None:
     """Get the PID of the process using the specified port."""
     try:
@@ -147,6 +251,9 @@ def register_commands(app: typer.Typer):
             return
 
         typer.echo("🚀 Starting SUZENT...")
+
+        # Pre-flight: ensure MSVC linker is available on Windows
+        ensure_msvc_linker()
 
         for port, name in [(25314, "Backend"), (5173, "Frontend")]:
             pid = get_pid_on_port(port)
