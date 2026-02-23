@@ -419,6 +419,12 @@ export const zhCN = {
     arguments: '参数',
     output: '输出',
   },
+  codeStepBlock: {
+    thought: '思考',
+    code: '代码',
+    executionLogs: '执行日志',
+    result: '结果',
+  },
   sandbox: {
     selectChat: '请选择一个对话',
     back: '返回',

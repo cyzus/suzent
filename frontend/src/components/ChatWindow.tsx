@@ -3,7 +3,7 @@ import { useChatStore } from '../hooks/useChatStore';
 import { streamChat } from '../lib/streaming';
 import { getApiBase, getSandboxParams } from '../lib/api';
 import type { Message, FileAttachment } from '../types/api';
-import { isToolOnlyContent, splitAssistantContent, mergeToolCallPairs, type ContentBlock } from '../lib/chatUtils';
+import { isIntermediateStepContent, splitAssistantContent, mergeToolCallPairs, type ContentBlock } from '../lib/chatUtils';
 import { usePlan } from '../hooks/usePlan';
 import { useMemory } from '../hooks/useMemory';
 import { useAutoScroll } from '../hooks/useAutoScroll';
@@ -13,7 +13,7 @@ import { NewChatView } from './NewChatView';
 import { ChatInputPanel } from './ChatInputPanel';
 import { ImageViewer } from './ImageViewer';
 import { FileViewer } from './FileViewer';
-import { UserMessage, AssistantMessage, ToolCallBlock, RightSidebar } from './chat';
+import { UserMessage, AssistantMessage, ToolCallBlock, CodeStepBlock, RightSidebar } from './chat';
 import { useI18n } from '../i18n';
 
 // Drag overlay component
@@ -91,23 +91,46 @@ const MessageList: React.FC<{
       let i = 0;
       while (i < messages.length) {
         const m = messages[i];
-        if (m.role !== 'user' && isToolOnlyContent(m.content)) {
-          // Start of a tool-only group — collect all consecutive tool-only messages
+        if (m.role !== 'user' && isIntermediateStepContent(m.content, m.stepInfo)) {
+          // Start of a step group — collect all consecutive intermediate step messages
           const groupStart = i;
           const allBlocks: ContentBlock[] = [];
           const allStepInfos: string[] = [];
-          while (i < messages.length && messages[i].role !== 'user' && isToolOnlyContent(messages[i].content)) {
+          while (i < messages.length && messages[i].role !== 'user' && isIntermediateStepContent(messages[i].content, messages[i].stepInfo)) {
             const parsed = filterIgnored(splitAssistantContent(messages[i].content));
-            allBlocks.push(...parsed.filter(b => b.type === 'toolCall'));
+            const stepBlocks = parsed.filter(b => b.type === 'toolCall' || b.type === 'codeStep');
+            if (stepBlocks.length > 0) {
+              allBlocks.push(...stepBlocks);
+            } else if (messages[i].stepInfo) {
+              // Message has stepInfo but wasn't parsed as codeStep — wrap content as codeStep
+              const mdBlocks = parsed.filter(b => b.type === 'markdown' && b.content.trim());
+              const codeBlocks = parsed.filter(b => b.type === 'code' && b.content.trim());
+              const logBlocks = parsed.filter(b => b.type === 'log');
+              const thoughtText = mdBlocks.map(b => b.content.trim()).join('\n').replace(/^Thought:\s*/i, '') || '';
+              allBlocks.push({
+                type: 'codeStep',
+                content: thoughtText,
+                thought: thoughtText,
+                codeContent: codeBlocks.map(b => b.content).join('\n') || undefined,
+                executionLogs: logBlocks.map(b => b.content).join('\n') || undefined,
+              });
+            } else {
+              // Legacy fallback: "Thought:"-only messages without code
+              const thoughtText = (messages[i].content || '').trim().replace(/^Thought:\s*/i, '');
+              if (thoughtText) {
+                allBlocks.push({ type: 'codeStep', content: thoughtText, thought: thoughtText });
+              }
+            }
             if (messages[i].stepInfo) allStepInfos.push(messages[i].stepInfo!);
             if (i > groupStart) skipIndices.add(i); // skip non-representative messages
             i++;
           }
           // Merge invocations with outputs across all messages in the group
+          // mergeToolCallPairs only affects toolCall blocks; codeStep blocks pass through
           const merged = mergeToolCallPairs(allBlocks);
 
           // Also check if the next message is a content message — collect its stepInfo too
-          if (i < messages.length && messages[i].role !== 'user' && !isToolOnlyContent(messages[i].content)) {
+          if (i < messages.length && messages[i].role !== 'user' && !isIntermediateStepContent(messages[i].content, messages[i].stepInfo)) {
             if (messages[i].stepInfo) allStepInfos.push(messages[i].stepInfo!);
           }
 
@@ -139,23 +162,38 @@ const MessageList: React.FC<{
         const isAssistant = !isUser;
         const group = groupRenders.get(idx);
 
-        // Tool-only group representative: render merged pills + step summary
+        // Intermediate step group representative: render merged pills (no badge here — shows after final answer)
         if (group) {
           return (
             <div key={idx} className="w-full flex flex-col group/message">
               <div className="flex justify-start w-full">
                 <div className="w-full max-w-4xl text-sm leading-relaxed pl-2">
-                  {group.mergedBlocks.map((b, bi) => (
-                    b.type === 'toolCall' ? (
-                      <ToolCallBlock
-                        key={`group-${idx}-${bi}`}
-                        toolName={b.toolName || 'unknown'}
-                        toolArgs={b.toolArgs}
-                        output={b.content || undefined}
-                        defaultCollapsed
-                      />
-                    ) : null
-                  ))}
+                  {group.mergedBlocks.map((b, bi) => {
+                    if (b.type === 'toolCall') {
+                      return (
+                        <ToolCallBlock
+                          key={`group-${idx}-${bi}`}
+                          toolName={b.toolName || 'unknown'}
+                          toolArgs={b.toolArgs}
+                          output={b.content || undefined}
+                          defaultCollapsed
+                        />
+                      );
+                    }
+                    if (b.type === 'codeStep') {
+                      return (
+                        <CodeStepBlock
+                          key={`group-${idx}-${bi}`}
+                          thought={b.thought || ''}
+                          codeContent={b.codeContent}
+                          executionLogs={b.executionLogs}
+                          result={b.result}
+                          defaultCollapsed
+                        />
+                      );
+                    }
+                    return null;
+                  })}
                 </div>
               </div>
             </div>
@@ -186,6 +224,7 @@ const MessageList: React.FC<{
                   messageIndex={idx}
                   isStreaming={streamingForCurrentChat}
                   isLastMessage={isLastMessage}
+                  isCodeAgentChat={messages.some(msg => msg.role !== 'user' && !!msg.stepInfo)}
                   onFileClick={onFileClick}
                 />
               )}

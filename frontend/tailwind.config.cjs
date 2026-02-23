@@ -143,6 +143,14 @@ module.exports = {
             backgroundColor: '#A8E6A3',
             borderColor: '#FFFFFF'
           }
+        },
+        brutalBounce: {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-4px)' }
+        },
+        brutalSlideBar: {
+          '0%': { left: '-33%' },
+          '100%': { left: '100%' }
         }
       },
       animation: {

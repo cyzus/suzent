@@ -1,6 +1,7 @@
 export { CopyButton } from './CopyButton';
 export { LogBlock } from './LogBlock';
 export { ToolCallBlock } from './ToolCallBlock';
+export { CodeStepBlock } from './CodeStepBlock';
 export { CodeBlockComponent } from './CodeBlockComponent';
 export { MarkdownRenderer } from './MarkdownRenderer';
 export { ThinkingAnimation, RobotIcon, AgentBadge } from './ThinkingAnimation';

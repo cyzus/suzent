@@ -492,6 +492,12 @@ export const en = {
     arguments: 'Arguments',
     output: 'Output',
   },
+  codeStepBlock: {
+    thought: 'Thought',
+    code: 'Code',
+    executionLogs: 'Execution Logs',
+    result: 'Result',
+  },
   sandbox: {
     selectChat: 'Select a chat',
     back: 'Back',

@@ -1,11 +1,16 @@
 
 export interface ContentBlock {
-  type: 'markdown' | 'code' | 'log' | 'toolCall';
+  type: 'markdown' | 'code' | 'log' | 'toolCall' | 'codeStep';
   content: string;
   lang?: string;
   title?: string;
   toolName?: string;
   toolArgs?: string;
+  // CodeAgent step fields
+  thought?: string;
+  codeContent?: string;
+  executionLogs?: string;
+  result?: string;
 }
 
 // Helper to normalize Python code indentation
@@ -56,6 +61,34 @@ export function isToolOnlyContent(content: string | undefined): boolean {
   const hasContent = contentBlocks.some(b => b.content.trim().length > 0);
   return !hasContent;
 }
+
+/** Check if parsed blocks represent a CodeAgent intermediate step */
+export function isCodeStepContent(content: string | undefined): boolean {
+  if (!content?.trim()) return false;
+  const trimmed = content.trim();
+  const blocks = splitAssistantContent(content);
+  const meaningful = blocks.filter(b => b.type !== 'markdown' || b.content.trim().length > 0);
+  if (meaningful.length > 0 && meaningful.every(b => b.type === 'codeStep')) return true;
+  // Also detect "Thought:"-only messages that didn't get a code block
+  if (meaningful.length === 1 && meaningful[0].type === 'markdown' && meaningful[0].content.trim().startsWith('Thought:')) return true;
+  // Detect raw final_answer(...) calls that leaked as content
+  if (/^\s*final_answer\s*\(/i.test(trimmed)) return true;
+  // Detect messages that are only a code block calling final_answer
+  if (meaningful.length === 1 && meaningful[0].type === 'code' && /final_answer\s*\(/i.test(meaningful[0].content)) return true;
+  // Detect CodeAgent steps without "Thought:" prefix: markdown + code + execution logs
+  const hasCode = meaningful.some(b => b.type === 'code' && b.content.trim());
+  const hasLogs = meaningful.some(b => b.type === 'log' && b.title === 'Execution Logs');
+  if (hasCode && hasLogs) return true;
+  return false;
+}
+
+/** Check if message is an intermediate step (tool-only or codeStep) — not user-facing content.
+ *  If stepInfo is provided, it's a definitive signal the message is an intermediate step. */
+export function isIntermediateStepContent(content: string | undefined, stepInfo?: string): boolean {
+  if (stepInfo) return true;
+  return isToolOnlyContent(content) || isCodeStepContent(content);
+}
+
 
 // Helper to split assistant content into markdown + code + log + toolCall blocks
 export function splitAssistantContent(content: string): ContentBlock[] {
@@ -193,7 +226,120 @@ export function splitAssistantContent(content: string): ContentBlock[] {
     // Filter AFTER conversion so toolCall blocks with empty content are kept
     .filter(b => b.content !== '' || b.type === 'toolCall');
 
-  return mergeToolCallPairs(converted);
+  return mergeCodeAgentSteps(mergeToolCallPairs(converted));
+}
+
+/**
+ * Detect and merge CodeAgent step patterns into codeStep blocks.
+ * Pattern: markdown(thought text) + code(python) + optional log("Execution Logs") + optional result
+ * The thought may or may not start with "Thought:" prefix.
+ * Detection heuristic: markdown + code block + Execution Logs, OR markdown("Thought:...") + code block.
+ * The result can appear as markdown("**Result:**") + code(text) or as markdown containing "**Result:**\n```text\n...\n```"
+ */
+function mergeCodeAgentSteps(blocks: ContentBlock[]): ContentBlock[] {
+  if (blocks.length < 2) return blocks;
+
+  const firstMeaningful = blocks.find(b => b.content.trim().length > 0);
+  if (!firstMeaningful || firstMeaningful.type !== 'markdown') return blocks;
+
+  const hasThoughtPrefix = firstMeaningful.content.trim().startsWith('Thought:');
+  const hasExecutionLogs = blocks.some(b => b.type === 'log' && b.title === 'Execution Logs');
+  const hasCodeBlock = blocks.some(b => b.type === 'code' && b.content.trim());
+
+  // Merge if we have markdown + code block (every CodeAgent step has this pattern)
+  if (!hasThoughtPrefix && !hasCodeBlock) {
+    return blocks;
+  }
+
+  // Find the indices of the pattern components
+  const thoughtIdx = blocks.indexOf(firstMeaningful);
+  let codeIdx = -1;
+  let logIdx = -1;
+  let resultMarkdownIdx = -1;
+  let resultCodeIdx = -1;
+
+  // Look for code block after thought
+  for (let i = thoughtIdx + 1; i < blocks.length; i++) {
+    if (blocks[i].type === 'code' && blocks[i].content.trim()) {
+      codeIdx = i;
+      break;
+    }
+    // Skip empty markdown blocks between thought and code
+    if (blocks[i].type === 'markdown' && blocks[i].content.trim()) break;
+  }
+
+  if (codeIdx === -1) return blocks; // No code block found — not a CodeAgent step
+
+  // Look for optional execution logs after code
+  for (let i = codeIdx + 1; i < blocks.length; i++) {
+    if (blocks[i].type === 'log' && blocks[i].title === 'Execution Logs') {
+      logIdx = i;
+      break;
+    }
+    if (blocks[i].type === 'markdown' && blocks[i].content.trim()) {
+      // Check if this is the Result markdown
+      if (blocks[i].content.includes('**Result:**')) {
+        resultMarkdownIdx = i;
+      }
+      break;
+    }
+  }
+
+  // Look for optional result after log (or after code if no log)
+  const searchFrom = logIdx !== -1 ? logIdx + 1 : codeIdx + 1;
+  for (let i = searchFrom; i < blocks.length; i++) {
+    if (blocks[i].type === 'markdown' && blocks[i].content.includes('**Result:**')) {
+      resultMarkdownIdx = i;
+      // Look for the result code block right after
+      if (i + 1 < blocks.length && blocks[i + 1].type === 'code') {
+        resultCodeIdx = i + 1;
+      }
+      break;
+    }
+    if (blocks[i].type === 'markdown' && blocks[i].content.trim()) break;
+  }
+
+  // Extract fields — strip "Thought:" prefix if present
+  const rawThought = firstMeaningful.content.trim();
+  const thought = rawThought.startsWith('Thought:') ? rawThought.replace(/^Thought:\s*/i, '').trim() : rawThought;
+  const codeContent = blocks[codeIdx].content;
+  const executionLogs = logIdx !== -1 ? blocks[logIdx].content : undefined;
+  const result = resultCodeIdx !== -1 ? blocks[resultCodeIdx].content : undefined;
+
+  // Determine which block indices were consumed
+  const consumed = new Set<number>();
+  consumed.add(thoughtIdx);
+  consumed.add(codeIdx);
+  if (logIdx !== -1) consumed.add(logIdx);
+  if (resultMarkdownIdx !== -1) consumed.add(resultMarkdownIdx);
+  if (resultCodeIdx !== -1) consumed.add(resultCodeIdx);
+  // Also consume empty markdown blocks between thought and final consumed index
+  const maxConsumed = Math.max(...consumed);
+  for (let i = thoughtIdx; i <= maxConsumed; i++) {
+    if (blocks[i].type === 'markdown' && !blocks[i].content.trim()) {
+      consumed.add(i);
+    }
+  }
+
+  // Build the merged codeStep block
+  const codeStep: ContentBlock = {
+    type: 'codeStep',
+    content: thought, // Primary content is the thought for display
+    thought,
+    codeContent,
+    executionLogs,
+    result,
+  };
+
+  // Rebuild: codeStep + any unconsumed blocks
+  const merged: ContentBlock[] = [codeStep];
+  for (let i = 0; i < blocks.length; i++) {
+    if (!consumed.has(i)) {
+      merged.push(blocks[i]);
+    }
+  }
+
+  return merged;
 }
 
 /**
