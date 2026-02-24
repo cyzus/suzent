@@ -573,11 +573,48 @@ def register_commands(app: typer.Typer):
                 sh_shim.write_text("#!/bin/sh\n# Placeholder\n")
 
         typer.echo("  • Updating backend dependencies...")
+        # On Windows, the running suzent.exe in .venv/Scripts/ is locked by the OS.
+        # uv sync will fail trying to remove it ("Access denied", os error 5).
+        # Workaround: rename the locked exe out of the way first — Windows allows
+        # renaming a running executable even though it can't delete it.
+        _renamed_exe: Path | None = None
+        if IS_WINDOWS:
+            venv_exe = root / ".venv" / "Scripts" / "suzent.exe"
+            bak_exe = root / ".venv" / "Scripts" / "suzent.exe.bak"
+            if venv_exe.exists():
+                try:
+                    # Remove any previous leftover .bak
+                    if bak_exe.exists():
+                        try:
+                            bak_exe.unlink()
+                        except OSError:
+                            pass
+                    venv_exe.rename(bak_exe)
+                    _renamed_exe = bak_exe
+                except OSError:
+                    # If rename also fails, uv sync will just have to try
+                    pass
+
         try:
             run_command(["uv", "sync"], cwd=root, shell_on_windows=True)
         except subprocess.CalledProcessError:
             typer.echo("  ❌ Backend dependency update failed (uv sync).")
+            # Try to restore the renamed exe so the CLI still works
+            if _renamed_exe and _renamed_exe.exists():
+                try:
+                    target = root / ".venv" / "Scripts" / "suzent.exe"
+                    if not target.exists():
+                        _renamed_exe.rename(target)
+                except OSError:
+                    pass
             raise typer.Exit(code=1)
+
+        # Clean up the .bak file (may still be locked until this process exits)
+        if _renamed_exe and _renamed_exe.exists():
+            try:
+                _renamed_exe.unlink()
+            except OSError:
+                pass  # Will be cleaned up on next upgrade
 
         # Update Playwright browser (non-fatal)
         typer.echo("  • Updating Playwright browser...")
