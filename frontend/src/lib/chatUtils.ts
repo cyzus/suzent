@@ -246,8 +246,9 @@ function mergeCodeAgentSteps(blocks: ContentBlock[]): ContentBlock[] {
   const hasExecutionLogs = blocks.some(b => b.type === 'log' && b.title === 'Execution Logs');
   const hasCodeBlock = blocks.some(b => b.type === 'code' && b.content.trim());
 
-  // Merge if we have markdown + code block (every CodeAgent step has this pattern)
-  if (!hasThoughtPrefix && !hasCodeBlock) {
+  // Require a strong signal: "Thought:" prefix OR Execution Logs present with a code block.
+  // Without these, the content is likely a final answer with legitimate code blocks.
+  if (!hasThoughtPrefix && !(hasExecutionLogs && hasCodeBlock)) {
     return blocks;
   }
 

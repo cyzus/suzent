@@ -16,7 +16,6 @@ interface AssistantMessageProps {
   messageIndex: number;
   isStreaming: boolean;
   isLastMessage: boolean;
-  isCodeAgentChat?: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
 }
 
@@ -96,7 +95,7 @@ const StreamingContent: React.FC<{
         } else if (b.type === 'toolCall') {
           return <ToolCallBlock key={blockKey} toolName={b.toolName || 'unknown'} toolArgs={b.toolArgs} output={b.content || undefined} defaultCollapsed />;
         } else if (b.type === 'codeStep') {
-          return <CodeStepBlock key={blockKey} thought={b.thought || ''} codeContent={b.codeContent} executionLogs={b.executionLogs} result={b.result} isStreaming defaultCollapsed={false} />;
+          return <CodeStepBlock key={blockKey} thought={b.thought || ''} codeContent={b.codeContent} executionLogs={b.executionLogs} result={b.result} defaultCollapsed />;
         } else {
           return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} isStreaming={isLastBlock} />;
         }
@@ -136,7 +135,6 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   messageIndex,
   isStreaming,
   isLastMessage,
-  isCodeAgentChat = false,
   onFileClick,
 }) => {
   const isStreamingThis = isStreaming && isLastMessage;
@@ -187,10 +185,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     }
 
     // stepInfo is the definitive signal — every CodeAgent intermediate step has it.
-    // isCodeAgentChat means previous messages had stepInfo, so this is likely another step.
     // Also fall back to content heuristics (Thought: prefix, code+logs) for in-flight messages.
     const isCodeAgentStep = !!message.stepInfo
-      || isCodeAgentChat
       || message.content?.trim().startsWith('Thought:')
       || (blocks.some(b => b.type === 'code' && b.content.trim()) && blocks.some(b => b.type === 'log' && b.title === 'Execution Logs'));
 

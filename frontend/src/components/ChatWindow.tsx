@@ -224,7 +224,6 @@ const MessageList: React.FC<{
                   messageIndex={idx}
                   isStreaming={streamingForCurrentChat}
                   isLastMessage={isLastMessage}
-                  isCodeAgentChat={messages.some(msg => msg.role !== 'user' && !!msg.stepInfo)}
                   onFileClick={onFileClick}
                 />
               )}
