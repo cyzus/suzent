@@ -18,6 +18,16 @@ function Refresh-Path {
 Check-Command "git" "Git"
 Check-Command "node" "Node.js"
 
+# 1.1. Check Node.js version (20+ required)
+$nodeVersion = (node --version) -replace '^v', ''
+$nodeMajor = [int]($nodeVersion.Split('.')[0])
+if ($nodeMajor -lt 20) {
+    Write-Host "⚠️  Node.js version $nodeVersion detected. Version 20+ is required." -ForegroundColor Red
+    Write-Host "   Please upgrade Node.js from https://nodejs.org/" -ForegroundColor Cyan
+    exit 1
+}
+Write-Host "✅ Node.js v$nodeVersion" -ForegroundColor Green
+
 # 1.5. Check/Install Rust
 if (-not (Get-Command "cargo" -ErrorAction SilentlyContinue)) {
     Write-Host "⚠️  Rust (cargo) not found!" -ForegroundColor Yellow
@@ -97,9 +107,23 @@ function Add-VCToolsToPath($vsPath) {
 }
 
 $needRestart = $false
-if (-not (Get-Command "link.exe" -ErrorAction SilentlyContinue)) {
-    $vsPath = Find-VCToolsPath
+# Detect MSVC linker via vswhere first, fall back to PATH check
+$vsPath = Find-VCToolsPath
+$hasMSVCLinker = $false
+if ($vsPath) {
+    $vcToolsDir = Join-Path $vsPath "VC\Tools\MSVC"
+    if (Test-Path $vcToolsDir) {
+        $latest = Get-ChildItem $vcToolsDir -Directory | Sort-Object Name -Descending | Select-Object -First 1
+        if ($latest) {
+            $binDir = Join-Path $latest.FullName "bin\Hostx64\x64"
+            if (Test-Path (Join-Path $binDir "link.exe")) {
+                $hasMSVCLinker = $true
+            }
+        }
+    }
+}
 
+if (-not $hasMSVCLinker) {
     if ($vsPath) {
         Write-Host "⚠️  C++ Build Tools detected at: $vsPath" -ForegroundColor Yellow
         Write-Host "   However, 'link.exe' is not in your PATH."
@@ -110,7 +134,7 @@ if (-not (Get-Command "link.exe" -ErrorAction SilentlyContinue)) {
             $needRestart = $true
         }
     } else {
-        Write-Host "⚠️  C++ Linker (link.exe) not found!" -ForegroundColor Yellow
+        Write-Host "⚠️  MSVC C++ Build Tools not found!" -ForegroundColor Yellow
         Write-Host "   This is REQUIRED for compiling Rust/Tauri dependencies." -ForegroundColor Red
         Write-Host "   Installing Visual Studio Build Tools via winget..." -ForegroundColor Cyan
 
@@ -141,17 +165,69 @@ if (-not (Get-Command "link.exe" -ErrorAction SilentlyContinue)) {
         }
         $needRestart = $true
     }
+} else {
+    Write-Host "✅ MSVC C++ Build Tools found." -ForegroundColor Green
 }
 
 # 6. Install Backend Dependencies
 Write-Host "Installing backend dependencies..." -ForegroundColor Yellow
 uv sync
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Backend dependency installation failed (uv sync). Please check errors above."
+    exit 1
+}
+
+# 6.5. Install Playwright Chromium browser (needed by browsing tool)
+Write-Host "Installing Playwright Chromium browser..." -ForegroundColor Yellow
+uv run playwright install chromium
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "⚠️  Playwright browser install failed (non-fatal, will retry on first use)." -ForegroundColor Yellow
+}
 
 # 7. Install Frontend Dependencies
 Write-Host "Installing frontend dependencies..." -ForegroundColor Yellow
 Set-Location "frontend"
 npm install
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Frontend dependency installation failed (npm install). Please check errors above."
+    Set-Location ..
+    exit 1
+}
 Set-Location ..
+
+# 7.5. Install Src-Tauri Dependencies
+Write-Host "Installing src-tauri dependencies..." -ForegroundColor Yellow
+Set-Location "src-tauri"
+npm install
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Src-tauri dependency installation failed (npm install). Please check errors above."
+    Set-Location ..
+    exit 1
+}
+Set-Location ..
+
+# 7.6. Ensure Tauri resource placeholders exist
+# These files are tracked in git but may be missing if:
+#   - User cloned before the files were committed (stale .gitignore)
+#   - bundle_python.py wiped the resources/ directory
+#   - .gitignore negation patterns weren't applied on pull
+Write-Host "Ensuring Tauri resource files exist..." -ForegroundColor Yellow
+git checkout HEAD -- src-tauri/resources/suzent.cmd src-tauri/resources/suzent 2>$null
+if ($LASTEXITCODE -ne 0) {
+    # Files not in git (e.g. older branch) — create placeholders
+    $resourceDir = Join-Path (Get-Location) "src-tauri\resources"
+    if (-not (Test-Path $resourceDir)) {
+        New-Item -ItemType Directory -Path $resourceDir -Force | Out-Null
+    }
+    $cmdShim = Join-Path $resourceDir "suzent.cmd"
+    if (-not (Test-Path $cmdShim)) {
+        Set-Content -Path $cmdShim -Value "@echo off`r`nREM Placeholder — actual shim is generated at runtime.`r`n" -NoNewline
+    }
+    $shShim = Join-Path $resourceDir "suzent"
+    if (-not (Test-Path $shShim)) {
+        Set-Content -Path $shShim -Value "#!/bin/sh`n# Placeholder — actual shim is generated at runtime.`n" -NoNewline
+    }
+}
 
 # 8. Add to PATH (Global CLI)
 $scriptsDir = Join-Path (Get-Location) "scripts"

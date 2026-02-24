@@ -527,20 +527,86 @@ def register_commands(app: typer.Typer):
             typer.echo(
                 "  ⚠️  Git pull failed. This is usually due to local file changes (e.g. lockfiles)."
             )
-            if typer.confirm("  Discard local changes and force upgrade?"):
-                typer.echo("  🔄 Resetting local changes...")
-                run_command(["git", "reset", "--hard"], cwd=root)
-                run_command(["git", "pull"], cwd=root)
+            if typer.confirm("  Stash local changes and retry?"):
+                typer.echo("  🔄 Stashing local changes...")
+                run_command(["git", "stash", "--include-untracked"], cwd=root)
+                try:
+                    run_command(["git", "pull"], cwd=root)
+                except subprocess.CalledProcessError:
+                    typer.echo("  ❌ Git pull still failed. Restoring stash...")
+                    run_command(["git", "stash", "pop"], cwd=root)
+                    raise typer.Exit(code=1)
+                # Re-apply stashed changes (may have merge conflicts, non-fatal)
+                try:
+                    run_command(["git", "stash", "pop"], cwd=root)
+                except subprocess.CalledProcessError:
+                    typer.echo(
+                        "  ⚠️  Some stashed changes conflicted. Check 'git stash list'."
+                    )
             else:
                 typer.echo("  ❌ Upgrade aborted.")
                 raise typer.Exit(code=1)
 
+        # Restore tracked resource placeholders (may be missing from stale clones)
+        typer.echo("  • Ensuring resource files...")
+        try:
+            run_command(
+                [
+                    "git",
+                    "checkout",
+                    "HEAD",
+                    "--",
+                    "src-tauri/resources/suzent.cmd",
+                    "src-tauri/resources/suzent",
+                ],
+                cwd=root,
+            )
+        except subprocess.CalledProcessError:
+            # Files may not exist in this branch — create placeholders
+            resources_dir = root / "src-tauri" / "resources"
+            resources_dir.mkdir(parents=True, exist_ok=True)
+            cmd_shim = resources_dir / "suzent.cmd"
+            if not cmd_shim.exists():
+                cmd_shim.write_text("@echo off\r\nREM Placeholder\r\n")
+            sh_shim = resources_dir / "suzent"
+            if not sh_shim.exists():
+                sh_shim.write_text("#!/bin/sh\n# Placeholder\n")
+
         typer.echo("  • Updating backend dependencies...")
-        run_command(["uv", "sync"], cwd=root, shell_on_windows=True)
+        try:
+            run_command(["uv", "sync"], cwd=root, shell_on_windows=True)
+        except subprocess.CalledProcessError:
+            typer.echo("  ❌ Backend dependency update failed (uv sync).")
+            raise typer.Exit(code=1)
+
+        # Update Playwright browser (non-fatal)
+        typer.echo("  • Updating Playwright browser...")
+        try:
+            run_command(
+                ["uv", "run", "playwright", "install", "chromium"],
+                cwd=root,
+                shell_on_windows=True,
+            )
+        except subprocess.CalledProcessError:
+            typer.echo(
+                "  ⚠️  Playwright browser update failed (will retry on first use)."
+            )
 
         typer.echo("  • Updating frontend dependencies...")
-        frontend_dir = root / "src-tauri"
-        run_command(["npm", "install"], cwd=frontend_dir, shell_on_windows=True)
+        frontend_dir = root / "frontend"
+        try:
+            run_command(["npm", "install"], cwd=frontend_dir, shell_on_windows=True)
+        except subprocess.CalledProcessError:
+            typer.echo("  ❌ Frontend dependency update failed (npm install).")
+            raise typer.Exit(code=1)
+
+        typer.echo("  • Updating src-tauri dependencies...")
+        tauri_dir = root / "src-tauri"
+        try:
+            run_command(["npm", "install"], cwd=tauri_dir, shell_on_windows=True)
+        except subprocess.CalledProcessError:
+            typer.echo("  ❌ Src-tauri dependency update failed (npm install).")
+            raise typer.Exit(code=1)
 
         typer.echo("\n✨ Suzent successfully upgraded!")
 

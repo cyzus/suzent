@@ -47,6 +47,7 @@ frontend/vite-cache
 # Tauri
 src-tauri/target/
 src-tauri/binaries/
+# Ignore bundled resources but keep the tracked CLI shim placeholders
 src-tauri/resources/
 !src-tauri/resources/suzent
 !src-tauri/resources/suzent.cmd

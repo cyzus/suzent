@@ -15,6 +15,57 @@ check_command "git" "Git"
 check_command "node" "Node.js"
 check_command "curl" "curl"
 
+# 1.1. Check Node.js version (20+ required)
+NODE_VERSION=$(node --version | sed 's/^v//')
+NODE_MAJOR=$(echo "$NODE_VERSION" | cut -d. -f1)
+if [ "$NODE_MAJOR" -lt 20 ]; then
+    echo -e "\033[0;31mNode.js version $NODE_VERSION detected. Version 20+ is required.\033[0m"
+    echo -e "\033[0;36mPlease upgrade Node.js from https://nodejs.org/\033[0m"
+    exit 1
+fi
+echo -e "\033[0;32m✅ Node.js v$NODE_VERSION\033[0m"
+
+# 1.2. Platform-specific system dependencies
+OS_TYPE="$(uname -s)"
+case "$OS_TYPE" in
+    Darwin)
+        # macOS: check for Xcode Command Line Tools
+        if ! xcode-select -p &>/dev/null; then
+            echo -e "\033[0;33m⚠️  Xcode Command Line Tools not found. Installing...\033[0m"
+            xcode-select --install 2>/dev/null || true
+            echo -e "\033[0;33m   Please complete the Xcode Tools installation dialog, then re-run this script.\033[0m"
+            exit 1
+        fi
+        echo -e "\033[0;32m✅ Xcode Command Line Tools found.\033[0m"
+        ;;
+    Linux)
+        # Linux: check for Tauri system libraries (GTK, WebKitGTK, etc.)
+        MISSING_LIBS=""
+        for pkg in libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf; do
+            if ! dpkg -s "$pkg" &>/dev/null 2>&1; then
+                MISSING_LIBS="$MISSING_LIBS $pkg"
+            fi
+        done
+        if [ -n "$MISSING_LIBS" ]; then
+            echo -e "\033[0;33m⚠️  Missing Tauri system dependencies:$MISSING_LIBS\033[0m"
+            if command -v apt-get &>/dev/null; then
+                echo -e "\033[0;36m   Installing via apt-get (may require sudo password)...\033[0m"
+                sudo apt-get update && sudo apt-get install -y $MISSING_LIBS
+                if [ $? -ne 0 ]; then
+                    echo -e "\033[0;31m   Failed to install system libraries. Please install manually:\033[0m"
+                    echo "   sudo apt-get install -y$MISSING_LIBS"
+                    exit 1
+                fi
+            else
+                echo -e "\033[0;31m   apt-get not found. Please install these packages with your package manager:\033[0m"
+                echo "  $MISSING_LIBS"
+                exit 1
+            fi
+        fi
+        echo -e "\033[0;32m✅ Tauri system dependencies satisfied.\033[0m"
+        ;;
+esac
+
 # Helper for robust shell config updates
 update_shell_config() {
     local NEW_PATH="$1"
@@ -117,11 +168,24 @@ fi
 # 5. Install Backend Dependencies
 echo -e "\033[0;33mInstalling backend dependencies...\033[0m"
 uv sync
+if [ $? -ne 0 ]; then
+    echo -e "\033[0;31mBackend dependency installation failed (uv sync). Please check errors above.\033[0m"
+    exit 1
+fi
+
+# 5.5. Install Playwright Chromium browser (needed by browsing tool)
+echo -e "\033[0;33mInstalling Playwright Chromium browser...\033[0m"
+uv run playwright install chromium || echo -e "\033[0;33m⚠️  Playwright browser install failed (non-fatal, will retry on first use).\033[0m"
 
 # 6. Install Frontend Dependencies
 echo -e "\033[0;33mInstalling frontend dependencies...\033[0m"
 cd frontend
 npm install
+if [ $? -ne 0 ]; then
+    echo -e "\033[0;31mFrontend dependency installation failed (npm install). Please check errors above.\033[0m"
+    cd ..
+    exit 1
+fi
 cd ..
 
 # 7. Install Src-Tauri Dependencies (for CLI)
@@ -130,11 +194,37 @@ cd src-tauri
 # Remove existing lockfile/modules to ensure platform-specific binaries are fetched
 rm -rf node_modules package-lock.json
 npm install
+if [ $? -ne 0 ]; then
+    echo -e "\033[0;31mSrc-tauri dependency installation failed (npm install). Please check errors above.\033[0m"
+    cd ..
+    exit 1
+fi
 cd ..
 
-# 7. Setup Global CLI
+# 7.5. Ensure Tauri resource placeholders exist
+# These files are tracked in git but may be missing if:
+#   - User cloned before the files were committed (stale .gitignore)
+#   - bundle_python.py wiped the resources/ directory
+#   - .gitignore negation patterns weren't applied on pull
+echo -e "\033[0;33mEnsuring Tauri resource files exist...\033[0m"
+git checkout HEAD -- src-tauri/resources/suzent.cmd src-tauri/resources/suzent 2>/dev/null
+if [ $? -ne 0 ]; then
+    # Files not in git (e.g. older branch) — create placeholders
+    RESOURCE_DIR="src-tauri/resources"
+    mkdir -p "$RESOURCE_DIR"
+    if [ ! -f "$RESOURCE_DIR/suzent.cmd" ]; then
+        printf '@echo off\r\nREM Placeholder — actual shim is generated at runtime.\r\n' > "$RESOURCE_DIR/suzent.cmd"
+    fi
+    if [ ! -f "$RESOURCE_DIR/suzent" ]; then
+        printf '#!/bin/sh\n# Placeholder — actual shim is generated at runtime.\n' > "$RESOURCE_DIR/suzent"
+        chmod +x "$RESOURCE_DIR/suzent"
+    fi
+fi
+
+# 8. Setup Global CLI
 echo -e "\033[0;33mSetting up 'suzent' command...\033[0m"
 INSTALL_DIR="$HOME/.local/bin"
+REPO_DIR="$(pwd)"
 mkdir -p "$INSTALL_DIR"
 
 # Create shim script
@@ -142,7 +232,13 @@ cat > "$INSTALL_DIR/suzent" <<EOF
 #!/bin/bash
 # Ensure Rust is in PATH
 source "\$HOME/.cargo/env" 2>/dev/null || true
-cd "$(pwd)"
+REPO_DIR="$REPO_DIR"
+if [ ! -d "\$REPO_DIR" ]; then
+    echo "Error: Suzent directory not found at \$REPO_DIR"
+    echo "Please re-run the setup script or update this shim."
+    exit 1
+fi
+cd "\$REPO_DIR"
 uv run suzent "\$@"
 EOF
 
