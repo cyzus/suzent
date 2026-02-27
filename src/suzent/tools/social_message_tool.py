@@ -8,7 +8,7 @@ social platform (Telegram, Slack, Discord, Feishu) while working on a task.
 import asyncio
 from typing import Optional
 
-from smolagents.tools import Tool
+from suzent.tools.base import Tool
 
 from suzent.logger import get_logger
 

@@ -4,7 +4,7 @@ GlobTool - Find files matching a pattern.
 
 from typing import Optional
 
-from smolagents.tools import Tool
+from suzent.tools.base import Tool
 
 from suzent.logger import get_logger
 from suzent.tools.path_resolver import PathResolver

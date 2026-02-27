@@ -2,7 +2,7 @@
 Voice tool for speaking text.
 """
 
-from smolagents.tools import Tool
+from suzent.tools.base import Tool
 from suzent.logger import get_logger
 from suzent.voice.speech import SpeechOutput
 from suzent.voice.audio_io import SoundDeviceSink

@@ -1,4 +1,4 @@
-from smolagents.tools import Tool
+from suzent.tools.base import Tool
 
 
 class SkillTool(Tool):

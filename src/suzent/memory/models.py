@@ -40,73 +40,90 @@ class AgentStepsSummary(BaseModel):
     @classmethod
     def from_succinct_steps(cls, steps: List[Any]) -> "AgentStepsSummary":
         """
-        Create a summary from a list of agent steps (dict or smolagents objects).
+        Create a summary from a list of step dicts.
 
         Args:
-            steps: List of steps from agent_instance.memory.get_succinct_steps()
+            steps: List of step dicts (serialized format).
         """
-        # Local import to avoid runtime dependency issues if smolagents isn't top-level imported
-        try:
-            from smolagents.memory import ActionStep, PlanningStep, FinalAnswerStep
-        except ImportError:
-            # Fallback mocks if smolagents not available (shouldn't happen in this app)
-            ActionStep = type("ActionStep", (), {})
-            PlanningStep = type("PlanningStep", (), {})
-            FinalAnswerStep = type("FinalAnswerStep", (), {})
-
         summary = cls()
 
         for step in steps:
-            # Handle dictionary format (serialized steps)
-            if isinstance(step, dict):
-                step_type = step.get("step_type") or step.get("type", "unknown")
+            if not isinstance(step, dict):
+                continue
 
-                if step_type == "final_answer" or "final_answer" in step:
-                    answer = (
-                        step.get("final_answer")
-                        or step.get("output")
-                        or step.get("content", "")
-                    )
-                    summary.final_answer = str(answer)
+            step_type = step.get("step_type") or step.get("type", "unknown")
 
-                elif step_type == "action" or "tool_calls" in step:
-                    tool_calls = step.get("tool_calls", [])
-                    for tc in tool_calls:
-                        if isinstance(tc, dict):
-                            summary.actions.append(
-                                AgentAction(
-                                    tool=tc.get("name", "unknown"),
-                                    args=tc.get("arguments", {}),
-                                    output=step.get("action_output")
-                                    or step.get("output"),
-                                )
+            if step_type == "final_answer" or "final_answer" in step:
+                answer = (
+                    step.get("final_answer")
+                    or step.get("output")
+                    or step.get("content", "")
+                )
+                summary.final_answer = str(answer)
+
+            elif step_type == "action" or "tool_calls" in step:
+                tool_calls = step.get("tool_calls", [])
+                for tc in tool_calls:
+                    if isinstance(tc, dict):
+                        summary.actions.append(
+                            AgentAction(
+                                tool=tc.get("name", "unknown"),
+                                args=tc.get("arguments", {}),
+                                output=step.get("action_output")
+                                or step.get("output"),
                             )
-                    if step.get("error"):
-                        summary.errors.append(str(step["error"]))
-
-                elif step_type == "planning" or "plan" in step:
-                    plan = step.get("plan", "")
-                    if plan:
-                        summary.planning.append(plan)
-
-            # Handle smolagents object format
-            elif isinstance(step, ActionStep):
-                for tool_call in step.tool_calls:
-                    summary.actions.append(
-                        AgentAction(
-                            tool=tool_call.name,
-                            args=tool_call.arguments,
-                            output=getattr(step, "action_output", None),
                         )
-                    )
-                if getattr(step, "error", None):
-                    summary.errors.append(str(step.error))
+                if step.get("error"):
+                    summary.errors.append(str(step["error"]))
 
-            elif isinstance(step, PlanningStep):
-                summary.planning.append(step.plan)
+            elif step_type == "planning" or "plan" in step:
+                plan = step.get("plan", "")
+                if plan:
+                    summary.planning.append(plan)
 
-            elif isinstance(step, FinalAnswerStep):
-                summary.final_answer = str(step.output)
+        return summary
+
+    @classmethod
+    def from_pydantic_ai_messages(cls, messages: list) -> "AgentStepsSummary":
+        """
+        Create a summary from pydantic-ai message history.
+
+        Args:
+            messages: List of pydantic-ai ModelMessage objects.
+        """
+        from pydantic_ai.messages import (
+            ModelResponse,
+            ModelRequest,
+            ToolCallPart,
+            ToolReturnPart,
+            TextPart,
+        )
+
+        summary = cls()
+
+        # Build return map
+        returns: Dict[str, str] = {}
+        for msg in messages:
+            if isinstance(msg, ModelRequest):
+                for part in msg.parts:
+                    if isinstance(part, ToolReturnPart):
+                        returns[part.tool_call_id] = str(part.content)[:200]
+
+        for msg in messages:
+            if isinstance(msg, ModelResponse):
+                for part in msg.parts:
+                    if isinstance(part, ToolCallPart):
+                        output = returns.get(part.tool_call_id, "")
+                        summary.actions.append(
+                            AgentAction(
+                                tool=part.tool_name,
+                                args=part.args if isinstance(part.args, dict) else {},
+                                output=output,
+                            )
+                        )
+                    elif isinstance(part, TextPart):
+                        # Last text part is likely the final answer
+                        summary.final_answer = part.content
 
         return summary
 

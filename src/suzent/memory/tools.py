@@ -2,7 +2,7 @@
 Memory tools exposed to agents.
 """
 
-from smolagents import Tool
+from suzent.tools.base import Tool
 from datetime import datetime
 
 from suzent.logger import get_logger

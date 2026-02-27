@@ -82,7 +82,7 @@ def compress_image_with_bytes(
     )
 
     # For very small targets (< 1 MB), start with dimension reduction immediately
-    # This is because PIL Images will be re-encoded by smolagents
+    # This is because images will be re-encoded when sent to the model
     if max_size_mb < 1.0:
         print(
             f"[Compression] Small target ({max_size_mb} MB), starting with dimension reduction"

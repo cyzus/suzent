@@ -1,17 +1,15 @@
 """
-Context injection module for configuring agent tools with chat context.
+Context injection module — builds AgentDeps for pydantic-ai tool functions.
 
-This module handles:
-- Injecting chat and user context into tools
-- Creating PathResolver instances for file tools
-- Configuration value resolution with fallbacks
+With pydantic-ai, per-tool context injection (set_context, set_chat_context)
+is replaced by a single AgentDeps object passed via RunContext to every tool.
+This module constructs that object from the chat configuration.
 """
 
 import asyncio
 from typing import Optional, Any
 
-from smolagents import CodeAgent
-
+from suzent.core.agent_deps import AgentDeps
 from suzent.config import CONFIG, get_effective_volumes
 from suzent.logger import get_logger
 
@@ -25,18 +23,28 @@ def _get_config_value(config: Optional[dict], key: str, default: Any) -> Any:
     return config.get(key, default)
 
 
-def _create_path_resolver(chat_id: str, config: Optional[dict]) -> Any:
+def build_agent_deps(
+    chat_id: str,
+    user_id: str = None,
+    config: Optional[dict] = None,
+) -> AgentDeps:
     """
-    Create a PathResolver instance with configuration overrides.
+    Build an AgentDeps instance from chat configuration.
+
+    This replaces the old inject_chat_context() function. Instead of mutating
+    tool instances, we build a single dependency object that pydantic-ai
+    injects into all tool functions via RunContext[AgentDeps].
 
     Args:
-        chat_id: Chat session ID
-        config: Optional chat configuration overriding globals
+        chat_id: The chat session identifier.
+        user_id: The user identifier (defaults to CONFIG.user_id).
+        config: Optional per-chat configuration dict.
 
     Returns:
-        PathResolver instance
+        AgentDeps instance ready to be passed to agent.run().
     """
-    from suzent.tools.path_resolver import PathResolver
+    if user_id is None:
+        user_id = CONFIG.user_id
 
     sandbox_enabled = _get_config_value(
         config, "sandbox_enabled", CONFIG.sandbox_enabled
@@ -46,7 +54,10 @@ def _create_path_resolver(chat_id: str, config: Optional[dict]) -> Any:
         _get_config_value(config, "sandbox_volumes", None)
     )
 
-    return PathResolver(
+    # Build PathResolver
+    from suzent.tools.path_resolver import PathResolver
+
+    path_resolver = PathResolver(
         chat_id,
         sandbox_enabled,
         sandbox_data_path=CONFIG.sandbox_data_path,
@@ -54,107 +65,47 @@ def _create_path_resolver(chat_id: str, config: Optional[dict]) -> Any:
         workspace_root=workspace_root,
     )
 
+    # Memory manager
+    from suzent.memory.lifecycle import get_memory_manager
 
-def inject_chat_context(
-    agent: CodeAgent, chat_id: str, user_id: str = None, config: dict = None
-) -> None:
-    """
-    Inject chat context into agent tools that support it.
+    memory_manager = get_memory_manager()
 
-    Args:
-        agent: The agent instance whose tools should receive context.
-        chat_id: The chat identifier to inject into tools.
-        user_id: The user identifier for memory system (defaults to CONFIG.user_id).
-        config: Optional chat configuration dict containing per-chat settings.
-    """
-    if not chat_id or not hasattr(agent, "_tool_instances"):
-        return
+    # Social context
+    runtime = _get_config_value(config, "_runtime", {})
+    social_ctx = _get_config_value(config, "social_context", {})
+    channel_manager = runtime.get("channel_manager") if runtime else None
+    event_loop = runtime.get("event_loop") if runtime else None
 
-    # Use configured user_id if not provided
-    if user_id is None:
-        user_id = CONFIG.user_id
+    # Desktop mode fallback for social
+    if not channel_manager:
+        try:
+            from suzent.core.social_brain import get_active_social_brain
 
-    # Get effective configuration values
-    sandbox_enabled = _get_config_value(
-        config, "sandbox_enabled", CONFIG.sandbox_enabled
+            brain = get_active_social_brain()
+            if brain:
+                channel_manager = brain.channel_manager
+                try:
+                    event_loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    event_loop = None
+        except Exception:
+            pass
+
+    # Skill manager
+    from suzent.skills import get_skill_manager
+
+    skill_manager = get_skill_manager()
+
+    return AgentDeps(
+        chat_id=chat_id,
+        user_id=user_id,
+        sandbox_enabled=sandbox_enabled,
+        workspace_root=workspace_root,
+        custom_volumes=custom_volumes,
+        path_resolver=path_resolver,
+        memory_manager=memory_manager,
+        channel_manager=channel_manager,
+        event_loop=event_loop,
+        social_context=social_ctx,
+        skill_manager=skill_manager,
     )
-    workspace_root = _get_config_value(config, "workspace_root", CONFIG.workspace_root)
-
-    # Tool name sets for efficient lookup
-    memory_tool_names = {"MemorySearchTool", "MemoryBlockUpdateTool"}
-    file_tool_names = {
-        "ReadFileTool",
-        "WriteFileTool",
-        "EditFileTool",
-        "GlobTool",
-        "GrepTool",
-    }
-
-    # --- Tool Context Injection ---
-    for tool_instance in agent._tool_instances:
-        tool_name = tool_instance.__class__.__name__
-
-        # Inject chat_id for tools like PlanningTool
-        if hasattr(tool_instance, "set_chat_context"):
-            tool_instance.set_chat_context(chat_id)
-
-        # Inject user_id and chat_id for memory tools
-        if tool_name in memory_tool_names:
-            if hasattr(tool_instance, "set_context"):
-                tool_instance.set_context(chat_id=chat_id, user_id=user_id)
-
-        # Configure BashTool with mode and context
-        elif tool_name == "BashTool":
-            tool_instance.chat_id = chat_id
-            tool_instance.sandbox_enabled = sandbox_enabled
-            tool_instance.workspace_root = workspace_root
-
-            # Inject per-chat sandbox volumes if configured
-            volumes = get_effective_volumes(
-                _get_config_value(config, "sandbox_volumes", None)
-            )
-            tool_instance.custom_volumes = volumes
-
-            if sandbox_enabled and hasattr(tool_instance, "set_custom_volumes"):
-                tool_instance.set_custom_volumes(volumes)
-
-            logger.debug(
-                f"BashTool configured: sandbox={sandbox_enabled}, workspace={workspace_root}"
-            )
-
-        # Inject PathResolver into file tools
-        elif tool_name in file_tool_names:
-            if hasattr(tool_instance, "set_context"):
-                resolver = _create_path_resolver(chat_id, config)
-                tool_instance.set_context(resolver)
-
-        # Inject social context into SocialMessageTool
-        elif tool_name in ("SocialMessageTool"):
-            runtime = _get_config_value(config, "_runtime", {})
-            social_ctx = _get_config_value(config, "social_context", {})
-
-            channel_manager = runtime.get("channel_manager")
-            event_loop = runtime.get("event_loop")
-
-            # Desktop mode fallback: use the active SocialBrain if running
-            if not channel_manager:
-                from suzent.core.social_brain import get_active_social_brain
-
-                brain = get_active_social_brain()
-                if brain:
-                    channel_manager = brain.channel_manager
-                    try:
-                        event_loop = asyncio.get_running_loop()
-                    except RuntimeError:
-                        event_loop = None
-
-            if channel_manager and event_loop:
-                tool_instance.set_social_context(
-                    channel_manager=channel_manager,
-                    event_loop=event_loop,
-                    default_platform=social_ctx.get("platform"),
-                    default_target=social_ctx.get("target_id"),
-                )
-                logger.debug(f"{tool_name} configured with social context")
-            else:
-                logger.debug(f"{tool_name} present but no social channels are running")

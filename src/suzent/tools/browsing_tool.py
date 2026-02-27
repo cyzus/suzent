@@ -9,7 +9,7 @@ from playwright.async_api import (
     CDPSession,
 )
 from starlette.websockets import WebSocket
-from smolagents.tools import Tool
+from suzent.tools.base import Tool
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)

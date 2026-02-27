@@ -121,10 +121,10 @@ def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[st
 class ConfigModel(BaseModel):
     title: str = "SUZENT"
     server_url: str = "http://localhost:25314/chat"
-    code_tag: str = "<code>"
+    code_tag: str = "<code>"  # Deprecated: kept for config compat
 
     model_options: List[str] = []
-    agent_options: List[str] = ["CodeAgent", "ToolcallingAgent"]
+    agent_options: List[str] = ["Agent"]  # pydantic-ai uses a single Agent class
 
     default_tools: List[str] = [
         "WebSearchTool",

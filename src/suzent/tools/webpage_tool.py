@@ -1,4 +1,4 @@
-from smolagents.tools import Tool
+from suzent.tools.base import Tool
 from typing import Union
 
 import asyncio

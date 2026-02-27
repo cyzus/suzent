@@ -165,7 +165,8 @@ async def startup():
                 os.environ[key] = value
                 loaded_count += 1
         if loaded_count > 0:
-            logger.info(f"Loaded {loaded_count} API keys from database")
+            key_names = [k for k in api_keys if k != "_PROVIDER_CONFIG_" and api_keys[k]]
+            logger.info(f"Loaded {loaded_count} API keys from database: {key_names}")
     except Exception as e:
         logger.error(f"Failed to load API keys on startup: {e}")
 

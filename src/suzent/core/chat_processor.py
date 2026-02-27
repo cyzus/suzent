@@ -1,25 +1,27 @@
 """
 Chat Processor: Unified logic for handling conversation turns.
+
+Uses pydantic-ai Agent with async streaming, dependency injection via
+AgentDeps, and message-history-based state persistence.
 """
 
+import json
 import os
 import shutil
-import json
 import time
 from pathlib import Path
 from typing import AsyncGenerator, List, Dict, Any
-from PIL import Image
 
 from suzent.logger import get_logger
 from suzent.config import CONFIG, get_effective_volumes
-from suzent.agent_manager import get_or_create_agent, deserialize_agent
+from suzent.agent_manager import get_or_create_agent
 
-from suzent.core.context_injection import inject_chat_context
-from suzent.core.agent_serializer import serialize_agent
+from suzent.core.context_injection import build_agent_deps
+from suzent.core.agent_serializer import serialize_state, deserialize_state
 from suzent.core.context_compressor import ContextCompressor
 from suzent.memory.lifecycle import get_memory_manager
 from suzent.streaming import stream_agent_responses
-from suzent.memory import AgentStepsSummary, ConversationTurn, Message
+from suzent.memory import AgentStepsSummary, ConversationTurn, Message, AgentAction
 from suzent.database import get_database
 from suzent.tools.path_resolver import PathResolver
 from suzent.routes.sandbox_routes import sanitize_filename
@@ -30,13 +32,6 @@ logger = get_logger(__name__)
 def _resolve_target_path(host_path: Path, filename: str) -> Path:
     """
     Resolve a safe target path, appending a timestamp suffix on collision.
-
-    Args:
-        host_path: Directory to place the file in.
-        filename: Original filename (already sanitized).
-
-    Returns:
-        Path that does not collide with existing files.
     """
     target = host_path / filename
     if target.exists():
@@ -52,7 +47,7 @@ class ChatProcessor:
         chat_id: str,
         user_id: str,
         message_content: str,
-        files: List[Any] = None,  # List of UploadFile or dict (social)
+        files: List[Any] = None,
         config_override: Dict = None,
         is_social: bool = False,
     ) -> AsyncGenerator[str, None]:
@@ -60,7 +55,7 @@ class ChatProcessor:
         Process a user message turn:
         1. Context & Agent Setup
         2. Attachment Processing
-        3. Response Streaming
+        3. Response Streaming (pydantic-ai async)
         4. Background Tasks (Memory, Compression, Persistence)
         """
 
@@ -74,7 +69,7 @@ class ChatProcessor:
         if config_override:
             config.update(config_override)
 
-        # 2. Get Agent (Default/Global)
+        # 2. Get Agent
         logger.debug("[ChatProcessor] Calling get_or_create_agent")
         try:
             agent = await get_or_create_agent(config)
@@ -83,69 +78,63 @@ class ChatProcessor:
             logger.error(f"[ChatProcessor] get_or_create_agent failed: {e}")
             raise
 
-        # 2b. Restore State from DB (if exists)
-        # This ensures we continue the specific conversation state
+        # 3. Build AgentDeps (replaces inject_chat_context)
+        deps = build_agent_deps(chat_id=chat_id, user_id=user_id, config=config)
+
+        # 4. Restore message history from DB
+        message_history = None
         try:
             db = get_database()
             chat = db.get_chat(chat_id)
             if chat and chat.agent_state:
-                logger.debug(f"Attempting to restore agent state for chat {chat_id}")
-                restored_agent = deserialize_agent(chat.agent_state, config)
-                if restored_agent:
-                    logger.debug(f"Restored agent state for {chat_id}")
-                    agent = restored_agent
-                else:
-                    logger.warning(f"Failed to deserialize agent state for {chat_id}")
+                state = deserialize_state(chat.agent_state)
+                if state and state.get("message_history"):
+                    message_history = state["message_history"]
+                    logger.debug(
+                        f"Restored {len(message_history)} messages for chat {chat_id}"
+                    )
         except Exception as e:
-            logger.error(f"Error restoring agent state: {e}")
+            logger.error(f"Error restoring message history: {e}")
 
-        # 3. Context Injection (Tools, Memory)
-        logger.debug("[ChatProcessor] Injecting chat context")
-        inject_chat_context(agent, chat_id, user_id, config)
-
-        # 4. Attachment Handling (Async)
+        # 5. Attachment Handling
         agent_images = []
         attachment_context = ""
 
-        # We need a unified way to handle files (UploadFile vs Social Dict)
-        # Assuming `files` contains objects we can process or dicts
-
         if files:
             logger.debug(f"[ChatProcessor] Processing {len(files)} files")
-            # We need to setup sandbox path resolver here to move files
             try:
-                # Basic sandbox setup
                 custom_volumes = get_effective_volumes([])
                 resolver = PathResolver(
                     chat_id=chat_id,
-                    sandbox_enabled=True,  # Always enable sandbox storage for persistence
+                    sandbox_enabled=True,
                     custom_volumes=custom_volumes,
                 )
-
-                # Resolve persistence path
                 uploads_virtual_path = "/persistence/uploads"
                 uploads_host_path = resolver.resolve(uploads_virtual_path)
                 uploads_host_path.mkdir(parents=True, exist_ok=True)
 
-                # Process files
                 for file_item in files:
-                    # Handle difference between Starlette UploadFile and Social Dict
                     if isinstance(file_item, dict):
-                        # Social context format
                         result = self._process_social_attachment(
                             file_item, uploads_host_path, uploads_virtual_path
                         )
                     else:
-                        # UploadFile format (Starlette)
                         result = await self._process_upload_file(
                             file_item, uploads_host_path, uploads_virtual_path
                         )
 
                     if result["is_image"]:
                         try:
-                            # Load image for agent
-                            img = Image.open(result["final_path"])
-                            agent_images.append(img)
+                            # pydantic-ai uses BinaryContent for images
+                            from pydantic_ai import BinaryContent
+
+                            with open(result["final_path"], "rb") as f:
+                                image_data = f.read()
+                            ext = Path(result["final_path"]).suffix.lstrip(".")
+                            media_type = f"image/{ext}" if ext else "image/png"
+                            agent_images.append(
+                                BinaryContent(data=image_data, media_type=media_type)
+                            )
                             attachment_context += (
                                 f"\n[User attached an image: {result['virtual_path']}]"
                             )
@@ -161,39 +150,49 @@ class ChatProcessor:
                 logger.error(f"Failed to process attachments: {e}")
                 attachment_context += "\n[System Error: Failed to process attachments]"
 
-        # 5. Prepare Prompt
+        # 6. Prepare Prompt
         full_prompt = message_content + attachment_context
+
+        # Build multimodal prompt if images present
+        if agent_images:
+            user_prompt: str | list = [full_prompt] + agent_images
+        else:
+            user_prompt = full_prompt
+
         logger.debug(
-            f"[ChatProcessor] Prompt prepared. Length: {len(full_prompt)}. Calling stream_agent_responses"
+            f"[ChatProcessor] Prompt prepared. Length: {len(full_prompt)}. Streaming..."
         )
 
-        # 6. Stream Response
+        # 7. Stream Response
         full_response = ""
 
         async for chunk in stream_agent_responses(
-            agent, full_prompt, chat_id=chat_id, images=agent_images
+            agent,
+            user_prompt,
+            deps=deps,
+            message_history=message_history,
+            chat_id=chat_id,
         ):
-            # Capture content for full_response
-            # The chunks are SSE formatted strings "data: ..."
-            # We parse them to extract the text content for our internal use
-            # But we YIELD the raw chunk to the caller so they can forward it
-
             try:
                 if chunk.startswith("data: "):
                     json_str = chunk[6:].strip()
                     data = json.loads(json_str)
                     if data.get("type") == "final_answer":
-                        # This contains the accumulative final answer
                         full_response = data.get("data", "")
             except Exception:
                 pass
 
             yield chunk
 
-        # 7. Post-Processing (Background Tasks)
+        # 8. Post-Processing
+
+        # Get the messages from the agent for persistence
+        last_messages = getattr(agent, "_last_messages", [])
 
         # A. Write JSONL transcript
-        await self._write_transcript(chat_id, message_content, full_response, agent)
+        await self._write_transcript(
+            chat_id, message_content, full_response, last_messages
+        )
 
         # B. Memory Extraction
         await self._extract_memories(
@@ -201,17 +200,19 @@ class ChatProcessor:
             user_id=user_id,
             user_content=message_content,
             agent_content=full_response,
-            agent=agent,
+            messages=last_messages,
         )
 
-        # C. Context Compression (with pre-compaction memory flush)
+        # C. Context Compression
         compressor = ContextCompressor(chat_id=chat_id, user_id=user_id)
-        await compressor.compress_context(agent)
+        compressed_messages = await compressor.compress_messages(last_messages)
 
         # D. State Persistence
         await self._persist_state(
             chat_id=chat_id,
-            agent=agent,
+            messages=compressed_messages,
+            model_id=getattr(agent, "_model_id", None),
+            tool_names=getattr(agent, "_tool_names", []),
             user_content=message_content,
             agent_content=full_response,
         )
@@ -265,8 +266,9 @@ class ChatProcessor:
         }
 
     async def _extract_memories(
-        self, chat_id, user_id, user_content, agent_content, agent
+        self, chat_id, user_id, user_content, agent_content, messages
     ):
+        """Extract memories from pydantic-ai message history."""
         if not CONFIG.memory_enabled:
             return
 
@@ -275,19 +277,13 @@ class ChatProcessor:
             if not memory_mgr:
                 return
 
-            # Extract steps
-            if hasattr(agent.memory, "get_succinct_steps"):
-                succinct_steps = agent.memory.get_succinct_steps()
-                steps = AgentStepsSummary.from_succinct_steps(succinct_steps)
-            else:
-                # Fallback if method missing (should exist in our custom agent)
-                steps = AgentStepsSummary(actions=[], planning=[])
+            # Extract tool calls from messages
+            actions = _extract_tool_calls(messages)
 
             conversation_turn = ConversationTurn(
                 user_message=Message(role="user", content=user_content),
                 assistant_message=Message(role="assistant", content=agent_content),
-                agent_actions=steps.actions,
-                agent_reasoning=steps.planning,
+                agent_actions=actions,
             )
 
             await memory_mgr.process_conversation_turn_for_memories(
@@ -298,7 +294,7 @@ class ChatProcessor:
         except Exception as e:
             logger.error(f"Memory extraction failed for {chat_id}: {e}")
 
-    async def _write_transcript(self, chat_id, user_content, agent_content, agent):
+    async def _write_transcript(self, chat_id, user_content, agent_content, messages):
         """Write user and assistant turns to the JSONL transcript."""
         try:
             from suzent.session.transcript import TranscriptManager
@@ -306,15 +302,9 @@ class ChatProcessor:
             tm = TranscriptManager()
             await tm.append_turn(chat_id, "user", user_content)
 
-            # Extract tool calls from agent steps for the transcript
             actions = []
-            if hasattr(agent, "memory") and hasattr(agent.memory, "steps"):
-                from smolagents.memory import ActionStep
-
-                for step in agent.memory.steps:
-                    if isinstance(step, ActionStep) and step.tool_calls:
-                        for tc in step.tool_calls:
-                            actions.append({"tool": tc.name, "args": tc.arguments})
+            for action in _extract_tool_calls(messages):
+                actions.append({"tool": action.tool, "args": action.args})
 
             await tm.append_turn(
                 chat_id, "assistant", agent_content, actions=actions or None
@@ -323,21 +313,26 @@ class ChatProcessor:
         except Exception as e:
             logger.debug(f"Transcript write failed for {chat_id}: {e}")
 
-    async def _persist_state(self, chat_id, agent, user_content, agent_content):
+    async def _persist_state(
+        self, chat_id, messages, model_id, tool_names, user_content, agent_content
+    ):
+        """Persist conversation state to database."""
         try:
             from datetime import datetime
 
             db = get_database()
-            agent_state = serialize_agent(agent)
+            agent_state = serialize_state(
+                messages, model_id=model_id, tool_names=tool_names
+            )
 
             current_chat = db.get_chat(chat_id)
-            messages = current_chat.messages if current_chat else []
+            chat_messages = current_chat.messages if current_chat else []
             prev_turn_count = getattr(current_chat, "turn_count", 0) or 0
 
-            messages.append({"role": "user", "content": user_content})
-            messages.append({"role": "assistant", "content": agent_content})
+            chat_messages.append({"role": "user", "content": user_content})
+            chat_messages.append({"role": "assistant", "content": agent_content})
 
-            db.update_chat(chat_id, agent_state=agent_state, messages=messages)
+            db.update_chat(chat_id, agent_state=agent_state, messages=chat_messages)
 
             # Update session lifecycle fields
             try:
@@ -358,7 +353,7 @@ class ChatProcessor:
             except Exception as lc_err:
                 logger.debug(f"Lifecycle field update failed: {lc_err}")
 
-            # Mirror state to inspectable JSON file (.suzent/state/)
+            # Mirror state to inspectable JSON file
             if agent_state:
                 try:
                     from suzent.session.state_mirror import StateMirror
@@ -371,3 +366,41 @@ class ChatProcessor:
 
         except Exception as e:
             logger.error(f"Failed to persist state for {chat_id}: {e}")
+
+
+# ─── Utility ───────────────────────────────────────────────────────────
+
+
+def _extract_tool_calls(messages: list) -> List[AgentAction]:
+    """Extract AgentAction records from pydantic-ai message history."""
+    from pydantic_ai.messages import (
+        ModelResponse,
+        ModelRequest,
+        ToolCallPart,
+        ToolReturnPart,
+    )
+
+    actions = []
+    # Build a map of tool_call_id → return content
+    returns: Dict[str, str] = {}
+    for msg in messages:
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, ToolReturnPart):
+                    returns[part.tool_call_id] = str(part.content)[:200]
+
+    # Extract tool calls
+    for msg in messages:
+        if isinstance(msg, ModelResponse):
+            for part in msg.parts:
+                if isinstance(part, ToolCallPart):
+                    output = returns.get(part.tool_call_id, "")
+                    actions.append(
+                        AgentAction(
+                            tool=part.tool_name,
+                            args=part.args if isinstance(part.args, dict) else {},
+                            output=output,
+                        )
+                    )
+
+    return actions

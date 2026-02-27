@@ -1,19 +1,21 @@
 """
-Agent management module for creating, serializing, and managing agent state.
+Agent management module for creating and managing pydantic-ai agents.
 
 This module handles the lifecycle of AI agents including:
-- Creating agents with specified configurations
-- Serializing agent state for persistence
-- Deserializing and restoring agent state
+- Creating pydantic-ai Agent instances with specified configurations
+- Managing MCP server toolsets
 - Managing global agent instances
 """
 
 import asyncio
 import os
-from typing import Optional, Dict, Any
-from mcp import StdioServerParameters
+from typing import Optional, Dict, Any, List
 
-from smolagents import CodeAgent, ToolCallingAgent, LiteLLMModel, MCPClient
+from pydantic_ai import Agent
+from pydantic_ai.mcp import MCPServerStdio, MCPServerStreamableHTTP
+
+from suzent.core.agent_deps import AgentDeps
+from suzent.core.model_factory import create_pydantic_ai_model
 from suzent.core.provider_factory import get_enabled_models_from_db
 
 from suzent.config import CONFIG
@@ -28,11 +30,6 @@ from suzent.memory.lifecycle import (
     create_memory_tools,
 )
 
-# Import serialization functions
-from suzent.core.agent_serializer import (
-    deserialize_agent as _deserialize_agent_impl,
-)
-
 # Suppress LiteLLM's verbose logging
 os.environ["LITELLM_LOG"] = "ERROR"
 
@@ -40,31 +37,19 @@ logger = get_logger(__name__)
 
 
 # --- Agent State ---
-agent_instance: Optional[CodeAgent] = None
+agent_instance: Optional[Agent] = None
 agent_config: Optional[dict] = None
 agent_lock = asyncio.Lock()
 
 
-def _build_mcp_tools(config: Dict[str, Any]) -> list:
+def _build_mcp_servers(config: Dict[str, Any]) -> List:
     """
-    Build MCP tools from the enabled servers in the configuration.
+    Build MCP server toolset instances from the enabled servers in config.
 
-    Supports both simple format: {"name": "url"}
-    and nested format: {"name": {"url": "...", "headers": {...}}}
-
-    Args:
-        config: Agent configuration dictionary containing:
-            - mcp_enabled: Dict mapping server names to enabled state
-            - mcp_urls: URL servers (simple or nested format)
-            - mcp_headers: Optional headers per server
-            - mcp_stdio_params: Stdio server parameters
-
-    Returns:
-        List of MCP tools from enabled servers.
+    Returns a list of MCPServerStreamableHTTP / MCPServerStdio instances
+    that can be passed as ``toolsets`` to a pydantic-ai Agent.
     """
     mcp_enabled = config.get("mcp_enabled")
-
-    # If mcp_enabled is not provided, fallback to global CONFIG defaults
     if mcp_enabled is None:
         mcp_enabled = CONFIG.mcp_enabled or {}
 
@@ -75,85 +60,76 @@ def _build_mcp_tools(config: Dict[str, Any]) -> list:
     # Parse mcp_urls to handle both simple and nested formats
     mcp_urls = {}
 
-    # Handle list input (backward compatibility for array of strings)
     if isinstance(raw_mcp_urls, list):
         for i, url in enumerate(raw_mcp_urls):
-            # Use generated name if we can't infer it. Headers won't work for these.
-            # Ideally we could reverse-lookup global config but that's complex/unreliable if duplicates exist.
             mcp_urls[f"mcp-url-{i}"] = url
-
-    # Handle dict input (standard format)
     elif isinstance(raw_mcp_urls, dict):
         for name, value in raw_mcp_urls.items():
             if isinstance(value, str):
                 mcp_urls[name] = value
             elif isinstance(value, dict):
                 mcp_urls[name] = value.get("url", "")
-                # Extract headers from nested format if not already provided
                 if value.get("headers") and name not in mcp_headers:
                     mcp_headers[name] = value["headers"]
 
-    mcp_server_parameters = []
+    servers = []
 
-    # Build URL server parameters
+    # Build URL servers
     for name, url in mcp_urls.items():
-        if mcp_enabled.get(name, False):
-            server_params = {"url": url, "transport": "streamable-http"}
-            if name in mcp_headers and mcp_headers[name]:
-                server_params["headers"] = mcp_headers[name]
-            mcp_server_parameters.append(server_params)
+        if mcp_enabled.get(name, False) and url:
+            headers = mcp_headers.get(name)
+            server = MCPServerStreamableHTTP(
+                url,
+                headers=headers,
+                tool_prefix=name,
+            )
+            servers.append(server)
 
-    # Build stdio server parameters
+    # Build stdio servers
     if mcp_stdio_params:
         for name, params in mcp_stdio_params.items():
             if mcp_enabled.get(name, False):
-                mcp_server_parameters.append(StdioServerParameters(**params))
+                server = MCPServerStdio(
+                    params["command"],
+                    args=params.get("args", []),
+                    env=params.get("env"),
+                    tool_prefix=name,
+                )
+                servers.append(server)
 
-    if not mcp_server_parameters:
-        return []
-
-    mcp_client = MCPClient(server_parameters=mcp_server_parameters)
-    return mcp_client.get_tools()
+    return servers
 
 
 def create_agent(
     config: Dict[str, Any], memory_context: Optional[str] = None
-) -> CodeAgent:
+) -> Agent[AgentDeps, str]:
     """
-    Creates an agent based on the provided configuration.
+    Creates a pydantic-ai Agent based on the provided configuration.
 
     Args:
         config: Configuration dictionary containing:
             - model: Model identifier (e.g., "gemini/gemini-2.5-pro")
-            - agent: Agent type (e.g., "CodeAgent")
             - tools: List of tool names to enable
             - memory_enabled: Whether to equip memory tools (default: False)
-            - mcp_urls: Optional list of MCP server URLs
+            - mcp_urls: Optional MCP server URLs
             - instructions: Optional custom instructions
 
     Returns:
-        Configured CodeAgent instance with specified tools and model.
-
-    Raises:
-        ValueError: If an unknown agent type is specified.
+        Configured pydantic-ai Agent instance.
     """
-    # Extract configuration with CONFIG-based fallbacks and validate model
-
+    # --- Validate model ---
     enabled_models = get_enabled_models_from_db()
 
     if not enabled_models:
-        # Fallback to CONFIG defaults if DB check returns nothing (should fallback in helper, but double check)
         if CONFIG.model_options:
             enabled_models = CONFIG.model_options
         else:
-            # Critical failure if no models available anywhere
             raise ValueError(
                 "No LLM models are enabled. Please configure a provider in Settings."
             )
 
     model_id = config.get("model")
 
-    # Check if requested model is valid/enabled
     if not model_id or model_id not in enabled_models:
         fallback = enabled_models[0]
         if model_id:
@@ -161,23 +137,16 @@ def create_agent(
                 f"Requested model '{model_id}' is not enabled. Falling back to '{fallback}'."
             )
         model_id = fallback
-    agent_name = config.get("agent") or (
-        CONFIG.agent_options[0] if CONFIG.agent_options else "CodeAgent"
-    )
+
+    model = create_pydantic_ai_model(model_id)
+
+    # --- Build tool list ---
     tool_names = (config.get("tools") or CONFIG.default_tools).copy()
     memory_enabled = config.get("memory_enabled", CONFIG.memory_enabled)
-    additional_authorized_imports = (
-        config.get("additional_authorized_imports")
-        or CONFIG.additional_authorized_imports
-    )
-    model = LiteLLMModel(model_id=model_id)
 
-    tools = []
+    from suzent.tools.registry import get_tool_function
 
-    # Import tool registry for dynamic tool discovery
-    from suzent.tools.registry import get_tool_class
-
-    # Tools auto-equipped separately below
+    tool_functions = []
     _auto_equipped = {
         "MemorySearchTool",
         "MemoryBlockUpdateTool",
@@ -186,64 +155,45 @@ def create_agent(
     }
 
     for tool_name in tool_names:
-        try:
-            if tool_name in _auto_equipped:
-                continue
+        if tool_name in _auto_equipped:
+            continue
+        fn = get_tool_function(tool_name)
+        if fn:
+            tool_functions.append(fn)
+        else:
+            logger.warning(f"Tool function not found for: {tool_name}")
 
-            tool_class = get_tool_class(tool_name)
-            if tool_class is None:
-                logger.warning(f"Tool not found in registry: {tool_name}")
-                continue
-
-            tools.append(tool_class())
-        except Exception as e:
-            logger.error(f"Could not load tool {tool_name}: {e}")
-
-    # Equip memory tools separately if enabled
+    # Equip memory tools if enabled
     if memory_enabled and CONFIG.memory_enabled:
-        memory_tools = create_memory_tools()
-        tools.extend(memory_tools)
+        mem_search = get_tool_function("MemorySearchTool")
+        mem_update = get_tool_function("MemoryBlockUpdateTool")
+        if mem_search:
+            tool_functions.append(mem_search)
+        if mem_update:
+            tool_functions.append(mem_update)
 
     # Auto-equip SkillTool if any skills are enabled
     skill_manager = get_skill_manager()
     if skill_manager.enabled_skills:
-        try:
-            skill_tool_class = get_tool_class("SkillTool")
-            if skill_tool_class:
-                # Check if not already added
-                if not any(isinstance(t, skill_tool_class) for t in tools):
-                    tools.append(skill_tool_class())
-                    logger.info(
-                        f"SkillTool equipped ({len(skill_manager.enabled_skills)} skills enabled)"
-                    )
-        except Exception as e:
-            logger.error(f"Failed to equip SkillTool: {e}")
+        fn = get_tool_function("SkillTool")
+        if fn and fn not in tool_functions:
+            tool_functions.append(fn)
+            logger.info(
+                f"SkillTool equipped ({len(skill_manager.enabled_skills)} skills enabled)"
+            )
 
-    # Auto-equip SocialMessageTool (social mode via context, or desktop mode via tool list)
+    # Auto-equip SocialMessageTool
     social_ctx = config.get("social_context")
     if social_ctx or "SocialMessageTool" in tool_names:
-        try:
-            social_tool_class = get_tool_class("SocialMessageTool")
-            if social_tool_class and not any(
-                isinstance(t, social_tool_class) for t in tools
-            ):
-                tools.append(social_tool_class())
-        except Exception as e:
-            logger.error(f"Failed to equip SocialMessageTool: {e}")
+        fn = get_tool_function("SocialMessageTool")
+        if fn and fn not in tool_functions:
+            tool_functions.append(fn)
 
-    # Load MCP tools from enabled servers
-    mcp_tools = _build_mcp_tools(config)
-    tools.extend(mcp_tools)
+    # --- Build MCP servers ---
+    mcp_servers = _build_mcp_servers(config)
 
-    agent_map = {"CodeAgent": CodeAgent, "ToolcallingAgent": ToolCallingAgent}
-
-    agent_class = agent_map.get(agent_name)
-    if not agent_class:
-        raise ValueError(f"Unknown agent: {agent_name}")
-
+    # --- Build instructions ---
     base_instructions = config.get("instructions", CONFIG.instructions)
-
-    # Calculate effective custom volumes to report in prompt
     sandbox_volumes = config.get("sandbox_volumes")
     custom_volumes = get_effective_volumes(sandbox_volumes)
 
@@ -254,34 +204,21 @@ def create_agent(
         social_context=build_social_context(social_ctx) if social_ctx else "",
     )
 
-    params = {
-        "model": model,
-        "tools": tools,
-        "stream_outputs": True,
-        "instructions": instructions,
-    }
+    # --- Create pydantic-ai Agent ---
+    agent = Agent(
+        model,
+        deps_type=AgentDeps,
+        tools=tool_functions,
+        toolsets=mcp_servers if mcp_servers else [],
+        instructions=instructions,
+        output_type=str,
+    )
 
-    if agent_name == "CodeAgent" and additional_authorized_imports:
-        params["additional_authorized_imports"] = additional_authorized_imports
+    # Store metadata for later introspection
+    agent._tool_names = [tn for tn in tool_names]  # type: ignore[attr-defined]
+    agent._model_id = model_id  # type: ignore[attr-defined]
 
-    agent = agent_class(**params)
-    # Store tool instances on the agent for later context injection
-    agent._tool_instances = tools
     return agent
-
-
-def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[CodeAgent]:
-    """
-    Deserialize agent state and restore it to a new agent instance.
-
-    Args:
-        agent_data: Serialized agent state as bytes.
-        config: Configuration dictionary for creating the agent.
-
-    Returns:
-        Restored agent instance, or None if deserialization fails.
-    """
-    return _deserialize_agent_impl(agent_data, config, create_agent)
 
 
 def build_agent_config(
@@ -293,8 +230,7 @@ def build_agent_config(
 
     Args:
         base_config: Initial configuration overrides (e.g., from request).
-        require_social_tool: If True, ensures SocialMessageTool is equipped
-                             (used by cron and heartbeat).
+        require_social_tool: If True, ensures SocialMessageTool is equipped.
 
     Returns:
         A dictionary containing the merged configuration.
@@ -330,7 +266,7 @@ def build_agent_config(
     return config
 
 
-async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> CodeAgent:
+async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Agent:
     """
     Get the current agent instance or create a new one if needed.
 
@@ -339,30 +275,24 @@ async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Co
         reset: If True, force creation of a new agent instance.
 
     Returns:
-        Agent instance ready for use.
+        pydantic-ai Agent instance ready for use.
     """
     global agent_instance, agent_config
 
-    # Keys that are transient per-request and should not trigger agent re-creation
-    # (_runtime contains live objects that can't be compared; _chat_id/_user_id are per-session)
     _TRANSIENT_KEYS = {"_runtime", "_chat_id", "_user_id"}
 
     def _stable_config(cfg: dict) -> dict:
-        """Return config dict without transient per-request keys."""
         return {k: v for k, v in cfg.items() if k not in _TRANSIENT_KEYS}
 
     async with agent_lock:
-        # Re-create agent if config changes, reset requested, or not initialized
         config_changed = _stable_config(config) != (
             _stable_config(agent_config) if agent_config else None
         )
         if config_changed and agent_config is not None:
             logger.info("Config changed - creating new agent")
-            logger.debug(f"Old config tools: {agent_config.get('tools', [])}")
-            logger.debug(f"New config tools: {config.get('tools', [])}")
 
         if agent_instance is None or config_changed or reset:
-            # Fetch memory context if memory system is enabled (in async context)
+            # Fetch memory context if memory system is enabled
             memory_context = None
             memory_enabled = config.get("memory_enabled", False)
             mem_manager = get_memory_manager()
@@ -379,7 +309,6 @@ async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Co
                     logger.error(f"Error fetching memory context: {e}")
                     memory_context = None
 
-            # Pass memory context to create_agent
             agent_instance = create_agent(config, memory_context=memory_context)
             agent_config = config
 

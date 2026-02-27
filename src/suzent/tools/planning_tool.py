@@ -7,7 +7,7 @@ with the plan. It supports creating a plan, checking its status, and updating st
 
 from typing import Optional
 
-from smolagents.tools import Tool
+from suzent.tools.base import Tool
 
 from suzent.logger import get_logger
 from suzent.plan import (
@@ -204,11 +204,18 @@ class PlanningTool(Tool):
 
         # Map phases to Phase objects
         new_phases = []
-        for p in phases:
+        for idx, p in enumerate(phases):
+            # Try to use the LLM's id as a number; fall back to 1-based index
+            raw_id = p.get("id", idx + 1)
+            try:
+                phase_number = int(raw_id)
+            except (ValueError, TypeError):
+                phase_number = idx + 1
+
             new_phases.append(
                 Phase(
-                    number=p["id"],
-                    description=p["title"],
+                    number=phase_number,
+                    description=p.get("title", p.get("description", f"Phase {phase_number}")),
                     capabilities=p.get("capabilities", {}),
                 )
             )

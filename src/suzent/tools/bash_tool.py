@@ -17,7 +17,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from smolagents.tools import Tool
+from suzent.tools.base import Tool
 
 from suzent.logger import get_logger
 

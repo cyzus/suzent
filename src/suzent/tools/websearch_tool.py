@@ -14,7 +14,7 @@ import httpx
 from urllib.parse import urlparse
 from typing import Optional, List, Dict, Any
 
-from smolagents.tools import Tool
+from suzent.tools.base import Tool
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -103,14 +103,14 @@ class WebSearchTool(Tool):
             "Accept": "application/json",
             "Accept-Language": "en-US,en;q=0.9",
         }
-        self.client = httpx.Client(
+        self.client = httpx.AsyncClient(
             base_url=self.searxng_base_url,
             timeout=30.0,
             headers=headers,
             follow_redirects=True,
         )
 
-    def forward(
+    async def forward(
         self,
         query: str,
         categories: Optional[str] = None,
@@ -122,15 +122,15 @@ class WebSearchTool(Tool):
         Perform a web search using either SearXNG or the default search tool.
         """
         if self.use_searxng:
-            return self._search_with_searxng(
+            return await self._search_with_searxng(
                 query, categories, max_results, time_range, page
             )
         else:
-            return self._search_with_ddgs(
+            return await self._search_with_ddgs(
                 query, categories, max_results, time_range, page
             )
 
-    def _search_with_ddgs(
+    async def _search_with_ddgs(
         self,
         query: str,
         category: Optional[str] = None,
@@ -143,56 +143,43 @@ class WebSearchTool(Tool):
             self.TIME_RANGE_MAPPING.get(time_range.lower()) if time_range else None
         )
 
-        # Max results validation
         max_results = max_results if max_results else 10
-
         if max_results > 20:
             max_results = 20  # Cap to reasonable limit
 
         try:
-            # Lazy import to avoid loading unless needed
+            import asyncio
             from ddgs import DDGS
 
-            # Use context manager for better resource management
-            with DDGS() as ddgs:
-                results = []
-                source_label = f"DDGS ({category or 'general'})"
+            def _do_search():
+                # Runs in a separate thread to prevent blocking main loop
+                with DDGS(timeout=15) as ddgs:
+                    if not category or category == "general":
+                        return list(ddgs.text(query, timelimit=timelimit, max_results=max_results))
+                    elif category == "news":
+                        return list(ddgs.news(query, timelimit=timelimit, max_results=max_results))
+                    elif category == "images":
+                        return list(ddgs.images(query, timelimit=timelimit, max_results=max_results))
+                    elif category == "videos":
+                        return list(ddgs.videos(query, timelimit=timelimit, max_results=max_results))
+                    else:
+                        raise ValueError(f"Error: Unsupported category '{category}'")
 
-                if not category or category == "general":
-                    # Text Search (supports backend='api', 'html', 'lite') - 'api' is default
-                    # Note: DDGS.text() doesn't strictly support pagination in the API backend consistently across versions,
-                    # but we can simulate or pass parameters if supported.
-                    # For simplicity, we stick to basic arguments.
-                    results = list(
-                        ddgs.text(query, timelimit=timelimit, max_results=max_results)
-                    )
-                elif category == "news":
-                    results = list(
-                        ddgs.news(query, timelimit=timelimit, max_results=max_results)
-                    )
-                elif category == "images":
-                    results = list(
-                        ddgs.images(query, timelimit=timelimit, max_results=max_results)
-                    )
-                elif category == "videos":
-                    results = list(
-                        ddgs.videos(query, timelimit=timelimit, max_results=max_results)
-                    )
-                else:
-                    return f"Error: Unsupported category '{category}' for DuckDuckGo."
+            source_label = f"DDGS ({category or 'general'})"
+            results = await asyncio.to_thread(_do_search)
 
-                if not results:
-                    return f"No results found for query: '{query}'"
+            if not results:
+                return f"No results found for query: '{query}'"
 
-                return self._format_results(
-                    results, source=source_label, category=category
-                )
+            return self._format_results(
+                results, source=source_label, category=category
+            )
 
         except Exception as e:
             logger.error(f"DDGS search failed: {e}")
             return f"Error querying DDGS: {str(e)}"
 
-    def _search_with_searxng(
+    async def _search_with_searxng(
         self,
         query: str,
         categories: Optional[str] = None,
@@ -210,21 +197,18 @@ class WebSearchTool(Tool):
 
             if categories:
                 params["categories"] = categories
-
             if time_range:
                 params["time_range"] = time_range
 
-            response = self.client.get("/search", params=params)
+            if not self.client:
+                self._init_searxng_client()
+
+            response = await self.client.get("/search", params=params)
 
             if response.status_code == 403:
                 logger.warning("SearXNG JSON format restricted, falling back to DDGS")
-                # Pass defaults for new params since searxng function signature is older
-                return self._search_with_ddgs(
-                    query,
-                    category=categories,
-                    max_results=max_results,
-                    time_range=time_range,
-                    page=page,
+                return await self._search_with_ddgs(
+                    query, category=categories, max_results=max_results, time_range=time_range, page=page
                 )
 
             response.raise_for_status()
@@ -240,28 +224,12 @@ class WebSearchTool(Tool):
                 return response.text
 
         except httpx.HTTPStatusError as e:
-            logger.warning(
-                f"SearXNG failed with {e.response.status_code}. Falling back to DDGS."
-            )
-            return self._search_with_ddgs(
-                query,
-                category=categories,
-                max_results=max_results,
-                time_range=time_range,
-                page=page,
-            )
+            logger.warning(f"SearXNG failed with {e.response.status_code}. Falling back to DDGS.")
+            return await self._search_with_ddgs(query, category=categories, max_results=max_results, time_range=time_range, page=page)
 
         except (httpx.RequestError, Exception) as e:
-            logger.warning(
-                f"SearXNG connection failed: {str(e)}. Falling back to DDGS."
-            )
-            return self._search_with_ddgs(
-                query,
-                category=categories,
-                max_results=max_results,
-                time_range=time_range,
-                page=page,
-            )
+            logger.warning(f"SearXNG connection failed: {str(e)}. Falling back to DDGS.")
+            return await self._search_with_ddgs(query, category=categories, max_results=max_results, time_range=time_range, page=page)
 
     def _format_results(
         self,

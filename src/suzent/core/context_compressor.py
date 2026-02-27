@@ -1,23 +1,20 @@
 """
-Context Compressor: Manages agent memory by summarizing and pruning old turns.
+Context Compressor: Manages conversation history by trimming and summarizing.
 
-Supports pre-compaction memory flush: before compressing steps, extract
-important facts from the steps about to be removed and persist them
-to the memory system (LanceDB + markdown). This ensures no valuable
-context is lost when the context window is trimmed.
+Works with pydantic-ai's message history format (list of ModelMessage objects).
+Supports pre-compaction memory flush: before trimming messages, extract
+important facts and persist them to the memory system.
 """
 
 from typing import List, Optional
 
-from smolagents import CodeAgent
-from smolagents.memory import (
-    ActionStep,
-    PlanningStep,
-    FinalAnswerStep,
-    TaskStep,
-    ToolCall,
+from pydantic_ai.messages import (
+    ModelRequest,
+    ModelResponse,
+    ToolCallPart,
+    ToolReturnPart,
+    TextPart,
 )
-from smolagents.monitoring import Timing
 
 from suzent.config import CONFIG
 from suzent.logger import get_logger
@@ -43,10 +40,10 @@ Please provide a concise but comprehensive summary of these events.
 
 
 class ContextCompressor:
-    """Handles compression of agent conversation history to manage context window size.
+    """Handles compression of pydantic-ai message history.
 
-    Supports pre-compaction memory flush: before compressing, extract facts from
-    steps about to be removed and feed them to the memory system.
+    Operates on a list of ModelMessage objects (from result.all_messages()).
+    Supports pre-compaction memory flush before trimming.
     """
 
     def __init__(
@@ -61,94 +58,66 @@ class ContextCompressor:
             config = get_effective_memory_config()
             self.llm_client = LLMClient(model=config["extraction_model"])
 
-        self.max_history_steps = CONFIG.max_history_steps
+        self.max_history_messages = CONFIG.max_history_steps * 2  # request+response pairs
         self.chat_id = chat_id
         self.user_id = user_id
 
-    async def compress_context(self, agent: CodeAgent) -> bool:
+    async def compress_messages(self, messages: list) -> list:
         """
-        Check if context needs compression and perform it if necessary.
+        Check if message history needs compression and perform it if necessary.
 
-        Before compressing, runs a pre-compaction memory flush to capture
-        important facts from the steps that will be removed.
+        Args:
+            messages: List of pydantic-ai ModelMessage objects.
 
         Returns:
-            True if compression occurred, False otherwise.
+            The (possibly trimmed) message list.
         """
-        if not agent or not hasattr(agent, "memory"):
-            return False
+        if not messages:
+            return messages
 
-        steps = agent.memory.steps
-        if not steps:
-            return False
+        if len(messages) <= self.max_history_messages:
+            return messages
 
-        reason = self._should_compress(agent, steps)
-        if not reason:
-            return False
-
-        logger.info(f"Compressing agent context: {reason}")
+        logger.info(
+            f"Compressing message history: {len(messages)} messages "
+            f"exceeds limit of {self.max_history_messages}"
+        )
 
         try:
-            return await self._perform_compression(agent)
+            return await self._perform_compression(messages)
         except Exception as e:
             logger.error(f"Context compression failed: {e}")
-            return False
+            return messages
 
-    def _should_compress(self, agent: CodeAgent, steps: list) -> Optional[str]:
+    async def _perform_compression(self, messages: list) -> list:
         """
-        Determine whether compression is needed.
-
-        Returns:
-            A reason string if compression is needed, None otherwise.
-        """
-        if len(steps) > self.max_history_steps:
-            return f"Step count ({len(steps)}) exceeds limit ({self.max_history_steps})"
-
-        if hasattr(agent, "monitor") and agent.monitor:
-            total_tokens = (
-                agent.monitor.total_input_token_count
-                + agent.monitor.total_output_token_count
-            )
-            if total_tokens > CONFIG.max_context_tokens:
-                logger.warning(
-                    f"Compression triggered by token usage: {total_tokens} > {CONFIG.max_context_tokens}"
-                )
-                return f"Token usage ({total_tokens}) exceeds limit ({CONFIG.max_context_tokens})"
-
-        return None
-
-    async def _perform_compression(self, agent: CodeAgent) -> bool:
-        """
-        Compress the agent's memory by summarizing older steps.
+        Compress messages by summarizing older ones.
 
         Strategy:
-        1. Keep the initial TaskStep (steps[0]).
-        2. Pre-compaction flush: extract facts from steps about to be removed.
-        3. Summarize the compressible middle block into a single ActionStep.
-        4. Keep the most recent N steps intact.
+        1. Keep the first message (system context).
+        2. Pre-compaction flush: extract facts from messages about to be removed.
+        3. Summarize the compressible middle block.
+        4. Keep the most recent N messages intact.
         """
-        steps = agent.memory.steps
+        # Keep last N messages (at least 10, or 25% of max)
+        keep_recent = max(10, int(self.max_history_messages * 0.25))
 
-        # Keep last N steps (at least 5, or 25% of max)
-        keep_recent_count = max(5, int(self.max_history_steps * 0.25))
+        if len(messages) <= keep_recent + 1:
+            return messages
 
-        if len(steps) <= keep_recent_count + 1:
-            logger.debug("Not enough steps to compress effectively yet.")
-            return False
-
-        start_index = 1  # After initial TaskStep
-        end_index = len(steps) - keep_recent_count
+        start_index = 1  # After first system/context message
+        end_index = len(messages) - keep_recent
 
         if start_index >= end_index:
-            return False
+            return messages
 
-        steps_to_compress = steps[start_index:end_index]
+        messages_to_compress = messages[start_index:end_index]
 
-        # Pre-compaction memory flush: extract facts before they're lost
-        await self._pre_compaction_flush(steps_to_compress)
+        # Pre-compaction memory flush
+        await self._pre_compaction_flush(messages_to_compress)
 
-        steps_text = self._steps_to_text(steps_to_compress)
-
+        # Generate summary
+        steps_text = self._messages_to_text(messages_to_compress)
         summary = await self.llm_client.complete(
             prompt=SUMMARY_PROMPT_TEMPLATE.format(steps_text=steps_text),
             system="You are an expert technical summarizer.",
@@ -157,50 +126,41 @@ class ContextCompressor:
 
         if not summary:
             logger.warning("Failed to generate summary for compression.")
-            return False
+            # Fallback: just trim without summary
+            return messages[:1] + messages[end_index:]
 
-        # Create a synthetic ActionStep containing the archived summary
-        summary_tool_call = ToolCall(
-            name="system_context_manager",
-            arguments={"action": "read_archived_history"},
-            id="context_compression_event",
+        # Create a synthetic summary message
+        from pydantic_ai.messages import (
+            ModelRequest,
+            UserPromptPart,
+            ModelResponse,
+            TextPart as ResponseTextPart,
         )
 
-        summary_step = ActionStep(
-            step_number=len(steps),
-            timing=Timing(start_time=0.0, end_time=0.0),
-            tool_calls=[summary_tool_call],
-            error=None,
-        )
-        summary_step.action_output = (
-            f"--- ARCHIVED CONTEXT SUMMARY ---\n{summary}\n--- END ARCHIVED CONTEXT ---"
-        )
+        summary_request = ModelRequest(parts=[
+            UserPromptPart(content="[System: What happened in the previous conversation?]")
+        ])
+        summary_response = ModelResponse(parts=[
+            ResponseTextPart(content=(
+                f"--- ARCHIVED CONTEXT SUMMARY ---\n{summary}\n--- END ARCHIVED CONTEXT ---"
+            ))
+        ])
 
-        # Rebuild memory: [TaskStep] + [Summary] + [Recent steps]
-        new_memory = [steps[0], summary_step] + steps[end_index:]
-        agent.memory.steps = new_memory
+        # Rebuild: [first msg] + [summary pair] + [recent messages]
+        new_messages = messages[:1] + [summary_request, summary_response] + messages[end_index:]
 
         logger.info(
-            f"Context compressed. Steps reduced from {len(steps)} to {len(new_memory)}."
+            f"Message history compressed: {len(messages)} → {len(new_messages)} messages"
         )
-        return True
+        return new_messages
 
-    async def _pre_compaction_flush(self, steps_to_compress: List) -> None:
+    async def _pre_compaction_flush(self, messages_to_compress: list) -> None:
         """
-        Extract memories from steps about to be compressed away.
-
-        Builds a synthetic ConversationTurn from the steps being removed
-        and feeds it to the memory manager. This ensures no important
-        facts are lost when context is trimmed.
-
-        Args:
-            steps_to_compress: List of agent steps about to be removed.
+        Extract memories from messages about to be compressed away.
         """
         if not CONFIG.memory_enabled:
             return
-
         if not self.chat_id or not self.user_id:
-            logger.debug("Pre-compaction flush skipped: no chat_id/user_id")
             return
 
         try:
@@ -211,65 +171,57 @@ class ContextCompressor:
             if not memory_mgr:
                 return
 
-            # Build a synthetic turn from the steps about to be discarded
+            # Extract content from messages
             user_parts = []
             assistant_parts = []
             actions = []
-            reasoning = []
 
-            for step in steps_to_compress:
-                if isinstance(step, TaskStep):
-                    user_parts.append(step.task or "")
-
-                elif isinstance(step, ActionStep):
-                    if step.tool_calls:
-                        for tc in step.tool_calls:
+            for msg in messages_to_compress:
+                if isinstance(msg, ModelRequest):
+                    for part in msg.parts:
+                        if hasattr(part, "content") and isinstance(part.content, str):
+                            user_parts.append(part.content)
+                        if isinstance(part, ToolReturnPart):
                             actions.append(
                                 AgentAction(
-                                    tool=tc.name,
-                                    args=tc.arguments or {},
-                                    output=str(step.action_output or "")[:200],
+                                    tool=part.tool_name,
+                                    args={},
+                                    output=str(part.content)[:200],
                                 )
                             )
-                    elif step.action_output:
-                        output = str(step.action_output)
-                        if len(output) > 300:
-                            output = output[:300] + "..."
-                        assistant_parts.append(output)
-                    if step.error:
-                        assistant_parts.append(f"[Error: {step.error}]")
+                elif isinstance(msg, ModelResponse):
+                    for part in msg.parts:
+                        if isinstance(part, TextPart):
+                            text = part.content
+                            if len(text) > 300:
+                                text = text[:300] + "..."
+                            assistant_parts.append(text)
+                        elif isinstance(part, ToolCallPart):
+                            actions.append(
+                                AgentAction(
+                                    tool=part.tool_name,
+                                    args=part.args if isinstance(part.args, dict) else {},
+                                )
+                            )
 
-                elif isinstance(step, PlanningStep):
-                    reasoning.append(step.plan or "")
-
-                elif isinstance(step, FinalAnswerStep):
-                    answer = str(getattr(step, "final_answer", "") or "")
-                    if answer:
-                        assistant_parts.append(answer)
-
-            # Only flush if there's meaningful content
             user_text = "\n".join(p for p in user_parts if p).strip()
             assistant_text = "\n".join(p for p in assistant_parts if p).strip()
 
             if not user_text and not assistant_text:
-                logger.debug("Pre-compaction flush: no meaningful content to extract")
                 return
 
-            # Build synthetic conversation turn
             turn = ConversationTurn(
                 user_message=Message(
                     role="user",
-                    content=user_text or "(context from previous steps)",
+                    content=user_text or "(context from previous messages)",
                 ),
                 assistant_message=Message(
                     role="assistant",
-                    content=assistant_text or "(actions taken in previous steps)",
+                    content=assistant_text or "(actions taken in previous messages)",
                 ),
                 agent_actions=actions[:10],
-                agent_reasoning=reasoning[:5],
             )
 
-            # Feed to memory system
             result = await memory_mgr.process_conversation_turn_for_memories(
                 conversation_turn=turn,
                 chat_id=self.chat_id,
@@ -280,33 +232,28 @@ class ContextCompressor:
             created_count = len(result.memories_created) if result else 0
             logger.info(
                 f"Pre-compaction flush: extracted {extracted_count} facts, "
-                f"created {created_count} memories from {len(steps_to_compress)} steps"
+                f"created {created_count} memories from {len(messages_to_compress)} messages"
             )
 
         except Exception as e:
-            # Pre-compaction flush should never block compression
             logger.warning(f"Pre-compaction memory flush failed: {e}")
 
-    def _steps_to_text(self, steps: List) -> str:
-        """Convert a list of agent steps to a text representation for summarization."""
+    def _messages_to_text(self, messages: list) -> str:
+        """Convert pydantic-ai messages to text for summarization."""
         text = []
-        for step in steps:
-            if isinstance(step, ActionStep):
-                if step.tool_calls:
-                    for tool_call in step.tool_calls:
-                        text.append(f"Action: {tool_call.name}({tool_call.arguments})")
-                if step.action_output:
-                    output = str(step.action_output)
-                    if len(output) > 500:
-                        output = output[:500] + "... (truncated)"
-                    text.append(f"Result: {output}")
-                if step.error:
-                    text.append(f"Error: {step.error}")
-            elif isinstance(step, PlanningStep):
-                text.append(f"Plan: {step.plan}")
-            elif isinstance(step, FinalAnswerStep):
-                text.append(f"Final Answer: {step.final_answer}")
-            elif isinstance(step, TaskStep):
-                text.append(f"Task: {step.task}")
-
+        for msg in messages:
+            if isinstance(msg, ModelRequest):
+                for part in msg.parts:
+                    if hasattr(part, "content") and isinstance(part.content, str):
+                        text.append(f"User: {part.content[:500]}")
+                    if isinstance(part, ToolReturnPart):
+                        output = str(part.content)[:500]
+                        text.append(f"Tool Result ({part.tool_name}): {output}")
+            elif isinstance(msg, ModelResponse):
+                for part in msg.parts:
+                    if isinstance(part, TextPart):
+                        text.append(f"Assistant: {part.content[:500]}")
+                    elif isinstance(part, ToolCallPart):
+                        args_str = str(part.args)[:200] if part.args else ""
+                        text.append(f"Action: {part.tool_name}({args_str})")
         return "\n".join(text)

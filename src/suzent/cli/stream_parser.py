@@ -113,16 +113,22 @@ class StreamParser:
             pass
 
         elif evt_type == "tool_output":
-            tool_name = data.get("tool_call", {}).get("name", "unknown")
+            # Support both old format (tool_call.name) and new format (tool_name)
+            tool_name = data.get("tool_name") or data.get("tool_call", {}).get("name", "unknown")
             output = data.get("output", "") or data.get("observation", "")
             yield ToolOutput(tool_name, str(output))
 
         elif evt_type == "action":
-            # Handle observations/logs if present
-            if data.get("observations"):
-                # Clean up CodeAgent specific log headers if needed
+            # Handle tool call announcements from pydantic-ai
+            if data.get("tool_calls"):
+                for tc in data["tool_calls"]:
+                    yield ToolCall(
+                        tc.get("name", "unknown"),
+                        tc.get("arguments", {}),
+                    )
+            # Handle observations/logs if present (legacy)
+            elif data.get("observations"):
                 obs = data["observations"]
-                # Heuristic cleanup similar to frontend
                 obs = obs.replace("Execution logs:\n", "").strip()
                 yield ToolOutput("system", obs)
 
