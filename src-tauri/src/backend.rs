@@ -251,6 +251,12 @@ pub fn ensure_backend_setup(resource_dir: &Path, app_data_dir: &Path) -> Result<
         }
     }
 
+    // Clear existing venv to prevent uv from failing if Pyvenv.cfg is missing
+    if venv_dir.exists() {
+        println!("  Removing existing venv at {:?}...", venv_dir);
+        let _ = std::fs::remove_dir_all(&venv_dir);
+    }
+
     // Step 1: Create venv
     println!("  Creating venv at {:?}...", venv_dir);
     let mut cmd = Command::new(&uv_exe);
