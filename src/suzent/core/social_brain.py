@@ -150,23 +150,10 @@ class SocialBrain:
             # Capture the running event loop for sync-to-async bridging in tools
             event_loop = asyncio.get_running_loop()
 
-            # Determine effective model (prefer social.json config, fallback to user prefs)
-            model_id = self.model
-            if not model_id:
-                try:
-                    db = get_database()
-                    prefs = db.get_user_preferences()
-                    if prefs and prefs.model:
-                        model_id = prefs.model
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to load user preferences in SocialBrain: {e}"
-                    )
-
             # Prepare config overrides with social context and runtime refs
-            config_override = {
-                "model": model_id,
-                "tools": self.tools,
+            from suzent.agent_manager import build_agent_config
+
+            base_config = {
                 "mcp_enabled": self.mcp_enabled,
                 "social_context": {
                     "platform": message.platform,
@@ -179,6 +166,12 @@ class SocialBrain:
                     "event_loop": event_loop,
                 },
             }
+            if self.model:
+                base_config["model"] = self.model
+            if self.tools is not None:
+                base_config["tools"] = self.tools
+
+            config_override = build_agent_config(base_config, require_social_tool=False)
 
             # 5. Process and Reply
             full_response = ""

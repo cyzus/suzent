@@ -236,16 +236,9 @@ class HeartbeatRunner:
 
     def _build_config_override(self) -> dict:
         """Build config override, resolving model from user preferences."""
-        config: dict = {"memory_enabled": True}
+        from suzent.agent_manager import build_agent_config
 
-        try:
-            db = get_database()
-            if (prefs := db.get_user_preferences()) and prefs.model:
-                config["model"] = prefs.model
-        except Exception as e:
-            logger.warning(f"Failed to load user preferences for heartbeat: {e}")
-
-        return config
+        return build_agent_config({"memory_enabled": True}, require_social_tool=True)
 
     def _read_heartbeat_md(self) -> Optional[str]:
         """Read HEARTBEAT.md, return None if missing or has no meaningful content."""

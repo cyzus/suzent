@@ -74,23 +74,10 @@ async def chat(request: Request) -> StreamingResponse:
         )
 
         from suzent.core.chat_processor import ChatProcessor
+        from suzent.agent_manager import build_agent_config
 
         processor = ChatProcessor()
-        config_override = config.copy() if config else {}
-
-        # Merge user preferences from DB if not provided in request
-        try:
-            db = get_database()
-            user_prefs = db.get_user_preferences()
-            if user_prefs:
-                if not config_override.get("model") and user_prefs.model:
-                    config_override["model"] = user_prefs.model
-                if not config_override.get("agent") and user_prefs.agent:
-                    config_override["agent"] = user_prefs.agent
-                if "tools" not in config_override and user_prefs.tools:
-                    config_override["tools"] = user_prefs.tools
-        except Exception as e:
-            logger.warning(f"Failed to load user preferences in chat route: {e}")
+        config_override = build_agent_config(config, require_social_tool=False)
 
         generator = processor.process_turn(
             chat_id=chat_id,

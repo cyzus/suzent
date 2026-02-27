@@ -270,7 +270,6 @@ def create_agent(
     return agent
 
 
-# Wrapper to maintain backward compatibility - deserialize_agent needs create_agent
 def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[CodeAgent]:
     """
     Deserialize agent state and restore it to a new agent instance.
@@ -283,6 +282,52 @@ def deserialize_agent(agent_data: bytes, config: Dict[str, Any]) -> Optional[Cod
         Restored agent instance, or None if deserialization fails.
     """
     return _deserialize_agent_impl(agent_data, config, create_agent)
+
+
+def build_agent_config(
+    base_config: Optional[Dict[str, Any]] = None, require_social_tool: bool = False
+) -> Dict[str, Any]:
+    """
+    Builds the effective configuration dictionary for a ChatProcessor turn,
+    merging base configs with user preferences from the database.
+
+    Args:
+        base_config: Initial configuration overrides (e.g., from request).
+        require_social_tool: If True, ensures SocialMessageTool is equipped
+                             (used by cron and heartbeat).
+
+    Returns:
+        A dictionary containing the merged configuration.
+    """
+    from suzent.database import get_database
+
+    config = base_config.copy() if base_config else {}
+
+    try:
+        db = get_database()
+        if prefs := db.get_user_preferences():
+            if not config.get("model") and prefs.model:
+                config["model"] = prefs.model
+            if not config.get("agent") and prefs.agent:
+                config["agent"] = prefs.agent
+            if "tools" not in config and prefs.tools is not None:
+                config["tools"] = prefs.tools
+    except Exception as e:
+        logger.warning(f"Failed to load user preferences: {e}")
+
+    # Ensure tools list exists and is populated
+    tools = config.get("tools")
+    if tools is None:
+        tools = CONFIG.default_tools.copy()
+    elif isinstance(tools, list):
+        tools = tools.copy()
+
+    if require_social_tool and "SocialMessageTool" not in tools:
+        tools.append("SocialMessageTool")
+
+    config["tools"] = tools
+
+    return config
 
 
 async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> CodeAgent:

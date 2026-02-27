@@ -207,20 +207,13 @@ class SchedulerBrain:
         self, db, *, model_override: Optional[str] = None
     ) -> dict:
         """Build config override dict, resolving model from override or user prefs."""
-        config: dict = {"memory_enabled": True}
+        from suzent.agent_manager import build_agent_config
 
-        model_id = model_override
-        if not model_id:
-            try:
-                if prefs := db.get_user_preferences():
-                    model_id = prefs.model
-            except Exception as e:
-                logger.warning(f"Failed to load user preferences: {e}")
+        base_config: dict = {"memory_enabled": True}
+        if model_override:
+            base_config["model"] = model_override
 
-        if model_id:
-            config["model"] = model_id
-
-        return config
+        return build_agent_config(base_config, require_social_tool=True)
 
     def _handle_retry(
         self, db, job_id: int, current_retry: int, now: datetime, error: str
