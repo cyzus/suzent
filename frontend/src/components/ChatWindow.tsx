@@ -477,7 +477,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
 
     try {
-      const res = await fetch('/chat/stop', {
+      const res = await fetch(`${getApiBase()}/chat/stop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: targetChatId, reason: 'User requested stop' })
