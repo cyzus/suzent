@@ -13,7 +13,7 @@ import { NewChatView } from './NewChatView';
 import { ChatInputPanel } from './ChatInputPanel';
 import { ImageViewer } from './ImageViewer';
 import { FileViewer } from './FileViewer';
-import { UserMessage, AssistantMessage, ToolCallBlock, CodeStepBlock, RightSidebar } from './chat';
+import { UserMessage, AssistantMessage, ToolCallBlock, RightSidebar } from './chat';
 import { useI18n } from '../i18n';
 
 // Drag overlay component
@@ -100,28 +100,9 @@ const MessageList: React.FC<{
           const allStepInfos: string[] = [];
           while (i < messages.length && messages[i].role !== 'user' && isIntermediateStepContent(messages[i].content, messages[i].stepInfo)) {
             const parsed = filterIgnored(splitAssistantContent(messages[i].content));
-            const stepBlocks = parsed.filter(b => b.type === 'toolCall' || b.type === 'codeStep');
+            const stepBlocks = parsed.filter(b => b.type === 'toolCall');
             if (stepBlocks.length > 0) {
               allBlocks.push(...stepBlocks);
-            } else if (messages[i].stepInfo) {
-              // Message has stepInfo but wasn't parsed as codeStep — wrap content as codeStep
-              const mdBlocks = parsed.filter(b => b.type === 'markdown' && b.content.trim());
-              const codeBlocks = parsed.filter(b => b.type === 'code' && b.content.trim());
-              const logBlocks = parsed.filter(b => b.type === 'log');
-              const thoughtText = mdBlocks.map(b => b.content.trim()).join('\n').replace(/^Thought:\s*/i, '') || '';
-              allBlocks.push({
-                type: 'codeStep',
-                content: thoughtText,
-                thought: thoughtText,
-                codeContent: codeBlocks.map(b => b.content).join('\n') || undefined,
-                executionLogs: logBlocks.map(b => b.content).join('\n') || undefined,
-              });
-            } else {
-              // Legacy fallback: "Thought:"-only messages without code
-              const thoughtText = (messages[i].content || '').trim().replace(/^Thought:\s*/i, '');
-              if (thoughtText) {
-                allBlocks.push({ type: 'codeStep', content: thoughtText, thought: thoughtText });
-              }
             }
             if (messages[i].stepInfo) allStepInfos.push(messages[i].stepInfo!);
             if (i > groupStart) skipIndices.add(i); // skip non-representative messages
@@ -184,18 +165,6 @@ const MessageList: React.FC<{
                           approvalState={approvalState}
                           onApprove={approval && onToolApproval ? (remember) => onToolApproval(approval.request_id, approval.tool_name, true, remember) : undefined}
                           onDeny={approval && onToolApproval ? () => onToolApproval(approval.request_id, approval.tool_name, false) : undefined}
-                        />
-                      );
-                    }
-                    if (b.type === 'codeStep') {
-                      return (
-                        <CodeStepBlock
-                          key={`group-${idx}-${bi}`}
-                          thought={b.thought || ''}
-                          codeContent={b.codeContent}
-                          executionLogs={b.executionLogs}
-                          result={b.result}
-                          defaultCollapsed
                         />
                       );
                     }
@@ -444,7 +413,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             stopInFlightRef.current = false;
           },
         },
-        safeBackendConfig?.codeTag || '<code>',
         resetFlag,
         chatIdForSend,
         imageFilesToSend.length > 0 ? imageFilesToSend : undefined,

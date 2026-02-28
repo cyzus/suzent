@@ -6,7 +6,6 @@ import { ThinkingAnimation, AgentBadge } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { LogBlock } from './LogBlock';
 import { ToolCallBlock } from './ToolCallBlock';
-import { CodeStepBlock } from './CodeStepBlock';
 import { CodeBlockComponent } from './CodeBlockComponent';
 import { CopyButton } from './CopyButton';
 import { RobotAvatar } from './RobotAvatar';
@@ -59,9 +58,6 @@ const StepPills: React.FC<{
       if (b.type === 'toolCall') {
         return <ToolCallBlock key={blockKey} toolName={b.toolName || 'unknown'} toolArgs={b.toolArgs} output={b.content || undefined} defaultCollapsed />;
       }
-      if (b.type === 'codeStep') {
-        return <CodeStepBlock key={blockKey} thought={b.thought || ''} codeContent={b.codeContent} executionLogs={b.executionLogs} result={b.result} defaultCollapsed />;
-      }
       return null;
     })}
   </>
@@ -89,7 +85,7 @@ const StreamingContent: React.FC<{
           );
         } else if (b.type === 'log') {
           return <LogBlock key={blockKey} title={b.title} content={b.content} />;
-        } else if (b.type === 'toolCall' || b.type === 'codeStep') {
+        } else if (b.type === 'toolCall') {
           return null; // Handled outside in StepPills
         } else {
           return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} isStreaming={isLastBlock} />;
@@ -115,8 +111,6 @@ const StaticContent: React.FC<{
           return <LogBlock key={blockKey} title={b.title} content={b.content} />;
         } else if (b.type === 'toolCall') {
           return <ToolCallBlock key={blockKey} toolName={b.toolName || 'unknown'} toolArgs={b.toolArgs} output={b.content || undefined} defaultCollapsed />;
-        } else if (b.type === 'codeStep') {
-          return <CodeStepBlock key={blockKey} thought={b.thought || ''} codeContent={b.codeContent} executionLogs={b.executionLogs} result={b.result} defaultCollapsed />;
         } else {
           return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} />;
         }
@@ -162,48 +156,6 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     return null;
   }
 
-  // Streaming CodeAgent step: render as expanded pill directly (skip box and badge)
-  if (isStreamingThis && !isThinking) {
-    const codeStepBlock = blocks.find(b => b.type === 'codeStep');
-    if (codeStepBlock) {
-      return (
-        <div className="w-full max-w-4xl text-sm leading-relaxed pl-2">
-          <CodeStepBlock
-            thought={codeStepBlock.thought || ''}
-            codeContent={codeStepBlock.codeContent}
-            executionLogs={codeStepBlock.executionLogs}
-            result={codeStepBlock.result}
-            isStreaming
-          />
-        </div>
-      );
-    }
-
-    // stepInfo is the definitive signal — every CodeAgent intermediate step has it.
-    // Also fall back to content heuristics (Thought: prefix, code+logs) for in-flight messages.
-    const isCodeAgentStep = !!message.stepInfo
-      || message.content?.trim().startsWith('Thought:')
-      || (blocks.some(b => b.type === 'code' && b.content.trim()) && blocks.some(b => b.type === 'log' && b.title === 'Execution Logs'));
-
-    if (isCodeAgentStep) {
-      // Assemble a codeStep from raw blocks
-      const mdBlocks = blocks.filter(b => b.type === 'markdown' && b.content.trim());
-      const codeBlock = blocks.find(b => b.type === 'code' && b.content.trim());
-      const logBlock = blocks.find(b => b.type === 'log' && b.title === 'Execution Logs');
-      const thoughtText = mdBlocks.map(b => b.content.trim()).join('\n').replace(/^Thought:\s*/i, '') || '';
-      return (
-        <div className="w-full max-w-4xl text-sm leading-relaxed pl-2">
-          <CodeStepBlock
-            thought={thoughtText}
-            codeContent={codeBlock?.content}
-            executionLogs={logBlock?.content}
-            isStreaming
-          />
-        </div>
-      );
-    }
-  }
-
   // Detect tool-only messages
   const toolOnly = !isStreamingThis && isToolOnlyMessage(blocks);
 
@@ -221,7 +173,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   let currentIsStep = false;
 
   for (const b of blocks) {
-    const isStep = b.type === 'toolCall' || b.type === 'codeStep';
+    const isStep = b.type === 'toolCall';
     if (currentGroup.length === 0) {
       currentIsStep = isStep;
       currentGroup.push(b);

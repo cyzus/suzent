@@ -67,12 +67,8 @@ class StreamParser:
     - Agent thought vs final answer differentiation
     """
 
-    def __init__(self, code_tag: str = "<code>"):
-        self.code_tag = code_tag
+    def __init__(self):
         self.buffer = ""
-        self.is_in_code_block = False
-        self.pending_code_probe = ""
-        self.detected_agent_type: Optional[str] = None
 
     def parse(self, lines: Iterator[Union[str, bytes]]) -> Iterator[StreamEvent]:
         """
@@ -136,15 +132,10 @@ class StreamParser:
             yield ErrorEvent(str(data))
 
         elif evt_type == "final_answer":
-            # Flush any pending buffer
-            if self.pending_code_probe:
-                yield TextChunk(self.pending_code_probe, self.is_in_code_block)
-                self.pending_code_probe = ""
-
             yield FinalAnswer(str(data))
 
     def _handle_delta(self, data: dict) -> Iterator[StreamEvent]:
-        """Handle stream_delta content, filtering code tags."""
+        """Handle stream_delta content."""
         content = data.get("content", "")
 
         # ToolCallingAgent: handle tool_calls in delta
@@ -158,49 +149,4 @@ class StreamParser:
         if not content:
             return
 
-        # Code tag filtering (simple state machine)
-        # Scan content for code_tag
-        content = self.pending_code_probe + content
-        self.pending_code_probe = ""
-
-        pos = 0
-        while True:
-            idx = content.find(self.code_tag, pos)
-            if idx == -1:
-                break
-
-            # Yield content up to tag
-            text_segment = content[pos:idx]
-            if text_segment:
-                yield TextChunk(text_segment, self.is_in_code_block)
-
-            # Toggle state
-            self.is_in_code_block = not self.is_in_code_block
-
-            # Start strict code block or end it
-            # In CLI, we might want to just print it as is, or colorize it.
-            # For now, we yield it as TextChunk with is_code=True for potential styling.
-
-            pos = idx + len(self.code_tag)
-
-        # Handle remaining content
-        leftover = content[pos:]
-
-        # Check for partial tag at end
-        # Only relevant if tag is multi-char and we split in middle of it.
-        # code_tag is usually "<code>".
-        # We need to buffer if end matches partial tag.
-        keep_len = 0
-        for k in range(1, len(self.code_tag)):
-            if len(leftover) >= k and self.code_tag.startswith(leftover[-k:]):
-                keep_len = k
-                break
-
-        if keep_len > 0:
-            self.pending_code_probe = leftover[-keep_len:]
-            to_yield = leftover[:-keep_len]
-            if to_yield:
-                yield TextChunk(to_yield, self.is_in_code_block)
-        else:
-            if leftover:
-                yield TextChunk(leftover, self.is_in_code_block)
+        yield TextChunk(content, False)

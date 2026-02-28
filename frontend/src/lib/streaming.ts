@@ -24,8 +24,7 @@ export interface StreamCallbacks {
   onToolApprovalRequired?: (request: ToolApprovalRequest) => void; // HITL callback
 }
 
-// Detect if agent is using code tags (CodeAgent) or structured tool calls (ToolCallingAgent)
-let detectedAgentType: 'code' | 'toolcalling' | null = null;
+
 
 interface ContentBlock {
   type: 'markdown' | 'code' | 'log' | 'toolCall';
@@ -54,8 +53,8 @@ function formatLogContent(content: any): string {
   }
 }
 
-function assembleForStorage(blocks: ContentBlock[], isInCodeBlock: boolean): string {
-  // Build markdown incrementally; keep final code block open if still streaming
+function assembleForStorage(blocks: ContentBlock[]): string {
+  // Build markdown incrementally
   return blocks
     .map((b, i) => {
       if (b.type === 'markdown') return b.content;
@@ -66,15 +65,9 @@ function assembleForStorage(blocks: ContentBlock[], isInCodeBlock: boolean): str
         return `\n\n<details${idAttr}><summary>${b.title || 'Details'}</summary>\n\n<pre><code class="language-text">${b.content}</code></pre>\n\n</details>\n\n`;
       }
 
-      const isLast = i === blocks.length - 1;
-      // Preserve whitespace in code blocks - only check if empty
       const cleanContent = String(b.content || '');
       if (!cleanContent) return '';
 
-      if (isLast && isInCodeBlock) {
-        // Open fence only (no closing) so subsequent stream deltas stay inside
-        return `\n\n\`\`\`python\n${cleanContent}`;
-      }
       // Closed code block with proper formatting
       return `\n\n\`\`\`python\n${cleanContent}\n\`\`\`\n\n`;
     })
@@ -96,7 +89,7 @@ function getStepFootnote(step: any, stepName: string): string {
   return foot;
 }
 
-export async function streamChat(prompt: string, config: ChatConfig, callbacks: StreamCallbacks, codeTag = '<code>', reset = false, chatId?: string | null, imageFiles?: File[], fileAttachments?: FileAttachment[]) {
+export async function streamChat(prompt: string, config: ChatConfig, callbacks: StreamCallbacks, reset = false, chatId?: string | null, imageFiles?: File[], fileAttachments?: FileAttachment[]) {
   const { onDelta, onAction, onNewAssistantMessage, onStreamStopped, onStreamComplete, onPlanUpdate, onStepComplete, onImagesProcessed, onToolApprovalRequired } = callbacks;
 
   let body: BodyInit;
@@ -153,13 +146,10 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
 
   // State for current assistant message
   let blocks: ContentBlock[] = [{ type: 'markdown', content: '' }];
-  let isInCodeBlock = false;
   let assembledLen = 0;
-  // Buffer for detecting split codeTag across chunks
-  let pendingCodeProbe = '';
 
   const emitDiff = () => {
-    const assembled = assembleForStorage(blocks, isInCodeBlock);
+    const assembled = assembleForStorage(blocks);
     if (assembled.length > assembledLen) {
       const delta = assembled.slice(assembledLen);
       assembledLen = assembled.length;
@@ -167,18 +157,8 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
     }
   };
 
-  const flushPendingIfAny = () => {
-    if (pendingCodeProbe) {
-      // Pending never completed a full codeTag -> treat as plain text
-      blocks[blocks.length - 1].content += pendingCodeProbe;
-      pendingCodeProbe = '';
-    }
-  };
-
   const resetForNewAssistantMessage = () => {
-    flushPendingIfAny();
     blocks = [{ type: 'markdown', content: '' }];
-    isInCodeBlock = false;
     assembledLen = 0;
     if (onNewAssistantMessage) onNewAssistantMessage();
   };
@@ -207,23 +187,13 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
       const type = obj.type;
       const data = obj.data;
 
-      // Auto-detect agent type from stream_delta content
-      if (type === 'stream_delta' && !detectedAgentType) {
-        const content = data?.content || '';
-        if (content.includes(codeTag)) {
-          detectedAgentType = 'code';
-        } else if (data?.tool_calls && data.tool_calls.length > 0) {
-          detectedAgentType = 'toolcalling';
-        }
-      }
+
 
       if (type === 'stream_delta') {
         let content: string = data?.content || '';
 
         // ToolCallingAgent: handle tool_calls in stream_delta
         if (data?.tool_calls && data.tool_calls.length > 0) {
-          flushPendingIfAny();
-          if (isInCodeBlock) { isInCodeBlock = false; blocks.push({ type: 'markdown', content: '' }); }
 
           const toolCall = data.tool_calls[0]; // Usually one at a time
           // Support both flat format (name, arguments) and nested format (function: {name, arguments})
@@ -270,39 +240,16 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
         }
 
         if (!content) continue;
-        content = pendingCodeProbe + content;
-        pendingCodeProbe = '';
-        let processPos = 0;
-        while (true) {
-          const idx = content.indexOf(codeTag, processPos);
-          if (idx === -1) break;
-          const before = content.slice(processPos, idx);
-          if (before) blocks[blocks.length - 1].content += before;
-          if (isInCodeBlock) {
-            // Close current code block by toggling to markdown
-            blocks.push({ type: 'markdown', content: '' });
-            isInCodeBlock = false;
-          } else {
-            // Start a new code block
-            blocks.push({ type: 'code', content: '' });
-            isInCodeBlock = true;
-          }
-          processPos = idx + codeTag.length;
+
+        // Ensure we are appending to a markdown block
+        // (though in this new logic, the last block will almost always be markdown unless we just ended a tool call)
+        if (blocks.length === 0 || blocks[blocks.length - 1].type !== 'markdown') {
+          blocks.push({ type: 'markdown', content: '' });
         }
-        let leftover = content.slice(processPos);
-        let keepForProbe = 0;
-        for (let k = Math.min(codeTag.length - 1, leftover.length); k > 0; k--) {
-          if (codeTag.startsWith(leftover.slice(-k))) { keepForProbe = k; break; }
-        }
-        if (keepForProbe) {
-          pendingCodeProbe = leftover.slice(-keepForProbe);
-          leftover = leftover.slice(0, leftover.length - keepForProbe);
-        }
-        if (leftover) blocks[blocks.length - 1].content += leftover;
+
+        blocks[blocks.length - 1].content += content;
         emitDiff();
       } else if (type === 'final_answer') {
-        flushPendingIfAny();
-
         // Final answer should be a separate message
         // First, emit what we have so far (if any)
         emitDiff();
@@ -312,7 +259,6 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
 
         // Reset blocks and assembledLen for new message
         blocks = [{ type: 'markdown', content: '' }];
-        isInCodeBlock = false;
         assembledLen = 0;  // Critical: reset so emitDiff works for new message
 
         // Add final answer as clean markdown
@@ -330,16 +276,13 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
         }
       } else if (type === 'tool_output') {
         // ToolCallingAgent specific: tool execution result
-        flushPendingIfAny();
         if (onAction) onAction();
-        if (isInCodeBlock) { isInCodeBlock = false; blocks.push({ type: 'markdown', content: '' }); }
 
         const toolName = data?.tool_name || data?.tool_call?.name || 'unknown';
         const output = data?.output || data?.observation || '';
 
         if (output && !data?.is_final_answer) {
           const escapedOutput = formatLogContent(output);
-          if (isInCodeBlock) { isInCodeBlock = false; blocks.push({ type: 'markdown', content: '' }); }
 
           // Push as a separate log block with tool-output title prefix
           const tc_id = data?.tool_call_id || '';
@@ -353,36 +296,11 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
           emitDiff();
         }
       } else if (type === 'action') {
-        flushPendingIfAny();
         if (onAction) onAction();
-        if (isInCodeBlock) { isInCodeBlock = false; blocks.push({ type: 'markdown', content: '' }); }
+
         let actionMarkdown = '';
 
-        // Handle observations differently for CodeAgent vs ToolCallingAgent
-        let observations: string | undefined = data?.observations;
-        if (observations && !data?.is_final_answer) {
-          // CodeAgent format: "Execution logs:\nLast output from code snippet:\n..."
-          if (data?.code_action) {
-            // This is CodeAgent
-            observations = observations.replace(/^Execution logs:\s*/i, '').trim();
-            const splitObs = observations.split(/Last output from code snippet:\s*/i);
-            observations = splitObs[0].trimEnd();
-            if (observations) {
-              const escapedObs = formatLogContent(observations);
-              // Push a log block
-              if (isInCodeBlock) { isInCodeBlock = false; blocks.push({ type: 'markdown', content: '' }); }
-              blocks.push({
-                type: 'log',
-                content: escapedObs,
-                title: 'Execution Logs'
-              });
-              blocks.push({ type: 'markdown', content: '' });
-            }
-          } else {
-            // ToolCallingAgent: plain observation text
-            // Usually already shown in tool_output, skip duplicate
-          }
-        }
+
 
         blocks[blocks.length - 1].content += actionMarkdown;
         emitDiff();
@@ -404,15 +322,11 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
         // Handle action_output events (both agents can send these)
         const output = data?.output;
         if (output && !data?.is_final_answer) {
-          flushPendingIfAny();
-          if (isInCodeBlock) { isInCodeBlock = false; blocks.push({ type: 'markdown', content: '' }); }
           const outputStr = typeof output === 'object' ? JSON.stringify(output, null, 2) : output;
           blocks[blocks.length - 1].content += `\n\n**Result:**\n\`\`\`text\n${outputStr}\n\`\`\`\n\n`;
           emitDiff();
         }
       } else if (type === 'error') {
-        flushPendingIfAny();
-        if (isInCodeBlock) { isInCodeBlock = false; blocks.push({ type: 'markdown', content: '' }); }
         blocks[blocks.length - 1].content += `\n\n**Error:** ${data}`;
         emitDiff();
         resetForNewAssistantMessage();
@@ -437,21 +351,6 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
     }
     if (terminatedEarly) break;
   }
-  // Flush any trailing pending probe characters (incomplete tag) at end of stream
-  if (pendingCodeProbe) {
-    blocks[blocks.length - 1].content += pendingCodeProbe;
-    pendingCodeProbe = '';
-    emitDiff();
-  }
-  // Close any still-open code block at end so rendering finalizes
-  if (isInCodeBlock) {
-    isInCodeBlock = false;
-    // Re-emit to add closing fence
-    emitDiff();
-  }
-
-  // Reset agent type detection for next stream
-  detectedAgentType = null;
 
   // Trigger final save when streaming completes
   if (onStreamComplete) {
