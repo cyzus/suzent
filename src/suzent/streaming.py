@@ -128,6 +128,9 @@ async def stream_agent_responses(
     tool_args: Dict[str, str] = {}
     emitted_tool_calls: set[str] = set()
 
+    # History tracker for cancellation recovery
+    partial_history = list(message_history) if message_history else []
+
     # --- Background agent runner ---
     async def _agent_runner():
         """Run the agent in a background task, pushing events to the queue."""
@@ -187,6 +190,21 @@ async def stream_agent_responses(
             if msg_type == "event":
                 event = payload
 
+                # Track history manually for cancellation recovery
+                try:
+                    from pydantic_ai.messages import RunRequestEvent, RunResponseEvent
+                    if isinstance(event, RunRequestEvent):
+                        partial_history.append(event.request)
+                        # Clear step accumulators since a new request started
+                        full_text_parts.clear()
+                        tool_names.clear()
+                        tool_args.clear()
+                        emitted_tool_calls.clear()
+                    elif isinstance(event, RunResponseEvent):
+                        partial_history.append(event.response)
+                except Exception:
+                    pass
+
                 # AgentRunResultEvent: final result with all messages
                 if isinstance(event, AgentRunResultEvent):
                     result_output = event.result
@@ -228,6 +246,38 @@ async def stream_agent_responses(
             yield _sse({"type": "error", "data": str(e)})
 
     finally:
+        # Handle cancellation by preserving partial history
+        if control.cancel_event.is_set():
+            try:
+                from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
+                from typing import Any
+                parts: list[Any] = []
+                
+                if full_text_parts:
+                    parts.append(TextPart(content="".join(full_text_parts)))
+                    
+                for tc_id, name in tool_names.items():
+                    args_str = tool_args.get(tc_id, "{}")
+                    try:
+                        args_dict = json.loads(args_str)
+                    except Exception:
+                        args_dict = args_str if args_str else {}
+                        
+                    parts.append(ToolCallPart(
+                        tool_name=name,
+                        args=args_dict,
+                        tool_call_id=tc_id
+                    ))
+                
+                if parts:
+                    partial_history.append(ModelResponse(parts=parts))
+                    
+                # Store the reconstructed history on the agent instance
+                # so the ChatProcessor can extract and persist it.
+                agent._last_messages = partial_history
+            except Exception as e:
+                logger.error(f"Failed to reconstruct partial history on cancel: {e}")
+
         # Cancel the agent task if still running
         if not agent_task.done():
             agent_task.cancel()
