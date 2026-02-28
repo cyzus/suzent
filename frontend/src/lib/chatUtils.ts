@@ -405,7 +405,7 @@ export function mergeToolCallPairs(blocks: ContentBlock[]): ContentBlock[] {
   const merged: ContentBlock[] = [];
   const pairedIds = new Set<string>();
 
-  // 1. Exact pairing by toolCallId
+  // 1. Exact pairing by toolCallId preserving original invocation order
   for (const inv of invocations) {
     if (inv.toolCallId) {
       const out = outputs.find(o => o.toolCallId === inv.toolCallId);
@@ -418,31 +418,22 @@ export function mergeToolCallPairs(blocks: ContentBlock[]): ContentBlock[] {
           toolCallId: inv.toolCallId,
         });
         pairedIds.add(inv.toolCallId);
+        pairedIds.add(out.toolCallId || '');
+      } else {
+        // No output yet, push the pending invocation to maintain its visual position
+        merged.push(inv);
+        pairedIds.add(inv.toolCallId);
       }
+    } else {
+      // Fallback for tools without IDs
+      merged.push(inv);
     }
   }
 
-  const remainingInvocations = invocations.filter(i => !i.toolCallId || !pairedIds.has(i.toolCallId));
-  const remainingOutputs = outputs.filter(o => !o.toolCallId || !pairedIds.has(o.toolCallId));
-
-  // 2. Positionally pair any remaining unmatched toolCalls (fallback for older streams safely)
-  const maxPairs = Math.max(remainingInvocations.length, remainingOutputs.length);
-  for (let i = 0; i < maxPairs; i++) {
-    const inv = remainingInvocations[i];
-    const out = remainingOutputs[i];
-    if (inv && out) {
-      merged.push({
-        type: 'toolCall',
-        content: out.content,
-        toolName: inv.toolName || out.toolName,
-        toolArgs: inv.toolArgs,
-        toolCallId: inv.toolCallId || out.toolCallId,
-      });
-    } else if (inv) {
-      merged.push(inv);
-    } else if (out) {
-      merged.push(out);
-    }
+  // 2. Append any orphaned outputs that inexplicably had no invocation
+  const orphanedOutputs = outputs.filter(o => !o.toolCallId || !pairedIds.has(o.toolCallId));
+  for (const out of orphanedOutputs) {
+    merged.push(out);
   }
 
   // Tool calls first (rendered outside box), then content blocks

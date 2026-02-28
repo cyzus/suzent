@@ -139,6 +139,12 @@ async def stream_agent_responses(
                         agent._last_messages = event.result.all_messages()  # type: ignore[attr-defined]
                     except Exception:
                         agent._last_messages = []  # type: ignore[attr-defined]
+                        
+                    # Emit the final text immediately upon receiving the result event
+                    final_text = getattr(result_output, "data", "") if result_output else ""
+                    if not full_text_parts and final_text:
+                        yield _sse({"type": "final_answer", "data": str(final_text)})
+                        
                     continue
 
                 # --- Map pydantic-ai events to SSE ---
@@ -160,11 +166,6 @@ async def stream_agent_responses(
 
         # --- After stream completes ---
         if not control.cancel_event.is_set():
-            # Emit final answer only if we haven't streamed anything
-            final_text = getattr(result_output, "data", "") if result_output else ""
-            if not full_text_parts and final_text:
-                yield _sse({"type": "final_answer", "data": str(final_text)})
-
             # Final plan refresh
             if chat_id:
                 yield _sse({"type": "plan_refresh", "data": _plan_snapshot(chat_id)})
