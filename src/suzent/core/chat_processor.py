@@ -177,9 +177,18 @@ class ChatProcessor:
                 if chunk.startswith("data: "):
                     json_str = chunk[6:].strip()
                     data = json.loads(json_str)
-                    if data.get("type") == "final_answer":
-                        full_response = data.get("data", "")
-            except Exception:
+                    
+                    msg_type = data.get("type")
+                    if msg_type == "final_answer":
+                        if not full_response:
+                            full_response = data.get("data", "")
+                    elif msg_type == "stream_delta":
+                        delta_data = data.get("data", {})
+                        if isinstance(delta_data, dict):
+                            content_piece = delta_data.get("content", "")
+                            if content_piece:
+                                full_response += content_piece
+            except Exception as e:
                 pass
 
             yield chunk
