@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from pydantic_ai import RunContext
 
@@ -284,7 +284,7 @@ def planning_update(
     ctx: RunContext[AgentDeps],
     action: str,
     goal: Optional[str] = None,
-    phases: Optional[str] = None,
+    phases: Optional[Union[str, list]] = None,
     current_phase_id: Optional[str] = None,
     next_phase_id: Optional[str] = None,
     chat_id: Optional[str] = None,
@@ -317,8 +317,15 @@ def planning_update(
             parsed_phases = phases
 
     # Coerce phase IDs to int (LLM may send them as strings)
-    parsed_current = int(current_phase_id) if current_phase_id is not None else None
-    parsed_next = int(next_phase_id) if next_phase_id is not None else None
+    try:
+        parsed_current = int(current_phase_id) if current_phase_id is not None else None
+    except (ValueError, TypeError):
+        return f"**Error: Invalid current_phase_id**\n\nExpected integer, got '{current_phase_id}'"
+
+    try:
+        parsed_next = int(next_phase_id) if next_phase_id is not None else None
+    except (ValueError, TypeError):
+        return f"**Error: Invalid next_phase_id**\n\nExpected integer, got '{next_phase_id}'"
 
     tool = PlanningTool()
     tool.set_chat_context(ctx.deps.chat_id)

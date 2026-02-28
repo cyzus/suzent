@@ -11,6 +11,7 @@ export interface ContentBlock {
   codeContent?: string;
   executionLogs?: string;
   result?: string;
+  toolCallId?: string;
 }
 
 // Helper to normalize Python code indentation
@@ -95,13 +96,14 @@ export function splitAssistantContent(content: string): ContentBlock[] {
   const blocks: ContentBlock[] = [];
 
   // Regex to find <details> blocks (logs and tool calls stored as logs)
-  const logRegex = /<details><summary>(.*?)<\/summary>\s*<pre><code class="language-text">([\s\S]*?)<\/code><\/pre>\s*<\/details>/g;
+  // Updated to tolerate whitespaces and newlines inside tags (e.g., from Gemini's markdown output)
+  const logRegex = /<details(?:\s+data-tool-call-id="([^"]*)")?\s*>\s*<summary>\s*(.*?)\s*<\/summary>\s*<pre><code(?:\s+class="language-[^"]*")?\s*>([\s\S]*?)<\/code><\/pre>\s*<\/details>/g;
 
   let lastIndex = 0;
   let match;
 
   // First pass: split by log/details blocks
-  const splits: { type: 'markdown' | 'log'; content: string; title?: string }[] = [];
+  const splits: { type: 'markdown' | 'log'; content: string; title?: string; toolCallId?: string }[] = [];
 
   while ((match = logRegex.exec(content)) !== null) {
     const before = content.slice(lastIndex, match.index);
@@ -110,7 +112,7 @@ export function splitAssistantContent(content: string): ContentBlock[] {
     }
 
     // Decode HTML entities in content for display
-    const rawContent = match[2]
+    const rawContent = match[3]
       .replace(/&amp;/g, '&')
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
@@ -119,7 +121,8 @@ export function splitAssistantContent(content: string): ContentBlock[] {
 
     splits.push({
       type: 'log',
-      title: match[1],
+      toolCallId: match[1],
+      title: match[2],
       content: rawContent
     });
 
@@ -155,7 +158,25 @@ export function splitAssistantContent(content: string): ContentBlock[] {
       const langLineEnd = subContent.indexOf('\n', fenceStart + 3);
 
       if (langLineEnd === -1) {
-        currentMarkdown += subContent.slice(fenceStart);
+        if (currentMarkdown.trim() !== '') {
+          blocks.push({
+            type: 'markdown',
+            content: currentMarkdown.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '').trim()
+          });
+          currentMarkdown = '';
+        }
+        let codeBody = subContent.slice(fenceStart); // This was `subContent.slice(langLineEnd + 1)` before
+        // The `lang` variable is not defined here, so we need to ensure it's handled.
+        // Given the original logic, if langLineEnd is -1, it means the fence is not properly closed or is on the last line.
+        // In this case, the content from fenceStart to the end is treated as code.
+        // We'll use a default 'text' lang for this case, or infer from the token if possible.
+        const langToken = subContent.slice(fenceStart + 3).split('\n')[0].trim();
+        const cleanLang = langToken.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+        const validLanguages = ['python', 'javascript', 'typescript', 'java', 'cpp', 'c', 'go', 'rust', 'sql', 'html', 'css', 'json', 'yaml', 'xml', 'bash', 'shell', 'powershell', 'php', 'ruby', 'swift', 'kotlin', 'dart', 'r', 'matlab', 'scala', 'perl', 'lua', 'haskell', 'clojure', 'elixir', 'erlang', 'fsharp', 'ocaml', 'pascal', 'fortran', 'cobol', 'assembly', 'asm', 'text', 'plain'];
+        const lang = validLanguages.includes(cleanLang) ? cleanLang : 'text';
+
+        if (lang === 'python') codeBody = normalizePythonCode(codeBody);
+        blocks.push({ type: 'code', content: codeBody, lang });
         i = len;
         break;
       }
@@ -171,8 +192,11 @@ export function splitAssistantContent(content: string): ContentBlock[] {
       const closingFence = closingMatch ? closingMatch.index : -1;
 
       if (closingFence === -1) {
-        if (currentMarkdown) {
-          blocks.push({ type: 'markdown', content: currentMarkdown });
+        if (currentMarkdown.trim() !== '') {
+          blocks.push({
+            type: 'markdown',
+            content: currentMarkdown.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '').trim()
+          });
           currentMarkdown = '';
         }
         let codeBody = subContent.slice(langLineEnd + 1);
@@ -181,8 +205,11 @@ export function splitAssistantContent(content: string): ContentBlock[] {
         i = len;
         break;
       } else {
-        if (currentMarkdown) {
-          blocks.push({ type: 'markdown', content: currentMarkdown });
+        if (currentMarkdown.trim() !== '') {
+          blocks.push({
+            type: 'markdown',
+            content: currentMarkdown.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '').trim()
+          });
           currentMarkdown = '';
         }
         let codeBody = subContent.slice(langLineEnd + 1, closingFence);
@@ -191,8 +218,11 @@ export function splitAssistantContent(content: string): ContentBlock[] {
         i = closingFence + (closingMatch ? closingMatch[0].length : 4);
       }
     }
-    if (currentMarkdown) {
-      blocks.push({ type: 'markdown', content: currentMarkdown });
+    if (currentMarkdown.trim() !== '') {
+      blocks.push({
+        type: 'markdown',
+        content: currentMarkdown.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '').trim()
+      });
     }
   }
 
@@ -209,6 +239,7 @@ export function splitAssistantContent(content: string): ContentBlock[] {
           content: '',
           toolName: toolInvokeMatch[1],
           toolArgs: b.content || undefined,
+          toolCallId: (b as any).toolCallId,
         };
       }
 
@@ -218,6 +249,7 @@ export function splitAssistantContent(content: string): ContentBlock[] {
           type: 'toolCall' as const,
           content: b.content,
           toolName: toolOutputMatch[1],
+          toolCallId: (b as any).toolCallId,
         };
       }
 
@@ -369,18 +401,42 @@ export function mergeToolCallPairs(blocks: ContentBlock[]): ContentBlock[] {
     }
   }
 
-  // Pair invocations with outputs positionally
+  // Pair invocations with outputs
   const merged: ContentBlock[] = [];
-  const maxPairs = Math.max(invocations.length, outputs.length);
+  const pairedIds = new Set<string>();
+
+  // 1. Exact pairing by toolCallId
+  for (const inv of invocations) {
+    if (inv.toolCallId) {
+      const out = outputs.find(o => o.toolCallId === inv.toolCallId);
+      if (out) {
+        merged.push({
+          type: 'toolCall',
+          content: out.content,
+          toolName: inv.toolName || out.toolName,
+          toolArgs: inv.toolArgs,
+          toolCallId: inv.toolCallId,
+        });
+        pairedIds.add(inv.toolCallId);
+      }
+    }
+  }
+
+  const remainingInvocations = invocations.filter(i => !i.toolCallId || !pairedIds.has(i.toolCallId));
+  const remainingOutputs = outputs.filter(o => !o.toolCallId || !pairedIds.has(o.toolCallId));
+
+  // 2. Positionally pair any remaining unmatched toolCalls (fallback for older streams safely)
+  const maxPairs = Math.max(remainingInvocations.length, remainingOutputs.length);
   for (let i = 0; i < maxPairs; i++) {
-    const inv = invocations[i];
-    const out = outputs[i];
+    const inv = remainingInvocations[i];
+    const out = remainingOutputs[i];
     if (inv && out) {
       merged.push({
         type: 'toolCall',
         content: out.content,
         toolName: inv.toolName || out.toolName,
         toolArgs: inv.toolArgs,
+        toolCallId: inv.toolCallId || out.toolCallId,
       });
     } else if (inv) {
       merged.push(inv);

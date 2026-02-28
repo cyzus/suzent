@@ -380,13 +380,20 @@ class ChatDatabase:
             chats = session.exec(statement).all()
 
             results = []
+            import re
             for chat in chats:
                 messages = chat.messages or []
                 last_message = None
                 if messages:
                     content = messages[-1].get("content", "")
-                    last_message = content[:100]
-                    if len(content) > 100:
+                    
+                    # 1. completely eradicate any <details> tool blocks (including inner text)
+                    clean_content = re.sub(r'<details\b[^>]*>.*?</details>', '', content, flags=re.DOTALL)
+                    # 2. Strip remaining raw HTML tags
+                    clean_content = re.sub(r'<[^>]+>', '', clean_content).strip()
+                    
+                    last_message = clean_content[:100]
+                    if len(clean_content) > 100:
                         last_message += "..."
 
                 results.append(

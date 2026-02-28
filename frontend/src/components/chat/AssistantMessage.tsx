@@ -74,28 +74,29 @@ const StreamingContent: React.FC<{
   showCursor?: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
 }> = ({ content, messageIndex, showCursor = true, onFileClick }) => {
-  const displayedContent = useTypewriter(content, 10, true);
-  const blocks = filterBlocks(splitAssistantContent(displayedContent));
+  // We disable the typewriter effect for the actual block parsing to ensure 
+  // tool JSON arguments and IDs are parsed instantaneously from the raw stream!
+  // We only use typewriter for visually rendering the trailing plain text markdown.
+  // We also explicitly exclude toolCall and codeStep blocks here because they are
+  // separately rendered outside the chat bubble as StepPills.
+  const parsedBlocks = filterBlocks(splitAssistantContent(content))
+    .filter(b => b.type !== 'toolCall' && b.type !== 'codeStep');
 
   return (
     <>
-      {blocks.map((b, bi) => {
+      {parsedBlocks.map((b, bi) => {
         const blockKey = generateBlockKey(b, bi, messageIndex);
-        const isLastBlock = bi === blocks.length - 1;
+        const isLastBlock = bi === parsedBlocks.length - 1;
 
         if (b.type === 'markdown') {
           return (
             <React.Fragment key={blockKey}>
-              <MarkdownRenderer content={b.content} onFileClick={onFileClick} />
+              <MarkdownRenderer content={isLastBlock ? useTypewriter(b.content, 10, true) : b.content} onFileClick={onFileClick} />
               {isLastBlock && showCursor && <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1" />}
             </React.Fragment>
           );
         } else if (b.type === 'log') {
           return <LogBlock key={blockKey} title={b.title} content={b.content} />;
-        } else if (b.type === 'toolCall') {
-          return <ToolCallBlock key={blockKey} toolName={b.toolName || 'unknown'} toolArgs={b.toolArgs} output={b.content || undefined} defaultCollapsed />;
-        } else if (b.type === 'codeStep') {
-          return <CodeStepBlock key={blockKey} thought={b.thought || ''} codeContent={b.codeContent} executionLogs={b.executionLogs} result={b.result} defaultCollapsed />;
         } else {
           return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} isStreaming={isLastBlock} />;
         }

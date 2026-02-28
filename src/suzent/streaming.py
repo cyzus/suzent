@@ -112,6 +112,11 @@ async def stream_agent_responses(
     # Accumulate full text for final_answer
     full_text_parts: list[str] = []
     result_output = None
+    
+    # State for accumulating tool calls across deltas
+    tool_names: Dict[str, str] = {}
+    tool_args: Dict[str, str] = {}
+    emitted_tool_calls: set[str] = set()
 
     try:
         # --- Build run kwargs ---
@@ -137,9 +142,13 @@ async def stream_agent_responses(
                     continue
 
                 # --- Map pydantic-ai events to SSE ---
-                sse = _map_event(event, full_text_parts)
+                sse = _map_event(event, full_text_parts, tool_names, tool_args, emitted_tool_calls)
                 if sse is not None:
-                    yield _sse(sse)
+                    if isinstance(sse, list):
+                        for s in sse:
+                            yield _sse(s)
+                    else:
+                        yield _sse(sse)
 
                 # Drain plan updates
                 while not plan_queue.empty():
@@ -151,9 +160,9 @@ async def stream_agent_responses(
 
         # --- After stream completes ---
         if not control.cancel_event.is_set():
-            # Emit final answer
-            final_text = result_output.output if result_output else "".join(full_text_parts)
-            if final_text:
+            # Emit final answer only if we haven't streamed anything
+            final_text = getattr(result_output, "data", "") if result_output else ""
+            if not full_text_parts and final_text:
                 yield _sse({"type": "final_answer", "data": str(final_text)})
 
             # Final plan refresh
@@ -189,55 +198,161 @@ async def stream_agent_responses(
 # ─── Event mapping ─────────────────────────────────────────────────────
 
 
-def _map_event(event, full_text_parts: list[str]) -> dict | None:
+def _map_event(
+    event, full_text_parts: list[str], tool_names: Dict[str, str], tool_args: Dict[str, str], emitted_tool_calls: set[str]
+) -> dict | None:
     """Map a pydantic-ai event to a suzent SSE event dict.
 
     Returns None for events we don't need to forward to the frontend.
     """
+    import json
 
     # ── Text streaming (PartStartEvent with TextPart) ──
     if isinstance(event, PartStartEvent):
         from pydantic_ai.messages import TextPart, ToolCallPart
         if isinstance(event.part, TextPart) and event.part.content:
-            full_text_parts.append(event.part.content)
-            return {"type": "stream_delta", "data": {"content": event.part.content}}
-        # We don't emit ToolCallPart starts — we wait for FunctionToolCallEvent
+            content = event.part.content
+            # Gemini occasionally prints its tools state inside the output text directly
+            if "<details>" in content and "web_search" in content:
+                content = content.split("<details>")[0]
+            if content.strip():
+                full_text_parts.append(content)
+                return {"type": "stream_delta", "data": {"content": content}}
+            return None
+        
+        # Emit early tool action so UI knows which tool is being called
+        if isinstance(event.part, ToolCallPart):
+            name = getattr(event.part, "tool_name", "")
+            tc_id = getattr(event.part, "tool_call_id", "")
+            args = getattr(event.part, "args", {})
+            if not isinstance(args, dict):
+                args = {}
+                
+            if name and tc_id and tc_id not in emitted_tool_calls:
+                emitted_tool_calls.add(tc_id)
+                tool_args[tc_id] = json.dumps(args) if args else "{}"
+                return {
+                    "type": "stream_delta",
+                    "data": {
+                        "tool_calls": [{
+                            "name": name,
+                            "arguments": args,
+                            "id": tc_id,
+                        }],
+                    },
+                }
         return None
 
     # ── Text delta ──
     if isinstance(event, PartDeltaEvent):
         if isinstance(event.delta, TextPartDelta):
-            full_text_parts.append(event.delta.content_delta)
-            return {"type": "stream_delta", "data": {"content": event.delta.content_delta}}
+            content_delta = event.delta.content_delta
+            # Filter injected html streams
+            if "<details>" in content_delta or "<summary>" in content_delta:
+                return None
+            full_text_parts.append(content_delta)
+            return {"type": "stream_delta", "data": {"content": content_delta}}
+            
+        from pydantic_ai.messages import ToolCallPartDelta
+        if isinstance(event.delta, ToolCallPartDelta):
+            tc_id = getattr(event.delta, "tool_call_id", "")
+            if tc_id:
+                name_delta = getattr(event.delta, "tool_name_delta", "")
+                args_delta = getattr(event.delta, "args_delta", "")
+                
+                if name_delta:
+                    tool_names[tc_id] = tool_names.get(tc_id, "") + name_delta
+                
+                has_new_args = False
+                if args_delta:
+                    current_args = tool_args.get(tc_id, "")
+                    if isinstance(args_delta, str):
+                        tool_args[tc_id] = current_args + args_delta
+                    elif isinstance(args_delta, dict):
+                        # Pydantic AI occasionally sends dict deltas depending on the model/provider
+                        try:
+                            if not current_args:
+                                current_args = "{}"
+                            curr = json.loads(current_args)
+                            curr.update(args_delta)
+                            tool_args[tc_id] = json.dumps(curr)
+                        except Exception:
+                            tool_args[tc_id] = json.dumps(args_delta)
+                    # If this isn't strictly the first emission, always send argument updates!
+                    has_new_args = True
+                    
+                current_name = tool_names.get(tc_id, "")
+                
+                # Emit if we have a new args delta OR if we haven't emitted this tool call name yet
+                if current_name and (has_new_args or tc_id not in emitted_tool_calls):
+                    emitted_tool_calls.add(tc_id)
+                    current_arguments = tool_args.get(tc_id, "")
+                    return {
+                        "type": "stream_delta",
+                        "data": {
+                            "tool_calls": [{
+                                "name": current_name,
+                                "arguments": current_arguments,
+                                "id": tc_id,
+                            }],
+                        },
+                    }
         return None
 
     # ── Tool call started ──
     if isinstance(event, FunctionToolCallEvent):
-        return {
+        tc_id = getattr(event.part, "tool_call_id", "")
+        events = []
+        name = getattr(event.part, "tool_name", "")
+        args = getattr(event.part, "args", {})
+        if not isinstance(args, dict):
+            args = {}
+            
+        # If the provider doesn't stream deltas (e.g., Gemini), we must emit the full tool call here
+        if tc_id and tc_id not in emitted_tool_calls:
+            emitted_tool_calls.add(tc_id)
+            events.append({
+                "type": "stream_delta",
+                "data": {
+                    "tool_calls": [{
+                        "name": name,
+                        "arguments": args,
+                        "id": tc_id,
+                    }],
+                },
+            })
+            
+        events.append({
             "type": "action",
             "data": {
                 "tool_calls": [{
-                    "name": event.part.tool_name,
-                    "arguments": event.part.args if isinstance(event.part.args, dict) else {},
-                    "id": event.part.tool_call_id or "",
+                    "name": name,
+                    "arguments": args,
+                    "id": tc_id,
                 }],
             },
-        }
+        })
+        return events
 
     # ── Tool call finished ──
     if isinstance(event, FunctionToolResultEvent):
         try:
-            output_str = str(event.result.content)[:2000] if event.result else ""
-            tool_name = getattr(event.result, "tool_name", "")
+            output_str = str(event.result.content)[:2000] if getattr(event, "result", None) else ""
+            tool_name = getattr(event.result, "tool_name", "") if getattr(event, "result", None) else getattr(event, "tool_name", "")
+            tc_id = getattr(event.result, "tool_call_id", "") if getattr(event, "result", None) else ""
+            if not tc_id:
+                tc_id = getattr(event, "tool_call_id", "")
         except Exception:
             output_str = ""
             tool_name = ""
+            tc_id = getattr(event, "tool_call_id", "")
+            
         return {
             "type": "tool_output",
             "data": {
                 "tool_name": tool_name,
                 "output": output_str,
-                "tool_call_id": event.tool_call_id or "",
+                "tool_call_id": tc_id or "",
             },
         }
 

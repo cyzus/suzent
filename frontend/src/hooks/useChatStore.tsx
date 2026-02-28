@@ -190,7 +190,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const toggleHideToolCalls = useCallback(() => {
     setHideToolCalls(prev => {
       const next = !prev;
-      try { localStorage.setItem('suzent_hide_tool_calls', String(next)); } catch {}
+      try { localStorage.setItem('suzent_hide_tool_calls', String(next)); } catch { }
       return next;
     });
   }, []);
@@ -289,7 +289,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           updated[index] = {
             ...summary,
             messageCount: next.length,
-            lastMessage: next.length ? next[next.length - 1].content.slice(0, 100) : undefined,
+            lastMessage: next.length ? next[next.length - 1].content.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '').replace(/<[^>]+>/g, '').trim().slice(0, 100) : undefined,
             updatedAt: new Date().toISOString()
           };
           return updated;
@@ -755,7 +755,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             updated[index] = {
               ...summary,
               messageCount: chatMessages.length,
-              lastMessage: chatMessages[chatMessages.length - 1].content.slice(0, 100),
+              lastMessage: chatMessages[chatMessages.length - 1].content.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, '').replace(/<[^>]+>/g, '').trim().slice(0, 100),
               updatedAt: new Date().toISOString()
             };
             return updated;

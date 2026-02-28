@@ -26,6 +26,7 @@ interface ContentBlock {
   title?: string; // For log blocks
   toolName?: string;
   toolArgs?: string;
+  toolCallId?: string; // Add id to track parallel tool calls accurately
 }
 
 function escapeHtml(unsafe: string) {
@@ -53,8 +54,9 @@ function assembleForStorage(blocks: ContentBlock[], isInCodeBlock: boolean): str
       if (b.type === 'markdown') return b.content;
 
       if (b.type === 'log') {
+        const idAttr = b.toolCallId ? ` data-tool-call-id="${b.toolCallId}"` : '';
         // Reconstruct the HTML details block for storage
-        return `\n\n<details><summary>${b.title || 'Details'}</summary>\n\n<pre><code class="language-text">${b.content}</code></pre>\n\n</details>\n\n`;
+        return `\n\n<details${idAttr}><summary>${b.title || 'Details'}</summary>\n\n<pre><code class="language-text">${b.content}</code></pre>\n\n</details>\n\n`;
       }
 
       const isLast = i === blocks.length - 1;
@@ -217,9 +219,10 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
           if (isInCodeBlock) { isInCodeBlock = false; blocks.push({ type: 'markdown', content: '' }); }
 
           const toolCall = data.tool_calls[0]; // Usually one at a time
-          if (toolCall?.function?.name) {
-            const toolName = toolCall.function.name;
-            const toolArgs = toolCall.function.arguments || '';
+          // Support both flat format (name, arguments) and nested format (function: {name, arguments})
+          const toolName = toolCall?.function?.name || toolCall?.name;
+          if (toolName) {
+            const toolArgs = toolCall?.function?.arguments || toolCall?.arguments || '';
             let formattedArgs = '';
             if (toolArgs && toolArgs !== '{}') {
               try {
@@ -229,13 +232,31 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
                 formattedArgs = toolArgs;
               }
             }
-            // Push as a log block with tool-call title prefix (delta-safe, append-only)
-            blocks.push({
-              type: 'log',
-              content: formattedArgs ? escapeHtml(formattedArgs) : '',
-              title: `\u{1F527} ${toolName}`,
-            });
-            blocks.push({ type: 'markdown', content: '' });
+            const title = `\u{1F527} ${toolName}`;
+            const tc_id = toolCall.id;
+
+            // Find existing log block to update
+            // Match exactly by toolCallId if present, else fallback to title
+            let existingLog = null;
+            for (let i = blocks.length - 1; i >= 0; i--) {
+              if (blocks[i].type === 'log') {
+                if (tc_id && blocks[i].toolCallId === tc_id) {
+                  existingLog = blocks[i];
+                  break;
+                } else if (!tc_id && blocks[i].title === title) {
+                  // Fallback for older streams without ID
+                  existingLog = blocks[i];
+                  break;
+                }
+              }
+            }
+            const content = formattedArgs ? escapeHtml(formattedArgs) : '';
+            if (existingLog) {
+              existingLog.content = content;
+            } else {
+              blocks.push({ type: 'log', content, title, toolCallId: tc_id });
+              blocks.push({ type: 'markdown', content: '' });
+            }
             emitDiff();
           }
           continue;
@@ -306,18 +327,20 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
         if (onAction) onAction();
         if (isInCodeBlock) { isInCodeBlock = false; blocks.push({ type: 'markdown', content: '' }); }
 
-        const toolName = data?.tool_call?.name || 'unknown';
+        const toolName = data?.tool_name || data?.tool_call?.name || 'unknown';
         const output = data?.output || data?.observation || '';
 
         if (output && !data?.is_final_answer) {
           const escapedOutput = formatLogContent(output);
           if (isInCodeBlock) { isInCodeBlock = false; blocks.push({ type: 'markdown', content: '' }); }
 
-          // Push as a separate log block with tool-output title prefix (delta-safe, append-only)
+          // Push as a separate log block with tool-output title prefix
+          const tc_id = data?.tool_call_id || '';
           blocks.push({
             type: 'log',
             content: escapedOutput,
             title: `\u{1F4E6} ${toolName}`,
+            toolCallId: tc_id,
           });
           blocks.push({ type: 'markdown', content: '' });
           emitDiff();
@@ -364,10 +387,9 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
           onStepComplete(stepInfo);
         }
 
-        // Only reset if not final answer
-        if (!data?.is_final_answer) {
-          resetForNewAssistantMessage();
-        }
+        // We DO NOT split into a new Assistant message here, 
+        // because we need the tool outputs (which arrive next) to sit in the same `blocks` array 
+        // to be correctly paired with this action's invocations!
       } else if (type === 'action_step') {
         // ActionStep event (mapped from ActionStep type) - redundant, already handled in 'action'
         // This shouldn't appear since ActionStep is mapped to 'action' in step_to_json_event
