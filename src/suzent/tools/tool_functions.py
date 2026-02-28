@@ -8,13 +8,15 @@ Tools that need per-request state (sandbox config, path resolver, memory
 manager, etc.) receive it via ``RunContext[AgentDeps]`` as their first
 parameter.  Tools that are stateless omit it.
 
-Naming convention: snake_case matching the original tool's ``name`` attribute
-where possible (e.g. ``WebSearchTool`` → ``web_search``).
+Dangerous tools (bash_execute, write_file, edit_file, social_message)
+support human-in-the-loop (HITL) approval via ``_require_approval()``.
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
+import uuid
 from pathlib import Path
 from typing import Optional, Union
 
@@ -24,6 +26,93 @@ from suzent.core.agent_deps import AgentDeps
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Tools that require user approval before execution.
+TOOLS_REQUIRING_APPROVAL = frozenset({
+    "bash_execute",
+    "write_file",
+    "edit_file",
+    "social_message",
+})
+
+
+# ---------------------------------------------------------------------------
+# HITL: approval gate
+# ---------------------------------------------------------------------------
+
+async def _require_approval(
+    ctx: RunContext[AgentDeps],
+    tool_name: str,
+    args: dict,
+) -> bool:
+    """Check session policy or ask the user for approval.
+
+    Returns True if the tool should proceed, False if denied.
+    """
+    deps = ctx.deps
+
+    # 1. Check session-level policy (set by "Always Allow" / "Always Deny")
+    policy = deps.tool_approval_policy.get(tool_name)
+    if policy == "always_allow":
+        return True
+    if policy == "always_deny":
+        return False
+
+    # 2. No queue → HITL not wired (e.g. non-streaming / social mode) — auto-approve
+    if not deps.sse_queue:
+        return True
+
+    # 3. Push approval request to the SSE queue and wait
+    request_id = str(uuid.uuid4())
+    approval_event = asyncio.Event()
+    deps.pending_approvals[request_id] = {
+        "event": approval_event,
+        "approved": None,
+        "remember": None,
+        "tool_name": tool_name,
+    }
+
+    await deps.sse_queue.put(("approval", {
+        "request_id": request_id,
+        "tool_name": tool_name,
+        "args": _safe_args_preview(args),
+    }))
+
+    # 4. Wait for user response or cancellation
+    cancel_event = deps.cancel_event
+    if cancel_event:
+        cancel_task = asyncio.create_task(cancel_event.wait())
+        approval_task = asyncio.create_task(approval_event.wait())
+        done, pending = await asyncio.wait(
+            [cancel_task, approval_task],
+            timeout=300,  # 5 min timeout
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for t in pending:
+            t.cancel()
+        if cancel_event.is_set():
+            deps.pending_approvals.pop(request_id, None)
+            return False
+    else:
+        try:
+            await asyncio.wait_for(approval_event.wait(), timeout=300)
+        except asyncio.TimeoutError:
+            deps.pending_approvals.pop(request_id, None)
+            return False
+
+    result = deps.pending_approvals.pop(request_id, {})
+    return bool(result.get("approved"))
+
+
+def _safe_args_preview(args: dict, max_len: int = 500) -> dict:
+    """Truncate large arg values for the approval dialog."""
+    preview = {}
+    for k, v in args.items():
+        if v is None:
+            continue
+        s = str(v)
+        preview[k] = (s[:max_len] + "…") if len(s) > max_len else s
+    return preview
 
 
 # ---------------------------------------------------------------------------
@@ -97,10 +186,10 @@ def webpage_fetch(url: str) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 3. BashTool → bash_execute  (needs context)
+# 3. BashTool → bash_execute  (needs context + HITL)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def bash_execute(
+async def bash_execute(
     ctx: RunContext[AgentDeps],
     content: str,
     language: Optional[str] = None,
@@ -122,6 +211,9 @@ def bash_execute(
         language: Execution language: 'python', 'nodejs', or 'command'.
         timeout: Execution timeout in seconds (optional).
     """
+    if not await _require_approval(ctx, "bash_execute", {"content": content, "language": language}):
+        return "[Tool execution denied by user.]"
+
     from suzent.tools.bash_tool import BashTool
 
     tool = BashTool()
@@ -165,10 +257,10 @@ def read_file(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 5. WriteFileTool → write_file  (needs context)
+# 5. WriteFileTool → write_file  (needs context + HITL)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def write_file(
+async def write_file(
     ctx: RunContext[AgentDeps],
     file_path: str,
     content: str,
@@ -182,6 +274,9 @@ def write_file(
         file_path: Path to the file to write.
         content: The content to write to the file.
     """
+    if not await _require_approval(ctx, "write_file", {"file_path": file_path, "content": content}):
+        return "[Tool execution denied by user.]"
+
     from suzent.tools.write_file_tool import WriteFileTool
 
     tool = WriteFileTool()
@@ -190,10 +285,10 @@ def write_file(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 6. EditFileTool → edit_file  (needs context)
+# 6. EditFileTool → edit_file  (needs context + HITL)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def edit_file(
+async def edit_file(
     ctx: RunContext[AgentDeps],
     file_path: str,
     old_string: str,
@@ -208,6 +303,9 @@ def edit_file(
         new_string: The replacement text.
         replace_all: If True, replace all occurrences (default False).
     """
+    if not await _require_approval(ctx, "edit_file", {"file_path": file_path, "old_string": old_string, "new_string": new_string}):
+        return "[Tool execution denied by user.]"
+
     from suzent.tools.edit_file_tool import EditFileTool
 
     tool = EditFileTool()
@@ -303,7 +401,6 @@ def planning_update(
 
     from suzent.tools.planning_tool import PlanningTool
 
-    # Parse phases from JSON string → list[dict] if needed
     parsed_phases = None
     if phases is not None:
         if isinstance(phases, str):
@@ -316,7 +413,6 @@ def planning_update(
         else:
             parsed_phases = phases
 
-    # Coerce phase IDs to int (LLM may send them as strings)
     try:
         parsed_current = int(current_phase_id) if current_phase_id is not None else None
     except (ValueError, TypeError):
@@ -387,10 +483,10 @@ def skill_execute(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 12. SocialMessageTool → social_message  (needs context)
+# 12. SocialMessageTool → social_message  (needs context + HITL)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def social_message(
+async def social_message(
     ctx: RunContext[AgentDeps],
     message: Optional[str] = None,
     channel: Optional[str] = None,
@@ -405,6 +501,11 @@ def social_message(
         recipient: Recipient identifier (chat/channel ID).
         list_contacts: If True, list available contacts instead of sending.
     """
+    # Only require approval for actual sends, not listing contacts
+    if not list_contacts and message:
+        if not await _require_approval(ctx, "social_message", {"message": message, "channel": channel, "recipient": recipient}):
+            return "[Tool execution denied by user.]"
+
     from suzent.tools.social_message_tool import SocialMessageTool
 
     tool = SocialMessageTool()
@@ -413,7 +514,6 @@ def social_message(
     loop = ctx.deps.event_loop
     social_ctx = ctx.deps.social_context
 
-    # Desktop mode fallback
     if not cm:
         import asyncio
         from suzent.core.social_brain import get_active_social_brain
