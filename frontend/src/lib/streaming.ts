@@ -6,6 +6,12 @@ import { getApiBase } from './api';
 // Streaming implementation mirroring logic from Streamlit app.py
 // Maintains content blocks (markdown/code) toggled by CODE_TAG sentinel.
 
+export interface ToolApprovalRequest {
+  request_id: string;
+  tool_name: string;
+  args: Record<string, string>;
+}
+
 export interface StreamCallbacks {
   onDelta: (delta: string) => void;
   onAction?: () => void;
@@ -15,6 +21,7 @@ export interface StreamCallbacks {
   onStreamStopped?: (payload?: any) => void;
   onStepComplete?: (stepInfo: string) => void; // callback when action step completes
   onImagesProcessed?: (images: any[]) => void; // callback when images are processed
+  onToolApprovalRequired?: (request: ToolApprovalRequest) => void; // HITL callback
 }
 
 // Detect if agent is using code tags (CodeAgent) or structured tool calls (ToolCallingAgent)
@@ -90,7 +97,7 @@ function getStepFootnote(step: any, stepName: string): string {
 }
 
 export async function streamChat(prompt: string, config: ChatConfig, callbacks: StreamCallbacks, codeTag = '<code>', reset = false, chatId?: string | null, imageFiles?: File[], fileAttachments?: FileAttachment[]) {
-  const { onDelta, onAction, onNewAssistantMessage, onStreamStopped, onStreamComplete, onPlanUpdate, onStepComplete, onImagesProcessed } = callbacks;
+  const { onDelta, onAction, onNewAssistantMessage, onStreamStopped, onStreamComplete, onPlanUpdate, onStepComplete, onImagesProcessed, onToolApprovalRequired } = callbacks;
 
   let body: BodyInit;
   let headers: HeadersInit;
@@ -416,6 +423,11 @@ export async function streamChat(prompt: string, config: ChatConfig, callbacks: 
         // Backend has processed uploaded images, replace previews with compressed versions
         if (data && onImagesProcessed) {
           onImagesProcessed(data);
+        }
+      } else if (type === 'tool_approval_required') {
+        // Human-in-the-loop: a dangerous tool is waiting for user approval
+        if (data && onToolApprovalRequired) {
+          onToolApprovalRequired(data as ToolApprovalRequest);
         }
       } else if (type === 'stopped') {
         terminatedEarly = true;

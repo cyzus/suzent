@@ -22,6 +22,7 @@ from starlette.routing import Route, WebSocketRoute
 
 from suzent.logger import get_logger, setup_logging
 from suzent.routes.chat_routes import (
+    approve_tool,
     chat,
     create_chat,
     delete_chat,
@@ -367,6 +368,7 @@ app = Starlette(
     routes=[
         Route("/chat", chat, methods=["POST"]),
         Route("/chat/stop", stop_chat, methods=["POST"]),
+        Route("/chat/approve-tool", approve_tool, methods=["POST"]),
         Route("/chats", get_chats, methods=["GET"]),
         Route("/chats", create_chat, methods=["POST"]),
         Route("/chats/{chat_id}", get_chat, methods=["GET"]),

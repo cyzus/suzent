@@ -384,58 +384,47 @@ function mergeCodeAgentSteps(blocks: ContentBlock[]): ContentBlock[] {
 export function mergeToolCallPairs(blocks: ContentBlock[]): ContentBlock[] {
   const invocations: ContentBlock[] = [];
   const outputs: ContentBlock[] = [];
-  const nonToolCall: ContentBlock[] = [];
 
   for (const b of blocks) {
     if (b.type === 'toolCall') {
       if (!b.content) {
-        invocations.push(b); // invocation: has toolArgs but no content
+        invocations.push(b);
       } else if (!b.toolArgs) {
-        outputs.push(b);     // output: has content but no toolArgs
-      } else {
-        // Already merged (has both)
-        nonToolCall.push(b);
+        outputs.push(b);
       }
-    } else {
-      nonToolCall.push(b);
     }
   }
 
-  // Pair invocations with outputs
-  const merged: ContentBlock[] = [];
-  const pairedIds = new Set<string>();
+  const mergedBlocks: ContentBlock[] = [];
+  const processedIds = new Set<string>();
 
-  // 1. Exact pairing by toolCallId preserving original invocation order
-  for (const inv of invocations) {
-    if (inv.toolCallId) {
-      const out = outputs.find(o => o.toolCallId === inv.toolCallId);
-      if (out) {
-        merged.push({
-          type: 'toolCall',
-          content: out.content,
-          toolName: inv.toolName || out.toolName,
-          toolArgs: inv.toolArgs,
-          toolCallId: inv.toolCallId,
-        });
-        pairedIds.add(inv.toolCallId);
-        pairedIds.add(out.toolCallId || '');
+  for (const b of blocks) {
+    if (b.type === 'toolCall') {
+      if (b.toolCallId) {
+        if (processedIds.has(b.toolCallId)) continue;
+
+        const inv = invocations.find(x => x.toolCallId === b.toolCallId);
+        const out = outputs.find(x => x.toolCallId === b.toolCallId);
+
+        if (inv && out) {
+          mergedBlocks.push({
+            type: 'toolCall',
+            content: out.content,
+            toolName: inv.toolName || out.toolName,
+            toolArgs: inv.toolArgs,
+            toolCallId: inv.toolCallId,
+          });
+        } else {
+          mergedBlocks.push(inv || out || b);
+        }
+        processedIds.add(b.toolCallId);
       } else {
-        // No output yet, push the pending invocation to maintain its visual position
-        merged.push(inv);
-        pairedIds.add(inv.toolCallId);
+        mergedBlocks.push(b);
       }
     } else {
-      // Fallback for tools without IDs
-      merged.push(inv);
+      mergedBlocks.push(b);
     }
   }
 
-  // 2. Append any orphaned outputs that inexplicably had no invocation
-  const orphanedOutputs = outputs.filter(o => !o.toolCallId || !pairedIds.has(o.toolCallId));
-  for (const out of orphanedOutputs) {
-    merged.push(out);
-  }
-
-  // Tool calls first (rendered outside box), then content blocks
-  return [...merged, ...nonToolCall];
+  return mergedBlocks;
 }

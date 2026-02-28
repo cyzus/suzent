@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
-import { streamChat } from '../lib/streaming';
-import { getApiBase, getSandboxParams } from '../lib/api';
+import { streamChat, type ToolApprovalRequest } from '../lib/streaming';
+import { getApiBase, getSandboxParams, approveTool } from '../lib/api';
 import type { Message, FileAttachment } from '../types/api';
 import { isIntermediateStepContent, splitAssistantContent, mergeToolCallPairs, type ContentBlock } from '../lib/chatUtils';
 import { usePlan } from '../hooks/usePlan';
@@ -70,7 +70,9 @@ const MessageList: React.FC<{
   chatId?: string;
   onImageClick?: (src: string) => void;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-}> = ({ messages, isStreaming, streamingForCurrentChat, chatId, onImageClick, onFileClick }) => (
+  pendingApprovals?: Map<string, ToolApprovalRequest>;
+  onToolApproval?: (requestId: string, toolName: string, approved: boolean, remember?: 'session' | null) => void;
+}> = ({ messages, isStreaming, streamingForCurrentChat, chatId, onImageClick, onFileClick, pendingApprovals, onToolApproval }) => (
   <div className="space-y-6">
     {(() => {
       // Pre-compute tool-only groups: consecutive tool-only assistant messages
@@ -170,13 +172,18 @@ const MessageList: React.FC<{
                 <div className="w-full max-w-4xl text-sm leading-relaxed pl-2">
                   {group.mergedBlocks.map((b, bi) => {
                     if (b.type === 'toolCall') {
+                      const approval = pendingApprovals?.get(b.toolName || '');
+                      const approvalState = approval ? 'pending' as const : undefined;
                       return (
                         <ToolCallBlock
                           key={`group-${idx}-${bi}`}
                           toolName={b.toolName || 'unknown'}
                           toolArgs={b.toolArgs}
                           output={b.content || undefined}
-                          defaultCollapsed
+                          defaultCollapsed={!approvalState}
+                          approvalState={approvalState}
+                          onApprove={approval && onToolApproval ? (remember) => onToolApproval(approval.request_id, approval.tool_name, true, remember) : undefined}
+                          onDeny={approval && onToolApproval ? () => onToolApproval(approval.request_id, approval.tool_name, false) : undefined}
                         />
                       );
                     }
@@ -286,6 +293,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [sidebarFilePreview, setSidebarFilePreview] = useState<{ path: string; name: string } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const stopInFlightRef = useRef(false);
+
+  // HITL: pending tool approvals — keyed by tool_name for UI matching
+  const [pendingApprovals, setPendingApprovals] = useState<Map<string, ToolApprovalRequest>>(new Map());
+
+  const handleToolApproval = async (requestId: string, toolName: string, approved: boolean, remember?: 'session' | null) => {
+    const targetChatId = activeStreamingChatId || currentChatId;
+    if (!targetChatId) return;
+    await approveTool(targetChatId, requestId, approved, remember);
+    setPendingApprovals(prev => {
+      const next = new Map(prev);
+      next.delete(toolName);
+      return next;
+    });
+  };
 
   // Custom hooks
   const {
@@ -397,8 +418,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             applyPlanSnapshot(snapshot);
             refreshPlan(chatIdForSend);
           },
+          onToolApprovalRequired: (request) => {
+            setPendingApprovals(prev => {
+              const next = new Map(prev);
+              next.set(request.tool_name, request);
+              return next;
+            });
+          },
           onStreamComplete: () => {
             setIsStreaming(false, chatIdForSend);
+            setPendingApprovals(new Map());
             setTimeout(async () => {
               try {
                 await forceSaveNow(chatIdForSend);
@@ -410,6 +439,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           },
           onStreamStopped: () => {
             setIsStreaming(false, chatIdForSend);
+            setPendingApprovals(new Map());
             removeEmptyAssistantMessage(chatIdForSend);
             stopInFlightRef.current = false;
           },
@@ -550,6 +580,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 chatId={currentChatId ?? undefined}
                 onImageClick={setViewingImage}
                 onFileClick={handleFileClick}
+                pendingApprovals={pendingApprovals}
+                onToolApproval={handleToolApproval}
               />
             )}
 

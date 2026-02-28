@@ -1,6 +1,6 @@
 export { CopyButton } from './CopyButton';
 export { LogBlock } from './LogBlock';
-export { ToolCallBlock } from './ToolCallBlock';
+export { ToolCallBlock, type ApprovalState } from './ToolCallBlock';
 export { CodeStepBlock } from './CodeStepBlock';
 export { CodeBlockComponent } from './CodeBlockComponent';
 export { MarkdownRenderer } from './MarkdownRenderer';

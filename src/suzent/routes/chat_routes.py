@@ -16,7 +16,7 @@ from starlette.responses import JSONResponse, StreamingResponse
 from suzent.config import CONFIG
 from suzent.database import get_database
 from suzent.logger import get_logger
-from suzent.streaming import stop_stream
+from suzent.streaming import stop_stream, resolve_tool_approval
 
 logger = get_logger(__name__)
 
@@ -261,3 +261,43 @@ async def delete_chat(request: Request) -> JSONResponse:
         return JSONResponse({"message": "Chat deleted successfully"})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def approve_tool(request: Request) -> JSONResponse:
+    """Resolve a pending human-in-the-loop tool approval.
+
+    Accepts POST with JSON body:
+    - chat_id: The chat session identifier.
+    - request_id: The approval request ID (from tool_approval_required SSE event).
+    - approved: Boolean — whether the user approved the tool execution.
+    - remember: Optional "session" to remember the decision for the session.
+    """
+    try:
+        data = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "Invalid JSON."}, status_code=400)
+
+    chat_id = data.get("chat_id")
+    request_id = data.get("request_id")
+    approved = data.get("approved", False)
+    remember = data.get("remember")  # "session" or None
+
+    if not chat_id or not request_id:
+        return JSONResponse(
+            {"error": "chat_id and request_id are required"}, status_code=400
+        )
+
+    success = resolve_tool_approval(
+        chat_id=chat_id,
+        request_id=request_id,
+        approved=bool(approved),
+        remember=remember,
+    )
+
+    if not success:
+        return JSONResponse(
+            {"error": "No pending approval found for this request"},
+            status_code=404,
+        )
+
+    return JSONResponse({"status": "resolved", "approved": approved})

@@ -69,24 +69,16 @@ const StepPills: React.FC<{
 
 // Streaming content with typewriter effect
 const StreamingContent: React.FC<{
-  content: string;
+  blocks: ContentBlock[];
   messageIndex: number;
   showCursor?: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-}> = ({ content, messageIndex, showCursor = true, onFileClick }) => {
-  // We disable the typewriter effect for the actual block parsing to ensure 
-  // tool JSON arguments and IDs are parsed instantaneously from the raw stream!
-  // We only use typewriter for visually rendering the trailing plain text markdown.
-  // We also explicitly exclude toolCall and codeStep blocks here because they are
-  // separately rendered outside the chat bubble as StepPills.
-  const parsedBlocks = filterBlocks(splitAssistantContent(content))
-    .filter(b => b.type !== 'toolCall' && b.type !== 'codeStep');
-
+}> = ({ blocks, messageIndex, showCursor = true, onFileClick }) => {
   return (
     <>
-      {parsedBlocks.map((b, bi) => {
+      {blocks.map((b, bi) => {
         const blockKey = generateBlockKey(b, bi, messageIndex);
-        const isLastBlock = bi === parsedBlocks.length - 1;
+        const isLastBlock = bi === blocks.length - 1;
 
         if (b.type === 'markdown') {
           return (
@@ -97,6 +89,8 @@ const StreamingContent: React.FC<{
           );
         } else if (b.type === 'log') {
           return <LogBlock key={blockKey} title={b.title} content={b.content} />;
+        } else if (b.type === 'toolCall' || b.type === 'codeStep') {
+          return null; // Handled outside in StepPills
         } else {
           return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} isStreaming={isLastBlock} />;
         }
@@ -105,7 +99,7 @@ const StreamingContent: React.FC<{
   );
 };
 
-// Static content (non-streaming) — only non-toolCall blocks
+// Static content (non-streaming)
 const StaticContent: React.FC<{
   blocks: ContentBlock[];
   messageIndex: number;
@@ -210,7 +204,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     }
   }
 
-  // Detect tool-only messages: render without robot badge and white box
+  // Detect tool-only messages
   const toolOnly = !isStreamingThis && isToolOnlyMessage(blocks);
 
   if (toolOnly) {
@@ -221,56 +215,46 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     );
   }
 
-  // Content blocks for the white box (exclude toolCalls and codeSteps — they render above the box)
-  const stepBlocks = blocks.filter(b => b.type === 'toolCall' || b.type === 'codeStep');
-  const contentBlocks = blocks.filter(b => b.type !== 'toolCall' && b.type !== 'codeStep');
+  // Chunk blocks into alternating contiguous groups of "content" and "step"
+  const chunks: { isStep: boolean; blocks: ContentBlock[] }[] = [];
+  let currentGroup: ContentBlock[] = [];
+  let currentIsStep = false;
 
-  // Check if content blocks have any meaningful content to display
-  const hasContent = isStreamingThis || contentBlocks.some(b => b.content.trim().length > 0);
-
-  // If there's no real content, just render the step pills (no box)
-  if (!hasContent && stepBlocks.length > 0) {
-    return (
-      <div className="w-full max-w-4xl text-sm leading-relaxed pl-2">
-        <StepPills blocks={stepBlocks} messageIndex={messageIndex} />
-      </div>
-    );
+  for (const b of blocks) {
+    const isStep = b.type === 'toolCall' || b.type === 'codeStep';
+    if (currentGroup.length === 0) {
+      currentIsStep = isStep;
+      currentGroup.push(b);
+    } else if (currentIsStep === isStep) {
+      currentGroup.push(b);
+    } else {
+      chunks.push({ isStep: currentIsStep, blocks: currentGroup });
+      currentIsStep = isStep;
+      currentGroup = [b];
+    }
+  }
+  if (currentGroup.length > 0) {
+    chunks.push({ isStep: currentIsStep, blocks: currentGroup });
   }
 
-  // If there's no content at all, don't render
-  if (!hasContent && !isStreamingThis) {
+  // Filter out empty content chunks, unless it's the active streaming head
+  const validChunks = chunks.filter((chunk, idx) => {
+    if (chunk.isStep) return true;
+    const hasText = chunk.blocks.some(b => b.content.trim().length > 0);
+    const isLastAndStreaming = isStreamingThis && idx === chunks.length - 1;
+    return hasText || isLastAndStreaming;
+  });
+
+  if (validChunks.length === 0 && !isStreamingThis) {
     return null;
   }
 
-  // Calculate clean content for copy (excluding logs and toolCalls)
-  const cleanContent = contentBlocks
-    .filter(b => b.type !== 'log')
-    .map(b => {
-      if (b.type === 'code') {
-        return '```' + (b.lang || '') + '\n' + b.content + '\n```';
-      }
-      return b.content;
-    })
-    .join('').trim();
-
-  // Determine if we should show the main copy button
-  const isThought = cleanContent.startsWith('Thought:');
-  const hasStepInfo = !!message.stepInfo;
-  const showCopyButton = cleanContent && !isThought && !hasStepInfo;
-
   return (
     <div className="group w-full max-w-4xl break-words overflow-visible text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
-      {/* Step pills rendered outside the box, before the badge */}
-      {stepBlocks.length > 0 && (
-        <div className="mb-2 pl-1">
-          <StepPills blocks={stepBlocks} messageIndex={messageIndex} />
-        </div>
-      )}
-
-      {/* Badge/Assembly Container */}
+      {/* Badge/Assembly Container is rendered at the top of the entire message timeline */}
       <div className={`
         border-3 border-brutal-black shadow-brutal-lg overflow-hidden relative
-        transition-all duration-700 ease-out
+        transition-all duration-700 ease-out mb-3
         ${isThinking
           ? 'w-[400px] h-[80px] bg-white left-1/2 -translate-x-1/2'
           : 'w-[90px] h-[40px] bg-white left-0 translate-x-0'
@@ -283,27 +267,46 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
         />
       </div>
 
-      {/* White Message Box - smooth height reveal via CSS Grid 0fr→1fr */}
-      <div className={`
-        grid mt-3 transition-[grid-template-rows] duration-500 ease-out
-        ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}
-      `}>
-        <div className="overflow-hidden min-h-0">
-          <div className="border-3 border-brutal-black shadow-brutal-lg bg-white px-6 py-5 relative">
-            {showCopyButton && !isThinking && (
-              <CopyButton
-                text={cleanContent}
-                className="absolute top-2 right-2 z-10"
-              />
-            )}
-            <div className="space-y-4">
-              {isStreamingThis ? (
-                <StreamingContent content={message.content} messageIndex={messageIndex} showCursor={cursorReady} onFileClick={onFileClick} />
-              ) : (
-                <StaticContent blocks={contentBlocks} messageIndex={messageIndex} onFileClick={onFileClick} />
-              )}
-            </div>
-          </div>
+      <div className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
+        <div className="overflow-hidden min-h-0 flex flex-col space-y-3">
+          {validChunks.map((chunk, idx) => {
+            if (chunk.isStep) {
+              return (
+                <div key={idx} className="pl-1">
+                  <StepPills blocks={chunk.blocks} messageIndex={messageIndex} />
+                </div>
+              );
+            }
+
+            const cleanContent = chunk.blocks
+              .filter(b => b.type !== 'log')
+              .map(b => (b.type === 'code' ? '```' + (b.lang || '') + '\n' + b.content + '\n```' : b.content))
+              .join('').trim();
+
+            const isThought = cleanContent.startsWith('Thought:');
+            const hasStepInfo = !!message.stepInfo;
+            const showCopyButton = cleanContent && !isThought && !hasStepInfo;
+            const isLastChunk = idx === validChunks.length - 1;
+            const isStreamingChunk = isStreamingThis && isLastChunk;
+
+            return (
+              <div key={idx} className="border-3 border-brutal-black shadow-brutal-lg bg-white px-6 py-5 relative">
+                {showCopyButton && !isThinking && (
+                  <CopyButton
+                    text={cleanContent}
+                    className="absolute top-2 right-2 z-10"
+                  />
+                )}
+                <div className="space-y-4">
+                  {isStreamingChunk ? (
+                    <StreamingContent blocks={chunk.blocks} messageIndex={messageIndex} showCursor={cursorReady} onFileClick={onFileClick} />
+                  ) : (
+                    <StaticContent blocks={chunk.blocks} messageIndex={messageIndex} onFileClick={onFileClick} />
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

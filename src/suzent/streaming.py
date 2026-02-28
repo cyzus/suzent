@@ -6,6 +6,7 @@ using Server-Sent Events (SSE), including:
 - Async streaming via pydantic-ai's run_stream_events()
 - Tool call and result events streamed in real time
 - Text deltas assembled from PartStartEvent / PartDeltaEvent
+- Human-in-the-loop (HITL) tool approval via queue-based architecture
 - Event formatting compatible with the existing frontend
 - Plan watching and updates
 - Cooperative cancellation
@@ -42,8 +43,9 @@ class StreamControl:
         self.reason = "Stream stopped by user"
 
 
-# Global registry of active streams
+# Global registry of active streams and deps (for HITL approval endpoint)
 stream_controls: Dict[str, StreamControl] = {}
+active_deps: Dict[str, AgentDeps] = {}
 
 
 def _plan_snapshot(chat_id: Optional[str] = None) -> dict:
@@ -69,8 +71,9 @@ async def stream_agent_responses(
     """
     Runs the pydantic-ai agent with streaming and yields JSON-formatted SSE events.
 
-    Uses ``run_stream_events()`` which yields all events (tool calls, tool
-    results, text deltas, final result) as they happen — no blocking.
+    Uses a queue-based architecture: the agent runs in a background task so
+    the generator can yield both regular events and HITL approval requests
+    even while a tool is blocked waiting for user approval.
 
     Args:
         agent: The pydantic-ai Agent instance.
@@ -85,6 +88,13 @@ async def stream_agent_responses(
     control = StreamControl()
     if chat_id:
         stream_controls[chat_id] = control
+
+    # Wire HITL fields into deps
+    sse_queue: asyncio.Queue = asyncio.Queue()
+    deps.sse_queue = sse_queue
+    deps.cancel_event = control.cancel_event
+    if chat_id:
+        active_deps[chat_id] = deps
 
     # Plan watcher task
     plan_queue: asyncio.Queue = asyncio.Queue()
@@ -112,42 +122,85 @@ async def stream_agent_responses(
     # Accumulate full text for final_answer
     full_text_parts: list[str] = []
     result_output = None
-    
+
     # State for accumulating tool calls across deltas
     tool_names: Dict[str, str] = {}
     tool_args: Dict[str, str] = {}
     emitted_tool_calls: set[str] = set()
 
-    try:
-        # --- Build run kwargs ---
-        run_kwargs: Dict[str, Any] = {"deps": deps}
-        if message_history:
-            run_kwargs["message_history"] = message_history
+    # --- Background agent runner ---
+    async def _agent_runner():
+        """Run the agent in a background task, pushing events to the queue."""
+        try:
+            run_kwargs: Dict[str, Any] = {"deps": deps}
+            if message_history:
+                run_kwargs["message_history"] = message_history
 
-        # --- Stream with run_stream_events (real-time, non-blocking) ---
-        async with agent:  # MCP server context management
-            async for event in agent.run_stream_events(message, **run_kwargs):
+            async with agent:  # MCP server context management
+                async for event in agent.run_stream_events(message, **run_kwargs):
+                    if control.cancel_event.is_set():
+                        break
+                    await sse_queue.put(("event", event))
+        except Exception as e:
+            await sse_queue.put(("error", e))
+        finally:
+            await sse_queue.put(("done", None))
+
+    agent_task = asyncio.create_task(_agent_runner())
+
+    try:
+        while True:
+            # Read from queue with timeout so we can drain plan updates
+            try:
+                msg = await asyncio.wait_for(sse_queue.get(), timeout=0.5)
+            except asyncio.TimeoutError:
+                # Check cancel
                 if control.cancel_event.is_set():
                     yield _sse({"type": "stopped", "data": {"reason": control.reason}})
                     break
+                # Drain plan updates
+                while not plan_queue.empty():
+                    try:
+                        snapshot = plan_queue.get_nowait()
+                        yield _sse({"type": "plan_refresh", "data": snapshot})
+                    except asyncio.QueueEmpty:
+                        break
+                continue
 
-                # --- AgentRunResultEvent: final result with all messages ---
+            msg_type, payload = msg
+
+            if msg_type == "done":
+                break
+
+            if msg_type == "error":
+                if not control.cancel_event.is_set():
+                    logger.error(f"Streaming error: {payload}\n{traceback.format_exc()}")
+                    yield _sse({"type": "error", "data": str(payload)})
+                break
+
+            # --- HITL: tool approval request from a tool function ---
+            if msg_type == "approval":
+                yield _sse({"type": "tool_approval_required", "data": payload})
+                continue
+
+            # --- Regular pydantic-ai event ---
+            if msg_type == "event":
+                event = payload
+
+                # AgentRunResultEvent: final result with all messages
                 if isinstance(event, AgentRunResultEvent):
                     result_output = event.result
-                    # Store messages for caller to persist state
                     try:
                         agent._last_messages = event.result.all_messages()  # type: ignore[attr-defined]
                     except Exception:
                         agent._last_messages = []  # type: ignore[attr-defined]
-                        
-                    # Emit the final text immediately upon receiving the result event
+
                     final_text = getattr(result_output, "data", "") if result_output else ""
                     if not full_text_parts and final_text:
                         yield _sse({"type": "final_answer", "data": str(final_text)})
-                        
                     continue
 
-                # --- Map pydantic-ai events to SSE ---
+                # Map pydantic-ai events to SSE
                 sse = _map_event(event, full_text_parts, tool_names, tool_args, emitted_tool_calls)
                 if sse is not None:
                     if isinstance(sse, list):
@@ -156,17 +209,16 @@ async def stream_agent_responses(
                     else:
                         yield _sse(sse)
 
-                # Drain plan updates
-                while not plan_queue.empty():
-                    try:
-                        snapshot = plan_queue.get_nowait()
-                        yield _sse({"type": "plan_refresh", "data": snapshot})
-                    except asyncio.QueueEmpty:
-                        break
+            # Drain plan updates after each event
+            while not plan_queue.empty():
+                try:
+                    snapshot = plan_queue.get_nowait()
+                    yield _sse({"type": "plan_refresh", "data": snapshot})
+                except asyncio.QueueEmpty:
+                    break
 
         # --- After stream completes ---
         if not control.cancel_event.is_set():
-            # Final plan refresh
             if chat_id:
                 yield _sse({"type": "plan_refresh", "data": _plan_snapshot(chat_id)})
 
@@ -176,6 +228,14 @@ async def stream_agent_responses(
             yield _sse({"type": "error", "data": str(e)})
 
     finally:
+        # Cancel the agent task if still running
+        if not agent_task.done():
+            agent_task.cancel()
+            try:
+                await agent_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
         stop_plan_watcher.set()
         if watcher_task:
             watcher_task.cancel()
@@ -194,6 +254,15 @@ async def stream_agent_responses(
             existing = stream_controls.get(chat_id)
             if existing is control:
                 stream_controls.pop(chat_id, None)
+            active_deps.pop(chat_id, None)
+
+        # Unblock any tools still waiting for approval
+        for req_id, req_data in list(deps.pending_approvals.items()):
+            evt = req_data.get("event")
+            if evt and not evt.is_set():
+                req_data["approved"] = False
+                evt.set()
+        deps.pending_approvals.clear()
 
 
 # ─── Event mapping ─────────────────────────────────────────────────────
@@ -220,7 +289,7 @@ def _map_event(
                 full_text_parts.append(content)
                 return {"type": "stream_delta", "data": {"content": content}}
             return None
-        
+
         # Emit early tool action so UI knows which tool is being called
         if isinstance(event.part, ToolCallPart):
             name = getattr(event.part, "tool_name", "")
@@ -228,7 +297,7 @@ def _map_event(
             args = getattr(event.part, "args", {})
             if not isinstance(args, dict):
                 args = {}
-                
+
             if name and tc_id and tc_id not in emitted_tool_calls:
                 emitted_tool_calls.add(tc_id)
                 tool_args[tc_id] = json.dumps(args) if args else "{}"
@@ -253,24 +322,23 @@ def _map_event(
                 return None
             full_text_parts.append(content_delta)
             return {"type": "stream_delta", "data": {"content": content_delta}}
-            
+
         from pydantic_ai.messages import ToolCallPartDelta
         if isinstance(event.delta, ToolCallPartDelta):
             tc_id = getattr(event.delta, "tool_call_id", "")
             if tc_id:
                 name_delta = getattr(event.delta, "tool_name_delta", "")
                 args_delta = getattr(event.delta, "args_delta", "")
-                
+
                 if name_delta:
                     tool_names[tc_id] = tool_names.get(tc_id, "") + name_delta
-                
+
                 has_new_args = False
                 if args_delta:
                     current_args = tool_args.get(tc_id, "")
                     if isinstance(args_delta, str):
                         tool_args[tc_id] = current_args + args_delta
                     elif isinstance(args_delta, dict):
-                        # Pydantic AI occasionally sends dict deltas depending on the model/provider
                         try:
                             if not current_args:
                                 current_args = "{}"
@@ -279,12 +347,10 @@ def _map_event(
                             tool_args[tc_id] = json.dumps(curr)
                         except Exception:
                             tool_args[tc_id] = json.dumps(args_delta)
-                    # If this isn't strictly the first emission, always send argument updates!
                     has_new_args = True
-                    
+
                 current_name = tool_names.get(tc_id, "")
-                
-                # Emit if we have a new args delta OR if we haven't emitted this tool call name yet
+
                 if current_name and (has_new_args or tc_id not in emitted_tool_calls):
                     emitted_tool_calls.add(tc_id)
                     current_arguments = tool_args.get(tc_id, "")
@@ -308,7 +374,7 @@ def _map_event(
         args = getattr(event.part, "args", {})
         if not isinstance(args, dict):
             args = {}
-            
+
         # If the provider doesn't stream deltas (e.g., Gemini), we must emit the full tool call here
         if tc_id and tc_id not in emitted_tool_calls:
             emitted_tool_calls.add(tc_id)
@@ -322,7 +388,7 @@ def _map_event(
                     }],
                 },
             })
-            
+
         events.append({
             "type": "action",
             "data": {
@@ -347,7 +413,7 @@ def _map_event(
             output_str = ""
             tool_name = ""
             tc_id = getattr(event, "tool_call_id", "")
-            
+
         return {
             "type": "tool_output",
             "data": {
@@ -379,4 +445,43 @@ def stop_stream(chat_id: str, reason: str = "Stream stopped by user") -> bool:
         return False
     control.reason = reason
     control.cancel_event.set()
+    return True
+
+
+def resolve_tool_approval(
+    chat_id: str,
+    request_id: str,
+    approved: bool,
+    remember: Optional[str] = None,
+) -> bool:
+    """Resolve a pending tool approval request.
+
+    Args:
+        chat_id: The chat session identifier.
+        request_id: The approval request ID.
+        approved: Whether the user approved the tool execution.
+        remember: "session" to remember for the rest of the session, or None.
+
+    Returns:
+        True if the approval was resolved, False if not found.
+    """
+    deps = active_deps.get(chat_id)
+    if not deps:
+        return False
+
+    req = deps.pending_approvals.get(request_id)
+    if not req:
+        return False
+
+    req["approved"] = approved
+    req["remember"] = remember
+    evt = req.get("event")
+    if evt:
+        evt.set()
+
+    # Update session policy if requested
+    tool_name = req.get("tool_name", "")
+    if remember == "session" and tool_name:
+        deps.tool_approval_policy[tool_name] = "always_allow" if approved else "always_deny"
+
     return True

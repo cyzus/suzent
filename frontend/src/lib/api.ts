@@ -96,6 +96,34 @@ interface VerifyProviderResponse {
 }
 
 // -----------------------------------------------------------------------------
+// Tool Approval (Human-in-the-Loop)
+// -----------------------------------------------------------------------------
+
+export async function approveTool(
+  chatId: string,
+  requestId: string,
+  approved: boolean,
+  remember?: 'session' | null,
+): Promise<boolean> {
+  try {
+    const res = await fetch(`${getApiBase()}/chat/approve-tool`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        request_id: requestId,
+        approved,
+        remember: remember || null,
+      }),
+    });
+    return res.ok;
+  } catch (error) {
+    console.error('Error approving tool:', error);
+    return false;
+  }
+}
+
+// -----------------------------------------------------------------------------
 // MCP Server Management
 // -----------------------------------------------------------------------------
 

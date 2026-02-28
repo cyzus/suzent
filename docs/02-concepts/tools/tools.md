@@ -1,293 +1,260 @@
-# Suzent Tools Guide
+# Tools
 
-This guide covers all the tools available in Suzent and how to use them effectively.
+Tools extend the agent's capabilities, allowing it to interact with the filesystem, web, memory, social platforms, and more. Each tool is a **function** registered on the pydantic-ai `Agent` via the tool registry.
 
-## Overview
+## Architecture
 
-Suzent tools extend the capabilities of AI agents, allowing them to interact with external services and perform specialized tasks. Each tool is a self-contained module that can be enabled or disabled in the agent configuration.
+Suzent uses [pydantic-ai](https://ai.pydantic.dev/) for its agent framework. Tools are plain Python functions (sync or async) — not classes. Tools that need per-request state (sandbox config, file paths, memory) receive it via **dependency injection** through `RunContext[AgentDeps]`.
+
+```
+Agent
+ ├── tools: [web_search, read_file, bash_execute, ...]   ← function-based
+ ├── toolsets: [MCPServerStdio(...), ...]                 ← MCP servers
+ └── deps_type: AgentDeps                                 ← shared context
+```
+
+### AgentDeps
+
+All per-session context lives in a single `AgentDeps` dataclass, injected into every tool that needs it:
+
+```python
+@dataclass
+class AgentDeps:
+    chat_id: str                  # Current conversation ID
+    user_id: str                  # Current user
+    sandbox_enabled: bool         # Whether sandbox mode is active
+    workspace_root: str           # Root path for file operations
+    path_resolver: PathResolver   # Resolves relative paths safely
+    memory_manager: MemoryManager # Long-term memory system
+    channel_manager: Any          # Social messaging channels
+    skill_manager: Any            # User-defined skills
+    # ... plus HITL fields (see Human-in-the-Loop doc)
+```
+
+Tools that are **stateless** (e.g. `web_search`, `webpage_fetch`) omit `RunContext` entirely — they're plain functions with no dependency injection.
 
 ## Available Tools
 
-### 1. WebSearchTool
+### Web & Search
 
-Performs web searches using either SearXNG (privacy-focused) or the default smolagents search engine.
+| Tool | Function | Context | Description |
+|------|----------|---------|-------------|
+| WebSearchTool | `web_search` | — | Web search via SearXNG or DuckDuckGo |
+| WebpageTool | `webpage_fetch` | — | Fetch and extract webpage content as markdown |
+| BrowsingTool | `browser_action` | — | Control a headless browser (Playwright) |
 
-**Features:**
-- Privacy-focused meta-search via SearXNG
-- Automatic fallback to default search if SearXNG unavailable
-- Clean markdown-formatted results
-- Configurable search parameters (categories, language, time range)
+### Filesystem
 
-**Usage:**
-```python
-from suzent.tools.websearch_tool import WebSearchTool
+| Tool | Function | Context | HITL | Description |
+|------|----------|---------|------|-------------|
+| ReadFileTool | `read_file` | PathResolver | — | Read file contents (text, PDF, DOCX, images via OCR) |
+| WriteFileTool | `write_file` | PathResolver | **Yes** | Create or overwrite files |
+| EditFileTool | `edit_file` | PathResolver | **Yes** | Find-and-replace text in files |
+| GlobTool | `glob_search` | PathResolver | — | Find files matching glob patterns |
+| GrepTool | `grep_search` | PathResolver | — | Search file contents with regex |
 
-tool = WebSearchTool()
-results = tool.forward("your search query")
-```
+### Execution
 
-**Configuration:**
+| Tool | Function | Context | HITL | Description |
+|------|----------|---------|------|-------------|
+| BashTool | `bash_execute` | Sandbox config | **Yes** | Execute code/commands (Python, Node.js, shell) |
 
-To use SearXNG, set in your `.env`:
-```bash
-SEARXNG_BASE_URL=http://localhost:2077
-```
+### Planning & Memory
 
-Without this setting, the tool automatically uses the default smolagents search.
+| Tool | Function | Context | Description |
+|------|----------|---------|-------------|
+| PlanningTool | `planning_update` | chat_id | Create and manage structured task plans |
+| MemorySearchTool | `memory_search` | MemoryManager | Semantic search over long-term memory |
+| MemoryBlockUpdateTool | `memory_block_update` | MemoryManager | Update core memory blocks (persona, user, facts, context) |
+
+### Social & Output
+
+| Tool | Function | Context | HITL | Description |
+|------|----------|---------|------|-------------|
+| SocialMessageTool | `social_message` | ChannelManager | **Yes** (sends only) | Send messages to Telegram, Discord, Slack, Feishu |
+| SpeakTool | `speak` | — | — | Text-to-speech output |
+| SkillTool | `skill_execute` | SkillManager | — | Execute user-defined skills |
+
+**HITL** = Requires human approval before execution. See [Human-in-the-Loop](./human-in-the-loop.md).
+
+## Tool Details
+
+### `web_search`
+
+Performs web searches using SearXNG (self-hosted, privacy-focused) with automatic fallback to DuckDuckGo.
 
 **Parameters:**
-- `query` (required): The search query string
-- `categories` (optional): Search categories (e.g., 'general', 'news', 'images') - SearXNG only
-- `language` (optional): Language code (e.g., 'en', 'fr') - SearXNG only
-- `time_range` (optional): Time filter ('day', 'week', 'month', 'year') - SearXNG only
-- `page` (optional): Page number for results (default: 1) - SearXNG only
+- `query` (required): Search query string
+- `categories`: Search category — `general`, `news`, `images`, `videos`
+- `max_results`: Max results to return (default 10, max 20)
+- `time_range`: Time filter — `day`, `week`, `month`, `year`
+- `page`: Pagination (default 1)
 
-**Output Format:**
+**Configuration:** Set `SEARXNG_BASE_URL` in `.env` for SearXNG. Without it, falls back to DuckDuckGo.
 
-Results are formatted as markdown with:
-- Numbered search results (top 10)
-- Clear titles and URLs
-- Content snippets (truncated to 200 chars)
-- Source engines listed
+### `bash_execute`
 
-Example output:
-```markdown
-# Search Results for: python tutorials
+Executes code in a secure environment. Runs inside a Firecracker MicroVM when sandbox mode is enabled, or on the host when disabled.
 
-## 1. Python Tutorial - Official Documentation
-**URL:** https://docs.python.org/3/tutorial/
-**Description:** The Python Tutorial — Python 3.x documentation. This tutorial introduces the reader informally to the basic concepts and features of the Python language...
-**Sources:** google, duckduckgo, brave
+**Parameters:**
+- `content` (required): Code or shell command to execute
+- `language`: `python`, `nodejs`, or `command`
+- `timeout`: Execution timeout in seconds
 
-## 2. Learn Python Programming
-**URL:** https://www.learnpython.org/
-**Description:** Learn Python with interactive tutorials and examples. Start with the basics and progress to advanced topics...
-**Sources:** bing, duckduckgo
-```
+**Storage paths** (available in both modes):
+- `/persistence` — Private storage, persists across sessions (current chat only)
+- `/shared` — Shared storage, accessible by all chats
 
-**Setup:**
+**Requires approval** — the user must Allow/Always Allow before execution.
 
-For SearXNG setup, see the [SearXNG Documentation](https://docs.searxng.org/).
+### `read_file`
 
----
+Reads file content with format-aware extraction.
 
-### 2. PlanningTool
+**Supported formats:**
+- Text files: `.txt`, `.py`, `.js`, `.json`, `.md`, `.csv`, etc.
+- Documents: `.pdf`, `.docx`, `.xlsx`, `.pptx` (converted to markdown)
+- Images: `.jpg`, `.png` (OCR text extraction)
 
-Helps agents create and manage structured plans for complex tasks.
+**Parameters:**
+- `file_path` (required): Path to the file
+- `offset`: Line number to start from (0-indexed)
+- `limit`: Number of lines to read
 
-**Features:**
-- Break down complex tasks into steps
-- Track plan progress
-- Store and retrieve plans from the database
+### `write_file` / `edit_file`
 
+File creation and modification tools.
 
-**Context Injection:**
+- `write_file`: Creates or overwrites a file. Creates parent directories automatically.
+- `edit_file`: Find-and-replace within a file. Supports `replace_all` for bulk replacements.
 
-The PlanningTool supports chat context injection to associate plans with specific conversations:
+Both **require approval** before execution.
 
-```python
-tool.set_chat_context(chat_id="abc123")
-```
+### `glob_search` / `grep_search`
 
-This is automatically handled by the agent manager.
+Filesystem search tools.
 
----
+- `glob_search(pattern, path)`: Find files matching glob patterns (e.g. `**/*.py`)
+- `grep_search(pattern, path, include, case_insensitive, context_lines)`: Regex search through file contents
 
-### 3. WebpageTool
+### `planning_update`
 
-Retrieves and processes content from web pages.
+Creates and manages structured plans for multi-step tasks. See [Planning Tool](./planning_tool.md) for detailed documentation.
 
-**Features:**
-- Fetch web page content
-- Extract text and relevant information
-- Handle different content types
+### `memory_search` / `memory_block_update`
 
-**Usage:**
-```python
-from suzent.tools.webpage_tool import WebpageTool
+Long-term memory tools. See [Memory](../memory/README.md) for the full memory architecture.
 
-tool = WebpageTool()
-content = tool.forward("https://example.com")
-```
+- `memory_search(query, limit)`: Semantic similarity search over archived memories
+- `memory_block_update(block, operation, content)`: Update always-visible core memory blocks (`persona`, `user`, `facts`, `context`)
 
-### 4. File Tools
+### `social_message`
 
-Foundational tools for filesystem interaction. These operate on the local filesystem by default, or inside the secure sandbox if **Sandbox Execution** is enabled.
+Send messages to social platforms or list available contacts.
 
-- **`ReadFileTool`**: Reads content from a file.
-- **`WriteFileTool`**: Creates or overwrites a file.
-- **`EditFileTool`**: Replaces specific chunks of text in a file (powered by unified diffs).
-- **`GlobTool`**: Finds files matching a pattern (e.g., `src/**/*.py`).
-- **`GrepTool`**: Searches regular expressions within files.
+- Listing contacts (`list_contacts=True`) does **not** require approval
+- Sending messages **requires approval**
 
-**Usage:**
-```python
-from suzent.tools.read_file_tool import ReadFileTool
-content = ReadFileTool().forward("/path/to/file.txt")
-```
+See [Social Messaging](../social-messaging/README.md) for platform setup.
 
----
+### `browser_action`
 
-### 5. BashTool (Sandbox)
+Control a headless browser via Playwright.
 
-Executes bash commands safely. This tool is **only** available when the agent is running in Sandbox mode. It runs commands inside the isolated Firecracker MicroVM, ensuring no harm to the host system.
+**Commands:** `open`, `snapshot`, `click`, `fill`, `scroll`, `back`, `forward`, `reload`, `press`, `screenshot`, `click_coords`
 
-**Features:**
-- Persistent session state (current working directory, variables)
-- Access to mounted volumes and persisted data
-- Timeout and output truncation safety
+### `speak`
 
-**Usage:**
-```python
-from suzent.tools.bash_tool import BashTool
-# Initialize (typically done by agent manager)
-tool = BashTool()
-result = tool.forward("ls -la /workspace")
-```
+Text-to-speech output. Converts text to audio and plays it.
 
----
+### `skill_execute`
+
+Execute user-defined skills. See [Skills](../skills/skills.md).
 
 ## Configuring Tools
 
-### In Agent Configuration
+### Default Tools
 
-Tools are configured in the agent configuration. You can enable/disable tools by specifying them in your config:
+If not specified, the agent uses these tools (from `config.py`):
+
+```
+WebSearchTool, PlanningTool, ReadFileTool, WriteFileTool,
+EditFileTool, GlobTool, GrepTool, BashTool
+```
+
+### Custom Tool Selection
+
+Specify tools in the agent configuration:
 
 ```python
 config = {
     "model": "gemini/gemini-2.5-pro",
-    "agent": "CodeAgent",
     "tools": [
         "WebSearchTool",
         "PlanningTool",
-        "ReadFileTool", 
-        "EditFileTool"
+        "ReadFileTool",
+        "BashTool",
+        "MemorySearchTool",
     ]
 }
 ```
 
-### Default Tools
-
-If not specified, Suzent uses the default tools defined in `src/suzent/config.py`:
-
-```python
-DEFAULT_TOOLS = [
-    "WebSearchTool",
-    "PlanningTool",
-    "WebpageTool",
-    "ReadFileTool",
-    "WriteFileTool",
-    "EditFileTool",
-    "GlobTool",
-    "GrepTool"
-]
-```
-
----
-
-## Tool Best Practices
-
-### For Users
-
-1. **Choose the right tool** - Understand what each tool does and when to use it
-2. **Configure properly** - Ensure environment variables are set correctly
-3. **Check logs** - Tool initialization messages appear in server logs
-4. **Test separately** - Test tools individually before using in agents
-
-### For Developers
-
-1. **Clear descriptions** - Help the agent understand when to use the tool
-2. **Type hints** - Use proper Python type hints for better IDE support
-3. **Error handling** - Always handle errors gracefully and return informative messages
-4. **Documentation** - Include docstrings for all methods
-5. **Testing** - Create tests for your tools
-
----
+Tool names use the legacy class-name format (e.g. `"WebSearchTool"`) for backward compatibility with existing configs.
 
 ## Creating Custom Tools
 
-Quick overview:
+To add a new tool:
 
-1. Create a new file in `src/suzent/tools/` (e.g., `my_tool.py`)
-2. Inherit from `Tool` base class
-3. Define inputs and outputs
-4. Implement the `forward()` method
-5. Register in `agent_manager.py`
-
-Example:
+1. **Create the tool function** in `src/suzent/tools/tool_functions.py`:
 
 ```python
-from smolagents.tools import Tool
+from pydantic_ai import RunContext
+from suzent.core.agent_deps import AgentDeps
 
-class MyCustomTool(Tool):
-    name: str = "MyCustomTool"
-    description: str = "Does something useful"
-    
-    inputs = {
-        "param1": {
-            "type": "string",
-            "description": "Parameter description"
-        }
-    }
-    output_type = "string"
-    
-    def forward(self, param1: str) -> str:
-        # Your logic here
-        return f"Processed: {param1}"
+def my_tool(
+    ctx: RunContext[AgentDeps],  # omit if stateless
+    param1: str,
+    param2: int = 10,
+) -> str:
+    """Short description of what this tool does.
+
+    Args:
+        param1: Description of param1.
+        param2: Description of param2.
+    """
+    # Your logic here
+    return f"Result: {param1}"
 ```
 
----
+2. **Register it** in the `TOOL_FUNCTIONS` dict at the bottom of `tool_functions.py`:
 
-## Troubleshooting
+```python
+TOOL_FUNCTIONS = {
+    # ... existing tools ...
+    "MyTool": my_tool,
+}
+```
 
-### WebSearchTool Issues
+3. **Add to defaults** (optional) in `config.py` if it should be enabled by default.
 
-**Problem:** "Error: Failed to connect to SearXNG"
+### Guidelines
 
-**Solution:**
-1. Check if SearXNG is running: `docker-compose ps`
-2. Verify SEARXNG_BASE_URL in `.env`
-3. Test connectivity: `curl http://localhost:2077/search?q=test&format=json`
-4. The tool will automatically fall back to default search if SearXNG is unavailable
+- Use **Google-style docstrings** — pydantic-ai generates the tool schema from type hints + docstring
+- Use `RunContext[AgentDeps]` as the first parameter only if the tool needs session context
+- Async tools (`async def`) are preferred for I/O operations
+- If the tool is dangerous (writes, executes, sends), add HITL approval — see [Human-in-the-Loop](./human-in-the-loop.md)
+- Return informative error messages as strings (don't raise exceptions)
 
-**Problem:** "403 Forbidden" error
+## Tool Registry
 
-**Solution:**
-1. Check SearXNG settings.yml has `limiter: false`
-2. Ensure `formats` includes `json` in settings.yml
-3. Restart SearXNG: `docker-compose restart searxng`
+The tool registry (`src/suzent/tools/registry.py`) provides programmatic access:
 
-### PlanningTool Issues
+```python
+from suzent.tools.registry import get_tool_function, list_available_tools
 
-**Problem:** Plans not saving
+# Get a specific tool function
+fn = get_tool_function("WebSearchTool")
 
-**Solution:**
-1. Check database connection
-2. Verify chat context is set properly
-3. Check server logs for database errors
-
-### General Tool Issues
-
-**Problem:** Tool not found or not loading
-
-**Solution:**
-1. Verify tool name in configuration matches exactly
-2. Check tool is registered in `agent_manager.py`
-3. Review server startup logs for import errors
-4. Ensure all dependencies are installed
-
----
-
-## Performance Tips
-
-1. **SearXNG** - Self-hosted search is faster than external APIs
-2. **Caching** - SearXNG caches results in Redis for better performance
-3. **Rate limiting** - Consider rate limits when using external APIs
-4. **Parallel requests** - Some tools can make parallel requests for better performance
-
----
-
-## Resources
-
-- [smolagents Documentation](https://github.com/huggingface/smolagents)
-- [SearXNG Documentation](https://docs.searxng.org/)
+# List all available tool names
+names = list_available_tools()
+```

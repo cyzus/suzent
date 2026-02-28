@@ -1,6 +1,10 @@
-## Planning Tool
+# Planning Tool
 
-#### Parameters
+The planning tool (`planning_update`) helps agents create and manage structured plans for multi-step tasks. Plans are stored in the database and visualized in the frontend sidebar.
+
+**Function:** `planning_update(ctx, action, goal, phases, current_phase_id, next_phase_id)`
+
+## Parameters
 
 - **action**: `update`, `advance`
 - **goal**: A concise high-level goal for the plan (Required for `update`).
