@@ -25,6 +25,13 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const [expanded, setExpanded] = useState(!defaultCollapsed);
   const { t } = useI18n();
 
+  // Auto-expand when approval is requested
+  React.useEffect(() => {
+    if (approvalState === 'pending') {
+      setExpanded(true);
+    }
+  }, [approvalState]);
+
   // Format tool name for display: snake_case → readable
   const displayName = toolName.replace(/_/g, ' ');
 

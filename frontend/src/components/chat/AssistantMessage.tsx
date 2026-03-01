@@ -63,7 +63,18 @@ const ToolSequenceGroup: React.FC<{
     onDeny?: () => void;
   }>;
 }> = ({ tools }) => {
-  const [expanded, setExpanded] = useState(tools.some(t => t.approvalState === 'pending'));
+  const hasPending = tools.some(t => t.approvalState === 'pending');
+  // Use a ref to track if we've already auto-expanded for this set of tools
+  // or just rely on state + effect/memo. For simplicity, we force expanded if hasPending.
+  const [expanded, setExpanded] = useState(hasPending);
+
+  // Sync expanded state if a new pending tool arrives
+  useEffect(() => {
+    if (hasPending) {
+      setExpanded(true);
+    }
+  }, [hasPending]);
+
   const shouldGroup = tools.length > 2;
 
   if (!shouldGroup) {
@@ -96,7 +107,7 @@ const ToolSequenceGroup: React.FC<{
       {/* Unified Header Toggle */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="tool-group-summary group/tools"
+        className={`tool-group-summary group/tools ${hasPending ? 'active-approval' : ''}`}
       >
         {!expanded ? (
           <>
