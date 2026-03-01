@@ -96,7 +96,6 @@ async def chat(request: Request) -> StreamingResponse:
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
                     "X-Accel-Buffering": "no",
-                    "x-vercel-ai-ui-message-stream": "v1",
                 },
             )
 
@@ -111,10 +110,10 @@ async def chat(request: Request) -> StreamingResponse:
                     event_data = json.loads(json_str)
 
                     msg_type = event_data.get("type")
-                    if msg_type == "text-delta":
+                    if msg_type == "TEXT_MESSAGE_CONTENT":
                         full_response += event_data.get("delta", "")
-                    elif msg_type == "error":
-                        error_msg = event_data.get("errorText", "Unknown error")
+                    elif msg_type == "RUN_ERROR":
+                        error_msg = event_data.get("message", "Unknown error")
                         return JSONResponse({"error": error_msg}, status_code=500)
             except Exception:
                 pass

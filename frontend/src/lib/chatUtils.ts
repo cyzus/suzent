@@ -126,7 +126,7 @@ export function splitAssistantContent(content: string): ContentBlock[] {
 
   // Second pass: process markdown blocks for code fences
   for (const split of splits) {
-    if (split.type === 'log') {
+    if (split.type === 'log' || split.type === 'reasoning') {
       blocks.push(split as ContentBlock);
       continue;
     }

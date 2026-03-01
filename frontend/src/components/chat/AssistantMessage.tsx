@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Message } from '../../types/api';
+import type { AGUIPart } from '../../hooks/useAGUI';
 import { splitAssistantContent, generateBlockKey, ContentBlock } from '../../lib/chatUtils';
 import { useTypewriter } from '../../hooks/useTypewriter';
 import { ThinkingAnimation, AgentBadge } from './ThinkingAnimation';
@@ -18,8 +19,8 @@ interface AssistantMessageProps {
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
   /** Streaming usage data */
   usage?: any;
-  /** When provided, renders from UIMessage.parts instead of legacy HTML parsing */
-  uiParts?: any[];
+  /** When provided, renders from AG-UI streaming parts instead of legacy HTML parsing */
+  aguiParts?: AGUIPart[];
   /** HITL approval handler: (approvalId, toolCallId, approved, remember?) */
   onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null) => void;
 }
@@ -236,42 +237,7 @@ const StaticContent: React.FC<{
   );
 };
 
-// ── Parts-based rendering (for useChat streaming messages) ──────────
-
-/**
- * Check if a UIMessage part is a tool invocation.
- * The SDK creates "dynamic-tool" parts when the chunk has `dynamic: true`,
- * and static "tool-<name>" parts otherwise (e.g., "tool-bash_execute").
- * pydantic-ai's VercelAIAdapter emits static tool parts (no dynamic flag).
- */
-function isToolPart(part: any): boolean {
-  return part.type === 'dynamic-tool' ||
-    (typeof part.type === 'string' && part.type.startsWith('tool-') && part.type !== 'tool-');
-}
-
-/** Extract the tool name from either a dynamic or static tool part. */
-function getToolPartName(part: any): string {
-  if (part.type === 'dynamic-tool') return part.toolName || 'unknown';
-  if (typeof part.type === 'string' && part.type.startsWith('tool-')) {
-    return part.type.slice(5) || 'unknown';
-  }
-  return 'unknown';
-}
-
-/** Check if a part is "visible content" (text or tool) vs structural/data */
-function isContentPart(part: any): boolean {
-  if (!part) return false;
-  return part.type === 'text' ||
-    part.type === 'reasoning' ||
-    part.type === 'thought' ||
-    part.type === 'thought-delta' ||
-    part.type === 'reasoning-delta' ||
-    part.type === 'tool-invocation' ||
-    part.type === 'tool-result' ||
-    part.type === 'dynamic-tool-result' ||
-    part.type.startsWith('tool-') ||
-    part.type.startsWith('dynamic-tool');
-}
+// ── AG-UI Parts-based rendering (for streaming messages) ────────────
 
 const MetricsBadge: React.FC<{ usage?: any; stepInfo?: string }> = ({ usage, stepInfo }) => {
   const info = usage
@@ -289,25 +255,19 @@ const MetricsBadge: React.FC<{ usage?: any; stepInfo?: string }> = ({ usage, ste
   );
 };
 
-const PartsBasedContent: React.FC<{
-  parts: any[];
+const AGUIPartsContent: React.FC<{
+  parts: AGUIPart[];
   messageIndex: number;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
   onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null) => void;
 }> = ({ parts, messageIndex, onFileClick, onToolApproval }) => {
-  // Separate parts into chunks: contiguous text vs tool groups vs reasoning
-  const chunks: { type: 'tool' | 'reasoning' | 'text'; items: any[] }[] = [];
-  let current: any[] = [];
+  // Group consecutive parts of the same type into chunks
+  const chunks: { type: 'tool' | 'reasoning' | 'text'; items: AGUIPart[] }[] = [];
+  let current: AGUIPart[] = [];
   let currentType: 'tool' | 'reasoning' | 'text' | null = null;
 
   for (const part of parts) {
-    const isTool = isToolPart(part);
-    const isReasoning = part.type === 'reasoning';
-    // Ignore step-start, data-*, and other non-content parts
-    if (!isContentPart(part)) continue;
-
-    const type = isTool ? 'tool' : isReasoning ? 'reasoning' : 'text';
-
+    const type = part.type;
     if (current.length === 0) {
       currentType = type;
       current.push(part);
@@ -330,32 +290,21 @@ const PartsBasedContent: React.FC<{
       {chunks.map((chunk, ci) => {
         if (chunk.type === 'tool') {
           const tools = chunk.items.map((tp, ti) => {
-            const toolName = getToolPartName(tp);
-            const argsStr = tp.input != null
-              ? (typeof tp.input === 'string' ? tp.input : JSON.stringify(tp.input, null, 2))
-              : (tp.rawInput != null)
-                ? (typeof tp.rawInput === 'string' ? tp.rawInput : JSON.stringify(tp.rawInput, null, 2))
-                : undefined;
-            const outputStr = (tp.state === 'output-available' && tp.output != null)
-              ? (typeof tp.output === 'string' ? tp.output : JSON.stringify(tp.output, null, 2))
-              : (tp.state === 'output-error' && tp.errorText)
-                ? `Error: ${tp.errorText}`
-                : undefined;
             const approvalState = tp.state === 'approval-requested' ? 'pending' as const
-              : tp.state === 'output-denied' ? 'denied' as const
+              : tp.state === 'error' ? 'denied' as const
                 : undefined;
 
             return {
               toolCallId: tp.toolCallId || `tool-${ci}-${ti}`,
-              toolName,
-              toolArgs: argsStr,
-              output: outputStr,
+              toolName: tp.toolName || 'unknown',
+              toolArgs: tp.args || undefined,
+              output: tp.output || undefined,
               approvalState,
-              onApprove: (approvalState === 'pending' && tp.approval && onToolApproval)
-                ? (remember: 'session' | null) => onToolApproval(tp.approval.id, tp.toolCallId, true, remember)
+              onApprove: (approvalState === 'pending' && tp.approvalId && onToolApproval)
+                ? (remember: 'session' | null) => onToolApproval(tp.approvalId!, tp.toolCallId || '', true, remember)
                 : undefined,
-              onDeny: (approvalState === 'pending' && tp.approval && onToolApproval)
-                ? () => onToolApproval(tp.approval.id, tp.toolCallId, false)
+              onDeny: (approvalState === 'pending' && tp.approvalId && onToolApproval)
+                ? () => onToolApproval(tp.approvalId!, tp.toolCallId || '', false)
                 : undefined,
             };
           });
@@ -368,22 +317,29 @@ const PartsBasedContent: React.FC<{
         }
 
         if (chunk.type === 'reasoning') {
-          const reasoningText = chunk.items.map((p: any) => p.text || p.reasoning || p.delta || p.content || '').join('');
+          const reasoningText = chunk.items.map(p => p.text || '').join('');
           if (!reasoningText.trim()) return null;
           return (
-            <div key={ci} className="pl-4 pr-6 py-2">
-              <span className="text-xs italic text-neutral-500 font-medium opacity-80 leading-snug">
-                {reasoningText}
-              </span>
+            <div key={ci} className="pl-4 pr-6 py-2 border-l-2 border-neutral-300">
+              <details className="group" open>
+                <summary className="text-xs italic text-neutral-500 font-medium cursor-pointer select-none hover:text-neutral-700 flex items-center gap-1">
+                  <span className="text-sm">🤔</span>
+                  Thinking
+                </summary>
+                <div className="mt-2 p-3 bg-neutral-50 rounded border border-neutral-200">
+                  <pre className="text-xs italic text-neutral-600 font-medium leading-snug whitespace-pre-wrap overflow-auto">
+                    {reasoningText}
+                  </pre>
+                </div>
+              </details>
             </div>
           );
         }
 
         // Text chunk
-        const fullText = chunk.items.map((p: any) => p.text || '').join('');
+        const fullText = chunk.items.map(p => p.text || '').join('');
         const isLastChunk = ci === chunks.length - 1;
-        const isStreamingText = isLastChunk && chunk.items.some((p: any) => p.state === 'streaming');
-        if (!fullText.trim() && !isStreamingText) return null;
+        if (!fullText.trim() && !isLastChunk) return null;
         return (
           <div key={ci} className="border-3 border-brutal-black shadow-brutal-lg bg-white px-6 py-5 relative">
             {fullText.trim() && (
@@ -391,7 +347,7 @@ const PartsBasedContent: React.FC<{
             )}
             <div className="space-y-4">
               <MarkdownRenderer content={fullText} onFileClick={onFileClick} />
-              {isStreamingText && (
+              {isLastChunk && (
                 <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1" />
               )}
             </div>
@@ -408,13 +364,12 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   isStreaming,
   isLastMessage,
   onFileClick,
-  uiParts,
+  aguiParts,
   onToolApproval,
   usage,
 }) => {
   const isStreamingThis = isStreaming && isLastMessage;
-  // Only count visible content parts (text or tool) — not structural parts like step-start, data-*, etc.
-  const hasParts = uiParts && uiParts.some(isContentPart);
+  const hasParts = aguiParts && aguiParts.length > 0;
   const isThinking = isStreamingThis && !message.content && !hasParts;
 
   // Suppress the streaming cursor during the assembly→reveal animation.
@@ -432,8 +387,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     }
   }, [isStreamingThis, cursorReady]);
 
-  // ── Parts-based rendering path (for useChat streaming messages) ──
-  if (uiParts !== undefined) {
+  // ── AG-UI parts-based rendering path (for streaming messages) ──
+  if (aguiParts !== undefined) {
     return (
       <div className="group w-full max-w-4xl break-all overflow-x-hidden text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
         {/* Badge/Assembly Container */}
@@ -452,8 +407,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
         <div className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
           <div className="overflow-hidden min-h-0 min-w-0 flex flex-col space-y-3">
             {hasParts ? (
-              <PartsBasedContent
-                parts={uiParts}
+              <AGUIPartsContent
+                parts={aguiParts}
                 messageIndex={messageIndex}
                 onFileClick={onFileClick}
                 onToolApproval={onToolApproval}
@@ -492,33 +447,34 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   }
 
   // Chunk blocks into alternating contiguous groups of "content" and "step"
-  const chunks: { isStep: boolean; blocks: ContentBlock[] }[] = [];
+  const chunks: { type: string; blocks: ContentBlock[] }[] = [];
   let currentGroup: ContentBlock[] = [];
-  let currentIsStep = false;
+  let currentType = '';
 
   for (const b of blocks) {
     const isStep = b.type === 'toolCall';
     const isReasoning = b.type === 'reasoning';
-    const isSpecial = isStep || isReasoning;
+    // Use the type directly for chunking to preserve interleaved order
+    const type = b.type === 'markdown' ? 'content' : b.type;
 
     if (currentGroup.length === 0) {
-      currentIsStep = isSpecial;
+      currentType = type;
       currentGroup.push(b);
-    } else if (currentIsStep === isSpecial) {
+    } else if (currentType === type) {
       currentGroup.push(b);
     } else {
-      chunks.push({ isStep: currentIsStep, blocks: currentGroup });
-      currentIsStep = isSpecial;
+      chunks.push({ type: currentType, blocks: currentGroup });
+      currentType = type;
       currentGroup = [b];
     }
   }
   if (currentGroup.length > 0) {
-    chunks.push({ isStep: currentIsStep, blocks: currentGroup });
+    chunks.push({ type: currentType, blocks: currentGroup });
   }
 
   // Filter out empty content chunks, unless it's the active streaming head
   const validChunks = chunks.filter((chunk, idx) => {
-    if (chunk.isStep) return true;
+    if (chunk.type !== 'content') return true;
     const hasText = chunk.blocks.some(b => b.content.trim().length > 0);
     const isLastAndStreaming = isStreamingThis && idx === chunks.length - 1;
     return hasText || isLastAndStreaming;
@@ -549,29 +505,40 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
       <div className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
         <div className="overflow-hidden min-h-0 flex flex-col space-y-3">
           {validChunks.map((chunk, idx) => {
-            if (chunk.isStep) {
-              const rBlocks = chunk.blocks.filter(b => b.type === 'reasoning');
-              const tBlocks = chunk.blocks.filter(b => b.type === 'toolCall');
+            if (chunk.type === 'reasoning') {
               return (
                 <div key={idx} className="flex flex-col space-y-2">
-                  {rBlocks.map((rb, ri) => (
-                    <div key={`rb-${idx}-${ri}`} className="pl-4 pr-6 py-1">
-                      <span className="text-xs italic text-neutral-500 font-medium opacity-80 leading-snug">
-                        {rb.content}
-                      </span>
+                  {chunk.blocks.map((rb, ri) => (
+                    <div key={`rb-${idx}-${ri}`} className="pl-4 pr-6 py-2 border-l-2 border-neutral-300">
+                      <details className="group" open>
+                        <summary className="text-xs italic text-neutral-500 font-medium cursor-pointer select-none hover:text-neutral-700 flex items-center gap-1">
+                          <span className="text-sm">🤔</span>
+                          Thinking
+                        </summary>
+                        <div className="mt-2 p-3 bg-neutral-50 rounded border border-neutral-200">
+                          <pre className="text-xs italic text-neutral-600 font-medium leading-snug whitespace-pre-wrap overflow-auto">
+                            {rb.content}
+                          </pre>
+                        </div>
+                      </details>
                     </div>
                   ))}
-                  {tBlocks.length > 0 && (
-                    <div className="pl-1">
-                      <StepPills blocks={tBlocks} messageIndex={messageIndex} />
-                    </div>
-                  )}
+                </div>
+              );
+            }
+
+            if (chunk.type === 'toolCall') {
+              return (
+                <div key={idx} className="flex flex-col space-y-2">
+                  <div className="pl-1">
+                    <StepPills blocks={chunk.blocks} messageIndex={messageIndex} />
+                  </div>
                 </div>
               );
             }
 
             const cleanContent = chunk.blocks
-              .filter(b => b.type !== 'log')
+              .filter(b => b.type !== 'log' && b.type !== 'reasoning')
               .map(b => (b.type === 'code' ? '```' + (b.lang || '') + '\n' + b.content + '\n```' : b.content))
               .join('').trim();
 
@@ -580,6 +547,11 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
             const showCopyButton = cleanContent && !isThought && !hasStepInfo;
             const isLastChunk = idx === validChunks.length - 1;
             const isStreamingChunk = isStreamingThis && isLastChunk;
+
+            // For non-step chunks, filter out reasoning (should only appear in step chunks)
+            const contentBlocks = chunk.type === 'reasoning' || chunk.type === 'toolCall'
+              ? chunk.blocks
+              : chunk.blocks.filter(b => b.type !== 'reasoning');
 
             return (
               <div key={idx} className="border-3 border-brutal-black shadow-brutal-lg bg-white px-6 py-5 relative">
@@ -591,9 +563,9 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                 )}
                 <div className="space-y-4">
                   {isStreamingChunk ? (
-                    <StreamingContent blocks={chunk.blocks} messageIndex={messageIndex} showCursor={cursorReady} onFileClick={onFileClick} />
+                    <StreamingContent blocks={contentBlocks} messageIndex={messageIndex} showCursor={cursorReady} onFileClick={onFileClick} />
                   ) : (
-                    <StaticContent blocks={chunk.blocks} messageIndex={messageIndex} onFileClick={onFileClick} />
+                    <StaticContent blocks={contentBlocks} messageIndex={messageIndex} onFileClick={onFileClick} />
                   )}
                 </div>
               </div>

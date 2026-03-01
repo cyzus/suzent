@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "crawl4ai>=0.7.3",
-    "pydantic-ai-slim[openai,anthropic,google,groq,mcp]>=0.2.0",
+    "pydantic-ai-slim[openai,anthropic,google,groq,mcp,ag-ui]>=0.2.0",
     "litellm",
     "starlette",
     "uvicorn",

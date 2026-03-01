@@ -7,7 +7,7 @@ using Server-Sent Events (SSE), including:
 - Tool call and result events streamed in real time
 - Text deltas assembled from PartStartEvent / PartDeltaEvent
 - Human-in-the-loop (HITL) tool approval via queue-based architecture
-- Event formatting compatible with the Vercel AI Data Stream Protocol
+- Event formatting compatible with the AG-UI protocol
 - Plan watching and updates
 - Cooperative cancellation
 """
@@ -15,17 +15,28 @@ using Server-Sent Events (SSE), including:
 import asyncio
 import json
 import traceback
+import uuid
 from typing import Optional, Dict, Any, AsyncGenerator
 
 from pydantic_ai import (
     Agent,
 )
-from pydantic_ai.ui.vercel_ai import VercelAIAdapter
-from pydantic_ai.ui.vercel_ai.request_types import SubmitMessage
+from pydantic_ai.ui.ag_ui._event_stream import AGUIEventStream
+from ag_ui.core import RunAgentInput, CustomEvent, RunErrorEvent
+from ag_ui.encoder import EventEncoder
 
 from suzent.core.agent_deps import AgentDeps
 from suzent.plan import read_plan_from_database, plan_to_dict, auto_complete_current
 from loguru import logger
+
+
+# Module-level encoder for custom events
+_encoder = EventEncoder()
+
+
+def _encode_custom(name: str, value: Any) -> str:
+    """Encode a custom AG-UI event as an SSE string."""
+    return _encoder.encode(CustomEvent(name=name, value=value))
 
 
 class StreamControl:
@@ -64,14 +75,14 @@ async def stream_agent_responses(
     chat_id: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """
-    Runs the pydantic-ai agent with streaming and yields Vercel AI formatted events.
+    Runs the pydantic-ai agent with streaming and yields AG-UI formatted events.
 
     Uses a queue-based architecture: the agent runs in a background task so
     the generator can yield both regular events and HITL approval requests
     even while a tool is blocked waiting for user approval.
 
     Yields:
-        Server-sent event strings in Data Stream Protocol formatting (e.g. 0:..., d:...)
+        Server-sent event strings in AG-UI protocol format (data: {json}\n\n)
     """
     control = StreamControl()
     if chat_id:
@@ -124,6 +135,11 @@ async def stream_agent_responses(
                 async for event in agent.run_stream_events(message, **run_kwargs):
                     if control.cancel_event.is_set():
                         break
+                    logger.debug(f"[Streaming] Received event from agent: {type(event).__name__}")
+                    if hasattr(event, "part"):
+                        logger.debug(f"[Streaming]   Part kind: {getattr(event.part, 'part_kind', 'N/A')}")
+                    if hasattr(event, "delta"):
+                        logger.debug(f"[Streaming]   Delta type: {type(event.delta).__name__}")
                     await sse_queue.put(("event", event))
         except Exception as e:
             await sse_queue.put(("error", e))
@@ -132,17 +148,16 @@ async def stream_agent_responses(
 
     agent_task = asyncio.create_task(_agent_runner())
 
-    # --- Native stream generator that feeds VercelAIAdapter ---
+    # --- Native stream generator that feeds AGUIEventStream ---
     async def native_stream_generator():
         while True:
-            # Drain plan updates as data-* chunks (Vercel AI SDK native data parts)
+            # Drain plan updates as AG-UI CustomEvent
             while not plan_queue.empty():
                 try:
                     snapshot = plan_queue.get_nowait()
-                    data_json = json.dumps(
-                        {"type": "data-plan_refresh", "data": snapshot}
+                    await out_queue.put(
+                        ("chunk", _encode_custom("plan_refresh", snapshot))
                     )
-                    await out_queue.put(("chunk", f"data: {data_json}\n\n"))
                 except asyncio.QueueEmpty:
                     break
 
@@ -178,11 +193,9 @@ async def stream_agent_responses(
                                 "total_tokens": usage.total_tokens,
                                 "details": usage.details,
                             }
-                            # Push usage update to out_queue
-                            usage_chunk = json.dumps(
-                                {"type": "data-usage_update", "data": usage_data}
+                            await out_queue.put(
+                                ("chunk", _encode_custom("usage_update", usage_data))
                             )
-                            await out_queue.put(("chunk", f"data: {usage_chunk}\n\n"))
 
                             agent._last_messages = payload.result.all_messages()  # type: ignore[attr-defined]
                         except Exception:
@@ -191,63 +204,58 @@ async def stream_agent_responses(
                     yield payload
 
                 elif msg_type == "approval":
-                    # HITL: emit as native Vercel AI tool-approval-request chunk
-                    # The SDK recognizes this type and sets ToolInvocationUIPart.state = 'approval-requested'
-                    approval_chunk = json.dumps(
-                        {
-                            "type": "tool-approval-request",
-                            "approvalId": payload["request_id"],
-                            "toolCallId": payload.get("tool_call_id")
-                            or payload["request_id"],
-                        }
+                    # HITL: emit as AG-UI CustomEvent with all approval info
+                    await out_queue.put(
+                        (
+                            "chunk",
+                            _encode_custom(
+                                "tool_approval_request",
+                                {
+                                    "approvalId": payload["request_id"],
+                                    "toolCallId": payload.get("tool_call_id")
+                                    or payload["request_id"],
+                                    "toolName": payload.get("tool_name", ""),
+                                    "args": payload.get("args", {}),
+                                    "chatId": chat_id,
+                                },
+                            ),
+                        )
                     )
-                    await out_queue.put(("chunk", f"data: {approval_chunk}\n\n"))
-                    # Also emit tool args + name as a data-* part so the approval UI
-                    # can display what tool is being requested
-                    approval_data = json.dumps(
-                        {
-                            "type": "data-tool_approval_info",
-                            "data": {
-                                "approvalId": payload["request_id"],
-                                "toolName": payload.get("tool_name", ""),
-                                "args": payload.get("args", {}),
-                                "chatId": chat_id,
-                            },
-                        }
-                    )
-                    await out_queue.put(("chunk", f"data: {approval_data}\n\n"))
 
                 elif msg_type == "done":
                     break
 
                 elif msg_type == "error":
-                    error_json = json.dumps(
-                        {"type": "error", "errorText": str(payload)}
-                    )
-                    await out_queue.put(("chunk", f"data: {error_json}\n\n"))
+                    err = RunErrorEvent(message=str(payload))
+                    await out_queue.put(("chunk", _encoder.encode(err)))
                     break
 
             except asyncio.TimeoutError:
                 if control.cancel_event.is_set():
                     break
 
-    # --- Background worker to encode stream using VercelAIAdapter ---
+    # --- Background worker to encode stream using AGUIEventStream ---
     async def encode_worker():
         try:
-            # We must pass a valid SubmitMessage object when using sdk_version=6
-            # because VercelAIAdapter checks `run_input.messages` to extract
-            # client-side tool approvals. Since Suzent handles approvals separately,
-            # we just provide a dummy empty message list.
-            dummy_input = SubmitMessage(id="dummy", messages=[])
-            adapter = VercelAIAdapter(agent, run_input=dummy_input, sdk_version=6)
-            v_stream = adapter.transform_stream(native_stream_generator())
-            async for chunk in adapter.encode_stream(v_stream):
+            run_input = RunAgentInput(
+                thread_id=chat_id or "default",
+                run_id=str(uuid.uuid4()),
+                messages=[],
+                state=None,
+                tools=[],
+                context=[],
+                forwarded_props=None,
+            )
+            event_stream = AGUIEventStream(run_input)
+            agui_events = event_stream.transform_stream(native_stream_generator())
+            async for agui_event in agui_events:
                 if control.cancel_event.is_set():
                     break
-                await out_queue.put(("chunk", chunk))
+                encoded = event_stream.encode_event(agui_event)
+                await out_queue.put(("chunk", encoded))
         except Exception as e:
-            error_json = json.dumps({"type": "error", "errorText": str(e)})
-            await out_queue.put(("chunk", f"data: {error_json}\n\n"))
+            err = RunErrorEvent(message=str(e))
+            await out_queue.put(("chunk", _encoder.encode(err)))
         finally:
             await out_queue.put(("done", None))
 
@@ -259,7 +267,8 @@ async def stream_agent_responses(
                 msg = await asyncio.wait_for(out_queue.get(), timeout=0.5)
             except asyncio.TimeoutError:
                 if control.cancel_event.is_set():
-                    yield 'data: {"type": "error", "errorText": "Stream stopped by user"}\n\n'
+                    err = RunErrorEvent(message="Stream stopped by user")
+                    yield _encoder.encode(err)
                     break
                 continue
 
@@ -271,16 +280,13 @@ async def stream_agent_responses(
 
         # --- After stream completes ---
         if not control.cancel_event.is_set() and chat_id:
-            data_json = json.dumps(
-                {"type": "data-plan_refresh", "data": _plan_snapshot(chat_id)}
-            )
-            yield f"data: {data_json}\n\n"
+            yield _encode_custom("plan_refresh", _plan_snapshot(chat_id))
 
     except Exception as e:
         if not control.cancel_event.is_set():
             logger.error(f"Streaming error: {e}\n{traceback.format_exc()}")
-            error_json = json.dumps({"type": "error", "errorText": str(e)})
-            yield f"data: {error_json}\n\n"
+            err = RunErrorEvent(message=str(e))
+            yield _encoder.encode(err)
 
     finally:
         # Cancel background tasks

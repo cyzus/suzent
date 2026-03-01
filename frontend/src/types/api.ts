@@ -99,5 +99,5 @@ export interface ConfigOptions {
   };
 }
 
-// Note: Stream event types removed — the frontend now uses Vercel AI SDK's
-// Data Stream Protocol via useChat instead of manual SSE parsing.
+// Note: Stream event types removed — the frontend now uses AG-UI protocol
+// via the useAGUI hook instead of manual SSE parsing.

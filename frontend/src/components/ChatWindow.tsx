@@ -1,8 +1,6 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { useChat } from '@ai-sdk/react';
-import type { UIMessage } from 'ai';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
-import { createSuzentTransport } from '../lib/suzentTransport';
+import { useAGUI, type AGUIPart } from '../hooks/useAGUI';
 import { getApiBase, getSandboxParams, approveTool } from '../lib/api';
 import type { Message, FileAttachment } from '../types/api';
 import { isIntermediateStepContent, splitAssistantContent, mergeToolCallPairs, type ContentBlock } from '../lib/chatUtils';
@@ -18,7 +16,7 @@ import { FileViewer } from './FileViewer';
 import { UserMessage, AssistantMessage, ToolCallBlock, RightSidebar } from './chat';
 import { useI18n } from '../i18n';
 
-// ── UIMessage → Store Message conversion ──────────────────────────────
+// ── AGUIPart[] → Store Message conversion ────────────────────────────
 function escapeHtmlForStore(unsafe: string): string {
   return unsafe
     .replace(/&/g, '&amp;')
@@ -28,65 +26,36 @@ function escapeHtmlForStore(unsafe: string): string {
     .replace(/'/g, '&#039;');
 }
 
-/**
- * Convert a streaming UIMessage (from useChat) to a store Message for persistence.
- * Tool invocations are serialized as HTML <details> blocks with emoji conventions
- * so the existing historical message rendering pipeline can display them.
- */
-/**
- * Check if a UIMessage part is a tool invocation (static or dynamic).
- * Static: type starts with "tool-" (e.g., "tool-bash_execute")
- * Dynamic: type === "dynamic-tool"
- */
-function isToolUIPart(part: any): boolean {
-  return part.type === 'dynamic-tool' ||
-    (typeof part.type === 'string' && part.type.startsWith('tool-') && part.type !== 'tool-');
-}
-
-/** Extract tool name from either static or dynamic tool part. */
-function getToolName(part: any): string {
-  if (part.type === 'dynamic-tool') return part.toolName || 'unknown';
-  if (typeof part.type === 'string' && part.type.startsWith('tool-')) {
-    return part.type.slice(5) || 'unknown';
-  }
-  return 'unknown';
-}
-
 function formatUsage(usage: any): string {
   if (!usage) return '';
   const fmt = (n: number) => n.toLocaleString();
   return `Input: ${fmt(usage.input_tokens)} | Output: ${fmt(usage.output_tokens)} | Total: ${fmt(usage.total_tokens)}`;
 }
 
-function uiMessageToStoreMessage(uiMsg: UIMessage, usage?: any): Message {
+/**
+ * Convert AG-UI streaming parts to a store Message for persistence.
+ * Tool invocations are serialized as HTML <details> blocks with emoji conventions
+ * so the existing historical message rendering pipeline can display them.
+ */
+function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any): Message {
   let content = '';
-  for (const part of uiMsg.parts) {
+  for (const part of parts) {
     if (part.type === 'text') {
-      content += part.text;
+      content += part.text || '';
     } else if (part.type === 'reasoning') {
-      const reasoningText = (part as any).text || (part as any).reasoning || '';
-      if (reasoningText) {
-        content += `\n\n<details data-reasoning="true"><summary>💭 Thinking</summary>\n\n${reasoningText}\n\n</details>\n\n`;
+      const text = part.text || '';
+      if (text) {
+        content += `\n\n<details data-reasoning="true"><summary>\u{1F4AD} Thinking</summary>\n\n${text}\n\n</details>\n\n`;
       }
-    } else if (isToolUIPart(part)) {
-      const toolPart = part as any;
-      const toolName = getToolName(toolPart);
-      const toolCallId = toolPart.toolCallId || '';
-      const input = toolPart.input ?? toolPart.rawInput;
-      const argsStr = input != null
-        ? (typeof input === 'string' ? input : JSON.stringify(input, null, 2))
-        : '';
-      content += `\n\n<details data-tool-call-id="${toolCallId}"><summary>🔧 ${toolName}</summary>\n\n<pre><code class="language-text">${escapeHtmlForStore(argsStr)}</code></pre>\n\n</details>\n\n`;
-      if (toolPart.state === 'output-available' && toolPart.output != null) {
-        const outStr = typeof toolPart.output === 'string'
-          ? toolPart.output
-          : JSON.stringify(toolPart.output, null, 2);
-        content += `\n\n<details data-tool-call-id="${toolCallId}"><summary>📦 ${toolName}</summary>\n\n<pre><code class="language-text">${escapeHtmlForStore(outStr)}</code></pre>\n\n</details>\n\n`;
-      } else if (toolPart.state === 'output-error' && toolPart.errorText) {
-        content += `\n\n<details data-tool-call-id="${toolCallId}"><summary>📦 ${toolName}</summary>\n\n<pre><code class="language-text">Error: ${escapeHtmlForStore(toolPart.errorText)}</code></pre>\n\n</details>\n\n`;
+    } else if (part.type === 'tool') {
+      const toolName = part.toolName || 'unknown';
+      const toolCallId = part.toolCallId || '';
+      const argsStr = part.args || '';
+      content += `\n\n<details data-tool-call-id="${toolCallId}"><summary>\u{1F527} ${toolName}</summary>\n\n<pre><code class="language-text">${escapeHtmlForStore(argsStr)}</code></pre>\n\n</details>\n\n`;
+      if (part.output != null) {
+        content += `\n\n<details data-tool-call-id="${toolCallId}"><summary>\u{1F4E6} ${toolName}</summary>\n\n<pre><code class="language-text">${escapeHtmlForStore(part.output)}</code></pre>\n\n</details>\n\n`;
       }
     }
-    // Ignore step-start, reasoning, source, file, data-* parts
   }
   return { role: 'assistant', content, stepInfo: usage ? formatUsage(usage) : undefined };
 }
@@ -173,7 +142,8 @@ const MessageList: React.FC<{
           const allStepInfos: string[] = [];
           while (i < messages.length && messages[i].role !== 'user' && isIntermediateStepContent(messages[i].content, messages[i].stepInfo)) {
             const parsed = filterIgnored(splitAssistantContent(messages[i].content));
-            const stepBlocks = parsed.filter(b => b.type === 'toolCall');
+            // Include both tool calls and reasoning in the step blocks
+            const stepBlocks = parsed.filter(b => b.type === 'toolCall' || b.type === 'reasoning');
             if (stepBlocks.length > 0) {
               allBlocks.push(...stepBlocks);
             }
@@ -181,8 +151,7 @@ const MessageList: React.FC<{
             if (i > groupStart) skipIndices.add(i); // skip non-representative messages
             i++;
           }
-          // Merge invocations with outputs across all messages in the group
-          // mergeToolCallPairs only affects toolCall blocks; codeStep blocks pass through
+          // Merge invocations with outputs for toolCalls; reasoning blocks pass through
           const merged = mergeToolCallPairs(allBlocks);
 
           // Also check if the next message is a content message — collect its stepInfo too
@@ -341,50 +310,46 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const activeChatIdRef = useRef<string | null>(currentChatId);
   useEffect(() => { activeChatIdRef.current = currentChatId; }, [currentChatId]);
 
-  // ── Transport + useChat ──────────────────────────────────────────────
-  const transportRef = useRef(createSuzentTransport());
-
+  // ── AG-UI streaming hook ─────────────────────────────────────────────
   const {
-    messages: useChatMessages,
-    sendMessage,
+    parts: streamingParts,
     status: chatStatus,
-    stop: stopUseChatStream,
-    setMessages: setUseChatMessages,
-    addToolApprovalResponse,
+    sendMessage: sendAGUI,
+    stop: stopAGUIStream,
+    clearParts,
     error: chatError,
-  } = useChat({
-    transport: transportRef.current.transport,
-    onFinish: ({ message: assistantMsg }) => {
+  } = useAGUI({
+    url: `${getApiBase()}/chat`,
+    onFinish: (parts) => {
       const chatId = activeChatIdRef.current;
-      const storeMsg = uiMessageToStoreMessage(assistantMsg, currentUsage);
+      const storeMsg = aguiPartsToStoreMessage(parts, currentUsage);
       if (storeMsg.content.trim()) {
         addMessage(storeMsg, chatId);
       }
       setIsStreaming(false, chatId);
-      setUseChatMessages([]);
+      clearParts();
       setCurrentUsage(null);
       setTimeout(async () => {
         try { await forceSaveNow(chatId); } catch { }
       }, 200);
       try { loadCoreMemory(); loadStats(); } catch { }
     },
-    onData: (dataPart: any) => {
-      if (dataPart.type === 'data-plan_refresh') {
-        applyPlanSnapshot(dataPart.data);
+    onCustomEvent: (name, value) => {
+      if (name === 'plan_refresh') {
+        applyPlanSnapshot(value as any);
         refreshPlan(activeChatIdRef.current);
-      } else if (dataPart.type === 'data-usage_update') {
-        setCurrentUsage(dataPart.data);
+      } else if (name === 'usage_update') {
+        setCurrentUsage(value);
       }
     },
     onError: (error) => {
-      console.error('useChat error:', error);
+      console.error('AG-UI error:', error);
       setIsStreaming(false, activeChatIdRef.current);
       stopInFlightRef.current = false;
     },
   });
 
-  // HITL: tool approval handler (uses SDK state + REST unblock)
-
+  // HITL: tool approval handler (REST call to unblock backend agent)
   const handleToolApproval = useCallback(async (
     approvalId: string,
     _toolCallId: string,
@@ -393,23 +358,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   ) => {
     const targetChatId = activeChatIdRef.current || currentChatId;
     if (!targetChatId) return;
-    // Update local UI state (approval-requested → approval-responded)
-    addToolApprovalResponse({ id: approvalId, approved });
-    // Unblock backend agent via REST
     try {
       await approveTool(targetChatId, approvalId, approved, remember);
     } catch (error) {
       console.error('Failed to send tool approval to backend:', error);
     }
-  }, [currentChatId, addToolApprovalResponse]);
+  }, [currentChatId]);
 
-  // Derive the streaming assistant's UIMessage for rendering
-  const streamingAssistant = useMemo<UIMessage | null>(() => {
-    if (chatStatus !== 'streaming' && chatStatus !== 'submitted') return null;
-    const lastMsg = useChatMessages[useChatMessages.length - 1];
-    if (!lastMsg || lastMsg.role !== 'assistant') return null;
-    return lastMsg;
-  }, [useChatMessages, chatStatus]);
+  // Whether we have active streaming content to render
+  const hasStreamingContent = streamingParts.length > 0 && chatStatus !== 'idle';
 
   // Custom hooks
   const {
@@ -507,24 +464,30 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     activeChatIdRef.current = chatIdForSend;
     stopInFlightRef.current = false;
 
-    // Set pending image files for FormData transport
-    if (imageFilesToSend.length > 0) {
-      transportRef.current.setPendingImageFiles(imageFilesToSend);
-    }
-
     try {
-      // useChat handles streaming via onFinish/onData/onError callbacks
-      await sendMessage(
-        { text: prompt },
-        {
-          body: {
-            config: safeConfig,
-            chatId: chatIdForSend,
-            reset: resetFlag,
-            filesMetadata: uploadedFileMetadata,
-          },
+      const payload: Record<string, unknown> = {
+        message: prompt,
+        config: safeConfig,
+        chat_id: chatIdForSend,
+        reset: resetFlag,
+      };
+      if (uploadedFileMetadata) {
+        payload.files = uploadedFileMetadata;
+      }
+
+      if (imageFilesToSend.length > 0) {
+        const formData = new FormData();
+        formData.append('message', prompt);
+        formData.append('config', JSON.stringify(safeConfig));
+        formData.append('chat_id', chatIdForSend);
+        formData.append('reset', String(resetFlag));
+        for (const file of imageFilesToSend) {
+          formData.append('files', file);
         }
-      );
+        await sendAGUI(payload, { formData });
+      } else {
+        await sendAGUI(payload);
+      }
     } catch (error) {
       console.error('Error during streaming:', error);
     } finally {
@@ -542,8 +505,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (!isStreaming || stopInFlightRef.current) return;
     stopInFlightRef.current = true;
 
-    // Abort the SDK transport connection
-    stopUseChatStream();
+    // Abort the AG-UI SSE connection
+    stopAGUIStream();
 
     const targetChatId = activeStreamingChatId;
     if (!targetChatId) {
@@ -656,7 +619,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   onImageClick={setViewingImage}
                   onFileClick={handleFileClick}
                 />
-                {/* Streaming assistant message from useChat */}
+                {/* Streaming assistant message from AG-UI */}
                 {streamingForCurrentChat && (
                   <div className="space-y-6 mt-6">
                     <div className="w-full flex flex-col group/message">
@@ -667,7 +630,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                           isStreaming={true}
                           isLastMessage={true}
                           onFileClick={handleFileClick}
-                          uiParts={streamingAssistant?.parts}
+                          aguiParts={hasStreamingContent ? streamingParts : undefined}
                           onToolApproval={handleToolApproval}
                           usage={currentUsage}
                         />
