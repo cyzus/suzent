@@ -65,8 +65,10 @@ const ToolSequenceGroup: React.FC<{
     onApprove?: (remember: 'session' | null) => void;
     onDeny?: () => void;
   }>;
-}> = ({ tools }) => {
+  isStreaming?: boolean;
+}> = ({ tools, isStreaming }) => {
   const hasPending = tools.some(t => t.approvalState === 'pending');
+  const isAnyRunning = isStreaming && tools.some(t => !t.output);
   // Use a ref to track if we've already auto-expanded for this set of tools
   // or just rely on state + effect/memo. For simplicity, we force expanded if hasPending.
   const [expanded, setExpanded] = useState(hasPending);
@@ -91,6 +93,7 @@ const ToolSequenceGroup: React.FC<{
             output={t.output}
             defaultCollapsed={t.approvalState !== 'pending'}
             approvalState={t.approvalState}
+            isStreaming={isStreaming}
             onApprove={t.onApprove}
             onDeny={t.onDeny}
           />
@@ -110,34 +113,45 @@ const ToolSequenceGroup: React.FC<{
       {/* Unified Header Toggle */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className={`tool-group-summary group/tools ${hasPending ? 'active-approval' : ''}`}
+        className={`tool-group-summary group/tools ${hasPending ? 'active-approval' : ''} ${isAnyRunning ? 'flex flex-col items-start gap-1 py-1.5' : ''}`}
       >
-        {!expanded ? (
-          <>
-            <div className="tool-group-icons">
-              {icons}
-              {tools.length > 4 && (
-                <span className="tool-group-icon bg-neutral-100 font-bold">+{tools.length - 4}</span>
-              )}
-            </div>
+        <div className="flex items-center gap-2 w-full">
+          {!expanded ? (
+            <>
+              <div className="tool-group-icons">
+                {tools.map((t, i) => {
+                  if (i > 3) return null;
+                  const icon = t.approvalState === 'pending' ? '⏳' : t.approvalState === 'denied' ? '🚫' : '🔧';
+                  return <span key={i} className={`tool-group-icon ${isStreaming && !t.output ? 'animate-spin-slow' : ''}`}>{icon}</span>;
+                })}
+                {tools.length > 4 && (
+                  <span className="tool-group-icon bg-neutral-100 font-bold">+{tools.length - 4}</span>
+                )}
+              </div>
+              <span className="text-[10px] font-mono font-bold text-neutral-500 uppercase tracking-tight group-hover/tools:text-brutal-black transition-colors">
+                {isAnyRunning ? 'Running' : tools.length} Steps
+              </span>
+            </>
+          ) : (
             <span className="text-[10px] font-mono font-bold text-neutral-500 uppercase tracking-tight group-hover/tools:text-brutal-black transition-colors">
-              {tools.length} Steps
+              {isAnyRunning ? 'Running' : 'Hide'} {tools.length} Steps
             </span>
-          </>
-        ) : (
-          <span className="text-[10px] font-mono font-bold text-neutral-500 uppercase tracking-tight group-hover/tools:text-brutal-black transition-colors">
-            Hide {tools.length} Steps
-          </span>
+          )}
+          <svg
+            className={`w-3 h-3 text-neutral-500 transition-transform duration-200 ml-auto ${expanded ? 'rotate-180' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={3}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+        {isAnyRunning && (
+          <div className="h-[2px] w-full max-w-[100px] bg-black/10 overflow-hidden rounded-full">
+            <div className="h-full bg-black/40 w-1/3 animate-neo-scan" />
+          </div>
         )}
-        <svg
-          className={`w-3 h-3 text-neutral-500 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={3}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
       </button>
 
       {/* Expanded Tools List */}
@@ -154,6 +168,7 @@ const ToolSequenceGroup: React.FC<{
               output={t.output}
               defaultCollapsed={t.approvalState !== 'pending'}
               approvalState={t.approvalState}
+              isStreaming={isStreaming && !t.output}
               onApprove={t.onApprove}
               onDeny={t.onDeny}
             />
@@ -168,7 +183,8 @@ const ToolSequenceGroup: React.FC<{
 const StepPills: React.FC<{
   blocks: ContentBlock[];
   messageIndex: number;
-}> = ({ blocks, messageIndex }) => {
+  isStreaming?: boolean;
+}> = ({ blocks, messageIndex, isStreaming }) => {
   const tools = blocks
     .filter(b => b.type === 'toolCall')
     .map((b, bi) => ({
@@ -178,7 +194,7 @@ const StepPills: React.FC<{
     }));
 
   if (tools.length === 0) return null;
-  return <ToolSequenceGroup tools={tools} />;
+  return <ToolSequenceGroup tools={tools} isStreaming={isStreaming} />;
 };
 
 // Streaming content with typewriter effect
@@ -255,12 +271,20 @@ const MetricsBadge: React.FC<{ usage?: any; stepInfo?: string }> = ({ usage, ste
   );
 };
 
+// Helper to extract the first line of reasoning for the header
+const getReasoningHeader = (text: string) => {
+  const firstLine = text.trim().split('\n')[0].trim();
+  const summary = firstLine.length > 80 ? firstLine.substring(0, 77) + '...' : firstLine || 'Thinking';
+  return `Thought: ${summary}`;
+};
+
 const AGUIPartsContent: React.FC<{
   parts: AGUIPart[];
   messageIndex: number;
+  isStreaming?: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
   onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null) => void;
-}> = ({ parts, messageIndex, onFileClick, onToolApproval }) => {
+}> = ({ parts, messageIndex, isStreaming, onFileClick, onToolApproval }) => {
   // Group consecutive parts of the same type into chunks
   const chunks: { type: 'tool' | 'reasoning' | 'text'; items: AGUIPart[] }[] = [];
   let current: AGUIPart[] = [];
@@ -311,7 +335,7 @@ const AGUIPartsContent: React.FC<{
 
           return (
             <div key={ci} className="pl-1 min-w-0 overflow-x-hidden">
-              <ToolSequenceGroup tools={tools} />
+              <ToolSequenceGroup tools={tools} isStreaming={isStreaming} />
             </div>
           );
         }
@@ -319,12 +343,17 @@ const AGUIPartsContent: React.FC<{
         if (chunk.type === 'reasoning') {
           const reasoningText = chunk.items.map(p => p.text || '').join('');
           if (!reasoningText.trim()) return null;
+          const isChunkStreaming = isStreaming && ci === chunks.length - 1;
+          const header = getReasoningHeader(reasoningText);
+
           return (
             <div key={ci} className="pl-4 pr-6 py-2 border-l-2 border-neutral-300">
-              <details className="group" open>
-                <summary className="text-xs italic text-neutral-500 font-medium cursor-pointer select-none hover:text-neutral-700 flex items-center gap-1">
-                  <span className="text-sm">🤔</span>
-                  Thinking
+              <details className="group">
+                <summary className="text-xs italic text-neutral-500 font-medium cursor-pointer select-none hover:text-neutral-700 flex flex-col gap-1">
+                  <span className="truncate">{header}</span>
+                  {isChunkStreaming && (
+                    <div className="h-[2px] w-12 bg-neutral-400 animate-neo-pulse" />
+                  )}
                 </summary>
                 <div className="mt-2 p-3 bg-neutral-50 rounded border border-neutral-200">
                   <pre className="text-xs italic text-neutral-600 font-medium leading-snug whitespace-pre-wrap overflow-auto">
@@ -410,6 +439,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               <AGUIPartsContent
                 parts={aguiParts}
                 messageIndex={messageIndex}
+                isStreaming={isStreamingThis}
                 onFileClick={onFileClick}
                 onToolApproval={onToolApproval}
               />
@@ -506,14 +536,17 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
         <div className="overflow-hidden min-h-0 flex flex-col space-y-3">
           {validChunks.map((chunk, idx) => {
             if (chunk.type === 'reasoning') {
+              const isChunkStreaming = isStreamingThis && idx === validChunks.length - 1;
               return (
                 <div key={idx} className="flex flex-col space-y-2">
                   {chunk.blocks.map((rb, ri) => (
                     <div key={`rb-${idx}-${ri}`} className="pl-4 pr-6 py-2 border-l-2 border-neutral-300">
-                      <details className="group" open>
-                        <summary className="text-xs italic text-neutral-500 font-medium cursor-pointer select-none hover:text-neutral-700 flex items-center gap-1">
-                          <span className="text-sm">🤔</span>
-                          Thinking
+                      <details className="group">
+                        <summary className="text-xs italic text-neutral-500 font-medium cursor-pointer select-none hover:text-neutral-700 flex flex-col gap-1">
+                          <span className="truncate">{getReasoningHeader(rb.content)}</span>
+                          {isChunkStreaming && (
+                            <div className="h-[2px] w-12 bg-neutral-400 animate-neo-pulse" />
+                          )}
                         </summary>
                         <div className="mt-2 p-3 bg-neutral-50 rounded border border-neutral-200">
                           <pre className="text-xs italic text-neutral-600 font-medium leading-snug whitespace-pre-wrap overflow-auto">
@@ -531,7 +564,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               return (
                 <div key={idx} className="flex flex-col space-y-2">
                   <div className="pl-1">
-                    <StepPills blocks={chunk.blocks} messageIndex={messageIndex} />
+                    <StepPills blocks={chunk.blocks} messageIndex={messageIndex} isStreaming={isStreamingThis} />
                   </div>
                 </div>
               );

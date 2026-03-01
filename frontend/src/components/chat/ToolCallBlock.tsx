@@ -9,6 +9,7 @@ interface ToolCallBlockProps {
   output?: string;
   defaultCollapsed?: boolean;
   approvalState?: ApprovalState;
+  isStreaming?: boolean;
   onApprove?: (remember: 'session' | null) => void;
   onDeny?: () => void;
 }
@@ -19,6 +20,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   output,
   defaultCollapsed = true,
   approvalState,
+  isStreaming = false,
   onApprove,
   onDeny,
 }) => {
@@ -49,7 +51,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
           } ${expanded ? 'bg-neutral-100 text-brutal-black' : 'bg-transparent text-neutral-500 hover:text-brutal-black'}`}
       >
         {/* Icon */}
-        <span className="text-xs shrink-0">
+        <span className={`text-xs shrink-0 ${isStreaming && !hasOutput ? 'animate-spin-slow' : ''}`}>
           {isPending ? '⏳' : isDenied ? '🚫' : '🔧'}
         </span>
 
@@ -94,15 +96,28 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
       `}>
         <div className="overflow-hidden min-h-0 min-w-0 w-full">
           <div className="ml-2 pl-3 border-l-2 border-neutral-200 mt-1 mb-2 space-y-2 min-w-0 w-full overflow-x-hidden">
-            {/* Arguments section */}
-            {toolArgs && (
+            {/* Arguments or Running status */}
+            {(toolArgs || (isStreaming && !output)) && (
               <div className="min-w-0 w-full overflow-hidden">
-                <div className="text-[10px] font-mono font-bold text-neutral-400 uppercase mb-0.5">{t('toolCallBlock.arguments')}</div>
-                <div className="max-h-[200px] overflow-y-auto scrollbar-thin w-full" style={{ overflowX: 'hidden' }}>
-                  <pre className="tool-call-pre text-[11px] text-neutral-600 leading-relaxed font-mono w-full">
-                    {toolArgs}
-                  </pre>
+                <div className="text-[10px] font-mono font-bold text-neutral-400 uppercase mb-1 flex items-center gap-2">
+                  {isStreaming && !output ? (
+                    <>
+                      <span className="text-brutal-black animate-pulse">Running {displayName}...</span>
+                      <div className="h-[2px] flex-1 bg-neutral-100 overflow-hidden rounded-full">
+                        <div className="h-full bg-brutal-black w-1/3 animate-neo-scan" />
+                      </div>
+                    </>
+                  ) : (
+                    t('toolCallBlock.arguments')
+                  )}
                 </div>
+                {toolArgs && (
+                  <div className="max-h-[200px] overflow-y-auto scrollbar-thin w-full" style={{ overflowX: 'hidden' }}>
+                    <pre className="tool-call-pre text-[11px] text-neutral-600 leading-relaxed font-mono w-full">
+                      {toolArgs}
+                    </pre>
+                  </div>
+                )}
               </div>
             )}
 

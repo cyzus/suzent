@@ -45,7 +45,7 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any): Message {
     } else if (part.type === 'reasoning') {
       const text = part.text || '';
       if (text) {
-        content += `\n\n<details data-reasoning="true"><summary>\u{1F4AD} Thinking</summary>\n\n${text}\n\n</details>\n\n`;
+        content += `\n\n<details data-reasoning="true"><summary>Thinking</summary>\n\n${text}\n\n</details>\n\n`;
       }
     } else if (part.type === 'tool') {
       const toolName = part.toolName || 'unknown';
@@ -207,10 +207,17 @@ const MessageList: React.FC<{
                     }
                     if (b.type === 'reasoning' && b.content.trim()) {
                       return (
-                        <div key={`group-${idx}-${bi}`} className="pl-4 pr-6 py-1">
-                          <span className="text-xs italic text-neutral-500 font-medium opacity-80 leading-snug">
-                            {b.content.trim()}
-                          </span>
+                        <div key={`group-${idx}-${bi}`} className="pl-4 pr-6 py-1 border-l-2 border-neutral-200 ml-1">
+                          <details className="group">
+                            <summary className="text-xs italic text-neutral-500 font-medium cursor-pointer select-none hover:text-neutral-700 flex items-center gap-1">
+                              <span className="truncate">{b.content.trim().split('\n')[0].trim() || 'Thinking'}</span>
+                            </summary>
+                            <div className="mt-1 p-2 bg-neutral-50/50 rounded border border-neutral-100">
+                              <pre className="text-[11px] italic text-neutral-500 font-medium leading-snug whitespace-pre-wrap overflow-auto">
+                                {b.content.trim()}
+                              </pre>
+                            </div>
+                          </details>
                         </div>
                       );
                     }
