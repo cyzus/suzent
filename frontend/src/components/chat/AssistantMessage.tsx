@@ -16,6 +16,10 @@ interface AssistantMessageProps {
   isStreaming: boolean;
   isLastMessage: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
+  /** When provided, renders from UIMessage.parts instead of legacy HTML parsing */
+  uiParts?: any[];
+  /** HITL approval handler: (approvalId, toolCallId, approved, remember?) */
+  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null) => void;
 }
 
 // Names that should be filtered out from tool call display
@@ -119,15 +123,140 @@ const StaticContent: React.FC<{
   );
 };
 
+// ── Parts-based rendering (for useChat streaming messages) ──────────
+
+/**
+ * Check if a UIMessage part is a tool invocation.
+ * The SDK creates "dynamic-tool" parts when the chunk has `dynamic: true`,
+ * and static "tool-<name>" parts otherwise (e.g., "tool-bash_execute").
+ * pydantic-ai's VercelAIAdapter emits static tool parts (no dynamic flag).
+ */
+function isToolPart(part: any): boolean {
+  return part.type === 'dynamic-tool' ||
+    (typeof part.type === 'string' && part.type.startsWith('tool-') && part.type !== 'tool-');
+}
+
+/** Extract the tool name from either a dynamic or static tool part. */
+function getToolPartName(part: any): string {
+  if (part.type === 'dynamic-tool') return part.toolName || 'unknown';
+  // Static: type is "tool-<name>" — strip the "tool-" prefix
+  if (typeof part.type === 'string' && part.type.startsWith('tool-')) {
+    return part.type.slice(5) || 'unknown';
+  }
+  return 'unknown';
+}
+
+/** Check if a part is "visible content" (text or tool) vs structural/data */
+function isContentPart(part: any): boolean {
+  return part.type === 'text' || isToolPart(part);
+}
+
+const PartsBasedContent: React.FC<{
+  parts: any[];
+  messageIndex: number;
+  onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
+  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null) => void;
+}> = ({ parts, messageIndex, onFileClick, onToolApproval }) => {
+  // Separate parts into chunks: contiguous text vs tool groups
+  const chunks: { isTool: boolean; items: any[] }[] = [];
+  let current: any[] = [];
+  let currentIsTool = false;
+
+  for (const part of parts) {
+    const isTool = isToolPart(part);
+    // Ignore step-start, data-*, reasoning, and other non-content parts
+    if (!isContentPart(part)) continue;
+
+    if (current.length === 0) {
+      currentIsTool = isTool;
+      current.push(part);
+    } else if (currentIsTool === isTool) {
+      current.push(part);
+    } else {
+      chunks.push({ isTool: currentIsTool, items: current });
+      currentIsTool = isTool;
+      current = [part];
+    }
+  }
+  if (current.length > 0) chunks.push({ isTool: currentIsTool, items: current });
+
+  return (
+    <>
+      {chunks.map((chunk, ci) => {
+        if (chunk.isTool) {
+          return (
+            <div key={ci} className="pl-1 min-w-0 overflow-x-hidden">
+              {chunk.items.map((tp: any, ti: number) => {
+                const toolName = getToolPartName(tp);
+                const argsStr = tp.input != null
+                  ? (typeof tp.input === 'string' ? tp.input : JSON.stringify(tp.input, null, 2))
+                  : (tp.rawInput != null)
+                    ? (typeof tp.rawInput === 'string' ? tp.rawInput : JSON.stringify(tp.rawInput, null, 2))
+                    : undefined;
+                const outputStr = (tp.state === 'output-available' && tp.output != null)
+                  ? (typeof tp.output === 'string' ? tp.output : JSON.stringify(tp.output, null, 2))
+                  : (tp.state === 'output-error' && tp.errorText)
+                    ? `Error: ${tp.errorText}`
+                    : undefined;
+                const approvalState = tp.state === 'approval-requested' ? 'pending' as const
+                  : tp.state === 'output-denied' ? 'denied' as const
+                  : undefined;
+                return (
+                  <ToolCallBlock
+                    key={tp.toolCallId || `tool-${ci}-${ti}`}
+                    toolName={toolName}
+                    toolArgs={argsStr}
+                    output={outputStr}
+                    defaultCollapsed={approvalState !== 'pending'}
+                    approvalState={approvalState}
+                    onApprove={approvalState === 'pending' && tp.approval && onToolApproval
+                      ? (remember) => onToolApproval(tp.approval.id, tp.toolCallId, true, remember)
+                      : undefined}
+                    onDeny={approvalState === 'pending' && tp.approval && onToolApproval
+                      ? () => onToolApproval(tp.approval.id, tp.toolCallId, false)
+                      : undefined}
+                  />
+                );
+              })}
+            </div>
+          );
+        }
+        // Text chunk
+        const fullText = chunk.items.map((p: any) => p.text || '').join('');
+        const isLastChunk = ci === chunks.length - 1;
+        const isStreamingText = isLastChunk && chunk.items.some((p: any) => p.state === 'streaming');
+        if (!fullText.trim() && !isStreamingText) return null;
+        return (
+          <div key={ci} className="border-3 border-brutal-black shadow-brutal-lg bg-white px-6 py-5 relative">
+            {fullText.trim() && (
+              <CopyButton text={fullText.trim()} className="absolute top-2 right-2 z-10" />
+            )}
+            <div className="space-y-4">
+              <MarkdownRenderer content={fullText} onFileClick={onFileClick} />
+              {isStreamingText && (
+                <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1" />
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+};
+
 export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   message,
   messageIndex,
   isStreaming,
   isLastMessage,
   onFileClick,
+  uiParts,
+  onToolApproval,
 }) => {
   const isStreamingThis = isStreaming && isLastMessage;
-  const isThinking = isStreamingThis && !message.content;
+  // Only count visible content parts (text or tool) — not structural parts like step-start, data-*, etc.
+  const hasParts = uiParts && uiParts.some(isContentPart);
+  const isThinking = isStreamingThis && !message.content && !hasParts;
 
   // Suppress the streaming cursor during the assembly→reveal animation.
   // Delay showing the cursor so it doesn't flash while the box is still opening.
@@ -143,6 +272,41 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
       setCursorReady(true);
     }
   }, [isStreamingThis, cursorReady]);
+
+  // ── Parts-based rendering path (for useChat streaming messages) ──
+  if (uiParts !== undefined) {
+    return (
+      <div className="group w-full max-w-4xl break-all overflow-x-hidden text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
+        {/* Badge/Assembly Container */}
+        <div className={`
+          border-3 border-brutal-black shadow-brutal-lg overflow-hidden relative
+          transition-all duration-700 ease-out mb-3
+          ${isThinking
+            ? 'w-[400px] h-[80px] bg-white left-1/2 -translate-x-1/2'
+            : 'w-[90px] h-[40px] bg-white left-0 translate-x-0'
+          }
+        `}>
+          <ThinkingAnimation isThinking={isThinking} />
+          <AgentBadge isThinking={isThinking} isStreaming={isStreamingThis} />
+        </div>
+
+        <div className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
+          <div className="overflow-hidden min-h-0 min-w-0 flex flex-col space-y-3">
+            {hasParts ? (
+              <PartsBasedContent
+                parts={uiParts}
+                messageIndex={messageIndex}
+                onFileClick={onFileClick}
+                onToolApproval={onToolApproval}
+              />
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Legacy HTML rendering path (for historical store messages) ──
 
   // Don't render empty messages unless we're actively streaming
   if (!isStreamingThis && !message.content?.trim()) {
@@ -202,7 +366,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   }
 
   return (
-    <div className="group w-full max-w-4xl break-words overflow-visible text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
+    <div className="group w-full max-w-4xl break-all overflow-x-hidden text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
       {/* Badge/Assembly Container is rendered at the top of the entire message timeline */}
       <div className={`
         border-3 border-brutal-black shadow-brutal-lg overflow-hidden relative

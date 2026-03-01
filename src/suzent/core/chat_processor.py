@@ -176,18 +176,13 @@ class ChatProcessor:
             try:
                 if chunk.startswith("data: "):
                     json_str = chunk[6:].strip()
-                    data = json.loads(json_str)
+                    if json_str == "[DONE]":
+                        continue
+                    event_data = json.loads(json_str)
                     
-                    msg_type = data.get("type")
-                    if msg_type == "final_answer":
-                        if not full_response:
-                            full_response = data.get("data", "")
-                    elif msg_type == "stream_delta":
-                        delta_data = data.get("data", {})
-                        if isinstance(delta_data, dict):
-                            content_piece = delta_data.get("content", "")
-                            if content_piece:
-                                full_response += content_piece
+                    msg_type = event_data.get("type")
+                    if msg_type == "text-delta":
+                        full_response += event_data.get("delta", "")
             except Exception as e:
                 pass
 

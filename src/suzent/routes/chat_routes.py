@@ -96,6 +96,7 @@ async def chat(request: Request) -> StreamingResponse:
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
                     "X-Accel-Buffering": "no",
+                    "x-vercel-ai-ui-message-stream": "v1",
                 },
             )
 
@@ -104,12 +105,18 @@ async def chat(request: Request) -> StreamingResponse:
         async for chunk in generator:
             try:
                 if chunk.startswith("data: "):
-                    event_data = json.loads(chunk[6:].strip())
-                    if event_data.get("type") == "final_answer":
-                        full_response = event_data.get("data", "")
-                    elif event_data.get("type") == "error":
+                    json_str = chunk[6:].strip()
+                    if json_str == "[DONE]":
+                        continue
+                    event_data = json.loads(json_str)
+                    
+                    msg_type = event_data.get("type")
+                    if msg_type == "text-delta":
+                        full_response += event_data.get("delta", "")
+                    elif msg_type == "error":
+                        error_msg = event_data.get("errorText", "Unknown error")
                         return JSONResponse(
-                            {"error": event_data.get("data")}, status_code=500
+                            {"error": error_msg}, status_code=500
                         )
             except Exception:
                 pass

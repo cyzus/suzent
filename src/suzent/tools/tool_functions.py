@@ -75,6 +75,7 @@ async def _require_approval(
     await deps.sse_queue.put(("approval", {
         "request_id": request_id,
         "tool_name": tool_name,
+        "tool_call_id": ctx.tool_call_id,
         "args": _safe_args_preview(args),
     }))
 

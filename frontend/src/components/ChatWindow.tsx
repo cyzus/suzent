@@ -1,6 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useChat } from '@ai-sdk/react';
+import type { UIMessage } from 'ai';
 import { useChatStore } from '../hooks/useChatStore';
-import { streamChat, type ToolApprovalRequest } from '../lib/streaming';
+import { createSuzentTransport } from '../lib/suzentTransport';
 import { getApiBase, getSandboxParams, approveTool } from '../lib/api';
 import type { Message, FileAttachment } from '../types/api';
 import { isIntermediateStepContent, splitAssistantContent, mergeToolCallPairs, type ContentBlock } from '../lib/chatUtils';
@@ -15,6 +17,68 @@ import { ImageViewer } from './ImageViewer';
 import { FileViewer } from './FileViewer';
 import { UserMessage, AssistantMessage, ToolCallBlock, RightSidebar } from './chat';
 import { useI18n } from '../i18n';
+
+// ── UIMessage → Store Message conversion ──────────────────────────────
+function escapeHtmlForStore(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Convert a streaming UIMessage (from useChat) to a store Message for persistence.
+ * Tool invocations are serialized as HTML <details> blocks with emoji conventions
+ * so the existing historical message rendering pipeline can display them.
+ */
+/**
+ * Check if a UIMessage part is a tool invocation (static or dynamic).
+ * Static: type starts with "tool-" (e.g., "tool-bash_execute")
+ * Dynamic: type === "dynamic-tool"
+ */
+function isToolUIPart(part: any): boolean {
+  return part.type === 'dynamic-tool' ||
+    (typeof part.type === 'string' && part.type.startsWith('tool-') && part.type !== 'tool-');
+}
+
+/** Extract tool name from either static or dynamic tool part. */
+function getToolName(part: any): string {
+  if (part.type === 'dynamic-tool') return part.toolName || 'unknown';
+  if (typeof part.type === 'string' && part.type.startsWith('tool-')) {
+    return part.type.slice(5) || 'unknown';
+  }
+  return 'unknown';
+}
+
+function uiMessageToStoreMessage(uiMsg: UIMessage): Message {
+  let content = '';
+  for (const part of uiMsg.parts) {
+    if (part.type === 'text') {
+      content += part.text;
+    } else if (isToolUIPart(part)) {
+      const toolPart = part as any;
+      const toolName = getToolName(toolPart);
+      const toolCallId = toolPart.toolCallId || '';
+      const input = toolPart.input ?? toolPart.rawInput;
+      const argsStr = input != null
+        ? (typeof input === 'string' ? input : JSON.stringify(input, null, 2))
+        : '';
+      content += `\n\n<details data-tool-call-id="${toolCallId}"><summary>🔧 ${toolName}</summary>\n\n<pre><code class="language-text">${escapeHtmlForStore(argsStr)}</code></pre>\n\n</details>\n\n`;
+      if (toolPart.state === 'output-available' && toolPart.output != null) {
+        const outStr = typeof toolPart.output === 'string'
+          ? toolPart.output
+          : JSON.stringify(toolPart.output, null, 2);
+        content += `\n\n<details data-tool-call-id="${toolCallId}"><summary>📦 ${toolName}</summary>\n\n<pre><code class="language-text">${escapeHtmlForStore(outStr)}</code></pre>\n\n</details>\n\n`;
+      } else if (toolPart.state === 'output-error' && toolPart.errorText) {
+        content += `\n\n<details data-tool-call-id="${toolCallId}"><summary>📦 ${toolName}</summary>\n\n<pre><code class="language-text">Error: ${escapeHtmlForStore(toolPart.errorText)}</code></pre>\n\n</details>\n\n`;
+      }
+    }
+    // Ignore step-start, reasoning, source, file, data-* parts
+  }
+  return { role: 'assistant', content };
+}
 
 // Drag overlay component
 const DragOverlay: React.FC = () => {
@@ -62,7 +126,7 @@ const LoadingIndicator: React.FC = () => {
 
 
 
-// Message list component
+// Message list component (renders historical / store messages only)
 const MessageList: React.FC<{
   messages: Message[];
   isStreaming: boolean;
@@ -70,9 +134,7 @@ const MessageList: React.FC<{
   chatId?: string;
   onImageClick?: (src: string) => void;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-  pendingApprovals?: Map<string, ToolApprovalRequest>;
-  onToolApproval?: (requestId: string, toolName: string, approved: boolean, remember?: 'session' | null) => void;
-}> = ({ messages, isStreaming, streamingForCurrentChat, chatId, onImageClick, onFileClick, pendingApprovals, onToolApproval }) => (
+}> = ({ messages, isStreaming, streamingForCurrentChat, chatId, onImageClick, onFileClick }) => (
   <div className="space-y-6">
     {(() => {
       // Pre-compute tool-only groups: consecutive tool-only assistant messages
@@ -153,18 +215,13 @@ const MessageList: React.FC<{
                 <div className="w-full max-w-4xl text-sm leading-relaxed pl-2">
                   {group.mergedBlocks.map((b, bi) => {
                     if (b.type === 'toolCall') {
-                      const approval = pendingApprovals?.get(b.toolName || '');
-                      const approvalState = approval ? 'pending' as const : undefined;
                       return (
                         <ToolCallBlock
                           key={`group-${idx}-${bi}`}
                           toolName={b.toolName || 'unknown'}
                           toolArgs={b.toolArgs}
                           output={b.content || undefined}
-                          defaultCollapsed={!approvalState}
-                          approvalState={approvalState}
-                          onApprove={approval && onToolApproval ? (remember) => onToolApproval(approval.request_id, approval.tool_name, true, remember) : undefined}
-                          onDeny={approval && onToolApproval ? () => onToolApproval(approval.request_id, approval.tool_name, false) : undefined}
+                          defaultCollapsed
                         />
                       );
                     }
@@ -233,19 +290,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     messages,
     addMessage,
     updateLastUserMessageImages,
-    updateAssistantStreaming,
     config,
     backendConfig,
-    newAssistantMessage,
     setConfig,
-    setStepInfo,
     shouldResetNext,
     consumeResetFlag,
     forceSaveNow,
     setIsStreaming,
     currentChatId,
     createNewChat,
-    removeEmptyAssistantMessage,
     isStreaming,
     activeStreamingChatId,
   } = useChatStore();
@@ -263,19 +316,75 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const stopInFlightRef = useRef(false);
 
-  // HITL: pending tool approvals — keyed by tool_name for UI matching
-  const [pendingApprovals, setPendingApprovals] = useState<Map<string, ToolApprovalRequest>>(new Map());
+  // Ref for async callback access to current chatId
+  const activeChatIdRef = useRef<string | null>(currentChatId);
+  useEffect(() => { activeChatIdRef.current = currentChatId; }, [currentChatId]);
 
-  const handleToolApproval = async (requestId: string, toolName: string, approved: boolean, remember?: 'session' | null) => {
-    const targetChatId = activeStreamingChatId || currentChatId;
+  // ── Transport + useChat ──────────────────────────────────────────────
+  const transportRef = useRef(createSuzentTransport());
+
+  const {
+    messages: useChatMessages,
+    sendMessage,
+    status: chatStatus,
+    stop: stopUseChatStream,
+    setMessages: setUseChatMessages,
+    addToolApprovalResponse,
+    error: chatError,
+  } = useChat({
+    transport: transportRef.current.transport,
+    onFinish: ({ message: assistantMsg }) => {
+      const chatId = activeChatIdRef.current;
+      const storeMsg = uiMessageToStoreMessage(assistantMsg);
+      if (storeMsg.content.trim()) {
+        addMessage(storeMsg, chatId);
+      }
+      setIsStreaming(false, chatId);
+      setUseChatMessages([]);
+      setTimeout(async () => {
+        try { await forceSaveNow(chatId); } catch { }
+      }, 200);
+      try { loadCoreMemory(); loadStats(); } catch { }
+    },
+    onData: (dataPart: any) => {
+      if (dataPart.type === 'data-plan_refresh') {
+        applyPlanSnapshot(dataPart.data);
+        refreshPlan(activeChatIdRef.current);
+      }
+    },
+    onError: (error) => {
+      console.error('useChat error:', error);
+      setIsStreaming(false, activeChatIdRef.current);
+      stopInFlightRef.current = false;
+    },
+  });
+
+  // HITL: tool approval handler (uses SDK state + REST unblock)
+  const handleToolApproval = useCallback(async (
+    approvalId: string,
+    _toolCallId: string,
+    approved: boolean,
+    remember?: 'session' | null
+  ) => {
+    const targetChatId = activeChatIdRef.current || currentChatId;
     if (!targetChatId) return;
-    await approveTool(targetChatId, requestId, approved, remember);
-    setPendingApprovals(prev => {
-      const next = new Map(prev);
-      next.delete(toolName);
-      return next;
-    });
-  };
+    // Update local UI state (approval-requested → approval-responded)
+    addToolApprovalResponse({ id: approvalId, approved });
+    // Unblock backend agent via REST
+    try {
+      await approveTool(targetChatId, approvalId, approved, remember);
+    } catch (error) {
+      console.error('Failed to send tool approval to backend:', error);
+    }
+  }, [currentChatId, addToolApprovalResponse]);
+
+  // Derive the streaming assistant's UIMessage for rendering
+  const streamingAssistant = useMemo<UIMessage | null>(() => {
+    if (chatStatus !== 'streaming' && chatStatus !== 'submitted') return null;
+    const lastMsg = useChatMessages[useChatMessages.length - 1];
+    if (!lastMsg || lastMsg.role !== 'assistant') return null;
+    return lastMsg;
+  }, [useChatMessages, chatStatus]);
 
   // Custom hooks
   const {
@@ -351,7 +460,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         imagePreviews = imagePreviewData.length > 0 ? imagePreviewData : undefined;
       } catch (error) {
         console.error('Error uploading files:', error);
-        // Don't proceed if file upload fails - keep input and files so user can retry
         return;
       }
     }
@@ -362,6 +470,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setInput('');
     clearFiles();
 
+    // Add user message to store for display + persistence
     addMessage({
       role: 'user',
       content: prompt,
@@ -369,67 +478,36 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       files: uploadedFileMetadata
     }, chatIdForSend);
     setIsStreaming(true, chatIdForSend);
+    activeChatIdRef.current = chatIdForSend;
     stopInFlightRef.current = false;
 
+    // Set pending image files for FormData transport
+    if (imageFilesToSend.length > 0) {
+      transportRef.current.setPendingImageFiles(imageFilesToSend);
+    }
+
     try {
-      await streamChat(
-        prompt,
-        safeConfig,
+      // useChat handles streaming via onFinish/onData/onError callbacks
+      await sendMessage(
+        { text: prompt },
         {
-          onDelta: (partial) => updateAssistantStreaming(partial, chatIdForSend),
-          onAction: () => { },
-          onNewAssistantMessage: () => newAssistantMessage(chatIdForSend),
-          onStepComplete: (stepInfo) => setStepInfo(stepInfo, chatIdForSend),
-          onImagesProcessed: (processedImages) => {
-            updateLastUserMessageImages(processedImages, chatIdForSend);
+          body: {
+            config: safeConfig,
+            chatId: chatIdForSend,
+            reset: resetFlag,
+            filesMetadata: uploadedFileMetadata,
           },
-          onPlanUpdate: (snapshot) => {
-            applyPlanSnapshot(snapshot);
-            refreshPlan(chatIdForSend);
-          },
-          onToolApprovalRequired: (request) => {
-            setPendingApprovals(prev => {
-              const next = new Map(prev);
-              next.set(request.tool_name, request);
-              return next;
-            });
-          },
-          onStreamComplete: () => {
-            setIsStreaming(false, chatIdForSend);
-            setPendingApprovals(new Map());
-            setTimeout(async () => {
-              try {
-                await forceSaveNow(chatIdForSend);
-              } catch (error) {
-                console.error('Error in forceSaveNow:', error);
-              }
-            }, 200);
-            try { loadCoreMemory(); loadStats(); } catch { }
-          },
-          onStreamStopped: () => {
-            setIsStreaming(false, chatIdForSend);
-            setPendingApprovals(new Map());
-            removeEmptyAssistantMessage(chatIdForSend);
-            stopInFlightRef.current = false;
-          },
-        },
-        resetFlag,
-        chatIdForSend,
-        imageFilesToSend.length > 0 ? imageFilesToSend : undefined,
-        uploadedFileMetadata
+        }
       );
     } catch (error) {
       console.error('Error during streaming:', error);
     } finally {
+      // Safety net: onFinish/onError handle state, but ensure cleanup
       setIsStreaming(false, chatIdForSend);
-      setTimeout(async () => {
-        try {
-          await forceSaveNow(chatIdForSend);
-        } catch (error) {
-          console.error('Error in forceSaveNow:', error);
-        }
-      }, 600);
       stopInFlightRef.current = false;
+      setTimeout(async () => {
+        try { await forceSaveNow(chatIdForSend); } catch { }
+      }, 600);
     }
   };
 
@@ -437,6 +515,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const stopStreaming = async () => {
     if (!isStreaming || stopInFlightRef.current) return;
     stopInFlightRef.current = true;
+
+    // Abort the SDK transport connection
+    stopUseChatStream();
 
     const targetChatId = activeStreamingChatId;
     if (!targetChatId) {
@@ -452,12 +533,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       });
       if (!res.ok) {
         console.error('Stop request failed:', res.status, res.statusText);
-        stopInFlightRef.current = false;
       }
     } catch (error) {
       console.error('Error sending stop request:', error);
-      stopInFlightRef.current = false;
     }
+    // Note: stopInFlightRef reset happens in onFinish/finally
   };
 
   // Handle file click from chat messages
@@ -541,16 +621,34 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 onImageClick={setViewingImage}
               />
             ) : (
-              <MessageList
-                messages={safeMessages}
-                isStreaming={isStreaming}
-                streamingForCurrentChat={streamingForCurrentChat}
-                chatId={currentChatId ?? undefined}
-                onImageClick={setViewingImage}
-                onFileClick={handleFileClick}
-                pendingApprovals={pendingApprovals}
-                onToolApproval={handleToolApproval}
-              />
+              <>
+                <MessageList
+                  messages={safeMessages}
+                  isStreaming={isStreaming}
+                  streamingForCurrentChat={streamingForCurrentChat}
+                  chatId={currentChatId ?? undefined}
+                  onImageClick={setViewingImage}
+                  onFileClick={handleFileClick}
+                />
+                {/* Streaming assistant message from useChat */}
+                {streamingForCurrentChat && (
+                  <div className="space-y-6 mt-6">
+                    <div className="w-full flex flex-col group/message">
+                      <div className="flex justify-start w-full">
+                        <AssistantMessage
+                          message={{ role: 'assistant', content: '' }}
+                          messageIndex={safeMessages.length}
+                          isStreaming={true}
+                          isLastMessage={true}
+                          onFileClick={handleFileClick}
+                          uiParts={streamingAssistant?.parts}
+                          onToolApproval={handleToolApproval}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {!configReady && <LoadingIndicator />}

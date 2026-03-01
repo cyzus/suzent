@@ -34,13 +34,12 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const isDenied = approvalState === 'denied';
 
   return (
-    <div className="my-1.5">
+    <div className="my-1.5 min-w-0 w-full overflow-x-hidden">
       {/* Compact pill header */}
       <button
         onClick={() => hasDetails && setExpanded(!expanded)}
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm transition-colors select-none ${
-          hasDetails ? 'cursor-pointer hover:bg-neutral-100' : 'cursor-default'
-        } ${expanded ? 'bg-neutral-100 text-brutal-black' : 'bg-transparent text-neutral-500 hover:text-brutal-black'}`}
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm transition-colors select-none ${hasDetails ? 'cursor-pointer hover:bg-neutral-100' : 'cursor-default'
+          } ${expanded ? 'bg-neutral-100 text-brutal-black' : 'bg-transparent text-neutral-500 hover:text-brutal-black'}`}
       >
         {/* Icon */}
         <span className="text-xs shrink-0">
@@ -83,18 +82,20 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
 
       {/* Expandable content */}
       <div className={`
-        grid transition-[grid-template-rows] duration-200 ease-out
+        grid transition-[grid-template-rows] duration-200 ease-out overflow-hidden w-full
         ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}
       `}>
-        <div className="overflow-hidden min-h-0">
-          <div className="ml-2 pl-3 border-l-2 border-neutral-200 mt-1 mb-2 space-y-2">
+        <div className="overflow-hidden min-h-0 min-w-0 w-full">
+          <div className="ml-2 pl-3 border-l-2 border-neutral-200 mt-1 mb-2 space-y-2 min-w-0 w-full overflow-x-hidden">
             {/* Arguments section */}
             {toolArgs && (
-              <div>
+              <div className="min-w-0 w-full overflow-hidden">
                 <div className="text-[10px] font-mono font-bold text-neutral-400 uppercase mb-0.5">{t('toolCallBlock.arguments')}</div>
-                <pre className="text-[11px] text-neutral-600 leading-relaxed whitespace-pre-wrap break-all max-h-[200px] overflow-y-auto scrollbar-thin font-mono">
-                  {toolArgs}
-                </pre>
+                <div className="max-h-[200px] overflow-y-auto scrollbar-thin w-full" style={{ overflowX: 'hidden' }}>
+                  <pre className="tool-call-pre text-[11px] text-neutral-600 leading-relaxed font-mono w-full">
+                    {toolArgs}
+                  </pre>
+                </div>
               </div>
             )}
 
@@ -134,11 +135,13 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
 
             {/* Output section */}
             {output && (
-              <div>
+              <div className="min-w-0 w-full overflow-hidden">
                 <div className="text-[10px] font-mono font-bold text-neutral-400 uppercase mb-0.5">{t('toolCallBlock.output')}</div>
-                <pre className="text-[11px] text-neutral-600 leading-relaxed whitespace-pre-wrap break-all max-h-[200px] overflow-y-auto scrollbar-thin font-mono">
-                  {output}
-                </pre>
+                <div className="max-h-[200px] overflow-y-auto scrollbar-thin w-full" style={{ overflowX: 'hidden' }}>
+                  <pre className="tool-call-pre text-[11px] text-neutral-600 leading-relaxed font-mono w-full">
+                    {output}
+                  </pre>
+                </div>
               </div>
             )}
           </div>

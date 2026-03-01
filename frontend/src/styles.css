@@ -113,13 +113,20 @@ pre code {
 
 /* Ensure all pre and code elements preserve whitespace */
 pre {
-  white-space: pre !important;
+  white-space: pre;
   overflow-x: auto;
 }
 
 code {
-  white-space: pre !important;
+  white-space: pre;
   font-family: Consolas, 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, 'Liberation Mono', 'Ubuntu Mono', 'DejaVu Sans Mono', 'Segoe UI Symbol', 'Courier New', monospace;
+}
+
+.tool-call-pre {
+  white-space: pre-wrap !important;
+  word-break: break-all !important;
+  overflow-wrap: anywhere !important;
+  overflow-x: hidden !important;
 }
 
 /* Ensure smooth text selection */

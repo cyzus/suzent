@@ -99,19 +99,5 @@ export interface ConfigOptions {
   };
 }
 
-// Stream event types from backend
-export type StreamEventType =
-  | 'stream_delta'    // Token streaming (both agents)
-  | 'action'          // Action step completed with full metadata (both agents)
-  | 'action_output'   // Action output (both agents)
-  | 'tool_output'     // Tool execution result (ToolCallingAgent)
-  | 'final_answer'    // Final answer (both agents)
-  | 'planning'        // Planning step (both agents)
-  | 'plan_refresh'    // Plan state update (both agents)
-  | 'error'           // Error occurred (both agents)
-  | 'stopped';        // Stream stopped by user (both agents)
-
-export interface StreamEvent {
-  type: StreamEventType;
-  data: any;
-}
+// Note: Stream event types removed — the frontend now uses Vercel AI SDK's
+// Data Stream Protocol via useChat instead of manual SSE parsing.

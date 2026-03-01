@@ -7,7 +7,7 @@ using Server-Sent Events (SSE), including:
 - Tool call and result events streamed in real time
 - Text deltas assembled from PartStartEvent / PartDeltaEvent
 - Human-in-the-loop (HITL) tool approval via queue-based architecture
-- Event formatting compatible with the existing frontend
+- Event formatting compatible with the Vercel AI Data Stream Protocol
 - Plan watching and updates
 - Cooperative cancellation
 """
@@ -27,6 +27,8 @@ from pydantic_ai import (
     TextPartDelta,
 )
 from pydantic_ai.run import AgentRunResultEvent
+from pydantic_ai.ui.vercel_ai import VercelAIAdapter
+from pydantic_ai.ui.vercel_ai.request_types import SubmitMessage
 
 from suzent.core.agent_deps import AgentDeps
 from suzent.plan import read_plan_from_database, plan_to_dict, auto_complete_current
@@ -52,13 +54,13 @@ def _plan_snapshot(chat_id: Optional[str] = None) -> dict:
     """Get a snapshot of the current plan state."""
     try:
         if not chat_id:
-            return {"objective": "", "tasks": []}
+            return {"objective": "", "phases": []}
         plan = read_plan_from_database(chat_id)
         if not plan:
             return {"objective": "", "phases": []}
         return plan_to_dict(plan) or {"objective": "", "phases": []}
     except Exception:
-        return {"objective": "", "tasks": []}
+        return {"objective": "", "phases": []}
 
 
 async def stream_agent_responses(
@@ -69,21 +71,14 @@ async def stream_agent_responses(
     chat_id: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """
-    Runs the pydantic-ai agent with streaming and yields JSON-formatted SSE events.
+    Runs the pydantic-ai agent with streaming and yields Vercel AI formatted events.
 
     Uses a queue-based architecture: the agent runs in a background task so
     the generator can yield both regular events and HITL approval requests
     even while a tool is blocked waiting for user approval.
 
-    Args:
-        agent: The pydantic-ai Agent instance.
-        message: User message (string or list for multimodal).
-        deps: AgentDeps dependency container.
-        message_history: Previous message history for conversation continuity.
-        chat_id: Optional chat identifier for plan tracking.
-
     Yields:
-        Server-sent event strings in the format ``data: {json}\\n\\n``
+        Server-sent event strings in Data Stream Protocol formatting (e.g. 0:..., d:...)
     """
     control = StreamControl()
     if chat_id:
@@ -119,17 +114,10 @@ async def stream_agent_responses(
 
     watcher_task = asyncio.create_task(plan_watcher()) if chat_id else None
 
-    # Accumulate full text for final_answer
-    full_text_parts: list[str] = []
-    result_output = None
-
-    # State for accumulating tool calls across deltas
-    tool_names: Dict[str, str] = {}
-    tool_args: Dict[str, str] = {}
-    emitted_tool_calls: set[str] = set()
-
     # History tracker for cancellation recovery
     partial_history = list(message_history) if message_history else []
+
+    out_queue: asyncio.Queue = asyncio.Queue()
 
     # --- Background agent runner ---
     async def _agent_runner():
@@ -151,140 +139,142 @@ async def stream_agent_responses(
 
     agent_task = asyncio.create_task(_agent_runner())
 
-    try:
+    # --- Native stream generator that feeds VercelAIAdapter ---
+    async def native_stream_generator():
         while True:
-            # Read from queue with timeout so we can drain plan updates
-            try:
-                msg = await asyncio.wait_for(sse_queue.get(), timeout=0.5)
-            except asyncio.TimeoutError:
-                # Check cancel
-                if control.cancel_event.is_set():
-                    yield _sse({"type": "stopped", "data": {"reason": control.reason}})
-                    break
-                # Drain plan updates
-                while not plan_queue.empty():
-                    try:
-                        snapshot = plan_queue.get_nowait()
-                        yield _sse({"type": "plan_refresh", "data": snapshot})
-                    except asyncio.QueueEmpty:
-                        break
-                continue
-
-            msg_type, payload = msg
-
-            if msg_type == "done":
-                break
-
-            if msg_type == "error":
-                if not control.cancel_event.is_set():
-                    logger.error(f"Streaming error: {payload}\n{traceback.format_exc()}")
-                    yield _sse({"type": "error", "data": str(payload)})
-                break
-
-            # --- HITL: tool approval request from a tool function ---
-            if msg_type == "approval":
-                yield _sse({"type": "tool_approval_required", "data": payload})
-                continue
-
-            # --- Regular pydantic-ai event ---
-            if msg_type == "event":
-                event = payload
-
-                # Track history manually for cancellation recovery
-                try:
-                    from pydantic_ai.messages import RunRequestEvent, RunResponseEvent
-                    if isinstance(event, RunRequestEvent):
-                        partial_history.append(event.request)
-                        # Clear step accumulators since a new request started
-                        full_text_parts.clear()
-                        tool_names.clear()
-                        tool_args.clear()
-                        emitted_tool_calls.clear()
-                    elif isinstance(event, RunResponseEvent):
-                        partial_history.append(event.response)
-                except Exception:
-                    pass
-
-                # AgentRunResultEvent: final result with all messages
-                if isinstance(event, AgentRunResultEvent):
-                    result_output = event.result
-                    try:
-                        agent._last_messages = event.result.all_messages()  # type: ignore[attr-defined]
-                    except Exception:
-                        agent._last_messages = []  # type: ignore[attr-defined]
-
-                    final_text = getattr(result_output, "data", "") if result_output else ""
-                    if not full_text_parts and final_text:
-                        yield _sse({"type": "final_answer", "data": str(final_text)})
-                    continue
-
-                # Map pydantic-ai events to SSE
-                sse = _map_event(event, full_text_parts, tool_names, tool_args, emitted_tool_calls)
-                if sse is not None:
-                    if isinstance(sse, list):
-                        for s in sse:
-                            yield _sse(s)
-                    else:
-                        yield _sse(sse)
-
-            # Drain plan updates after each event
+            # Drain plan updates as data-* chunks (Vercel AI SDK native data parts)
             while not plan_queue.empty():
                 try:
                     snapshot = plan_queue.get_nowait()
-                    yield _sse({"type": "plan_refresh", "data": snapshot})
+                    data_json = json.dumps({"type": "data-plan_refresh", "data": snapshot})
+                    await out_queue.put(("chunk", f'data: {data_json}\n\n'))
                 except asyncio.QueueEmpty:
                     break
+                    
+            try:
+                msg = await asyncio.wait_for(sse_queue.get(), timeout=0.1)
+                msg_type, payload = msg
+                
+                if msg_type == "event":
+                    # Track history manually for cancellation recovery
+                    try:
+                        from pydantic_ai.messages import RunRequestEvent, RunResponseEvent
+                        if isinstance(payload, RunRequestEvent):
+                            partial_history.append(payload.request)
+                        elif isinstance(payload, RunResponseEvent):
+                            partial_history.append(payload.response)
+                    except Exception:
+                        pass
+
+                    # AgentRunResultEvent: final result with all messages
+                    from pydantic_ai.run import AgentRunResultEvent
+                    if isinstance(payload, AgentRunResultEvent):
+                        try:
+                            agent._last_messages = payload.result.all_messages()  # type: ignore[attr-defined]
+                        except Exception:
+                            agent._last_messages = []
+
+                    yield payload
+
+                elif msg_type == "approval":
+                    # HITL: emit as native Vercel AI tool-approval-request chunk
+                    # The SDK recognizes this type and sets ToolInvocationUIPart.state = 'approval-requested'
+                    approval_chunk = json.dumps({
+                        "type": "tool-approval-request",
+                        "approvalId": payload["request_id"],
+                        "toolCallId": payload.get("tool_call_id") or payload["request_id"],
+                    })
+                    await out_queue.put(("chunk", f'data: {approval_chunk}\n\n'))
+                    # Also emit tool args + name as a data-* part so the approval UI
+                    # can display what tool is being requested
+                    approval_data = json.dumps({
+                        "type": "data-tool_approval_info",
+                        "data": {
+                            "approvalId": payload["request_id"],
+                            "toolName": payload.get("tool_name", ""),
+                            "args": payload.get("args", {}),
+                            "chatId": chat_id,
+                        },
+                    })
+                    await out_queue.put(("chunk", f'data: {approval_data}\n\n'))
+                    
+                elif msg_type == "done":
+                    break
+                    
+                elif msg_type == "error":
+                    error_json = json.dumps({"type": "error", "errorText": str(payload)})
+                    await out_queue.put(("chunk", f'data: {error_json}\n\n'))
+                    break
+
+            except asyncio.TimeoutError:
+                if control.cancel_event.is_set():
+                    break
+
+    # --- Background worker to encode stream using VercelAIAdapter ---
+    async def encode_worker():
+        try:
+            # We must pass a valid SubmitMessage object when using sdk_version=6
+            # because VercelAIAdapter checks `run_input.messages` to extract 
+            # client-side tool approvals. Since Suzent handles approvals separately,
+            # we just provide a dummy empty message list.
+            dummy_input = SubmitMessage(id="dummy", messages=[])
+            adapter = VercelAIAdapter(agent, run_input=dummy_input, sdk_version=6)
+            v_stream = adapter.transform_stream(native_stream_generator())
+            async for chunk in adapter.encode_stream(v_stream):
+                if control.cancel_event.is_set():
+                    break
+                await out_queue.put(("chunk", chunk))
+        except Exception as e:
+            error_json = json.dumps({"type": "error", "errorText": str(e)})
+            await out_queue.put(("chunk", f'data: {error_json}\n\n'))
+        finally:
+            await out_queue.put(("done", None))
+
+    encode_task = asyncio.create_task(encode_worker())
+
+    try:
+        while True:
+            try:
+                msg = await asyncio.wait_for(out_queue.get(), timeout=0.5)
+            except asyncio.TimeoutError:
+                if control.cancel_event.is_set():
+                    yield 'data: {"type": "error", "errorText": "Stream stopped by user"}\n\n'
+                    break
+                continue
+                
+            msg_type, payload = msg
+            if msg_type == "chunk":
+                yield payload
+            elif msg_type == "done":
+                break
 
         # --- After stream completes ---
-        if not control.cancel_event.is_set():
-            if chat_id:
-                yield _sse({"type": "plan_refresh", "data": _plan_snapshot(chat_id)})
+        if not control.cancel_event.is_set() and chat_id:
+            data_json = json.dumps({"type": "data-plan_refresh", "data": _plan_snapshot(chat_id)})
+            yield f'data: {data_json}\n\n'
 
     except Exception as e:
         if not control.cancel_event.is_set():
             logger.error(f"Streaming error: {e}\n{traceback.format_exc()}")
-            yield _sse({"type": "error", "data": str(e)})
+            error_json = json.dumps({"type": "error", "errorText": str(e)})
+            yield f'data: {error_json}\n\n'
 
     finally:
+        # Cancel background tasks
+        for task in (agent_task, encode_task):
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+
         # Handle cancellation by preserving partial history
         if control.cancel_event.is_set():
             try:
-                from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
-                from typing import Any
-                parts: list[Any] = []
-                
-                if full_text_parts:
-                    parts.append(TextPart(content="".join(full_text_parts)))
-                    
-                for tc_id, name in tool_names.items():
-                    args_str = tool_args.get(tc_id, "{}")
-                    try:
-                        args_dict = json.loads(args_str)
-                    except Exception:
-                        args_dict = args_str if args_str else {}
-                        
-                    parts.append(ToolCallPart(
-                        tool_name=name,
-                        args=args_dict,
-                        tool_call_id=tc_id
-                    ))
-                
-                if parts:
-                    partial_history.append(ModelResponse(parts=parts))
-                    
-                # Store the reconstructed history on the agent instance
-                # so the ChatProcessor can extract and persist it.
                 agent._last_messages = partial_history
             except Exception as e:
                 logger.error(f"Failed to reconstruct partial history on cancel: {e}")
-
-        # Cancel the agent task if still running
-        if not agent_task.done():
-            agent_task.cancel()
-            try:
-                await agent_task
-            except (asyncio.CancelledError, Exception):
-                pass
 
         stop_plan_watcher.set()
         if watcher_task:
@@ -315,179 +305,6 @@ async def stream_agent_responses(
         deps.pending_approvals.clear()
 
 
-# ─── Event mapping ─────────────────────────────────────────────────────
-
-
-def _map_event(
-    event, full_text_parts: list[str], tool_names: Dict[str, str], tool_args: Dict[str, str], emitted_tool_calls: set[str]
-) -> dict | None:
-    """Map a pydantic-ai event to a suzent SSE event dict.
-
-    Returns None for events we don't need to forward to the frontend.
-    """
-    import json
-
-    # ── Text streaming (PartStartEvent with TextPart) ──
-    if isinstance(event, PartStartEvent):
-        from pydantic_ai.messages import TextPart, ToolCallPart
-        if isinstance(event.part, TextPart) and event.part.content:
-            content = event.part.content
-            # Gemini occasionally prints its tools state inside the output text directly
-            if "<details>" in content and "web_search" in content:
-                content = content.split("<details>")[0]
-            if content.strip():
-                full_text_parts.append(content)
-                return {"type": "stream_delta", "data": {"content": content}}
-            return None
-
-        # Emit early tool action so UI knows which tool is being called
-        if isinstance(event.part, ToolCallPart):
-            name = getattr(event.part, "tool_name", "")
-            tc_id = getattr(event.part, "tool_call_id", "")
-            args = getattr(event.part, "args", {})
-            if not isinstance(args, dict):
-                args = {}
-
-            if name and tc_id and tc_id not in emitted_tool_calls:
-                emitted_tool_calls.add(tc_id)
-                tool_args[tc_id] = json.dumps(args) if args else "{}"
-                return {
-                    "type": "stream_delta",
-                    "data": {
-                        "tool_calls": [{
-                            "name": name,
-                            "arguments": args,
-                            "id": tc_id,
-                        }],
-                    },
-                }
-        return None
-
-    # ── Text delta ──
-    if isinstance(event, PartDeltaEvent):
-        if isinstance(event.delta, TextPartDelta):
-            content_delta = event.delta.content_delta
-            # Filter injected html streams
-            if "<details>" in content_delta or "<summary>" in content_delta:
-                return None
-            full_text_parts.append(content_delta)
-            return {"type": "stream_delta", "data": {"content": content_delta}}
-
-        from pydantic_ai.messages import ToolCallPartDelta
-        if isinstance(event.delta, ToolCallPartDelta):
-            tc_id = getattr(event.delta, "tool_call_id", "")
-            if tc_id:
-                name_delta = getattr(event.delta, "tool_name_delta", "")
-                args_delta = getattr(event.delta, "args_delta", "")
-
-                if name_delta:
-                    tool_names[tc_id] = tool_names.get(tc_id, "") + name_delta
-
-                has_new_args = False
-                if args_delta:
-                    current_args = tool_args.get(tc_id, "")
-                    if isinstance(args_delta, str):
-                        tool_args[tc_id] = current_args + args_delta
-                    elif isinstance(args_delta, dict):
-                        try:
-                            if not current_args:
-                                current_args = "{}"
-                            curr = json.loads(current_args)
-                            curr.update(args_delta)
-                            tool_args[tc_id] = json.dumps(curr)
-                        except Exception:
-                            tool_args[tc_id] = json.dumps(args_delta)
-                    has_new_args = True
-
-                current_name = tool_names.get(tc_id, "")
-
-                if current_name and (has_new_args or tc_id not in emitted_tool_calls):
-                    emitted_tool_calls.add(tc_id)
-                    current_arguments = tool_args.get(tc_id, "")
-                    return {
-                        "type": "stream_delta",
-                        "data": {
-                            "tool_calls": [{
-                                "name": current_name,
-                                "arguments": current_arguments,
-                                "id": tc_id,
-                            }],
-                        },
-                    }
-        return None
-
-    # ── Tool call started ──
-    if isinstance(event, FunctionToolCallEvent):
-        tc_id = getattr(event.part, "tool_call_id", "")
-        events = []
-        name = getattr(event.part, "tool_name", "")
-        args = getattr(event.part, "args", {})
-        if not isinstance(args, dict):
-            args = {}
-
-        # If the provider doesn't stream deltas (e.g., Gemini), we must emit the full tool call here
-        if tc_id and tc_id not in emitted_tool_calls:
-            emitted_tool_calls.add(tc_id)
-            events.append({
-                "type": "stream_delta",
-                "data": {
-                    "tool_calls": [{
-                        "name": name,
-                        "arguments": args,
-                        "id": tc_id,
-                    }],
-                },
-            })
-
-        events.append({
-            "type": "action",
-            "data": {
-                "tool_calls": [{
-                    "name": name,
-                    "arguments": args,
-                    "id": tc_id,
-                }],
-            },
-        })
-        return events
-
-    # ── Tool call finished ──
-    if isinstance(event, FunctionToolResultEvent):
-        try:
-            output_str = str(event.result.content)[:2000] if getattr(event, "result", None) else ""
-            tool_name = getattr(event.result, "tool_name", "") if getattr(event, "result", None) else getattr(event, "tool_name", "")
-            tc_id = getattr(event.result, "tool_call_id", "") if getattr(event, "result", None) else ""
-            if not tc_id:
-                tc_id = getattr(event, "tool_call_id", "")
-        except Exception:
-            output_str = ""
-            tool_name = ""
-            tc_id = getattr(event, "tool_call_id", "")
-
-        return {
-            "type": "tool_output",
-            "data": {
-                "tool_name": tool_name,
-                "output": output_str,
-                "tool_call_id": tc_id or "",
-            },
-        }
-
-    # ── Final result marker ──
-    if isinstance(event, FinalResultEvent):
-        return {
-            "type": "final_result_marker",
-            "data": {"tool_name": event.tool_name},
-        }
-
-    return None
-
-
-def _sse(event: dict) -> str:
-    """Format a dict as an SSE data line."""
-    return f"data: {json.dumps(event)}\n\n"
-
-
 def stop_stream(chat_id: str, reason: str = "Stream stopped by user") -> bool:
     """Request to stop an active stream."""
     control = stream_controls.get(chat_id)
@@ -504,17 +321,7 @@ def resolve_tool_approval(
     approved: bool,
     remember: Optional[str] = None,
 ) -> bool:
-    """Resolve a pending tool approval request.
-
-    Args:
-        chat_id: The chat session identifier.
-        request_id: The approval request ID.
-        approved: Whether the user approved the tool execution.
-        remember: "session" to remember for the rest of the session, or None.
-
-    Returns:
-        True if the approval was resolved, False if not found.
-    """
+    """Resolve a pending tool approval request."""
     deps = active_deps.get(chat_id)
     if not deps:
         return False
