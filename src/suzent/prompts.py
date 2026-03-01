@@ -5,6 +5,7 @@ Provides functions to format and enhance agent instructions with dynamic context
 """
 
 from datetime import datetime
+import platform
 
 SUZENT_AGENT_INSTRUCTIONS = """# Role
 You are Suzent, a digital coworker.
@@ -21,6 +22,8 @@ You should respond in the language of the user's query.
 # Date Context
 Today's date: {current_date}
 
+{execution_mode_section}
+
 {custom_volumes_section}
 
 {base_instructions_section}
@@ -30,9 +33,19 @@ Today's date: {current_date}
 {social_context}
 """
 
-CUSTOM_VOLUMES_SECTION = """# Custom Volumes
-The following custom volumes are mounted and available:
+CUSTOM_VOLUMES_SECTION = """# Directory Mappings
+The following directories are mapped and available for your use:
 {volumes_list}
+"""
+
+EXECUTION_MODE_SECTION_SANDBOX = """# Environment: Sandbox
+You are in a sandbox environment. Use virtual paths (e.g., `/persistence`, `/mnt/...`). Host paths are inaccessible.
+"""
+
+EXECUTION_MODE_SECTION_HOST = """# Environment: Host
+You are on the host machine ({os_name}). Use host paths (e.g., `{workspace_root}`).
+Do NOT use virtual `/mnt/...` paths.
+Env vars available: PERSISTENCE_PATH, SHARED_PATH, WORKSPACE_ROOT.
 """
 
 BASE_INSTRUCTIONS_SECTION = """# Base Instructions
@@ -68,15 +81,19 @@ def format_instructions(
     memory_context: str = "",
     custom_volumes: list[str] = None,
     social_context: str = "",
+    sandbox_enabled: bool = False,
+    workspace_root: str = "",
 ) -> str:
     """
-    Format agent instructions by adding current date, custom volumes, and other dynamic context.
+    Format agent instructions by adding current date, execution mode, and other context.
 
     Args:
         base_instructions: The base instruction text
         memory_context: Context string from memory system
         custom_volumes: List of custom volume mount strings
         social_context: Pre-formatted social channel context string
+        sandbox_enabled: Whether sandbox mode is active
+        workspace_root: Root directory for host mode
 
     Returns:
         Formatted instructions with date and volumes appended
@@ -85,8 +102,17 @@ def format_instructions(
 
     volumes_section = ""
     if custom_volumes:
-        volumes_list = "\n".join([f"- {v}" for v in custom_volumes])
+        volumes_list = "\n".join([f"- {v} (Host Path:Virtual Name)" for v in custom_volumes])
         volumes_section = CUSTOM_VOLUMES_SECTION.format(volumes_list=volumes_list)
+
+    execution_mode_section = ""
+    if sandbox_enabled:
+        execution_mode_section = EXECUTION_MODE_SECTION_SANDBOX
+    else:
+        execution_mode_section = EXECUTION_MODE_SECTION_HOST.format(
+            workspace_root=workspace_root.replace("\\", "/"),
+            os_name=platform.system()
+        )
 
     base_instructions_section = ""
     if base_instructions:
@@ -96,6 +122,7 @@ def format_instructions(
 
     suzent_instructions = SUZENT_AGENT_INSTRUCTIONS.format(
         current_date=current_date,
+        execution_mode_section=execution_mode_section,
         custom_volumes_section=volumes_section,
         base_instructions_section=base_instructions_section,
         memory_context=memory_context,
