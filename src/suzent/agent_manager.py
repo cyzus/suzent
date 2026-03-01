@@ -252,6 +252,8 @@ def create_agent(
         memory_context=memory_context,
         custom_volumes=custom_volumes,
         social_context=build_social_context(social_ctx) if social_ctx else "",
+        sandbox_enabled=CONFIG.sandbox_enabled,
+        workspace_root=CONFIG.workspace_root,
     )
 
     params = {

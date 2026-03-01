@@ -5,22 +5,23 @@ description: Become a helpful co-worker in the workspace. Use it whenever you ne
 
 ## Execution Modes
 
-### Sandbox Mode
-When sandbox is enabled, use **virtual paths**:
-- `/persistence` - your persistence directory for this chat session
-- `/persistence/uploads` - files uploaded by the user
-- `/shared` - workspace shared across chat sessions
+### Host Mode
+You are running directly on the host machine.
+- **Environment Variables**: Use standard locations via environment variables:
+  - Windows: `%PERSISTENCE_PATH%`, `%SHARED_PATH%`, `%MOUNT_SKILLS%`
+  - POSIX: `$PERSISTENCE_PATH`, `$SHARED_PATH`, `$MOUNT_SKILLS`
+- **Host Paths**: `GlobTool` and `GrepTool` return absolute host paths (e.g., `D:\workspace\...`). Use them directly.
+- **Tools**: `ReadFileTool`, `WriteFileTool`, and `BashTool` all accept host paths.
+
+### Sandbox Mode (Isolated)
+When sandbox is enabled, you MUST use **virtual paths**:
+- `/persistence` - session private directory
+- `/shared` - workspace shared across sessions
 - `/mnt/skills` - skills directory
-- `/mnt/...` - custom mounted directories
+- `/mnt/...` - other mapped volumes
 
-### Host Mode (Non-Sandbox)
-When sandbox is disabled:
-- **GlobTool/GrepTool** return **host paths** (e.g., `D:\workspace\...`)
-- **ReadFileTool/WriteFileTool** accept both virtual and host paths
-- **BashTool** uses host paths; `pwd` is the session persistence folder
-- Environment variables: `$PERSISTENCE_PATH`, `$SHARED_PATH`, `$MOUNT_*`
-
-Or use **relative paths** from the working directory.
+> [!WARNING]
+> Do NOT use `/mnt/...` paths in Host Mode as they will not exist. Always check your execution mode in the system instructions.
 
 ## File Path Formatting
 When referencing files for the user, format as clickable markdown links:
