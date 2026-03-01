@@ -8,7 +8,7 @@ and error states.
 
 import json
 from dataclasses import dataclass
-from typing import Iterator, Optional, Union
+from typing import Iterator, Union
 
 
 @dataclass
@@ -110,7 +110,9 @@ class StreamParser:
 
         elif evt_type == "tool_output":
             # Support both old format (tool_call.name) and new format (tool_name)
-            tool_name = data.get("tool_name") or data.get("tool_call", {}).get("name", "unknown")
+            tool_name = data.get("tool_name") or data.get("tool_call", {}).get(
+                "name", "unknown"
+            )
             output = data.get("output", "") or data.get("observation", "")
             yield ToolOutput(tool_name, str(output))
 

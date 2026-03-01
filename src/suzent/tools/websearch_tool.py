@@ -157,32 +157,50 @@ class WebSearchTool(Tool):
                 # Monkey-patch duckduckgo-search to use a safe impersonation target
                 # to prevent the underlying primp (Rust) client from deadlocking on deprecated browsers
                 ddgs.http_client.HttpClient._impersonates = (None,)
-                
+
                 with DDGS(timeout=15) as ddgs_client:
                     if not category or category == "general":
-                        return list(ddgs_client.text(query, timelimit=timelimit, max_results=max_results))
+                        return list(
+                            ddgs_client.text(
+                                query, timelimit=timelimit, max_results=max_results
+                            )
+                        )
                     elif category == "news":
-                        return list(ddgs_client.news(query, timelimit=timelimit, max_results=max_results))
+                        return list(
+                            ddgs_client.news(
+                                query, timelimit=timelimit, max_results=max_results
+                            )
+                        )
                     elif category == "images":
-                        return list(ddgs_client.images(query, timelimit=timelimit, max_results=max_results))
+                        return list(
+                            ddgs_client.images(
+                                query, timelimit=timelimit, max_results=max_results
+                            )
+                        )
                     elif category == "videos":
-                        return list(ddgs_client.videos(query, timelimit=timelimit, max_results=max_results))
+                        return list(
+                            ddgs_client.videos(
+                                query, timelimit=timelimit, max_results=max_results
+                            )
+                        )
                     else:
                         raise ValueError(f"Error: Unsupported category '{category}'")
 
             source_label = f"DDGS ({category or 'general'})"
             try:
-                results = await asyncio.wait_for(asyncio.to_thread(_do_search), timeout=20.0)
+                results = await asyncio.wait_for(
+                    asyncio.to_thread(_do_search), timeout=20.0
+                )
             except asyncio.TimeoutError:
                 logger.error("DDGS search timed out at the thread level.")
-                return f"Error: DDGS search timed out. The search library might be hanging."
+                return (
+                    "Error: DDGS search timed out. The search library might be hanging."
+                )
 
             if not results:
                 return f"No results found for query: '{query}'"
 
-            return self._format_results(
-                results, source=source_label, category=category
-            )
+            return self._format_results(results, source=source_label, category=category)
 
         except Exception as e:
             logger.error(f"DDGS search failed: {e}")
@@ -217,7 +235,11 @@ class WebSearchTool(Tool):
             if response.status_code == 403:
                 logger.warning("SearXNG JSON format restricted, falling back to DDGS")
                 return await self._search_with_ddgs(
-                    query, category=categories, max_results=max_results, time_range=time_range, page=page
+                    query,
+                    category=categories,
+                    max_results=max_results,
+                    time_range=time_range,
+                    page=page,
                 )
 
             response.raise_for_status()
@@ -233,12 +255,28 @@ class WebSearchTool(Tool):
                 return response.text
 
         except httpx.HTTPStatusError as e:
-            logger.warning(f"SearXNG failed with {e.response.status_code}. Falling back to DDGS.")
-            return await self._search_with_ddgs(query, category=categories, max_results=max_results, time_range=time_range, page=page)
+            logger.warning(
+                f"SearXNG failed with {e.response.status_code}. Falling back to DDGS."
+            )
+            return await self._search_with_ddgs(
+                query,
+                category=categories,
+                max_results=max_results,
+                time_range=time_range,
+                page=page,
+            )
 
         except (httpx.RequestError, Exception) as e:
-            logger.warning(f"SearXNG connection failed: {str(e)}. Falling back to DDGS.")
-            return await self._search_with_ddgs(query, category=categories, max_results=max_results, time_range=time_range, page=page)
+            logger.warning(
+                f"SearXNG connection failed: {str(e)}. Falling back to DDGS."
+            )
+            return await self._search_with_ddgs(
+                query,
+                category=categories,
+                max_results=max_results,
+                time_range=time_range,
+                page=page,
+            )
 
     def _format_results(
         self,

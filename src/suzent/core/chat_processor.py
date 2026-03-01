@@ -21,7 +21,7 @@ from suzent.core.agent_serializer import serialize_state, deserialize_state
 from suzent.core.context_compressor import ContextCompressor
 from suzent.memory.lifecycle import get_memory_manager
 from suzent.streaming import stream_agent_responses
-from suzent.memory import AgentStepsSummary, ConversationTurn, Message, AgentAction
+from suzent.memory import ConversationTurn, Message, AgentAction
 from suzent.database import get_database
 from suzent.tools.path_resolver import PathResolver
 from suzent.routes.sandbox_routes import sanitize_filename
@@ -179,11 +179,11 @@ class ChatProcessor:
                     if json_str == "[DONE]":
                         continue
                     event_data = json.loads(json_str)
-                    
+
                     msg_type = event_data.get("type")
                     if msg_type == "text-delta":
                         full_response += event_data.get("delta", "")
-            except Exception as e:
+            except Exception:
                 pass
 
             yield chunk

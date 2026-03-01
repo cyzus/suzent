@@ -27,7 +27,6 @@ from suzent.config import get_effective_volumes
 # Import memory lifecycle functions (for backward compatibility re-exports)
 from suzent.memory.lifecycle import (
     get_memory_manager,
-    create_memory_tools,
 )
 
 # Suppress LiteLLM's verbose logging

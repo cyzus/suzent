@@ -38,7 +38,6 @@ def serialize_state(
         JSON-encoded bytes, or None on failure.
     """
     try:
-        from pydantic_ai.messages import ModelMessagesTypeAdapter
         from pydantic_core import to_jsonable_python
 
         state = {
@@ -141,7 +140,9 @@ def serialize_agent(agent) -> Optional[bytes]:
     return serialize_state(messages, model_id=model_id, tool_names=tool_names)
 
 
-def deserialize_agent(agent_data: bytes, config: Dict[str, Any], create_agent_fn=None) -> None:
+def deserialize_agent(
+    agent_data: bytes, config: Dict[str, Any], create_agent_fn=None
+) -> None:
     """Legacy shim: returns None — pydantic-ai agents don't need to be
     'restored' since message history is passed at run time.
 

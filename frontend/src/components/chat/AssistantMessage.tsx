@@ -51,21 +51,121 @@ function isToolOnlyMessage(blocks: ContentBlock[]): boolean {
   return blocks.length > 0 && blocks.every(b => b.type === 'toolCall' || b.type === 'codeStep');
 }
 
+// Renders a group of tool calls, potentially collapsed if many
+const ToolSequenceGroup: React.FC<{
+  tools: Array<{
+    toolCallId?: string;
+    toolName: string;
+    toolArgs?: string;
+    output?: string;
+    approvalState?: 'pending' | 'denied' | undefined;
+    onApprove?: (remember: 'session' | null) => void;
+    onDeny?: () => void;
+  }>;
+}> = ({ tools }) => {
+  const [expanded, setExpanded] = useState(tools.some(t => t.approvalState === 'pending'));
+  const shouldGroup = tools.length > 2;
+
+  if (!shouldGroup) {
+    return (
+      <div className="flex flex-col space-y-1">
+        {tools.map((t, i) => (
+          <ToolCallBlock
+            key={t.toolCallId || i}
+            toolName={t.toolName}
+            toolArgs={t.toolArgs}
+            output={t.output}
+            defaultCollapsed={t.approvalState !== 'pending'}
+            approvalState={t.approvalState}
+            onApprove={t.onApprove}
+            onDeny={t.onDeny}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  const icons = tools.map((t, i) => {
+    if (i > 3) return null;
+    const icon = t.approvalState === 'pending' ? '⏳' : t.approvalState === 'denied' ? '🚫' : '🔧';
+    return <span key={i} className="tool-group-icon">{icon}</span>;
+  });
+
+  return (
+    <div className="flex flex-col space-y-1">
+      {/* Unified Header Toggle */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="tool-group-summary group/tools"
+      >
+        {!expanded ? (
+          <>
+            <div className="tool-group-icons">
+              {icons}
+              {tools.length > 4 && (
+                <span className="tool-group-icon bg-neutral-100 font-bold">+{tools.length - 4}</span>
+              )}
+            </div>
+            <span className="text-[10px] font-mono font-bold text-neutral-500 uppercase tracking-tight group-hover/tools:text-brutal-black transition-colors">
+              {tools.length} Steps
+            </span>
+          </>
+        ) : (
+          <span className="text-[10px] font-mono font-bold text-neutral-500 uppercase tracking-tight group-hover/tools:text-brutal-black transition-colors">
+            Hide {tools.length} Steps
+          </span>
+        )}
+        <svg
+          className={`w-3 h-3 text-neutral-500 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={3}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* Expanded Tools List */}
+      <div className={`
+        grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden w-full
+        ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}
+      `}>
+        <div className="overflow-hidden min-h-0 min-w-0 w-full ml-1 pl-1.5 space-y-1">
+          {tools.map((t, i) => (
+            <ToolCallBlock
+              key={t.toolCallId || i}
+              toolName={t.toolName}
+              toolArgs={t.toolArgs}
+              output={t.output}
+              defaultCollapsed={t.approvalState !== 'pending'}
+              approvalState={t.approvalState}
+              onApprove={t.onApprove}
+              onDeny={t.onDeny}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Renders just the tool call / code step pills (no box wrapper)
 const StepPills: React.FC<{
   blocks: ContentBlock[];
   messageIndex: number;
-}> = ({ blocks, messageIndex }) => (
-  <>
-    {blocks.map((b, bi) => {
-      const blockKey = generateBlockKey(b, bi, messageIndex);
-      if (b.type === 'toolCall') {
-        return <ToolCallBlock key={blockKey} toolName={b.toolName || 'unknown'} toolArgs={b.toolArgs} output={b.content || undefined} defaultCollapsed />;
-      }
-      return null;
-    })}
-  </>
-);
+}> = ({ blocks, messageIndex }) => {
+  const tools = blocks
+    .filter(b => b.type === 'toolCall')
+    .map((b, bi) => ({
+      toolName: b.toolName || 'unknown',
+      toolArgs: b.toolArgs,
+      output: b.content || undefined,
+    }));
+
+  if (tools.length === 0) return null;
+  return <ToolSequenceGroup tools={tools} />;
+};
 
 // Streaming content with typewriter effect
 const StreamingContent: React.FC<{
@@ -184,40 +284,40 @@ const PartsBasedContent: React.FC<{
     <>
       {chunks.map((chunk, ci) => {
         if (chunk.isTool) {
+          const tools = chunk.items.map((tp, ti) => {
+            const toolName = getToolPartName(tp);
+            const argsStr = tp.input != null
+              ? (typeof tp.input === 'string' ? tp.input : JSON.stringify(tp.input, null, 2))
+              : (tp.rawInput != null)
+                ? (typeof tp.rawInput === 'string' ? tp.rawInput : JSON.stringify(tp.rawInput, null, 2))
+                : undefined;
+            const outputStr = (tp.state === 'output-available' && tp.output != null)
+              ? (typeof tp.output === 'string' ? tp.output : JSON.stringify(tp.output, null, 2))
+              : (tp.state === 'output-error' && tp.errorText)
+                ? `Error: ${tp.errorText}`
+                : undefined;
+            const approvalState = tp.state === 'approval-requested' ? 'pending' as const
+              : tp.state === 'output-denied' ? 'denied' as const
+                : undefined;
+
+            return {
+              toolCallId: tp.toolCallId || `tool-${ci}-${ti}`,
+              toolName,
+              toolArgs: argsStr,
+              output: outputStr,
+              approvalState,
+              onApprove: (approvalState === 'pending' && tp.approval && onToolApproval)
+                ? (remember: 'session' | null) => onToolApproval(tp.approval.id, tp.toolCallId, true, remember)
+                : undefined,
+              onDeny: (approvalState === 'pending' && tp.approval && onToolApproval)
+                ? () => onToolApproval(tp.approval.id, tp.toolCallId, false)
+                : undefined,
+            };
+          });
+
           return (
             <div key={ci} className="pl-1 min-w-0 overflow-x-hidden">
-              {chunk.items.map((tp: any, ti: number) => {
-                const toolName = getToolPartName(tp);
-                const argsStr = tp.input != null
-                  ? (typeof tp.input === 'string' ? tp.input : JSON.stringify(tp.input, null, 2))
-                  : (tp.rawInput != null)
-                    ? (typeof tp.rawInput === 'string' ? tp.rawInput : JSON.stringify(tp.rawInput, null, 2))
-                    : undefined;
-                const outputStr = (tp.state === 'output-available' && tp.output != null)
-                  ? (typeof tp.output === 'string' ? tp.output : JSON.stringify(tp.output, null, 2))
-                  : (tp.state === 'output-error' && tp.errorText)
-                    ? `Error: ${tp.errorText}`
-                    : undefined;
-                const approvalState = tp.state === 'approval-requested' ? 'pending' as const
-                  : tp.state === 'output-denied' ? 'denied' as const
-                  : undefined;
-                return (
-                  <ToolCallBlock
-                    key={tp.toolCallId || `tool-${ci}-${ti}`}
-                    toolName={toolName}
-                    toolArgs={argsStr}
-                    output={outputStr}
-                    defaultCollapsed={approvalState !== 'pending'}
-                    approvalState={approvalState}
-                    onApprove={approvalState === 'pending' && tp.approval && onToolApproval
-                      ? (remember) => onToolApproval(tp.approval.id, tp.toolCallId, true, remember)
-                      : undefined}
-                    onDeny={approvalState === 'pending' && tp.approval && onToolApproval
-                      ? () => onToolApproval(tp.approval.id, tp.toolCallId, false)
-                      : undefined}
-                  />
-                );
-              })}
+              <ToolSequenceGroup tools={tools} />
             </div>
           );
         }

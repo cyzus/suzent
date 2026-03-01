@@ -155,6 +155,19 @@ code {
   -ms-user-select: none;
 }
 
+/* Tool Sequence Grouping */
+.tool-group-summary {
+  @apply inline-flex items-center gap-2 px-3 py-1.5 bg-neutral-50/50 rounded-sm hover:bg-neutral-100 transition-all cursor-pointer select-none mb-1;
+}
+
+.tool-group-icons {
+  @apply flex items-center -space-x-1;
+}
+
+.tool-group-icon {
+  @apply w-5 h-5 flex items-center justify-center bg-white rounded-full text-[10px] shadow-sm;
+}
+
 /* Improve prose text selection by reducing margin interference */
 .prose p,
 .prose li,

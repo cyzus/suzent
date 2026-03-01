@@ -6,7 +6,7 @@ Supports pre-compaction memory flush: before trimming messages, extract
 important facts and persist them to the memory system.
 """
 
-from typing import List, Optional
+from typing import Optional
 
 from pydantic_ai.messages import (
     ModelRequest,
@@ -58,7 +58,9 @@ class ContextCompressor:
             config = get_effective_memory_config()
             self.llm_client = LLMClient(model=config["extraction_model"])
 
-        self.max_history_messages = CONFIG.max_history_steps * 2  # request+response pairs
+        self.max_history_messages = (
+            CONFIG.max_history_steps * 2
+        )  # request+response pairs
         self.chat_id = chat_id
         self.user_id = user_id
 
@@ -137,17 +139,27 @@ class ContextCompressor:
             TextPart as ResponseTextPart,
         )
 
-        summary_request = ModelRequest(parts=[
-            UserPromptPart(content="[System: What happened in the previous conversation?]")
-        ])
-        summary_response = ModelResponse(parts=[
-            ResponseTextPart(content=(
-                f"--- ARCHIVED CONTEXT SUMMARY ---\n{summary}\n--- END ARCHIVED CONTEXT ---"
-            ))
-        ])
+        summary_request = ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content="[System: What happened in the previous conversation?]"
+                )
+            ]
+        )
+        summary_response = ModelResponse(
+            parts=[
+                ResponseTextPart(
+                    content=(
+                        f"--- ARCHIVED CONTEXT SUMMARY ---\n{summary}\n--- END ARCHIVED CONTEXT ---"
+                    )
+                )
+            ]
+        )
 
         # Rebuild: [first msg] + [summary pair] + [recent messages]
-        new_messages = messages[:1] + [summary_request, summary_response] + messages[end_index:]
+        new_messages = (
+            messages[:1] + [summary_request, summary_response] + messages[end_index:]
+        )
 
         logger.info(
             f"Message history compressed: {len(messages)} → {len(new_messages)} messages"
@@ -200,7 +212,9 @@ class ContextCompressor:
                             actions.append(
                                 AgentAction(
                                     tool=part.tool_name,
-                                    args=part.args if isinstance(part.args, dict) else {},
+                                    args=part.args
+                                    if isinstance(part.args, dict)
+                                    else {},
                                 )
                             )
 

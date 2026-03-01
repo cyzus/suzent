@@ -69,8 +69,7 @@ class AgentStepsSummary(BaseModel):
                             AgentAction(
                                 tool=tc.get("name", "unknown"),
                                 args=tc.get("arguments", {}),
-                                output=step.get("action_output")
-                                or step.get("output"),
+                                output=step.get("action_output") or step.get("output"),
                             )
                         )
                 if step.get("error"):

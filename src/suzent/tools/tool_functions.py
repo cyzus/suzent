@@ -15,9 +15,7 @@ support human-in-the-loop (HITL) approval via ``_require_approval()``.
 from __future__ import annotations
 
 import asyncio
-import os
 import uuid
-from pathlib import Path
 from typing import Optional, Union
 
 from pydantic_ai import RunContext
@@ -28,17 +26,20 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 # Tools that require user approval before execution.
-TOOLS_REQUIRING_APPROVAL = frozenset({
-    "bash_execute",
-    "write_file",
-    "edit_file",
-    "social_message",
-})
+TOOLS_REQUIRING_APPROVAL = frozenset(
+    {
+        "bash_execute",
+        "write_file",
+        "edit_file",
+        "social_message",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
 # HITL: approval gate
 # ---------------------------------------------------------------------------
+
 
 async def _require_approval(
     ctx: RunContext[AgentDeps],
@@ -72,12 +73,17 @@ async def _require_approval(
         "tool_name": tool_name,
     }
 
-    await deps.sse_queue.put(("approval", {
-        "request_id": request_id,
-        "tool_name": tool_name,
-        "tool_call_id": ctx.tool_call_id,
-        "args": _safe_args_preview(args),
-    }))
+    await deps.sse_queue.put(
+        (
+            "approval",
+            {
+                "request_id": request_id,
+                "tool_name": tool_name,
+                "tool_call_id": ctx.tool_call_id,
+                "args": _safe_args_preview(args),
+            },
+        )
+    )
 
     # 4. Wait for user response or cancellation
     cancel_event = deps.cancel_event
@@ -119,6 +125,7 @@ def _safe_args_preview(args: dict, max_len: int = 500) -> dict:
 # ---------------------------------------------------------------------------
 # Helper: lazy PathResolver creation
 # ---------------------------------------------------------------------------
+
 
 def _get_resolver(ctx: RunContext[AgentDeps]):
     """Return the PathResolver from deps, or create one on the fly."""
@@ -174,6 +181,7 @@ async def web_search(
 # 2. WebpageTool → webpage_fetch  (no context needed)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def webpage_fetch(url: str) -> str:
     """Fetch and extract the main content of a webpage as markdown.
 
@@ -189,6 +197,7 @@ def webpage_fetch(url: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════════
 # 3. BashTool → bash_execute  (needs context + HITL)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 async def bash_execute(
     ctx: RunContext[AgentDeps],
@@ -212,7 +221,9 @@ async def bash_execute(
         language: Execution language: 'python', 'nodejs', or 'command'.
         timeout: Execution timeout in seconds (optional).
     """
-    if not await _require_approval(ctx, "bash_execute", {"content": content, "language": language}):
+    if not await _require_approval(
+        ctx, "bash_execute", {"content": content, "language": language}
+    ):
         return "[Tool execution denied by user.]"
 
     from suzent.tools.bash_tool import BashTool
@@ -229,6 +240,7 @@ async def bash_execute(
 # ═══════════════════════════════════════════════════════════════════════════
 # 4. ReadFileTool → read_file  (needs context)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def read_file(
     ctx: RunContext[AgentDeps],
@@ -261,6 +273,7 @@ def read_file(
 # 5. WriteFileTool → write_file  (needs context + HITL)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 async def write_file(
     ctx: RunContext[AgentDeps],
     file_path: str,
@@ -275,7 +288,9 @@ async def write_file(
         file_path: Path to the file to write.
         content: The content to write to the file.
     """
-    if not await _require_approval(ctx, "write_file", {"file_path": file_path, "content": content}):
+    if not await _require_approval(
+        ctx, "write_file", {"file_path": file_path, "content": content}
+    ):
         return "[Tool execution denied by user.]"
 
     from suzent.tools.write_file_tool import WriteFileTool
@@ -288,6 +303,7 @@ async def write_file(
 # ═══════════════════════════════════════════════════════════════════════════
 # 6. EditFileTool → edit_file  (needs context + HITL)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 async def edit_file(
     ctx: RunContext[AgentDeps],
@@ -304,7 +320,11 @@ async def edit_file(
         new_string: The replacement text.
         replace_all: If True, replace all occurrences (default False).
     """
-    if not await _require_approval(ctx, "edit_file", {"file_path": file_path, "old_string": old_string, "new_string": new_string}):
+    if not await _require_approval(
+        ctx,
+        "edit_file",
+        {"file_path": file_path, "old_string": old_string, "new_string": new_string},
+    ):
         return "[Tool execution denied by user.]"
 
     from suzent.tools.edit_file_tool import EditFileTool
@@ -322,6 +342,7 @@ async def edit_file(
 # ═══════════════════════════════════════════════════════════════════════════
 # 7. GlobTool → glob_search  (needs context)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def glob_search(
     ctx: RunContext[AgentDeps],
@@ -344,6 +365,7 @@ def glob_search(
 # ═══════════════════════════════════════════════════════════════════════════
 # 8. GrepTool → grep_search  (needs context)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def grep_search(
     ctx: RunContext[AgentDeps],
@@ -378,6 +400,7 @@ def grep_search(
 # ═══════════════════════════════════════════════════════════════════════════
 # 9. PlanningTool → planning_update  (needs context)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def planning_update(
     ctx: RunContext[AgentDeps],
@@ -440,6 +463,7 @@ def planning_update(
 # 10. BrowsingTool → browser_action  (no context needed)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def browser_action(
     command: str,
     arguments: Optional[list] = None,
@@ -463,6 +487,7 @@ def browser_action(
 # 11. SkillTool → skill_execute  (needs context)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def skill_execute(
     ctx: RunContext[AgentDeps],
     skill_name: str,
@@ -477,6 +502,7 @@ def skill_execute(
     sm = ctx.deps.skill_manager
     if not sm:
         from suzent.skills import get_skill_manager
+
         sm = get_skill_manager()
 
     tool = SkillTool(skill_manager=sm)
@@ -486,6 +512,7 @@ def skill_execute(
 # ═══════════════════════════════════════════════════════════════════════════
 # 12. SocialMessageTool → social_message  (needs context + HITL)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 async def social_message(
     ctx: RunContext[AgentDeps],
@@ -504,7 +531,11 @@ async def social_message(
     """
     # Only require approval for actual sends, not listing contacts
     if not list_contacts and message:
-        if not await _require_approval(ctx, "social_message", {"message": message, "channel": channel, "recipient": recipient}):
+        if not await _require_approval(
+            ctx,
+            "social_message",
+            {"message": message, "channel": channel, "recipient": recipient},
+        ):
             return "[Tool execution denied by user.]"
 
     from suzent.tools.social_message_tool import SocialMessageTool
@@ -547,6 +578,7 @@ async def social_message(
 # 13. SpeakTool → speak  (no context needed)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def speak(
     text: str,
     prompt: Optional[str] = None,
@@ -566,6 +598,7 @@ def speak(
 # ═══════════════════════════════════════════════════════════════════════════
 # 14. MemorySearchTool → memory_search  (needs context)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 async def memory_search(
     ctx: RunContext[AgentDeps],
@@ -595,6 +628,7 @@ async def memory_search(
 # ═══════════════════════════════════════════════════════════════════════════
 # 15. MemoryBlockUpdateTool → memory_block_update  (needs context)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 async def memory_block_update(
     ctx: RunContext[AgentDeps],

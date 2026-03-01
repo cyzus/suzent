@@ -215,7 +215,9 @@ class PlanningTool(Tool):
             new_phases.append(
                 Phase(
                     number=phase_number,
-                    description=p.get("title", p.get("description", f"Phase {phase_number}")),
+                    description=p.get(
+                        "title", p.get("description", f"Phase {phase_number}")
+                    ),
                     capabilities=p.get("capabilities", {}),
                 )
             )

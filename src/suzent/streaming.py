@@ -19,14 +19,7 @@ from typing import Optional, Dict, Any, AsyncGenerator
 
 from pydantic_ai import (
     Agent,
-    FinalResultEvent,
-    FunctionToolCallEvent,
-    FunctionToolResultEvent,
-    PartDeltaEvent,
-    PartStartEvent,
-    TextPartDelta,
 )
-from pydantic_ai.run import AgentRunResultEvent
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from pydantic_ai.ui.vercel_ai.request_types import SubmitMessage
 
@@ -146,19 +139,25 @@ async def stream_agent_responses(
             while not plan_queue.empty():
                 try:
                     snapshot = plan_queue.get_nowait()
-                    data_json = json.dumps({"type": "data-plan_refresh", "data": snapshot})
-                    await out_queue.put(("chunk", f'data: {data_json}\n\n'))
+                    data_json = json.dumps(
+                        {"type": "data-plan_refresh", "data": snapshot}
+                    )
+                    await out_queue.put(("chunk", f"data: {data_json}\n\n"))
                 except asyncio.QueueEmpty:
                     break
-                    
+
             try:
                 msg = await asyncio.wait_for(sse_queue.get(), timeout=0.1)
                 msg_type, payload = msg
-                
+
                 if msg_type == "event":
                     # Track history manually for cancellation recovery
                     try:
-                        from pydantic_ai.messages import RunRequestEvent, RunResponseEvent
+                        from pydantic_ai.messages import (
+                            RunRequestEvent,
+                            RunResponseEvent,
+                        )
+
                         if isinstance(payload, RunRequestEvent):
                             partial_history.append(payload.request)
                         elif isinstance(payload, RunResponseEvent):
@@ -168,6 +167,7 @@ async def stream_agent_responses(
 
                     # AgentRunResultEvent: final result with all messages
                     from pydantic_ai.run import AgentRunResultEvent
+
                     if isinstance(payload, AgentRunResultEvent):
                         try:
                             agent._last_messages = payload.result.all_messages()  # type: ignore[attr-defined]
@@ -179,31 +179,38 @@ async def stream_agent_responses(
                 elif msg_type == "approval":
                     # HITL: emit as native Vercel AI tool-approval-request chunk
                     # The SDK recognizes this type and sets ToolInvocationUIPart.state = 'approval-requested'
-                    approval_chunk = json.dumps({
-                        "type": "tool-approval-request",
-                        "approvalId": payload["request_id"],
-                        "toolCallId": payload.get("tool_call_id") or payload["request_id"],
-                    })
-                    await out_queue.put(("chunk", f'data: {approval_chunk}\n\n'))
+                    approval_chunk = json.dumps(
+                        {
+                            "type": "tool-approval-request",
+                            "approvalId": payload["request_id"],
+                            "toolCallId": payload.get("tool_call_id")
+                            or payload["request_id"],
+                        }
+                    )
+                    await out_queue.put(("chunk", f"data: {approval_chunk}\n\n"))
                     # Also emit tool args + name as a data-* part so the approval UI
                     # can display what tool is being requested
-                    approval_data = json.dumps({
-                        "type": "data-tool_approval_info",
-                        "data": {
-                            "approvalId": payload["request_id"],
-                            "toolName": payload.get("tool_name", ""),
-                            "args": payload.get("args", {}),
-                            "chatId": chat_id,
-                        },
-                    })
-                    await out_queue.put(("chunk", f'data: {approval_data}\n\n'))
-                    
+                    approval_data = json.dumps(
+                        {
+                            "type": "data-tool_approval_info",
+                            "data": {
+                                "approvalId": payload["request_id"],
+                                "toolName": payload.get("tool_name", ""),
+                                "args": payload.get("args", {}),
+                                "chatId": chat_id,
+                            },
+                        }
+                    )
+                    await out_queue.put(("chunk", f"data: {approval_data}\n\n"))
+
                 elif msg_type == "done":
                     break
-                    
+
                 elif msg_type == "error":
-                    error_json = json.dumps({"type": "error", "errorText": str(payload)})
-                    await out_queue.put(("chunk", f'data: {error_json}\n\n'))
+                    error_json = json.dumps(
+                        {"type": "error", "errorText": str(payload)}
+                    )
+                    await out_queue.put(("chunk", f"data: {error_json}\n\n"))
                     break
 
             except asyncio.TimeoutError:
@@ -214,7 +221,7 @@ async def stream_agent_responses(
     async def encode_worker():
         try:
             # We must pass a valid SubmitMessage object when using sdk_version=6
-            # because VercelAIAdapter checks `run_input.messages` to extract 
+            # because VercelAIAdapter checks `run_input.messages` to extract
             # client-side tool approvals. Since Suzent handles approvals separately,
             # we just provide a dummy empty message list.
             dummy_input = SubmitMessage(id="dummy", messages=[])
@@ -226,7 +233,7 @@ async def stream_agent_responses(
                 await out_queue.put(("chunk", chunk))
         except Exception as e:
             error_json = json.dumps({"type": "error", "errorText": str(e)})
-            await out_queue.put(("chunk", f'data: {error_json}\n\n'))
+            await out_queue.put(("chunk", f"data: {error_json}\n\n"))
         finally:
             await out_queue.put(("done", None))
 
@@ -241,7 +248,7 @@ async def stream_agent_responses(
                     yield 'data: {"type": "error", "errorText": "Stream stopped by user"}\n\n'
                     break
                 continue
-                
+
             msg_type, payload = msg
             if msg_type == "chunk":
                 yield payload
@@ -250,14 +257,16 @@ async def stream_agent_responses(
 
         # --- After stream completes ---
         if not control.cancel_event.is_set() and chat_id:
-            data_json = json.dumps({"type": "data-plan_refresh", "data": _plan_snapshot(chat_id)})
-            yield f'data: {data_json}\n\n'
+            data_json = json.dumps(
+                {"type": "data-plan_refresh", "data": _plan_snapshot(chat_id)}
+            )
+            yield f"data: {data_json}\n\n"
 
     except Exception as e:
         if not control.cancel_event.is_set():
             logger.error(f"Streaming error: {e}\n{traceback.format_exc()}")
             error_json = json.dumps({"type": "error", "errorText": str(e)})
-            yield f'data: {error_json}\n\n'
+            yield f"data: {error_json}\n\n"
 
     finally:
         # Cancel background tasks
@@ -339,6 +348,8 @@ def resolve_tool_approval(
     # Update session policy if requested
     tool_name = req.get("tool_name", "")
     if remember == "session" and tool_name:
-        deps.tool_approval_policy[tool_name] = "always_allow" if approved else "always_deny"
+        deps.tool_approval_policy[tool_name] = (
+            "always_allow" if approved else "always_deny"
+        )
 
     return True

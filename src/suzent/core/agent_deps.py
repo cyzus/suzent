@@ -40,6 +40,10 @@ class AgentDeps:
 
     # --- Human-in-the-loop (HITL) ---
     sse_queue: Any = None  # asyncio.Queue — tools push approval requests here
-    pending_approvals: dict = field(default_factory=dict)  # request_id → {event, approved, remember}
-    tool_approval_policy: dict = field(default_factory=dict)  # tool_name → "always_allow" | "always_deny"
+    pending_approvals: dict = field(
+        default_factory=dict
+    )  # request_id → {event, approved, remember}
+    tool_approval_policy: dict = field(
+        default_factory=dict
+    )  # tool_name → "always_allow" | "always_deny"
     cancel_event: Any = None  # asyncio.Event — set when stream is cancelled

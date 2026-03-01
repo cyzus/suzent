@@ -109,15 +109,13 @@ async def chat(request: Request) -> StreamingResponse:
                     if json_str == "[DONE]":
                         continue
                     event_data = json.loads(json_str)
-                    
+
                     msg_type = event_data.get("type")
                     if msg_type == "text-delta":
                         full_response += event_data.get("delta", "")
                     elif msg_type == "error":
                         error_msg = event_data.get("errorText", "Unknown error")
-                        return JSONResponse(
-                            {"error": error_msg}, status_code=500
-                        )
+                        return JSONResponse({"error": error_msg}, status_code=500)
             except Exception:
                 pass
 

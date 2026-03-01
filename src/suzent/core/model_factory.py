@@ -102,7 +102,9 @@ def create_pydantic_ai_model(model_id: str) -> Union[str, object]:
             provider = AnthropicProvider(api_key=api_key)
             logger.debug(f"Mapped {model_id} → AnthropicModel({model_name})")
             return AnthropicModel(model_name, provider=provider)
-        logger.warning(f"No API key for Anthropic; falling back to LiteLLM for {model_id}")
+        logger.warning(
+            f"No API key for Anthropic; falling back to LiteLLM for {model_id}"
+        )
 
     # --- Groq ---
     elif model_id.startswith("groq/"):
