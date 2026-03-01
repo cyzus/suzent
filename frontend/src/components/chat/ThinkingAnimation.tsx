@@ -123,7 +123,7 @@ interface AgentBadgeProps {
 
 const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
   isThinking,
-  isStreaming
+  isStreaming,
 }) => {
   // Determine variant based on state
   const [baseVariant, setBaseVariant] = useState<RobotVariant>(() => selectWeightedVariant(BADGE_WEIGHTS));
@@ -159,7 +159,7 @@ const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
       transition-opacity duration-500 delay-200
       ${isThinking ? 'opacity-0 pointer-events-none' : 'opacity-100'}
     `}>
-      <div className="w-8 h-8">
+      <div className="w-8 h-8 shrink-0">
         <RobotAvatar variant={variant} />
       </div>
     </div>

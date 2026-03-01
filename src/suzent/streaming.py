@@ -170,6 +170,20 @@ async def stream_agent_responses(
 
                     if isinstance(payload, AgentRunResultEvent):
                         try:
+                            # Extract usage data
+                            usage = payload.result.usage()
+                            usage_data = {
+                                "input_tokens": usage.request_tokens,
+                                "output_tokens": usage.response_tokens,
+                                "total_tokens": usage.total_tokens,
+                                "details": usage.details,
+                            }
+                            # Push usage update to out_queue
+                            usage_chunk = json.dumps(
+                                {"type": "data-usage_update", "data": usage_data}
+                            )
+                            await out_queue.put(("chunk", f"data: {usage_chunk}\n\n"))
+
                             agent._last_messages = payload.result.all_messages()  # type: ignore[attr-defined]
                         except Exception:
                             agent._last_messages = []

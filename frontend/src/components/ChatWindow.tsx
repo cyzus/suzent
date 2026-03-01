@@ -52,11 +52,22 @@ function getToolName(part: any): string {
   return 'unknown';
 }
 
-function uiMessageToStoreMessage(uiMsg: UIMessage): Message {
+function formatUsage(usage: any): string {
+  if (!usage) return '';
+  const fmt = (n: number) => n.toLocaleString();
+  return `Input: ${fmt(usage.input_tokens)} | Output: ${fmt(usage.output_tokens)} | Total: ${fmt(usage.total_tokens)}`;
+}
+
+function uiMessageToStoreMessage(uiMsg: UIMessage, usage?: any): Message {
   let content = '';
   for (const part of uiMsg.parts) {
     if (part.type === 'text') {
       content += part.text;
+    } else if (part.type === 'reasoning') {
+      const reasoningText = (part as any).text || (part as any).reasoning || '';
+      if (reasoningText) {
+        content += `\n\n<details data-reasoning="true"><summary>💭 Thinking</summary>\n\n${reasoningText}\n\n</details>\n\n`;
+      }
     } else if (isToolUIPart(part)) {
       const toolPart = part as any;
       const toolName = getToolName(toolPart);
@@ -77,7 +88,7 @@ function uiMessageToStoreMessage(uiMsg: UIMessage): Message {
     }
     // Ignore step-start, reasoning, source, file, data-* parts
   }
-  return { role: 'assistant', content };
+  return { role: 'assistant', content, stepInfo: usage ? formatUsage(usage) : undefined };
 }
 
 // Drag overlay component
@@ -225,6 +236,15 @@ const MessageList: React.FC<{
                         />
                       );
                     }
+                    if (b.type === 'reasoning' && b.content.trim()) {
+                      return (
+                        <div key={`group-${idx}-${bi}`} className="pl-4 pr-6 py-1">
+                          <span className="text-xs italic text-neutral-500 font-medium opacity-80 leading-snug">
+                            {b.content.trim()}
+                          </span>
+                        </div>
+                      );
+                    }
                     return null;
                   })}
                 </div>
@@ -313,6 +333,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [viewingFile, setViewingFile] = useState<{ path: string; name: string } | null>(null);
   const [sidebarFilePreview, setSidebarFilePreview] = useState<{ path: string; name: string } | null>(null);
+  const [currentUsage, setCurrentUsage] = useState<any>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const stopInFlightRef = useRef(false);
 
@@ -335,12 +356,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     transport: transportRef.current.transport,
     onFinish: ({ message: assistantMsg }) => {
       const chatId = activeChatIdRef.current;
-      const storeMsg = uiMessageToStoreMessage(assistantMsg);
+      const storeMsg = uiMessageToStoreMessage(assistantMsg, currentUsage);
       if (storeMsg.content.trim()) {
         addMessage(storeMsg, chatId);
       }
       setIsStreaming(false, chatId);
       setUseChatMessages([]);
+      setCurrentUsage(null);
       setTimeout(async () => {
         try { await forceSaveNow(chatId); } catch { }
       }, 200);
@@ -350,6 +372,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (dataPart.type === 'data-plan_refresh') {
         applyPlanSnapshot(dataPart.data);
         refreshPlan(activeChatIdRef.current);
+      } else if (dataPart.type === 'data-usage_update') {
+        setCurrentUsage(dataPart.data);
       }
     },
     onError: (error) => {
@@ -360,6 +384,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   });
 
   // HITL: tool approval handler (uses SDK state + REST unblock)
+
   const handleToolApproval = useCallback(async (
     approvalId: string,
     _toolCallId: string,
@@ -469,6 +494,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (resetFlag) consumeResetFlag();
     setInput('');
     clearFiles();
+    setCurrentUsage(null);
 
     // Add user message to store for display + persistence
     addMessage({
@@ -643,6 +669,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                           onFileClick={handleFileClick}
                           uiParts={streamingAssistant?.parts}
                           onToolApproval={handleToolApproval}
+                          usage={currentUsage}
                         />
                       </div>
                     </div>

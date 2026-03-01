@@ -1,6 +1,6 @@
 
 export interface ContentBlock {
-  type: 'markdown' | 'code' | 'log' | 'toolCall' | 'codeStep';
+  type: 'markdown' | 'code' | 'log' | 'toolCall' | 'codeStep' | 'reasoning';
   content: string;
   lang?: string;
   title?: string;
@@ -61,7 +61,10 @@ export function isToolOnlyContent(content: string | undefined): boolean {
 /** Check if message is an intermediate step (tool-only) — not user-facing content.
  *  If stepInfo is provided, it's a definitive signal the message is an intermediate step. */
 export function isIntermediateStepContent(content: string | undefined, stepInfo?: string): boolean {
-  if (stepInfo) return true;
+  // If no content is provided, but stepInfo exists, it's definitively intermediate
+  if (!content?.trim()) {
+    return !!stepInfo;
+  }
   return isToolOnlyContent(content);
 }
 
@@ -70,38 +73,50 @@ export function isIntermediateStepContent(content: string | undefined, stepInfo?
 export function splitAssistantContent(content: string): ContentBlock[] {
   const blocks: ContentBlock[] = [];
 
-  // Regex to find <details> blocks (logs and tool calls stored as logs)
-  // Updated to tolerate whitespaces and newlines inside tags (e.g., from Gemini's markdown output)
-  const logRegex = /<details(?:\s+data-tool-call-id="([^"]*)")?\s*>\s*<summary>\s*(.*?)\s*<\/summary>\s*<pre><code(?:\s+class="language-[^"]*")?\s*>([\s\S]*?)<\/code><\/pre>\s*<\/details>/g;
+  // Regex to find <details> blocks (logs, tool calls, and now reasoning)
+  const detailsRegex = /<details(?:\s+data-tool-call-id="([^"]*)")?(?:\s+data-reasoning="([^"]*)")?\s*>\s*<summary>\s*(.*?)\s*<\/summary>\s*(?:<pre><code(?:\s+class="language-[^"]*")?\s*>([\s\S]*?)<\/code><\/pre>|([\s\S]*?))\s*<\/details>/g;
 
   let lastIndex = 0;
   let match;
 
   // First pass: split by log/details blocks
-  const splits: { type: 'markdown' | 'log'; content: string; title?: string; toolCallId?: string }[] = [];
+  const splits: { type: 'markdown' | 'log' | 'reasoning'; content: string; title?: string; toolCallId?: string }[] = [];
 
-  while ((match = logRegex.exec(content)) !== null) {
+  while ((match = detailsRegex.exec(content)) !== null) {
     const before = content.slice(lastIndex, match.index);
-    if (before) {
+    if (before && before.trim().length > 0) {
       splits.push({ type: 'markdown', content: before });
     }
 
-    // Decode HTML entities in content for display
-    const rawContent = match[3]
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#039;/g, "'");
+    const toolCallId = match[1];
+    const isReasoning = match[2] === 'true';
+    const title = match[3];
+    const codeContent = match[4];
+    const rawContent = match[5];
 
-    splits.push({
-      type: 'log',
-      toolCallId: match[1],
-      title: match[2],
-      content: rawContent
-    });
+    if (isReasoning) {
+      splits.push({
+        type: 'reasoning',
+        content: (rawContent || '').trim()
+      });
+    } else {
+      // Decode HTML entities in content for display
+      const decodedContent = (codeContent || '')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#039;/g, "'");
 
-    lastIndex = logRegex.lastIndex;
+      splits.push({
+        type: 'log',
+        toolCallId,
+        title,
+        content: decodedContent
+      });
+    }
+
+    lastIndex = detailsRegex.lastIndex;
   }
 
   const remaining = content.slice(lastIndex);

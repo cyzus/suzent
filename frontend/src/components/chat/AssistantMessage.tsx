@@ -16,6 +16,8 @@ interface AssistantMessageProps {
   isStreaming: boolean;
   isLastMessage: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
+  /** Streaming usage data */
+  usage?: any;
   /** When provided, renders from UIMessage.parts instead of legacy HTML parsing */
   uiParts?: any[];
   /** HITL approval handler: (approvalId, toolCallId, approved, remember?) */
@@ -250,7 +252,6 @@ function isToolPart(part: any): boolean {
 /** Extract the tool name from either a dynamic or static tool part. */
 function getToolPartName(part: any): string {
   if (part.type === 'dynamic-tool') return part.toolName || 'unknown';
-  // Static: type is "tool-<name>" — strip the "tool-" prefix
   if (typeof part.type === 'string' && part.type.startsWith('tool-')) {
     return part.type.slice(5) || 'unknown';
   }
@@ -259,8 +260,34 @@ function getToolPartName(part: any): string {
 
 /** Check if a part is "visible content" (text or tool) vs structural/data */
 function isContentPart(part: any): boolean {
-  return part.type === 'text' || isToolPart(part);
+  if (!part) return false;
+  return part.type === 'text' ||
+    part.type === 'reasoning' ||
+    part.type === 'thought' ||
+    part.type === 'thought-delta' ||
+    part.type === 'reasoning-delta' ||
+    part.type === 'tool-invocation' ||
+    part.type === 'tool-result' ||
+    part.type === 'dynamic-tool-result' ||
+    part.type.startsWith('tool-') ||
+    part.type.startsWith('dynamic-tool');
 }
+
+const MetricsBadge: React.FC<{ usage?: any; stepInfo?: string }> = ({ usage, stepInfo }) => {
+  const info = usage
+    ? `Input: ${usage.input_tokens.toLocaleString()} | Output: ${usage.output_tokens.toLocaleString()} | Total: ${usage.total_tokens.toLocaleString()}`
+    : stepInfo;
+
+  if (!info) return null;
+
+  return (
+    <div className="flex justify-start w-full mt-2 pl-1">
+      <div className="inline-flex items-center gap-2 text-[10px] text-brutal-black font-mono font-bold px-3 py-1 bg-neutral-100 border-2 border-brutal-black shadow-sm select-none">
+        <span>{info}</span>
+      </div>
+    </div>
+  );
+};
 
 const PartsBasedContent: React.FC<{
   parts: any[];
@@ -268,33 +295,40 @@ const PartsBasedContent: React.FC<{
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
   onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null) => void;
 }> = ({ parts, messageIndex, onFileClick, onToolApproval }) => {
-  // Separate parts into chunks: contiguous text vs tool groups
-  const chunks: { isTool: boolean; items: any[] }[] = [];
+  // Separate parts into chunks: contiguous text vs tool groups vs reasoning
+  const chunks: { type: 'tool' | 'reasoning' | 'text'; items: any[] }[] = [];
   let current: any[] = [];
-  let currentIsTool = false;
+  let currentType: 'tool' | 'reasoning' | 'text' | null = null;
 
   for (const part of parts) {
     const isTool = isToolPart(part);
-    // Ignore step-start, data-*, reasoning, and other non-content parts
+    const isReasoning = part.type === 'reasoning';
+    // Ignore step-start, data-*, and other non-content parts
     if (!isContentPart(part)) continue;
 
+    const type = isTool ? 'tool' : isReasoning ? 'reasoning' : 'text';
+
     if (current.length === 0) {
-      currentIsTool = isTool;
+      currentType = type;
       current.push(part);
-    } else if (currentIsTool === isTool) {
+    } else if (currentType === type) {
       current.push(part);
     } else {
-      chunks.push({ isTool: currentIsTool, items: current });
-      currentIsTool = isTool;
+      if (currentType) {
+        chunks.push({ type: currentType, items: current });
+      }
+      currentType = type;
       current = [part];
     }
   }
-  if (current.length > 0) chunks.push({ isTool: currentIsTool, items: current });
+  if (current.length > 0 && currentType) {
+    chunks.push({ type: currentType, items: current });
+  }
 
   return (
     <>
       {chunks.map((chunk, ci) => {
-        if (chunk.isTool) {
+        if (chunk.type === 'tool') {
           const tools = chunk.items.map((tp, ti) => {
             const toolName = getToolPartName(tp);
             const argsStr = tp.input != null
@@ -332,6 +366,19 @@ const PartsBasedContent: React.FC<{
             </div>
           );
         }
+
+        if (chunk.type === 'reasoning') {
+          const reasoningText = chunk.items.map((p: any) => p.text || p.reasoning || p.delta || p.content || '').join('');
+          if (!reasoningText.trim()) return null;
+          return (
+            <div key={ci} className="pl-4 pr-6 py-2">
+              <span className="text-xs italic text-neutral-500 font-medium opacity-80 leading-snug">
+                {reasoningText}
+              </span>
+            </div>
+          );
+        }
+
         // Text chunk
         const fullText = chunk.items.map((p: any) => p.text || '').join('');
         const isLastChunk = ci === chunks.length - 1;
@@ -363,6 +410,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   onFileClick,
   uiParts,
   onToolApproval,
+  usage,
 }) => {
   const isStreamingThis = isStreaming && isLastMessage;
   // Only count visible content parts (text or tool) — not structural parts like step-start, data-*, etc.
@@ -393,8 +441,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
           border-3 border-brutal-black shadow-brutal-lg overflow-hidden relative
           transition-all duration-700 ease-out mb-3
           ${isThinking
-            ? 'w-[400px] h-[80px] bg-white left-1/2 -translate-x-1/2'
-            : 'w-[90px] h-[40px] bg-white left-0 translate-x-0'
+            ? 'w-[400px] h-[80px] bg-white mx-auto'
+            : 'w-[90px] h-[40px] bg-white ml-0 mr-auto'
           }
         `}>
           <ThinkingAnimation isThinking={isThinking} />
@@ -411,6 +459,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                 onToolApproval={onToolApproval}
               />
             ) : null}
+            <MetricsBadge usage={usage} />
           </div>
         </div>
       </div>
@@ -449,14 +498,17 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
 
   for (const b of blocks) {
     const isStep = b.type === 'toolCall';
+    const isReasoning = b.type === 'reasoning';
+    const isSpecial = isStep || isReasoning;
+
     if (currentGroup.length === 0) {
-      currentIsStep = isStep;
+      currentIsStep = isSpecial;
       currentGroup.push(b);
-    } else if (currentIsStep === isStep) {
+    } else if (currentIsStep === isSpecial) {
       currentGroup.push(b);
     } else {
       chunks.push({ isStep: currentIsStep, blocks: currentGroup });
-      currentIsStep = isStep;
+      currentIsStep = isSpecial;
       currentGroup = [b];
     }
   }
@@ -483,8 +535,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
         border-3 border-brutal-black shadow-brutal-lg overflow-hidden relative
         transition-all duration-700 ease-out mb-3
         ${isThinking
-          ? 'w-[400px] h-[80px] bg-white left-1/2 -translate-x-1/2'
-          : 'w-[90px] h-[40px] bg-white left-0 translate-x-0'
+          ? 'w-[400px] h-[80px] bg-white mx-auto'
+          : 'w-[90px] h-[40px] bg-white ml-0 mr-auto'
         }
       `}>
         <ThinkingAnimation isThinking={isThinking} />
@@ -498,9 +550,22 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
         <div className="overflow-hidden min-h-0 flex flex-col space-y-3">
           {validChunks.map((chunk, idx) => {
             if (chunk.isStep) {
+              const rBlocks = chunk.blocks.filter(b => b.type === 'reasoning');
+              const tBlocks = chunk.blocks.filter(b => b.type === 'toolCall');
               return (
-                <div key={idx} className="pl-1">
-                  <StepPills blocks={chunk.blocks} messageIndex={messageIndex} />
+                <div key={idx} className="flex flex-col space-y-2">
+                  {rBlocks.map((rb, ri) => (
+                    <div key={`rb-${idx}-${ri}`} className="pl-4 pr-6 py-1">
+                      <span className="text-xs italic text-neutral-500 font-medium opacity-80 leading-snug">
+                        {rb.content}
+                      </span>
+                    </div>
+                  ))}
+                  {tBlocks.length > 0 && (
+                    <div className="pl-1">
+                      <StepPills blocks={tBlocks} messageIndex={messageIndex} />
+                    </div>
+                  )}
                 </div>
               );
             }
@@ -534,6 +599,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               </div>
             );
           })}
+          <MetricsBadge stepInfo={message.stepInfo} />
         </div>
       </div>
     </div>
