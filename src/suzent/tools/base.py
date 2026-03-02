@@ -1,25 +1,23 @@
 """
-Lightweight Tool base class replacing smolagents.tools.Tool.
+Lightweight Tool base class for pydantic-ai integration.
 
-This provides just enough interface for the existing tool classes to
-continue working when instantiated by the tool functions in tool_functions.py.
-pydantic-ai does not use this class directly — it uses the function wrappers.
+Each Tool subclass defines a ``forward()`` method with typed parameters
+that pydantic-ai uses directly for JSON schema generation.  The registry
+auto-wraps ``forward()`` as a pydantic-ai tool function.
 """
 
 
 class Tool:
-    """Minimal base class for tool implementations.
+    """Base class for tool implementations.
 
-    Provides the same interface that existing tool classes expect from
-    smolagents.tools.Tool: class attributes (name, description, inputs,
-    output_type) and a forward() method.
+    Subclasses set class attributes and implement ``forward()``.
+    The registry reads ``name``, ``tool_name``, and ``requires_approval``
+    to build the pydantic-ai tool list.
     """
 
-    name: str = ""
-    description: str = ""
-    inputs: dict = {}
-    output_type: str = "string"
-    is_initialized: bool = False
+    name: str = ""  # Registry key (e.g., "ReadFileTool")
+    tool_name: str = ""  # pydantic-ai function name (e.g., "read_file")
+    requires_approval: bool = False
 
     def __init__(self, *args, **kwargs):
         pass

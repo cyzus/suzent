@@ -448,38 +448,8 @@ class BrowserSessionManager:
 
 
 class BrowsingTool(Tool):
-    name = "browsing_tool"
-    description = """Browser Tool
-    
-    Optimal Workflow:
-    1. 'open' <url>: Navigate to page.
-    2. 'snapshot -i': Returns interactive elements with refs (e.g., @e1, @e2).
-    3. 'click @e1' or 'fill @e1 "text"': Interact using the refs.
-    
-    Commands:
-    - open <url>: Navigate to a URL.
-    - snapshot [-i]: Get structural snapshot of page. -i for interactive only (recommended).
-    - click <selector|ref>: Click element (e.g. click @e1).
-    - fill <selector|ref> <text>: Fill input (e.g. fill @e1 "hello").
-    - scroll: Scroll down.
-    - back / forward / refresh: Navigation.
-    - screenshot: Take a screenshot.
-    - start_stream: (Internal) Start video stream.
-    - click_coords <x> <y>: Click specific coordinates.
-    """
-    inputs = {
-        "command": {
-            "type": "string",
-            "description": "The command to execute (e.g., open, snapshot, click).",
-        },
-        "arguments": {
-            "type": "array",
-            "description": "Optional arguments for the command (e.g., url, selector).",
-            "nullable": True,
-            "items": {"type": "string"},
-        },
-    }
-    output_type = "string"
+    name = "BrowsingTool"
+    tool_name = "browser_action"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -558,4 +528,12 @@ class BrowsingTool(Tool):
         return f"Unknown command {command}"
 
     def forward(self, command: str, arguments: list = None) -> str:
+        """Control a browser session to navigate and interact with web pages.
+
+        Optimal workflow: open <url>, then snapshot to get element refs, then click/fill using refs.
+
+        Args:
+            command: The command to execute (open, snapshot, click, fill, scroll, back, forward, refresh, click_coords).
+            arguments: Optional arguments for the command (e.g., url, selector, text).
+        """
         return asyncio.run(self._execute(command, arguments))

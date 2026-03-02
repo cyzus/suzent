@@ -4,6 +4,9 @@ GlobTool - Find files matching a pattern.
 
 from typing import Optional
 
+from pydantic_ai import RunContext
+
+from suzent.core.agent_deps import AgentDeps
 from suzent.tools.base import Tool
 
 from suzent.logger import get_logger
@@ -18,53 +21,40 @@ class GlobTool(Tool):
     """
 
     name = "GlobTool"
-    description = """Find files matching a glob pattern.
-
-Patterns:
-- *.py - All Python files in current directory
-- **/*.py - All Python files recursively
-- data/*.csv - CSV files in data/ folder
-- **/*.{js,ts} - All JS and TS files (use multiple patterns)
-
-Examples:
-- GlobTool(pattern="**/*.py")
-- GlobTool(pattern="*.csv", path="/persistence/data")
-"""
-
-    inputs = {
-        "pattern": {
-            "type": "string",
-            "description": "Glob pattern (e.g., **/*.py, *.csv)",
-        },
-        "path": {
-            "type": "string",
-            "description": "Directory to search in (default: working directory)",
-            "nullable": True,
-        },
-    }
-    output_type = "string"
+    tool_name = "glob_search"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._resolver: Optional[PathResolver] = None
 
-    def set_context(self, resolver: PathResolver) -> None:
-        """Set the path resolver context."""
-        self._resolver = resolver
+    def forward(self, ctx: RunContext[AgentDeps], pattern: str, path: Optional[str] = None) -> str:
+        """Find files matching a glob pattern.
 
-    def forward(self, pattern: str, path: Optional[str] = None) -> str:
-        """
-        Find files matching a pattern.
+        Searches for files matching the given glob pattern in the specified directory
+        (or working directory if not specified). Supports patterns like *.py, **/*.py,
+        data/*.csv, etc.
 
         Args:
-            pattern: Glob pattern
-            path: Base directory to search
+            ctx: The run context with agent dependencies.
+            pattern: Glob pattern to match (e.g., '**/*.py', '*.csv').
+            path: Directory to search in (default: working directory).
 
         Returns:
-            List of matching files, or error message
+            List of matching file paths, or a message if no matches found.
         """
-        if not self._resolver:
-            return "Error: GlobTool not initialized. No resolver context."
+        deps = ctx.deps
+        if deps.path_resolver:
+            self._resolver = deps.path_resolver
+        else:
+            from suzent.tools.path_resolver import PathResolver
+            from suzent.config import CONFIG
+            self._resolver = PathResolver(
+                deps.chat_id, deps.sandbox_enabled,
+                sandbox_data_path=CONFIG.sandbox_data_path,
+                custom_volumes=deps.custom_volumes,
+                workspace_root=deps.workspace_root,
+            )
+            deps.path_resolver = self._resolver
 
         try:
             # Use unified finder from resolver

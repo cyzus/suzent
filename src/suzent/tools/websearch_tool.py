@@ -29,8 +29,7 @@ class WebSearchTool(Tool):
     """
 
     name: str = "WebSearchTool"
-    description: str = "Performs a web search using either SearXNG or DDGS. Returns search results formatted as markdown with titles, links, and descriptions."
-    is_initialized: bool = False
+    tool_name: str = "web_search"
 
     # Constants
     TIME_RANGE_MAPPING = {
@@ -43,33 +42,6 @@ class WebSearchTool(Tool):
         "year": "y",
         "y": "y",
     }
-
-    inputs = {
-        "query": {"type": "string", "description": "The search query string."},
-        "categories": {
-            "type": "string",
-            "description": "Search category",
-            "enum": ["general", "news", "images", "videos"],
-            "nullable": True,
-        },
-        "max_results": {
-            "type": "integer",
-            "description": "Maximum number of results to return. Default: 10.",
-            "nullable": True,
-        },
-        "time_range": {
-            "type": "string",
-            "description": "Time range for general/news search.",
-            "enum": ["day", "week", "month", "year"],
-            "nullable": True,
-        },
-        "page": {
-            "type": "integer",
-            "description": "Page number for results (default: 1). General search only.",
-            "nullable": True,
-        },
-    }
-    output_type = "string"
 
     def __init__(self):
         """Initialize the tool by checking for SearXNG configuration."""
@@ -118,8 +90,14 @@ class WebSearchTool(Tool):
         time_range: Optional[str] = None,
         page: Optional[int] = 1,
     ) -> str:
-        """
-        Perform a web search using either SearXNG or the default search tool.
+        """Perform a web search using SearXNG or DuckDuckGo.
+
+        Args:
+            query: The search query string.
+            categories: Search category (general, news, images, videos).
+            max_results: Maximum number of results to return (default 10, max 20).
+            time_range: Time range filter (day, week, month, year).
+            page: Page number for pagination (default 1).
         """
         if self.use_searxng:
             return await self._search_with_searxng(

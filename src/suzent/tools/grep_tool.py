@@ -6,6 +6,9 @@ import re
 from pathlib import Path
 from typing import Optional, List, Tuple
 
+from pydantic_ai import RunContext
+
+from suzent.core.agent_deps import AgentDeps
 from suzent.tools.base import Tool
 
 from suzent.logger import get_logger
@@ -20,70 +23,51 @@ class GrepTool(Tool):
     """
 
     name = "GrepTool"
-    description = """Search file contents with regex patterns.
-
-Examples:
-- GrepTool(pattern="def.*:", path="/persistence") - Find function definitions
-- GrepTool(pattern="TODO", include="*.py") - Find TODOs in Python files
-- GrepTool(pattern="error", case_insensitive=True, context_lines=2)
-"""
-
-    inputs = {
-        "pattern": {"type": "string", "description": "Regex pattern to search for"},
-        "path": {
-            "type": "string",
-            "description": "File or directory to search (default: working directory)",
-            "nullable": True,
-        },
-        "include": {
-            "type": "string",
-            "description": "Filter files by glob pattern (e.g., *.py, *.{js,ts})",
-            "nullable": True,
-        },
-        "case_insensitive": {
-            "type": "boolean",
-            "description": "Case insensitive search",
-            "nullable": True,
-        },
-        "context_lines": {
-            "type": "integer",
-            "description": "Number of lines to show before and after each match",
-            "nullable": True,
-        },
-    }
-    output_type = "string"
+    tool_name = "grep_search"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._resolver: Optional[PathResolver] = None
 
-    def set_context(self, resolver: PathResolver) -> None:
-        """Set the path resolver context."""
-        self._resolver = resolver
-
     def forward(
         self,
+        ctx: RunContext[AgentDeps],
         pattern: str,
         path: Optional[str] = None,
         include: Optional[str] = None,
         case_insensitive: Optional[bool] = None,
         context_lines: Optional[int] = None,
     ) -> str:
-        """
-        Search file contents.
+        """Search file contents using a regex pattern.
+
+        Searches through files for lines matching the given regular expression. Supports
+        filtering by file type, case-insensitive matching, and showing context lines around
+        matches.
 
         Args:
-            pattern: Regex pattern
-            path: File or directory to search
-            include: Filter files by glob pattern
-            case_insensitive: Case insensitive search
-            context_lines: Lines of context around matches
+            ctx: The run context with agent dependencies.
+            pattern: Regex pattern to search for.
+            path: File or directory to search in (default: working directory).
+            include: Filter files by glob pattern (e.g., '*.py', '*.{js,ts}').
+            case_insensitive: If True, perform case-insensitive search.
+            context_lines: Number of lines to show before and after each match.
 
         Returns:
-            Matching lines with file info, or error message
+            Matching lines grouped by file, or a message if no matches found.
         """
-        if not self._resolver:
-            return "Error: GrepTool not initialized. No resolver context."
+        deps = ctx.deps
+        if deps.path_resolver:
+            self._resolver = deps.path_resolver
+        else:
+            from suzent.tools.path_resolver import PathResolver
+            from suzent.config import CONFIG
+            self._resolver = PathResolver(
+                deps.chat_id, deps.sandbox_enabled,
+                sandbox_data_path=CONFIG.sandbox_data_path,
+                custom_volumes=deps.custom_volumes,
+                workspace_root=deps.workspace_root,
+            )
+            deps.path_resolver = self._resolver
 
         try:
             # Compile regex
@@ -102,7 +86,7 @@ Examples:
             # Search files
             results: List[Tuple[str, int, str]] = []  # (file, line_num, content)
             files_with_matches = 0
-            ctx = context_lines or 0
+            ctx_lines = context_lines or 0
 
             for file_path, v_path in found_files:
                 if len(results) >= 1000:  # Global safety limit
@@ -112,7 +96,7 @@ Examples:
                     continue
 
                 try:
-                    matches = self._search_file(file_path, regex, ctx)
+                    matches = self._search_file(file_path, regex, ctx_lines)
                     if matches:
                         files_with_matches += 1
                         # Return host path in host mode, virtual path in sandbox mode

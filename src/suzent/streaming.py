@@ -6,14 +6,13 @@ using Server-Sent Events (SSE), including:
 - Async streaming via pydantic-ai's run_stream_events()
 - Tool call and result events streamed in real time
 - Text deltas assembled from PartStartEvent / PartDeltaEvent
-- Human-in-the-loop (HITL) tool approval via queue-based architecture
+- Human-in-the-loop (HITL) tool approval via pydantic-ai deferred tools
 - Event formatting compatible with the AG-UI protocol
 - Plan watching and updates
 - Cooperative cancellation
 """
 
 import asyncio
-import json
 import traceback
 import uuid
 from typing import Optional, Dict, Any, AsyncGenerator
@@ -21,6 +20,8 @@ from typing import Optional, Dict, Any, AsyncGenerator
 from pydantic_ai import (
     Agent,
 )
+from pydantic_ai.run import AgentRunResultEvent
+from pydantic_ai.tools import DeferredToolRequests, DeferredToolResults
 from pydantic_ai.ui.ag_ui._event_stream import AGUIEventStream
 from ag_ui.core import RunAgentInput, CustomEvent, RunErrorEvent
 from ag_ui.encoder import EventEncoder
@@ -67,8 +68,116 @@ def _plan_snapshot(chat_id: Optional[str] = None) -> dict:
         return {"objective": "", "phases": []}
 
 
+def _safe_args_preview(args: Any, max_len: int = 500) -> dict:
+    """Truncate large arg values for the approval dialog."""
+    if not isinstance(args, dict):
+        return {}
+    preview = {}
+    for k, v in args.items():
+        if v is None:
+            continue
+        s = str(v)
+        preview[k] = (s[:max_len] + "\u2026") if len(s) > max_len else s
+    return preview
+
+
+async def _collect_approvals(
+    deps: AgentDeps,
+    approvals: list,
+    sse_queue: asyncio.Queue,
+    cancel_event: asyncio.Event,
+    chat_id: Optional[str],
+) -> Optional[DeferredToolResults]:
+    """Emit approval requests, collect user responses, return DeferredToolResults.
+
+    Returns None if cancelled during the wait.
+    """
+    results: Dict[str, Any] = {}
+
+    for tc in approvals:
+        # Check session policy first
+        policy = deps.tool_approval_policy.get(tc.tool_name)
+        if policy == "always_allow":
+            results[tc.tool_call_id] = True
+            continue
+        if policy == "always_deny":
+            results[tc.tool_call_id] = False
+            continue
+
+        # Need user approval — register pending and emit SSE event
+        evt = asyncio.Event()
+        deps.pending_approvals[tc.tool_call_id] = {
+            "event": evt,
+            "approved": None,
+            "tool_name": tc.tool_name,
+        }
+
+        # Get args as dict for preview
+        try:
+            args_dict = tc.args if isinstance(tc.args, dict) else {}
+        except Exception:
+            args_dict = {}
+
+        await sse_queue.put(
+            (
+                "approval",
+                {
+                    "request_id": tc.tool_call_id,
+                    "tool_name": tc.tool_name,
+                    "tool_call_id": tc.tool_call_id,
+                    "args": _safe_args_preview(args_dict),
+                },
+            )
+        )
+
+    # Wait for all pending user approvals
+    for tc_id in list(deps.pending_approvals.keys()):
+        if tc_id in results:
+            continue  # already resolved by policy
+
+        data = deps.pending_approvals.get(tc_id)
+        if not data:
+            continue
+
+        # Wait for this approval or cancellation
+        approval_evt = data["event"]
+        cancel_task = asyncio.create_task(cancel_event.wait())
+        approval_task = asyncio.create_task(approval_evt.wait())
+        done, pending = await asyncio.wait(
+            [cancel_task, approval_task],
+            timeout=300,  # 5 min timeout
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for t in pending:
+            t.cancel()
+
+        if cancel_event.is_set():
+            deps.pending_approvals.clear()
+            return None
+
+        # Timed out
+        if not approval_evt.is_set():
+            results[tc_id] = False
+            continue
+
+        result = deps.pending_approvals.get(tc_id, {})
+        approved = bool(result.get("approved"))
+        results[tc_id] = approved
+
+        # Handle "remember" for session policy
+        remember = result.get("remember")
+        tool_name = result.get("tool_name", "")
+        if remember == "session" and tool_name:
+            deps.tool_approval_policy[tool_name] = (
+                "always_allow" if approved else "always_deny"
+            )
+
+    deps.pending_approvals.clear()
+    return DeferredToolResults(approvals=results)
+
+
 async def stream_agent_responses(
-    agent: Agent[AgentDeps, str],
+    agent: Agent,
     message: str | list,
     deps: AgentDeps,
     message_history: list | None = None,
@@ -78,8 +187,9 @@ async def stream_agent_responses(
     Runs the pydantic-ai agent with streaming and yields AG-UI formatted events.
 
     Uses a queue-based architecture: the agent runs in a background task so
-    the generator can yield both regular events and HITL approval requests
-    even while a tool is blocked waiting for user approval.
+    the generator can yield both regular events and HITL approval requests.
+    HITL is handled via pydantic-ai native deferred tools — the agent run
+    stops when approval is needed and restarts after the user responds.
 
     Yields:
         Server-sent event strings in AG-UI protocol format (data: {json}\n\n)
@@ -90,7 +200,6 @@ async def stream_agent_responses(
 
     # Wire HITL fields into deps
     sse_queue: asyncio.Queue = asyncio.Queue()
-    deps.sse_queue = sse_queue
     deps.cancel_event = control.cancel_event
     if chat_id:
         active_deps[chat_id] = deps
@@ -123,24 +232,59 @@ async def stream_agent_responses(
 
     out_queue: asyncio.Queue = asyncio.Queue()
 
-    # --- Background agent runner ---
+    # --- Background agent runner with deferred-tool loop ---
     async def _agent_runner():
-        """Run the agent in a background task, pushing events to the queue."""
-        try:
-            run_kwargs: Dict[str, Any] = {"deps": deps}
-            if message_history:
-                run_kwargs["message_history"] = message_history
+        """Run the agent in a background task, looping for deferred tool approvals."""
+        prompt = message
+        history = list(message_history) if message_history else None
+        deferred_results = None
 
+        try:
             async with agent:  # MCP server context management
-                async for event in agent.run_stream_events(message, **run_kwargs):
-                    if control.cancel_event.is_set():
-                        break
-                    logger.debug(f"[Streaming] Received event from agent: {type(event).__name__}")
-                    if hasattr(event, "part"):
-                        logger.debug(f"[Streaming]   Part kind: {getattr(event.part, 'part_kind', 'N/A')}")
-                    if hasattr(event, "delta"):
-                        logger.debug(f"[Streaming]   Delta type: {type(event.delta).__name__}")
-                    await sse_queue.put(("event", event))
+                while not control.cancel_event.is_set():
+                    run_kwargs: Dict[str, Any] = {"deps": deps}
+                    if history:
+                        run_kwargs["message_history"] = history
+                    if deferred_results:
+                        run_kwargs["deferred_tool_results"] = deferred_results
+
+                    last_result_event = None
+                    async for event in agent.run_stream_events(
+                        prompt, **run_kwargs
+                    ):
+                        if control.cancel_event.is_set():
+                            break
+                        logger.debug(
+                            f"[Streaming] Received event from agent: {type(event).__name__}"
+                        )
+                        if isinstance(event, AgentRunResultEvent):
+                            last_result_event = event
+                        await sse_queue.put(("event", event))
+
+                    # Check if deferred tools need approval
+                    if (
+                        last_result_event
+                        and isinstance(
+                            last_result_event.result.output, DeferredToolRequests
+                        )
+                    ):
+                        deferred = last_result_event.result.output
+                        if deferred.approvals:
+                            deferred_results = await _collect_approvals(
+                                deps,
+                                deferred.approvals,
+                                sse_queue,
+                                control.cancel_event,
+                                chat_id,
+                            )
+                            if deferred_results is None:
+                                break  # cancelled
+                            history = last_result_event.result.all_messages()
+                            prompt = None  # no new user prompt on resume
+                            continue
+
+                    break  # normal completion
+
         except Exception as e:
             await sse_queue.put(("error", e))
         finally:
@@ -181,8 +325,6 @@ async def stream_agent_responses(
                         pass
 
                     # AgentRunResultEvent: final result with all messages
-                    from pydantic_ai.run import AgentRunResultEvent
-
                     if isinstance(payload, AgentRunResultEvent):
                         try:
                             # Extract usage data
@@ -350,7 +492,14 @@ def resolve_tool_approval(
     approved: bool,
     remember: Optional[str] = None,
 ) -> bool:
-    """Resolve a pending tool approval request."""
+    """Resolve a pending tool approval request.
+
+    Args:
+        chat_id: The chat session identifier.
+        request_id: The tool_call_id from the approval request.
+        approved: Whether the user approved the tool execution.
+        remember: Optional "session" to remember the decision.
+    """
     deps = active_deps.get(chat_id)
     if not deps:
         return False
@@ -364,12 +513,5 @@ def resolve_tool_approval(
     evt = req.get("event")
     if evt:
         evt.set()
-
-    # Update session policy if requested
-    tool_name = req.get("tool_name", "")
-    if remember == "session" and tool_name:
-        deps.tool_approval_policy[tool_name] = (
-            "always_allow" if approved else "always_deny"
-        )
 
     return True

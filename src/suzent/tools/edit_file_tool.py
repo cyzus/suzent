@@ -4,10 +4,12 @@ EditFileTool - Make precise string replacements in files.
 
 from typing import Optional
 
+from pydantic_ai import RunContext
+
+from suzent.core.agent_deps import AgentDeps
 from suzent.tools.base import Tool
 
 from suzent.logger import get_logger
-from suzent.tools.path_resolver import PathResolver
 
 logger = get_logger(__name__)
 
@@ -18,68 +20,51 @@ class EditFileTool(Tool):
     """
 
     name = "EditFileTool"
-    description = """Make exact string replacements in files.
-
-Use this for precise edits. The old_string must match exactly (including whitespace).
-
-For complete file rewrites, use WriteFileTool instead.
-
-Examples:
-- EditFileTool(file_path="script.py", old_string="def foo():", new_string="def bar():")
-- EditFileTool(file_path="config.json", old_string='"debug": false', new_string='"debug": true')
-- EditFileTool(file_path="data.txt", old_string="old", new_string="new", replace_all=True)
-"""
-
-    inputs = {
-        "file_path": {"type": "string", "description": "Path to the file to edit"},
-        "old_string": {
-            "type": "string",
-            "description": "Exact text to replace (must match exactly)",
-        },
-        "new_string": {"type": "string", "description": "Replacement text"},
-        "replace_all": {
-            "type": "boolean",
-            "description": "Replace all occurrences (default: False, replaces first only)",
-            "nullable": True,
-        },
-    }
-    output_type = "string"
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._resolver: Optional[PathResolver] = None
-
-    def set_context(self, resolver: PathResolver) -> None:
-        """Set the path resolver context."""
-        self._resolver = resolver
+    tool_name = "edit_file"
+    requires_approval = True
 
     def forward(
         self,
+        ctx: RunContext[AgentDeps],
         file_path: str,
         old_string: str,
         new_string: str,
         replace_all: Optional[bool] = None,
     ) -> str:
-        """
-        Replace text in a file.
+        """Make exact string replacements in a file.
+
+        Use this for precise edits. The old_string must match exactly (including whitespace
+        and indentation). For complete file rewrites, use the write_file tool instead.
 
         Args:
-            file_path: Path to the file
-            old_string: Text to replace
-            new_string: Replacement text
-            replace_all: Replace all occurrences (default: False)
+            ctx: The run context with agent dependencies.
+            file_path: Path to the file to edit.
+            old_string: Exact text to find and replace (must match exactly).
+            new_string: Replacement text.
+            replace_all: If True, replace all occurrences. Default is False (replaces first only).
 
         Returns:
-            Success message with replacement count, or error
+            Success message with replacement count, or error.
         """
-        if not self._resolver:
-            return "Error: EditFileTool not initialized. No resolver context."
+        deps = ctx.deps
+        if deps.path_resolver:
+            resolver = deps.path_resolver
+        else:
+            from suzent.tools.path_resolver import PathResolver
+            from suzent.config import CONFIG
+            resolver = PathResolver(
+                deps.chat_id, deps.sandbox_enabled,
+                sandbox_data_path=CONFIG.sandbox_data_path,
+                custom_volumes=deps.custom_volumes,
+                workspace_root=deps.workspace_root,
+            )
+            deps.path_resolver = resolver
 
         replace_all = replace_all or False
 
         try:
             # Resolve the path
-            resolved_path = self._resolver.resolve(file_path)
+            resolved_path = resolver.resolve(file_path)
 
             # Check if file exists
             if not resolved_path.exists():

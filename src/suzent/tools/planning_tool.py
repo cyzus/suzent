@@ -1,12 +1,14 @@
 """
 This module provides a unified tool for creating and managing a plan.
 
-The tool is inspired by the smolagents style, providing a single class to interact
-with the plan. It supports creating a plan, checking its status, and updating steps.
+The tool provides a single class to interact with the plan.
+It supports creating a plan, checking its status, and updating steps.
 """
 
 from typing import Optional
 
+from pydantic_ai import RunContext
+from suzent.core.agent_deps import AgentDeps
 from suzent.tools.base import Tool
 
 from suzent.logger import get_logger
@@ -27,83 +29,51 @@ class PlanningTool(Tool):
     A tool that should be actively used to solve complex tasks or problems.
     """
 
-    description: str = "A tool for managing a plan to do a complex task or problem."
     name: str = "PlanningTool"
-    is_initialized: bool = False
-    # Forward signature includes non-LLM exposed kwargs (e.g., chat_id), so skip strict validation.
-    skip_forward_signature_validation = True
+    tool_name: str = "planning_update"
 
     def __init__(self):
         self._current_chat_id = None
         self._migrated_temp_plan = False
 
-    def set_chat_context(self, chat_id: str):
-        """Set the current chat context for this tool instance."""
-        self._current_chat_id = chat_id
-        if (
-            chat_id
-            and chat_id != "planning_session_temp"
-            and not self._migrated_temp_plan
-        ):
-            try:
-                db = get_database()
-                migrated = db.reassign_plan_chat("planning_session_temp", chat_id)
-                if migrated:
-                    logger.info(
-                        f"Migrated {migrated} temporary plan(s) to chat {chat_id}"
-                    )
-                self._migrated_temp_plan = True
-            except Exception as exc:
-                logger.error(f"Failed migrating temporary plan to {chat_id}: {exc}")
-
-    inputs = {
-        "action": {
-            "type": "string",
-            "description": "The operation to perform.",
-            "enum": ["update", "advance"],
-        },
-        "goal": {
-            "type": "string",
-            "description": "A concise high-level goal for the plan. Required for 'update' if creating a new plan or changing goal.",
-            "nullable": True,
-        },
-        "phases": {
-            "type": "array",
-            "description": "A list of phases with id, title, and capabilities (a dictionary of capability_name: capability_description). Required for 'update'.",
-            "nullable": True,
-            "items": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "integer"},
-                    "title": {"type": "string"},
-                    "capabilities": {"type": "object"},
-                },
-                "required": ["id", "title"],
-            },
-        },
-        "current_phase_id": {
-            "type": "integer",
-            "description": "The ID of the phase currently finishing. Required for 'advance'.",
-            "nullable": True,
-        },
-        "next_phase_id": {
-            "type": "integer",
-            "description": "The ID of the next phase to start. Required for 'advance'.",
-            "nullable": True,
-        },
-    }
-    output_type = "string"
-
     def forward(
         self,
+        ctx: RunContext[AgentDeps],
         action: str,
         goal: Optional[str] = None,
         phases: Optional[list[Phase]] = None,
         current_phase_id: Optional[int] = None,
         next_phase_id: Optional[int] = None,
-        chat_id: Optional[str] = None,
     ) -> str:
-        """Manages a project plan."""
+        """Manage a project plan for complex tasks.
+
+        Supports two actions:
+        - 'update': Create or update a plan with phases. Requires 'phases' (list of
+          objects with id, title, and optional capabilities dict). Optionally accepts
+          'goal' for the high-level objective.
+        - 'advance': Move the plan from one phase to the next. Requires
+          'current_phase_id' and 'next_phase_id'.
+
+        Args:
+            ctx: The pydantic-ai run context with agent dependencies.
+            action: The operation to perform: 'update' or 'advance'.
+            goal: A concise high-level goal for the plan. Required for 'update' if creating a new plan or changing goal.
+            phases: A list of phases with id, title, and capabilities. Required for 'update'.
+            current_phase_id: The ID of the phase currently finishing. Required for 'advance'.
+            next_phase_id: The ID of the next phase to start. Required for 'advance'.
+        """
+        # Extract chat_id from deps and run migration logic
+        self._current_chat_id = ctx.deps.chat_id
+        if self._current_chat_id and self._current_chat_id != "planning_session_temp" and not self._migrated_temp_plan:
+            try:
+                db = get_database()
+                migrated = db.reassign_plan_chat("planning_session_temp", self._current_chat_id)
+                if migrated:
+                    logger.info(f"Migrated {migrated} temporary plan(s) to chat {self._current_chat_id}")
+                self._migrated_temp_plan = True
+            except Exception as exc:
+                logger.error(f"Failed migrating temporary plan to {self._current_chat_id}: {exc}")
+
         action_map = {
             "update": self._update_plan,
             "advance": self._advance_plan,
@@ -114,8 +84,8 @@ class PlanningTool(Tool):
                 "Invalid action", f"Must be one of: {', '.join(action_map.keys())}"
             )
 
-        # Resolve chat_id (context takes priority)
-        chat_id = self._resolve_chat_id(chat_id)
+        # Resolve chat_id
+        chat_id = self._resolve_chat_id()
         if not chat_id:
             return self._format_error(
                 "Missing chat_id",
@@ -137,15 +107,12 @@ class PlanningTool(Tool):
 
         return action_map[action](*args[action])
 
-    def _resolve_chat_id(self, provided_chat_id: Optional[str]) -> Optional[str]:
-        """Resolve the chat_id, prioritizing context over provided value."""
+    def _resolve_chat_id(self) -> Optional[str]:
+        """Resolve the chat_id from context."""
         context_chat_id = getattr(self, "_current_chat_id", None)
         if context_chat_id:
             logger.debug(f"Using context chat_id: {context_chat_id}")
             return context_chat_id
-        if provided_chat_id:
-            logger.debug(f"Using provided chat_id: {provided_chat_id}")
-            return provided_chat_id
         return None
 
     def _validate_action_args(

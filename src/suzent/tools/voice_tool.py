@@ -11,25 +11,20 @@ logger = get_logger(__name__)
 
 
 class SpeakTool(Tool):
-    name = "speak_tool"
-    description = "Speaks the given text using text-to-speech."
-    inputs = {
-        "text": {"type": "string", "description": "The text to speak."},
-        "prompt": {
-            "type": "string",
-            "description": "Describe the emotion and tone of the speech.",
-            "nullable": True,
-        },
-    }
-    output_type = "string"
-    is_initialized = False
+    name = "SpeakTool"
+    tool_name = "speak"
 
     def __init__(self):
         self._sink = None
         self._speech = None
 
     def forward(self, text: str, prompt: str = "") -> str:
-        """Speaks the text."""
+        """Speak the given text aloud using text-to-speech.
+
+        Args:
+            text: The text to speak.
+            prompt: Describe the emotion and tone of the speech.
+        """
         if not text:
             return "No text to speak."
 

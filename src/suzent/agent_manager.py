@@ -13,6 +13,7 @@ from typing import Optional, Dict, Any, List
 
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPServerStdio, MCPServerStreamableHTTP
+from pydantic_ai.tools import DeferredToolRequests
 
 from suzent.core.agent_deps import AgentDeps
 from suzent.core.model_factory import create_pydantic_ai_model
@@ -212,7 +213,7 @@ def create_agent(
         tools=tool_functions,
         toolsets=mcp_servers if mcp_servers else [],
         instructions=instructions,
-        output_type=str,
+        output_type=[str, DeferredToolRequests],
     )
 
     # Store metadata for later introspection

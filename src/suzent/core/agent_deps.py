@@ -39,10 +39,9 @@ class AgentDeps:
     skill_manager: Any = None  # SkillManager instance
 
     # --- Human-in-the-loop (HITL) ---
-    sse_queue: Any = None  # asyncio.Queue — tools push approval requests here
     pending_approvals: dict = field(
         default_factory=dict
-    )  # request_id → {event, approved, remember}
+    )  # tool_call_id → {event, approved, tool_name}
     tool_approval_policy: dict = field(
         default_factory=dict
     )  # tool_name → "always_allow" | "always_deny"

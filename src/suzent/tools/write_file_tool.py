@@ -2,12 +2,12 @@
 WriteFileTool - Create or overwrite files.
 """
 
-from typing import Optional
+from pydantic_ai import RunContext
 
+from suzent.core.agent_deps import AgentDeps
 from suzent.tools.base import Tool
 
 from suzent.logger import get_logger
-from suzent.tools.path_resolver import PathResolver
 
 logger = get_logger(__name__)
 
@@ -18,46 +18,40 @@ class WriteFileTool(Tool):
     """
 
     name = "WriteFileTool"
-    description = """Create or overwrite a file with the specified content.
+    tool_name = "write_file"
+    requires_approval = True
 
-WARNING: This will completely overwrite existing files. For precise edits, use EditFileTool.
+    def forward(self, ctx: RunContext[AgentDeps], file_path: str, content: str) -> str:
+        """Create or overwrite a file with the specified content.
 
-Examples:
-- WriteFileTool(file_path="/persistence/output.txt", content="Hello World")
-- WriteFileTool(file_path="script.py", content="print('hello')")
-"""
-
-    inputs = {
-        "file_path": {"type": "string", "description": "Path to the file to write"},
-        "content": {"type": "string", "description": "Content to write to the file"},
-    }
-    output_type = "string"
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._resolver: Optional[PathResolver] = None
-
-    def set_context(self, resolver: PathResolver) -> None:
-        """Set the path resolver context."""
-        self._resolver = resolver
-
-    def forward(self, file_path: str, content: str) -> str:
-        """
-        Write content to a file.
+        WARNING: This will completely overwrite existing files. For precise edits, use the
+        edit_file tool instead.
 
         Args:
-            file_path: Path to the file
-            content: Content to write
+            ctx: The run context with agent dependencies.
+            file_path: Path to the file to write.
+            content: Content to write to the file.
 
         Returns:
-            Success message or error
+            Success message or error.
         """
-        if not self._resolver:
-            return "Error: WriteFileTool not initialized. No resolver context."
+        deps = ctx.deps
+        if deps.path_resolver:
+            resolver = deps.path_resolver
+        else:
+            from suzent.tools.path_resolver import PathResolver
+            from suzent.config import CONFIG
+            resolver = PathResolver(
+                deps.chat_id, deps.sandbox_enabled,
+                sandbox_data_path=CONFIG.sandbox_data_path,
+                custom_volumes=deps.custom_volumes,
+                workspace_root=deps.workspace_root,
+            )
+            deps.path_resolver = resolver
 
         try:
             # Resolve the path
-            resolved_path = self._resolver.resolve(file_path)
+            resolved_path = resolver.resolve(file_path)
 
             # Create parent directories if needed
             resolved_path.parent.mkdir(parents=True, exist_ok=True)

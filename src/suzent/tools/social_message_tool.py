@@ -8,6 +8,8 @@ social platform (Telegram, Slack, Discord, Feishu) while working on a task.
 import asyncio
 from typing import Optional
 
+from pydantic_ai import RunContext
+from suzent.core.agent_deps import AgentDeps
 from suzent.tools.base import Tool
 
 from suzent.logger import get_logger
@@ -25,34 +27,8 @@ PLATFORM_CHAR_LIMITS = {
 
 class SocialMessageTool(Tool):
     name = "SocialMessageTool"
-    description = (
-        "Send a message to a social platform, or list known contacts.\n"
-        "Call with list_contacts=true to discover available channels and recipient IDs before sending."
-    )
-
-    inputs = {
-        "message": {
-            "type": "string",
-            "description": "The text message to send. Ignored when list_contacts is true.",
-            "nullable": True,
-        },
-        "channel": {
-            "type": "string",
-            "description": "Platform name (telegram/slack/discord/feishu). Defaults to current social channel if in social mode.",
-            "nullable": True,
-        },
-        "recipient": {
-            "type": "string",
-            "description": "Recipient/chat ID. Defaults to current conversation partner if in social mode.",
-            "nullable": True,
-        },
-        "list_contacts": {
-            "type": "boolean",
-            "description": "Set to true to list available channels and known contacts instead of sending a message.",
-            "nullable": True,
-        },
-    }
-    output_type = "string"
+    tool_name = "social_message"
+    requires_approval = True
 
     def __init__(self):
         super().__init__()
@@ -60,38 +36,6 @@ class SocialMessageTool(Tool):
         self._event_loop = None
         self._default_platform: Optional[str] = None
         self._default_target: Optional[str] = None
-
-    def set_social_context(
-        self,
-        channel_manager,
-        event_loop: asyncio.AbstractEventLoop,
-        default_platform: Optional[str] = None,
-        default_target: Optional[str] = None,
-    ):
-        """
-        Inject runtime social context into the tool.
-
-        Args:
-            channel_manager: ChannelManager instance for sending messages.
-            event_loop: The main asyncio event loop for sync-to-async bridging.
-            default_platform: Pre-filled platform from incoming social message.
-            default_target: Pre-filled recipient from incoming social message.
-        """
-        self._channel_manager = channel_manager
-        self._event_loop = event_loop
-        self._default_platform = default_platform
-        self._default_target = default_target
-
-        # Update description with context-aware defaults
-        configured = list(channel_manager.channels.keys()) if channel_manager else []
-        default_info = default_platform or "none (specify channel param)"
-        channels_info = ", ".join(configured) if configured else "none configured"
-        self.description = (
-            f"Send a message to a social platform, or list known contacts.\n"
-            f"Default channel: {default_info}\n"
-            f"Available channels: {channels_info}\n"
-            f"Call with list_contacts=true to discover recipient IDs before sending."
-        )
 
     def _list_contacts(self, platform_filter: Optional[str] = None) -> str:
         """Return available channels and known contacts from recent social chats."""
@@ -164,11 +108,41 @@ class SocialMessageTool(Tool):
 
     def forward(
         self,
+        ctx: RunContext[AgentDeps],
         message: Optional[str] = None,
         channel: Optional[str] = None,
         recipient: Optional[str] = None,
         list_contacts: Optional[bool] = None,
     ) -> str:
+        """Send a message to a social platform, or list known contacts.
+
+        Call with list_contacts=true to discover available channels and
+        recipient IDs before sending a message.
+
+        Args:
+            ctx: The pydantic-ai run context with agent dependencies.
+            message: The text message to send. Ignored when list_contacts is true.
+            channel: Platform name (telegram/slack/discord/feishu). Defaults to current social channel if in social mode.
+            recipient: Recipient/chat ID. Defaults to current conversation partner if in social mode.
+            list_contacts: Set to true to list available channels and known contacts instead of sending a message.
+        """
+        # Extract social context from deps
+        deps = ctx.deps
+        self._channel_manager = deps.channel_manager
+        self._event_loop = deps.event_loop
+        self._default_platform = deps.social_context.get("platform")
+        self._default_target = deps.social_context.get("target_id")
+
+        if not self._channel_manager:
+            from suzent.core.social_brain import get_active_social_brain
+            brain = get_active_social_brain()
+            if brain:
+                self._channel_manager = brain.channel_manager
+                try:
+                    self._event_loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    self._event_loop = None
+
         if list_contacts:
             return self._list_contacts(platform_filter=channel)
 

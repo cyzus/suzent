@@ -2,12 +2,13 @@
 Memory tools exposed to agents.
 """
 
-from suzent.tools.base import Tool
+from typing import Optional
 from datetime import datetime
 
+from pydantic_ai import RunContext
+from suzent.core.agent_deps import AgentDeps
+from suzent.tools.base import Tool
 from suzent.logger import get_logger
-from suzent.config import CONFIG
-from .manager import MemoryManager
 
 logger = get_logger(__name__)
 
@@ -17,55 +18,28 @@ class MemorySearchTool(Tool):
     Search long-term archival memory for relevant information.
     """
 
-    name = "memory_search"
-    description = """Search your long-term archival memory for relevant information.
+    name = "MemorySearchTool"
+    tool_name = "memory_search"
 
-Use this to recall facts, preferences, or information you learned in past conversations.
-The search uses semantic similarity to find relevant memories even if the exact words differ.
-
-Args:
-    query: What to search for in memory (use natural language)
-    limit: Maximum number of results to return (default: 10)
-
-Returns:
-    Formatted list of relevant memories with metadata
-"""
-
-    inputs = {
-        "query": {
-            "type": "string",
-            "description": "What to search for in memory (use natural language)",
-        },
-        "limit": {
-            "type": "number",
-            "description": "Maximum number of results to return (default: 10)",
-            "nullable": True,
-        },
-    }
-
-    output_type = "string"
-
-    def __init__(self, memory_manager: MemoryManager):
+    def __init__(self):
         super().__init__()
-        self.memory_manager = memory_manager
-        self._user_id = CONFIG.user_id
-        self._chat_id = None
-        # Main event loop reference will be injected by agent_manager
-        self._main_loop = None
 
-    def set_context(self, chat_id: str = None, user_id: str = "default"):
-        """Set chat and user context for this tool instance."""
-        self._chat_id = chat_id
-        self._user_id = user_id
+    async def forward(self, ctx: RunContext[AgentDeps], query: str, limit: int = 10) -> str:
+        """Search long-term archival memory for relevant information.
 
-    async def forward_async(self, query: str, limit: int = 10) -> str:
-        """Execute memory search."""
+        Uses semantic similarity to find relevant memories even if the exact words differ.
+
+        Args:
+            query: What to search for in memory (use natural language).
+            limit: Maximum number of results to return (default 10).
+        """
+        mm = ctx.deps.memory_manager
+        if not mm:
+            return "Memory system not available."
+        user_id = ctx.deps.user_id
+
         try:
-            # Get user_id from context (would come from agent context in real implementation)
-            user_id = getattr(self, "_user_id", CONFIG.user_id)
-            # chat_id = getattr(self, '_chat_id', None)
-
-            memories = await self.memory_manager.search_memories(
+            memories = await mm.search_memories(
                 query=query,
                 limit=limit,
                 chat_id=None,  # Always search user-level memories
@@ -115,109 +89,58 @@ Returns:
             logger.error(f"Memory search failed: {e}")
             return f"Error searching memories: {str(e)}"
 
-    def forward(self, query: str, limit: int = 10) -> str:
-        """Synchronous wrapper for async forward - runs in main event loop."""
-        import asyncio
-
-        # If we have a reference to the main loop, use it (thread-safe)
-        if self._main_loop and self._main_loop.is_running():
-            future = asyncio.run_coroutine_threadsafe(
-                self.forward_async(query, limit), self._main_loop
-            )
-            return future.result(timeout=30)  # 30 second timeout
-
-        # Fallback: run in new loop (for testing/standalone use)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self.forward_async(query, limit))
-        finally:
-            loop.close()
-            asyncio.set_event_loop(None)
-
 
 class MemoryBlockUpdateTool(Tool):
     """
     Update core memory blocks that are always visible in context.
     """
 
-    name = "memory_block_update"
-    description = """Update your core memory blocks that are always visible in your context.
+    name = "MemoryBlockUpdateTool"
+    tool_name = "memory_block_update"
 
-Core memory blocks:
-- **persona**: Your identity, role, capabilities, and preferences
-- **user**: Information about the current user (name, preferences, context)
-- **facts**: Key facts you should always remember
-- **context**: Current session context (active tasks, goals, constraints)
-
-Use this to maintain up-to-date information in your "working memory" that you need
-to reference frequently without searching.
-
-Args:
-    block: Which block to update ('persona', 'user', 'facts', or 'context')
-    operation: Operation to perform ('replace', 'append', or 'search_replace')
-    content: New content or content to append
-    search_pattern: For search_replace: the text pattern to find and replace (optional)
-
-Returns:
-    Success or error message
-"""
-
-    inputs = {
-        "block": {
-            "type": "string",
-            "description": "Which block to update: 'persona', 'user', 'facts', or 'context'",
-        },
-        "operation": {
-            "type": "string",
-            "description": "Operation: 'replace' (full rewrite), 'append' (add to end), or 'search_replace' (find and replace)",
-        },
-        "content": {
-            "type": "string",
-            "description": "New content or content to append",
-        },
-        "search_pattern": {
-            "type": "string",
-            "description": "For search_replace operation: the text pattern to find and replace",
-            "nullable": True,
-        },
-    }
-
-    output_type = "string"
-
-    def __init__(self, memory_manager: MemoryManager):
+    def __init__(self):
         super().__init__()
-        self.memory_manager = memory_manager
-        self._user_id = CONFIG.user_id
-        self._chat_id = None
-        # Main event loop reference will be injected by agent_manager
-        self._main_loop = None
 
-    def set_context(self, chat_id: str = None, user_id: str = "default"):
-        """Set chat and user context for this tool instance."""
-        self._chat_id = chat_id
-        self._user_id = user_id
-
-    async def forward_async(
-        self, block: str, operation: str, content: str, search_pattern: str = None
+    async def forward(
+        self,
+        ctx: RunContext[AgentDeps],
+        block: str,
+        operation: str,
+        content: str,
+        search_pattern: Optional[str] = None,
     ) -> str:
-        """Execute memory block update."""
+        """Update core memory blocks that are always visible in your context.
+
+        Core memory blocks:
+        - persona: Your identity, role, capabilities, and preferences
+        - user: Information about the current user (name, preferences, context)
+        - facts: Key facts you should always remember
+        - context: Current session context (active tasks, goals, constraints)
+
+        Args:
+            block: Which block to update ('persona', 'user', 'facts', or 'context').
+            operation: Operation to perform ('replace', 'append', or 'search_replace').
+            content: New content or content to append.
+            search_pattern: For search_replace: the text pattern to find and replace.
+        """
+        mm = ctx.deps.memory_manager
+        if not mm:
+            return "Memory system not available."
+        user_id = ctx.deps.user_id
+        chat_id = ctx.deps.chat_id
+
         try:
             # Validate block name
             valid_blocks = ["persona", "user", "facts", "context"]
             if block not in valid_blocks:
                 return f"Error: Invalid block '{block}'. Must be one of: {', '.join(valid_blocks)}"
 
-            # Get context
-            user_id = getattr(self, "_user_id", CONFIG.user_id)
-            chat_id = getattr(self, "_chat_id", None)
-
             # Decide scope: 'context' is chat-specific, others are user-level
             # This ensures persona/user/facts persist across all conversations
             update_chat_id = chat_id if block == "context" else None
 
             # Get current content (read from chat-specific or user-level)
-            current_blocks = await self.memory_manager.get_core_memory(
+            current_blocks = await mm.get_core_memory(
                 chat_id=chat_id,  # Read prioritizes chat-specific
                 user_id=user_id,
             )
@@ -245,7 +168,7 @@ Returns:
                 return f"Error: Unknown operation '{operation}'. Use 'replace', 'append', or 'search_replace'"
 
             # Update the block (write to user-level for persistence, except 'context')
-            success = await self.memory_manager.update_memory_block(
+            success = await mm.update_memory_block(
                 label=block,
                 content=new_content,
                 chat_id=update_chat_id,  # None for persona/user/facts, chat_id for context
@@ -263,28 +186,3 @@ Returns:
         except Exception as e:
             logger.error(f"Memory block update failed: {e}")
             return f"Error updating memory block: {str(e)}"
-
-    def forward(
-        self, block: str, operation: str, content: str, search_pattern: str = None
-    ) -> str:
-        """Synchronous wrapper for async forward - runs in main event loop."""
-        import asyncio
-
-        # If we have a reference to the main loop, use it (thread-safe)
-        if self._main_loop and self._main_loop.is_running():
-            future = asyncio.run_coroutine_threadsafe(
-                self.forward_async(block, operation, content, search_pattern),
-                self._main_loop,
-            )
-            return future.result(timeout=30)  # 30 second timeout
-
-        # Fallback: run in new loop (for testing/standalone use)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(
-                self.forward_async(block, operation, content, search_pattern)
-            )
-        finally:
-            loop.close()
-            asyncio.set_event_loop(None)

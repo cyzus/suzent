@@ -8,6 +8,9 @@ Supports reading text files directly and converting various file formats
 from pathlib import Path
 from typing import Optional
 
+from pydantic_ai import RunContext
+
+from suzent.core.agent_deps import AgentDeps
 from suzent.tools.base import Tool
 from suzent.logger import get_logger
 from suzent.tools.path_resolver import PathResolver
@@ -27,64 +30,51 @@ class ReadFileTool(Tool):
     """
 
     name = "ReadFileTool"
-    description = """Read file content from the filesystem.
-
-Supports various file formats:
-- Text files: .txt, .py, .js, .json, .md, .csv, etc.
-- Documents: .pdf, .docx, .xlsx, .pptx (converted to markdown)
-- Images: .jpg, .png (OCR text extraction)
-
-Use 'offset' and 'limit' for reading portions of large files.
-
-Examples:
-- ReadFileTool(file_path="/persistence/data.csv")
-- ReadFileTool(file_path="report.pdf", offset=10, limit=50)
-"""
-
-    inputs = {
-        "file_path": {"type": "string", "description": "Path to the file to read"},
-        "offset": {
-            "type": "integer",
-            "description": "Line number to start from (0-indexed)",
-            "nullable": True,
-        },
-        "limit": {
-            "type": "integer",
-            "description": "Number of lines to read (omit for all)",
-            "nullable": True,
-        },
-    }
-    output_type = "string"
+    tool_name = "read_file"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._resolver: Optional[PathResolver] = None
         self._converter = None
 
-    def set_context(self, resolver: PathResolver) -> None:
-        """Set the path resolver context."""
-        self._resolver = resolver
-
     def forward(
-        self, file_path: str, offset: Optional[int] = None, limit: Optional[int] = None
+        self,
+        ctx: RunContext[AgentDeps],
+        file_path: str,
+        offset: Optional[int] = None,
+        limit: Optional[int] = None,
     ) -> str:
-        """
-        Read file contents.
+        """Read file content from the filesystem.
+
+        Supports various file formats including text files (.txt, .py, .js, .json, .md, .csv, etc.),
+        documents (.pdf, .docx, .xlsx, .pptx converted to markdown), and images (.jpg, .png with
+        OCR text extraction). Use 'offset' and 'limit' for reading portions of large files.
 
         Args:
-            file_path: Path to the file
-            offset: Starting line number (0-indexed)
-            limit: Number of lines to read
+            ctx: The run context with agent dependencies.
+            file_path: Path to the file to read.
+            offset: Line number to start from (0-indexed).
+            limit: Number of lines to read (omit for all).
 
         Returns:
-            File content as string, or error message
+            File content as string, or error message.
         """
-        if not self._resolver:
-            return "Error: ReadFileTool not initialized. No resolver context."
+        deps = ctx.deps
+        if deps.path_resolver:
+            resolver = deps.path_resolver
+        else:
+            from suzent.tools.path_resolver import PathResolver
+            from suzent.config import CONFIG
+            resolver = PathResolver(
+                deps.chat_id, deps.sandbox_enabled,
+                sandbox_data_path=CONFIG.sandbox_data_path,
+                custom_volumes=deps.custom_volumes,
+                workspace_root=deps.workspace_root,
+            )
+            deps.path_resolver = resolver
 
         try:
             # Resolve the path
-            resolved_path = self._resolver.resolve(file_path)
+            resolved_path = resolver.resolve(file_path)
 
             # Check if file exists
             if not resolved_path.exists():

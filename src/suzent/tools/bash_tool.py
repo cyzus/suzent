@@ -17,6 +17,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+from pydantic_ai import RunContext
+from suzent.core.agent_deps import AgentDeps
 from suzent.tools.base import Tool
 
 from suzent.logger import get_logger
@@ -36,44 +38,8 @@ class BashTool(Tool):
     """
 
     name = "BashTool"
-    description = """Execute code in a secure environment (sandbox or host mode).
-
-Supported languages:
-- python: Execute Python code
-- nodejs: Execute Node.js code
-- command: Execute shell commands
-
-Storage paths (works in both modes):
-- /persistence: Private storage (persists across sessions, this chat only)
-- /shared: Shared storage (accessible by all chats)
-- Custom mounts: Per-chat volumes configured in settings
-
-In host mode (non-sandbox), these environment variables are available:
-- WORKSPACE_ROOT: The workspace directory
-- PERSISTENCE_PATH: The resolved persistence directory path
-- SHARED_PATH: The resolved shared directory path
-- MOUNT_*: Custom volume paths (e.g., MOUNT_SKILLS for /mnt/skills)
-
-Returns the execution output or error message."""
-
-    inputs = {
-        "content": {
-            "type": "string",
-            "description": "The code or shell command to execute",
-        },
-        "language": {
-            "type": "string",
-            "description": "Execution language: 'python', 'nodejs', or 'command'",
-            "default": "python",
-            "nullable": True,
-        },
-        "timeout": {
-            "type": "integer",
-            "description": "Execution timeout in seconds (optional)",
-            "nullable": True,
-        },
-    }
-    output_type = "string"
+    tool_name = "bash_execute"
+    requires_approval = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -104,11 +70,43 @@ Returns the execution output or error message."""
 
     def forward(
         self,
+        ctx: RunContext[AgentDeps],
         content: str,
         language: Optional[str] = None,
         timeout: Optional[int] = None,
     ) -> str:
-        """Execute code or command in the sandbox or on host."""
+        """Execute code or command in a secure environment (sandbox or host mode).
+
+        Supported languages:
+        - python: Execute Python code
+        - nodejs: Execute Node.js code
+        - command: Execute shell commands
+
+        Storage paths (works in both modes):
+        - /persistence: Private storage (persists across sessions, this chat only)
+        - /shared: Shared storage (accessible by all chats)
+        - Custom mounts: Per-chat volumes configured in settings
+
+        In host mode (non-sandbox), these environment variables are available:
+        - WORKSPACE_ROOT: The workspace directory
+        - PERSISTENCE_PATH: The resolved persistence directory path
+        - SHARED_PATH: The resolved shared directory path
+        - MOUNT_*: Custom volume paths (e.g., MOUNT_SKILLS for /mnt/skills)
+
+        Returns the execution output or error message.
+
+        Args:
+            ctx: The pydantic-ai run context with agent dependencies.
+            content: The code or shell command to execute.
+            language: Execution language: 'python', 'nodejs', or 'command'. Defaults to 'python'.
+            timeout: Execution timeout in seconds (optional).
+        """
+        self.chat_id = ctx.deps.chat_id
+        self.sandbox_enabled = ctx.deps.sandbox_enabled
+        self.workspace_root = ctx.deps.workspace_root
+        if ctx.deps.custom_volumes:
+            self.set_custom_volumes(ctx.deps.custom_volumes)
+
         if not self.chat_id:
             return "Error: No chat context. Cannot determine execution session."
 
