@@ -111,6 +111,50 @@ class EmbeddingGenerator:
         return all_embeddings
 
 
+class ImageGenerator:
+    """Generate images using LiteLLM."""
+
+    def __init__(self, model: str = None):
+        """Initialize image generator.
+
+        Args:
+            model: LiteLLM model identifier
+        """
+        # CONFIG.image_generation_model exists but might be None, so getattr fallback is bypassed
+        config_model = getattr(CONFIG, "image_generation_model", None)
+        self.model = model or config_model
+
+
+    async def generate(self, prompt: str, size: str = "1024x1024") -> str:
+        """Generate an image from a prompt.
+
+        Args:
+            prompt: Text description of the image
+            size: Image dimensions (e.g., "1024x1024")
+
+        Returns:
+            URL to the generated image
+        """
+        try:
+            response = await litellm.aimage_generation(
+                prompt=prompt,
+                model=self.model,
+                size=size
+            )
+            
+            data = response.data[0]
+            if hasattr(data, "url") and data.url:
+                return data.url
+            elif hasattr(data, "b64_json") and data.b64_json:
+                return f"data:image/png;base64,{data.b64_json}"
+            else:
+                return None
+
+        except Exception as e:
+            logger.error(f"Failed to generate image: {e}")
+            raise
+
+
 class LLMClient:
     """LiteLLM client for structured completions with Pydantic model support."""
 

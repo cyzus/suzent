@@ -82,6 +82,7 @@ def _build_registry() -> Dict[str, Union[Callable, PydanticTool]]:
     from suzent.tools.skill_tool import SkillTool
     from suzent.tools.social_message_tool import SocialMessageTool
     from suzent.tools.voice_tool import SpeakTool
+    from suzent.tools.image_generation_tool import ImageGenerationTool
     from suzent.memory.tools import MemorySearchTool, MemoryBlockUpdateTool
 
     ALL_TOOLS = [
@@ -98,6 +99,7 @@ def _build_registry() -> Dict[str, Union[Callable, PydanticTool]]:
         SkillTool,
         SocialMessageTool,
         SpeakTool,
+        ImageGenerationTool,
         MemorySearchTool,
         MemoryBlockUpdateTool,
     ]

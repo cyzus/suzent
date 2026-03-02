@@ -135,6 +135,7 @@ class ConfigModel(BaseModel):
         "GlobTool",
         "GrepTool",
         "BashTool",
+        "ImageGenerationTool",
     ]
     tool_options: Optional[List[str]] = None
 
@@ -152,6 +153,9 @@ class ConfigModel(BaseModel):
     # Embedding
     embedding_model: Optional[str] = None
     embedding_dimension: int = 0
+    
+    # Image Generation
+    image_generation_model: Optional[str] = None
 
     # Memory
     memory_enabled: bool = False

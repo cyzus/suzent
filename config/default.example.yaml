@@ -51,6 +51,9 @@ ADDITIONAL_AUTHORIZED_IMPORTS: []
 TTS_MODEL: "gemini/gemini-2.5-flash-preview-tts"
 TTS_VOICE: "Zephyr"
 
+# Image Generation
+IMAGE_GENERATION_MODEL: "gemini/gemini-3.1-flash-image-preview"
+
 # Memory System (requires PostgreSQL with pgvector - see .env for connection)
 MEMORY_ENABLED: true
 EMBEDDING_MODEL: gemini/gemini-embedding-001
