@@ -100,7 +100,7 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
 
   if (compact) {
     return (
-      <div className="border-2 border-brutal-black bg-white shadow-brutal-sm hover:bg-neutral-50 transition-all group relative">
+      <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal-sm hover:bg-neutral-50 dark:hover:bg-zinc-700 transition-all group relative">
         {/* Inline delete confirmation overlay */}
         {showConfirm && (
           <BrutalDeleteOverlay
@@ -121,10 +121,10 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
 
           {/* Content Preview */}
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-neutral-800 truncate font-mono">
+            <p className="text-sm text-neutral-800 dark:text-neutral-200 truncate font-mono">
               {highlightText(memory.content, searchQuery)}
             </p>
-            <div className="flex items-center gap-2 text-[10px] text-neutral-500 mt-0.5">
+            <div className="flex items-center gap-2 text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">
               <span className="font-bold uppercase">{formatDate(memory.created_at)}</span>
               {category && <span>• {category}</span>}
               {tags.length > 0 && <span>• #{tags[0]}</span>}
@@ -145,7 +145,7 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
   }
 
   return (
-    <div className="border-3 border-brutal-black bg-white shadow-[2px_2px_0_0_#000] brutal-btn transition-all relative group">
+    <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] brutal-btn transition-all relative group">
       {/* Delete confirmation overlay */}
       {showConfirm && (
         <BrutalDeleteOverlay
@@ -164,13 +164,13 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex gap-2 flex-wrap items-center">
             {/* Importance text indicator */}
-            <span className="text-xs font-bold uppercase text-brutal-black bg-neutral-100 px-2 py-0.5 border border-brutal-black">
+            <span className="text-xs font-bold uppercase text-brutal-black dark:text-white bg-neutral-100 dark:bg-zinc-700 px-2 py-0.5 border border-brutal-black">
               {getImportanceLabel(memory.importance)} {memory.importance.toFixed(2)}
             </span>
 
             {/* Category badge */}
             {category && (
-              <span className="px-2 py-0.5 border border-brutal-black bg-white text-brutal-black text-xs font-bold uppercase">
+              <span className="px-2 py-0.5 border border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-xs font-bold uppercase">
                 {category}
               </span>
             )}
@@ -200,13 +200,13 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
 
         {/* Content */}
         <div className="mb-3">
-          <p className="text-sm text-neutral-800 leading-relaxed break-words font-mono">
+          <p className="text-sm text-neutral-800 dark:text-white leading-relaxed break-words font-mono">
             {highlightText(displayContent, searchQuery)}
           </p>
           {shouldTruncate && (
             <button
               onClick={() => setIsExpanded(!isExpanded)}
-              className="mt-2 text-xs font-bold text-brutal-black hover:underline uppercase border-b-2 border-transparent hover:border-brutal-black inline-block"
+              className="mt-2 text-xs font-bold text-brutal-black dark:text-white hover:underline uppercase border-b-2 border-transparent hover:border-brutal-black dark:hover:border-white inline-block"
             >
               {isExpanded ? `▲ ${t('memoryCard.showLess')}` : `▼ ${t('memoryCard.showMore')}`}
             </button>
@@ -214,7 +214,7 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
         </div>
 
         {/* Metadata row */}
-        <div className="flex items-center gap-4 text-xs text-neutral-600 flex-wrap mb-2 border-t-2 border-neutral-100 pt-2">
+        <div className="flex items-center gap-4 text-xs text-neutral-600 dark:text-neutral-400 flex-wrap mb-2 border-t-2 border-neutral-100 dark:border-zinc-700 pt-2">
           <span className="flex items-center gap-1">
             <span className="font-bold">{t('memoryCard.meta.created')}</span>
             {formatDate(memory.created_at)}
@@ -239,7 +239,7 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, search
             {tags.map((tag: string, idx: number) => (
               <span
                 key={idx}
-                className="px-2 py-0.5 border border-brutal-black bg-neutral-50 text-brutal-black text-[10px] font-bold uppercase cursor-default"
+                className="px-2 py-0.5 border border-brutal-black bg-neutral-50 dark:bg-zinc-700 text-brutal-black dark:text-white text-[10px] font-bold uppercase cursor-default"
               >
                 #{tag}
               </span>

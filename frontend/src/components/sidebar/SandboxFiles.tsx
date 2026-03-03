@@ -274,9 +274,9 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
         const filename = selectedFile.split('/').pop() || selectedFile;
 
         return (
-            <div className="flex flex-col h-full bg-white">
+            <div className="flex flex-col h-full bg-white dark:bg-zinc-900">
                 {/* Header */}
-                <div className="flex items-center gap-3 p-3 border-b-3 border-brutal-black bg-white shrink-0 sticky top-0 z-20 shadow-[0_2px_0_0_rgba(0,0,0,1)]">
+                <div className="flex items-center gap-3 p-3 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0 sticky top-0 z-20 shadow-[0_2px_0_0_rgba(0,0,0,1)]">
                     <BrutalButton
                         onClick={handleBack}
                         title={t('sandbox.back')}
@@ -284,8 +284,8 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                     >
                         <ChevronLeftIcon className="w-5 h-5 stroke-2" />
                     </BrutalButton>
-                    <div className="bg-white border-2 border-brutal-black px-3 py-1.5 flex-1 min-w-0 shadow-[2px_2px_0_0_#000]">
-                        <span className="font-bold text-xs truncate block font-mono uppercase tracking-wider">
+                    <div className="bg-white dark:bg-zinc-700 border-2 border-brutal-black px-3 py-1.5 flex-1 min-w-0 shadow-[2px_2px_0_0_#000]">
+                        <span className="font-bold text-xs truncate block font-mono uppercase tracking-wider dark:text-white">
                             {filename}
                         </span>
                     </div>
@@ -302,7 +302,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                 </div>
 
                 {/* Content Area */}
-                <div className="flex-1 overflow-auto p-4 relative bg-white">
+                <div className="flex-1 overflow-auto p-4 relative bg-white dark:bg-zinc-900">
                     {loadingFile ? (
                         <div className="flex items-center justify-center h-full">
                             <div className="animate-spin w-8 h-8 border-4 border-brutal-black border-t-neutral-400 rounded-full"></div>
@@ -328,9 +328,9 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
 
     // File List View
     return (
-        <div className="flex flex-col h-full bg-white relative">
+        <div className="flex flex-col h-full bg-white dark:bg-zinc-900 relative">
             {/* Path Header */}
-            <div className="bg-white p-3 border-b-3 border-brutal-black flex items-center gap-3 shrink-0">
+            <div className="bg-white dark:bg-zinc-800 p-3 border-b-3 border-brutal-black flex items-center gap-3 shrink-0">
                 <BrutalButton
                     onClick={() => fetchFiles(currentPath)}
                     className={loading ? 'animate-spin' : ''}
@@ -361,14 +361,14 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                     multiple
                 />
                 <div className="flex-1 overflow-hidden">
-                    <div className="text-xs font-mono font-bold truncate py-1.5 px-2 bg-neutral-100 border-2 border-brutal-black text-brutal-black shadow-[2px_2px_0_0_#000]" title={currentPath}>
+                    <div className="text-xs font-mono font-bold truncate py-1.5 px-2 bg-neutral-100 dark:bg-zinc-700 border-2 border-brutal-black text-brutal-black dark:text-white shadow-[2px_2px_0_0_#000]" title={currentPath}>
                         {currentPath === '/' ? 'ROOT://' : currentPath}
                     </div>
                 </div>
             </div>
 
             {/* List */}
-            <div className="flex-1 overflow-y-auto bg-neutral-50 p-2 scrollbar-thin scrollbar-track-neutral-200 scrollbar-thumb-brutal-black">
+            <div className="flex-1 overflow-y-auto bg-neutral-50 dark:bg-zinc-900 p-2 scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black">
                 {loading && items.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full opacity-50 space-y-4">
                         <div className="animate-spin w-8 h-8 border-4 border-brutal-black border-t-neutral-400 rounded-full"></div>
@@ -383,7 +383,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                         {currentPath !== '/' && (
                             <button
                                 onClick={handleUp}
-                                className="flex items-center gap-3 p-3 bg-white border-2 border-brutal-black hover:bg-neutral-100 brutal-btn transition-all group text-left w-full"
+                                className="flex items-center gap-3 p-3 bg-white dark:bg-zinc-800 dark:text-white border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-700 brutal-btn transition-all group text-left w-full"
                             >
                                 <ArrowUturnLeftIcon className="w-5 h-5 stroke-2" />
                                 <span className="font-bold text-xs font-mono uppercase">{t('sandbox.up')}</span>
@@ -401,19 +401,19 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                                     key={idx}
                                     onClick={() => handleItemClick(item)}
                                     className={`
-                                        flex items-center gap-3 p-2 bg-white border-2 border-brutal-black 
-                                        hover:bg-neutral-50 brutal-btn
+                                        flex items-center gap-3 p-2 bg-white dark:bg-zinc-800 border-2 border-brutal-black
+                                        hover:bg-neutral-50 dark:hover:bg-zinc-700 brutal-btn
                                         transition-all group text-left
                                     `}
                                 >
-                                    <div className={`p-1 border-2 border-black ${item.is_dir ? 'bg-neutral-100' : 'bg-white'}`}>
+                                    <div className={`p-1 border-2 border-black ${item.is_dir ? 'bg-neutral-100 dark:bg-zinc-700' : 'bg-white dark:bg-zinc-800'}`}>
                                         {getFileIcon(item.name, item.is_dir)}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="font-bold text-sm truncate font-mono text-brutal-black">{item.name}</div>
-                                        <div className="flex justify-between items-center mt-1 text-[10px] font-mono text-neutral-500">
+                                        <div className="font-bold text-sm truncate font-mono text-brutal-black dark:text-white">{item.name}</div>
+                                        <div className="flex justify-between items-center mt-1 text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
                                             <span>{formatDate(item.mtime)}</span>
-                                            {!item.is_dir && <span className="bg-neutral-100 px-1 border border-neutral-300 text-black">{formatSize(item.size)}</span>}
+                                            {!item.is_dir && <span className="bg-neutral-100 dark:bg-zinc-700 px-1 border border-neutral-300 dark:border-zinc-600 text-black dark:text-neutral-300">{formatSize(item.size)}</span>}
                                         </div>
                                     </div>
                                 </button>
@@ -424,7 +424,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
             </div>
 
             {/* Status Footer */}
-            <div className="bg-white text-brutal-black p-2 flex justify-between items-center text-[10px] font-mono border-t-3 border-brutal-black select-none">
+            <div className="bg-white dark:bg-zinc-800 text-brutal-black dark:text-white p-2 flex justify-between items-center text-[10px] font-mono border-t-3 border-brutal-black select-none">
                 <span className="font-bold tracking-wider">{t('sandbox.itemsCount', { count: String(items.length) })}</span>
                 <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-none border border-black ${loading ? 'bg-neutral-400 animate-pulse' : 'bg-brutal-green'}`}></div>

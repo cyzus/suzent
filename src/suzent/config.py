@@ -167,7 +167,7 @@ class ConfigModel(BaseModel):
     sandbox_volumes: List[str] = []
 
     # Workspace (host mode execution root)
-    workspace_root: str = str(DATA_DIR)
+    workspace_root: str = str(PROJECT_DIR)
 
     # Node system
     nodes_enabled: bool = True

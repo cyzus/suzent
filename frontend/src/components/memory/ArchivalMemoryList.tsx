@@ -101,15 +101,15 @@ export const ArchivalMemoryList: React.FC = () => {
   return (
     <div className="space-y-4">
       {/* Search and Filters Header */}
-      <div className="border-3 border-brutal-black bg-white shadow-brutal p-4">
+      <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal p-4">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-brutal text-lg uppercase tracking-tight text-brutal-black">
+          <h3 className="font-brutal text-lg uppercase tracking-tight text-brutal-black dark:text-white">
             {t('archival.title')}
           </h3>
           <div className="flex gap-2">
             <button
               onClick={() => setIsCompact(!isCompact)}
-              className={`px-3 py-1 border-2 border-brutal-black font-bold text-xs uppercase transition-all shadow-[2px_2px_0_0_#000000] brutal-btn ${isCompact ? 'bg-brutal-black text-white' : 'bg-white hover:bg-neutral-100'
+              className={`px-3 py-1 border-2 border-brutal-black font-bold text-xs uppercase transition-all shadow-[2px_2px_0_0_#000000] brutal-btn ${isCompact ? 'bg-brutal-black text-white' : 'bg-white dark:bg-zinc-700 dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600'
                 }`}
               title={isCompact ? t('archival.view.switchToCards') : t('archival.view.switchToList')}
             >
@@ -117,7 +117,7 @@ export const ArchivalMemoryList: React.FC = () => {
             </button>
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`px-3 py-1 border-2 border-brutal-black font-bold text-xs uppercase transition-all shadow-[2px_2px_0_0_#000000] brutal-btn ${showFilters ? 'bg-brutal-black text-white' : 'bg-white hover:bg-neutral-100'
+              className={`px-3 py-1 border-2 border-brutal-black font-bold text-xs uppercase transition-all shadow-[2px_2px_0_0_#000000] brutal-btn ${showFilters ? 'bg-brutal-black text-white' : 'bg-white dark:bg-zinc-700 dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600'
                 }`}
             >
               {showFilters ? '▲' : '▼'} {t('archival.filters')} {activeFiltersCount > 0 && `(${activeFiltersCount})`}
@@ -132,13 +132,12 @@ export const ArchivalMemoryList: React.FC = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('archival.searchPlaceholder')}
-            className="w-full pl-3 pr-10 py-2 border-3 border-brutal-black rounded-none focus:outline-none focus:ring-4 focus:ring-brutal-black text-sm font-sans transition-all"
-            style={{ backgroundColor: '#ffffff', color: '#000000' }}
+            className="w-full pl-3 pr-10 py-2 border-3 border-brutal-black rounded-none focus:outline-none focus:ring-4 focus:ring-brutal-black text-sm font-sans transition-all bg-white dark:bg-zinc-700 text-brutal-black dark:text-white placeholder:text-neutral-400"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 border-2 border-brutal-black bg-white hover:bg-brutal-black hover:text-white flex items-center justify-center font-bold transition-colors"
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 border-2 border-brutal-black bg-white dark:bg-zinc-600 dark:text-white hover:bg-brutal-black hover:text-white flex items-center justify-center font-bold transition-colors"
             >
               ×
             </button>
@@ -157,7 +156,7 @@ export const ArchivalMemoryList: React.FC = () => {
           <div className="mt-4 pt-4 border-t-3 border-brutal-black space-y-3 animate-brutal-slide">
             {/* Sort By */}
             <div>
-              <label className="block text-xs font-bold uppercase text-neutral-600 mb-2">
+              <label className="block text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400 mb-2">
                 {t('archival.sortBy')}
               </label>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
@@ -174,7 +173,7 @@ export const ArchivalMemoryList: React.FC = () => {
                     onClick={() => setSortBy(option.value as SortOption)}
                     className={`px-3 py-2 border-2 border-brutal-black text-xs font-bold uppercase transition-all ${sortBy === option.value
                       ? 'bg-brutal-black text-white'
-                      : 'bg-white hover:bg-neutral-100'
+                      : 'bg-white dark:bg-zinc-700 dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600'
                       }`}
                   >
                     {option.label}
@@ -185,7 +184,7 @@ export const ArchivalMemoryList: React.FC = () => {
 
             {/* Importance Filter */}
             <div>
-              <label className="block text-xs font-bold uppercase text-neutral-600 mb-2">
+              <label className="block text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400 mb-2">
                 {t('archival.importanceLevel')}
               </label>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -200,7 +199,7 @@ export const ArchivalMemoryList: React.FC = () => {
                     onClick={() => setImportanceFilter(option.value as ImportanceFilter)}
                     className={`px-3 py-2 border-2 border-brutal-black text-xs font-bold uppercase transition-all ${importanceFilter === option.value
                       ? 'bg-brutal-black text-white'
-                      : 'bg-white hover:bg-neutral-100'
+                      : 'bg-white dark:bg-zinc-700 dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600'
                       }`}
                   >
                     {option.label}
@@ -216,7 +215,7 @@ export const ArchivalMemoryList: React.FC = () => {
                   setImportanceFilter('all');
                   setSortBy('date-desc');
                 }}
-                className="w-full py-2 border-2 border-brutal-black bg-white hover:bg-neutral-100 font-bold text-xs uppercase transition-all"
+                className="w-full py-2 border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 font-bold text-xs uppercase transition-all"
               >
                 {t('archival.clearFilters')}
               </button>
@@ -227,7 +226,7 @@ export const ArchivalMemoryList: React.FC = () => {
 
       {/* Results Count */}
       {processedMemories.length > 0 && (
-        <div className="flex items-center justify-between text-xs text-neutral-600 px-1">
+        <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-400 px-1">
           <span>
             {t('archival.showingCount', { count: String(processedMemories.length) })}
             {importanceFilter !== 'all' && ` (${t('archival.filteredBy', { importance: importanceFilter })})`}
@@ -237,12 +236,12 @@ export const ArchivalMemoryList: React.FC = () => {
 
       {/* Error State */}
       {archivalError && (
-        <div className="border-3 border-brutal-black bg-white p-6 animate-brutal-shake">
+        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-6 animate-brutal-shake">
           <div className="flex items-start gap-3">
             <span className="text-3xl">⚠️</span>
             <div>
-              <p className="font-bold text-brutal-black mb-1">{t('archival.errorTitle')}</p>
-              <p className="text-sm text-brutal-black">{archivalError}</p>
+              <p className="font-bold text-brutal-black dark:text-white mb-1">{t('archival.errorTitle')}</p>
+              <p className="text-sm text-brutal-black dark:text-neutral-300">{archivalError}</p>
             </div>
           </div>
         </div>
@@ -250,13 +249,13 @@ export const ArchivalMemoryList: React.FC = () => {
 
       {/* Empty State */}
       {processedMemories.length === 0 && !archivalLoading && (
-        <div className="border-3 border-brutal-black bg-white p-12 text-center">
-          <h4 className="font-brutal text-2xl uppercase mb-2">
+        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-12 text-center">
+          <h4 className="font-brutal text-2xl uppercase mb-2 dark:text-white">
             {debouncedQuery || importanceFilter !== 'all'
               ? t('archival.empty.noMatchesTitle')
               : t('archival.empty.noMemoriesTitle')}
           </h4>
-          <p className="text-neutral-600 text-sm max-w-md mx-auto">
+          <p className="text-neutral-600 dark:text-neutral-400 text-sm max-w-md mx-auto">
             {debouncedQuery
               ? t('archival.empty.noMatchesDesc')
               : importanceFilter !== 'all'
@@ -269,7 +268,7 @@ export const ArchivalMemoryList: React.FC = () => {
                 setSearchQuery('');
                 setImportanceFilter('all');
               }}
-              className="mt-4 px-4 py-2 border-2 border-brutal-black bg-white hover:bg-neutral-100 font-bold text-xs uppercase shadow-brutal-sm"
+              className="mt-4 px-4 py-2 border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 font-bold text-xs uppercase shadow-brutal-sm"
             >
               {t('archival.clearAllFilters')}
             </button>
@@ -292,10 +291,10 @@ export const ArchivalMemoryList: React.FC = () => {
 
       {/* Loading State */}
       {archivalLoading && (
-        <div className="border-3 border-brutal-black bg-white p-8 text-center">
+        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-8 text-center">
           <div className="flex items-center justify-center gap-3 mb-2">
-            <div className="w-4 h-4 border-3 border-brutal-black border-t-transparent animate-spin rounded-full"></div>
-            <p className="text-neutral-800 font-bold uppercase">{t('archival.loading')}</p>
+            <div className="w-4 h-4 border-3 border-brutal-black dark:border-white border-t-transparent animate-spin rounded-full"></div>
+            <p className="text-neutral-800 dark:text-white font-bold uppercase">{t('archival.loading')}</p>
           </div>
           <div className="flex gap-1 justify-center mt-3">
             {[0, 1, 2].map((i) => (
@@ -313,7 +312,7 @@ export const ArchivalMemoryList: React.FC = () => {
       {archivalHasMore && !archivalLoading && archivalMemories.length > 0 && (
         <button
           onClick={handleLoadMore}
-          className="w-full py-3 border-3 border-brutal-black bg-white hover:bg-neutral-100 brutal-btn shadow-[2px_2px_0_0_#000] font-bold uppercase transition-all"
+          className="w-full py-3 border-3 border-brutal-black bg-white dark:bg-zinc-800 dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700 brutal-btn shadow-[2px_2px_0_0_#000] font-bold uppercase transition-all"
         >
           {t('archival.loadMore')}
         </button>

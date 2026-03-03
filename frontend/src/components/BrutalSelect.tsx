@@ -120,7 +120,7 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
   const dropdown = isOpen && dropdownPosition && createPortal(
     <div
       ref={dropdownRef}
-      className={`fixed z-[9999] bg-white border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-60 overflow-y-auto overflow-x-hidden animate-brutal-drop scrollbar-thin ${dropdownClassName}`}
+      className={`fixed z-[9999] bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-60 overflow-y-auto overflow-x-hidden animate-brutal-drop scrollbar-thin ${dropdownClassName}`}
       style={{
         top: dropdownPosition.top,
         left: dropdownPosition.left,
@@ -135,9 +135,9 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
             onChange(option.value);
             setIsOpen(false);
           }}
-          className={`w-full text-left px-3 py-2 font-bold text-sm uppercase transition-colors border-b-2 border-neutral-100 last:border-0 ${value === option.value
-            ? 'bg-brutal-black text-white'
-            : 'bg-white text-brutal-black hover:bg-brutal-yellow'
+          className={`w-full text-left px-3 py-2 font-bold text-sm uppercase transition-colors border-b-2 border-neutral-100 dark:border-zinc-700 last:border-0 ${value === option.value
+            ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black'
+            : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-brutal-yellow dark:hover:bg-zinc-700'
             }`}
         >
           {option.label}
@@ -150,7 +150,7 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
   return (
     <div className={`relative ${className}`} ref={containerRef}>
       {label && (
-        <label className="block font-bold tracking-wide text-brutal-black uppercase mb-1 text-xs">
+        <label className="block font-bold tracking-wide text-brutal-black dark:text-white uppercase mb-1 text-xs">
           {label}
         </label>
       )}
@@ -159,7 +159,7 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
         ref={buttonRef}
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full bg-white border-3 border-brutal-black px-3 py-2 font-bold text-sm text-left flex items-center justify-between transition-all duration-200 hover:bg-brutal-yellow focus:outline-none ${isOpen ? 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[1px] translate-y-[1px]' : 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn'}`}
+        className={`w-full bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black px-3 py-2 font-bold text-sm text-left flex items-center justify-between transition-all duration-200 hover:bg-brutal-yellow dark:hover:bg-zinc-700 focus:outline-none ${isOpen ? 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[1px] translate-y-[1px]' : 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn'}`}
       >
         <span className="truncate">
           {selectedOption ? selectedOption.label : effectivePlaceholder}

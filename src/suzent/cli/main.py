@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 import typer
@@ -580,15 +581,18 @@ def register_commands(app: typer.Typer):
         _renamed_exe: Path | None = None
         if IS_WINDOWS:
             venv_exe = root / ".venv" / "Scripts" / "suzent.exe"
-            bak_exe = root / ".venv" / "Scripts" / "suzent.exe.bak"
             if venv_exe.exists():
+                # Use a unique name so we never collide with a still-locked .bak
+                # from a previous upgrade run (Windows can't delete a running exe).
+                bak_exe = root / ".venv" / "Scripts" / f"suzent.exe.{uuid.uuid4().hex[:8]}.bak"
+                # Clean up any old .bak files from previous runs (best-effort)
+                scripts_dir = root / ".venv" / "Scripts"
+                for old_bak in scripts_dir.glob("suzent.exe.*.bak"):
+                    try:
+                        old_bak.unlink()
+                    except OSError:
+                        pass  # Still locked by a previous process; leave it
                 try:
-                    # Remove any previous leftover .bak
-                    if bak_exe.exists():
-                        try:
-                            bak_exe.unlink()
-                        except OSError:
-                            pass
                     venv_exe.rename(bak_exe)
                     _renamed_exe = bak_exe
                 except OSError:

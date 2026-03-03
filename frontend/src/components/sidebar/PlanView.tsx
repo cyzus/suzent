@@ -63,39 +63,39 @@ export const PlanView: React.FC<PlanViewProps> = ({ plan, currentPlan, snapshotP
   return (
     <div className="space-y-4 relative z-0">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-brutal text-sm tracking-tight text-brutal-black uppercase">{t('plan.overviewTitle')}</h2>
+        <h2 className="font-brutal text-sm tracking-tight text-brutal-black dark:text-white uppercase">{t('plan.overviewTitle')}</h2>
       </div>
 
       {plan ? (
         <>
-          <div className={`text-[10px] text-brutal-black font-bold uppercase space-y-0.5 ${isNewPlan ? 'animate-brutal-slide' : ''}`}>
+          <div className={`text-[10px] text-brutal-black dark:text-white font-bold uppercase space-y-0.5 ${isNewPlan ? 'animate-brutal-slide' : ''}`}>
             <div>{isSnapshot ? t('plan.liveSnapshot') : plan.id != null ? t('plan.planNumber', { id: String(plan.id) }) : t('plan.plan')}</div>
             {!isSnapshot && plan.versionKey && <div>· {t('plan.version', { version: plan.versionKey })}</div>}
             {createdAtLabel && <div>· {t('plan.created', { time: createdAtLabel })}</div>}
             {updatedAtLabel && <div>· {t('plan.updated', { time: updatedAtLabel })}</div>}
           </div>
-          <div className={`text-sm font-medium leading-snug text-brutal-black ${isNewPlan ? 'animate-brutal-drop' : ''}`}>
+          <div className={`text-sm font-medium leading-snug text-brutal-black dark:text-white ${isNewPlan ? 'animate-brutal-drop' : ''}`}>
             {plan.objective}
           </div>
-          <div className="w-full h-3 bg-white border-3 border-brutal-black overflow-hidden relative shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+          <div className="w-full h-3 bg-white dark:bg-zinc-700 border-3 border-brutal-black overflow-hidden relative shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
             <div
               className="h-full bg-brutal-blue transition-all duration-300 linear will-change-[width]"
               style={{ width: `${progress * 100}%` }}
             />
           </div>
-          <div className={`text-[10px] text-brutal-black font-bold uppercase ${isNewPlan ? 'animate-brutal-slide' : ''}`}>
+          <div className={`text-[10px] text-brutal-black dark:text-white font-bold uppercase ${isNewPlan ? 'animate-brutal-slide' : ''}`}>
             {t('plan.phasesCompleted', { completed: String(completed), total: String(totalPhases) })}
           </div>
           <ul className="space-y-3 text-[11px]">
             {plan.phases.map((phase, index) => {
               const statusColors: Record<string, string> = {
-                pending: 'bg-white',
+                pending: 'bg-white dark:bg-zinc-800',
                 in_progress: 'bg-brutal-blue text-white',
                 completed: 'bg-brutal-green',
               };
               const animationDelay = isNewPlan ? `${index * 50}ms` : '0ms';
-              const bgColor = statusColors[phase.status] || 'bg-white';
-              const textColor = (phase.status === 'in_progress') ? 'text-white' : 'text-brutal-black';
+              const bgColor = statusColors[phase.status] || 'bg-white dark:bg-zinc-800';
+              const textColor = (phase.status === 'in_progress') ? 'text-white' : 'text-brutal-black dark:text-white';
 
               return (
                 <li
@@ -119,7 +119,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ plan, currentPlan, snapshotP
                         </div>
                       )}
                     </div>
-                    <span className={`shrink-0 text-[9px] font-bold border-2 border-brutal-black px-1.5 py-0.5 bg-white text-brutal-black ${phase.status === 'in_progress' ? 'animate-pulse' : ''}`}>
+                    <span className={`shrink-0 text-[9px] font-bold border-2 border-brutal-black px-1.5 py-0.5 bg-white dark:bg-zinc-700 text-brutal-black dark:text-white dark:text-white ${phase.status === 'in_progress' ? 'animate-pulse' : ''}`}>
                       {phase.status === 'pending' ? t('plan.status.pending') : phase.status === 'in_progress' ? t('plan.status.inProgress') : t('plan.status.completed')}
                     </span>
                   </div>
@@ -130,7 +130,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ plan, currentPlan, snapshotP
           </ul>
         </>
       ) : (
-        <div className="text-xs text-brutal-black font-bold uppercase">{t('plan.empty')}</div>
+        <div className="text-xs text-brutal-black dark:text-white font-bold uppercase">{t('plan.empty')}</div>
       )}
 
     </div>

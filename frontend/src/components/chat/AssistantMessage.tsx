@@ -268,11 +268,11 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
 
       {/* Badge/Assembly Container */}
       <div className={`
-        border-3 border-brutal-black shadow-brutal-lg overflow-hidden relative
+        border-3 border-brutal-black dark:border-0 shadow-brutal-lg dark:shadow-none overflow-hidden relative
         transition-all duration-700 ease-out
         ${isThinking
-          ? 'w-[400px] h-[80px] bg-white left-1/2 -translate-x-1/2'
-          : 'w-[90px] h-[40px] bg-white left-0 translate-x-0'
+          ? 'w-[400px] h-[80px] bg-white dark:bg-transparent left-1/2 -translate-x-1/2'
+          : 'w-[90px] h-[40px] bg-white dark:bg-transparent left-0 translate-x-0'
         }
       `}>
         <ThinkingAnimation isThinking={isThinking} />
@@ -288,7 +288,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
         ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}
       `}>
         <div className="overflow-hidden min-h-0">
-          <div className="border-3 border-brutal-black shadow-brutal-lg bg-white px-6 py-5 relative">
+          <div className="border-3 border-brutal-black shadow-brutal-lg bg-white dark:bg-zinc-800 px-6 py-5 relative">
             {showCopyButton && !isThinking && (
               <CopyButton
                 text={cleanContent}
