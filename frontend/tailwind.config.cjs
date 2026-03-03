@@ -26,8 +26,8 @@ module.exports = {
           black: '#000000',
           white: '#FFFFFF',
           blue: '#0066FF',
-          green: '#A8E6A3',  // Softer pastel green - easier on eyes
-          yellow: '#FFE666',  // Softer pastel yellow - easier on eyes
+          green: '#FF6600',  // Electric orange - brutal, pops against black
+          yellow: 'var(--brutal-yellow)',  // #FFE666 light / #FF6600 dark
           red: '#FF0000',
           gray: '#333333',
           'code-bg': '#f5f5f5',  // Light gray background for better readability
@@ -61,7 +61,7 @@ module.exports = {
         'brutal-lg': '6px 6px 0px #000000',
         'brutal-xl': '8px 8px 0px #000000',
         'brutal-blue': '4px 4px 0px #0066FF',
-        'brutal-green': '4px 4px 0px #00FF00',
+        'brutal-green': '4px 4px 0px #FF6600',
       },
       borderWidth: {
         '3': '3px',
@@ -136,11 +136,11 @@ module.exports = {
             borderColor: '#FFFFFF'
           },
           '50%': {
-            backgroundColor: '#FFE666',
+            backgroundColor: '#FF6600',
             borderColor: '#000000'
           },
           '75%': {
-            backgroundColor: '#A8E6A3',
+            backgroundColor: '#FF6600',
             borderColor: '#FFFFFF'
           }
         },

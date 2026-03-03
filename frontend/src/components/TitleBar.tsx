@@ -22,21 +22,21 @@ export const TitleBar: React.FC = () => {
 
     return (
         <div
-            className="h-8 bg-brutal-white flex items-center justify-between select-none fixed top-0 left-0 right-0 z-[9999] border-b-3 border-brutal-black"
+            className="h-8 bg-brutal-white dark:bg-zinc-800 flex items-center justify-between select-none fixed top-0 left-0 right-0 z-[9999] border-b-3 border-brutal-black"
         >
             {/* Drag Region & Title */}
             <div className="flex-1 h-full flex items-center pl-4" data-tauri-drag-region>
-                <span className="font-brutal text-sm uppercase tracking-tight text-brutal-black pointer-events-none mt-0.5">
+                <span className="font-brutal text-sm uppercase tracking-tight text-brutal-black dark:text-white pointer-events-none mt-0.5">
                     {t('app.title').toUpperCase()}
                 </span>
             </div>
 
             {/* Window Controls */}
-            <div className="flex h-full text-brutal-black">
+            <div className="flex h-full text-brutal-black dark:text-white">
                 {/* Minimize */}
                 <button
                     onClick={() => appWindow?.minimize()}
-                    className="h-full w-11 flex items-center justify-center hover:bg-brutal-black hover:text-brutal-white transition-colors"
+                    className="h-full w-11 flex items-center justify-center hover:bg-brutal-black dark:hover:bg-zinc-600 hover:text-brutal-white transition-colors"
                     title={t('titlebar.minimize')}
                 >
                     <svg width="10" height="2" viewBox="0 0 10 2" fill="currentColor">
@@ -47,7 +47,7 @@ export const TitleBar: React.FC = () => {
                 {/* Maximize / Restore */}
                 <button
                     onClick={handleMaximize}
-                    className="h-full w-11 flex items-center justify-center hover:bg-brutal-black hover:text-brutal-white transition-colors"
+                    className="h-full w-11 flex items-center justify-center hover:bg-brutal-black dark:hover:bg-zinc-600 hover:text-brutal-white transition-colors"
                     title={isMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
                 >
                     {isMaximized ? (

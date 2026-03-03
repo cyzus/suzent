@@ -145,7 +145,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     return (
         <form
             onSubmit={(e) => { e.preventDefault(); send(); }}
-            className="bg-neutral-50 border-2 border-brutal-black shadow-brutal-sm p-2 flex flex-col gap-2 relative group focus-within:shadow-brutal focus-within:-translate-y-[1px] transition-all duration-200 z-20"
+            className="bg-neutral-50 dark:bg-zinc-800 border-2 border-brutal-black shadow-brutal-sm p-2 flex flex-col gap-2 relative group focus-within:shadow-brutal focus-within:-translate-y-[1px] transition-all duration-200 z-20"
         >
             {/* Unified file preview section */}
             {selectedFiles.length > 0 && (
@@ -174,11 +174,11 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                                     </div>
                                 ) : (
                                     // File card (icon + name + size)
-                                    <div className="flex items-center gap-2 bg-white border-2 border-brutal-black p-2">
+                                    <div className="flex items-center gap-2 bg-white dark:bg-zinc-700 border-2 border-brutal-black p-2">
                                         <FileIcon mimeType={file.type} className="w-5 h-5 shrink-0" />
                                         <div className="flex-1 min-w-0">
-                                            <div className="text-sm font-bold text-brutal-black truncate">{file.name}</div>
-                                            <div className="text-xs text-neutral-500">
+                                            <div className="text-sm font-bold text-brutal-black dark:text-white truncate">{file.name}</div>
+                                            <div className="text-xs text-neutral-500 dark:text-neutral-400">
                                                 {(file.size / 1024).toFixed(1)} KB
                                             </div>
                                         </div>
@@ -224,7 +224,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             < textarea
                 autoFocus
                 ref={textareaRef}
-                className="w-full resize-none overflow-y-auto min-h-[44px] max-h-[200px] bg-transparent focus:outline-none text-lg text-brutal-black placeholder-neutral-400 font-medium placeholder:font-bold border-none p-2"
+                className="w-full resize-none overflow-y-auto min-h-[44px] max-h-[200px] bg-transparent focus:outline-none text-lg text-brutal-black dark:text-white placeholder-neutral-400 dark:placeholder-neutral-500 font-medium placeholder:font-bold border-none p-2"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {

@@ -25,7 +25,7 @@ export const LogBlock: React.FC<LogBlockProps> = ({ title, content }) => {
   };
 
   return (
-    <div className="my-6 font-mono text-sm border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white group">
+    <div className="my-6 font-mono text-sm border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white dark:bg-zinc-800 group">
       {/* Header Bar */}
       <div className="flex items-center justify-between px-3 py-2 bg-brutal-black border-b-3 border-brutal-black select-none overflow-hidden">
         <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -67,16 +67,16 @@ export const LogBlock: React.FC<LogBlockProps> = ({ title, content }) => {
       </div>
 
       {/* Content Area */}
-      <div className={`bg-neutral-50 transition-all duration-300 ease-in-out overflow-y-auto scrollbar-thin ${expanded ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'}`}>
+      <div className={`bg-neutral-50 dark:bg-zinc-900 transition-all duration-300 ease-in-out overflow-y-auto scrollbar-thin ${expanded ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'}`}>
         <div className="w-full p-3">
-          <pre className="text-xs text-brutal-black leading-relaxed font-mono whitespace-pre-wrap break-all">
+          <pre className="text-xs text-brutal-black dark:text-neutral-200 leading-relaxed font-mono whitespace-pre-wrap break-all">
             {content}
           </pre>
         </div>
       </div>
 
       {/* Footer/Status Bar */}
-      <div className="px-2 py-1 bg-neutral-200 border-t-2 border-brutal-black text-[10px] text-neutral-500 flex justify-between items-center">
+      <div className="px-2 py-1 bg-neutral-200 dark:bg-zinc-700 border-t-2 border-brutal-black text-[10px] text-neutral-500 dark:text-neutral-400 flex justify-between items-center">
         <span>{t('logBlock.chars', { count: content.length })}</span>
         <span>UTF-8</span>
       </div>

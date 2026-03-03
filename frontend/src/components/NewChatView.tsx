@@ -50,10 +50,28 @@ const GreetingRobot: React.FC = React.memo(() => {
 
     return (
         <div className="mb-8 flex flex-col items-center gap-6">
-            <div className="w-24 h-24">
-                <RobotAvatar variant={greetingRobot} />
+            {/* Thin-stroke orbit decoration */}
+            <div className="relative w-40 h-40 flex items-center justify-center">
+                {/* Outer square — slow clockwise */}
+                <div
+                    className="absolute inset-0 border border-neutral-400/40 dark:border-[#FF6600]/40 animate-spin"
+                    style={{ animationDuration: '20s', animationTimingFunction: 'linear' }}
+                />
+                {/* Inner square — counter-clockwise, offset size */}
+                <div
+                    className="absolute border border-neutral-300/60 dark:border-white/20 animate-spin"
+                    style={{ width: '72%', height: '72%', animationDuration: '13s', animationDirection: 'reverse', animationTimingFunction: 'linear' }}
+                />
+                {/* Corner brackets — static */}
+                <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-neutral-500/60 dark:border-[#FF6600]/60 pointer-events-none" />
+                <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-neutral-500/60 dark:border-[#FF6600]/60 pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-neutral-500/60 dark:border-[#FF6600]/60 pointer-events-none" />
+                <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-neutral-500/60 dark:border-[#FF6600]/60 pointer-events-none" />
+                <div className="w-20 h-20 relative z-10">
+                    <RobotAvatar variant={greetingRobot} />
+                </div>
             </div>
-            <h2 className="text-4xl sm:text-5xl font-brutal font-bold text-brutal-black mb-2 tracking-tight">
+            <h2 className="text-4xl sm:text-5xl font-brutal font-bold text-brutal-black dark:text-white mb-2 tracking-tight">
                 {getGreeting()}
             </h2>
         </div>

@@ -57,11 +57,11 @@ export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onIma
             const downloadUrl = `${getApiBase()}/sandbox/serve?${downloadParams}`;
 
             return (
-              <div key={fileIdx} className="bg-white border-3 border-brutal-black shadow-brutal px-4 py-3 flex items-center gap-3 max-w-md w-full animate-brutal-pop">
+              <div key={fileIdx} className="bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal px-4 py-3 flex items-center gap-3 max-w-md w-full animate-brutal-pop">
                 <FileIcon mimeType={file.mime_type} className="w-6 h-6 shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold text-brutal-black truncate">{file.filename}</div>
-                  <div className="text-xs text-neutral-500">
+                  <div className="text-sm font-bold text-brutal-black dark:text-white truncate">{file.filename}</div>
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400">
                     {(file.size / 1024).toFixed(1)} KB
                   </div>
                 </div>
