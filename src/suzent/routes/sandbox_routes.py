@@ -15,7 +15,7 @@ from starlette.responses import JSONResponse, FileResponse
 
 
 from suzent.logger import get_logger
-from suzent.config import get_effective_volumes
+from suzent.config import get_effective_volumes, CONFIG
 from suzent.tools.path_resolver import PathResolver
 from suzent.database import get_database
 
@@ -116,17 +116,25 @@ def _get_resolver_for_request(
                 cv = chat["config"].get("sandbox_volumes", [])
                 # Calculate effective volumes (merges global + chat + defaults like skills)
                 custom_volumes = get_effective_volumes(cv)
+                sandbox_enabled = chat["config"].get(
+                    "sandbox_enabled", CONFIG.sandbox_enabled
+                )
             else:
                 # Even if no chat specific config, we want global defaults (like skills)
                 custom_volumes = get_effective_volumes([])
+                sandbox_enabled = CONFIG.sandbox_enabled
         except Exception as e:
             logger.warning(f"Failed to fetch chat config for volumes: {e}")
             # Fallback to defaults
             custom_volumes = get_effective_volumes([])
+            sandbox_enabled = CONFIG.sandbox_enabled
+
+    if override_volumes is not None and "sandbox_enabled" not in locals():
+        sandbox_enabled = CONFIG.sandbox_enabled
 
     # Create resolver (sandbox_enabled=True implies sandbox paths /persistence etc)
     return PathResolver(
-        chat_id=chat_id, sandbox_enabled=True, custom_volumes=custom_volumes
+        chat_id=chat_id, sandbox_enabled=sandbox_enabled, custom_volumes=custom_volumes
     )
 
 
@@ -309,13 +317,19 @@ async def read_sandbox_file(request: Request) -> JSONResponse:
         if not target_host_path.is_file():
             return JSONResponse({"error": "Not a file"}, status_code=400)
 
-        # Read content (text only for now)
+        # Read content (text or base64)
         try:
             content = target_host_path.read_text(encoding="utf-8")
-            return JSONResponse({"path": raw_path, "content": content})
-        except UnicodeDecodeError:
             return JSONResponse(
-                {"error": "Binary file not supported for preview"}, status_code=400
+                {"path": raw_path, "content": content, "is_binary": False}
+            )
+        except UnicodeDecodeError:
+            import base64
+
+            binary_content = target_host_path.read_bytes()
+            encoded_content = base64.b64encode(binary_content).decode("ascii")
+            return JSONResponse(
+                {"path": raw_path, "content": encoded_content, "is_binary": True}
             )
         except Exception as e:
             return JSONResponse({"error": f"Failed to read file: {e}"}, status_code=500)

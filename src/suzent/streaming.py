@@ -305,19 +305,9 @@ async def stream_agent_responses(
                 msg_type, payload = msg
 
                 if msg_type == "event":
-                    # Track history manually for cancellation recovery
-                    try:
-                        from pydantic_ai.messages import (
-                            RunRequestEvent,
-                            RunResponseEvent,
-                        )
-
-                        if isinstance(payload, RunRequestEvent):
-                            partial_history.append(payload.request)
-                        elif isinstance(payload, RunResponseEvent):
-                            partial_history.append(payload.response)
-                    except Exception:
-                        pass
+                    # Removed manual tracking from RunRequestEvent because these events
+                    # were removed in pydantic-ai 0.0.1+ and fail silently.
+                    pass
 
                     # AgentRunResultEvent: final result with all messages
                     if isinstance(payload, AgentRunResultEvent):

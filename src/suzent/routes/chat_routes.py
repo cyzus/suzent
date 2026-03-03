@@ -57,7 +57,7 @@ async def chat(request: Request) -> StreamingResponse:
             config = data.get("config", {})
             chat_id = data.get("chat_id")
             stream = data.get("stream", True)
-            files_list = []
+            files_list = data.get("files", [])
 
         if not message and not files_list:
             return StreamingResponse(

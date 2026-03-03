@@ -301,6 +301,7 @@ class PathResolver:
         # Check if within sandbox data directories (same validation as sandbox mode)
         allowed_sandbox_roots = [
             self.sandbox_data_path / "sessions" / self.chat_id,
+            self.sandbox_data_path / "sessions" / self.chat_id / "uploads",
             self.sandbox_data_path / "shared",
         ]
         for root in allowed_sandbox_roots:
@@ -328,6 +329,7 @@ class PathResolver:
         # Allowed roots include standard dirs AND all custom volume host paths
         allowed_roots = [
             self.sandbox_data_path / "sessions" / self.chat_id,
+            self.sandbox_data_path / "sessions" / self.chat_id / "uploads",
             self.sandbox_data_path / "shared",
         ]
         allowed_roots.extend(self.custom_mounts.values())

@@ -104,20 +104,43 @@ class ChatProcessor:
             logger.debug(f"[ChatProcessor] Processing {len(files)} files")
             try:
                 custom_volumes = get_effective_volumes([])
+                sandbox_enabled = config.get("sandbox_enabled", CONFIG.sandbox_enabled)
                 resolver = PathResolver(
                     chat_id=chat_id,
-                    sandbox_enabled=True,
+                    sandbox_enabled=sandbox_enabled,
                     custom_volumes=custom_volumes,
                 )
-                uploads_virtual_path = "/persistence/uploads"
+
+                if sandbox_enabled:
+                    uploads_virtual_path = "/persistence/uploads"
+                else:
+                    uploads_virtual_path = str(
+                        Path(CONFIG.workspace_root) / "uploads"
+                    ).replace("\\", "/")
+
                 uploads_host_path = resolver.resolve(uploads_virtual_path)
                 uploads_host_path.mkdir(parents=True, exist_ok=True)
 
                 for file_item in files:
                     if isinstance(file_item, dict):
-                        result = self._process_social_attachment(
-                            file_item, uploads_host_path, uploads_virtual_path
-                        )
+                        if "mime_type" in file_item:
+                            # It's an AG-UI pre-uploaded file
+                            v_path = file_item.get("path")
+                            result = {
+                                "final_path": str(resolver.resolve(v_path))
+                                if v_path
+                                else None,
+                                "virtual_path": v_path,
+                                "filename": file_item.get("filename"),
+                                "is_image": file_item.get("mime_type", "").startswith(
+                                    "image/"
+                                ),
+                            }
+                        else:
+                            # It's a social tool attachment
+                            result = self._process_social_attachment(
+                                file_item, uploads_host_path, uploads_virtual_path
+                            )
                     else:
                         result = await self._process_upload_file(
                             file_item, uploads_host_path, uploads_virtual_path
@@ -153,11 +176,17 @@ class ChatProcessor:
         # 6. Prepare Prompt
         full_prompt = message_content + attachment_context
 
-        # Build multimodal prompt if images present
+        from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+        parts = [UserPromptPart(content=full_prompt)]
         if agent_images:
-            user_prompt: str | list = [full_prompt] + agent_images
-        else:
-            user_prompt = full_prompt
+            parts.extend(agent_images)
+
+        new_request = ModelRequest(parts=parts)
+
+        if message_history is None:
+            message_history = []
+        message_history.append(new_request)
 
         logger.debug(
             f"[ChatProcessor] Prompt prepared. Length: {len(full_prompt)}. Streaming..."
@@ -168,7 +197,7 @@ class ChatProcessor:
 
         async for chunk in stream_agent_responses(
             agent,
-            user_prompt,
+            None,
             deps=deps,
             message_history=message_history,
             chat_id=chat_id,
