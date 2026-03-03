@@ -249,9 +249,7 @@ async def stream_agent_responses(
                         run_kwargs["deferred_tool_results"] = deferred_results
 
                     last_result_event = None
-                    async for event in agent.run_stream_events(
-                        prompt, **run_kwargs
-                    ):
+                    async for event in agent.run_stream_events(prompt, **run_kwargs):
                         if control.cancel_event.is_set():
                             break
                         logger.debug(
@@ -262,11 +260,8 @@ async def stream_agent_responses(
                         await sse_queue.put(("event", event))
 
                     # Check if deferred tools need approval
-                    if (
-                        last_result_event
-                        and isinstance(
-                            last_result_event.result.output, DeferredToolRequests
-                        )
+                    if last_result_event and isinstance(
+                        last_result_event.result.output, DeferredToolRequests
                     ):
                         deferred = last_result_event.result.output
                         if deferred.approvals:
@@ -340,8 +335,10 @@ async def stream_agent_responses(
                             )
 
                             agent._last_messages = payload.result.all_messages()  # type: ignore[attr-defined]
+                            deps.last_messages = agent._last_messages
                         except Exception:
                             agent._last_messages = []
+                            deps.last_messages = []
 
                     yield payload
 
@@ -440,12 +437,13 @@ async def stream_agent_responses(
                 except (asyncio.CancelledError, Exception):
                     pass
 
-        # Handle cancellation by preserving partial history
-        if control.cancel_event.is_set():
+        # Ensure memory is saved even on early termination (cancellation, tool error, etc.)
+        if getattr(deps, "last_messages", None) is None:
             try:
                 agent._last_messages = partial_history
+                deps.last_messages = partial_history
             except Exception as e:
-                logger.error(f"Failed to reconstruct partial history on cancel: {e}")
+                logger.error(f"Failed to reconstruct partial history: {e}")
 
         stop_plan_watcher.set()
         if watcher_task:

@@ -190,8 +190,10 @@ class ChatProcessor:
 
         # 8. Post-Processing
 
-        # Get the messages from the agent for persistence
-        last_messages = getattr(agent, "_last_messages", [])
+        # Get the messages from the agent or deps for persistence
+        last_messages = getattr(deps, "last_messages", None)
+        if last_messages is None:
+            last_messages = getattr(agent, "_last_messages", [])
 
         # A. Write JSONL transcript
         await self._write_transcript(

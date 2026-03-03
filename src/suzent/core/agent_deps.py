@@ -46,3 +46,4 @@ class AgentDeps:
         default_factory=dict
     )  # tool_name → "always_allow" | "always_deny"
     cancel_event: Any = None  # asyncio.Event — set when stream is cancelled
+    last_messages: Optional[list] = None  # To preserve session history correctly
