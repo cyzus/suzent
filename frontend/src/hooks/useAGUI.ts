@@ -46,6 +46,8 @@ interface UseAGUIReturn {
   sendMessage: (body: Record<string, unknown>, opts?: { formData?: FormData }) => Promise<void>;
   stop: () => void;
   clearParts: () => void;
+  /** Optimistically resolve a tool approval (instantly updates UI before backend responds) */
+  resolveApproval: (approvalId: string, approved: boolean) => void;
 }
 
 // ── SSE Parser ───────────────────────────────────────────────────────
@@ -293,6 +295,25 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     abortRef.current?.abort();
   }, []);
 
+  // Optimistically update a tool part's state when user approves/denies
+  // so buttons disappear instantly (no waiting for backend round-trip)
+  const resolveApproval = useCallback((approvalId: string, approved: boolean) => {
+    setParts(prev => {
+      const next = prev.map(p => {
+        if (p.type === 'tool' && p.approvalId === approvalId) {
+          return {
+            ...p,
+            state: approved ? 'running' as const : 'error' as const,
+            approvalId: undefined,
+          };
+        }
+        return p;
+      });
+      partsRef.current = next;
+      return next;
+    });
+  }, []);
+
   const sendMessage = useCallback(async (
     body: Record<string, unknown>,
     opts?: { formData?: FormData },
@@ -382,5 +403,5 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     }
   }, []);
 
-  return { parts, status, error, sendMessage, stop, clearParts };
+  return { parts, status, error, sendMessage, stop, clearParts, resolveApproval };
 }

@@ -324,6 +324,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     sendMessage: sendAGUI,
     stop: stopAGUIStream,
     clearParts,
+    resolveApproval,
     error: chatError,
   } = useAGUI({
     url: `${getApiBase()}/chat`,
@@ -365,6 +366,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   ) => {
     const targetChatId = activeChatIdRef.current || currentChatId;
     if (!targetChatId) return;
+    // Optimistic UI: instantly hide buttons before the backend responds
+    resolveApproval(approvalId, approved);
     try {
       await approveTool(targetChatId, approvalId, approved, remember);
     } catch (error) {
