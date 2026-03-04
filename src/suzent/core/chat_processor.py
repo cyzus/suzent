@@ -219,38 +219,46 @@ class ChatProcessor:
 
         # 8. Post-Processing
 
-        # Get the messages from the agent or deps for persistence
-        last_messages = getattr(deps, "last_messages", None)
-        if last_messages is None:
-            last_messages = getattr(agent, "_last_messages", [])
+        import asyncio
 
-        # A. Write JSONL transcript
-        await self._write_transcript(
-            chat_id, message_content, full_response, last_messages
-        )
+        async def _run_post_processing():
+            try:
+                # Get the messages from the agent or deps for persistence
+                last_messages = getattr(deps, "last_messages", None)
+                if last_messages is None:
+                    last_messages = getattr(agent, "_last_messages", [])
 
-        # B. Memory Extraction
-        await self._extract_memories(
-            chat_id=chat_id,
-            user_id=user_id,
-            user_content=message_content,
-            agent_content=full_response,
-            messages=last_messages,
-        )
+                # A. Write JSONL transcript
+                await self._write_transcript(
+                    chat_id, message_content, full_response, last_messages
+                )
 
-        # C. Context Compression
-        compressor = ContextCompressor(chat_id=chat_id, user_id=user_id)
-        compressed_messages = await compressor.compress_messages(last_messages)
+                # B. Memory Extraction
+                await self._extract_memories(
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    user_content=message_content,
+                    agent_content=full_response,
+                    messages=last_messages,
+                )
 
-        # D. State Persistence
-        await self._persist_state(
-            chat_id=chat_id,
-            messages=compressed_messages,
-            model_id=getattr(agent, "_model_id", None),
-            tool_names=getattr(agent, "_tool_names", []),
-            user_content=message_content,
-            agent_content=full_response,
-        )
+                # C. Context Compression
+                compressor = ContextCompressor(chat_id=chat_id, user_id=user_id)
+                compressed_messages = await compressor.compress_messages(last_messages)
+
+                # D. State Persistence
+                await self._persist_state(
+                    chat_id=chat_id,
+                    messages=compressed_messages,
+                    model_id=getattr(agent, "_model_id", None),
+                    tool_names=getattr(agent, "_tool_names", []),
+                    user_content=message_content,
+                    agent_content=full_response,
+                )
+            except Exception as e:
+                logger.error(f"Post-processing background task failed: {e}")
+
+        asyncio.create_task(_run_post_processing())
 
     async def process_turn_text(
         self,
