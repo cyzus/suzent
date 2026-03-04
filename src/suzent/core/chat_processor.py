@@ -210,7 +210,7 @@ class ChatProcessor:
                     event_data = json.loads(json_str)
 
                     msg_type = event_data.get("type")
-                    if msg_type == "text-delta":
+                    if msg_type == "TEXT_MESSAGE_CONTENT":
                         full_response += event_data.get("delta", "")
             except Exception:
                 pass
@@ -251,6 +251,46 @@ class ChatProcessor:
             user_content=message_content,
             agent_content=full_response,
         )
+
+    async def process_turn_text(
+        self,
+        chat_id: str,
+        user_id: str,
+        message_content: str,
+        files: List[Any] = None,
+        config_override: Dict = None,
+    ) -> str:
+        """Run a conversation turn and return only the final response text.
+
+        This is the preferred entry point for background consumers
+        (social brain, scheduler, heartbeat) that don't need to stream
+        SSE events — it drains the SSE generator internally and returns
+        the accumulated text content.
+        """
+        full_response = ""
+        async for chunk in self.process_turn(
+            chat_id=chat_id,
+            user_id=user_id,
+            message_content=message_content,
+            files=files,
+            config_override=config_override,
+        ):
+            try:
+                if chunk.startswith("data: "):
+                    json_str = chunk[6:].strip()
+                    if json_str == "[DONE]":
+                        continue
+                    event_data = json.loads(json_str)
+                    msg_type = event_data.get("type")
+                    if msg_type == "TEXT_MESSAGE_CONTENT":
+                        full_response += event_data.get("delta", "")
+                    elif msg_type == "RUN_ERROR":
+                        raise RuntimeError(
+                            event_data.get("message", "Unknown agent error")
+                        )
+            except json.JSONDecodeError:
+                pass
+        return full_response.strip()
 
     async def _process_upload_file(
         self, file_obj, host_path: Path, virtual_path_prefix: str

@@ -7,7 +7,6 @@ checks whatever is listed, and either surfaces alerts or replies HEARTBEAT_OK.
 """
 
 import asyncio
-import json
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
@@ -213,26 +212,16 @@ class HeartbeatRunner:
             f"---\n{checklist}\n---"
         )
 
-        full_response = ""
-        async for chunk in processor.process_turn(
-            chat_id=HEARTBEAT_CHAT_ID,
-            user_id=CONFIG.user_id,
-            message_content=prompt,
-            config_override=config_override,
-        ):
-            if not chunk.startswith("data: "):
-                continue
-            try:
-                data = json.loads(chunk[6:].strip())
-                if data.get("type") == "final_answer":
-                    full_response = data.get("data", "")
-                elif data.get("type") == "error":
-                    self._last_error = str(data.get("data"))
-                    return ""
-            except json.JSONDecodeError:
-                pass
-
-        return full_response.strip()
+        try:
+            return await processor.process_turn_text(
+                chat_id=HEARTBEAT_CHAT_ID,
+                user_id=CONFIG.user_id,
+                message_content=prompt,
+                config_override=config_override,
+            )
+        except RuntimeError as e:
+            self._last_error = str(e)
+            return ""
 
     def _build_config_override(self) -> dict:
         """Build config override, resolving model from user preferences."""

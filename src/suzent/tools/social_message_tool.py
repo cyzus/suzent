@@ -28,7 +28,7 @@ PLATFORM_CHAR_LIMITS = {
 class SocialMessageTool(Tool):
     name = "SocialMessageTool"
     tool_name = "social_message"
-    requires_approval = True
+    requires_approval = False
 
     def __init__(self):
         super().__init__()
@@ -135,6 +135,7 @@ class SocialMessageTool(Tool):
 
         if not self._channel_manager:
             from suzent.core.social_brain import get_active_social_brain
+
             brain = get_active_social_brain()
             if brain:
                 self._channel_manager = brain.channel_manager

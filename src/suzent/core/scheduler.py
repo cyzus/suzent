@@ -6,7 +6,6 @@ via ChatProcessor on their cron schedule.
 """
 
 import asyncio
-import json
 from collections import deque
 from datetime import datetime, timedelta
 from typing import Optional
@@ -177,31 +176,18 @@ class SchedulerBrain:
             db, model_override=job.model_override
         )
 
-        full_response = ""
-        async for chunk in processor.process_turn(
-            chat_id=chat_id,
-            user_id=CONFIG.user_id,
-            message_content=job.prompt,
-            config_override=config_override,
-        ):
-            if not chunk.startswith("data: "):
-                continue
-            try:
-                data = json.loads(chunk[6:].strip())
-                evt = data.get("type")
-                content = data.get("data")
-
-                if evt == "final_answer":
-                    full_response = content
-                elif evt == "error":
-                    logger.error(f"Cron job {job_id} error: {content}")
-                    db.update_cron_job_run_state(job_id, last_error=str(content))
-                    db.finish_cron_run(run_id, "error", error=str(content))
-                    return ""
-            except json.JSONDecodeError:
-                pass
-
-        return full_response.strip()
+        try:
+            return await processor.process_turn_text(
+                chat_id=chat_id,
+                user_id=CONFIG.user_id,
+                message_content=job.prompt,
+                config_override=config_override,
+            )
+        except RuntimeError as e:
+            logger.error(f"Cron job {job_id} error: {e}")
+            db.update_cron_job_run_state(job_id, last_error=str(e))
+            db.finish_cron_run(run_id, "error", error=str(e))
+            return ""
 
     def _build_config_override(
         self, db, *, model_override: Optional[str] = None

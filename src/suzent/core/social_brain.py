@@ -174,35 +174,13 @@ class SocialBrain:
             config_override = build_agent_config(base_config, require_social_tool=False)
 
             # 5. Process and Reply
-            full_response = ""
-            async for chunk in processor.process_turn(
+            full_response = await processor.process_turn_text(
                 chat_id=social_chat_id,
                 user_id=CONFIG.user_id,
                 message_content=enriched_content,
-                files=message.attachments,  # ChatProcessor handles dicts
+                files=message.attachments,
                 config_override=config_override,
-            ):
-                # Accumulate response from chunks
-                if chunk.startswith("data: "):
-                    try:
-                        import json
-
-                        data = json.loads(chunk[6:].strip())
-                        evt = data.get("type")
-                        content = data.get("data")
-
-                        if evt == "final_answer":
-                            full_response = content
-                        elif evt == "error":
-                            logger.error(f"Agent error: {content}")
-                            await self.channel_manager.send_message(
-                                message.platform,
-                                message.sender_id,
-                                f"⚠️ Error: {content}",
-                            )
-                            return
-                    except Exception:
-                        pass
+            )
 
             # Send Final Response
             if full_response.strip():
