@@ -161,7 +161,10 @@ class BashTool(Tool):
         elif language == "nodejs":
             cmd = ["node", "-e", content]
         elif os.name == "nt":
-            cmd = ["powershell", "-NoProfile", "-Command", content]
+            # Force PowerShell to output UTF-8 so non-ASCII characters
+            # (e.g. localized adapter names) are captured correctly.
+            utf8_preamble = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
+            cmd = ["powershell", "-NoProfile", "-Command", utf8_preamble + content]
         else:
             cmd = ["bash", "-c", content]
 
