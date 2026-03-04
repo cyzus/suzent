@@ -46,7 +46,13 @@ def serialize_state(
             "tool_names": tool_names or [],
             "message_history": to_jsonable_python(messages),
         }
-        return json.dumps(state, ensure_ascii=False, default=str).encode("utf-8")
+        serialized_data = json.dumps(state, ensure_ascii=False, default=str).encode(
+            "utf-8"
+        )
+        logger.debug(
+            f"Serialized agent state: {len(messages)} messages, {len(serialized_data)} bytes"
+        )
+        return serialized_data
 
     except Exception as e:
         logger.error(f"Failed to serialize agent state: {e}")
@@ -113,6 +119,7 @@ def _restore_v3(raw: dict) -> Optional[Dict[str, Any]]:
 
         messages = ModelMessagesTypeAdapter.validate_python(history_data)
 
+        logger.debug(f"Restored v3 history: {len(messages)} messages")
         return {
             "version": STATE_FORMAT_VERSION,
             "message_history": messages,
@@ -122,6 +129,12 @@ def _restore_v3(raw: dict) -> Optional[Dict[str, Any]]:
 
     except Exception as e:
         logger.warning(f"Failed to restore v3 message history: {e}")
+        # Log a snippet of history_data for debugging if it's not too large
+        try:
+            sample = str(history_data)[:500]
+            logger.debug(f"History data sample that failed validation: {sample}")
+        except Exception:
+            pass
         return None
 
 

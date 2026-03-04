@@ -235,7 +235,9 @@ async def stream_agent_responses(
     # --- Background agent runner with deferred-tool loop ---
     async def _agent_runner():
         """Run the agent in a background task, looping for deferred tool approvals."""
+        nonlocal partial_history
         prompt = message
+
         history = list(message_history) if message_history else None
         deferred_results = None
 
@@ -263,6 +265,11 @@ async def stream_agent_responses(
                     if last_result_event and isinstance(
                         last_result_event.result.output, DeferredToolRequests
                     ):
+                        # Capture intermediate history in case of cancellation
+                        current_history = last_result_event.result.all_messages()
+                        partial_history = current_history
+                        deps.last_messages = current_history
+
                         deferred = last_result_event.result.output
                         if deferred.approvals:
                             deferred_results = await _collect_approvals(
@@ -274,7 +281,7 @@ async def stream_agent_responses(
                             )
                             if deferred_results is None:
                                 break  # cancelled
-                            history = last_result_event.result.all_messages()
+                            history = current_history
                             prompt = None  # no new user prompt on resume
                             continue
 
