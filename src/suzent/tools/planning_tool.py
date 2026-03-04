@@ -49,8 +49,8 @@ class PlanningTool(Tool):
 
         Supports two actions:
         - 'update': Create or update a plan with phases. Requires 'phases' (list of
-          objects with id, title, and optional capabilities dict). Optionally accepts
-          'goal' for the high-level objective.
+          objects with number, description, and optional capabilities dict). Optionally
+          accepts 'goal' for the high-level objective.
         - 'advance': Move the plan from one phase to the next. Requires
           'current_phase_id' and 'next_phase_id'.
 
@@ -58,21 +58,31 @@ class PlanningTool(Tool):
             ctx: The pydantic-ai run context with agent dependencies.
             action: The operation to perform: 'update' or 'advance'.
             goal: A concise high-level goal for the plan. Required for 'update' if creating a new plan or changing goal.
-            phases: A list of phases with id, title, and capabilities. Required for 'update'.
+            phases: A list of phases with number, description, and capabilities. Required for 'update'.
             current_phase_id: The ID of the phase currently finishing. Required for 'advance'.
             next_phase_id: The ID of the next phase to start. Required for 'advance'.
         """
         # Extract chat_id from deps and run migration logic
         self._current_chat_id = ctx.deps.chat_id
-        if self._current_chat_id and self._current_chat_id != "planning_session_temp" and not self._migrated_temp_plan:
+        if (
+            self._current_chat_id
+            and self._current_chat_id != "planning_session_temp"
+            and not self._migrated_temp_plan
+        ):
             try:
                 db = get_database()
-                migrated = db.reassign_plan_chat("planning_session_temp", self._current_chat_id)
+                migrated = db.reassign_plan_chat(
+                    "planning_session_temp", self._current_chat_id
+                )
                 if migrated:
-                    logger.info(f"Migrated {migrated} temporary plan(s) to chat {self._current_chat_id}")
+                    logger.info(
+                        f"Migrated {migrated} temporary plan(s) to chat {self._current_chat_id}"
+                    )
                 self._migrated_temp_plan = True
             except Exception as exc:
-                logger.error(f"Failed migrating temporary plan to {self._current_chat_id}: {exc}")
+                logger.error(
+                    f"Failed migrating temporary plan to {self._current_chat_id}: {exc}"
+                )
 
         action_map = {
             "update": self._update_plan,
@@ -161,7 +171,7 @@ class PlanningTool(Tool):
         return plan
 
     def _update_plan(
-        self, chat_id: str, goal: Optional[str], phases: list[dict]
+        self, chat_id: str, goal: Optional[str], phases: list[Phase]
     ) -> str:
         """Create or update a plan."""
         existing_plan = self._get_plan(chat_id, None)
@@ -169,25 +179,7 @@ class PlanningTool(Tool):
             goal if goal else (existing_plan.objective if existing_plan else "No Goal")
         )
 
-        # Map phases to Phase objects
-        new_phases = []
-        for idx, p in enumerate(phases):
-            # Try to use the LLM's id as a number; fall back to 1-based index
-            raw_id = p.get("id", idx + 1)
-            try:
-                phase_number = int(raw_id)
-            except (ValueError, TypeError):
-                phase_number = idx + 1
-
-            new_phases.append(
-                Phase(
-                    number=phase_number,
-                    description=p.get(
-                        "title", p.get("description", f"Phase {phase_number}")
-                    ),
-                    capabilities=p.get("capabilities", {}),
-                )
-            )
+        new_phases = list(phases)
 
         # Ensure first phase is in_progress if none are
         if not any(p.status == "in_progress" for p in new_phases) and not any(
@@ -198,11 +190,9 @@ class PlanningTool(Tool):
 
         plan = Plan(objective=objective, phases=new_phases, chat_id=chat_id)
         if existing_plan:
-            plan.id = existing_plan.id  # Keep ID to update in place if desired, though write_plan creates new version by default
+            plan.id = existing_plan.id
 
-        write_plan_to_database(
-            plan, preserve_history=True
-        )  # Always create history for updates generally good
+        write_plan_to_database(plan, preserve_history=True)
 
         return self._format_plan_output(plan, "Task plan updated")
 
