@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.3.1]
+
+### 🚀 Added
+- **Tool Approval (HITL)**: Sensitive tools now pause and ask for user confirmation before running.
+  - Desktop app shows an inline approval dialog during streaming.
+  - CLI prints a boxed prompt with `suzent agent approve <id>` / `deny <id>` commands.
+  - Social channels receive an alert message; reply `/y` or `/n` to respond.
+  - Automated contexts (cron, heartbeat) auto-approve by default.
+  - Session-level "remember" option to skip repeated prompts for the same tool.
+- **Image Generation**: New tool for generating images via the configured provider.
+- **Social Slash Commands**: `/help`, `/y`, `/n` command framework for social channels.
+
+### ⚡ Changed
+- **Pydantic AI Migration**: Agent runtime moved from Smolagents to pydantic-ai, bringing native async streaming, structured tool definitions, and deferred-tool support for HITL.
+- **Stream Parser**: Unified SSE parser (`StreamParser`) shared across CLI, social, and internal consumers — replaces per-module parsing logic.
+- **Approval Manager**: Centralized `approval_manager` module replaces per-stream approval state, enabling cross-interface resolution (e.g. approve from CLI while streaming in desktop).
+
 ## [v0.3.0]
 
 ### 🚀 Added

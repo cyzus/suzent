@@ -13,7 +13,6 @@ from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
 from suzent.tools.base import Tool
 from suzent.logger import get_logger
-from suzent.tools.path_resolver import PathResolver
 
 logger = get_logger(__name__)
 
@@ -64,8 +63,10 @@ class ReadFileTool(Tool):
         else:
             from suzent.tools.path_resolver import PathResolver
             from suzent.config import CONFIG
+
             resolver = PathResolver(
-                deps.chat_id, deps.sandbox_enabled,
+                deps.chat_id,
+                deps.sandbox_enabled,
                 sandbox_data_path=CONFIG.sandbox_data_path,
                 custom_volumes=deps.custom_volumes,
                 workspace_root=deps.workspace_root,

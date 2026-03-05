@@ -24,7 +24,9 @@ class MemorySearchTool(Tool):
     def __init__(self):
         super().__init__()
 
-    async def forward(self, ctx: RunContext[AgentDeps], query: str, limit: int = 10) -> str:
+    async def forward(
+        self, ctx: RunContext[AgentDeps], query: str, limit: int = 10
+    ) -> str:
         """Search long-term archival memory for relevant information.
 
         Uses semantic similarity to find relevant memories even if the exact words differ.

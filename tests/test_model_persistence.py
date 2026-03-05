@@ -49,11 +49,11 @@ async def test_chat_route_uses_user_prefs(mock_process_turn, mock_db):
     assert config["tools"] == ["TestTool"]
 
 
-@patch("suzent.core.social_brain.get_database")
+@patch("suzent.database.get_database")
 @patch("suzent.core.chat_processor.ChatProcessor.process_turn")
 async def test_social_brain_uses_user_prefs(mock_process_turn, mock_get_db):
     """Test that SocialBrain falls back to user preferences if no model configured."""
-    # Setup mock DB for SocialBrain
+    # Setup mock DB
     db = MagicMock()
     mock_get_db.return_value = db
     prefs = MagicMock()

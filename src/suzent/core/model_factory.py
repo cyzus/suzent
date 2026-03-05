@@ -76,10 +76,10 @@ def create_pydantic_ai_model(model_id: str) -> Union[str, object]:
             # Enable thinking/reasoning for Gemini models if supported.
             # Some models like gemini-2.0-flash-thinking-exp have it on by default,
             # but others require explicit configuration.
-            settings = ModelSettings(
-                google_thinking_config={"include_thoughts": True}
+            settings = ModelSettings(google_thinking_config={"include_thoughts": True})
+            logger.debug(
+                f"Mapped {model_id} → GoogleModel({model_name}) with thinking enabled"
             )
-            logger.debug(f"Mapped {model_id} → GoogleModel({model_name}) with thinking enabled")
             return GoogleModel(model_name, provider=provider, settings=settings)
         # Fall through to LiteLLM if no key found
         logger.warning(f"No API key for Gemini; falling back to LiteLLM for {model_id}")

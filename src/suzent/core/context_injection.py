@@ -50,6 +50,7 @@ def build_agent_deps(
         config, "sandbox_enabled", CONFIG.sandbox_enabled
     )
     workspace_root = _get_config_value(config, "workspace_root", CONFIG.workspace_root)
+    auto_approve_tools = _get_config_value(config, "auto_approve_tools", False)
     custom_volumes = get_effective_volumes(
         _get_config_value(config, "sandbox_volumes", None)
     )
@@ -108,4 +109,5 @@ def build_agent_deps(
         event_loop=event_loop,
         social_context=social_ctx,
         skill_manager=skill_manager,
+        auto_approve_tools=auto_approve_tools,
     )

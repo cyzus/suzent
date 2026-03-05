@@ -50,9 +50,8 @@ class StreamControl:
         self.reason = "Stream stopped by user"
 
 
-# Global registry of active streams and deps (for HITL approval endpoint)
+# Global registry of active streams
 stream_controls: Dict[str, StreamControl] = {}
-active_deps: Dict[str, AgentDeps] = {}
 
 
 def _plan_snapshot(chat_id: Optional[str] = None) -> dict:
@@ -95,9 +94,8 @@ async def _collect_approvals(
     results: Dict[str, Any] = {}
 
     for tc in approvals:
-        # Check session policy first
         policy = deps.tool_approval_policy.get(tc.tool_name)
-        if policy == "always_allow":
+        if policy == "always_allow" or deps.auto_approve_tools:
             results[tc.tool_call_id] = True
             continue
         if policy == "always_deny":
@@ -199,10 +197,12 @@ async def stream_agent_responses(
         stream_controls[chat_id] = control
 
     # Wire HITL fields into deps
+    from suzent.core import approval_manager
+
     sse_queue: asyncio.Queue = asyncio.Queue()
     deps.cancel_event = control.cancel_event
     if chat_id:
-        active_deps[chat_id] = deps
+        approval_manager.active_deps[chat_id] = deps
 
     # Plan watcher task
     plan_queue: asyncio.Queue = asyncio.Queue()
@@ -460,7 +460,7 @@ async def stream_agent_responses(
             existing = stream_controls.get(chat_id)
             if existing is control:
                 stream_controls.pop(chat_id, None)
-            active_deps.pop(chat_id, None)
+            approval_manager.active_deps.pop(chat_id, None)
 
         # Unblock any tools still waiting for approval
         for req_id, req_data in list(deps.pending_approvals.items()):
@@ -478,35 +478,4 @@ def stop_stream(chat_id: str, reason: str = "Stream stopped by user") -> bool:
         return False
     control.reason = reason
     control.cancel_event.set()
-    return True
-
-
-def resolve_tool_approval(
-    chat_id: str,
-    request_id: str,
-    approved: bool,
-    remember: Optional[str] = None,
-) -> bool:
-    """Resolve a pending tool approval request.
-
-    Args:
-        chat_id: The chat session identifier.
-        request_id: The tool_call_id from the approval request.
-        approved: Whether the user approved the tool execution.
-        remember: Optional "session" to remember the decision.
-    """
-    deps = active_deps.get(chat_id)
-    if not deps:
-        return False
-
-    req = deps.pending_approvals.get(request_id)
-    if not req:
-        return False
-
-    req["approved"] = approved
-    req["remember"] = remember
-    evt = req.get("event")
-    if evt:
-        evt.set()
-
     return True

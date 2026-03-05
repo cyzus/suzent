@@ -153,7 +153,7 @@ class ConfigModel(BaseModel):
     # Embedding
     embedding_model: Optional[str] = None
     embedding_dimension: int = 0
-    
+
     # Image Generation
     image_generation_model: Optional[str] = None
 

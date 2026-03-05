@@ -227,7 +227,10 @@ class HeartbeatRunner:
         """Build config override, resolving model from user preferences."""
         from suzent.agent_manager import build_agent_config
 
-        return build_agent_config({"memory_enabled": True}, require_social_tool=True)
+        return build_agent_config(
+            {"memory_enabled": True, "auto_approve_tools": True},
+            require_social_tool=True,
+        )
 
     def _read_heartbeat_md(self) -> Optional[str]:
         """Read HEARTBEAT.md, return None if missing or has no meaningful content."""

@@ -25,6 +25,8 @@ from suzent.memory import ConversationTurn, Message, AgentAction
 from suzent.database import get_database
 from suzent.tools.path_resolver import PathResolver
 from suzent.routes.sandbox_routes import sanitize_filename
+from suzent.core.stream_parser import StreamParser, TextChunk, ErrorEvent
+
 
 logger = get_logger(__name__)
 
@@ -280,15 +282,16 @@ class ChatProcessor:
         message_content: str,
         files: List[Any] = None,
         config_override: Dict = None,
+        on_event: Any = None,
     ) -> str:
         """Run a conversation turn and return only the final response text.
 
-        This is the preferred entry point for background consumers
-        (social brain, scheduler, heartbeat) that don't need to stream
-        SSE events — it drains the SSE generator internally and returns
-        the accumulated text content.
+        Allows for an optional async 'on_event' callback to handle intermediate
+        events (like tool approval requests) while draining the stream.
         """
         full_response = ""
+        parser = StreamParser()
+
         async for chunk in self.process_turn(
             chat_id=chat_id,
             user_id=user_id,
@@ -296,21 +299,16 @@ class ChatProcessor:
             files=files,
             config_override=config_override,
         ):
-            try:
-                if chunk.startswith("data: "):
-                    json_str = chunk[6:].strip()
-                    if json_str == "[DONE]":
-                        continue
-                    event_data = json.loads(json_str)
-                    msg_type = event_data.get("type")
-                    if msg_type == "TEXT_MESSAGE_CONTENT":
-                        full_response += event_data.get("delta", "")
-                    elif msg_type == "RUN_ERROR":
-                        raise RuntimeError(
-                            event_data.get("message", "Unknown agent error")
-                        )
-            except json.JSONDecodeError:
-                pass
+            # Use the shared parser to turn raw SSE chunks into events
+            for event in parser.parse([chunk]):
+                if on_event:
+                    await on_event(event)
+
+                if isinstance(event, TextChunk):
+                    full_response += event.content
+                elif isinstance(event, ErrorEvent):
+                    raise RuntimeError(event.message)
+
         return full_response.strip()
 
     async def _process_upload_file(

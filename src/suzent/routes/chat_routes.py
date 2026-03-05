@@ -16,7 +16,7 @@ from starlette.responses import JSONResponse, StreamingResponse
 from suzent.config import CONFIG
 from suzent.database import get_database
 from suzent.logger import get_logger
-from suzent.streaming import stop_stream, resolve_tool_approval
+from suzent.streaming import stop_stream
 
 logger = get_logger(__name__)
 
@@ -281,20 +281,20 @@ async def approve_tool(request: Request) -> JSONResponse:
     except json.JSONDecodeError:
         return JSONResponse({"error": "Invalid JSON."}, status_code=400)
 
-    chat_id = data.get("chat_id")
+    chat_id = data.get("chat_id")  # Optional for global search
     request_id = data.get("request_id")
     approved = data.get("approved", False)
     remember = data.get("remember")  # "session" or None
 
-    if not chat_id or not request_id:
-        return JSONResponse(
-            {"error": "chat_id and request_id are required"}, status_code=400
-        )
+    if not request_id:
+        return JSONResponse({"error": "request_id is required"}, status_code=400)
 
-    success = resolve_tool_approval(
-        chat_id=chat_id,
+    from suzent.core import approval_manager
+
+    success = approval_manager.resolve_approval(
         request_id=request_id,
         approved=bool(approved),
+        chat_id=chat_id,
         remember=remember,
     )
 

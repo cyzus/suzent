@@ -124,7 +124,6 @@ class ImageGenerator:
         config_model = getattr(CONFIG, "image_generation_model", None)
         self.model = model or config_model
 
-
     async def generate(self, prompt: str, size: str = "1024x1024") -> str:
         """Generate an image from a prompt.
 
@@ -137,11 +136,9 @@ class ImageGenerator:
         """
         try:
             response = await litellm.aimage_generation(
-                prompt=prompt,
-                model=self.model,
-                size=size
+                prompt=prompt, model=self.model, size=size
             )
-            
+
             data = response.data[0]
             if hasattr(data, "url") and data.url:
                 return data.url

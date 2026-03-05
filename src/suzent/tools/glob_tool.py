@@ -27,7 +27,9 @@ class GlobTool(Tool):
         super().__init__(*args, **kwargs)
         self._resolver: Optional[PathResolver] = None
 
-    def forward(self, ctx: RunContext[AgentDeps], pattern: str, path: Optional[str] = None) -> str:
+    def forward(
+        self, ctx: RunContext[AgentDeps], pattern: str, path: Optional[str] = None
+    ) -> str:
         """Find files matching a glob pattern.
 
         Searches for files matching the given glob pattern in the specified directory
@@ -48,8 +50,10 @@ class GlobTool(Tool):
         else:
             from suzent.tools.path_resolver import PathResolver
             from suzent.config import CONFIG
+
             self._resolver = PathResolver(
-                deps.chat_id, deps.sandbox_enabled,
+                deps.chat_id,
+                deps.sandbox_enabled,
                 sandbox_data_path=CONFIG.sandbox_data_path,
                 custom_volumes=deps.custom_volumes,
                 workspace_root=deps.workspace_root,

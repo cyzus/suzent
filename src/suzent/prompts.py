@@ -102,7 +102,9 @@ def format_instructions(
 
     volumes_section = ""
     if custom_volumes:
-        volumes_list = "\n".join([f"- {v} (Host Path:Virtual Name)" for v in custom_volumes])
+        volumes_list = "\n".join(
+            [f"- {v} (Host Path:Virtual Name)" for v in custom_volumes]
+        )
         volumes_section = CUSTOM_VOLUMES_SECTION.format(volumes_list=volumes_list)
 
     execution_mode_section = ""
@@ -110,8 +112,7 @@ def format_instructions(
         execution_mode_section = EXECUTION_MODE_SECTION_SANDBOX
     else:
         execution_mode_section = EXECUTION_MODE_SECTION_HOST.format(
-            workspace_root=workspace_root.replace("\\", "/"),
-            os_name=platform.system()
+            workspace_root=workspace_root.replace("\\", "/"), os_name=platform.system()
         )
 
     base_instructions_section = ""

@@ -9,6 +9,7 @@ from suzent.channels.manager import ChannelManager
 from suzent.channels.base import UnifiedMessage
 from suzent.config import CONFIG
 from suzent.database import get_database
+from suzent.core.stream_parser import ApprovalRequest
 
 logger = get_logger(__name__)
 
@@ -127,6 +128,12 @@ class SocialBrain:
             )
             return
 
+        # 1.5 Slash command interception
+        from suzent.social.commands import dispatch_command
+
+        if await dispatch_command(message, self.channel_manager):
+            return
+
         try:
             # 2. Resolve Chat ID and target
             # target_id is thread/group ID when available, sender_id for DMs
@@ -174,12 +181,25 @@ class SocialBrain:
             config_override = build_agent_config(base_config, require_social_tool=False)
 
             # 5. Process and Reply
+
+            async def on_event(event):
+                if isinstance(event, ApprovalRequest):
+                    alert = (
+                        f"⚠️ Approval Required\n"
+                        f"{event.format_alert_text(markdown=True)}\n\n"
+                        f"Reply `/y` to allow or `/n` to deny"
+                    )
+                    await self.channel_manager.send_message(
+                        message.platform, target_id, alert
+                    )
+
             full_response = await processor.process_turn_text(
                 chat_id=social_chat_id,
                 user_id=CONFIG.user_id,
                 message_content=enriched_content,
                 files=message.attachments,
                 config_override=config_override,
+                on_event=on_event,
             )
 
             # Send Final Response

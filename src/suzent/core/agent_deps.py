@@ -45,5 +45,6 @@ class AgentDeps:
     tool_approval_policy: dict = field(
         default_factory=dict
     )  # tool_name → "always_allow" | "always_deny"
+    auto_approve_tools: bool = False
     cancel_event: Any = None  # asyncio.Event — set when stream is cancelled
     last_messages: Optional[list] = None  # To preserve session history correctly

@@ -37,6 +37,7 @@ When to use:
         sm = ctx.deps.skill_manager
         if not sm:
             from suzent.skills import get_skill_manager
+
             sm = get_skill_manager()
 
         content = sm.get_skill_content(skill_name)

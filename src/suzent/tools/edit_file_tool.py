@@ -52,8 +52,10 @@ class EditFileTool(Tool):
         else:
             from suzent.tools.path_resolver import PathResolver
             from suzent.config import CONFIG
+
             resolver = PathResolver(
-                deps.chat_id, deps.sandbox_enabled,
+                deps.chat_id,
+                deps.sandbox_enabled,
                 sandbox_data_path=CONFIG.sandbox_data_path,
                 custom_volumes=deps.custom_volumes,
                 workspace_root=deps.workspace_root,
