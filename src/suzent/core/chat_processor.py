@@ -187,9 +187,11 @@ class ChatProcessor:
         full_prompt = ""
         if message_content or files:
             full_prompt = message_content + attachment_context
-            parts = [UserPromptPart(content=full_prompt)]
             if agent_images:
-                parts.extend(agent_images)
+                content = [full_prompt, *agent_images]
+            else:
+                content = full_prompt
+            parts = [UserPromptPart(content=content)]
             new_request = ModelRequest(parts=parts)
             message_history.append(new_request)
 
