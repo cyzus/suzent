@@ -3,78 +3,31 @@ Social Brain: The bridge between Social Channels and the Suzent Agent.
 """
 
 import asyncio
-from dataclasses import dataclass, field
-from typing import Optional, Dict, List
+from typing import Optional, Dict
 from suzent.logger import get_logger
 from suzent.channels.manager import ChannelManager
 from suzent.channels.base import UnifiedMessage
 from suzent.config import CONFIG
-from suzent.database import get_database
+from suzent.core.base_brain import BaseBrain, get_active
+from suzent.core.approval_manager import PendingApprovalSession
 from suzent.core.stream_parser import ApprovalRequest
+from suzent.database import get_database
 
 logger = get_logger(__name__)
-
-# Module-level reference for desktop mode access
-_active_instance: Optional["SocialBrain"] = None
 
 
 def get_active_social_brain() -> Optional["SocialBrain"]:
     """Return the active SocialBrain instance, or None if not running."""
-    return _active_instance
+    return get_active(SocialBrain)
 
 
-@dataclass
-class PendingApprovalSession:
-    """Tracks a batch of tool approvals for a single agent turn."""
-
-    requests: List[ApprovalRequest]
-    decisions: Dict[str, bool] = field(default_factory=dict)  # request_id -> approved
-    config_override: Optional[Dict] = None
-    platform: str = ""
-    target_id: str = ""
-    sender_id: str = ""  # original requester — only they may approve in groups
-
-    @property
-    def current_index(self) -> int:
-        return len(self.decisions)
-
-    @property
-    def total(self) -> int:
-        return len(self.requests)
-
-    @property
-    def all_decided(self) -> bool:
-        return self.current_index >= self.total
-
-    @property
-    def next_request(self) -> Optional[ApprovalRequest]:
-        if self.all_decided:
-            return None
-        return self.requests[self.current_index]
-
-    def record(self, approved: bool):
-        """Record a decision for the current request."""
-        req = self.next_request
-        if req:
-            self.decisions[req.request_id] = approved
-
-    def to_resume_approvals(self) -> List[Dict]:
-        """Build the resume_approvals payload for ChatProcessor."""
-        return [
-            {
-                "request_id": req.request_id,
-                "tool_call_id": req.tool_call_id,
-                "approved": self.decisions[req.request_id],
-            }
-            for req in self.requests
-        ]
-
-
-class SocialBrain:
+class SocialBrain(BaseBrain):
     """
     Consumer that processes messages from the ChannelManager queue
     and dispatches them to the AI Agent.
     """
+
+    _brain_name = "SocialBrain"
 
     def __init__(
         self,
@@ -86,6 +39,7 @@ class SocialBrain:
         tools: list = None,
         mcp_enabled: dict = None,
     ):
+        super().__init__()
         self.channel_manager = channel_manager
         self.allowed_users = set(allowed_users) if allowed_users else set()
         self.platform_allowlists = (
@@ -97,8 +51,6 @@ class SocialBrain:
         self.memory_enabled = memory_enabled
         self.tools = tools
         self.mcp_enabled = mcp_enabled
-        self._running = False
-        self._task: Optional[asyncio.Task] = None
         self._sessions: Dict[str, PendingApprovalSession] = {}  # chat_id -> session
         self._session_policies: Dict[
             str, Dict[str, str]
@@ -110,24 +62,11 @@ class SocialBrain:
 
     async def start(self):
         """Start the processing loop."""
-        global _active_instance
-        self._running = True
-        self._task = asyncio.create_task(self._process_queue())
-        _active_instance = self
-        logger.info("SocialBrain started.")
+        await super().start()
 
-    async def stop(self):
-        """Stop the processing loop."""
-        global _active_instance
-        self._running = False
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-        _active_instance = None
-        logger.info("SocialBrain stopped.")
+    async def _run_loop(self):
+        """Delegate to the queue processor."""
+        await self._process_queue()
 
     async def _process_queue(self):
         """Main loop consuming messages."""
@@ -189,7 +128,9 @@ class SocialBrain:
         try:
             # 2. Resolve Chat ID and target
             # target_id is thread/group ID when available, sender_id for DMs
-            target_id = message.get_chat_id().split(":", 1)[1]
+            from suzent.channels.utils import extract_target_id
+
+            target_id = extract_target_id(message)
             social_chat_id = f"social-{message.platform}-{target_id}"
             self._ensure_chat_exists(social_chat_id, message, target_id)
 

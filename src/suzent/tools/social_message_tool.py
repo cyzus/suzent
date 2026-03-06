@@ -134,11 +134,10 @@ class SocialMessageTool(Tool):
         self._default_target = deps.social_context.get("target_id")
 
         if not self._channel_manager:
-            from suzent.core.social_brain import get_active_social_brain
+            from suzent.channels.utils import get_channel_manager
 
-            brain = get_active_social_brain()
-            if brain:
-                self._channel_manager = brain.channel_manager
+            self._channel_manager = get_channel_manager()
+            if self._channel_manager:
                 try:
                     self._event_loop = asyncio.get_running_loop()
                 except RuntimeError:

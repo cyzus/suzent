@@ -12,9 +12,10 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from suzent.config import CONFIG
+from suzent.core.base_brain import BaseBrain, get_active
 from suzent.database import get_database
 from suzent.logger import get_logger
-from suzent.streaming import stream_controls
+from suzent.core.stream_registry import stream_controls
 
 logger = get_logger(__name__)
 
@@ -22,25 +23,24 @@ HEARTBEAT_OK = "HEARTBEAT_OK"
 HEARTBEAT_CHAT_ID = "heartbeat-main"
 HEARTBEAT_MD_FILENAME = "HEARTBEAT.md"
 
-_active_instance: Optional["HeartbeatRunner"] = None
-
 
 def get_active_heartbeat() -> Optional["HeartbeatRunner"]:
     """Return the active HeartbeatRunner instance, or None."""
-    return _active_instance
+    return get_active(HeartbeatRunner)
 
 
-class HeartbeatRunner:
+class HeartbeatRunner(BaseBrain):
     """
     Runs periodic agent turns in a dedicated persistent chat.
     Reads HEARTBEAT.md as a checklist. Suppresses HEARTBEAT_OK responses.
     """
 
+    _brain_name = "HeartbeatRunner"
+
     def __init__(self, interval_minutes: int = 30):
+        super().__init__()
         self.interval_minutes = interval_minutes
         self._enabled = False
-        self._running = False
-        self._task: Optional[asyncio.Task] = None
         self._last_run_at: Optional[datetime] = None
         self._last_result: Optional[str] = None
         self._last_error: Optional[str] = None
@@ -60,8 +60,10 @@ class HeartbeatRunner:
 
     async def start(self):
         """Start the heartbeat loop if HEARTBEAT.md exists."""
-        global _active_instance
-        _active_instance = self
+        # Register in the global brain registry even if we don't start the loop
+        from suzent.core.base_brain import _registry
+
+        _registry[type(self)] = self
 
         if not self.heartbeat_md_path.exists():
             logger.info(
@@ -80,16 +82,7 @@ class HeartbeatRunner:
 
     async def stop(self):
         """Stop the heartbeat loop."""
-        global _active_instance
-        self._running = False
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-        _active_instance = None
-        logger.info("HeartbeatRunner stopped.")
+        await super().stop()
 
     async def enable(self):
         """Enable heartbeat and start the loop."""

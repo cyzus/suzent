@@ -20,7 +20,9 @@ async def handle_approval(message, channel_manager, args):
     approved = trigger in _APPROVE
     remember = trigger in _REMEMBER
 
-    target_id = message.get_chat_id().split(":", 1)[1]
+    from suzent.channels.utils import extract_target_id
+
+    target_id = extract_target_id(message)
     await brain.handle_approval_response(
         message.platform,
         target_id,

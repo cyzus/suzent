@@ -12,36 +12,10 @@ from __future__ import annotations
 import os
 from typing import Union
 
+from suzent.core.provider_factory import resolve_api_key
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
-
-# Env var names used by suzent's DB / provider_factory for each provider.
-# pydantic-ai may expect different names (e.g. GOOGLE_API_KEY vs GEMINI_API_KEY),
-# so we resolve keys explicitly when constructing provider objects.
-_PROVIDER_ENV_KEYS: dict[str, list[str]] = {
-    "openai": ["OPENAI_API_KEY"],
-    "anthropic": ["ANTHROPIC_API_KEY"],
-    "gemini": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
-    "google": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
-    "groq": ["GROQ_API_KEY"],
-}
-
-# Providers that should use OpenAI-compatible endpoint via LiteLLM.
-_LITELLM_PROVIDERS: set[str] = {
-    "deepseek/",
-    "ollama/",
-    "together/",
-}
-
-
-def _resolve_api_key(provider: str) -> str | None:
-    """Look up the API key for a provider from environment variables."""
-    for env_key in _PROVIDER_ENV_KEYS.get(provider, []):
-        val = os.environ.get(env_key)
-        if val:
-            return val
-    return None
 
 
 def create_pydantic_ai_model(model_id: str) -> Union[str, object]:
@@ -60,7 +34,7 @@ def create_pydantic_ai_model(model_id: str) -> Union[str, object]:
     # --- Google / Gemini ---
     if model_id.startswith(("gemini/", "google/")):
         model_name = model_id.split("/", 1)[1]
-        api_key = _resolve_api_key("gemini")
+        api_key = resolve_api_key("gemini")
         logger.info(
             f"Google model resolve: model_id={model_id}, "
             f"GEMINI_API_KEY={'set' if os.environ.get('GEMINI_API_KEY') else 'missing'}, "
@@ -87,7 +61,7 @@ def create_pydantic_ai_model(model_id: str) -> Union[str, object]:
     # --- OpenAI ---
     elif model_id.startswith("openai/"):
         model_name = model_id.split("/", 1)[1]
-        api_key = _resolve_api_key("openai")
+        api_key = resolve_api_key("openai")
         base_url = os.environ.get("OPENAI_BASE_URL")
         if api_key:
             from pydantic_ai.models.openai import OpenAIModel
@@ -101,7 +75,7 @@ def create_pydantic_ai_model(model_id: str) -> Union[str, object]:
     # --- Anthropic ---
     elif model_id.startswith("anthropic/"):
         model_name = model_id.split("/", 1)[1]
-        api_key = _resolve_api_key("anthropic")
+        api_key = resolve_api_key("anthropic")
         if api_key:
             from pydantic_ai.models.anthropic import AnthropicModel
             from pydantic_ai.providers.anthropic import AnthropicProvider
@@ -116,7 +90,7 @@ def create_pydantic_ai_model(model_id: str) -> Union[str, object]:
     # --- Groq ---
     elif model_id.startswith("groq/"):
         model_name = model_id.split("/", 1)[1]
-        api_key = _resolve_api_key("groq")
+        api_key = resolve_api_key("groq")
         if api_key:
             from pydantic_ai.models.groq import GroqModel
             from pydantic_ai.providers.groq import GroqProvider

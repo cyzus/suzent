@@ -13,54 +13,36 @@ from typing import Optional
 from croniter import croniter
 
 from suzent.config import CONFIG
+from suzent.core.base_brain import BaseBrain, get_active
 from suzent.database import get_database
 from suzent.logger import get_logger
-from suzent.streaming import stream_controls
+from suzent.core.stream_registry import stream_controls
 
 logger = get_logger(__name__)
-
-_active_instance: Optional["SchedulerBrain"] = None
 
 
 def get_active_scheduler() -> Optional["SchedulerBrain"]:
     """Return the active SchedulerBrain instance, or None if not running."""
-    return _active_instance
+    return get_active(SchedulerBrain)
 
 
-class SchedulerBrain:
+class SchedulerBrain(BaseBrain):
     """
     Periodically checks cron jobs and executes them via ChatProcessor.
     Routes announce notifications to an in-memory deque for frontend polling.
     """
 
+    _brain_name = "SchedulerBrain"
+
     def __init__(self, tick_interval: float = 30.0):
+        super().__init__()
         self.tick_interval = tick_interval
-        self._running = False
-        self._task: Optional[asyncio.Task] = None
         self._pending_notifications: deque = deque(maxlen=20)
 
     async def start(self):
         """Start the scheduler loop."""
-        global _active_instance
-        self._running = True
-        self._task = asyncio.create_task(self._run_loop())
-        _active_instance = self
-
+        await super().start()
         self._initialize_schedules()
-        logger.info("SchedulerBrain started.")
-
-    async def stop(self):
-        """Stop the scheduler loop."""
-        global _active_instance
-        self._running = False
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-        _active_instance = None
-        logger.info("SchedulerBrain stopped.")
 
     async def trigger_job_now(self, job_id: int):
         """Manually trigger a job for immediate execution."""

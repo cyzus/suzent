@@ -346,14 +346,52 @@ class LiteLLMProvider(BaseProvider):
         return True
 
 
+# Canonical mapping: provider name -> list of env var names to check (in priority order).
+# Used by both model_factory and GenericLiteLLMProvider for consistent key resolution.
+PROVIDER_ENV_KEYS: Dict[str, list] = {
+    "openai": ["OPENAI_API_KEY"],
+    "anthropic": ["ANTHROPIC_API_KEY"],
+    "gemini": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+    "google": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+    "groq": ["GROQ_API_KEY"],
+    "deepseek": ["DEEPSEEK_API_KEY"],
+}
+
+
+def resolve_api_key(
+    provider: str, config: Optional[Dict[str, Any]] = None
+) -> Optional[str]:
+    """Resolve the API key for a provider.
+
+    Checks (in order):
+    1. Explicit ``config["api_key"]`` or ``config[ENV_KEY]``
+    2. Environment variables from ``PROVIDER_ENV_KEYS``
+
+    Returns the key value, or None.
+    """
+    env_keys = PROVIDER_ENV_KEYS.get(provider, [f"{provider.upper()}_API_KEY"])
+
+    # Check config dict first
+    if config:
+        val = config.get("api_key")
+        if val:
+            return val
+        for env_key in env_keys:
+            val = config.get(env_key)
+            if val:
+                return val
+
+    # Fallback to environment variables
+    for env_key in env_keys:
+        val = os.environ.get(env_key)
+        if val:
+            return val
+
+    return None
+
+
 class GenericLiteLLMProvider(BaseProvider):
     """Provider that uses litellm's get_valid_models for Anthropic, Gemini, DeepSeek, etc."""
-
-    _provider_env_keys = {
-        "anthropic": "ANTHROPIC_API_KEY",
-        "gemini": "GEMINI_API_KEY",
-        "deepseek": "DEEPSEEK_API_KEY",
-    }
 
     def _resolve_api_key(self) -> tuple[str, Optional[str]]:
         """
@@ -362,24 +400,11 @@ class GenericLiteLLMProvider(BaseProvider):
         Returns:
             Tuple of (env_key, api_key_value). api_key_value may be None.
         """
-        env_key = self._provider_env_keys.get(
-            self.provider_id, f"{self.provider_id.upper()}_API_KEY"
+        env_keys = PROVIDER_ENV_KEYS.get(
+            self.provider_id, [f"{self.provider_id.upper()}_API_KEY"]
         )
-
-        # Check config first (direct key or field name)
-        api_key_val = self.config.get("api_key") or self.config.get(env_key)
-
-        # Fallback: scan config for anything that looks like a key/token
-        if not api_key_val:
-            for k, v in self.config.items():
-                if isinstance(k, str) and ("KEY" in k or "TOKEN" in k) and v:
-                    api_key_val = v
-                    break
-
-        # Final fallback: environment variable
-        if not api_key_val:
-            api_key_val = os.environ.get(env_key)
-
+        env_key = env_keys[0]
+        api_key_val = resolve_api_key(self.provider_id, self.config)
         return env_key, api_key_val
 
     async def list_models(self) -> List[Model]:

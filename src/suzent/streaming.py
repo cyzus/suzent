@@ -27,6 +27,7 @@ from ag_ui.core import RunAgentInput, CustomEvent, RunErrorEvent
 from ag_ui.encoder import EventEncoder
 
 from suzent.core.agent_deps import AgentDeps
+from suzent.core.stream_registry import StreamControl, stream_controls, stop_stream  # noqa: F401 — re-export for backwards compat
 from suzent.plan import read_plan_from_database, plan_to_dict, auto_complete_current
 from loguru import logger
 
@@ -38,20 +39,6 @@ _encoder = EventEncoder()
 def _encode_custom(name: str, value: Any) -> str:
     """Encode a custom AG-UI event as an SSE string."""
     return _encoder.encode(CustomEvent(name=name, value=value))
-
-
-class StreamControl:
-    """Holds cooperative cancellation state for an active stream."""
-
-    __slots__ = ("cancel_event", "reason")
-
-    def __init__(self):
-        self.cancel_event = asyncio.Event()
-        self.reason = "Stream stopped by user"
-
-
-# Global registry of active streams
-stream_controls: Dict[str, StreamControl] = {}
 
 
 def _plan_snapshot(chat_id: Optional[str] = None) -> dict:
@@ -363,13 +350,3 @@ async def stream_agent_responses(
             existing = stream_controls.get(chat_id)
             if existing is control:
                 stream_controls.pop(chat_id, None)
-
-
-def stop_stream(chat_id: str, reason: str = "Stream stopped by user") -> bool:
-    """Request to stop an active stream."""
-    control = stream_controls.get(chat_id)
-    if not control:
-        return False
-    control.reason = reason
-    control.cancel_event.set()
-    return True
