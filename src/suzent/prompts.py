@@ -30,6 +30,8 @@ Today's date: {current_date}
 
 {memory_context}
 
+{skills_context}
+
 {social_context}
 """
 
@@ -50,6 +52,12 @@ Env vars available: PERSISTENCE_PATH, SHARED_PATH, WORKSPACE_ROOT.
 
 BASE_INSTRUCTIONS_SECTION = """# Base Instructions
 {base_instructions}
+"""
+
+SKILLS_CONTEXT_SECTION = """# Available Skills
+You have a SkillTool that loads specialized knowledge. Use it IMMEDIATELY when the user's task matches a skill.
+
+{skills_xml}
 """
 
 SOCIAL_CONTEXT_SECTION = """# Social Channel Context
@@ -81,6 +89,7 @@ def format_instructions(
     memory_context: str = "",
     custom_volumes: list[str] = None,
     social_context: str = "",
+    skills_context: str = "",
     sandbox_enabled: bool = False,
     workspace_root: str = "",
 ) -> str:
@@ -127,6 +136,7 @@ def format_instructions(
         custom_volumes_section=volumes_section,
         base_instructions_section=base_instructions_section,
         memory_context=memory_context,
+        skills_context=skills_context,
         social_context=social_context,
     )
     return suzent_instructions

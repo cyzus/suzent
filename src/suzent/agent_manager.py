@@ -197,11 +197,21 @@ def create_agent(
     sandbox_volumes = config.get("sandbox_volumes")
     custom_volumes = get_effective_volumes(sandbox_volumes)
 
+    # Build skills context for system prompt
+    skills_context = ""
+    if skill_manager.enabled_skills:
+        from suzent.prompts import SKILLS_CONTEXT_SECTION
+
+        skills_context = SKILLS_CONTEXT_SECTION.format(
+            skills_xml=skill_manager.get_skills_xml()
+        )
+
     instructions = format_instructions(
         base_instructions,
         memory_context=memory_context,
         custom_volumes=custom_volumes,
         social_context=build_social_context(social_ctx) if social_ctx else "",
+        skills_context=skills_context,
         sandbox_enabled=CONFIG.sandbox_enabled,
         workspace_root=CONFIG.workspace_root,
     )

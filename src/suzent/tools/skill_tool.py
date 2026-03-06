@@ -12,27 +12,16 @@ class SkillTool(Tool):
         from suzent.skills import get_skill_manager
 
         self.skill_manager = get_skill_manager()
-        # Update description dynamically at instantiation (used for reference only;
-        # the forward() docstring is what pydantic-ai exposes to the LLM).
-        self.description = f"""Load a skill to gain specialized knowledge for a task.
-
-Available skills:
-{self.skill_manager.get_skills_xml()}
-
-When to use:
-- IMMEDIATELY when user task matches a skill description
-- Before attempting domain-specific work
-"""
 
     def forward(self, ctx: RunContext[AgentDeps], skill_name: str) -> str:
         """Load a skill to gain specialized knowledge for a task.
 
         Use this tool IMMEDIATELY when the user's task matches a skill description,
-        before attempting domain-specific work.
+        before attempting domain-specific work. The available skills are listed in
+        the system prompt under 'Available Skills'.
 
         Args:
-            ctx: The pydantic-ai run context with agent dependencies.
-            skill_name: The name of the skill to load. Check 'Available skills' in the system prompt.
+            skill_name: The name of the skill to load.
         """
         sm = ctx.deps.skill_manager
         if not sm:
