@@ -31,7 +31,10 @@ def test_stream_parser_approval_request():
 def test_approval_request_formatting():
     """Verify the new plain-text friendly formatting."""
     event = ApprovalRequest(
-        request_id="req123", tool_name="search", args={"q": "suzent", "limit": 5}
+        request_id="req123",
+        tool_call_id="call_abc",
+        tool_name="search",
+        args={"q": "suzent", "limit": 5},
     )
 
     # Test Markdown version

@@ -1,6 +1,6 @@
 import os
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from suzent.tools.websearch_tool import WebSearchTool
 
 
@@ -29,14 +29,14 @@ def test_init_defaults_to_ddgs_when_env_unset(clean_env):
 
 def test_init_uses_searxng_when_env_set(clean_env):
     os.environ["SEARXNG_BASE_URL"] = "http://localhost:8080"
-    with patch("httpx.Client") as mock_client:
+    with patch("httpx.AsyncClient") as mock_client:
         tool = WebSearchTool()
         assert tool.use_searxng is True
         assert tool.client is not None
         mock_client.assert_called_once()
 
 
-def test_ddgs_search_usage(clean_env):
+async def test_ddgs_search_usage(clean_env):
     """Verify DDGS is used with correct parameters."""
     # We patch 'ddgs.DDGS' so when 'from ddgs import DDGS' runs, it gets our mock
     with patch("ddgs.DDGS") as MockDDGS:
@@ -47,7 +47,7 @@ def test_ddgs_search_usage(clean_env):
         ]
 
         tool = WebSearchTool()
-        result = tool.forward(query="test", max_results=5)
+        result = await tool.forward(query="test", max_results=5)
 
         assert "Test" in result
 
@@ -60,7 +60,7 @@ def test_ddgs_search_usage(clean_env):
         mock_instance.text.assert_called_with("test", timelimit=None, max_results=5)
 
 
-def test_ddgs_category_dispatch(clean_env):
+async def test_ddgs_category_dispatch(clean_env):
     with patch("ddgs.DDGS") as MockDDGS:
         mock_instance = MockDDGS.return_value
         mock_instance.__enter__.return_value = mock_instance
@@ -69,45 +69,46 @@ def test_ddgs_category_dispatch(clean_env):
 
         # News
         mock_instance.news.return_value = []
-        tool.forward(query="news test", categories="news")
+        await tool.forward(query="news test", categories="news")
         mock_instance.news.assert_called_once()
 
         # Images
         mock_instance.images.return_value = []
-        tool.forward(query="image test", categories="images")
+        await tool.forward(query="image test", categories="images")
         mock_instance.images.assert_called_once()
 
 
-def test_searxng_search(clean_env):
+async def test_searxng_search(clean_env):
     os.environ["SEARXNG_BASE_URL"] = "http://localhost:8080"
-    with patch("httpx.Client") as MockClient:
-        mock_client_instance = MockClient.return_value
-
-        tool = WebSearchTool()
-
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client_instance = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.text = (
             '{"results": [{"title": "SearXNG", "url": "http://s.me", "content": "c"}]}'
         )
-        mock_client_instance.get.return_value = mock_response
+        mock_client_instance.get = AsyncMock(return_value=mock_response)
+        MockClient.return_value = mock_client_instance
 
-        tool.forward(query="test")
+        tool = WebSearchTool()
 
-        mock_client_instance.get.assert_called_with(
+        await tool.forward(query="test")
+
+        mock_client_instance.get.assert_awaited_with(
             "/search", params={"q": "test", "format": "json", "page": 1}
         )
 
 
-def test_searxng_fallback_to_ddgs(clean_env):
+async def test_searxng_fallback_to_ddgs(clean_env):
     os.environ["SEARXNG_BASE_URL"] = "http://localhost:8080"
-    with patch("httpx.Client") as MockClient:
-        mock_client_instance = MockClient.return_value
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_client_instance = MagicMock()
 
         # Mock 403 Forbidden
         mock_response = MagicMock()
         mock_response.status_code = 403
-        mock_client_instance.get.return_value = mock_response
+        mock_client_instance.get = AsyncMock(return_value=mock_response)
+        MockClient.return_value = mock_client_instance
 
         with patch("ddgs.DDGS") as MockDDGS:
             mock_instance = MockDDGS.return_value
@@ -117,7 +118,7 @@ def test_searxng_fallback_to_ddgs(clean_env):
             ]
 
             tool = WebSearchTool()
-            result = tool.forward(query="test", max_results=5)
+            result = await tool.forward(query="test", max_results=5)
 
             assert "Fallback" in result
             # Verify DDGS called with forwarded params

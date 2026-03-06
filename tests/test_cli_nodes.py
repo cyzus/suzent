@@ -175,33 +175,23 @@ class TestAgentSubcommand:
         assert "chat" in result.output
         assert "status" in result.output
 
-    @patch("suzent.cli._http._http_post_stream")
-    def test_agent_chat(self, mock_post_stream):
+    @patch("suzent.cli.agent._http_post")
+    @patch("suzent.cli.agent._http_post_stream")
+    def test_agent_chat(self, mock_post_stream, mock_post):
         import json
 
-        # Mock the stream iterator with SSE lines
+        # Mock chat creation
+        mock_post.return_value = {"id": "test-chat-123"}
+
+        # Mock the stream iterator with proper SSE events (\n\n terminated)
         mock_post_stream.return_value = iter(
             [
                 b"data: "
                 + json.dumps(
-                    {"type": "stream_delta", "data": {"content": "Hello! "}}
+                    {"type": "TEXT_MESSAGE_CONTENT", "delta": "Hello! I'm suzent"}
                 ).encode()
-                + b"\n",
-                b"data: "
-                + json.dumps(
-                    {"type": "stream_delta", "data": {"content": "I'm "}}
-                ).encode()
-                + b"\n",
-                b"data: "
-                + json.dumps(
-                    {"type": "stream_delta", "data": {"content": "suzent"}}
-                ).encode()
-                + b"\n",
-                b"data: "
-                + json.dumps(
-                    {"type": "final_answer", "data": "Hello! I'm suzent"}
-                ).encode()
-                + b"\n",
+                + b"\n\n",
+                b"data: " + json.dumps({"type": "AGENT_FINISHED"}).encode() + b"\n\n",
             ]
         )
 

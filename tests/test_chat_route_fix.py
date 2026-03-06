@@ -12,8 +12,7 @@ client = TestClient(app)
 @patch("suzent.core.chat_processor.ChatProcessor.process_turn")
 def test_chat_non_streaming(mock_process_turn):
     async def mock_generator(*args, **kwargs):
-        yield 'data: {"type": "chunk", "data": "Hello"}\n\n'
-        yield 'data: {"type": "final_answer", "data": "Hello world"}\n\n'
+        yield 'data: {"type": "TEXT_MESSAGE_CONTENT", "delta": "Hello world"}\n\n'
 
     mock_process_turn.return_value = mock_generator()
 

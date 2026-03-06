@@ -10,7 +10,9 @@ from suzent.routes.chat_routes import chat
 
 @pytest.fixture
 def mock_db():
-    with patch("suzent.routes.chat_routes.get_database") as mock:
+    # build_agent_config imports get_database from suzent.database at call time,
+    # so we must patch the canonical location used by agent_manager.
+    with patch("suzent.database.get_database") as mock:
         db = MagicMock()
         mock.return_value = db
         # Setup default user preferences
