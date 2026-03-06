@@ -278,6 +278,13 @@ class SocialBrain(BaseBrain):
                 base_config["model"] = self.model
             if self.tools is not None:
                 base_config["tools"] = self.tools
+            else:
+                # "All Tools" mode: pass the full registry list so build_agent_config
+                # doesn't fall back to the narrower default_tools subset.
+                from suzent.config import CONFIG
+
+                if CONFIG.tool_options:
+                    base_config["tools"] = list(CONFIG.tool_options)
 
             config_override = build_agent_config(base_config, require_social_tool=False)
 
