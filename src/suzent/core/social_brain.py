@@ -3,7 +3,8 @@ Social Brain: The bridge between Social Channels and the Suzent Agent.
 """
 
 import asyncio
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, Dict, List
 from suzent.logger import get_logger
 from suzent.channels.manager import ChannelManager
 from suzent.channels.base import UnifiedMessage
@@ -20,6 +21,53 @@ _active_instance: Optional["SocialBrain"] = None
 def get_active_social_brain() -> Optional["SocialBrain"]:
     """Return the active SocialBrain instance, or None if not running."""
     return _active_instance
+
+
+@dataclass
+class PendingApprovalSession:
+    """Tracks a batch of tool approvals for a single agent turn."""
+
+    requests: List[ApprovalRequest]
+    decisions: Dict[str, bool] = field(default_factory=dict)  # request_id -> approved
+    config_override: Optional[Dict] = None
+    platform: str = ""
+    target_id: str = ""
+    sender_id: str = ""  # original requester — only they may approve in groups
+
+    @property
+    def current_index(self) -> int:
+        return len(self.decisions)
+
+    @property
+    def total(self) -> int:
+        return len(self.requests)
+
+    @property
+    def all_decided(self) -> bool:
+        return self.current_index >= self.total
+
+    @property
+    def next_request(self) -> Optional[ApprovalRequest]:
+        if self.all_decided:
+            return None
+        return self.requests[self.current_index]
+
+    def record(self, approved: bool):
+        """Record a decision for the current request."""
+        req = self.next_request
+        if req:
+            self.decisions[req.request_id] = approved
+
+    def to_resume_approvals(self) -> List[Dict]:
+        """Build the resume_approvals payload for ChatProcessor."""
+        return [
+            {
+                "request_id": req.request_id,
+                "tool_call_id": req.tool_call_id,
+                "approved": self.decisions[req.request_id],
+            }
+            for req in self.requests
+        ]
 
 
 class SocialBrain:
@@ -51,6 +99,10 @@ class SocialBrain:
         self.mcp_enabled = mcp_enabled
         self._running = False
         self._task: Optional[asyncio.Task] = None
+        self._sessions: Dict[str, PendingApprovalSession] = {}  # chat_id -> session
+        self._session_policies: Dict[
+            str, Dict[str, str]
+        ] = {}  # chat_id -> {tool -> policy}
 
     def update_model(self, model: str):
         """Update the model used for social interactions."""
@@ -180,18 +232,20 @@ class SocialBrain:
 
             config_override = build_agent_config(base_config, require_social_tool=False)
 
-            # 5. Process and Reply
+            # Inject any session-level tool approval policies
+            policies = self._session_policies.get(social_chat_id)
+            if policies:
+                config_override["tool_approval_policy"] = dict(policies)
+
+            # 5. Process and Reply — collect all approval requests from the stream
+            collected_approvals: list[ApprovalRequest] = []
 
             async def on_event(event):
                 if isinstance(event, ApprovalRequest):
-                    alert = (
-                        f"⚠️ Approval Required\n"
-                        f"{event.format_alert_text(markdown=True)}\n\n"
-                        f"Reply `/y` to allow or `/n` to deny"
+                    logger.info(
+                        f"SocialBrain: Collected approval request for {event.tool_name}"
                     )
-                    await self.channel_manager.send_message(
-                        message.platform, target_id, alert
-                    )
+                    collected_approvals.append(event)
 
             full_response = await processor.process_turn_text(
                 chat_id=social_chat_id,
@@ -202,6 +256,18 @@ class SocialBrain:
                 on_event=on_event,
             )
 
+            # If tools need approval, store the session and prompt the first one
+            if collected_approvals:
+                session = PendingApprovalSession(
+                    requests=collected_approvals,
+                    config_override=config_override,
+                    platform=message.platform,
+                    target_id=target_id,
+                    sender_id=message.sender_id,
+                )
+                self._sessions[social_chat_id] = session
+                await self._prompt_next_approval(session)
+
             # Send Final Response
             if full_response.strip():
                 await self.channel_manager.send_message(
@@ -210,6 +276,120 @@ class SocialBrain:
 
         except Exception as e:
             logger.error(f"Failed to handle social message: {e}")
+
+    async def _prompt_next_approval(self, session: PendingApprovalSession):
+        """Send the next approval prompt to the social channel."""
+        req = session.next_request
+        if not req:
+            return
+
+        counter = (
+            f"({session.current_index + 1}/{session.total}) "
+            if session.total > 1
+            else ""
+        )
+        alert = (
+            f"⚠️ Approval Required {counter}\n"
+            f"{req.format_alert_text(markdown=False)}\n\n"
+            f"/y allow | /n deny | /ya always allow | /na always deny"
+        )
+        await self.channel_manager.send_message(
+            session.platform, session.target_id, alert
+        )
+
+    async def handle_approval_response(
+        self,
+        platform: str,
+        target_id: str,
+        approved: bool,
+        sender_id: str = "",
+        remember: bool = False,
+    ):
+        """Record a user's /y or /n and either prompt the next tool or resume the agent."""
+        social_chat_id = f"social-{platform}-{target_id}"
+        session = self._sessions.get(social_chat_id)
+
+        if not session or session.all_decided:
+            await self.channel_manager.send_message(
+                platform, target_id, "No pending tool approval found for this chat."
+            )
+            return
+
+        # In group chats, only the original requester may approve
+        if session.sender_id and sender_id and session.sender_id != sender_id:
+            await self.channel_manager.send_message(
+                platform,
+                target_id,
+                "Only the original requester can approve or deny this tool call.",
+            )
+            return
+
+        # Record this decision
+        req = session.next_request
+        session.record(approved)
+
+        # Confirmation message
+        tool_name = req.tool_name if req else "tool"
+        status = "Approved" if approved else "Denied"
+        suffix = " (remembered for session)" if remember else ""
+        await self.channel_manager.send_message(
+            platform, target_id, f"{status} {tool_name}{suffix}"
+        )
+
+        # Persist "always" policy for this session
+        if remember and req:
+            policy = "always_allow" if approved else "always_deny"
+            self._session_policies.setdefault(social_chat_id, {})[req.tool_name] = (
+                policy
+            )
+
+        logger.info(
+            f"SocialBrain: Decision {session.current_index}/{session.total} "
+            f"for {social_chat_id}: approved={approved} remember={remember}"
+        )
+
+        # More approvals to collect? Prompt the next one.
+        if not session.all_decided:
+            await self._prompt_next_approval(session)
+            return
+
+        # All decided — resume the agent with batched decisions
+        session = self._sessions.pop(social_chat_id)
+        await self._resume_after_approval(social_chat_id, session)
+
+    async def _resume_after_approval(
+        self, social_chat_id: str, session: PendingApprovalSession
+    ):
+        """Resume the agent turn after all approvals are collected."""
+        try:
+            from suzent.core.chat_processor import ChatProcessor
+
+            processor = ChatProcessor()
+
+            # Ensure session policies are in the config for the resumed turn
+            config = session.config_override or {}
+            policies = self._session_policies.get(social_chat_id)
+            if policies:
+                config["tool_approval_policy"] = dict(policies)
+
+            full_response = await processor.process_turn_text(
+                chat_id=social_chat_id,
+                user_id=CONFIG.user_id,
+                message_content="",
+                resume_approvals=session.to_resume_approvals(),
+                config_override=config,
+                is_social=True,
+            )
+
+            if full_response.strip():
+                await self.channel_manager.send_message(
+                    session.platform, session.target_id, full_response
+                )
+        except Exception as e:
+            logger.error(f"Failed to resume social chat: {e}")
+            await self.channel_manager.send_message(
+                session.platform, session.target_id, f"❌ Failed to resume chat: {e}"
+            )
 
     def _ensure_chat_exists(
         self, chat_id: str, message: UnifiedMessage, target_id: str

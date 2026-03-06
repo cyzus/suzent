@@ -34,6 +34,7 @@ interface ChatContextValue {
   forceSaveNow: (chatId?: string | null) => Promise<void>;
   deleteChat: (chatId: string) => Promise<void>;
   refreshChatList: (searchQuery?: string) => Promise<void>;
+  updateMessage: (index: number, update: Partial<Message>, chatId?: string | null) => void;
   setViewSwitcher?: (switcher: (view: 'chat' | 'memory') => void) => void;
   switchToView?: (view: 'chat' | 'memory') => void;
   hideToolCalls: boolean;
@@ -727,6 +728,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setShouldResetNext(false);
   }, []);
 
+  const updateMessage = useCallback((index: number, update: Partial<Message>, chatId: string | null = currentChatId) => {
+    setMessagesForChat(chatId, prev => {
+      if (index < 0 || index >= prev.length) return prev;
+      const updated = [...prev];
+      updated[index] = { ...updated[index], ...update };
+      return updated;
+    });
+    scheduleSave(chatId, 800);
+  }, [currentChatId, scheduleSave, setMessagesForChat]);
+
   const setStreamingState = useCallback((streaming: boolean, chatId?: string | null) => {
     setIsStreamingState(streaming);
     const targetChatId = chatId ?? currentChatId;
@@ -981,6 +992,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       forceSaveNow,
       deleteChat,
       refreshChatList,
+      updateMessage,
       setViewSwitcher,
       switchToView,
       hideToolCalls,

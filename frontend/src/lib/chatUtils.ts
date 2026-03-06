@@ -7,6 +7,8 @@ export interface ContentBlock {
   toolName?: string;
   toolArgs?: string;
   toolCallId?: string;
+  approvalId?: string;
+  approvalState?: string;
 }
 
 // Helper to normalize Python code indentation
@@ -74,13 +76,13 @@ export function splitAssistantContent(content: string): ContentBlock[] {
   const blocks: ContentBlock[] = [];
 
   // Regex to find <details> blocks (logs, tool calls, and now reasoning)
-  const detailsRegex = /<details(?:\s+data-tool-call-id="([^"]*)")?(?:\s+data-reasoning="([^"]*)")?\s*>\s*<summary>\s*(.*?)\s*<\/summary>\s*(?:<pre><code(?:\s+class="language-[^"]*")?\s*>([\s\S]*?)<\/code><\/pre>|([\s\S]*?))\s*<\/details>/g;
+  const detailsRegex = /<details(?:\s+data-tool-call-id="([^"]*)")?(?:\s+data-approval-id="([^"]*)")?(?:\s+data-approval-state="([^"]*)")?(?:\s+data-reasoning="([^"]*)")?\s*>\s*<summary>\s*(.*?)\s*<\/summary>\s*(?:<pre><code(?:\s+class="language-[^"]*")?\s*>([\s\S]*?)<\/code><\/pre>|([\s\S]*?))\s*<\/details>/g;
 
   let lastIndex = 0;
   let match;
 
   // First pass: split by log/details blocks
-  const splits: { type: 'markdown' | 'log' | 'reasoning'; content: string; title?: string; toolCallId?: string }[] = [];
+  const splits: { type: 'markdown' | 'log' | 'reasoning'; content: string; title?: string; toolCallId?: string; approvalId?: string; approvalState?: string }[] = [];
 
   while ((match = detailsRegex.exec(content)) !== null) {
     const before = content.slice(lastIndex, match.index);
@@ -89,10 +91,12 @@ export function splitAssistantContent(content: string): ContentBlock[] {
     }
 
     const toolCallId = match[1];
-    const isReasoning = match[2] === 'true';
-    const title = match[3];
-    const codeContent = match[4];
-    const rawContent = match[5];
+    const approvalId = match[2];
+    const approvalState = match[3];
+    const isReasoning = match[4] === 'true';
+    const title = match[5];
+    const codeContent = match[6];
+    const rawContent = match[7];
 
     if (isReasoning) {
       splits.push({
@@ -111,6 +115,8 @@ export function splitAssistantContent(content: string): ContentBlock[] {
       splits.push({
         type: 'log',
         toolCallId,
+        approvalId,
+        approvalState,
         title,
         content: decodedContent
       });
@@ -230,6 +236,8 @@ export function splitAssistantContent(content: string): ContentBlock[] {
           toolName: toolInvokeMatch[1],
           toolArgs: b.content || undefined,
           toolCallId: (b as any).toolCallId,
+          approvalId: (b as any).approvalId,
+          approvalState: (b as any).approvalState,
         };
       }
 
@@ -290,6 +298,8 @@ export function mergeToolCallPairs(blocks: ContentBlock[]): ContentBlock[] {
             toolName: inv.toolName || out.toolName,
             toolArgs: inv.toolArgs,
             toolCallId: inv.toolCallId,
+            approvalId: inv.approvalId || out.approvalId,
+            approvalState: inv.approvalState || out.approvalState,
           });
         } else {
           mergedBlocks.push(inv || out || b);

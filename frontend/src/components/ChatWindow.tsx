@@ -51,7 +51,13 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any): Message {
       const toolName = part.toolName || 'unknown';
       const toolCallId = part.toolCallId || '';
       const argsStr = part.args || '';
-      content += `\n\n<details data-tool-call-id="${toolCallId}"><summary>\u{1F527} ${toolName}</summary>\n\n<pre><code class="language-text">${escapeHtmlForStore(argsStr)}</code></pre>\n\n</details>\n\n`;
+      const approvalId = part.approvalId || '';
+      const stateAttr = part.state === 'approval-requested' ? 'pending' : (part.state === 'error' ? 'denied' : '');
+      const attrs = ` data-tool-call-id="${toolCallId}"` +
+        (approvalId ? ` data-approval-id="${approvalId}"` : '') +
+        (stateAttr ? ` data-approval-state="${stateAttr}"` : '');
+
+      content += `\n\n<details${attrs}><summary>\u{1F527} ${toolName}</summary>\n\n<pre><code class="language-text">${escapeHtmlForStore(argsStr)}</code></pre>\n\n</details>\n\n`;
       if (part.output != null) {
         content += `\n\n<details data-tool-call-id="${toolCallId}"><summary>\u{1F4E6} ${toolName}</summary>\n\n<pre><code class="language-text">${escapeHtmlForStore(part.output)}</code></pre>\n\n</details>\n\n`;
       }
@@ -114,7 +120,8 @@ const MessageList: React.FC<{
   chatId?: string;
   onImageClick?: (src: string) => void;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-}> = ({ messages, isStreaming, streamingForCurrentChat, chatId, onImageClick, onFileClick }) => (
+  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
+}> = ({ messages, isStreaming, streamingForCurrentChat, chatId, onImageClick, onFileClick, onToolApproval }) => (
   <div className="space-y-6">
     {(() => {
       // Pre-compute tool-only groups: consecutive tool-only assistant messages
@@ -195,13 +202,21 @@ const MessageList: React.FC<{
                 <div className="w-full max-w-4xl text-sm leading-relaxed pl-2">
                   {group.mergedBlocks.map((b, bi) => {
                     if (b.type === 'toolCall') {
+                      const isPending = b.approvalState === 'pending';
                       return (
                         <ToolCallBlock
                           key={`group-${idx}-${bi}`}
                           toolName={b.toolName || 'unknown'}
                           toolArgs={b.toolArgs}
                           output={b.content || undefined}
-                          defaultCollapsed
+                          approvalState={b.approvalState as 'pending' | 'denied' | undefined}
+                          onApprove={(isPending && b.approvalId && onToolApproval)
+                            ? (remember) => onToolApproval(b.approvalId!, b.toolCallId || '', true, remember, b.toolName)
+                            : undefined}
+                          onDeny={(isPending && b.approvalId && onToolApproval)
+                            ? () => onToolApproval(b.approvalId!, b.toolCallId || '', false, null, b.toolName)
+                            : undefined}
+                          defaultCollapsed={!isPending}
                         />
                       );
                     }
@@ -254,6 +269,7 @@ const MessageList: React.FC<{
                   isStreaming={streamingForCurrentChat}
                   isLastMessage={isLastMessage}
                   onFileClick={onFileClick}
+                  onToolApproval={onToolApproval}
                 />
               )}
             </div>
@@ -292,6 +308,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     shouldResetNext,
     consumeResetFlag,
     forceSaveNow,
+    updateMessage,
     setIsStreaming,
     currentChatId,
     createNewChat,
@@ -322,9 +339,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     parts: streamingParts,
     status: chatStatus,
     sendMessage: sendAGUI,
+    resumeStream,
     stop: stopAGUIStream,
     clearParts,
     resolveApproval,
+    pendingApprovalCount,
+    addApprovalDecision,
+    consumeApprovalDecisions,
     error: chatError,
   } = useAGUI({
     url: `${getApiBase()}/chat`,
@@ -357,23 +378,73 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     },
   });
 
-  // HITL: tool approval handler (REST call to unblock backend agent)
+  // HITL: tool approval handler (Stateless Resume)
+  // Batches multiple approval decisions and only sends to backend when all are decided.
   const handleToolApproval = useCallback(async (
     approvalId: string,
-    _toolCallId: string,
+    toolCallId: string,
     approved: boolean,
-    remember?: 'session' | null
+    remember?: 'session' | null,
+    toolName?: string
   ) => {
     const targetChatId = activeChatIdRef.current || currentChatId;
     if (!targetChatId) return;
+
     // Optimistic UI: instantly hide buttons before the backend responds
     resolveApproval(approvalId, approved);
+
+    // Also update historical messages in the store if they contain this approval
+    const newState = approved ? 'approved' : 'denied';
+    messages.forEach((m, idx) => {
+      if (m.role === 'assistant' && m.content.includes(`data-approval-id="${approvalId}"`)) {
+        const finalContent = m.content.replace(
+          new RegExp(`(<details[^>]*data-approval-id="${approvalId}"[^>]*data-approval-state=")pending(")`),
+          `$1${newState}$2`
+        );
+
+        if (finalContent !== m.content) {
+          updateMessage(idx, { content: finalContent }, targetChatId);
+        }
+      }
+    });
+
+    // Accumulate decision; only send when all pending approvals are decided
+    const allDecided = addApprovalDecision(approvalId, toolCallId, approved, remember, toolName);
+    if (!allDecided) return; // Still waiting for more decisions
+
+    // All approvals decided — batch and send
+    const decisions = consumeApprovalDecisions();
+    const resumeApprovals = decisions.map(d => ({
+      request_id: d.approvalId,
+      tool_call_id: d.toolCallId,
+      approved: d.approved,
+      remember: d.remember,
+      tool_name: d.toolName,
+    }));
+
     try {
-      await approveTool(targetChatId, approvalId, approved, remember);
+      const payload: Record<string, unknown> = {
+        message: "",
+        config: config || { model: '', agent: '', tools: [] },
+        chat_id: targetChatId,
+        reset: false,
+        resume_approvals: resumeApprovals,
+      };
+
+      setIsStreaming(true, targetChatId);
+      stopInFlightRef.current = false;
+      // Use resumeStream to preserve existing tool parts in the UI
+      await resumeStream(payload);
     } catch (error) {
-      console.error('Failed to send tool approval to backend:', error);
+      console.error('Failed to resume with tool approval:', error);
+    } finally {
+      setIsStreaming(false, targetChatId);
+      stopInFlightRef.current = false;
+      setTimeout(async () => {
+        try { await forceSaveNow(targetChatId); } catch { }
+      }, 600);
     }
-  }, [currentChatId]);
+  }, [currentChatId, config, resumeStream, resolveApproval, addApprovalDecision, consumeApprovalDecisions, updateMessage, setIsStreaming, forceSaveNow]);
 
   // Whether we have active streaming content to render
   const hasStreamingContent = streamingParts.length > 0 && chatStatus !== 'idle';
@@ -628,6 +699,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   chatId={currentChatId ?? undefined}
                   onImageClick={setViewingImage}
                   onFileClick={handleFileClick}
+                  onToolApproval={handleToolApproval}
                 />
                 {/* Streaming assistant message from AG-UI */}
                 {streamingForCurrentChat && (

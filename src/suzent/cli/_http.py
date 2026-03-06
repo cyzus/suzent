@@ -172,8 +172,8 @@ def _http_post_stream(path: str, data: dict = None):
         with httpx.Client(timeout=60.0) as client:
             with client.stream("POST", url, json=data or {}) as resp:
                 resp.raise_for_status()
-                for line in resp.iter_lines():
-                    yield line
+                for chunk in resp.iter_bytes():
+                    yield chunk
     except httpx.ConnectError:
         typer.echo("❌ Cannot connect to Suzent server. Is it running?")
         raise typer.Exit(code=1)

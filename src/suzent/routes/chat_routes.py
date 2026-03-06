@@ -49,6 +49,12 @@ async def chat(request: Request) -> StreamingResponse:
             except json.JSONDecodeError:
                 config = {}
 
+            resume_approvals_str = form.get("resume_approvals", "[]")
+            try:
+                resume_approvals = json.loads(resume_approvals_str)
+            except json.JSONDecodeError:
+                resume_approvals = []
+
             files_list = form.getlist("files")
         else:
             data = await request.json()
@@ -58,8 +64,9 @@ async def chat(request: Request) -> StreamingResponse:
             chat_id = data.get("chat_id")
             stream = data.get("stream", True)
             files_list = data.get("files", [])
+            resume_approvals = data.get("resume_approvals", [])
 
-        if not message and not files_list:
+        if not message and not files_list and not resume_approvals:
             return StreamingResponse(
                 iter(
                     ['data: {"type": "error", "data": "Empty message received."}\n\n']
@@ -85,6 +92,7 @@ async def chat(request: Request) -> StreamingResponse:
             message_content=message,
             files=files_list,
             config_override=config_override,
+            resume_approvals=resume_approvals,
         )
 
         if stream:
@@ -268,40 +276,5 @@ async def delete_chat(request: Request) -> JSONResponse:
 
 
 async def approve_tool(request: Request) -> JSONResponse:
-    """Resolve a pending human-in-the-loop tool approval.
-
-    Accepts POST with JSON body:
-    - chat_id: The chat session identifier.
-    - request_id: The approval request ID (from tool_approval_required SSE event).
-    - approved: Boolean — whether the user approved the tool execution.
-    - remember: Optional "session" to remember the decision for the session.
-    """
-    try:
-        data = await request.json()
-    except json.JSONDecodeError:
-        return JSONResponse({"error": "Invalid JSON."}, status_code=400)
-
-    chat_id = data.get("chat_id")  # Optional for global search
-    request_id = data.get("request_id")
-    approved = data.get("approved", False)
-    remember = data.get("remember")  # "session" or None
-
-    if not request_id:
-        return JSONResponse({"error": "request_id is required"}, status_code=400)
-
-    from suzent.core import approval_manager
-
-    success = approval_manager.resolve_approval(
-        request_id=request_id,
-        approved=bool(approved),
-        chat_id=chat_id,
-        remember=remember,
-    )
-
-    if not success:
-        return JSONResponse(
-            {"error": "No pending approval found for this request"},
-            status_code=404,
-        )
-
-    return JSONResponse({"status": "resolved", "approved": approved})
+    """Legacy endpoint. Approvals are now passed via /chat with resume_approvals."""
+    return JSONResponse({"status": "resolved", "approved": True})

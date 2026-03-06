@@ -16,7 +16,7 @@ def render_box(
     bottom_border = f"└{'─' * (width - 2)}┘"
 
     typer.secho(top_border, fg=border)
-    typer.secho(f"│ {title:<{width - 4}} │", fg=border, bold=True)
+    typer.secho(f"│ {title:<{width - 3}} │", fg=border, bold=True)
     typer.secho(f"├{'─' * (width - 2)}┤", fg=border)
 
     for line in content_lines:
@@ -27,13 +27,17 @@ def render_box(
     typer.secho(bottom_border, fg=border)
 
 
-def render_approval_request(tool_name: str, request_id: str, args: Dict[str, Any]):
+def render_approval_request(
+    tool_name: str, request_id: str, tool_call_id: str, args: Dict[str, Any]
+):
     """Render a tool approval request box in the terminal."""
     from suzent.core.stream_parser import ApprovalRequest
 
     typer.echo("")
 
-    event = ApprovalRequest(request_id=request_id, tool_name=tool_name, args=args)
+    event = ApprovalRequest(
+        request_id=request_id, tool_call_id=tool_call_id, tool_name=tool_name, args=args
+    )
     alert_body = event.format_alert_text(markdown=False)
 
     content = [

@@ -97,6 +97,8 @@ def build_agent_deps(
 
     skill_manager = get_skill_manager()
 
+    tool_approval_policy = _get_config_value(config, "tool_approval_policy", {})
+
     return AgentDeps(
         chat_id=chat_id,
         user_id=user_id,
@@ -110,4 +112,5 @@ def build_agent_deps(
         social_context=social_ctx,
         skill_manager=skill_manager,
         auto_approve_tools=auto_approve_tools,
+        tool_approval_policy=tool_approval_policy,
     )

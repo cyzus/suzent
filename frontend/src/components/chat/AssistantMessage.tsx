@@ -21,8 +21,8 @@ interface AssistantMessageProps {
   usage?: any;
   /** When provided, renders from AG-UI streaming parts instead of legacy HTML parsing */
   aguiParts?: AGUIPart[];
-  /** HITL approval handler: (approvalId, toolCallId, approved, remember?) */
-  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null) => void;
+  /** HITL approval handler: (approvalId, toolCallId, approved, remember?, toolName?) */
+  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
 }
 
 // Names that should be filtered out from tool call display
@@ -184,14 +184,26 @@ const StepPills: React.FC<{
   blocks: ContentBlock[];
   messageIndex: number;
   isStreaming?: boolean;
-}> = ({ blocks, messageIndex, isStreaming }) => {
+  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
+}> = ({ blocks, messageIndex, isStreaming, onToolApproval }) => {
   const tools = blocks
     .filter(b => b.type === 'toolCall')
-    .map((b, bi) => ({
-      toolName: b.toolName || 'unknown',
-      toolArgs: b.toolArgs,
-      output: b.content || undefined,
-    }));
+    .map((b, bi) => {
+      const isPending = b.approvalState === 'pending';
+      return {
+        toolCallId: b.toolCallId || `historical-${bi}`,
+        toolName: b.toolName || 'unknown',
+        toolArgs: b.toolArgs,
+        output: b.content || undefined,
+        approvalState: (b.approvalState as 'pending' | 'denied' | undefined),
+        onApprove: (isPending && b.approvalId && onToolApproval)
+          ? (remember: 'session' | null) => onToolApproval(b.approvalId!, b.toolCallId || '', true, remember, b.toolName)
+          : undefined,
+        onDeny: (isPending && b.approvalId && onToolApproval)
+          ? () => onToolApproval(b.approvalId!, b.toolCallId || '', false, null, b.toolName)
+          : undefined,
+      };
+    });
 
   if (tools.length === 0) return null;
   return <ToolSequenceGroup tools={tools} isStreaming={isStreaming} />;
@@ -234,7 +246,8 @@ const StaticContent: React.FC<{
   blocks: ContentBlock[];
   messageIndex: number;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-}> = ({ blocks, messageIndex, onFileClick }) => {
+  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
+}> = ({ blocks, messageIndex, onFileClick, onToolApproval }) => {
   return (
     <>
       {blocks.map((b, bi) => {
@@ -244,7 +257,23 @@ const StaticContent: React.FC<{
         } else if (b.type === 'log') {
           return <LogBlock key={blockKey} title={b.title} content={b.content} />;
         } else if (b.type === 'toolCall') {
-          return <ToolCallBlock key={blockKey} toolName={b.toolName || 'unknown'} toolArgs={b.toolArgs} output={b.content || undefined} defaultCollapsed />;
+          const isPending = b.approvalState === 'pending';
+          return (
+            <ToolCallBlock
+              key={blockKey}
+              toolName={b.toolName || 'unknown'}
+              toolArgs={b.toolArgs}
+              output={b.content || undefined}
+              approvalState={b.approvalState as 'pending' | 'denied' | undefined}
+              onApprove={(isPending && b.approvalId && onToolApproval)
+                ? (remember) => onToolApproval(b.approvalId!, b.toolCallId || '', true, remember, b.toolName)
+                : undefined}
+              onDeny={(isPending && b.approvalId && onToolApproval)
+                ? () => onToolApproval(b.approvalId!, b.toolCallId || '', false, null, b.toolName)
+                : undefined}
+              defaultCollapsed={!isPending}
+            />
+          );
         } else {
           return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} />;
         }
@@ -283,7 +312,7 @@ const AGUIPartsContent: React.FC<{
   messageIndex: number;
   isStreaming?: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null) => void;
+  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
 }> = ({ parts, messageIndex, isStreaming, onFileClick, onToolApproval }) => {
   // Group consecutive parts of the same type into chunks
   const chunks: { type: 'tool' | 'reasoning' | 'text'; items: AGUIPart[] }[] = [];
@@ -325,10 +354,10 @@ const AGUIPartsContent: React.FC<{
               output: tp.output || undefined,
               approvalState,
               onApprove: (approvalState === 'pending' && tp.approvalId && onToolApproval)
-                ? (remember: 'session' | null) => onToolApproval(tp.approvalId!, tp.toolCallId || '', true, remember)
+                ? (remember: 'session' | null) => onToolApproval(tp.approvalId!, tp.toolCallId || '', true, remember, tp.toolName)
                 : undefined,
               onDeny: (approvalState === 'pending' && tp.approvalId && onToolApproval)
-                ? () => onToolApproval(tp.approvalId!, tp.toolCallId || '', false)
+                ? () => onToolApproval(tp.approvalId!, tp.toolCallId || '', false, null, tp.toolName)
                 : undefined,
             };
           });
@@ -471,7 +500,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   if (toolOnly) {
     return (
       <div className="w-full max-w-4xl text-sm leading-relaxed pl-2">
-        <StepPills blocks={blocks} messageIndex={messageIndex} />
+        <StepPills blocks={blocks} messageIndex={messageIndex} onToolApproval={onToolApproval} />
       </div>
     );
   }
@@ -564,7 +593,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               return (
                 <div key={idx} className="flex flex-col space-y-2">
                   <div className="pl-1">
-                    <StepPills blocks={chunk.blocks} messageIndex={messageIndex} isStreaming={isStreamingThis} />
+                    <StepPills blocks={chunk.blocks} messageIndex={messageIndex} isStreaming={isStreamingThis} onToolApproval={onToolApproval} />
                   </div>
                 </div>
               );
@@ -598,7 +627,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                   {isStreamingChunk ? (
                     <StreamingContent blocks={contentBlocks} messageIndex={messageIndex} showCursor={cursorReady} onFileClick={onFileClick} />
                   ) : (
-                    <StaticContent blocks={contentBlocks} messageIndex={messageIndex} onFileClick={onFileClick} />
+                    <StaticContent blocks={contentBlocks} messageIndex={messageIndex} onFileClick={onFileClick} onToolApproval={onToolApproval} />
                   )}
                 </div>
               </div>

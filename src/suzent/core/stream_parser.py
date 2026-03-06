@@ -65,6 +65,7 @@ class ApprovalRequest(StreamEvent):
     """A tool call that requires human-in-the-loop approval."""
 
     request_id: str
+    tool_call_id: str
     tool_name: str
     args: dict
 
@@ -175,6 +176,7 @@ class StreamParser:
                 val = value or {}
                 yield ApprovalRequest(
                     request_id=val.get("approvalId", ""),
+                    tool_call_id=val.get("toolCallId", ""),
                     tool_name=val.get("toolName", "unknown"),
                     args=val.get("args", {}),
                 )

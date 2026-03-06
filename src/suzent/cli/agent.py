@@ -123,43 +123,81 @@ def agent_chat(
 
     # Use streaming for better UX
     try:
-        parser = StreamParser()
-        stream = _http_post_stream(
-            "/chat", data={"message": message, "chat_id": chat_id, "stream": True}
-        )
+        resume_approvals = []
+        while True:
+            parser = StreamParser()
+            payload = {
+                "message": message if not resume_approvals else "",
+                "chat_id": chat_id,
+                "stream": True,
+            }
+            if resume_approvals:
+                payload["resume_approvals"] = resume_approvals
 
-        for event in parser.parse(stream):
-            if isinstance(event, TextChunk):
-                # Colorize code blocks if detected
-                color = typer.colors.GREEN if event.is_code else None
-                typer.secho(event.content, nl=False, fg=color)
+            stream = _http_post_stream("/chat", data=payload)
+            pending_approvals: list[ApprovalRequest] = []
 
-            elif isinstance(event, ToolCall):
-                typer.echo(f"\n[Tool Call: {event.tool_name}]", err=True)
+            for event in parser.parse(stream):
+                if isinstance(event, TextChunk):
+                    # Colorize code blocks if detected
+                    color = typer.colors.GREEN if event.is_code else None
+                    typer.secho(event.content, nl=False, fg=color)
 
-            elif isinstance(event, ToolOutput):
-                typer.secho(
-                    f"\n[Tool Output: {event.tool_name}]",
-                    fg=typer.colors.YELLOW,
-                    err=True,
-                )
-                typer.echo(f"{event.output[:200]}...", err=True)
+                elif isinstance(event, ToolCall):
+                    typer.echo(f"\n[Tool Call: {event.tool_name}]", err=True)
 
-            elif isinstance(event, ErrorEvent):
-                typer.secho(
-                    f"\n❌ Error: {event.message}", fg=typer.colors.RED, err=True
-                )
+                elif isinstance(event, ToolOutput):
+                    typer.secho(
+                        f"\n[Tool Output: {event.tool_name}]",
+                        fg=typer.colors.YELLOW,
+                        err=True,
+                    )
+                    typer.echo(f"{event.output[:200]}...", err=True)
 
-            elif isinstance(event, FinalAnswer):
-                typer.echo("")
-                typer.secho(f"🤖 {event.content}", fg=typer.colors.CYAN, bold=True)
+                elif isinstance(event, ErrorEvent):
+                    typer.secho(
+                        f"\n❌ Error: {event.message}", fg=typer.colors.RED, err=True
+                    )
 
-            elif isinstance(event, ApprovalRequest):
-                render_approval_request(
-                    tool_name=event.tool_name,
-                    request_id=event.request_id,
-                    args=event.args,
-                )
+                elif isinstance(event, FinalAnswer):
+                    typer.echo("")
+                    typer.secho(f"🤖 {event.content}", fg=typer.colors.CYAN, bold=True)
+                    return  # Exit loop on final answer
+
+                elif isinstance(event, ApprovalRequest):
+                    render_approval_request(
+                        tool_name=event.tool_name,
+                        request_id=event.request_id,
+                        tool_call_id=event.tool_call_id,
+                        args=event.args,
+                    )
+                    pending_approvals.append(event)
+
+            if pending_approvals:
+                # Prompt user for each pending approval and batch all decisions
+                resume_approvals = []
+                for i, approval in enumerate(pending_approvals, 1):
+                    label = (
+                        f"[{i}/{len(pending_approvals)}] "
+                        if len(pending_approvals) > 1
+                        else ""
+                    )
+                    approved = typer.confirm(
+                        f"\n{label}Allow {approval.tool_name}?", default=True
+                    )
+                    resume_approvals.append(
+                        {
+                            "request_id": approval.request_id,
+                            "tool_call_id": approval.tool_call_id,
+                            "approved": approved,
+                        }
+                    )
+                # Continue while loop to resume stream with all decisions
+                typer.echo("🔄 Resuming stream with your decision...")
+                continue
+            else:
+                # No more approvals and no final answer? Probably finished or error.
+                break
 
     except Exception as e:
         typer.echo(f"\n❌ Streaming failed: {e}")

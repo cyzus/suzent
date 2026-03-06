@@ -44,10 +44,18 @@ interface UseAGUIReturn {
   status: AGUIStatus;
   error: string | undefined;
   sendMessage: (body: Record<string, unknown>, opts?: { formData?: FormData }) => Promise<void>;
+  /** Resume a stream after approval without clearing existing parts */
+  resumeStream: (body: Record<string, unknown>) => Promise<void>;
   stop: () => void;
   clearParts: () => void;
   /** Optimistically resolve a tool approval (instantly updates UI before backend responds) */
   resolveApproval: (approvalId: string, approved: boolean) => void;
+  /** Number of tool approvals still awaiting user decision */
+  pendingApprovalCount: number;
+  /** Record a user's approval decision; returns true when all pending approvals are decided */
+  addApprovalDecision: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => boolean;
+  /** Get accumulated approval decisions and clear the buffer */
+  consumeApprovalDecisions: () => Array<{ approvalId: string; toolCallId: string; approved: boolean; remember?: 'session' | null; toolName?: string }>;
 }
 
 // ── SSE Parser ───────────────────────────────────────────────────────
@@ -282,6 +290,10 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   const partsRef = useRef<AGUIPart[]>([]);
   partsRef.current = parts;
 
+  // Pending approval tracking
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
+  const approvalDecisionsRef = useRef<Array<{ approvalId: string; toolCallId: string; approved: boolean; remember?: 'session' | null; toolName?: string }>>([]);
+
   // Stable refs for callbacks to avoid re-creating sendMessage
   const optionsRef = useRef(options);
   optionsRef.current = options;
@@ -314,6 +326,117 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     });
   }, []);
 
+  // Track pending approval count from parts
+  const addApprovalDecision = useCallback((
+    approvalId: string,
+    toolCallId: string,
+    approved: boolean,
+    remember?: 'session' | null,
+    toolName?: string,
+  ): boolean => {
+    approvalDecisionsRef.current.push({ approvalId, toolCallId, approved, remember, toolName });
+    const remaining = pendingApprovalCount - approvalDecisionsRef.current.length;
+    return remaining <= 0;
+  }, [pendingApprovalCount]);
+
+  const consumeApprovalDecisions = useCallback(() => {
+    const decisions = [...approvalDecisionsRef.current];
+    approvalDecisionsRef.current = [];
+    setPendingApprovalCount(0);
+    return decisions;
+  }, []);
+
+  /**
+   * Resume a stream after tool approval without clearing existing parts.
+   * Merges new events (tool results, text) into the existing parts array.
+   */
+  const resumeStream = useCallback(async (body: Record<string, unknown>) => {
+    const { url, onFinish, onCustomEvent, onError } = optionsRef.current;
+
+    // DON'T clear parts — keep existing tool parts from first stream
+    setError(undefined);
+    setStatus('submitted');
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => response.statusText);
+        throw new Error(`HTTP ${response.status}: ${text}`);
+      }
+
+      if (!response.body) {
+        throw new Error('Response body is null');
+      }
+
+      setStatus('streaming');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      // Start from existing parts instead of empty array
+      let currentParts = [...partsRef.current];
+      let newApprovalCount = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const { events, remainder } = parseSSEBuffer(buffer);
+        buffer = remainder;
+
+        for (const event of events) {
+          // Track new approval requests
+          if (event.type === 'CUSTOM' && (event.data.name as string) === 'tool_approval_request') {
+            newApprovalCount++;
+          }
+          const result = processEvent(event, currentParts, onCustomEvent);
+          currentParts = result.parts;
+
+          if (result.error) {
+            setError(result.error);
+            setStatus('error');
+            setParts(currentParts);
+            partsRef.current = currentParts;
+            onError?.(new Error(result.error));
+            return;
+          }
+        }
+
+        if (events.length > 0) {
+          setParts(currentParts);
+          partsRef.current = currentParts;
+          if (newApprovalCount > 0) {
+            setPendingApprovalCount(newApprovalCount);
+          }
+        }
+      }
+
+      setStatus('idle');
+      onFinish?.(currentParts);
+
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        setStatus('idle');
+        onFinish?.(partsRef.current);
+      } else {
+        const errorMsg = (err as Error).message;
+        setError(errorMsg);
+        setStatus('error');
+        onError?.(err as Error);
+      }
+    }
+  }, []);
+
   const sendMessage = useCallback(async (
     body: Record<string, unknown>,
     opts?: { formData?: FormData },
@@ -325,6 +448,8 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     partsRef.current = [];
     setError(undefined);
     setStatus('submitted');
+    setPendingApprovalCount(0);
+    approvalDecisionsRef.current = [];
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -357,6 +482,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       const decoder = new TextDecoder();
       let buffer = '';
       let currentParts: AGUIPart[] = [];
+      let newApprovalCount = 0;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -367,6 +493,10 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         buffer = remainder;
 
         for (const event of events) {
+          // Track approval requests
+          if (event.type === 'CUSTOM' && (event.data.name as string) === 'tool_approval_request') {
+            newApprovalCount++;
+          }
           const result = processEvent(event, currentParts, onCustomEvent);
           currentParts = result.parts;
 
@@ -383,6 +513,9 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         if (events.length > 0) {
           setParts(currentParts);
           partsRef.current = currentParts;
+          if (newApprovalCount > 0) {
+            setPendingApprovalCount(newApprovalCount);
+          }
         }
       }
 
@@ -403,5 +536,5 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     }
   }, []);
 
-  return { parts, status, error, sendMessage, stop, clearParts, resolveApproval };
+  return { parts, status, error, sendMessage, resumeStream, stop, clearParts, resolveApproval, pendingApprovalCount, addApprovalDecision, consumeApprovalDecisions };
 }

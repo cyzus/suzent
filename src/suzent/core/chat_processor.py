@@ -52,6 +52,7 @@ class ChatProcessor:
         files: List[Any] = None,
         config_override: Dict = None,
         is_social: bool = False,
+        resume_approvals: List[Dict] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Process a user message turn:
@@ -175,20 +176,45 @@ class ChatProcessor:
                 logger.error(f"Failed to process attachments: {e}")
                 attachment_context += "\n[System Error: Failed to process attachments]"
 
-        # 6. Prepare Prompt
-        full_prompt = message_content + attachment_context
-
+        # 6. Prepare Prompt or Resume
         from pydantic_ai.messages import ModelRequest, UserPromptPart
-
-        parts = [UserPromptPart(content=full_prompt)]
-        if agent_images:
-            parts.extend(agent_images)
-
-        new_request = ModelRequest(parts=parts)
 
         if message_history is None:
             message_history = []
-        message_history.append(new_request)
+
+        # Only append a new user message if there's actual content or attachments
+        # (For stateless resume, we might just be submitting tool results)
+        full_prompt = ""
+        if message_content or files:
+            full_prompt = message_content + attachment_context
+            parts = [UserPromptPart(content=full_prompt)]
+            if agent_images:
+                parts.extend(agent_images)
+            new_request = ModelRequest(parts=parts)
+            message_history.append(new_request)
+
+        # Handle stateless resume
+        deferred_tool_results = None
+        if resume_approvals:
+            from pydantic_ai.tools import DeferredToolResults
+
+            approvals_dict = {}
+            for app in resume_approvals:
+                req_id = app.get("request_id")
+                if req_id:
+                    approvals_dict[req_id] = bool(app.get("approved"))
+
+            if approvals_dict:
+                deferred_tool_results = DeferredToolResults(approvals=approvals_dict)
+
+                # Also handle 'remember: session' policy updates
+                for app in resume_approvals:
+                    if app.get("remember") == "session" and app.get("tool_name"):
+                        tool_name = app["tool_name"]
+                        approved = bool(app.get("approved"))
+                        deps.tool_approval_policy[tool_name] = (
+                            "always_allow" if approved else "always_deny"
+                        )
 
         logger.debug(
             f"[ChatProcessor] Prompt prepared. Length: {len(full_prompt)}. Streaming..."
@@ -204,6 +230,7 @@ class ChatProcessor:
                 deps=deps,
                 message_history=message_history,
                 chat_id=chat_id,
+                deferred_tool_results=deferred_tool_results,
             ):
                 try:
                     if chunk.startswith("data: "):
@@ -243,20 +270,28 @@ class ChatProcessor:
                         chat_id, message_content, full_response, last_messages
                     )
 
-                    # B. Memory Extraction
-                    await self._extract_memories(
-                        chat_id=chat_id,
-                        user_id=user_id,
-                        user_content=message_content,
-                        agent_content=full_response,
-                        messages=last_messages,
-                    )
+                    is_suspended = getattr(deps, "is_suspended", False)
 
-                    # C. Context Compression
-                    compressor = ContextCompressor(chat_id=chat_id, user_id=user_id)
-                    compressed_messages = await compressor.compress_messages(
-                        last_messages
-                    )
+                    if not is_suspended:
+                        # B. Memory Extraction
+                        await self._extract_memories(
+                            chat_id=chat_id,
+                            user_id=user_id,
+                            user_content=message_content,
+                            agent_content=full_response,
+                            messages=last_messages,
+                        )
+
+                        # C. Context Compression
+                        compressor = ContextCompressor(chat_id=chat_id, user_id=user_id)
+                        compressed_messages = await compressor.compress_messages(
+                            last_messages
+                        )
+                    else:
+                        logger.debug(
+                            f"[ChatProcessor] Skipping memory extraction and compression for suspended run {chat_id}."
+                        )
+                        compressed_messages = last_messages
 
                     # D. State Persistence
                     await self._persist_state(
@@ -283,6 +318,8 @@ class ChatProcessor:
         files: List[Any] = None,
         config_override: Dict = None,
         on_event: Any = None,
+        resume_approvals: List[Dict] = None,
+        is_social: bool = False,
     ) -> str:
         """Run a conversation turn and return only the final response text.
 
@@ -298,6 +335,8 @@ class ChatProcessor:
             message_content=message_content,
             files=files,
             config_override=config_override,
+            resume_approvals=resume_approvals,
+            is_social=is_social,
         ):
             # Use the shared parser to turn raw SSE chunks into events
             for event in parser.parse([chunk]):
@@ -423,10 +462,23 @@ class ChatProcessor:
             chat_messages = current_chat.messages if current_chat else []
             prev_turn_count = getattr(current_chat, "turn_count", 0) or 0
 
-            chat_messages.append({"role": "user", "content": user_content})
-            chat_messages.append({"role": "assistant", "content": agent_content})
-
-            db.update_chat(chat_id, agent_state=agent_state, messages=chat_messages)
+            # Only append if frontend didn't already save a rich HTML message for this turn.
+            # If the frontend pushed recently, the last message is already from the assistant
+            # (or the length of chat_messages grew).
+            if not chat_messages or chat_messages[-1].get("role") != "assistant":
+                if user_content:
+                    last_msg = chat_messages[-1] if chat_messages else None
+                    is_duplicate_user = (
+                        last_msg
+                        and last_msg.get("role") == "user"
+                        and last_msg.get("content") == user_content
+                    )
+                    if not is_duplicate_user:
+                        chat_messages.append({"role": "user", "content": user_content})
+                chat_messages.append({"role": "assistant", "content": agent_content})
+                db.update_chat(chat_id, agent_state=agent_state, messages=chat_messages)
+            else:
+                db.update_chat(chat_id, agent_state=agent_state)
 
             # Update session lifecycle fields
             try:

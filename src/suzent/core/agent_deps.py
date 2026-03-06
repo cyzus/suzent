@@ -39,9 +39,7 @@ class AgentDeps:
     skill_manager: Any = None  # SkillManager instance
 
     # --- Human-in-the-loop (HITL) ---
-    pending_approvals: dict = field(
-        default_factory=dict
-    )  # tool_call_id → {event, approved, tool_name}
+
     tool_approval_policy: dict = field(
         default_factory=dict
     )  # tool_name → "always_allow" | "always_deny"
