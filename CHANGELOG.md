@@ -16,11 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Session-level "remember" option to skip repeated prompts for the same tool.
 - **Image Generation**: New tool for generating images via the configured provider.
 - **Social Slash Commands**: `/help`, `/y`, `/n` command framework for social channels.
+- **Agent Steering**: user can send additional text while the agent is actively streaming to redirect its behavior. 
 
 ### ⚡ Changed
 - **Pydantic AI Migration**: Agent runtime moved from Smolagents to pydantic-ai, bringing native async streaming, structured tool definitions, and deferred-tool support for HITL.
 - **Stream Parser**: Unified SSE parser (`StreamParser`) shared across CLI, social, and internal consumers — replaces per-module parsing logic.
 - **Approval Manager**: Centralized `approval_manager` module replaces per-stream approval state, enabling cross-interface resolution (e.g. approve from CLI while streaming in desktop).
+
+### 🐛 Fixed
+- **Image Input**: Fixed image input error.
 
 ## [v0.3.0]
 

@@ -340,6 +340,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     status: chatStatus,
     sendMessage: sendAGUI,
     resumeStream,
+    steerStream,
     stop: stopAGUIStream,
     clearParts,
     resolveApproval,
@@ -494,10 +495,36 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, [input, isRightSidebarOpen, isPlanExpanded]);
 
-  // Send message handler
+  // Send message handler (also handles steering when streaming)
   const send = async () => {
     const prompt = input.trim();
-    if (!prompt || isStreaming || !configReady || isUploading) return;
+    if (!prompt || !configReady || isUploading) return;
+
+    // If currently streaming for this chat, steer instead of sending new message
+    if (streamingForCurrentChat && currentChatId) {
+      setInput('');
+      addMessage({ role: 'user', content: prompt }, currentChatId);
+
+      try {
+        await steerStream({
+          chat_id: currentChatId,
+          message: prompt,
+          config: safeConfig,
+        });
+      } catch (error) {
+        console.error('Error during steer:', error);
+      } finally {
+        setIsStreaming(false, currentChatId);
+        stopInFlightRef.current = false;
+        setTimeout(async () => {
+          try { await forceSaveNow(currentChatId); } catch { }
+        }, 600);
+      }
+      return;
+    }
+
+    // Normal send — not streaming
+    if (isStreaming) return;
 
     // Create chat if needed
     let chatIdForSend = currentChatId;

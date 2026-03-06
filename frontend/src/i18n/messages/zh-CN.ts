@@ -269,8 +269,11 @@ export const zhCN = {
     modelPlaceholder: '模型',
     stopGenerating: '停止生成',
     sendMessage: '发送消息',
+    redirectAgent: '重定向助手',
+    placeholderRedirect: '输入以重定向助手...',
     stop: '停止',
     send: '发送',
+    redirect: '重定向',
   },
   chatWindow: {
     dragDropTitle: '将文件拖到这里',

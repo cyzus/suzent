@@ -275,6 +275,58 @@ async def delete_chat(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+async def steer_chat(request: Request) -> StreamingResponse:
+    """
+    Interrupt the current agent run and redirect with a new message.
+
+    POST /chat/steer
+    {
+      "chat_id": "...",
+      "message": "Use Python instead",
+      "config": {}           // optional
+    }
+    Returns SSE stream (same format as /chat).
+    """
+    try:
+        data = await request.json()
+        chat_id = data.get("chat_id")
+        message = data.get("message", "").strip()
+        config = data.get("config", {})
+
+        if not chat_id:
+            return JSONResponse({"error": "chat_id is required"}, status_code=400)
+        if not message:
+            return JSONResponse({"error": "message is required"}, status_code=400)
+
+        from suzent.core.chat_processor import ChatProcessor
+        from suzent.agent_manager import build_agent_config
+
+        processor = ChatProcessor()
+        config_override = build_agent_config(config, require_social_tool=False)
+
+        generator = processor.process_steer(
+            chat_id=chat_id,
+            user_id=CONFIG.user_id,
+            steer_message=message,
+            config_override=config_override,
+        )
+
+        return StreamingResponse(
+            generator,
+            media_type="text/event-stream",
+            headers={
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Error handling steer request: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
 async def approve_tool(request: Request) -> JSONResponse:
     """Legacy endpoint. Approvals are now passed via /chat with resume_approvals."""
     return JSONResponse({"status": "resolved", "approved": True})

@@ -46,6 +46,8 @@ interface UseAGUIReturn {
   sendMessage: (body: Record<string, unknown>, opts?: { formData?: FormData }) => Promise<void>;
   /** Resume a stream after approval without clearing existing parts */
   resumeStream: (body: Record<string, unknown>) => Promise<void>;
+  /** Interrupt the current stream and redirect the agent with a new message */
+  steerStream: (body: Record<string, unknown>) => Promise<void>;
   stop: () => void;
   clearParts: () => void;
   /** Optimistically resolve a tool approval (instantly updates UI before backend responds) */
@@ -437,6 +439,102 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     }
   }, []);
 
+  /**
+   * Interrupt the current stream and redirect the agent.
+   * Aborts the active fetch, inserts a visual divider, then starts a new
+   * stream from /chat/steer preserving existing parts.
+   */
+  const steerStream = useCallback(async (body: Record<string, unknown>) => {
+    const { onFinish, onCustomEvent, onError } = optionsRef.current;
+    // Derive steer URL from the base chat URL
+    const steerUrl = optionsRef.current.url.replace(/\/chat$/, '/chat/steer');
+
+    // 1. Abort the current fetch
+    abortRef.current?.abort();
+
+    setError(undefined);
+    setStatus('submitted');
+    setPendingApprovalCount(0);
+    approvalDecisionsRef.current = [];
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const response = await fetch(steerUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => response.statusText);
+        throw new Error(`HTTP ${response.status}: ${text}`);
+      }
+
+      if (!response.body) {
+        throw new Error('Response body is null');
+      }
+
+      setStatus('streaming');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let currentParts = [...partsRef.current];
+      let newApprovalCount = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const { events, remainder } = parseSSEBuffer(buffer);
+        buffer = remainder;
+
+        for (const event of events) {
+          if (event.type === 'CUSTOM' && (event.data.name as string) === 'tool_approval_request') {
+            newApprovalCount++;
+          }
+          const result = processEvent(event, currentParts, onCustomEvent);
+          currentParts = result.parts;
+
+          if (result.error) {
+            setError(result.error);
+            setStatus('error');
+            setParts(currentParts);
+            partsRef.current = currentParts;
+            onError?.(new Error(result.error));
+            return;
+          }
+        }
+
+        if (events.length > 0) {
+          setParts(currentParts);
+          partsRef.current = currentParts;
+          if (newApprovalCount > 0) {
+            setPendingApprovalCount(newApprovalCount);
+          }
+        }
+      }
+
+      setStatus('idle');
+      onFinish?.(currentParts);
+
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        setStatus('idle');
+        onFinish?.(partsRef.current);
+      } else {
+        const errorMsg = (err as Error).message;
+        setError(errorMsg);
+        setStatus('error');
+        onError?.(err as Error);
+      }
+    }
+  }, []);
+
   const sendMessage = useCallback(async (
     body: Record<string, unknown>,
     opts?: { formData?: FormData },
@@ -536,5 +634,5 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     }
   }, []);
 
-  return { parts, status, error, sendMessage, resumeStream, stop, clearParts, resolveApproval, pendingApprovalCount, addApprovalDecision, consumeApprovalDecisions };
+  return { parts, status, error, sendMessage, resumeStream, steerStream, stop, clearParts, resolveApproval, pendingApprovalCount, addApprovalDecision, consumeApprovalDecisions };
 }

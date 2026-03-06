@@ -230,12 +230,18 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
-                        if (!isStreaming && configReady && input.trim()) {
+                        if (configReady && input.trim()) {
                             send();
                         }
                     }
                 }}
-                placeholder={configReady ? t('chatInput.placeholderReady') : t('chatInput.placeholderLoading').toUpperCase()}
+                placeholder={
+                    !configReady
+                        ? t('chatInput.placeholderLoading').toUpperCase()
+                        : streamingForCurrentChat
+                            ? t('chatInput.placeholderRedirect')
+                            : t('chatInput.placeholderReady')
+                }
                 disabled={!configReady}
                 onPaste={(e) => {
                     if (onPaste && e.clipboardData) {
@@ -309,24 +315,39 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         </div>
                     )}
 
-                    <button
-                        type={stopStreaming && streamingForCurrentChat ? "button" : "submit"}
-                        onClick={(e) => {
-                            if (stopStreaming && streamingForCurrentChat) {
+                    {/* Redirect button (shown when streaming and user has typed) */}
+                    {stopStreaming && streamingForCurrentChat && input.trim() ? (
+                        <button
+                            type="submit"
+                            className="h-9 border-2 border-brutal-black shadow-[2px_2px_0_0_#000] brutal-btn duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase ml-1 shrink-0 bg-brutal-yellow text-brutal-black"
+                            disabled={!configReady}
+                            title={t('chatInput.redirectAgent')}
+                        >
+                            {t('chatInput.redirect').toUpperCase()}
+                        </button>
+                    ) : stopStreaming && streamingForCurrentChat ? (
+                        <button
+                            type="button"
+                            onClick={(e) => {
                                 e.preventDefault();
                                 stopStreaming();
-                            }
-                        }}
-                        className={`h-9 border-2 border-brutal-black shadow-[2px_2px_0_0_#000] brutal-btn duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase ml-1 shrink-0 ${stopStreaming && streamingForCurrentChat ? 'bg-brutal-red' : 'bg-brutal-blue'}`}
-                        disabled={
-                            stopStreaming && streamingForCurrentChat
-                                ? stopInFlight
-                                : (isStreaming || !configReady)
-                        }
-                        title={stopStreaming && streamingForCurrentChat ? t('chatInput.stopGenerating') : t('chatInput.sendMessage')}
-                    >
-                        {stopStreaming && streamingForCurrentChat ? t('chatInput.stop').toUpperCase() : t('chatInput.send').toUpperCase()}
-                    </button>
+                            }}
+                            className="h-9 border-2 border-brutal-black shadow-[2px_2px_0_0_#000] brutal-btn duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase ml-1 shrink-0 bg-brutal-red"
+                            disabled={stopInFlight}
+                            title={t('chatInput.stopGenerating')}
+                        >
+                            {t('chatInput.stop').toUpperCase()}
+                        </button>
+                    ) : (
+                        <button
+                            type="submit"
+                            className="h-9 border-2 border-brutal-black shadow-[2px_2px_0_0_#000] brutal-btn duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase ml-1 shrink-0 bg-brutal-blue"
+                            disabled={isStreaming || !configReady}
+                            title={t('chatInput.sendMessage')}
+                        >
+                            {t('chatInput.send').toUpperCase()}
+                        </button>
+                    )}
                 </div>
             </div>
         </form>

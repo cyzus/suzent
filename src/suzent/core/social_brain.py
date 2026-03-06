@@ -11,6 +11,7 @@ from suzent.config import CONFIG
 from suzent.core.base_brain import BaseBrain, get_active
 from suzent.core.approval_manager import PendingApprovalSession
 from suzent.core.stream_parser import ApprovalRequest
+from suzent.core.run_state import ChatRunState
 from suzent.database import get_database
 
 logger = get_logger(__name__)
@@ -55,6 +56,7 @@ class SocialBrain(BaseBrain):
         self._session_policies: Dict[
             str, Dict[str, str]
         ] = {}  # chat_id -> {tool -> policy}
+        self._run_states: Dict[str, ChatRunState] = {}  # per social_chat_id
 
     def update_model(self, model: str):
         """Update the model used for social interactions."""
@@ -68,22 +70,124 @@ class SocialBrain(BaseBrain):
         """Delegate to the queue processor."""
         await self._process_queue()
 
+    def _get_run_state(self, social_chat_id: str) -> ChatRunState:
+        """Get or create the run state for a social chat."""
+        if social_chat_id not in self._run_states:
+            self._run_states[social_chat_id] = ChatRunState()
+        return self._run_states[social_chat_id]
+
+    def _is_steer(self, message: UnifiedMessage, state: ChatRunState) -> bool:
+        """Determine if a message should steer (interrupt) the active run."""
+        content_lower = message.content.strip().lower()
+        # Explicit /steer or /redirect command always steers
+        if content_lower.startswith("/steer") or content_lower.startswith("/redirect"):
+            return True
+        # Same sender as active run = implicit steer
+        if message.sender_id == state.active_sender:
+            return True
+        return False
+
+    async def _cancel_active(self, social_chat_id: str, state: ChatRunState):
+        """Cancel the active task and wait for it to finish."""
+        from suzent.core.run_state import cancel_and_wait
+
+        await cancel_and_wait(social_chat_id)
+        if state.active_task and not state.active_task.done():
+            state.active_task.cancel()
+            try:
+                await state.active_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        state.active_task = None
+        state.active_sender = None
+
     async def _process_queue(self):
-        """Main loop consuming messages."""
+        """Main loop consuming messages with managed run states."""
         while self._running:
             try:
-                # Wait for message
                 message: UnifiedMessage = await self.channel_manager.message_queue.get()
-
-                # Process in background task to not block queue
-                asyncio.create_task(self._handle_message(message))
-
+                # Route message through managed state instead of fire-and-forget
+                asyncio.create_task(self._route_message(message))
                 self.channel_manager.message_queue.task_done()
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Error in SocialBrain loop: {e}")
                 await asyncio.sleep(1)
+
+    async def _route_message(self, message: UnifiedMessage):
+        """Route a message through the run state manager: steer, queue, or process."""
+        # Auth and command dispatch happen before run state management
+        if not self._is_authorized(message):
+            logger.warning(
+                f"Unauthorized social message from: {message.sender_name} ({message.sender_id}) on {message.platform}"
+            )
+            await self.channel_manager.send_message(
+                message.platform,
+                message.sender_id,
+                "Access Denied. You are not authorized to use this bot.",
+            )
+            return
+
+        from suzent.social.commands import dispatch_command
+
+        if await dispatch_command(message, self.channel_manager):
+            return
+
+        from suzent.channels.utils import extract_target_id
+
+        target_id = extract_target_id(message)
+        social_chat_id = f"social-{message.platform}-{target_id}"
+
+        state = self._get_run_state(social_chat_id)
+
+        async with state.lock:
+            if state.active_task and not state.active_task.done():
+                # There IS an active run
+                if self._is_steer(message, state):
+                    # STEER: cancel current run, process this message
+                    # Also cancel pending approvals if any
+                    self._sessions.pop(social_chat_id, None)
+                    await self._cancel_active(social_chat_id, state)
+                    # Fall through to process as new turn
+                else:
+                    # QUEUE: hold until current run finishes
+                    state.queued_messages.append(message)
+                    return
+            elif social_chat_id in self._sessions:
+                # Pending approval session active
+                if self._is_steer(message, state):
+                    self._sessions.pop(social_chat_id)
+                    # Fall through to process as new turn
+                else:
+                    state.queued_messages.append(message)
+                    return
+
+            # Process this message (either fresh or post-steer)
+            state.active_sender = message.sender_id
+            state.active_task = asyncio.create_task(
+                self._process_and_drain(social_chat_id, message, state)
+            )
+
+    async def _process_and_drain(
+        self, social_chat_id: str, message: UnifiedMessage, state: ChatRunState
+    ):
+        """Process a message turn and then drain any queued messages."""
+        try:
+            await self._handle_message(message)
+        except Exception as e:
+            logger.error(f"Error handling social message in managed task: {e}")
+        finally:
+            async with state.lock:
+                while state.queued_messages:
+                    next_msg = state.queued_messages.pop(0)
+                    state.active_sender = next_msg.sender_id
+                    try:
+                        await self._handle_message(next_msg)
+                    except Exception as e:
+                        logger.error(f"Error handling queued message: {e}")
+                state.active_task = None
+                state.active_sender = None
 
     def _is_authorized(self, message: UnifiedMessage) -> bool:
         """Check if a message sender is authorized."""
@@ -106,43 +210,47 @@ class SocialBrain(BaseBrain):
     async def _handle_message(self, message: UnifiedMessage):
         """
         Handle a single message using ChatProcessor.
+        Auth and command dispatch are handled by _route_message before this is called.
         """
-        # 1. Access Control
-        if not self._is_authorized(message):
-            logger.warning(
-                f"Unauthorized social message from: {message.sender_name} ({message.sender_id}) on {message.platform}"
-            )
-            await self.channel_manager.send_message(
-                message.platform,
-                message.sender_id,
-                "⛔ Access Denied. You are not authorized to use this bot.",
-            )
-            return
-
-        # 1.5 Slash command interception
-        from suzent.social.commands import dispatch_command
-
-        if await dispatch_command(message, self.channel_manager):
-            return
-
         try:
-            # 2. Resolve Chat ID and target
-            # target_id is thread/group ID when available, sender_id for DMs
+            # 1. Resolve Chat ID and target
             from suzent.channels.utils import extract_target_id
 
             target_id = extract_target_id(message)
             social_chat_id = f"social-{message.platform}-{target_id}"
             self._ensure_chat_exists(social_chat_id, message, target_id)
 
+            # Check if this is a steer (content may have been rewritten by /steer command)
+            content_lower = message.content.strip().lower()
+            is_steer = content_lower.startswith("/steer") or content_lower.startswith(
+                "/redirect"
+            )
+            steer_text = message.content.strip()
+            if is_steer:
+                # Strip the command prefix
+                if content_lower.startswith("/redirect"):
+                    steer_text = steer_text[len("/redirect") :].strip()
+                else:
+                    steer_text = steer_text[len("/steer") :].strip()
+                if not steer_text:
+                    await self.channel_manager.send_message(
+                        message.platform,
+                        target_id,
+                        "Usage: /steer <your redirection message>",
+                    )
+                    return
+
             logger.info(
                 f"Processing social message for {social_chat_id}: {message.content}"
             )
 
-            # 3. Envelope header — prepend platform metadata to message
+            # 2. Envelope header — prepend platform metadata to message
             envelope = f"[{message.platform.title()} {message.sender_name} id:{message.sender_id}]"
-            enriched_content = f"{envelope}\n{message.content}"
+            enriched_content = (
+                f"{envelope}\n{steer_text if is_steer else message.content}"
+            )
 
-            # 4. Setup Processor
+            # 3. Setup Processor
             from suzent.core.chat_processor import ChatProcessor
 
             processor = ChatProcessor()
@@ -178,7 +286,7 @@ class SocialBrain(BaseBrain):
             if policies:
                 config_override["tool_approval_policy"] = dict(policies)
 
-            # 5. Process and Reply — collect all approval requests from the stream
+            # 4. Process and Reply — collect all approval requests from the stream
             collected_approvals: list[ApprovalRequest] = []
 
             async def on_event(event):
@@ -188,14 +296,23 @@ class SocialBrain(BaseBrain):
                     )
                     collected_approvals.append(event)
 
-            full_response = await processor.process_turn_text(
-                chat_id=social_chat_id,
-                user_id=CONFIG.user_id,
-                message_content=enriched_content,
-                files=message.attachments,
-                config_override=config_override,
-                on_event=on_event,
-            )
+            if is_steer:
+                full_response = await processor.process_steer_text(
+                    chat_id=social_chat_id,
+                    user_id=CONFIG.user_id,
+                    steer_message=enriched_content,
+                    config_override=config_override,
+                    on_event=on_event,
+                )
+            else:
+                full_response = await processor.process_turn_text(
+                    chat_id=social_chat_id,
+                    user_id=CONFIG.user_id,
+                    message_content=enriched_content,
+                    files=message.attachments,
+                    config_override=config_override,
+                    on_event=on_event,
+                )
 
             # If tools need approval, store the session and prompt the first one
             if collected_approvals:

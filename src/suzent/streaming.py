@@ -350,3 +350,6 @@ async def stream_agent_responses(
             existing = stream_controls.get(chat_id)
             if existing is control:
                 stream_controls.pop(chat_id, None)
+
+        # Signal that all cleanup (including post-processing trigger) is done
+        control.completed_event.set()

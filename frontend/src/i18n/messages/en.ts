@@ -342,8 +342,11 @@ export const en = {
     modelPlaceholder: 'Model',
     stopGenerating: 'Stop generating',
     sendMessage: 'Send message',
+    redirectAgent: 'Redirect the agent',
+    placeholderRedirect: 'Type to redirect the agent...',
     stop: 'Stop',
     send: 'Send',
+    redirect: 'Redirect',
   },
   chatWindow: {
     dragDropTitle: 'Drop files here',

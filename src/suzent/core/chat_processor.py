@@ -53,6 +53,7 @@ class ChatProcessor:
         config_override: Dict = None,
         is_social: bool = False,
         resume_approvals: List[Dict] = None,
+        _message_history_override: list = None,
     ) -> AsyncGenerator[str, None]:
         """
         Process a user message turn:
@@ -84,20 +85,21 @@ class ChatProcessor:
         # 3. Build AgentDeps (replaces inject_chat_context)
         deps = build_agent_deps(chat_id=chat_id, user_id=user_id, config=config)
 
-        # 4. Restore message history from DB
-        message_history = None
-        try:
-            db = get_database()
-            chat = db.get_chat(chat_id)
-            if chat and chat.agent_state:
-                state = deserialize_state(chat.agent_state)
-                if state and state.get("message_history"):
-                    message_history = state["message_history"]
-                    logger.debug(
-                        f"Restored {len(message_history)} messages for chat {chat_id}"
-                    )
-        except Exception as e:
-            logger.error(f"Error restoring message history: {e}")
+        # 4. Restore message history from DB (or use override for steer)
+        message_history = _message_history_override
+        if message_history is None:
+            try:
+                db = get_database()
+                chat = db.get_chat(chat_id)
+                if chat and chat.agent_state:
+                    state = deserialize_state(chat.agent_state)
+                    if state and state.get("message_history"):
+                        message_history = state["message_history"]
+                        logger.debug(
+                            f"Restored {len(message_history)} messages for chat {chat_id}"
+                        )
+            except Exception as e:
+                logger.error(f"Error restoring message history: {e}")
 
         # 5. Attachment Handling
         agent_images = []
@@ -311,6 +313,128 @@ class ChatProcessor:
                     logger.error(f"Post-processing background task failed: {e}")
 
             asyncio.create_task(_run_post_processing())
+
+    async def process_steer(
+        self,
+        chat_id: str,
+        user_id: str,
+        steer_message: str,
+        config_override: Dict = None,
+    ) -> AsyncGenerator[str, None]:
+        """
+        Interrupt the current run and redirect the agent.
+
+        1. Cancel active stream (if any) and wait for state persistence
+        2. Load persisted state (includes partial assistant output)
+        3. If deferred approvals exist, auto-deny them
+        4. Append steering user message
+        5. Start new agent run
+        """
+        from suzent.core.run_state import cancel_and_wait
+
+        # 1. Cancel and wait for cleanup
+        await cancel_and_wait(chat_id)
+
+        # 2. Load persisted state from DB
+        message_history = None
+        try:
+            db = get_database()
+            chat = db.get_chat(chat_id)
+            if chat and chat.agent_state:
+                from suzent.core.agent_serializer import deserialize_state
+
+                state = deserialize_state(chat.agent_state)
+                if state and state.get("message_history"):
+                    message_history = state["message_history"]
+        except Exception as e:
+            logger.error(f"Error restoring history for steer: {e}")
+
+        if message_history is None:
+            message_history = []
+
+        # 3. Auto-deny any pending deferred tool approvals
+        from pydantic_ai.messages import (
+            ModelResponse,
+            ModelRequest,
+            ToolCallPart,
+            ToolReturnPart,
+        )
+
+        if message_history:
+            last_msg = message_history[-1]
+            if isinstance(last_msg, ModelResponse):
+                # Check for unanswered tool calls — add denial returns
+                answered_ids = set()
+                for msg in message_history:
+                    if isinstance(msg, ModelRequest):
+                        for part in msg.parts:
+                            if isinstance(part, ToolReturnPart):
+                                answered_ids.add(part.tool_call_id)
+
+                unanswered_calls = []
+                for part in last_msg.parts:
+                    if (
+                        isinstance(part, ToolCallPart)
+                        and part.tool_call_id not in answered_ids
+                    ):
+                        unanswered_calls.append(part)
+
+                if unanswered_calls:
+                    denial_parts = [
+                        ToolReturnPart(
+                            tool_name=tc.tool_name,
+                            tool_call_id=tc.tool_call_id,
+                            content="Cancelled: user redirected the conversation",
+                        )
+                        for tc in unanswered_calls
+                    ]
+                    message_history.append(ModelRequest(parts=denial_parts))
+
+        # 4. Append steering message
+        from pydantic_ai.messages import UserPromptPart
+
+        steering_text = f"[User interrupted to redirect]: {steer_message}"
+        message_history.append(
+            ModelRequest(parts=[UserPromptPart(content=steering_text)])
+        )
+
+        # 5. Start new agent run via process_turn with pre-built history
+        async for chunk in self.process_turn(
+            chat_id=chat_id,
+            user_id=user_id,
+            message_content="",
+            config_override=config_override,
+            _message_history_override=message_history,
+        ):
+            yield chunk
+
+    async def process_steer_text(
+        self,
+        chat_id: str,
+        user_id: str,
+        steer_message: str,
+        config_override: Dict = None,
+        on_event: Any = None,
+    ) -> str:
+        """Run a steer and return only the final response text."""
+        full_response = ""
+        parser = StreamParser()
+
+        async for chunk in self.process_steer(
+            chat_id=chat_id,
+            user_id=user_id,
+            steer_message=steer_message,
+            config_override=config_override,
+        ):
+            for event in parser.parse([chunk]):
+                if on_event:
+                    await on_event(event)
+                if isinstance(event, TextChunk):
+                    full_response += event.content
+                elif isinstance(event, ErrorEvent):
+                    raise RuntimeError(event.message)
+
+        return full_response.strip()
 
     async def process_turn_text(
         self,

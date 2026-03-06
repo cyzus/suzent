@@ -12,10 +12,11 @@ from typing import Dict
 class StreamControl:
     """Holds cooperative cancellation state for an active stream."""
 
-    __slots__ = ("cancel_event", "reason")
+    __slots__ = ("cancel_event", "completed_event", "reason")
 
     def __init__(self):
         self.cancel_event = asyncio.Event()
+        self.completed_event = asyncio.Event()  # Set when post-processing finishes
         self.reason = "Stream stopped by user"
 
 
