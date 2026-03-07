@@ -112,6 +112,7 @@ function processEvent(
   onCustomEvent?: (name: string, value: unknown) => void,
 ): { parts: AGUIPart[]; error?: string } {
   const { type, data } = event;
+  console.log('[AGUI]', type, data);
   // Clone parts array for immutable update
   const next = [...parts];
 
@@ -169,13 +170,35 @@ function processEvent(
       break;
 
     case 'TOOL_CALL_START': {
-      next.push({
-        type: 'tool',
-        toolCallId: data.toolCallId as string,
-        toolName: data.toolCallName as string,
-        args: '',
-        state: 'running',
-      });
+      const tcStartId = data.toolCallId as string;
+      // On resume after approval the backend replays TOOL_CALL_START for the
+      // same toolCallId.  Update the existing part in-place so we don't create
+      // a duplicate that ends up receiving the result while the original stays
+      // in a perpetual "running" state with no output.
+      let existingStartIdx = -1;
+      for (let i = next.length - 1; i >= 0; i--) {
+        if (next[i].type === 'tool' && next[i].toolCallId === tcStartId) {
+          existingStartIdx = i;
+          break;
+        }
+      }
+      if (existingStartIdx >= 0) {
+        next[existingStartIdx] = {
+          ...next[existingStartIdx],
+          args: '',          // reset so replayed TOOL_CALL_ARGS don't double-up
+          state: 'running',
+          output: undefined,
+          approvalId: undefined,
+        };
+      } else {
+        next.push({
+          type: 'tool',
+          toolCallId: tcStartId,
+          toolName: data.toolCallName as string,
+          args: '',
+          state: 'running',
+        });
+      }
       break;
     }
 
@@ -288,6 +311,8 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   const [status, setStatus] = useState<AGUIStatus>('idle');
   const [error, setError] = useState<string | undefined>();
   const abortRef = useRef<AbortController | null>(null);
+  // Set to true while steerStream is running so abort-triggered onFinish is suppressed
+  const isSteeringRef = useRef(false);
   // Keep a ref to latest parts so onFinish gets the final value
   const partsRef = useRef<AGUIPart[]>([]);
   partsRef.current = parts;
@@ -428,8 +453,12 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
-        setStatus('idle');
-        onFinish?.(partsRef.current);
+        // If the abort was triggered by steerStream, do nothing here —
+        // steerStream owns the status and will call onFinish when done.
+        if (!isSteeringRef.current) {
+          setStatus('idle');
+          onFinish?.(partsRef.current);
+        }
       } else {
         const errorMsg = (err as Error).message;
         setError(errorMsg);
@@ -449,9 +478,28 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     // Derive steer URL from the base chat URL
     const steerUrl = optionsRef.current.url.replace(/\/chat$/, '/chat/steer');
 
-    // 1. Abort the current fetch
+    // Mark any pending approvals as cancelled before aborting,
+    // so they won't show approval buttons after being saved to the store
+    const hasApprovals = partsRef.current.some(
+      p => p.type === 'tool' && p.state === 'approval-requested'
+    );
+    if (hasApprovals) {
+      const resolved = partsRef.current.map(p =>
+        p.type === 'tool' && p.state === 'approval-requested'
+          ? { ...p, state: 'error' as const, approvalId: undefined }
+          : p
+      );
+      partsRef.current = resolved;
+      setParts(resolved);
+    }
+
+    // 1. Abort the current fetch — set flag so the AbortError handler is a no-op
+    isSteeringRef.current = true;
     abortRef.current?.abort();
 
+    // Clear existing parts so the steer stream starts fresh
+    setParts([]);
+    partsRef.current = [];
     setError(undefined);
     setStatus('submitted');
     setPendingApprovalCount(0);
@@ -501,6 +549,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
           currentParts = result.parts;
 
           if (result.error) {
+            isSteeringRef.current = false;
             setError(result.error);
             setStatus('error');
             setParts(currentParts);
@@ -519,10 +568,12 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         }
       }
 
+      isSteeringRef.current = false;
       setStatus('idle');
       onFinish?.(currentParts);
 
     } catch (err) {
+      isSteeringRef.current = false;
       if ((err as Error).name === 'AbortError') {
         setStatus('idle');
         onFinish?.(partsRef.current);
@@ -622,9 +673,12 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
-        setStatus('idle');
-        // Still call onFinish with whatever parts we have
-        onFinish?.(partsRef.current);
+        // If the abort was triggered by steerStream, do nothing here —
+        // steerStream owns the status and will call onFinish when done.
+        if (!isSteeringRef.current) {
+          setStatus('idle');
+          onFinish?.(partsRef.current);
+        }
       } else {
         const errorMsg = (err as Error).message;
         setError(errorMsg);

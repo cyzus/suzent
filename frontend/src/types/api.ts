@@ -32,6 +32,7 @@ export interface ChatConfig {
   memory_enabled?: boolean;
   sandbox_enabled?: boolean;
   sandbox_volumes?: string[];
+  tool_approval_policy?: Record<string, string>;
 }
 
 export interface Chat {

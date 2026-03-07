@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
 import { useAGUI, type AGUIPart } from '../hooks/useAGUI';
-import { getApiBase, getSandboxParams, approveTool } from '../lib/api';
+import { getApiBase, getSandboxParams } from '../lib/api';
 import type { Message, FileAttachment } from '../types/api';
 import { isIntermediateStepContent, splitAssistantContent, mergeToolCallPairs, type ContentBlock } from '../lib/chatUtils';
 import { usePlan } from '../hooks/usePlan';
@@ -329,6 +329,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [currentUsage, setCurrentUsage] = useState<any>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const stopInFlightRef = useRef(false);
+  // True while a steer is in flight — prevents the normal-send finally from hiding the bubble
+  const steeringRef = useRef(false);
 
   // Ref for async callback access to current chatId
   const activeChatIdRef = useRef<string | null>(currentChatId);
@@ -337,7 +339,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // ── AG-UI streaming hook ─────────────────────────────────────────────
   const {
     parts: streamingParts,
-    status: chatStatus,
     sendMessage: sendAGUI,
     resumeStream,
     steerStream,
@@ -352,6 +353,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     url: `${getApiBase()}/chat`,
     onFinish: (parts) => {
       const chatId = activeChatIdRef.current;
+      console.log('[stream] onFinish', { chatId, parts: parts.length });
       const storeMsg = aguiPartsToStoreMessage(parts, currentUsage);
       if (storeMsg.content.trim()) {
         addMessage(storeMsg, chatId);
@@ -415,6 +417,31 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
     // All approvals decided — batch and send
     const decisions = consumeApprovalDecisions();
+    
+    // If any decision had "remember: session", update the UI config.
+    // The backend gets the new config immediately via the payload.
+    let currentConfig = config || { model: '', agent: '', tools: [] };
+    let hasPolicyUpdate = false;
+    const policyUpdates: Record<string, string> = {};
+    
+    decisions.forEach(d => {
+      if (d.remember === 'session' && d.toolName) {
+        policyUpdates[d.toolName] = d.approved ? 'always_allow' : 'always_deny';
+        hasPolicyUpdate = true;
+      }
+    });
+
+    if (hasPolicyUpdate) {
+      currentConfig = {
+        ...currentConfig,
+        tool_approval_policy: {
+          ...(currentConfig.tool_approval_policy || {}),
+          ...policyUpdates
+        }
+      };
+      setConfig(currentConfig);
+    }
+
     const resumeApprovals = decisions.map(d => ({
       request_id: d.approvalId,
       tool_call_id: d.toolCallId,
@@ -426,7 +453,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     try {
       const payload: Record<string, unknown> = {
         message: "",
-        config: config || { model: '', agent: '', tools: [] },
+        config: currentConfig,
         chat_id: targetChatId,
         reset: false,
         resume_approvals: resumeApprovals,
@@ -445,10 +472,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         try { await forceSaveNow(targetChatId); } catch { }
       }, 600);
     }
-  }, [currentChatId, config, resumeStream, resolveApproval, addApprovalDecision, consumeApprovalDecisions, updateMessage, setIsStreaming, forceSaveNow]);
-
-  // Whether we have active streaming content to render
-  const hasStreamingContent = streamingParts.length > 0 && chatStatus !== 'idle';
+  }, [currentChatId, config, resumeStream, resolveApproval, addApprovalDecision, consumeApprovalDecisions, updateMessage, setIsStreaming, forceSaveNow, setConfig]);
 
   // Custom hooks
   const {
@@ -474,6 +498,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const safeConfig = config || { model: '', agent: '', tools: [] };
   const safeBackendConfig = backendConfig || null;
   const streamingForCurrentChat = isStreaming && activeStreamingChatId === currentChatId;
+  // DEBUG — remove once streaming is fixed
+  console.log('[stream]', { isStreaming, activeStreamingChatId, currentChatId, streamingForCurrentChat, parts: streamingParts.length });
   const configReady = !!(safeBackendConfig && safeConfig.model && safeConfig.agent);
 
   // Auto-scroll
@@ -505,6 +531,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       setInput('');
       addMessage({ role: 'user', content: prompt }, currentChatId);
 
+      steeringRef.current = true;
       try {
         await steerStream({
           chat_id: currentChatId,
@@ -514,6 +541,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       } catch (error) {
         console.error('Error during steer:', error);
       } finally {
+        steeringRef.current = false;
         setIsStreaming(false, currentChatId);
         stopInFlightRef.current = false;
         setTimeout(async () => {
@@ -568,6 +596,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       images: imagePreviews,
       files: uploadedFileMetadata
     }, chatIdForSend);
+    console.log('[stream] calling setIsStreaming(true)', chatIdForSend);
     setIsStreaming(true, chatIdForSend);
     activeChatIdRef.current = chatIdForSend;
     stopInFlightRef.current = false;
@@ -599,8 +628,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     } catch (error) {
       console.error('Error during streaming:', error);
     } finally {
-      // Safety net: onFinish/onError handle state, but ensure cleanup
-      setIsStreaming(false, chatIdForSend);
+      // Safety net: onFinish/onError handle state, but ensure cleanup.
+      // Skip if a steer is in progress — steer's own finally handles cleanup.
+      console.log('[stream] send() finally', { steeringRef: steeringRef.current });
+      if (!steeringRef.current) {
+        setIsStreaming(false, chatIdForSend);
+      }
       stopInFlightRef.current = false;
       setTimeout(async () => {
         try { await forceSaveNow(chatIdForSend); } catch { }
@@ -739,7 +772,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                           isStreaming={true}
                           isLastMessage={true}
                           onFileClick={handleFileClick}
-                          aguiParts={hasStreamingContent ? streamingParts : undefined}
+                          aguiParts={streamingForCurrentChat ? streamingParts : undefined}
                           onToolApproval={handleToolApproval}
                           usage={currentUsage}
                         />

@@ -120,20 +120,27 @@ async def stream_agent_responses(
 
     # --- Background agent runner (stateless resume) ---
     async def _agent_runner():
-        """Run the agent in a background task. Terminates gracefully on deferred tools."""
+        """Run the agent in a background task.
+
+        Loops automatically when all pending tool approvals are satisfied by the
+        session-level ``tool_approval_policy`` (always_allow / always_deny), so
+        the user is never prompted for a tool they already approved this session.
+        Terminates gracefully when human input is genuinely required or the agent
+        finishes normally.
+        """
         nonlocal partial_history
         prompt = message
-
         history = list(message_history) if message_history else None
+        current_deferred = deferred_tool_results
 
         try:
             async with agent:  # MCP server context management
-                if not control.cancel_event.is_set():
+                while not control.cancel_event.is_set():
                     run_kwargs: Dict[str, Any] = {"deps": deps}
                     if history:
                         run_kwargs["message_history"] = history
-                    if deferred_tool_results:
-                        run_kwargs["deferred_tool_results"] = deferred_tool_results
+                    if current_deferred:
+                        run_kwargs["deferred_tool_results"] = current_deferred
 
                     last_result_event = None
                     async for event in agent.run_stream_events(prompt, **run_kwargs):
@@ -156,8 +163,40 @@ async def stream_agent_responses(
 
                         deferred = last_result_event.result.output
                         if deferred.approvals:
-                            deps.is_suspended = True  # Signal that this stream is pausing for human input
+                            # Split approvals into policy-decided (auto) and those
+                            # still requiring the user's explicit decision.
+                            auto_approvals: Dict[str, bool] = {}
+                            pending_approvals = []
                             for tc in deferred.approvals:
+                                policy = deps.tool_approval_policy.get(tc.tool_name, "")
+                                if policy == "always_allow":
+                                    auto_approvals[tc.tool_call_id] = True
+                                    logger.debug(
+                                        f"[Streaming] Auto-approving '{tc.tool_name}' "
+                                        f"(always_allow policy)"
+                                    )
+                                elif policy == "always_deny":
+                                    auto_approvals[tc.tool_call_id] = False
+                                    logger.debug(
+                                        f"[Streaming] Auto-denying '{tc.tool_name}' "
+                                        f"(always_deny policy)"
+                                    )
+                                else:
+                                    pending_approvals.append(tc)
+
+                            if not pending_approvals:
+                                # All tool approvals decided by policy — loop back
+                                # immediately without pausing for user input.
+                                current_deferred = DeferredToolResults(
+                                    approvals=auto_approvals
+                                )
+                                history = current_history
+                                prompt = ""  # no new user message on resume
+                                continue  # restart loop
+
+                            # Some tools still need the user's decision.
+                            deps.is_suspended = True  # Signal stream is pausing
+                            for tc in pending_approvals:
                                 try:
                                     args_dict = (
                                         tc.args if isinstance(tc.args, dict) else {}
@@ -176,6 +215,9 @@ async def stream_agent_responses(
                                         },
                                     )
                                 )
+
+                    # Agent finished (or was cancelled) — exit loop
+                    break
 
         except Exception as e:
             await sse_queue.put(("error", e))
