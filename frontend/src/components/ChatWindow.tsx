@@ -336,6 +336,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const activeChatIdRef = useRef<string | null>(currentChatId);
   useEffect(() => { activeChatIdRef.current = currentChatId; }, [currentChatId]);
 
+  // Ref to lock the chat ID for the current stream so switching chats doesn't misroute messages
+  const streamingChatIdRef = useRef<string | null>(null);
+
   // ── AG-UI streaming hook ─────────────────────────────────────────────
   const {
     parts: streamingParts,
@@ -352,13 +355,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   } = useAGUI({
     url: `${getApiBase()}/chat`,
     onFinish: (parts) => {
-      const chatId = activeChatIdRef.current;
+      const chatId = streamingChatIdRef.current || activeChatIdRef.current;
       console.log('[stream] onFinish', { chatId, parts: parts.length });
       const storeMsg = aguiPartsToStoreMessage(parts, currentUsage);
       if (storeMsg.content.trim()) {
         addMessage(storeMsg, chatId);
       }
       setIsStreaming(false, chatId);
+      streamingChatIdRef.current = null;
       clearParts();
       setCurrentUsage(null);
       setTimeout(async () => {
@@ -368,15 +372,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     },
     onCustomEvent: (name, value) => {
       if (name === 'plan_refresh') {
+        const chatId = streamingChatIdRef.current || activeChatIdRef.current;
         applyPlanSnapshot(value as any);
-        refreshPlan(activeChatIdRef.current);
+        refreshPlan(chatId);
       } else if (name === 'usage_update') {
         setCurrentUsage(value);
       }
     },
     onError: (error) => {
       console.error('AG-UI error:', error);
-      setIsStreaming(false, activeChatIdRef.current);
+      const chatId = streamingChatIdRef.current || activeChatIdRef.current;
+      setIsStreaming(false, chatId);
+      streamingChatIdRef.current = null;
       stopInFlightRef.current = false;
     },
   });
@@ -417,13 +424,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
     // All approvals decided — batch and send
     const decisions = consumeApprovalDecisions();
-    
+
     // If any decision had "remember: session", update the UI config.
     // The backend gets the new config immediately via the payload.
     let currentConfig = config || { model: '', agent: '', tools: [] };
     let hasPolicyUpdate = false;
     const policyUpdates: Record<string, string> = {};
-    
+
     decisions.forEach(d => {
       if (d.remember === 'session' && d.toolName) {
         policyUpdates[d.toolName] = d.approved ? 'always_allow' : 'always_deny';
@@ -460,6 +467,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       };
 
       setIsStreaming(true, targetChatId);
+      streamingChatIdRef.current = targetChatId;
       stopInFlightRef.current = false;
       // Use resumeStream to preserve existing tool parts in the UI
       await resumeStream(payload);
@@ -610,6 +618,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }, chatIdForSend);
     console.log('[stream] calling setIsStreaming(true)', chatIdForSend);
     setIsStreaming(true, chatIdForSend);
+    streamingChatIdRef.current = chatIdForSend;
     activeChatIdRef.current = chatIdForSend;
     stopInFlightRef.current = false;
 
