@@ -57,14 +57,29 @@ class SocialBrain(BaseBrain):
             str, Dict[str, str]
         ] = {}  # chat_id -> {tool -> policy}
         self._run_states: Dict[str, ChatRunState] = {}  # per social_chat_id
+        self._cleanup_task: Optional[asyncio.Task] = None
 
     def update_model(self, model: str):
         """Update the model used for social interactions."""
         self.model = model
 
     async def start(self):
-        """Start the processing loop."""
+        """Start the processing loop and cleanup task."""
         await super().start()
+        # Start background cleanup task
+        self._cleanup_task = asyncio.create_task(self._run_cleanup_loop())
+
+    async def stop(self):
+        """Stop the processing loop and cleanup task."""
+        # Cancel cleanup task first
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+        # Then call parent stop
+        await super().stop()
 
     async def _run_loop(self):
         """Delegate to the queue processor."""
@@ -72,8 +87,12 @@ class SocialBrain(BaseBrain):
 
     def _get_run_state(self, social_chat_id: str) -> ChatRunState:
         """Get or create the run state for a social chat."""
+        import time
         if social_chat_id not in self._run_states:
             self._run_states[social_chat_id] = ChatRunState()
+        else:
+            # Update last activity timestamp
+            self._run_states[social_chat_id].last_activity = time.time()
         return self._run_states[social_chat_id]
 
     def _is_steer(self, message: UnifiedMessage, state: ChatRunState) -> bool:
@@ -141,15 +160,17 @@ class SocialBrain(BaseBrain):
 
         state = self._get_run_state(social_chat_id)
 
+        # Check state under lock
         async with state.lock:
             if state.active_task and not state.active_task.done():
                 # There IS an active run
                 if self._is_steer(message, state):
                     # STEER: cancel current run, process this message
-                    # Also cancel pending approvals if any
+                    # Mark that we're steering (claim the slot before releasing lock)
+                    task_to_cancel = state.active_task
+                    state.active_task = None  # Prevent other messages from seeing active task
+                    state.active_sender = None
                     self._sessions.pop(social_chat_id, None)
-                    await self._cancel_active(social_chat_id, state)
-                    # Fall through to process as new turn
                 else:
                     # QUEUE: hold until current run finishes
                     state.queued_messages.append(message)
@@ -158,10 +179,26 @@ class SocialBrain(BaseBrain):
                 # Pending approval session active
                 if self._is_steer(message, state):
                     self._sessions.pop(social_chat_id)
+                    task_to_cancel = None
                     # Fall through to process as new turn
                 else:
                     state.queued_messages.append(message)
                     return
+            else:
+                task_to_cancel = None
+
+        # Cancel outside the lock to prevent deadlock
+        # (task's finally block also acquires the lock)
+        if task_to_cancel:
+            await self._cancel_active(social_chat_id, state)
+
+        # Re-acquire lock to start new task atomically
+        async with state.lock:
+            # Double-check no one else started a task while we were canceling
+            if state.active_task and not state.active_task.done():
+                # Another message snuck in, queue this one
+                state.queued_messages.append(message)
+                return
 
             # Process this message (either fresh or post-steer)
             state.active_sender = message.sender_id
@@ -188,6 +225,53 @@ class SocialBrain(BaseBrain):
                         logger.error(f"Error handling queued message: {e}")
                 state.active_task = None
                 state.active_sender = None
+
+    async def _run_cleanup_loop(self):
+        """Background task to periodically clean up stale run states."""
+        cleanup_interval = 300  # 5 minutes
+        ttl_seconds = 3600  # 1 hour
+
+        while self._running:
+            try:
+                await asyncio.sleep(cleanup_interval)
+
+                # Clean up local _run_states
+                import time
+                current_time = time.time()
+                stale_chat_ids = []
+
+                for chat_id, state in self._run_states.items():
+                    # Don't clean up if there's an active task
+                    if state.active_task and not state.active_task.done():
+                        continue
+
+                    # Check if state is stale
+                    if current_time - state.last_activity > ttl_seconds:
+                        stale_chat_ids.append(chat_id)
+
+                # Remove stale states
+                for chat_id in stale_chat_ids:
+                    del self._run_states[chat_id]
+
+                if stale_chat_ids:
+                    logger.debug(
+                        f"Cleaned up {len(stale_chat_ids)} stale run states "
+                        f"(TTL: {ttl_seconds}s)"
+                    )
+
+                # Also clean up global run states
+                from suzent.core.run_state import cleanup_stale_states
+                global_cleaned = cleanup_stale_states(ttl_seconds)
+                if global_cleaned:
+                    logger.debug(
+                        f"Cleaned up {global_cleaned} global run states "
+                        f"(TTL: {ttl_seconds}s)"
+                    )
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in cleanup loop: {e}")
 
     def _is_authorized(self, message: UnifiedMessage) -> bool:
         """Check if a message sender is authorized."""

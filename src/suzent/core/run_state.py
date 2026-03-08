@@ -6,6 +6,7 @@ who triggered them, and queued messages waiting to be processed.
 """
 
 import asyncio
+import time
 from dataclasses import dataclass, field
 from typing import Optional, Dict
 
@@ -20,6 +21,7 @@ class ChatRunState:
     active_sender: Optional[str] = None
     queued_messages: list = field(default_factory=list)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    last_activity: float = field(default_factory=time.time)
 
 
 # Global registry: chat_id -> ChatRunState
@@ -30,6 +32,9 @@ def get_run_state(chat_id: str) -> ChatRunState:
     """Get or create the run state for a chat."""
     if chat_id not in _chat_states:
         _chat_states[chat_id] = ChatRunState()
+    else:
+        # Update last activity timestamp
+        _chat_states[chat_id].last_activity = time.time()
     return _chat_states[chat_id]
 
 
@@ -62,3 +67,32 @@ async def cancel_and_wait(chat_id: str, timeout: float = 5.0) -> bool:
             pass
 
     return True
+
+
+def cleanup_stale_states(ttl_seconds: float = 3600) -> int:
+    """
+    Remove inactive run states older than TTL.
+
+    Args:
+        ttl_seconds: Time to live in seconds (default 1 hour)
+
+    Returns:
+        Number of states cleaned up
+    """
+    current_time = time.time()
+    stale_chat_ids = []
+
+    for chat_id, state in _chat_states.items():
+        # Don't clean up if there's an active task
+        if state.active_task and not state.active_task.done():
+            continue
+
+        # Check if state is stale
+        if current_time - state.last_activity > ttl_seconds:
+            stale_chat_ids.append(chat_id)
+
+    # Remove stale states
+    for chat_id in stale_chat_ids:
+        del _chat_states[chat_id]
+
+    return len(stale_chat_ids)

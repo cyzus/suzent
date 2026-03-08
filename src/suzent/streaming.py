@@ -146,12 +146,27 @@ async def stream_agent_responses(
                     async for event in agent.run_stream_events(prompt, **run_kwargs):
                         if control.cancel_event.is_set():
                             break
-                        logger.debug(
-                            f"[Streaming] Received event from agent: {type(event).__name__}"
-                        )
-                        if isinstance(event, AgentRunResultEvent):
-                            last_result_event = event
-                        await sse_queue.put(("event", event))
+                        try:
+                            logger.debug(
+                                f"[Streaming] Received event from agent: {type(event).__name__}"
+                            )
+                            if isinstance(event, AgentRunResultEvent):
+                                last_result_event = event
+                            await sse_queue.put(("event", event))
+                        except Exception as e:
+                            logger.error(
+                                f"[Streaming] Error processing event {type(event).__name__}: {e}\n"
+                                f"{traceback.format_exc()}"
+                            )
+                            # Emit error event to client instead of crashing stream
+                            await sse_queue.put(
+                                (
+                                    "error",
+                                    f"Error processing {type(event).__name__}: {str(e)}",
+                                )
+                            )
+                            # Continue processing other events
+                            continue
 
                     # Check if deferred tools need approval before terminating
                     if last_result_event and isinstance(
@@ -265,11 +280,21 @@ async def stream_agent_responses(
 
                             agent._last_messages = payload.result.all_messages()  # type: ignore[attr-defined]
                             deps.last_messages = agent._last_messages
-                        except Exception:
+                        except Exception as e:
+                            logger.warning(
+                                f"[Streaming] Failed to extract usage data: {e}"
+                            )
                             agent._last_messages = []
                             deps.last_messages = []
 
-                    yield payload
+                    try:
+                        yield payload
+                    except Exception as e:
+                        logger.error(
+                            f"[Streaming] Error yielding event: {e}\n"
+                            f"{traceback.format_exc()}"
+                        )
+                        # Continue to next event instead of crashing
 
                 elif msg_type == "approval":
                     # HITL: emit as AG-UI CustomEvent with all approval info
