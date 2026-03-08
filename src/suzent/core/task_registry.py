@@ -11,7 +11,7 @@ Prevents resource exhaustion by:
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Set
+from typing import Dict, Optional
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -149,7 +149,9 @@ class BackgroundTaskRegistry:
         logger.info(f"Waiting for {len(tasks)} background tasks to complete...")
 
         if timeout:
-            await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout)
+            await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True), timeout
+            )
         else:
             await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -200,7 +202,9 @@ class BackgroundTaskRegistry:
         try:
             await self.wait_for_all(timeout=timeout)
         except asyncio.TimeoutError:
-            logger.warning(f"Shutdown timeout after {timeout}s, cancelling remaining tasks")
+            logger.warning(
+                f"Shutdown timeout after {timeout}s, cancelling remaining tasks"
+            )
             await self.cancel_all()
 
         logger.info("Background task registry shutdown complete")

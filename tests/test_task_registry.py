@@ -165,7 +165,10 @@ class TestBackgroundTaskRegistry:
 
     async def test_global_registry(self):
         """Test the global registry instance."""
-        from suzent.core.task_registry import get_task_registry, register_background_task
+        from suzent.core.task_registry import (
+            get_task_registry,
+            register_background_task,
+        )
 
         # Get global registry
         registry = get_task_registry()

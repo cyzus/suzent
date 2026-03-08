@@ -101,9 +101,7 @@ def build_agent_deps(
 
     # SECURITY: Make a defensive copy to prevent accidental mutation of shared config
     # This ensures each AgentDeps instance has its own independent policy dict
-    assert isinstance(
-        tool_approval_policy, dict
-    ), "tool_approval_policy must be a dict"
+    assert isinstance(tool_approval_policy, dict), "tool_approval_policy must be a dict"
     tool_approval_policy = dict(tool_approval_policy)
 
     return AgentDeps(

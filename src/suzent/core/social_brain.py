@@ -88,6 +88,7 @@ class SocialBrain(BaseBrain):
     def _get_run_state(self, social_chat_id: str) -> ChatRunState:
         """Get or create the run state for a social chat."""
         import time
+
         if social_chat_id not in self._run_states:
             self._run_states[social_chat_id] = ChatRunState()
         else:
@@ -168,7 +169,9 @@ class SocialBrain(BaseBrain):
                     # STEER: cancel current run, process this message
                     # Mark that we're steering (claim the slot before releasing lock)
                     task_to_cancel = state.active_task
-                    state.active_task = None  # Prevent other messages from seeing active task
+                    state.active_task = (
+                        None  # Prevent other messages from seeing active task
+                    )
                     state.active_sender = None
                     self._sessions.pop(social_chat_id, None)
                 else:
@@ -237,6 +240,7 @@ class SocialBrain(BaseBrain):
 
                 # Clean up local _run_states
                 import time
+
                 current_time = time.time()
                 stale_chat_ids = []
 
@@ -261,6 +265,7 @@ class SocialBrain(BaseBrain):
 
                 # Also clean up global run states
                 from suzent.core.run_state import cleanup_stale_states
+
                 global_cleaned = cleanup_stale_states(ttl_seconds)
                 if global_cleaned:
                     logger.debug(

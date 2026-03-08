@@ -80,9 +80,8 @@ class TestConcurrentRequestIsolation:
     async def test_concurrent_process_turn_isolation(self):
         """Verify that concurrent process_turn calls are isolated."""
         from suzent.core.chat_processor import ChatProcessor
-        import asyncio
 
-        processor = ChatProcessor()
+        _ = ChatProcessor()
 
         # This test would require full integration setup
         # For now, just verify we can create multiple processors
