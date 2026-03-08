@@ -463,7 +463,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
         </div>
 
         <div className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
-          <div className="overflow-hidden min-h-0 min-w-0 flex flex-col space-y-3">
+          <div className="overflow-hidden min-h-0 min-w-0 flex flex-col space-y-3 pr-2 pb-2">
             {hasParts ? (
               <AGUIPartsContent
                 parts={aguiParts}
@@ -514,7 +514,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     const isStep = b.type === 'toolCall';
     const isReasoning = b.type === 'reasoning';
     // Use the type directly for chunking to preserve interleaved order
-    const type = b.type === 'markdown' ? 'content' : b.type;
+    const type = (b.type === 'markdown' || b.type === 'code' || b.type === 'log') ? 'content' : b.type;
 
     if (currentGroup.length === 0) {
       currentType = type;
@@ -562,7 +562,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
       </div>
 
       <div className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
-        <div className="overflow-hidden min-h-0 flex flex-col space-y-3">
+        <div className="overflow-hidden min-h-0 flex flex-col space-y-3 pr-2 pb-2">
           {validChunks.map((chunk, idx) => {
             if (chunk.type === 'reasoning') {
               const isChunkStreaming = isStreamingThis && idx === validChunks.length - 1;
