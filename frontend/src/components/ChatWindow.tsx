@@ -13,7 +13,7 @@ import { NewChatView } from './NewChatView';
 import { ChatInputPanel } from './ChatInputPanel';
 import { ImageViewer } from './ImageViewer';
 import { FileViewer } from './FileViewer';
-import { UserMessage, AssistantMessage, ToolCallBlock, RightSidebar } from './chat';
+import { UserMessage, AssistantMessage, ToolCallBlock, RightSidebar, ApprovalPolicyIndicator } from './chat';
 import { useI18n } from '../i18n';
 
 // ── AGUIPart[] → Store Message conversion ────────────────────────────
@@ -474,6 +474,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, [currentChatId, config, resumeStream, resolveApproval, addApprovalDecision, consumeApprovalDecisions, updateMessage, setIsStreaming, forceSaveNow, setConfig]);
 
+  // Remove a tool from the approval policy
+  const handleRemoveApprovalPolicy = useCallback((toolName: string) => {
+    setConfig(prev => {
+      if (!prev.tool_approval_policy) return prev;
+      const { [toolName]: _, ...rest } = prev.tool_approval_policy;
+      return {
+        ...prev,
+        tool_approval_policy: rest
+      };
+    });
+  }, [setConfig]);
+
   // Custom hooks
   const {
     selectedFiles,
@@ -803,6 +815,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 isSidebarOpen={isRightSidebarOpen}
               />
             )}
+
+            {/* Show active approval policies */}
+            <ApprovalPolicyIndicator
+              toolApprovalPolicy={safeConfig.tool_approval_policy}
+              onRemovePolicy={handleRemoveApprovalPolicy}
+            />
 
             <ChatInputPanel
               input={input}

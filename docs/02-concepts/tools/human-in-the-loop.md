@@ -16,26 +16,27 @@ Dangerous tools require explicit user approval before execution. This prevents t
 When a gated tool is invoked, the chat UI pauses and shows an approval dialog:
 
 - **Allow** — approve this single execution, resume the tool
-- **Always Allow** — approve and remember for this session (no further prompts for this tool)
+- **Always Allow** — approve and remember for this chat (no further prompts for this tool in this chat)
 - **Deny** — block execution, the tool returns `[Tool execution denied by user.]`
 
 The agent sees the denial message and can adjust its approach (e.g. ask the user for an alternative).
 
-## Session Memory
+## Chat-Scoped Memory
 
-Clicking **"Always Allow"** sets a session-level policy:
+Clicking **"Always Allow"** sets a chat-scoped policy:
 
 ```
 tool_approval_policy["bash_execute"] = "always_allow"
 ```
 
-This persists for the lifetime of the current streaming session. Subsequent calls to the same tool skip the approval dialog entirely. The policy resets when:
+This persists for the lifetime of the current chat. Subsequent calls to the same tool skip the approval dialog entirely. The policy:
 
-- The user starts a new message (new streaming session)
-- The page is refreshed
-- The stream is stopped
+- **Persists** across multiple messages within the same chat
+- **Persists** across page refreshes (stored in database per-chat)
+- **Resets** when you create a new chat or switch to a different chat
+- **Is isolated** per chat — approvals in Chat A don't affect Chat B
 
-This mirrors the behavior of Claude Code and AI IDE tools where you can grant persistent permission within a session.
+Each chat maintains its own independent set of tool approval policies, giving you fine-grained control over which tools are auto-approved in different contexts.
 
 ## How It Works
 
@@ -85,15 +86,29 @@ The agent runs in a background `asyncio.Task`. When a tool needs approval, it pu
 ### API Endpoint
 
 ```
-POST /chat/approve-tool
+POST /chat (with resume_approvals)
 
 {
   "chat_id": "...",
-  "request_id": "...",
-  "approved": true,
-  "remember": "session"   // or null for one-time approval
+  "message": "",
+  "config": {
+    "tool_approval_policy": {
+      "bash_execute": "always_allow"  // Updated when remember: "session" is set
+    }
+  },
+  "resume_approvals": [
+    {
+      "request_id": "...",
+      "tool_call_id": "...",
+      "approved": true,
+      "remember": "session",  // or null for one-time approval
+      "tool_name": "bash_execute"
+    }
+  ]
 }
 ```
+
+Note: The `/chat/approve-tool` endpoint is deprecated. Approvals are now batched and sent via the main `/chat` endpoint with the updated config.
 
 ### Timeout & Cancellation
 

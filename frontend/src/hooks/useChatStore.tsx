@@ -56,6 +56,15 @@ const UNSAVED_CHAT_KEY = '__unsaved__';
 const LAST_CONFIG_KEY = 'suzent_last_config';
 const keyForChat = (chatId: string | null) => chatId ?? UNSAVED_CHAT_KEY;
 
+/**
+ * Strip tool_approval_policy from config before saving to localStorage.
+ * Approval policies should only persist per-chat in the database, not leak to new chats.
+ */
+const stripApprovalPolicy = (config: ChatConfig): ChatConfig => {
+  const { tool_approval_policy, ...rest } = config;
+  return rest;
+};
+
 /** Build a ChatConfig from user preferences and backend defaults. */
 const buildConfigFromPreferences = (
   prefs: ConfigOptions['userPreferences'],
@@ -239,7 +248,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const isModelValid = backendConfig.models.includes(parsed.model);
           const isAgentValid = backendConfig.agents.includes(parsed.agent);
           if (isModelValid && isAgentValid) {
-            return parsed;
+            // Ensure tool_approval_policy is never inherited from localStorage
+            // (it should be chat-scoped, not global)
+            return stripApprovalPolicy(parsed);
           }
         }
       }
@@ -580,9 +591,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setConfigState(resolved);
     setConfigByChat(prevConfigs => ({ ...prevConfigs, [key]: resolved }));
 
-    // Save to localStorage to remember for next new chat
+    // Save to localStorage to remember for next new chat (but strip approval policy)
     try {
-      localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(resolved));
+      localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripApprovalPolicy(resolved)));
     } catch (e) {
       console.warn('Failed to save config to localStorage:', e);
     }
@@ -894,9 +905,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const cachedConfig = configByChat[key];
     if (cachedConfig) {
       setConfigState(cachedConfig);
-      // Save to localStorage to remember for next new chat
+      // Save to localStorage to remember for next new chat (but strip approval policy)
       try {
-        localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(cachedConfig));
+        localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripApprovalPolicy(cachedConfig)));
       } catch (e) {
         console.warn('Failed to save config to localStorage:', e);
       }
@@ -909,9 +920,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentChatTitle(chat.title);
         setConfigByChat(prev => ({ ...prev, [key]: chat.config }));
         setConfigState(chat.config);
-        // Save to localStorage to remember for next new chat
+        // Save to localStorage to remember for next new chat (but strip approval policy)
         try {
-          localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(chat.config));
+          localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripApprovalPolicy(chat.config)));
         } catch (e) {
           console.warn('Failed to save config to localStorage:', e);
         }
