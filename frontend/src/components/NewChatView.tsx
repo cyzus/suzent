@@ -53,7 +53,7 @@ const GreetingRobot: React.FC = React.memo(() => {
             <div className="w-24 h-24">
                 <RobotAvatar variant={greetingRobot} />
             </div>
-            <h2 className="text-4xl sm:text-5xl font-brutal font-bold text-brutal-black mb-2 tracking-tight">
+            <h2 className="text-4xl sm:text-5xl font-brutal font-bold text-brutal-black dark:text-white mb-2 tracking-tight">
                 {getGreeting()}
             </h2>
         </div>

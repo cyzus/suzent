@@ -59,15 +59,15 @@ export function Sidebar({
 
       <aside className={`
         fixed lg:relative z-50 h-full shrink-0
-        w-80 border-r-3 border-brutal-black flex flex-col bg-neutral-50
+        w-80 border-r-3 border-brutal-black flex flex-col bg-neutral-50 dark:bg-zinc-900
         transition-all duration-300 ease-in-out
         ${isOpen ? 'translate-x-0 lg:ml-0' : '-translate-x-full lg:translate-x-0 lg:-ml-80'}
       `}>
-        <div className="h-14 flex items-center justify-start px-4 border-b-3 border-brutal-black bg-white sticky top-0 z-10 shrink-0">
+        <div className="h-14 flex items-center justify-start px-4 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 sticky top-0 z-10 shrink-0">
           {/* Toggle Button (Close) */}
           <button
             onClick={onClose}
-            className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 transition-colors text-brutal-black"
+            className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors text-brutal-black dark:text-white"
             aria-label={t('sidebar.close')}
             title={t('sidebar.close')}
           >
@@ -78,7 +78,7 @@ export function Sidebar({
           </button>
 
           {/* Vertical Separator */}
-          <div className="h-6 w-[2px] bg-neutral-300 mx-2 rounded-full" />
+          <div className="h-6 w-[2px] bg-neutral-300 dark:bg-zinc-600 mx-2 rounded-full" />
 
           {/* Logo (Static) */}
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Suzent Logo" className="h-10 w-10">
@@ -95,7 +95,9 @@ export function Sidebar({
               <button
                 key={tab}
                 onClick={() => onTabChange(tab)}
-                className={`flex-1 py-3 text-xs font-bold uppercase relative transition-all duration-200 ${active ? 'bg-brutal-black text-white' : 'bg-white text-brutal-black hover:bg-brutal-yellow border-r-3 border-brutal-black last:border-r-0'}`}
+                className={`flex-1 py-3 text-xs font-bold uppercase relative transition-all duration-200 ${active
+                  ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black'
+                  : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-brutal-yellow dark:hover:bg-zinc-700 border-r-3 border-brutal-black last:border-r-0'}`}
               >
                 {TAB_LABELS[tab]}
               </button>
@@ -115,10 +117,10 @@ export function Sidebar({
         </div>
 
         {/* User / Global Settings - Bottom Stick */}
-        <div className="border-t-3 border-brutal-black bg-white p-3 md:p-4 sticky bottom-0 z-20">
+        <div className="border-t-3 border-brutal-black bg-white dark:bg-zinc-800 p-3 md:p-4 sticky bottom-0 z-20">
           <button
             onClick={onOpenSettings}
-            className="w-full flex items-center gap-3 p-3 bg-neutral-100 hover:bg-brutal-yellow border-2 border-brutal-black transition-colors group text-left"
+            className="w-full flex items-center gap-3 p-3 bg-neutral-100 dark:bg-zinc-700 hover:bg-brutal-yellow dark:hover:bg-brutal-yellow border-2 border-brutal-black transition-colors group text-left"
           >
             <div className="w-8 h-8 rounded-full bg-brutal-black flex items-center justify-center text-white shrink-0">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -127,7 +129,7 @@ export function Sidebar({
             </div>
             <div className="flex flex-col min-w-0">
               <span className="font-bold text-sm truncate uppercase tracking-tight">{t('sidebar.settings')}</span>
-              <span className="text-xs text-neutral-600 font-mono truncate">{t('sidebar.settingsDesc')}</span>
+              <span className="text-xs text-neutral-600 dark:text-neutral-400 font-mono truncate">{t('sidebar.settingsDesc')}</span>
             </div>
             <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

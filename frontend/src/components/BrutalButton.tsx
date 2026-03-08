@@ -30,10 +30,10 @@ export const BrutalButton: React.FC<BrutalButtonProps> = ({
             case 'warning':
                 return "bg-brutal-yellow text-brutal-black hover:bg-yellow-400 shadow-[2px_2px_0_0_#000] brutal-btn";
             case 'ghost':
-                return "bg-transparent border-transparent hover:bg-neutral-100 shadow-none active:translate-y-0";
+                return "bg-transparent border-transparent hover:bg-neutral-100 dark:hover:bg-zinc-700 shadow-none active:translate-y-0";
             case 'default':
             default:
-                return `bg-white text-brutal-black hover:bg-neutral-100 ${isActive ? 'bg-neutral-200 shadow-none translate-y-[2px]' : 'shadow-[2px_2px_0_0_#000] brutal-btn'}`;
+                return `bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700 ${isActive ? 'bg-neutral-200 dark:bg-zinc-700 shadow-none translate-y-[2px]' : 'shadow-[2px_2px_0_0_#000] brutal-btn'}`;
         }
     }, [variant, isActive]);
 

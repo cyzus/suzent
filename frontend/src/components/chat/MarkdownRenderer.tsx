@@ -91,7 +91,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
   };
 
   return (
-    <div className="prose tight-lists prose-sm max-w-none break-words select-text">
+    <div className="prose dark:prose-invert tight-lists prose-sm max-w-none break-words select-text">
       <RM
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypePrism]}
@@ -102,8 +102,8 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
               return <>{p.children}</>;
             }
             return (
-              <div className="bg-neutral-50 p-4 overflow-x-auto">
-                <pre className="font-mono text-xs text-brutal-black leading-relaxed whitespace-pre-wrap break-all">
+              <div className="bg-neutral-50 dark:bg-zinc-800 p-4 overflow-x-auto">
+                <pre className="font-mono text-xs text-brutal-black dark:text-neutral-200 leading-relaxed whitespace-pre-wrap break-all">
                   {p.children}
                 </pre>
               </div>
@@ -241,7 +241,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
             return <p className="leading-relaxed break-words whitespace-pre-wrap m-0">{pArg.children}</p>;
           },
           blockquote: (p: any) => (
-            <blockquote className="border-l-4 border-brutal-black pl-3 italic text-neutral-600 break-words bg-neutral-50 py-1 pr-2">
+            <blockquote className="border-l-4 border-brutal-black pl-3 italic text-neutral-600 dark:text-neutral-400 break-words bg-neutral-50 dark:bg-zinc-800 py-1 pr-2">
               {p.children}
             </blockquote>
           )

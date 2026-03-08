@@ -173,7 +173,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
     const dropdown = isOpen && dropdownPosition && createPortal(
         <div
             ref={dropdownRef}
-            className={`fixed z-[9999] w-72 bg-white border-2 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:outline-none flex flex-col max-h-[400px] overflow-y-auto scrollbar-thin animate-brutal-drop`}
+            className={`fixed z-[9999] w-72 bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:outline-none flex flex-col max-h-[400px] overflow-y-auto scrollbar-thin animate-brutal-drop`}
             style={{
                 top: effectiveDropUp ? 'auto' : dropdownPosition.top,
                 bottom: effectiveDropUp ? (window.innerHeight - dropdownPosition.top) : 'auto',
@@ -183,7 +183,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
             }}
         >
             {/* ACTIVE CONTEXTS SECTION */}
-            <div className="p-2 border-b-2 border-brutal-black bg-neutral-100">
+            <div className="p-2 border-b-2 border-brutal-black bg-neutral-100 dark:bg-zinc-700">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-brutal-black mb-1 flex justify-between items-center opacity-60">
                     <span>{t('folderContext.activeContexts')}</span>
                     <span>{activeCount}</span>
@@ -199,7 +199,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
                             const folderName = hostPath.split(/[/\\]/).pop() || hostPath;
 
                             return (
-                                <div key={idx} className="flex items-center justify-between bg-white px-2 py-1.5 border-2 border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn transition-all cursor-pointer" onClick={() => onRemoveVolume?.(idx)}>
+                                <div key={idx} className="flex items-center justify-between bg-white dark:bg-zinc-800 px-2 py-1.5 border-2 border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn transition-all cursor-pointer" onClick={() => onRemoveVolume?.(idx)}>
                                     <div className="flex items-center gap-2 min-w-0">
                                         <div className="bg-brutal-green p-0.5 border border-brutal-black">
                                             <CheckIcon className="w-3 h-3 text-brutal-black" />
@@ -218,7 +218,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
             </div>
 
             {/* RECENT FOLDERS SECTION */}
-            <div className="p-2 border-b-2 border-brutal-black bg-white">
+            <div className="p-2 border-b-2 border-brutal-black bg-white dark:bg-zinc-800">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-brutal-black opacity-60 mb-1 pl-1">
                     {t('folderContext.recentFolders')}
                 </div>
@@ -238,7 +238,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
                                         shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn
                                         ${isActive
                                             ? 'bg-brutal-green border-brutal-black text-brutal-black'
-                                            : 'bg-white border-brutal-black text-brutal-black hover:bg-neutral-50'}
+                                            : 'bg-white dark:bg-zinc-800 border-brutal-black text-brutal-black dark:text-white hover:bg-neutral-50 dark:hover:bg-zinc-700'}
                                     `}
                                 >
                                     {isActive ? (
@@ -257,13 +257,13 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
                 )}
             </div>
 
-            <div className="p-1 bg-neutral-100">
+            <div className="p-1 bg-neutral-100 dark:bg-zinc-700">
                 <button
                     type="button"
                     onClick={handleNativePick}
                     className={`
                         w-full flex items-center justify-center gap-2 px-2 py-2 text-xs font-bold uppercase transition-all border-2 border-brutal-black
-                        bg-white text-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn
+                        bg-white dark:bg-zinc-800 text-brutal-black dark:text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn
                     `}
                 >
                     <PlusIcon className="w-4 h-4" />
@@ -283,7 +283,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
                 disabled={disabled}
                 className={`
                     flex items-center gap-1.5 px-2 py-1 border-2 border-brutal-black brutal-btn shadow-[2px_2px_0_0_#000] transition-all disabled:opacity-50 disabled:cursor-not-allowed group text-xs font-bold uppercase
-                    ${activeCount > 0 ? 'bg-brutal-green text-brutal-black' : 'bg-white text-brutal-black hover:bg-neutral-100'}
+                    ${activeCount > 0 ? 'bg-brutal-green text-brutal-black' : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'}
                 `}
             >
                 <FolderIcon className="w-4 h-4" />

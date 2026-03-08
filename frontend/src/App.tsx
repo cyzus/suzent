@@ -14,6 +14,7 @@ import { StatusBar } from './components/StatusBar';
 import { ChatProvider, useChatStore } from './hooks/useChatStore.js';
 import { PlanProvider, usePlan } from './hooks/usePlan';
 import { useStatusStore } from './hooks/useStatusStore';
+import { useTheme } from './hooks/useTheme';
 import { drainCronNotifications } from './lib/api';
 import { TitleBar } from './components/TitleBar';
 import { useI18n, getInitialLocale, tForLocale } from './i18n';
@@ -57,11 +58,11 @@ function HeaderTitle({ text, onUnlock }: HeaderTitleProps): React.ReactElement {
 
   return (
     <div className="flex items-center gap-3 cursor-pointer select-none" onClick={handleClick}>
-      <div className="w-3 h-3 bg-brutal-black"></div>
-      <h1 className="font-brutal text-3xl text-brutal-black tracking-tighter uppercase leading-none">
+      <div className="w-3 h-3 bg-brutal-black dark:bg-brutal-yellow"></div>
+      <h1 className="font-brutal text-3xl text-brutal-black dark:text-white tracking-tighter uppercase leading-none">
         {text || backendConfig?.title || 'SUZENT'}
       </h1>
-      <div className="w-3 h-3 bg-brutal-black"></div>
+      <div className="w-3 h-3 bg-brutal-black dark:bg-brutal-yellow"></div>
     </div>
   );
 }
@@ -78,6 +79,7 @@ function AppInner(): React.ReactElement {
   const { refresh } = usePlan();
   const { currentChatId, setViewSwitcher } = useChatStore();
   const setStatusMsg = useStatusStore(s => s.setStatus);
+  const { theme, toggleTheme } = useTheme();
   const { t } = useI18n();
 
   // Poll cron notifications every 5 seconds
@@ -151,7 +153,7 @@ function AppInner(): React.ReactElement {
   }
 
   return (
-    <div className="h-full w-full bg-neutral-50 text-brutal-black font-sans">
+    <div className="h-full w-full bg-neutral-50 dark:bg-zinc-900 text-brutal-black dark:text-white font-sans">
       <TitleBar />
       <div className={`flex h-full relative ${window.__TAURI__ ? 'pt-8' : ''}`}>
         <Sidebar
@@ -164,7 +166,7 @@ function AppInner(): React.ReactElement {
           onClose={() => setIsLeftSidebarOpen(false)}
         />
         <div className="flex-1 flex flex-col overflow-hidden w-full">
-          <header className="border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white flex-shrink-0 h-14">
+          <header className="border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-14">
             <div className="flex items-center gap-2 md:gap-0">
               {isLeftSidebarOpen ? (
                 <div className="h-10 w-10 mr-3" aria-hidden="true" />
@@ -185,8 +187,8 @@ function AppInner(): React.ReactElement {
                     </svg>
                   </div>
                   <div className="hidden group-hover:block">
-                    <div className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 transition-colors">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-brutal-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <div className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-brutal-black dark:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <rect x="4" y="4" width="16" height="16" rx="2" />
                         <line x1="9" y1="4" x2="9" y2="20" />
                       </svg>
@@ -198,7 +200,7 @@ function AppInner(): React.ReactElement {
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="flex border-3 border-brutal-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <div className="flex border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                 {[
                   { id: 'chat' as MainView, label: t('nav.chat') },
                   { id: 'memory' as MainView, label: t('nav.memory') },
@@ -209,7 +211,9 @@ function AppInner(): React.ReactElement {
                     onClick={() => setMainView(view.id)}
                     className={`
                       px-4 py-2 font-bold uppercase text-xs md:text-sm transition-colors border-r-3 border-brutal-black last:border-r-0
-                      ${mainView === view.id ? 'bg-brutal-black text-white' : 'bg-white text-brutal-black hover:bg-neutral-100'}
+                      ${mainView === view.id
+                        ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black'
+                        : 'bg-white dark:bg-zinc-700 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600'}
                     `}
                   >
                     {view.label}
@@ -217,12 +221,40 @@ function AppInner(): React.ReactElement {
                 ))}
               </div>
 
+              {/* Dark mode toggle */}
+              <button
+                onClick={toggleTheme}
+                className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors text-brutal-black dark:text-white"
+                aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              >
+                {theme === 'dark' ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <circle cx="12" cy="12" r="5" />
+                    <line x1="12" y1="1" x2="12" y2="3" />
+                    <line x1="12" y1="21" x2="12" y2="23" />
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                    <line x1="1" y1="12" x2="3" y2="12" />
+                    <line x1="21" y1="12" x2="23" y2="12" />
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+                  </svg>
+                )}
+              </button>
+
               {mainView === 'chat' ? (
                 <button
                   onClick={() => handleRightSidebarToggle(!isRightSidebarOpen)}
                   className={`
                     h-10 w-10 flex items-center justify-center rounded-md transition-colors
-                    ${isRightSidebarOpen ? 'bg-neutral-200 text-brutal-black' : 'hover:bg-neutral-200 text-brutal-black'}
+                    ${isRightSidebarOpen
+                      ? 'bg-neutral-200 dark:bg-zinc-700 text-brutal-black dark:text-white'
+                      : 'hover:bg-neutral-200 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'}
                   `}
                   aria-label={isRightSidebarOpen ? t('sidebar.close') : t('sidebar.open')}
                   title={isRightSidebarOpen ? t('sidebar.close') : t('sidebar.open')}

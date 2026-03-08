@@ -41,7 +41,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       className={`
         border-l-3 border-brutal-black z-30 flex flex-col shrink-0
         absolute inset-y-0 right-0 lg:static lg:inset-auto h-full
-        bg-white transition-all duration-300 ease-in-out
+        bg-white dark:bg-zinc-900 transition-all duration-300 ease-in-out
         ${(activeTab === 'files' && isFileExpanded) || (activeTab === 'browser' && isBrowserStreamActive) ? 'w-full lg:w-[50vw]' : 'w-full lg:w-96'}
         ${isOpen
           ? 'translate-x-0 lg:mr-0'
@@ -50,13 +50,13 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       `}
     >
       {/* Tab Header */}
-      <div className="h-14 bg-white border-b-3 border-brutal-black flex items-center justify-between px-0 shrink-0">
+      <div className="h-14 bg-white dark:bg-zinc-800 border-b-3 border-brutal-black flex items-center justify-between px-0 shrink-0">
         <div className="flex h-full w-full">
           <button
             onClick={() => setActiveTab('files')}
             className={`flex-1 px-2 font-brutal font-bold text-sm tracking-wider uppercase h-full border-r-3 border-brutal-black transition-colors ${activeTab === 'files'
               ? 'bg-brutal-black text-white'
-              : 'bg-white hover:bg-neutral-100 text-brutal-black'
+              : 'bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'
               }`}
           >
             {t('sidebar.tabs.files')}
@@ -65,7 +65,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             onClick={() => setActiveTab('browser')}
             className={`flex-1 px-2 font-brutal font-bold text-sm tracking-wider uppercase h-full transition-colors ${activeTab === 'browser'
               ? 'bg-brutal-black text-white'
-              : 'bg-white hover:bg-neutral-100 text-brutal-black'
+              : 'bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'
               }`}
           >
             {t('sidebar.tabs.browser')}
@@ -74,7 +74,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto bg-neutral-50/50 scrollbar-thin scrollbar-track-neutral-200 scrollbar-thumb-brutal-black flex flex-col min-h-0">
+      <div className="flex-1 overflow-y-auto bg-neutral-50/50 dark:bg-zinc-900 scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black flex flex-col min-h-0">
         <div className={`flex-1 h-full ${activeTab === 'files' ? 'block' : 'hidden'}`}>
           <SandboxFiles
             onViewModeChange={setIsFileExpanded}
@@ -90,7 +90,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       </div>
 
       {/* Permanent Plan View */}
-      <div className="border-t-3 border-brutal-black bg-white p-4 shrink-0 max-h-[30%] overflow-y-auto scrollbar-thin">
+      <div className="border-t-3 border-brutal-black bg-white dark:bg-zinc-800 p-4 shrink-0 max-h-[30%] overflow-y-auto scrollbar-thin">
         <PlanProgress
           plan={plan}
           isDocked={true}

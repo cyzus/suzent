@@ -23,13 +23,15 @@ body,
   --scrollbar-thumb: #000000;
   --scrollbar-thumb-hover: #333333;
   --scrollbar-edge: #000000;
+  --brutal-yellow: #FFE666;
 }
 
 .dark {
   --scrollbar-track: #111111;
-  --scrollbar-thumb: #a8e6a3;
-  --scrollbar-thumb-hover: #7acb77;
-  --scrollbar-edge: #ffe666;
+  --scrollbar-thumb: #FF6600;
+  --scrollbar-thumb-hover: #CC5200;
+  --scrollbar-edge: #FF6600;
+  --brutal-yellow: #FF6600;
 }
 
 /* Custom scrollbar tuned for the neo-brutalist palette */
@@ -406,6 +408,10 @@ code {
 .bg-dot-pattern {
   background-image: radial-gradient(#000 1px, transparent 1px);
   background-size: 10px 10px;
+}
+
+.dark .bg-dot-pattern {
+  background-image: radial-gradient(#444 1px, transparent 1px);
 }
 
 /* Robot Carrier Platform (Sled) */

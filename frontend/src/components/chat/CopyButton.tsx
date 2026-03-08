@@ -29,7 +29,7 @@ export const CopyButton: React.FC<CopyButtonProps> = ({
   return (
     <button
       onClick={handleCopy}
-      className={`w-8 h-8 flex items-center justify-center bg-transparent rounded hover:bg-neutral-100 transition-colors text-neutral-400 hover:text-brutal-black ${className || 'absolute top-2 right-2'}`}
+      className={`w-8 h-8 flex items-center justify-center bg-transparent rounded hover:bg-neutral-100 dark:hover:bg-zinc-700 transition-colors text-neutral-400 hover:text-brutal-black dark:hover:text-white ${className || 'absolute top-2 right-2'}`}
       title={t('status.copyToClipboard')}
       type="button"
     >

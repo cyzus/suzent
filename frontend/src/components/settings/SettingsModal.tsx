@@ -251,10 +251,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
     <div className="fixed inset-0 z-[100] flex items-center justify-center animate-view-fade">
       <div className="absolute inset-0 bg-brutal-black/80 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full h-[95vh] md:w-[95vw] lg:w-[85vw] xl:w-[75vw] bg-neutral-100 border-4 border-brutal-black shadow-brutal-xl flex overflow-hidden">
+      <div className="relative w-full h-[95vh] md:w-[95vw] lg:w-[85vw] xl:w-[75vw] bg-neutral-100 dark:bg-zinc-900 border-4 border-brutal-black shadow-brutal-xl flex overflow-hidden">
         {/* Sidebar */}
-        <div className="w-64 bg-white border-r-4 border-brutal-black flex flex-col flex-shrink-0">
-          <div className="p-6 border-b-4 border-brutal-black bg-brutal-yellow">
+        <div className="w-64 bg-white dark:bg-zinc-800 border-r-4 border-brutal-black flex flex-col flex-shrink-0">
+          <div className="p-6 border-b-4 border-brutal-black bg-brutal-yellow dark:bg-brutal-yellow">
             <h1 className="text-2xl font-brutal font-bold uppercase tracking-tighter text-brutal-black">
               {t('settings.usingSuzent')}
             </h1>
@@ -280,8 +280,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                 key={item.id}
                 onClick={() => setActiveCategory(item.id as CategoryType)}
                 className={`w-full text-left px-4 py-3 border-2 font-bold uppercase text-sm flex items-center gap-3 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none ${activeCategory === item.id
-                  ? 'bg-brutal-black text-white border-brutal-black'
-                  : 'bg-white text-brutal-black border-brutal-black hover:bg-neutral-100'
+                  ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black border-brutal-black'
+                  : 'bg-white dark:bg-zinc-700 text-brutal-black dark:text-white border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-600'
                   }`}
               >
                 {item.icon}
@@ -290,10 +290,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
             ))}
           </div>
 
-          <div className="p-4 border-t-4 border-brutal-black bg-neutral-50">
+          <div className="p-4 border-t-4 border-brutal-black bg-neutral-50 dark:bg-zinc-800">
             <button
               onClick={onClose}
-              className="w-full px-4 py-3 bg-white border-2 border-brutal-black font-bold uppercase text-brutal-black hover:bg-neutral-100 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none mb-3"
+              className="w-full px-4 py-3 bg-white dark:bg-zinc-700 border-2 border-brutal-black font-bold uppercase text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none mb-3"
             >
               {t('common.close')}
             </button>

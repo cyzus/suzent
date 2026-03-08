@@ -27,7 +27,7 @@ module.exports = {
           white: '#FFFFFF',
           blue: '#0066FF',
           green: '#A8E6A3',  // Softer pastel green - easier on eyes
-          yellow: '#FFE666',  // Softer pastel yellow - easier on eyes
+          yellow: 'var(--brutal-yellow)',  // #FFE666 light / #FF6600 dark
           red: '#FF0000',
           gray: '#333333',
           'code-bg': '#f5f5f5',  // Light gray background for better readability
