@@ -94,7 +94,15 @@ async def stream_agent_responses(
     plan_queue: asyncio.Queue = asyncio.Queue()
     stop_plan_watcher = asyncio.Event()
 
-    async def plan_watcher(interval: float = 0.7):
+    async def plan_watcher(interval: float = 2.0) -> None:
+        """
+        Watch for plan changes and emit updates.
+
+        Args:
+            interval: Polling interval in seconds. Lower = more responsive
+                     but higher database load. Default 2.0s is a good
+                     balance between responsiveness and efficiency.
+        """
         last_snapshot = None
         try:
             while not stop_plan_watcher.is_set():
@@ -106,12 +114,22 @@ async def stream_agent_responses(
                     if snapshot != last_snapshot:
                         last_snapshot = snapshot
                         await plan_queue.put(snapshot)
-                except Exception:
-                    pass
+                        logger.debug(f"Plan updated for {chat_id}")
+                except Exception as e:
+                    logger.debug(f"Plan watcher error: {e}")
         except asyncio.CancelledError:
+            logger.debug("Plan watcher cancelled")
             pass
 
-    watcher_task = asyncio.create_task(plan_watcher()) if chat_id else None
+    # Start plan watcher with configured interval
+    from suzent.config import CONFIG
+
+    watcher_interval = getattr(CONFIG, "plan_watcher_interval", 2.0)
+    watcher_task = (
+        asyncio.create_task(plan_watcher(interval=watcher_interval))
+        if chat_id
+        else None
+    )
 
     # History tracker for cancellation recovery
     partial_history = list(message_history) if message_history else []
@@ -119,7 +137,7 @@ async def stream_agent_responses(
     out_queue: asyncio.Queue = asyncio.Queue()
 
     # --- Background agent runner (stateless resume) ---
-    async def _agent_runner():
+    async def _agent_runner() -> None:
         """Run the agent in a background task.
 
         Loops automatically when all pending tool approvals are satisfied by the
@@ -242,7 +260,7 @@ async def stream_agent_responses(
     agent_task = asyncio.create_task(_agent_runner())
 
     # --- Native stream generator that feeds AGUIEventStream ---
-    async def native_stream_generator():
+    async def native_stream_generator() -> AsyncGenerator[Any, None]:
         while True:
             # Drain plan updates as AG-UI CustomEvent
             while not plan_queue.empty():
@@ -328,7 +346,7 @@ async def stream_agent_responses(
                     break
 
     # --- Background worker to encode stream using AGUIEventStream ---
-    async def encode_worker():
+    async def encode_worker() -> None:
         try:
             run_input = RunAgentInput(
                 thread_id=chat_id or "default",

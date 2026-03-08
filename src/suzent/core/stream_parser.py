@@ -10,6 +10,7 @@ import json
 from dataclasses import dataclass
 from typing import Iterator, Union
 
+from suzent.core.stream_events import StreamEventType, CustomEventName
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -149,19 +150,19 @@ class StreamParser:
         evt_type = payload.get("type")
 
         # --- Modern Suzent Streaming Events ---
-        if evt_type == "TEXT_MESSAGE_CONTENT":
+        if evt_type == StreamEventType.TEXT_MESSAGE_CONTENT:
             yield TextChunk(payload.get("delta", ""), False)
-        elif evt_type == "TOOL_CALL":
+        elif evt_type == StreamEventType.TOOL_CALL_START:
             yield ToolCall(
                 payload.get("tool_name", "unknown"),
                 payload.get("args", {}),
             )
-        elif evt_type == "TOOL_RETURN":
+        elif evt_type == StreamEventType.TOOL_CALL_RESULT:
             yield ToolOutput(
                 payload.get("tool_name", "unknown"),
                 str(payload.get("output", "")),
             )
-        elif evt_type in ("CUSTOM_EVENT", "CUSTOM"):
+        elif evt_type in (StreamEventType.CUSTOM_EVENT, StreamEventType.CUSTOM):
             # The AG-UI protocol uses type: CUSTOM with top-level name/value
             # but some internal emitters might use type: CUSTOM_EVENT with nested custom object.
             name = payload.get("name")
@@ -172,7 +173,7 @@ class StreamParser:
                 name = custom.get("name")
                 value = custom.get("value")
 
-            if name == "tool_approval_request":
+            if name == CustomEventName.TOOL_APPROVAL_REQUEST:
                 val = value or {}
                 yield ApprovalRequest(
                     request_id=val.get("approvalId", ""),
@@ -180,26 +181,26 @@ class StreamParser:
                     tool_name=val.get("toolName", "unknown"),
                     args=val.get("args", {}),
                 )
-        elif evt_type == "RUN_ERROR":
+        elif evt_type == StreamEventType.RUN_ERROR:
             yield ErrorEvent(payload.get("message", "Unknown error"))
-        elif evt_type == "AGENT_FINISHED":
+        elif evt_type == StreamEventType.AGENT_FINISHED:
             # Just a terminator
             pass
 
         # --- Legacy Fallbacks ---
-        elif evt_type == "stream_delta":
+        elif evt_type == StreamEventType.STREAM_DELTA:
             data = payload.get("data", {})
             yield from self._handle_delta(data)
-        elif evt_type == "tool_output":
+        elif evt_type == StreamEventType.TOOL_OUTPUT:
             data = payload.get("data", {})
             tool_name = data.get("tool_name") or data.get("tool_call", {}).get(
                 "name", "unknown"
             )
             yield ToolOutput(tool_name, str(data.get("output", "")))
-        elif evt_type == "error":
+        elif evt_type == StreamEventType.ERROR:
             data = payload.get("data", {})
             yield ErrorEvent(str(data))
-        elif evt_type == "final_answer":
+        elif evt_type == StreamEventType.FINAL_ANSWER:
             data = payload.get("data", {})
             yield FinalAnswer(str(data))
 

@@ -15,7 +15,21 @@ from typing import Any, Optional
 
 @dataclass
 class AgentDeps:
-    """Dependencies injected into all pydantic-ai tools via RunContext."""
+    """
+    Dependencies injected into all pydantic-ai tools via RunContext.
+
+    **LIFECYCLE**: This object is created FRESH for each request.
+    - HTTP API: One instance per /chat request
+    - Social: One instance per incoming message
+    - CLI: One instance per user turn
+
+    **ISOLATION**: Session-level data (e.g., tool_approval_policy) is
+    NOT shared between users, chats, or requests. Each request gets
+    an independent AgentDeps instance.
+
+    **SECURITY**: Do NOT cache or reuse AgentDeps instances. Always call
+    build_agent_deps() to create a fresh instance per request.
+    """
 
     # --- Session identity ---
     chat_id: str = ""

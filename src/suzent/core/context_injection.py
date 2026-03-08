@@ -99,6 +99,13 @@ def build_agent_deps(
 
     tool_approval_policy = _get_config_value(config, "tool_approval_policy", {})
 
+    # SECURITY: Make a defensive copy to prevent accidental mutation of shared config
+    # This ensures each AgentDeps instance has its own independent policy dict
+    assert isinstance(
+        tool_approval_policy, dict
+    ), "tool_approval_policy must be a dict"
+    tool_approval_policy = dict(tool_approval_policy)
+
     return AgentDeps(
         chat_id=chat_id,
         user_id=user_id,

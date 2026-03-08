@@ -10,7 +10,7 @@ import os
 import shutil
 import time
 from pathlib import Path
-from typing import AsyncGenerator, List, Dict, Any
+from typing import AsyncGenerator, List, Dict, Any, Optional
 
 from suzent.logger import get_logger
 from suzent.config import CONFIG, get_effective_volumes
@@ -255,8 +255,9 @@ class ChatProcessor:
             # We use a background task so the SSE stream can close immediately
             # while heavy extraction/persistence runs.
             import asyncio
+            from suzent.core.task_registry import register_background_task
 
-            async def _run_post_processing():
+            async def _run_post_processing() -> None:
                 try:
                     # Get the messages from the agent or deps for persistence
                     last_messages = getattr(deps, "last_messages", None)
@@ -312,7 +313,17 @@ class ChatProcessor:
                 except Exception as e:
                     logger.error(f"Post-processing background task failed: {e}")
 
-            asyncio.create_task(_run_post_processing())
+            # Register the background task with the global registry
+            try:
+                await register_background_task(
+                    _run_post_processing(),
+                    task_id=f"post_process_{chat_id}_{int(time.time())}",
+                    description=f"Post-processing for chat {chat_id}",
+                )
+            except RuntimeError as e:
+                logger.warning(f"Failed to register background task: {e}")
+                # Fallback to fire-and-forget if registry is full
+                asyncio.create_task(_run_post_processing())
 
     async def process_steer(
         self,
@@ -553,7 +564,9 @@ class ChatProcessor:
         except Exception as e:
             logger.error(f"Memory extraction failed for {chat_id}: {e}")
 
-    async def _write_transcript(self, chat_id, user_content, agent_content, messages):
+    async def _write_transcript(
+        self, chat_id: str, user_content: str, agent_content: str, messages: list
+    ) -> None:
         """Write user and assistant turns to the JSONL transcript."""
         try:
             from suzent.session.transcript import TranscriptManager
@@ -573,8 +586,14 @@ class ChatProcessor:
             logger.debug(f"Transcript write failed for {chat_id}: {e}")
 
     async def _persist_state(
-        self, chat_id, messages, model_id, tool_names, user_content, agent_content
-    ):
+        self,
+        chat_id: str,
+        messages: list,
+        model_id: Optional[str],
+        tool_names: List[str],
+        user_content: str,
+        agent_content: str,
+    ) -> None:
         """Persist conversation state to database."""
         try:
             from datetime import datetime

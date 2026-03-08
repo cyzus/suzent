@@ -187,6 +187,9 @@ class ConfigModel(BaseModel):
     max_history_steps: int = 20
     max_context_tokens: int = 800_000
 
+    # Streaming configuration
+    plan_watcher_interval: float = 2.0  # Seconds between plan update checks
+
     @classmethod
     def load_from_files(cls) -> "ConfigModel":
         logger = get_logger(__name__)

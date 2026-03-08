@@ -65,6 +65,61 @@ npm run dev
 - Follow existing patterns in the codebase
 - Keep components focused on single responsibilities
 
+## 📊 Logging Guidelines
+
+Consistent logging is critical for debugging and monitoring. Follow these guidelines:
+
+### Log Levels
+
+**DEBUG** - Development & detailed diagnostics
+- Function entry/exit, variable values
+- Performance metrics, state transitions
+- Example: `logger.debug(f"Processing chat_id={chat_id}")`
+
+**INFO** - Important state changes
+- Service lifecycle (start/stop)
+- Successful major operations
+- User actions, background tasks
+- Example: `logger.info("SocialBrain started")`
+
+**WARNING** - Recoverable issues
+- Deprecated features, fallback behavior
+- Non-critical failures (will retry)
+- Resource limits approaching
+- Example: `logger.warning(f"Falling back to LiteLLM for {model}")`
+
+**ERROR** - Action required
+- Operation failed, cannot continue
+- Data loss, external service failures
+- Security violations, uncaught exceptions
+- Example: `logger.error(f"Operation failed: {e}\\n{traceback}")`
+
+### Best Practices
+
+✅ **Do**:
+- Include context (IDs, parameters)
+- Use past tense for completed actions
+- Add stack traces for errors
+- Keep it actionable
+
+❌ **Don't**:
+- Log secrets or credentials
+- Log PII (emails, names)
+- Create high-frequency noise
+- Use vague messages
+
+### Example Pattern
+```python
+try:
+    result = await operation(chat_id)
+    logger.info(f"Operation completed for {chat_id}")
+except Exception as e:
+    logger.error(f"Operation failed for {chat_id}: {e}\\n{traceback.format_exc()}")
+    raise
+```
+
+See full guidelines in the codebase documentation.
+
 ## 🔀 Pull Request Process
 
 1. **Fork** the repository
