@@ -13,7 +13,7 @@ import { NewChatView } from './NewChatView';
 import { ChatInputPanel } from './ChatInputPanel';
 import { ImageViewer } from './ImageViewer';
 import { FileViewer } from './FileViewer';
-import { UserMessage, AssistantMessage, ToolCallBlock, RightSidebar, ApprovalPolicyIndicator } from './chat';
+import { UserMessage, AssistantMessage, ToolCallBlock, RightSidebar } from './chat';
 import { useI18n } from '../i18n';
 
 // ── AGUIPart[] → Store Message conversion ────────────────────────────
@@ -121,7 +121,9 @@ const MessageList: React.FC<{
   onImageClick?: (src: string) => void;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
   onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
-}> = ({ messages, isStreaming, streamingForCurrentChat, chatId, onImageClick, onFileClick, onToolApproval }) => (
+  toolApprovalPolicy?: Record<string, string>;
+  onRemoveApprovalPolicy?: (toolName: string) => void;
+}> = ({ messages, isStreaming, streamingForCurrentChat, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy }) => (
   <div className="space-y-6">
     {(() => {
       // Pre-compute tool-only groups: consecutive tool-only assistant messages
@@ -270,6 +272,8 @@ const MessageList: React.FC<{
                   isLastMessage={isLastMessage}
                   onFileClick={onFileClick}
                   onToolApproval={onToolApproval}
+                  toolApprovalPolicy={toolApprovalPolicy}
+                  onRemoveApprovalPolicy={onRemoveApprovalPolicy}
                 />
               )}
             </div>
@@ -781,6 +785,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   onImageClick={setViewingImage}
                   onFileClick={handleFileClick}
                   onToolApproval={handleToolApproval}
+                  toolApprovalPolicy={safeConfig.tool_approval_policy}
+                  onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
                 />
                 {/* Streaming assistant message from AG-UI */}
                 {streamingForCurrentChat && (
@@ -796,6 +802,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                           aguiParts={streamingForCurrentChat ? streamingParts : undefined}
                           onToolApproval={handleToolApproval}
                           usage={currentUsage}
+                          toolApprovalPolicy={safeConfig.tool_approval_policy}
+                          onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
                         />
                       </div>
                     </div>
@@ -824,12 +832,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 isSidebarOpen={isRightSidebarOpen}
               />
             )}
-
-            {/* Show active approval policies */}
-            <ApprovalPolicyIndicator
-              toolApprovalPolicy={safeConfig.tool_approval_policy}
-              onRemovePolicy={handleRemoveApprovalPolicy}
-            />
 
             <ChatInputPanel
               input={input}

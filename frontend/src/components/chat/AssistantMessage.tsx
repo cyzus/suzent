@@ -23,6 +23,10 @@ interface AssistantMessageProps {
   aguiParts?: AGUIPart[];
   /** HITL approval handler: (approvalId, toolCallId, approved, remember?, toolName?) */
   onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
+  /** Tool approval policy for showing auto-approval badges */
+  toolApprovalPolicy?: Record<string, string>;
+  /** Callback to remove a tool from auto-approval */
+  onRemoveApprovalPolicy?: (toolName: string) => void;
 }
 
 // Names that should be filtered out from tool call display
@@ -66,7 +70,9 @@ const ToolSequenceGroup: React.FC<{
     onDeny?: () => void;
   }>;
   isStreaming?: boolean;
-}> = ({ tools, isStreaming }) => {
+  toolApprovalPolicy?: Record<string, string>;
+  onRemoveApprovalPolicy?: (toolName: string) => void;
+}> = ({ tools, isStreaming, toolApprovalPolicy, onRemoveApprovalPolicy }) => {
   const hasPending = tools.some(t => t.approvalState === 'pending');
   const isAnyRunning = isStreaming && tools.some(t => !t.output);
   // Use a ref to track if we've already auto-expanded for this set of tools
@@ -85,19 +91,24 @@ const ToolSequenceGroup: React.FC<{
   if (!shouldGroup) {
     return (
       <div className="flex flex-col space-y-1">
-        {tools.map((t, i) => (
-          <ToolCallBlock
-            key={t.toolCallId || i}
-            toolName={t.toolName}
-            toolArgs={t.toolArgs}
-            output={t.output}
-            defaultCollapsed={t.approvalState !== 'pending'}
-            approvalState={t.approvalState}
-            isStreaming={isStreaming}
-            onApprove={t.onApprove}
-            onDeny={t.onDeny}
-          />
-        ))}
+        {tools.map((t, i) => {
+          const isAutoApproved = toolApprovalPolicy?.[t.toolName] === 'always_allow';
+          return (
+            <ToolCallBlock
+              key={t.toolCallId || i}
+              toolName={t.toolName}
+              toolArgs={t.toolArgs}
+              output={t.output}
+              defaultCollapsed={t.approvalState !== 'pending'}
+              approvalState={t.approvalState}
+              isStreaming={isStreaming}
+              onApprove={t.onApprove}
+              onDeny={t.onDeny}
+              isAutoApproved={isAutoApproved}
+              onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy ? () => onRemoveApprovalPolicy(t.toolName) : undefined}
+            />
+          );
+        })}
       </div>
     );
   }
@@ -160,19 +171,24 @@ const ToolSequenceGroup: React.FC<{
         ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}
       `}>
         <div className="overflow-hidden min-h-0 min-w-0 w-full ml-1 pl-1.5 space-y-1">
-          {tools.map((t, i) => (
-            <ToolCallBlock
-              key={t.toolCallId || i}
-              toolName={t.toolName}
-              toolArgs={t.toolArgs}
-              output={t.output}
-              defaultCollapsed={t.approvalState !== 'pending'}
-              approvalState={t.approvalState}
-              isStreaming={isStreaming && !t.output}
-              onApprove={t.onApprove}
-              onDeny={t.onDeny}
-            />
-          ))}
+          {tools.map((t, i) => {
+            const isAutoApproved = toolApprovalPolicy?.[t.toolName] === 'always_allow';
+            return (
+              <ToolCallBlock
+                key={t.toolCallId || i}
+                toolName={t.toolName}
+                toolArgs={t.toolArgs}
+                output={t.output}
+                defaultCollapsed={t.approvalState !== 'pending'}
+                approvalState={t.approvalState}
+                isStreaming={isStreaming && !t.output}
+                onApprove={t.onApprove}
+                onDeny={t.onDeny}
+                isAutoApproved={isAutoApproved}
+                onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy ? () => onRemoveApprovalPolicy(t.toolName) : undefined}
+              />
+            );
+          })}
         </div>
       </div>
     </div>
@@ -185,7 +201,9 @@ const StepPills: React.FC<{
   messageIndex: number;
   isStreaming?: boolean;
   onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
-}> = ({ blocks, messageIndex, isStreaming, onToolApproval }) => {
+  toolApprovalPolicy?: Record<string, string>;
+  onRemoveApprovalPolicy?: (toolName: string) => void;
+}> = ({ blocks, messageIndex, isStreaming, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy }) => {
   const tools = blocks
     .filter(b => b.type === 'toolCall')
     .map((b, bi) => {
@@ -206,7 +224,7 @@ const StepPills: React.FC<{
     });
 
   if (tools.length === 0) return null;
-  return <ToolSequenceGroup tools={tools} isStreaming={isStreaming} />;
+  return <ToolSequenceGroup tools={tools} isStreaming={isStreaming} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} />;
 };
 
 // Streaming content with typewriter effect
@@ -247,7 +265,9 @@ const StaticContent: React.FC<{
   messageIndex: number;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
   onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
-}> = ({ blocks, messageIndex, onFileClick, onToolApproval }) => {
+  toolApprovalPolicy?: Record<string, string>;
+  onRemoveApprovalPolicy?: (toolName: string) => void;
+}> = ({ blocks, messageIndex, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy }) => {
   return (
     <>
       {blocks.map((b, bi) => {
@@ -258,6 +278,7 @@ const StaticContent: React.FC<{
           return <LogBlock key={blockKey} title={b.title} content={b.content} />;
         } else if (b.type === 'toolCall') {
           const isPending = b.approvalState === 'pending';
+          const isAutoApproved = toolApprovalPolicy?.[b.toolName || ''] === 'always_allow';
           return (
             <ToolCallBlock
               key={blockKey}
@@ -272,6 +293,8 @@ const StaticContent: React.FC<{
                 ? () => onToolApproval(b.approvalId!, b.toolCallId || '', false, null, b.toolName)
                 : undefined}
               defaultCollapsed={!isPending}
+              isAutoApproved={isAutoApproved}
+              onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy && b.toolName ? () => onRemoveApprovalPolicy(b.toolName!) : undefined}
             />
           );
         } else {
@@ -313,7 +336,9 @@ const AGUIPartsContent: React.FC<{
   isStreaming?: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
   onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
-}> = ({ parts, messageIndex, isStreaming, onFileClick, onToolApproval }) => {
+  toolApprovalPolicy?: Record<string, string>;
+  onRemoveApprovalPolicy?: (toolName: string) => void;
+}> = ({ parts, messageIndex, isStreaming, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy }) => {
   // Group consecutive parts of the same type into chunks
   const chunks: { type: 'tool' | 'reasoning' | 'text'; items: AGUIPart[] }[] = [];
   let current: AGUIPart[] = [];
@@ -364,7 +389,7 @@ const AGUIPartsContent: React.FC<{
 
           return (
             <div key={ci} className="pl-1 min-w-0 overflow-x-hidden">
-              <ToolSequenceGroup tools={tools} isStreaming={isStreaming} />
+              <ToolSequenceGroup tools={tools} isStreaming={isStreaming} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} />
             </div>
           );
         }
@@ -425,6 +450,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   aguiParts,
   onToolApproval,
   usage,
+  toolApprovalPolicy,
+  onRemoveApprovalPolicy,
 }) => {
   const isStreamingThis = isStreaming && isLastMessage;
   const hasParts = aguiParts && aguiParts.length > 0;
@@ -471,6 +498,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                 isStreaming={isStreamingThis}
                 onFileClick={onFileClick}
                 onToolApproval={onToolApproval}
+                toolApprovalPolicy={toolApprovalPolicy}
+                onRemoveApprovalPolicy={onRemoveApprovalPolicy}
               />
             ) : null}
             <MetricsBadge usage={usage} />
@@ -500,7 +529,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   if (toolOnly) {
     return (
       <div className="w-full max-w-4xl text-sm leading-relaxed pl-2">
-        <StepPills blocks={blocks} messageIndex={messageIndex} onToolApproval={onToolApproval} />
+        <StepPills blocks={blocks} messageIndex={messageIndex} onToolApproval={onToolApproval} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} />
       </div>
     );
   }
@@ -593,7 +622,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               return (
                 <div key={idx} className="flex flex-col space-y-2">
                   <div className="pl-1">
-                    <StepPills blocks={chunk.blocks} messageIndex={messageIndex} isStreaming={isStreamingThis} onToolApproval={onToolApproval} />
+                    <StepPills blocks={chunk.blocks} messageIndex={messageIndex} isStreaming={isStreamingThis} onToolApproval={onToolApproval} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} />
                   </div>
                 </div>
               );
@@ -627,7 +656,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                   {isStreamingChunk ? (
                     <StreamingContent blocks={contentBlocks} messageIndex={messageIndex} showCursor={cursorReady} onFileClick={onFileClick} />
                   ) : (
-                    <StaticContent blocks={contentBlocks} messageIndex={messageIndex} onFileClick={onFileClick} onToolApproval={onToolApproval} />
+                    <StaticContent blocks={contentBlocks} messageIndex={messageIndex} onFileClick={onFileClick} onToolApproval={onToolApproval} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} />
                   )}
                 </div>
               </div>
