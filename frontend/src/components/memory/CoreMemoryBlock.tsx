@@ -158,7 +158,7 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
       </div>
 
       {error && (
-        <div className="mb-3 p-3 border-3 border-brutal-black bg-white text-brutal-black text-sm flex items-start gap-2">
+        <div className="mb-3 p-3 border-3 border-brutal-black bg-white dark:bg-zinc-800 text-brutal-black dark:text-white text-sm flex items-start gap-2">
           <span className="text-lg">⚠️</span>
           <div>
             <p className="font-bold text-brutal-black">{t('coreMemory.saveFailed')}</p>

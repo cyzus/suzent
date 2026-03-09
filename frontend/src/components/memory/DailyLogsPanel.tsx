@@ -36,25 +36,25 @@ function LogContentArea({ loading, error, content }: {
   const { t } = useI18n();
   if (loading) {
     return (
-      <div className="border-3 border-brutal-black bg-white p-8 text-center">
-        <div className="w-4 h-4 border-3 border-brutal-black border-t-transparent animate-spin rounded-full mx-auto mb-2"></div>
-        <p className="text-sm font-bold uppercase">{t('dailyLogs.loading')}</p>
+      <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-8 text-center">
+        <div className="w-4 h-4 border-3 border-brutal-black dark:border-white border-t-transparent animate-spin rounded-full mx-auto mb-2"></div>
+        <p className="text-sm font-bold uppercase dark:text-white">{t('dailyLogs.loading')}</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="border-3 border-brutal-black bg-white p-6">
-        <p className="text-sm text-brutal-black font-mono">{error}</p>
+      <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-6">
+        <p className="text-sm text-brutal-black dark:text-white font-mono">{error}</p>
       </div>
     );
   }
 
   if (content) {
     return (
-      <div className="border-3 border-brutal-black bg-white shadow-brutal">
-        <pre className="whitespace-pre-wrap font-mono text-sm p-6 max-h-[65vh] overflow-y-auto scrollbar-thin leading-relaxed text-brutal-black">
+      <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal">
+        <pre className="whitespace-pre-wrap font-mono text-sm p-6 max-h-[65vh] overflow-y-auto scrollbar-thin leading-relaxed text-brutal-black dark:text-neutral-200">
           {content}
         </pre>
       </div>
@@ -110,10 +110,10 @@ export const DailyLogsPanel: React.FC = () => {
 
   if (listLoading) {
     return (
-      <div className="border-3 border-brutal-black bg-white p-6 shadow-brutal">
+      <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-6 shadow-brutal">
         <div className="flex items-center gap-3">
-          <div className="w-4 h-4 border-3 border-brutal-black border-t-transparent animate-spin rounded-full"></div>
-          <span className="font-bold uppercase text-sm">{t('dailyLogs.loading')}</span>
+          <div className="w-4 h-4 border-3 border-brutal-black dark:border-white border-t-transparent animate-spin rounded-full"></div>
+          <span className="font-bold uppercase text-sm dark:text-white">{t('dailyLogs.loading')}</span>
         </div>
       </div>
     );
@@ -121,12 +121,12 @@ export const DailyLogsPanel: React.FC = () => {
 
   if (error && dates.length === 0) {
     return (
-      <div className="border-3 border-brutal-black bg-white p-6 shadow-brutal">
-        <h3 className="font-brutal text-xl text-brutal-black mb-2 uppercase">{t('common.error')}</h3>
-        <p className="text-sm text-brutal-black font-mono mb-4">{error}</p>
+      <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-6 shadow-brutal">
+        <h3 className="font-brutal text-xl text-brutal-black dark:text-white mb-2 uppercase">{t('common.error')}</h3>
+        <p className="text-sm text-brutal-black dark:text-neutral-300 font-mono mb-4">{error}</p>
         <button
           onClick={loadDates}
-          className="px-6 py-2 border-3 border-brutal-black bg-white hover:bg-neutral-100 font-bold uppercase shadow-[2px_2px_0_0_#000] brutal-btn transition-all"
+          className="px-6 py-2 border-3 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 dark:text-white font-bold uppercase shadow-[2px_2px_0_0_#000] brutal-btn transition-all"
         >
           {t('common.retry')}
         </button>
@@ -136,9 +136,9 @@ export const DailyLogsPanel: React.FC = () => {
 
   if (dates.length === 0) {
     return (
-      <div className="border-3 border-brutal-black bg-white p-12 text-center shadow-brutal">
-        <h4 className="font-brutal text-2xl uppercase mb-2">{t('dailyLogs.emptyTitle')}</h4>
-        <p className="text-neutral-600 text-sm max-w-md mx-auto">
+      <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-12 text-center shadow-brutal">
+        <h4 className="font-brutal text-2xl uppercase mb-2 dark:text-white">{t('dailyLogs.emptyTitle')}</h4>
+        <p className="text-neutral-600 dark:text-neutral-400 text-sm max-w-md mx-auto">
           {t('dailyLogs.emptyDesc')}
         </p>
       </div>
@@ -153,15 +153,15 @@ export const DailyLogsPanel: React.FC = () => {
           <h3 className="font-brutal text-lg uppercase tracking-tight">{t('dailyLogs.title')}</h3>
           <p className="text-xs text-neutral-300 font-mono">{t('dailyLogs.entries', { count: String(dates.length) })}</p>
         </div>
-        <div className="border-3 border-brutal-black bg-white shadow-brutal max-h-[60vh] overflow-y-auto scrollbar-thin">
+        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal max-h-[60vh] overflow-y-auto scrollbar-thin">
           {dates.map((date) => (
             <button
               key={date}
               onClick={() => loadLog(date)}
-              className={`w-full text-left px-4 py-3 border-b-2 border-neutral-200 last:border-b-0 transition-colors ${
+              className={`w-full text-left px-4 py-3 border-b-2 border-neutral-200 dark:border-zinc-700 last:border-b-0 transition-colors ${
                 selectedDate === date
                   ? 'bg-brutal-black text-white'
-                  : 'bg-white hover:bg-neutral-50 text-brutal-black'
+                  : 'bg-white dark:bg-zinc-800 hover:bg-neutral-50 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'
               }`}
             >
               <div className="font-mono text-sm font-bold">{date}</div>
@@ -175,18 +175,18 @@ export const DailyLogsPanel: React.FC = () => {
       <div className="lg:col-span-9">
         {selectedDate && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between bg-white p-3 border-b-3 border-brutal-black">
+            <div className="flex items-center justify-between bg-white dark:bg-zinc-800 p-3 border-b-3 border-brutal-black">
               <div>
-                <h3 className="font-brutal text-xl uppercase tracking-tight text-brutal-black">
+                <h3 className="font-brutal text-xl uppercase tracking-tight text-brutal-black dark:text-white">
                   {selectedDate}
                 </h3>
-                <p className="text-xs text-neutral-600 font-mono">
+                <p className="text-xs text-neutral-600 dark:text-neutral-400 font-mono">
                   {formatDateLabel(selectedDate, t)}
                 </p>
               </div>
               <button
                 onClick={() => loadLog(selectedDate)}
-                className="px-3 py-1 border-2 border-brutal-black bg-white hover:bg-neutral-100 font-bold text-xs uppercase shadow-[2px_2px_0_0_#000] brutal-btn transition-all"
+                className="px-3 py-1 border-2 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 dark:text-white font-bold text-xs uppercase shadow-[2px_2px_0_0_#000] brutal-btn transition-all"
               >
                 Refresh
               </button>

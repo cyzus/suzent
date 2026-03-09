@@ -124,7 +124,7 @@ export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({ stats, isLoad
             )}
             {low > 0 && (
               <div
-                className="bg-white border-l-3 border-brutal-black flex items-center justify-center text-brutal-black text-xs font-bold transition-all duration-500"
+                className="bg-white dark:bg-zinc-600 border-l-3 border-brutal-black flex items-center justify-center text-brutal-black dark:text-white text-xs font-bold transition-all duration-500"
                 style={{ width: `${(low / total) * 100}%` }}
                 title={t('memoryStats.distributionTooltipLow', { count: String(low) })}
               >
