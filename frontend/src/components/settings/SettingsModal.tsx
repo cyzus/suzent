@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 
 import { useChatStore } from '../../hooks/useChatStore';
 import { ApiProvider, fetchApiKeys, fetchEmbeddingModels, fetchSocialConfig, fetchMcpServers, saveApiKeys, saveSocialConfig, saveUserPreferences, SocialConfig, UserConfig, verifyProvider } from '../../lib/api';
+import { AppearanceTab } from './AppearanceTab';
 import { AutomationTab } from './AutomationTab';
 import { McpTab } from './McpTab';
 import { MemoryTab } from './MemoryTab';
@@ -34,7 +35,7 @@ interface SettingsModalProps {
 }
 
 type ProviderTab = 'credentials' | 'models';
-type CategoryType = 'providers' | 'memory' | 'social' | 'mcp' | 'automation';
+type CategoryType = 'providers' | 'memory' | 'social' | 'mcp' | 'automation' | 'appearance';
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
@@ -244,6 +245,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       )
+    },
+    {
+      id: 'appearance', label: 'Appearance', icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+        </svg>
+      )
     }
   ];
 
@@ -378,6 +386,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                     <AutomationTab
                       models={backendConfig?.models || []}
                     />
+                  )}
+
+                  {activeCategory === 'appearance' && (
+                    <AppearanceTab />
                   )}
                 </>
               )}

@@ -34,16 +34,6 @@ body,
   --brutal-yellow: #FF6600;
 }
 
-.accent-orange {
-  --brutal-yellow: #FF6600;
-}
-
-.accent-orange.dark {
-  --scrollbar-thumb: #FF6600;
-  --scrollbar-thumb-hover: #CC5200;
-  --scrollbar-edge: #FF6600;
-}
-
 /* Custom scrollbar tuned for the neo-brutalist palette */
 .scrollbar-thin {
   scrollbar-width: thin;

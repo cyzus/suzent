@@ -79,7 +79,7 @@ function AppInner(): React.ReactElement {
   const { refresh } = usePlan();
   const { currentChatId, setViewSwitcher } = useChatStore();
   const setStatusMsg = useStatusStore(s => s.setStatus);
-  const { theme, toggleTheme, accent, toggleAccent } = useTheme();
+  const { theme, toggleTheme } = useTheme();
   const { t } = useI18n();
 
   // Poll cron notifications every 5 seconds
@@ -220,19 +220,6 @@ function AppInner(): React.ReactElement {
                   </button>
                 ))}
               </div>
-
-              {/* Accent color toggle */}
-              <button
-                onClick={toggleAccent}
-                className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors"
-                aria-label={accent === 'orange' ? 'Switch to yellow accent' : 'Switch to orange accent'}
-                title={accent === 'orange' ? 'Switch to yellow accent' : 'Switch to orange accent'}
-              >
-                <span
-                  className="w-4 h-4 rounded-full border-2 border-brutal-black dark:border-white transition-colors"
-                  style={{ backgroundColor: accent === 'orange' ? '#FF6600' : '#FFE666' }}
-                />
-              </button>
 
               {/* Dark mode toggle */}
               <button

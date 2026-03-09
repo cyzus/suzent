@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 
 export type Theme = 'light' | 'dark';
-export type Accent = 'yellow' | 'orange';
+
+const DEFAULT_LIGHT_COLOR = '#FFE666';
+const DEFAULT_DARK_COLOR = '#FF6600';
 
 function getInitialTheme(): Theme {
   const stored = localStorage.getItem('suzent-theme') as Theme | null;
@@ -9,15 +11,18 @@ function getInitialTheme(): Theme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-function getInitialAccent(): Accent {
-  const stored = localStorage.getItem('suzent-accent') as Accent | null;
-  if (stored === 'orange' || stored === 'yellow') return stored;
-  return 'yellow';
+function getInitialLightColor(): string {
+  return localStorage.getItem('suzent-color-light') || DEFAULT_LIGHT_COLOR;
+}
+
+function getInitialDarkColor(): string {
+  return localStorage.getItem('suzent-color-dark') || DEFAULT_DARK_COLOR;
 }
 
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
-  const [accent, setAccent] = useState<Accent>(getInitialAccent);
+  const [lightColor, setLightColorState] = useState<string>(getInitialLightColor);
+  const [darkColor, setDarkColorState] = useState<string>(getInitialDarkColor);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -30,22 +35,23 @@ export function useTheme() {
   }, [theme]);
 
   useEffect(() => {
-    const root = document.documentElement;
-    if (accent === 'orange') {
-      root.classList.add('accent-orange');
-    } else {
-      root.classList.remove('accent-orange');
-    }
-    localStorage.setItem('suzent-accent', accent);
-  }, [accent]);
+    const color = theme === 'dark' ? darkColor : lightColor;
+    document.documentElement.style.setProperty('--brutal-yellow', color);
+  }, [theme, lightColor, darkColor]);
+
+  function setLightColor(color: string) {
+    setLightColorState(color);
+    localStorage.setItem('suzent-color-light', color);
+  }
+
+  function setDarkColor(color: string) {
+    setDarkColorState(color);
+    localStorage.setItem('suzent-color-dark', color);
+  }
 
   function toggleTheme() {
     setTheme(t => (t === 'dark' ? 'light' : 'dark'));
   }
 
-  function toggleAccent() {
-    setAccent(a => (a === 'yellow' ? 'orange' : 'yellow'));
-  }
-
-  return { theme, toggleTheme, accent, toggleAccent };
+  return { theme, toggleTheme, lightColor, darkColor, setLightColor, setDarkColor };
 }

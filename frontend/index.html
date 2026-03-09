@@ -8,12 +8,14 @@
     <script>
       (function () {
         var t = localStorage.getItem('suzent-theme');
-        if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        var isDark = t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (isDark) {
           document.documentElement.classList.add('dark');
         }
-        if (localStorage.getItem('suzent-accent') === 'orange') {
-          document.documentElement.classList.add('accent-orange');
-        }
+        var color = isDark
+          ? (localStorage.getItem('suzent-color-dark') || '#FF6600')
+          : (localStorage.getItem('suzent-color-light') || '#FFE666');
+        document.documentElement.style.setProperty('--brutal-yellow', color);
       })();
     </script>
   </head>
