@@ -1,16 +1,11 @@
 import React from 'react';
 import { useTheme, SCHEME_COLORS, SCHEME_SURFACES, type Scheme } from '../../hooks/useTheme';
-
-const PRESET_META: Record<Scheme, { label: string }> = {
-  warm:  { label: 'Warm'  },
-  cold:  { label: 'Cold'  },
-  green: { label: 'Green' },
-};
+import { useI18n } from '../../i18n';
 
 /** Mini split preview: left = light half, right = dark half */
 function CardPreview({ s }: { s: Scheme }) {
   const { light, dark } = SCHEME_COLORS[s];
-  const { bg1, bg2, bg3 } = SCHEME_SURFACES[s];
+  const { bg1: _bg1, bg2, bg3 } = SCHEME_SURFACES[s];
 
   return (
     <div className="flex h-full">
@@ -43,28 +38,31 @@ function CardPreview({ s }: { s: Scheme }) {
 
 export function AppearanceTab(): React.ReactElement {
   const { scheme, setScheme } = useTheme();
+  const { t } = useI18n();
+
+  const schemeKeys: Scheme[] = ['warm', 'cold', 'green'];
 
   return (
     <div className="space-y-6">
       <div className="bg-brutal-black text-white p-3 border-3 border-brutal-black">
-        <h3 className="font-brutal text-xl uppercase tracking-tight">Appearance</h3>
-        <p className="text-xs text-neutral-300 font-mono">Choose an accent color theme</p>
+        <h3 className="font-brutal text-xl uppercase tracking-tight">{t('settings.appearance.title')}</h3>
+        <p className="text-xs text-neutral-300 font-mono">{t('settings.appearance.subtitle')}</p>
       </div>
 
       <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal p-6">
         <div className="text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400 mb-5">
-          Color Scheme
+          {t('settings.appearance.colorScheme')}
         </div>
 
         <div className="flex gap-5 flex-wrap">
-          {(Object.keys(PRESET_META) as Scheme[]).map((key) => {
+          {schemeKeys.map((key) => {
             const isActive = scheme === key;
 
             return (
               <button
                 key={key}
                 onClick={() => setScheme(key)}
-                className="flex flex-col items-center gap-2 focus:outline-none"
+                className="flex flex-col items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-black focus-visible:ring-offset-2"
               >
                 {/* Card */}
                 <div
@@ -92,7 +90,7 @@ export function AppearanceTab(): React.ReactElement {
                         : 'text-neutral-400 dark:text-neutral-500'
                     }`}
                   >
-                    {PRESET_META[key].label}
+                    {t(`settings.appearance.schemes.${key}` as any)}
                   </span>
                 </div>
 

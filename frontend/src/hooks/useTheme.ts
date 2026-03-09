@@ -18,18 +18,24 @@ export const SCHEME_SURFACES: Record<Scheme, { bg1: string; bg2: string; bg3: st
 };
 
 function getInitialTheme(): Theme {
-  const stored = localStorage.getItem('suzent-theme') as Theme | null;
-  if (stored === 'dark' || stored === 'light') return stored;
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  try {
+    const stored = localStorage.getItem('suzent-theme') as Theme | null;
+    if (stored === 'dark' || stored === 'light') return stored;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  } catch {
+    return 'light';
+  }
 }
 
 function getInitialScheme(): Scheme {
-  const stored = localStorage.getItem('suzent-scheme') as Scheme | null;
-  if (stored === 'warm' || stored === 'cold' || stored === 'green') return stored;
-  // Migrate from previous per-color localStorage keys
-  const oldDark = localStorage.getItem('suzent-color-dark');
-  if (oldDark?.toLowerCase() === '#38bdf8') return 'cold';
-  if (oldDark?.toLowerCase() === '#4ade80') return 'green';
+  try {
+    const stored = localStorage.getItem('suzent-scheme') as Scheme | null;
+    if (stored === 'warm' || stored === 'cold' || stored === 'green') return stored;
+    // Migrate from previous per-color localStorage keys
+    const oldDark = localStorage.getItem('suzent-color-dark');
+    if (oldDark?.toLowerCase() === '#38bdf8') return 'cold';
+    if (oldDark?.toLowerCase() === '#4ade80') return 'green';
+  } catch { /* storage blocked */ }
   return 'warm';
 }
 
@@ -49,7 +55,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const root = document.documentElement;
     root.classList.toggle('dark', theme === 'dark');
-    localStorage.setItem('suzent-theme', theme);
+    try { localStorage.setItem('suzent-theme', theme); } catch { /* storage blocked */ }
   }, [theme]);
 
   useEffect(() => {
@@ -57,7 +63,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     root.dataset.scheme = scheme;
     const color = theme === 'dark' ? SCHEME_COLORS[scheme].dark : SCHEME_COLORS[scheme].light;
     root.style.setProperty('--brutal-yellow', color);
-    localStorage.setItem('suzent-scheme', scheme);
+    try { localStorage.setItem('suzent-scheme', scheme); } catch { /* storage blocked */ }
   }, [theme, scheme]);
 
   function setScheme(s: Scheme) { setSchemeState(s); }

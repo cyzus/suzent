@@ -119,7 +119,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ plan, currentPlan, snapshotP
                         </div>
                       )}
                     </div>
-                    <span className={`shrink-0 text-[9px] font-bold border-2 border-brutal-black px-1.5 py-0.5 bg-white dark:bg-zinc-700 text-brutal-black dark:text-white dark:text-white ${phase.status === 'in_progress' ? 'animate-pulse' : ''}`}>
+                    <span className={`shrink-0 text-[9px] font-bold border-2 border-brutal-black px-1.5 py-0.5 bg-white dark:bg-zinc-700 text-brutal-black dark:text-white ${phase.status === 'in_progress' ? 'animate-pulse' : ''}`}>
                       {phase.status === 'pending' ? t('plan.status.pending') : phase.status === 'in_progress' ? t('plan.status.inProgress') : t('plan.status.completed')}
                     </span>
                   </div>

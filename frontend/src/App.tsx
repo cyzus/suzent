@@ -225,8 +225,8 @@ function AppInner(): React.ReactElement {
               <button
                 onClick={toggleTheme}
                 className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors text-brutal-black dark:text-white"
-                aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                aria-label={theme === 'dark' ? t('settings.switchToLight') : t('settings.switchToDark')}
+                title={theme === 'dark' ? t('settings.switchToLight') : t('settings.switchToDark')}
               >
                 {theme === 'dark' ? (
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
