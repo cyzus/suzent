@@ -23,13 +23,31 @@ body,
   --scrollbar-thumb: #000000;
   --scrollbar-thumb-hover: #333333;
   --scrollbar-edge: #000000;
+  --brutal-yellow: #FFE666;
 }
 
 .dark {
   --scrollbar-track: #111111;
-  --scrollbar-thumb: #a8e6a3;
-  --scrollbar-thumb-hover: #7acb77;
-  --scrollbar-edge: #ffe666;
+  --scrollbar-thumb: var(--brutal-yellow);
+  --scrollbar-thumb-hover: var(--brutal-yellow);
+  --scrollbar-edge: var(--brutal-yellow);
+  --brutal-yellow: #FF6600;
+}
+
+/* ── Cold scheme: subtly blue-tinted dark surfaces ─────────────────────── */
+[data-scheme="cold"].dark .dark\:bg-zinc-900 { background-color: #14161e; }
+[data-scheme="cold"].dark .dark\:bg-zinc-800 { background-color: #1e222e; }
+[data-scheme="cold"].dark .dark\:bg-zinc-700 { background-color: #2b3040; }
+[data-scheme="cold"].dark .bg-dot-pattern {
+  background-image: radial-gradient(rgba(56, 189, 248, 0.12) 1px, transparent 1px);
+}
+
+/* ── Green scheme: subtly green-tinted dark surfaces ───────────────────── */
+[data-scheme="green"].dark .dark\:bg-zinc-900 { background-color: #131816; }
+[data-scheme="green"].dark .dark\:bg-zinc-800 { background-color: #202622; }
+[data-scheme="green"].dark .dark\:bg-zinc-700 { background-color: #2d352e; }
+[data-scheme="green"].dark .bg-dot-pattern {
+  background-image: radial-gradient(rgba(74, 222, 128, 0.10) 1px, transparent 1px);
 }
 
 /* Custom scrollbar tuned for the neo-brutalist palette */
@@ -406,6 +424,10 @@ code {
 .bg-dot-pattern {
   background-image: radial-gradient(#000 1px, transparent 1px);
   background-size: 10px 10px;
+}
+
+.dark .bg-dot-pattern {
+  background-image: radial-gradient(#444 1px, transparent 1px);
 }
 
 /* Robot Carrier Platform (Sled) */

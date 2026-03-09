@@ -38,13 +38,13 @@ function formatDate(ts: string): string {
 function getRoleStyle(role: string): string {
   switch (role.toLowerCase()) {
     case 'user':
-      return 'border-l-4 border-l-brutal-black bg-neutral-50';
+      return 'border-l-4 border-l-brutal-black bg-neutral-50 dark:bg-zinc-700/50';
     case 'assistant':
-      return 'border-l-4 border-l-neutral-400 bg-white';
+      return 'border-l-4 border-l-neutral-400 bg-white dark:bg-zinc-800';
     case 'system':
-      return 'border-l-4 border-l-neutral-200 bg-neutral-100';
+      return 'border-l-4 border-l-neutral-200 bg-neutral-100 dark:bg-zinc-700';
     default:
-      return 'border-l-4 border-l-neutral-300 bg-white';
+      return 'border-l-4 border-l-neutral-300 bg-white dark:bg-zinc-800';
   }
 }
 
@@ -130,17 +130,17 @@ export const TranscriptPanel: React.FC = () => {
       </div>
 
       {/* Session selector + filter */}
-      <div className="border-3 border-brutal-black bg-white shadow-brutal p-4 space-y-3">
+      <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal p-4 space-y-3">
         <div className="flex flex-col md:flex-row gap-3">
           {/* Session selector */}
           <div className="flex-1">
-            <label className="block text-xs font-bold uppercase text-neutral-600 mb-1">
+            <label className="block text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400 mb-1">
               {t('transcripts.sessionLabel')}
             </label>
             <select
               value={selectedSessionId || ''}
               onChange={(e) => setSelectedSessionId(e.target.value || null)}
-              className="w-full px-3 py-2 border-3 border-brutal-black bg-white text-sm font-mono focus:outline-none focus:ring-4 focus:ring-brutal-black"
+              className="w-full px-3 py-2 border-3 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white text-sm font-mono focus:outline-none focus:ring-4 focus:ring-brutal-black"
             >
               <option value="">{t('transcripts.selectPlaceholder')}</option>
               {sessionOptions.map((opt) => (
@@ -153,7 +153,7 @@ export const TranscriptPanel: React.FC = () => {
 
           {/* Last N filter */}
           <div className="w-full md:w-auto">
-            <label className="block text-xs font-bold uppercase text-neutral-600 mb-1">
+            <label className="block text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400 mb-1">
               {t('transcripts.lastNLabel')}
             </label>
             <form onSubmit={handleLastNSubmit} className="flex gap-2">
@@ -163,7 +163,7 @@ export const TranscriptPanel: React.FC = () => {
                 value={lastNInput}
                 onChange={(e) => setLastNInput(e.target.value)}
                 placeholder={t('transcripts.all')}
-                className="flex-1 px-3 py-2 border-3 border-brutal-black bg-white text-sm font-mono focus:outline-none focus:ring-4 focus:ring-brutal-black"
+                className="flex-1 px-3 py-2 border-3 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white text-sm font-mono focus:outline-none focus:ring-4 focus:ring-brutal-black"
               />
               <button
                 type="submit"
@@ -177,14 +177,14 @@ export const TranscriptPanel: React.FC = () => {
 
         {/* Refresh */}
         {selectedSessionId && (
-          <div className="flex items-center justify-between text-xs text-neutral-600">
+          <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-400">
             <span>
               {t('transcripts.entriesCount', { count: String(entries.length) })}
               {lastN !== undefined && ` (${t('transcripts.lastN', { n: String(lastN) })})`}
             </span>
             <button
               onClick={() => loadTranscript(selectedSessionId)}
-              className="px-3 py-1 border-2 border-brutal-black bg-white hover:bg-neutral-100 font-bold text-xs uppercase shadow-[2px_2px_0_0_#000] brutal-btn transition-all"
+              className="px-3 py-1 border-2 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 dark:text-white font-bold text-xs uppercase shadow-[2px_2px_0_0_#000] brutal-btn transition-all"
             >
               Refresh
             </button>
@@ -194,24 +194,24 @@ export const TranscriptPanel: React.FC = () => {
 
       {/* Loading */}
       {loading && (
-        <div className="border-3 border-brutal-black bg-white p-8 text-center">
-          <div className="w-4 h-4 border-3 border-brutal-black border-t-transparent animate-spin rounded-full mx-auto mb-2"></div>
-          <p className="text-sm font-bold uppercase">{t('transcripts.loading')}</p>
+        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-8 text-center">
+          <div className="w-4 h-4 border-3 border-brutal-black dark:border-white border-t-transparent animate-spin rounded-full mx-auto mb-2"></div>
+          <p className="text-sm font-bold uppercase dark:text-white">{t('transcripts.loading')}</p>
         </div>
       )}
 
       {/* Error */}
       {error && (
-        <div className="border-3 border-brutal-black bg-white p-6">
-          <p className="text-sm text-brutal-black font-mono">{error}</p>
+        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-6">
+          <p className="text-sm text-brutal-black dark:text-white font-mono">{error}</p>
         </div>
       )}
 
       {/* No session selected */}
       {!selectedSessionId && !loading && (
-        <div className="border-3 border-brutal-black bg-white p-12 text-center">
-          <h4 className="font-brutal text-2xl uppercase mb-2">{t('transcripts.selectTitle')}</h4>
-          <p className="text-neutral-600 text-sm max-w-md mx-auto">
+        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-12 text-center">
+          <h4 className="font-brutal text-2xl uppercase mb-2 dark:text-white">{t('transcripts.selectTitle')}</h4>
+          <p className="text-neutral-600 dark:text-neutral-400 text-sm max-w-md mx-auto">
             {t('transcripts.selectDesc')}
           </p>
         </div>
@@ -219,9 +219,9 @@ export const TranscriptPanel: React.FC = () => {
 
       {/* Empty state */}
       {selectedSessionId && !loading && !error && entries.length === 0 && (
-        <div className="border-3 border-brutal-black bg-white p-12 text-center">
-          <h4 className="font-brutal text-2xl uppercase mb-2">{t('transcripts.emptyTitle')}</h4>
-          <p className="text-neutral-600 text-sm max-w-md mx-auto">
+        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-12 text-center">
+          <h4 className="font-brutal text-2xl uppercase mb-2 dark:text-white">{t('transcripts.emptyTitle')}</h4>
+          <p className="text-neutral-600 dark:text-neutral-400 text-sm max-w-md mx-auto">
             {t('transcripts.emptyDesc')}
           </p>
         </div>
@@ -237,28 +237,28 @@ export const TranscriptPanel: React.FC = () => {
               <Fragment key={index}>
                 {showDate && (
                   <div className="flex items-center gap-3 py-2">
-                    <div className="flex-1 h-0.5 bg-neutral-200"></div>
-                    <span className="text-xs font-bold uppercase text-neutral-500 px-2">
+                    <div className="flex-1 h-0.5 bg-neutral-200 dark:bg-zinc-700"></div>
+                    <span className="text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400 px-2">
                       {formatDate(entry.ts)}
                     </span>
-                    <div className="flex-1 h-0.5 bg-neutral-200"></div>
+                    <div className="flex-1 h-0.5 bg-neutral-200 dark:bg-zinc-700"></div>
                   </div>
                 )}
                 <div className={`border-3 border-brutal-black p-4 ${getRoleStyle(entry.role)}`}>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 border border-brutal-black bg-white text-brutal-black">
+                    <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 border border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white">
                       {entry.role.toUpperCase()}
                     </span>
-                    <span className="text-xs font-mono text-neutral-500">
+                    <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400">
                       {formatTimestamp(entry.ts)}
                     </span>
                   </div>
-                  <p className="text-sm font-mono leading-relaxed text-brutal-black whitespace-pre-wrap break-words">
+                  <p className="text-sm font-mono leading-relaxed text-brutal-black dark:text-neutral-200 whitespace-pre-wrap break-words">
                     {formatEntryContent(entry.content)}
                   </p>
                   {entry.actions && entry.actions.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-neutral-200">
-                      <span className="text-[10px] font-bold uppercase text-neutral-500">
+                    <div className="mt-2 pt-2 border-t border-neutral-200 dark:border-zinc-700">
+                      <span className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">
                         {t('transcripts.actionsCount', { count: String(entry.actions.length) })}
                       </span>
                     </div>

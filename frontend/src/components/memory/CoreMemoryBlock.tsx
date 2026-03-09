@@ -104,12 +104,12 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
   };
 
   return (
-    <div className={`border-3 border-brutal-black bg-white shadow-brutal rounded-none p-4 transition-all ${hasUnsavedChanges && isEditing ? 'ring-4 ring-brutal-black' : ''
+    <div className={`border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal rounded-none p-4 transition-all ${hasUnsavedChanges && isEditing ? 'ring-4 ring-brutal-black' : ''
       } brutal-btn`}>
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="font-brutal text-lg uppercase tracking-tight text-brutal-black">
+            <h3 className="font-brutal text-lg uppercase tracking-tight text-brutal-black dark:text-white">
               {title}
             </h3>
             {hasUnsavedChanges && isEditing && (
@@ -118,20 +118,20 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
               </span>
             )}
           </div>
-          <p className="text-sm text-neutral-600 mt-1">{description}</p>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{description}</p>
         </div>
         <div className="flex gap-2 flex-shrink-0">
           {!isEditing ? (
             <>
               <button
                 onClick={handleCopy}
-                className="px-3 py-1 border-2 border-brutal-black bg-white hover:bg-neutral-100 brutal-btn shadow-[2px_2px_0_0_#000000] font-bold text-xs uppercase transition-all"
+                className="px-3 py-1 border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 brutal-btn shadow-[2px_2px_0_0_#000000] font-bold text-xs uppercase transition-all"
               >
                 {copied ? t('coreMemory.copiedText') : t('common.copy')}
               </button>
               <button
                 onClick={() => setIsEditing(true)}
-                className="px-3 py-1 border-2 border-brutal-black bg-white hover:bg-neutral-100 brutal-btn shadow-[2px_2px_0_0_#000000] font-bold text-xs uppercase transition-all"
+                className="px-3 py-1 border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 brutal-btn shadow-[2px_2px_0_0_#000000] font-bold text-xs uppercase transition-all"
               >
                 {t('common.edit')}
               </button>
@@ -141,7 +141,7 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
               <button
                 onClick={handleCancel}
                 disabled={isSaving}
-                className="px-3 py-1 border-2 border-brutal-black bg-white hover:bg-neutral-100 brutal-btn shadow-[2px_2px_0_0_#000000] font-bold text-xs uppercase transition-all disabled:opacity-50"
+                className="px-3 py-1 border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 brutal-btn shadow-[2px_2px_0_0_#000000] font-bold text-xs uppercase transition-all disabled:opacity-50"
               >
                 {t('common.cancel')}
               </button>
@@ -158,7 +158,7 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
       </div>
 
       {error && (
-        <div className="mb-3 p-3 border-3 border-brutal-black bg-white text-brutal-black text-sm flex items-start gap-2">
+        <div className="mb-3 p-3 border-3 border-brutal-black bg-white dark:bg-zinc-800 text-brutal-black dark:text-white text-sm flex items-start gap-2">
           <span className="text-lg">⚠️</span>
           <div>
             <p className="font-bold text-brutal-black">{t('coreMemory.saveFailed')}</p>
@@ -177,11 +177,10 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
               e.target.style.height = 'auto';
               e.target.style.height = e.target.scrollHeight + 'px';
             }}
-            className={`w-full min-h-[150px] p-3 border-3 rounded-none font-mono text-sm resize-y focus:outline-none focus:ring-4 transition-all scrollbar-thin ${isOverLimit
+            className={`w-full min-h-[150px] p-3 border-3 rounded-none font-mono text-sm resize-y focus:outline-none focus:ring-4 transition-all scrollbar-thin bg-white dark:bg-zinc-900 text-brutal-black dark:text-white ${isOverLimit
               ? 'border-brutal-black focus:ring-brutal-black'
               : 'border-brutal-black focus:ring-brutal-black'
               }`}
-            style={{ backgroundColor: '#ffffff', color: '#000000' }}
             placeholder={t('coreMemory.placeholder', { title: title.toLowerCase() })}
             autoFocus
             onFocus={(e) => {
@@ -193,13 +192,13 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
           {/* Character count with progress bar */}
           <div className="mt-2">
             <div className="flex items-center justify-between text-xs mb-1">
-              <span className={isOverLimit ? 'text-brutal-black font-bold' : 'text-neutral-500'}>
+              <span className={isOverLimit ? 'text-brutal-black dark:text-white font-bold' : 'text-neutral-500 dark:text-neutral-400'}>
                 {t('coreMemory.charactersOfMax', { current: characterCount, max: maxLength })}
                 {isOverLimit && ` ⚠️ ${t('coreMemory.overLimit')}`}
               </span>
-              <span className="text-neutral-500">{t('coreMemory.usedPercent', { percent: usagePercent.toFixed(0) })}</span>
+              <span className="text-neutral-500 dark:text-neutral-400">{t('coreMemory.usedPercent', { percent: usagePercent.toFixed(0) })}</span>
             </div>
-            <div className="h-1.5 bg-white border-3 border-brutal-black">
+            <div className="h-1.5 bg-white dark:bg-zinc-700 border-3 border-brutal-black">
               <div
                 className={`h-full transition-all duration-300 ${getProgressColor()}`}
                 style={{ width: `${Math.min(usagePercent, 100)}%` }}
@@ -210,8 +209,7 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
       ) : (
         <div className="prose prose-sm max-w-none">
           <pre
-            className="whitespace-pre-wrap font-mono text-sm p-3 border-3 border-brutal-black rounded-none break-words max-h-[400px] overflow-y-auto scrollbar-thin"
-            style={{ backgroundColor: '#f9fafb', color: '#000000' }}
+            className="whitespace-pre-wrap font-mono text-sm p-3 border-3 border-brutal-black rounded-none break-words max-h-[400px] overflow-y-auto scrollbar-thin bg-neutral-50 dark:bg-zinc-900 text-brutal-black dark:text-white"
           >
             {content || (
               <span className="text-neutral-400 italic flex items-center gap-2">
@@ -221,7 +219,7 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
             )}
           </pre>
           {content && (
-            <div className="text-xs text-neutral-500 mt-2 flex items-center gap-3">
+            <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-2 flex items-center gap-3">
               <span>{t('coreMemory.charactersCount', { count: characterCount })}</span>
               <span>•</span>
               <span>{t('coreMemory.wordsApprox', { count: Math.ceil(characterCount / 5) })}</span>

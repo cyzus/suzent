@@ -52,7 +52,7 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
         return (
             <div className="space-y-3 relative z-0">
                 {/* Compact Header Info */}
-                <div className="text-[10px] text-brutal-black font-bold uppercase border-b border-brutal-black pb-2">
+                <div className="text-[10px] text-brutal-black dark:text-white font-bold uppercase border-b border-brutal-black pb-2">
                     <div className="flex flex-wrap gap-x-2 opacity-70">
                         <span>{plan.id != null ? `PLAN #${plan.id}` : 'PLAN'}</span>
                         {plan.versionKey && !plan.versionKey.startsWith('snapshot:') && <span>· v{plan.versionKey}</span>}
@@ -69,7 +69,7 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
                         <span>{t('planProgress.progress')}</span>
                         <span>{Math.round(progress * 100)}%</span>
                     </div>
-                    <div className="w-full h-2 bg-neutral-200 border border-brutal-black overflow-hidden relative">
+                    <div className="w-full h-2 bg-neutral-200 dark:bg-zinc-700 border border-brutal-black overflow-hidden relative">
                         <div
                             className="h-full bg-brutal-blue transition-all duration-300 linear will-change-[width]"
                             style={{ width: `${progress * 100}%` }}
@@ -94,7 +94,7 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
                                 key={phase.id || index}
                                 className={`
                             relative border-2 border-brutal-black p-2 transition-all
-                            ${isInProgress ? 'bg-white shadow-[2px_2px_0px_0px_#000] translate-y-[2px]' : 'bg-neutral-50 hover:bg-white'}
+                            ${isInProgress ? 'bg-white dark:bg-zinc-700 shadow-[2px_2px_0px_0px_#000] translate-y-[2px]' : 'bg-neutral-50 dark:bg-zinc-800 hover:bg-white dark:hover:bg-zinc-700'}
                             ${isCompleted ? 'opacity-70' : ''}
                           `}
                             >
@@ -102,14 +102,14 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
                                     {/* Number Icon */}
                                     <div className={`
                                     shrink-0 w-5 h-5 flex items-center justify-center font-bold text-[10px] border-2 border-brutal-black
-                                    ${isCompleted ? 'bg-brutal-green text-brutal-black' : isInProgress ? 'bg-brutal-blue text-white animate-pulse' : 'bg-white text-brutal-black'}
+                                    ${isCompleted ? 'bg-brutal-green text-brutal-black' : isInProgress ? 'bg-brutal-blue text-white animate-pulse' : 'bg-white dark:bg-zinc-600 text-brutal-black dark:text-white'}
                                 `}>
                                         {isCompleted ? '✓' : phase.number}
                                     </div>
 
                                     <div className="flex-1 min-w-0">
                                         <div className="flex justify-between items-start gap-2">
-                                            <div className="font-bold text-xs leading-snug text-brutal-black truncate pr-2">
+                                            <div className="font-bold text-xs leading-snug text-brutal-black dark:text-white truncate pr-2">
                                                 {phase.title || phase.description}
                                             </div>
                                         </div>
@@ -118,14 +118,14 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
                                         {phase.capabilities && (
                                             <div className="flex gap-1 mt-1 flex-wrap">
                                                 {Array.isArray(phase.capabilities)
-                                                    ? phase.capabilities.map((cap: any, idx: number) => <span key={idx} className="text-[9px] leading-none px-1 py-0.5 bg-neutral-200 border border-brutal-black">{String(cap)}</span>)
-                                                    : Object.keys(phase.capabilities).map(cap => <span key={cap} className="text-[9px] leading-none px-1 py-0.5 bg-neutral-200 border border-brutal-black">{cap}</span>)
+                                                    ? phase.capabilities.map((cap: any, idx: number) => <span key={idx} className="text-[9px] leading-none px-1 py-0.5 bg-neutral-200 dark:bg-zinc-600 dark:text-neutral-200 border border-brutal-black">{String(cap)}</span>)
+                                                    : Object.keys(phase.capabilities).map(cap => <span key={cap} className="text-[9px] leading-none px-1 py-0.5 bg-neutral-200 dark:bg-zinc-600 dark:text-neutral-200 border border-brutal-black">{cap}</span>)
                                                 }
                                             </div>
                                         )}
 
                                         {/* Note */}
-                                        {phase.note && <div className="mt-1.5 text-[10px] leading-tight text-neutral-600 italic border-l-2 border-neutral-300 pl-1.5">{phase.note}</div>}
+                                        {phase.note && <div className="mt-1.5 text-[10px] leading-tight text-neutral-600 dark:text-neutral-400 italic border-l-2 border-neutral-300 dark:border-zinc-600 pl-1.5">{phase.note}</div>}
                                     </div>
                                 </div>
                             </li>
@@ -138,7 +138,7 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
 
     // Compact View (for inline display)
     return (
-        <div className={`bg-white border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] animate-brutal-pop transition-all duration-300 ${isExpanded ? 'p-2 mb-2' : 'p-2 mb-2'}`}>
+        <div className={`bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] animate-brutal-pop transition-all duration-300 ${isExpanded ? 'p-2 mb-2' : 'p-2 mb-2'}`}>
 
             {/* Header / Collapsed View */}
             <div className="flex items-center justify-between gap-3">
@@ -161,7 +161,7 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
                                 {t('planProgress.taskProgress', { completed, total: totalPhases })}
                             </span>
                             {!isExpanded && !isDocked && activePhase && (
-                                <span className="text-[10px] font-bold truncate text-neutral-600">
+                                <span className="text-[10px] font-bold truncate text-neutral-600 dark:text-neutral-400">
                                     {t('planProgress.current', { title: activePhase.title || activePhase.description })}
                                 </span>
                             )}
@@ -173,7 +173,7 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
                 <div className="flex items-center gap-2 shrink-0">
                     <button
                         onClick={onToggleDock}
-                        className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black hover:bg-neutral-200 transition-colors bg-white text-brutal-black"
+                        className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black hover:bg-neutral-200 dark:hover:bg-zinc-600 transition-colors bg-white dark:bg-zinc-700 text-brutal-black dark:text-white"
                         title={isDocked || isSidebarOpen ? "Close Sidebar" : "Open Sidebar"}
                     >
                         {isDocked || isSidebarOpen ? (
@@ -192,7 +192,7 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
                     {!isDocked && (
                         <button
                             onClick={onToggleExpand}
-                            className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black hover:bg-neutral-200 transition-colors"
+                            className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black hover:bg-neutral-200 dark:hover:bg-zinc-600 transition-colors dark:text-white"
                         >
                             <svg className={`w-3 h-3 transition-transform duration-200 ${isExpanded ? '' : 'rotate-180'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -224,15 +224,15 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
                             }
 
                             return (
-                                <div key={phase.id || idx} className={`flex items-start gap-2 p-1.5 border-l-4 ${phase.status === 'in_progress' ? 'border-brutal-blue bg-neutral-50' : 'border-transparent'}`}>
+                                <div key={phase.id || idx} className={`flex items-start gap-2 p-1.5 border-l-4 ${phase.status === 'in_progress' ? 'border-brutal-blue bg-neutral-50 dark:bg-zinc-700' : 'border-transparent'}`}>
                                     <div className={`mt-0.5 w-4 h-4 shrink-0 border-2 flex items-center justify-center text-[9px] font-bold ${phase.status === 'completed' ? 'bg-brutal-green border-brutal-black text-brutal-black' :
                                         phase.status === 'in_progress' ? 'bg-brutal-blue border-brutal-black text-white' :
-                                            'bg-white border-neutral-400 text-neutral-400'
+                                            'bg-white dark:bg-zinc-600 border-neutral-400 dark:border-zinc-500 text-neutral-400 dark:text-neutral-300'
                                         }`}>
                                         {phase.status === 'completed' ? '✓' : idx + 1}
                                     </div>
                                     <div className="flex-1">
-                                        <div className={`text-xs font-bold leading-tight ${phase.status === 'completed' ? 'text-neutral-500' : 'text-brutal-black'}`}>
+                                        <div className={`text-xs font-bold leading-tight ${phase.status === 'completed' ? 'text-neutral-500 dark:text-neutral-400' : 'text-brutal-black dark:text-white'}`}>
                                             {phase.title || phase.description}
                                         </div>
                                         {phase.note && (

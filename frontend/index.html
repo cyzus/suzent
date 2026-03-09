@@ -5,8 +5,28 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Suzent</title>
+    <script>
+      (function () {
+        var t = localStorage.getItem('suzent-theme');
+        var isDark = t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (isDark) document.documentElement.classList.add('dark');
+
+        var validSchemes = ['warm', 'cold', 'green'];
+        var scheme = localStorage.getItem('suzent-scheme');
+        if (!validSchemes.includes(scheme)) scheme = 'warm';
+        document.documentElement.dataset.scheme = scheme;
+
+        var colors = {
+          warm:  { light: '#FFE666', dark: '#FF6600' },
+          cold:  { light: '#7DD3FC', dark: '#38BDF8' },
+          green: { light: '#86EFAC', dark: '#4ADE80' },
+        };
+        var c = colors[scheme] || colors.warm;
+        document.documentElement.style.setProperty('--brutal-yellow', isDark ? c.dark : c.light);
+      })();
+    </script>
   </head>
-  <body class="h-full bg-neutral-50 text-neutral-800">
+  <body class="h-full bg-neutral-50 dark:bg-zinc-900 text-neutral-800 dark:text-white">
     <div id="root" class="h-full"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -67,10 +67,10 @@ export const MemoryFilePanel: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="border-3 border-brutal-black bg-white p-6 shadow-brutal">
+      <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-6 shadow-brutal">
         <div className="flex items-center gap-3">
-          <div className="w-4 h-4 border-3 border-brutal-black border-t-transparent animate-spin rounded-full"></div>
-          <span className="font-bold uppercase text-sm">{t('memoryFile.loading')}</span>
+          <div className="w-4 h-4 border-3 border-brutal-black dark:border-white border-t-transparent animate-spin rounded-full"></div>
+          <span className="font-bold uppercase text-sm dark:text-white">{t('memoryFile.loading')}</span>
         </div>
       </div>
     );
@@ -78,12 +78,12 @@ export const MemoryFilePanel: React.FC = () => {
 
   if (error) {
     return (
-      <div className="border-3 border-brutal-black bg-white p-6 shadow-brutal">
-        <h3 className="font-brutal text-xl text-brutal-black mb-2 uppercase">{t('common.error')}</h3>
-        <p className="text-sm text-brutal-black font-mono mb-4">{error}</p>
+      <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-6 shadow-brutal">
+        <h3 className="font-brutal text-xl text-brutal-black dark:text-white mb-2 uppercase">{t('common.error')}</h3>
+        <p className="text-sm text-brutal-black dark:text-neutral-300 font-mono mb-4">{error}</p>
         <button
           onClick={loadMemoryFile}
-          className="px-6 py-2 border-3 border-brutal-black bg-white hover:bg-neutral-100 font-bold uppercase shadow-[2px_2px_0_0_#000] brutal-btn transition-all"
+          className="px-6 py-2 border-3 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 dark:text-white font-bold uppercase shadow-[2px_2px_0_0_#000] brutal-btn transition-all"
         >
           {t('common.retry')}
         </button>
@@ -120,22 +120,22 @@ export const MemoryFilePanel: React.FC = () => {
 
       {/* Reindex status */}
       {reindexResult && (
-        <div className="border-3 border-brutal-black bg-white p-3 text-sm font-mono">
+        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 dark:text-white p-3 text-sm font-mono">
           {reindexResult}
         </div>
       )}
 
       {/* Content */}
       {content ? (
-        <div className="border-3 border-brutal-black bg-white shadow-brutal">
-          <pre className="whitespace-pre-wrap font-mono text-sm p-6 max-h-[70vh] overflow-y-auto scrollbar-thin leading-relaxed text-brutal-black">
+        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal">
+          <pre className="whitespace-pre-wrap font-mono text-sm p-6 max-h-[70vh] overflow-y-auto scrollbar-thin leading-relaxed text-brutal-black dark:text-neutral-200">
             {content}
           </pre>
         </div>
       ) : (
-        <div className="border-3 border-brutal-black bg-white p-12 text-center shadow-brutal">
-          <h4 className="font-brutal text-2xl uppercase mb-2">{t('memoryFile.emptyTitle')}</h4>
-          <p className="text-neutral-600 text-sm max-w-md mx-auto">
+        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-12 text-center shadow-brutal">
+          <h4 className="font-brutal text-2xl uppercase mb-2 dark:text-white">{t('memoryFile.emptyTitle')}</h4>
+          <p className="text-neutral-600 dark:text-neutral-400 text-sm max-w-md mx-auto">
             {t('memoryFile.emptyDesc')}
           </p>
         </div>

@@ -15,12 +15,13 @@ export const BrutalDeleteButton: React.FC<BrutalDeleteButtonProps> = ({
         <button
             type="button"
             className={`
-        p-1.5 border-2 border-brutal-black transition-all duration-200 
+        p-1.5 border-2 border-brutal-black transition-all duration-200
         hover:shadow-[4px_4px_0_0_#000000] brutal-btn
         flex items-center justify-center
+        text-brutal-yellow hover:text-white
         ${isActive
-                    ? 'bg-white hover:bg-brutal-red hover:text-white'
-                    : 'bg-neutral-100 hover:bg-brutal-red hover:text-white'
+                    ? 'bg-white dark:bg-zinc-600 hover:bg-brutal-red'
+                    : 'bg-neutral-100 dark:bg-zinc-700 hover:bg-brutal-red'
                 }
         ${className}
       `}

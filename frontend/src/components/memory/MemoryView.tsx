@@ -60,11 +60,11 @@ export const MemoryView: React.FC = () => {
     return (
       <div className="h-full w-full flex flex-col items-center justify-center p-8">
         <div className="max-w-md w-full space-y-4">
-          <div className="border-3 border-brutal-black bg-white p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+          <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
             <h2 className="font-brutal text-2xl uppercase mb-4 animate-pulse">
               {t('memoryView.initializing')}
             </h2>
-            <div className="space-y-2 font-mono text-xs text-brutal-black">
+            <div className="space-y-2 font-mono text-xs text-brutal-black dark:text-white">
               <div className="flex justify-between">
                 <span>{'>'} CONNECTING_TO_CORE</span>
                 <span>[OK]</span>
@@ -90,15 +90,15 @@ export const MemoryView: React.FC = () => {
   if (coreMemoryError && activeTab === 'overview') {
     return (
       <div className="p-6 space-y-4">
-        <div className="border-3 border-brutal-red bg-white p-6 animate-brutal-shake shadow-brutal">
+        <div className="border-3 border-brutal-red bg-white dark:bg-zinc-800 p-6 animate-brutal-shake shadow-brutal">
           <div className="flex items-start gap-4">
             <span className="text-4xl">&#9888;&#65039;</span>
             <div className="flex-1">
               <h3 className="font-brutal text-xl text-brutal-red mb-2 uppercase">{t('memoryView.systemError')}</h3>
-              <p className="text-brutal-black font-mono text-sm mb-4">{coreMemoryError}</p>
+              <p className="text-brutal-black dark:text-white font-mono text-sm mb-4">{coreMemoryError}</p>
               <button
                 onClick={() => loadCoreMemory()}
-                className="px-6 py-2 border-3 border-brutal-black bg-white hover:bg-neutral-100 font-bold uppercase shadow-[2px_2px_0_0_#000] brutal-btn transition-all"
+                className="px-6 py-2 border-3 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 font-bold uppercase shadow-[2px_2px_0_0_#000] brutal-btn transition-all"
               >
                 {t('memoryView.retryConnection')}
               </button>
@@ -112,14 +112,14 @@ export const MemoryView: React.FC = () => {
   return (
     <div className="h-full w-full overflow-y-auto scrollbar-thin memory-scroll px-4 md:px-8 py-8 space-y-6 max-w-7xl mx-auto">
       {/* Sub-navigation tabs */}
-      <div className="flex border-3 border-brutal-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+      <div className="flex border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`
               flex-1 px-4 py-2.5 font-bold uppercase text-xs md:text-sm transition-colors border-r-3 border-brutal-black last:border-r-0
-              ${activeTab === tab.id ? 'bg-brutal-black text-white' : 'bg-white text-brutal-black hover:bg-neutral-100'}
+              ${activeTab === tab.id ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black' : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'}
             `}
           >
             {t(tab.labelKey)}
@@ -173,11 +173,11 @@ export const MemoryView: React.FC = () => {
 
             {/* Archival Memory Section */}
             <div className="xl:col-span-7 space-y-4">
-              <div className="bg-white p-1 border-b-3 border-brutal-black mb-2">
-                <h3 className="font-brutal text-xl uppercase tracking-tight text-brutal-black">
+              <div className="bg-white dark:bg-zinc-800 p-1 border-b-3 border-brutal-black mb-2">
+                <h3 className="font-brutal text-xl uppercase tracking-tight text-brutal-black dark:text-white">
                   {t('memoryView.archivalTitle')}
                 </h3>
-                <p className="text-xs text-neutral-600 font-mono">
+                <p className="text-xs text-neutral-600 dark:text-neutral-400 font-mono">
                   {t('memoryView.archivalDesc')}
                 </p>
               </div>

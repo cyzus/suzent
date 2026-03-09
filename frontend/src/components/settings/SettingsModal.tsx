@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 
 import { useChatStore } from '../../hooks/useChatStore';
 import { ApiProvider, fetchApiKeys, fetchEmbeddingModels, fetchSocialConfig, fetchMcpServers, saveApiKeys, saveSocialConfig, saveUserPreferences, SocialConfig, UserConfig, verifyProvider } from '../../lib/api';
+import { AppearanceTab } from './AppearanceTab';
 import { AutomationTab } from './AutomationTab';
 import { McpTab } from './McpTab';
 import { MemoryTab } from './MemoryTab';
@@ -34,7 +35,7 @@ interface SettingsModalProps {
 }
 
 type ProviderTab = 'credentials' | 'models';
-type CategoryType = 'providers' | 'memory' | 'social' | 'mcp' | 'automation';
+type CategoryType = 'providers' | 'memory' | 'social' | 'mcp' | 'automation' | 'appearance';
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
@@ -244,6 +245,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       )
+    },
+    {
+      id: 'appearance', label: t('settings.categories.appearance'), icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+        </svg>
+      )
     }
   ];
 
@@ -251,10 +259,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
     <div className="fixed inset-0 z-[100] flex items-center justify-center animate-view-fade">
       <div className="absolute inset-0 bg-brutal-black/80 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full h-[95vh] md:w-[95vw] lg:w-[85vw] xl:w-[75vw] bg-neutral-100 border-4 border-brutal-black shadow-brutal-xl flex overflow-hidden">
+      <div className="relative w-full h-[95vh] md:w-[95vw] lg:w-[85vw] xl:w-[75vw] bg-neutral-100 dark:bg-zinc-900 border-4 border-brutal-black shadow-brutal-xl flex overflow-hidden">
         {/* Sidebar */}
-        <div className="w-64 bg-white border-r-4 border-brutal-black flex flex-col flex-shrink-0">
-          <div className="p-6 border-b-4 border-brutal-black bg-brutal-yellow">
+        <div className="w-64 bg-white dark:bg-zinc-800 border-r-4 border-brutal-black flex flex-col flex-shrink-0">
+          <div className="p-6 border-b-4 border-brutal-black bg-brutal-yellow dark:bg-brutal-yellow">
             <h1 className="text-2xl font-brutal font-bold uppercase tracking-tighter text-brutal-black">
               {t('settings.usingSuzent')}
             </h1>
@@ -280,8 +288,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                 key={item.id}
                 onClick={() => setActiveCategory(item.id as CategoryType)}
                 className={`w-full text-left px-4 py-3 border-2 font-bold uppercase text-sm flex items-center gap-3 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none ${activeCategory === item.id
-                  ? 'bg-brutal-black text-white border-brutal-black'
-                  : 'bg-white text-brutal-black border-brutal-black hover:bg-neutral-100'
+                  ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black border-brutal-black'
+                  : 'bg-white dark:bg-zinc-700 text-brutal-black dark:text-white border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-600'
                   }`}
               >
                 {item.icon}
@@ -290,10 +298,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
             ))}
           </div>
 
-          <div className="p-4 border-t-4 border-brutal-black bg-neutral-50">
+          <div className="p-4 border-t-4 border-brutal-black bg-neutral-50 dark:bg-zinc-800">
             <button
               onClick={onClose}
-              className="w-full px-4 py-3 bg-white border-2 border-brutal-black font-bold uppercase text-brutal-black hover:bg-neutral-100 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none mb-3"
+              className="w-full px-4 py-3 bg-white dark:bg-zinc-700 border-2 border-brutal-black font-bold uppercase text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none mb-3"
             >
               {t('common.close')}
             </button>
@@ -378,6 +386,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                     <AutomationTab
                       models={backendConfig?.models || []}
                     />
+                  )}
+
+                  {activeCategory === 'appearance' && (
+                    <AppearanceTab />
                   )}
                 </>
               )}

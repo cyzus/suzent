@@ -13,7 +13,7 @@ const getStatusStyles = (type: StatusType) => {
       return 'bg-brutal-blue text-white';
     case 'idle':
     default:
-      return 'bg-neutral-200 text-neutral-500';
+      return 'bg-neutral-200 dark:bg-zinc-800 text-neutral-500 dark:text-neutral-400';
   }
 };
 

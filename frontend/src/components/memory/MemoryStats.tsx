@@ -21,10 +21,10 @@ export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({ stats, isLoad
         {[1, 2, 3, 4].map((i) => (
           <div
             key={i}
-            className="border-3 border-brutal-black bg-white p-4 animate-brutal-blink"
+            className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-4 animate-brutal-blink"
           >
-            <div className="h-4 bg-neutral-200 mb-2"></div>
-            <div className="h-8 bg-neutral-200"></div>
+            <div className="h-4 bg-neutral-200 dark:bg-zinc-700 mb-2"></div>
+            <div className="h-8 bg-neutral-200 dark:bg-zinc-700"></div>
           </div>
         ))}
       </div>
@@ -44,22 +44,22 @@ export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({ stats, isLoad
       {/* Main Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Memories */}
-        <div className="border-3 border-brutal-black bg-white shadow-[2px_2px_0_0_#000] p-4 brutal-btn transition-all">
+        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] p-4 brutal-btn transition-all">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase text-neutral-600">{t('memoryStats.totalMemories')}</span>
+            <span className="text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400">{t('memoryStats.totalMemories')}</span>
           </div>
-          <div className="font-brutal text-3xl text-brutal-black">{stats.total_memories}</div>
+          <div className="font-brutal text-3xl text-brutal-black dark:text-white">{stats.total_memories}</div>
         </div>
 
         {/* Avg Importance */}
-        <div className="border-3 border-brutal-black bg-white shadow-[2px_2px_0_0_#000] p-4 brutal-btn transition-all">
+        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] p-4 brutal-btn transition-all">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase text-neutral-600">{t('memoryStats.avgImportance')}</span>
+            <span className="text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400">{t('memoryStats.avgImportance')}</span>
           </div>
-          <div className="font-brutal text-3xl text-brutal-black">
+          <div className="font-brutal text-3xl text-brutal-black dark:text-white">
             {stats.avg_importance.toFixed(2)}
           </div>
-          <div className="mt-2 h-2 bg-white border-3 border-brutal-black">
+          <div className="mt-2 h-2 bg-white dark:bg-zinc-700 border-3 border-brutal-black">
             <div
               className="h-full bg-brutal-black transition-all duration-500"
               style={{ width: `${stats.avg_importance * 100}%` }}
@@ -68,29 +68,29 @@ export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({ stats, isLoad
         </div>
 
         {/* Total Accesses */}
-        <div className="border-3 border-brutal-black bg-white shadow-[2px_2px_0_0_#000] p-4 brutal-btn transition-all">
+        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] p-4 brutal-btn transition-all">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase text-neutral-600">{t('memoryStats.totalAccesses')}</span>
+            <span className="text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400">{t('memoryStats.totalAccesses')}</span>
           </div>
-          <div className="font-brutal text-3xl text-brutal-black">
+          <div className="font-brutal text-3xl text-brutal-black dark:text-white">
             {stats.total_accesses || 0}
           </div>
-          <div className="text-xs text-neutral-500 mt-1">
+          <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
             {t('memoryStats.avgPerMemory', { avg: stats.avg_access_count?.toFixed(1) || '0.0' })}
           </div>
         </div>
 
         {/* Importance Range */}
-        <div className="border-3 border-brutal-black bg-white shadow-[2px_2px_0_0_#000] p-4 brutal-btn transition-all">
+        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] p-4 brutal-btn transition-all">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase text-neutral-600">{t('memoryStats.importanceRange')}</span>
+            <span className="text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400">{t('memoryStats.importanceRange')}</span>
           </div>
           <div className="flex items-baseline gap-1">
-            <span className="font-brutal text-xl text-brutal-black">
+            <span className="font-brutal text-xl text-brutal-black dark:text-white">
               {stats.max_importance?.toFixed(2) || '0.00'}
             </span>
-            <span className="text-brutal-black">→</span>
-            <span className="font-brutal text-xl text-brutal-gray">
+            <span className="text-brutal-black dark:text-white">→</span>
+            <span className="font-brutal text-xl text-brutal-gray dark:text-neutral-400">
               {stats.min_importance?.toFixed(2) || '0.00'}
             </span>
           </div>
@@ -99,11 +99,11 @@ export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({ stats, isLoad
 
       {/* Importance Distribution Bar */}
       {(high > 0 || medium > 0 || low > 0) && (
-        <div className="border-3 border-brutal-black bg-white shadow-brutal p-4">
-          <h4 className="font-bold text-xs uppercase text-neutral-600 mb-3">
+        <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal p-4">
+          <h4 className="font-bold text-xs uppercase text-neutral-600 dark:text-neutral-400 mb-3">
             {t('memoryStats.importanceDistribution')}
           </h4>
-          <div className="flex h-8 border-3 border-brutal-black overflow-hidden bg-white">
+          <div className="flex h-8 border-3 border-brutal-black overflow-hidden bg-white dark:bg-zinc-700">
             {high > 0 && (
               <div
                 className="bg-brutal-black flex items-center justify-center text-white text-xs font-bold transition-all duration-500"
@@ -124,7 +124,7 @@ export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({ stats, isLoad
             )}
             {low > 0 && (
               <div
-                className="bg-white border-l-3 border-brutal-black flex items-center justify-center text-brutal-black text-xs font-bold transition-all duration-500"
+                className="bg-white dark:bg-zinc-600 border-l-3 border-brutal-black flex items-center justify-center text-brutal-black dark:text-white text-xs font-bold transition-all duration-500"
                 style={{ width: `${(low / total) * 100}%` }}
                 title={t('memoryStats.distributionTooltipLow', { count: String(low) })}
               >
@@ -132,7 +132,7 @@ export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({ stats, isLoad
               </div>
             )}
           </div>
-          <div className="flex justify-between mt-2 text-xs">
+          <div className="flex justify-between mt-2 text-xs dark:text-neutral-300">
             <div className="flex items-center gap-1">
               <div className="w-3 h-3 bg-brutal-black border-2 border-brutal-black"></div>
               <span>{t('memoryStats.highRangeCount', { count: String(high) })}</span>
@@ -142,7 +142,7 @@ export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({ stats, isLoad
               <span>{t('memoryStats.mediumRangeCount', { count: String(medium) })}</span>
             </div>
             <div className="flex items-center gap-1">
-              <div className="w-3 h-3 bg-white border-2 border-brutal-black"></div>
+              <div className="w-3 h-3 bg-white dark:bg-zinc-500 border-2 border-brutal-black"></div>
               <span>{t('memoryStats.lowRangeCount', { count: String(low) })}</span>
             </div>
           </div>

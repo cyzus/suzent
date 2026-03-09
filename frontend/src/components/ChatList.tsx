@@ -122,7 +122,7 @@ export const ChatList: React.FC = () => {
       )}
 
       {/* Unified Header: Search + Filter + Action */}
-      <div className="p-3 border-b-3 border-brutal-black bg-white space-y-3">
+      <div className="p-3 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 space-y-3">
         {/* Row 1: Search + New Chat */}
         <div className="flex gap-2">
           <div className="relative flex-1">
@@ -131,10 +131,10 @@ export const ChatList: React.FC = () => {
               value={localSearchQuery}
               onChange={(e) => setLocalSearchQuery(e.target.value)}
               placeholder={viewMode === 'social' ? t('chatList.searchSocialPlaceholder').toUpperCase() : t('chatList.searchChatsPlaceholder').toUpperCase()}
-              className="w-full px-3 py-2 pl-9 bg-neutral-50 border-2 border-brutal-black font-bold text-xs uppercase placeholder-neutral-400 focus:outline-none focus:bg-white focus:shadow-brutal-sm transition-all"
+              className="w-full px-3 py-2 pl-9 bg-neutral-50 dark:bg-zinc-700 dark:text-white dark:placeholder-neutral-500 border-2 border-brutal-black font-bold text-xs uppercase placeholder-neutral-400 focus:outline-none focus:bg-white dark:focus:bg-zinc-600 focus:shadow-brutal-sm transition-all"
             />
             <svg
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-brutal-black pointer-events-none"
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-brutal-black dark:text-neutral-400 pointer-events-none"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -145,10 +145,10 @@ export const ChatList: React.FC = () => {
             {localSearchQuery && (
               <button
                 onClick={() => setLocalSearchQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-neutral-200 rounded transition-colors"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-neutral-200 dark:hover:bg-zinc-600 rounded transition-colors"
                 title={t('chatList.clearSearch')}
               >
-                <svg className="w-3 h-3 text-brutal-black" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+                <svg className="w-3 h-3 text-brutal-black dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -181,8 +181,8 @@ export const ChatList: React.FC = () => {
                 onClick={() => setViewMode(mode)}
                 className={`flex-1 py-1.5 text-[10px] font-bold uppercase border-2 border-brutal-black transition-all relative ${mode === 'personal' ? 'mr-[-2px]' : ''
                   } ${viewMode === mode
-                    ? 'bg-brutal-black text-white z-10'
-                    : 'bg-white text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black'
+                    ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black z-10'
+                    : 'bg-white dark:bg-zinc-700 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-zinc-600 hover:text-brutal-black dark:hover:text-white'
                   }`}
               >
                 {mode === 'personal' ? t('chatList.view.desktop') : t('chatList.view.social')}
@@ -199,10 +199,10 @@ export const ChatList: React.FC = () => {
             <div className="w-16 h-16 mx-auto mb-3">
               <RobotAvatar variant={searchQuery ? "ghost" : "portal"} />
             </div>
-            <p className="text-brutal-black text-sm font-bold uppercase">
+            <p className="text-brutal-black dark:text-white text-sm font-bold uppercase">
               {searchQuery ? t('chatList.empty.noResultsTitle') : (viewMode === 'social' ? t('chatList.empty.noSocialTitle') : t('chatList.empty.noChatsTitle'))}
             </p>
-            <p className="text-neutral-500 text-xs mt-1">
+            <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-1">
               {searchQuery ? t('chatList.empty.noResultsDesc') : (viewMode === 'social' ? t('chatList.empty.noSocialDesc') : t('chatList.empty.noChatsDesc'))}
             </p>
           </div>
@@ -220,7 +220,7 @@ export const ChatList: React.FC = () => {
                 }}
                 className={`group relative p-3 cursor-pointer transition-all duration-200 animate-brutal-drop ${currentChatId === chat.id
                   ? 'bg-brutal-yellow border-3 border-brutal-black shadow-[2px_2px_0_0_#000] translate-y-[2px]'
-                  : 'bg-white hover:bg-neutral-50 border-3 border-brutal-black hover:shadow-brutal-sm'
+                  : 'bg-white dark:bg-zinc-800 hover:bg-neutral-50 dark:hover:bg-zinc-700 border-3 border-brutal-black hover:shadow-brutal-sm'
                   }`}
                 style={{ animationDelay: `${idx * 0.05}s` }}
               >
@@ -245,26 +245,26 @@ export const ChatList: React.FC = () => {
                     <div className="flex items-center gap-2">
                       {/* Platform Badge */}
                       {chat.platform && (
-                        <span className="text-[10px] font-bold uppercase px-1 py-0.5 bg-neutral-200 border border-brutal-black">
+                        <span className="text-[10px] font-bold uppercase px-1 py-0.5 bg-neutral-200 dark:bg-zinc-700 dark:text-white border border-brutal-black">
                           {chat.platform}
                         </span>
                       )}
-                      <h3 className={`font-bold text-sm truncate uppercase ${currentChatId === chat.id ? 'text-brutal-black' : 'text-neutral-800'}`}>
+                      <h3 className={`font-bold text-sm truncate uppercase ${currentChatId === chat.id ? 'text-brutal-black' : 'text-neutral-800 dark:text-white'}`}>
                         {chat.title || t('chatList.untitled')}
                       </h3>
                     </div>
 
                     {chat.lastMessage && (
-                      <p className={`text-xs mt-1 line-clamp-2 font-mono ${currentChatId === chat.id ? 'text-brutal-black/80' : 'text-neutral-600'}`}>
+                      <p className={`text-xs mt-1 line-clamp-2 font-mono ${currentChatId === chat.id ? 'text-brutal-black/80' : 'text-neutral-600 dark:text-neutral-400'}`}>
                         {chat.lastMessage}
                       </p>
                     )}
 
                     <div className={`flex items-center justify-between mt-3 pt-2 border-t-2 ${currentChatId === chat.id ? 'border-brutal-black/20' : 'border-neutral-200/50'}`}>
-                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 border ${currentChatId === chat.id ? 'bg-white text-brutal-black border-brutal-black' : 'bg-neutral-100 text-neutral-500 border-neutral-300'}`}>
+                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 border ${currentChatId === chat.id ? 'bg-white text-brutal-black border-brutal-black' : 'bg-neutral-100 dark:bg-zinc-700 text-neutral-500 dark:text-neutral-400 border-neutral-300 dark:border-zinc-600'}`}>
                         {chat.messageCount} MSG
                       </span>
-                      <span className={`text-[10px] font-bold uppercase ${currentChatId === chat.id ? 'text-brutal-black/60' : 'text-neutral-400'}`}>
+                      <span className={`text-[10px] font-bold uppercase ${currentChatId === chat.id ? 'text-brutal-black/60' : 'text-neutral-400 dark:text-neutral-500'}`}>
                         {formatDate(chat.updatedAt)}
                       </span>
                     </div>

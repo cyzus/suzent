@@ -172,9 +172,9 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
     };
 
     return (
-        <div className="flex flex-col h-full bg-neutral-100" ref={containerRef}>
-            <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200">
-                <span className="font-bold text-xs uppercase text-gray-500">
+        <div className="flex flex-col h-full bg-neutral-100 dark:bg-zinc-900" ref={containerRef}>
+            <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-zinc-800 border-b border-gray-200 dark:border-zinc-700">
+                <span className="font-bold text-xs uppercase text-gray-500 dark:text-zinc-400">
                     {t('browser.title')}
                 </span>
                 <div className="flex items-center gap-4">
@@ -192,12 +192,12 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
                         <div className={`w-2 h-2 rounded-full ${status === 'connected' ? 'bg-green-500' :
                             status === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
                             }`} />
-                        <span className="text-xs font-mono text-gray-400 capitalize">{t(`browser.status.${status}`)}</span>
+                        <span className="text-xs font-mono text-gray-400 dark:text-zinc-500 capitalize">{t(`browser.status.${status}`)}</span>
                     </div>
                 </div>
             </div>
 
-            <div className={`relative flex-1 overflow-hidden flex items-center justify-center bg-neutral-100 ${isControlling ? 'ring-4 ring-inset ring-green-500/50' : ''}`}>
+            <div className={`relative flex-1 overflow-hidden flex items-center justify-center bg-neutral-100 dark:bg-zinc-900 ${isControlling ? 'ring-4 ring-inset ring-green-500/50' : ''}`}>
                 {/* Hidden input for keyboard capture */}
                 <input
                     ref={inputRef}
@@ -244,10 +244,10 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
                         )}
                     </div>
                 ) : (
-                    <div className="text-gray-500 text-sm text-center font-mono">
+                    <div className="text-gray-500 dark:text-zinc-400 text-sm text-center font-mono">
                         <p className="mb-2">WAITING_FOR_STREAM</p>
                         {status === 'connected' &&
-                            <p className="text-xs text-gray-600 opacity-70">{t('browser.executeHint')}</p>
+                            <p className="text-xs text-gray-600 dark:text-zinc-500 opacity-70">{t('browser.executeHint')}</p>
                         }
                     </div>
                 )}

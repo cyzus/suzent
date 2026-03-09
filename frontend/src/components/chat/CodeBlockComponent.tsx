@@ -27,11 +27,11 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
 
   if (safeLang === 'text') {
     return (
-      <div className="my-2 group/code relative border-2 border-brutal-black bg-neutral-50 shadow-brutal-sm p-4">
+      <div className="my-2 group/code relative border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-800 shadow-brutal-sm p-4">
         <div className="absolute top-2 right-2 opacity-0 group-hover/code:opacity-100 transition-opacity z-10">
           <button
             onClick={handleCopy}
-            className="w-8 h-8 flex items-center justify-center bg-white text-brutal-black border-2 border-brutal-black hover:bg-brutal-yellow transition-colors shadow-sm"
+            className="w-8 h-8 flex items-center justify-center bg-white dark:bg-zinc-700 text-brutal-black dark:text-white border-2 border-brutal-black hover:bg-brutal-yellow transition-colors shadow-sm"
             title={t('codeBlock.copyText')}
           >
             {copied ? (
@@ -59,7 +59,7 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
   }
 
   return (
-    <div className="my-4 font-mono text-sm border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white group/code relative">
+    <div className="my-4 font-mono text-sm border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white dark:bg-zinc-800 group/code relative">
       {/* Header Bar */}
       <div className="flex items-center justify-between px-3 py-2 bg-brutal-black border-b-3 border-brutal-black select-none overflow-hidden">
         <div className="flex items-center gap-3 min-w-0 flex-1">

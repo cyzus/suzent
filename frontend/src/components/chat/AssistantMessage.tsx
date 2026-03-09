@@ -424,7 +424,7 @@ const AGUIPartsContent: React.FC<{
         const isLastChunk = ci === chunks.length - 1;
         if (!fullText.trim() && !isLastChunk) return null;
         return (
-          <div key={ci} className="border-3 border-brutal-black shadow-brutal-lg bg-white px-6 py-5 relative">
+          <div key={ci} className="border-3 border-brutal-black shadow-brutal-lg bg-white dark:bg-zinc-800 px-6 py-5 relative">
             {fullText.trim() && (
               <CopyButton text={fullText.trim()} className="absolute top-2 right-2 z-10" />
             )}
@@ -481,8 +481,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
           border-3 border-brutal-black shadow-brutal-lg overflow-hidden relative
           transition-all duration-700 ease-out mb-3
           ${isThinking
-            ? 'w-[400px] h-[80px] bg-white mx-auto'
-            : 'w-[90px] h-[40px] bg-white ml-0 mr-auto'
+            ? 'w-[400px] h-[80px] bg-white dark:bg-zinc-800 mx-auto'
+            : 'w-[90px] h-[40px] bg-white dark:bg-zinc-800 ml-0 mr-auto'
           }
         `}>
           <ThinkingAnimation isThinking={isThinking} />
@@ -579,8 +579,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
         border-3 border-brutal-black shadow-brutal-lg overflow-hidden relative
         transition-all duration-700 ease-out mb-3
         ${isThinking
-          ? 'w-[400px] h-[80px] bg-white mx-auto'
-          : 'w-[90px] h-[40px] bg-white ml-0 mr-auto'
+          ? 'w-[400px] h-[80px] bg-white dark:bg-zinc-800 mx-auto'
+          : 'w-[90px] h-[40px] bg-white dark:bg-zinc-800 ml-0 mr-auto'
         }
       `}>
         <ThinkingAnimation isThinking={isThinking} />
@@ -645,7 +645,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               : chunk.blocks.filter(b => b.type !== 'reasoning');
 
             return (
-              <div key={idx} className="border-3 border-brutal-black shadow-brutal-lg bg-white px-6 py-5 relative">
+              <div key={idx} className="border-3 border-brutal-black shadow-brutal-lg bg-white dark:bg-zinc-800 px-6 py-5 relative">
                 {showCopyButton && !isThinking && (
                   <CopyButton
                     text={cleanContent}
