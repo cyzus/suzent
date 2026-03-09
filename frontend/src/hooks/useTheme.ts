@@ -13,8 +13,8 @@ export const SCHEME_COLORS: Record<Scheme, { light: string; dark: string }> = {
 /** Dark-mode surface colors used in card previews (mirrors CSS overrides below) */
 export const SCHEME_SURFACES: Record<Scheme, { bg1: string; bg2: string; bg3: string }> = {
   warm:  { bg1: '#18181b', bg2: '#27272a', bg3: '#3f3f46' },
-  cold:  { bg1: '#0c1829', bg2: '#122035', bg3: '#1a2e47' },
-  green: { bg1: '#0a1a0f', bg2: '#101f16', bg3: '#172b1e' },
+  cold:  { bg1: '#14161e', bg2: '#1e222e', bg3: '#2b3040' },
+  green: { bg1: '#131816', bg2: '#202622', bg3: '#2d352e' },
 };
 
 function getInitialTheme(): Theme {
