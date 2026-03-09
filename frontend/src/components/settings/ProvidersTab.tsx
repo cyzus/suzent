@@ -40,7 +40,7 @@ export function ProvidersTab({
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between mb-4">
-                <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black">{t('settings.providers.title')}</h2>
+                <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black dark:text-white">{t('settings.providers.title')}</h2>
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
@@ -70,9 +70,9 @@ export function ProvidersTab({
                     }
 
                     return (
-                        <div key={provider.id} className="bg-white border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col h-full">
+                        <div key={provider.id} className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col h-full">
                             {/* Provider Header */}
-                            <div className="p-4 bg-neutral-50 flex justify-between items-center border-b-4 border-brutal-black">
+                            <div className="p-4 bg-neutral-50 dark:bg-zinc-900 flex justify-between items-center border-b-4 border-brutal-black">
                                 <span className="font-black uppercase text-xl tracking-wide">{provider.label}</span>
                                 <div className={`w-4 h-4 rounded-full border-2 border-brutal-black ${isEnabled ? 'bg-brutal-green' : 'bg-transparent'}`}></div>
                             </div>
@@ -81,13 +81,13 @@ export function ProvidersTab({
                             <div className="flex bg-brutal-black border-b-4 border-brutal-black">
                                 <button
                                     onClick={() => onTabChange(provider.id, 'credentials')}
-                                    className={`flex-1 p-2 font-bold uppercase text-xs tracking-wider transition-colors ${activeTab === 'credentials' ? 'bg-brutal-black text-white' : 'bg-white text-brutal-black hover:bg-neutral-100'}`}
+                                    className={`flex-1 p-2 font-bold uppercase text-xs tracking-wider transition-colors border-r-4 border-brutal-black ${activeTab === 'credentials' ? 'bg-brutal-black text-white dark:bg-zinc-900' : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'}`}
                                 >
                                     {t('settings.providers.apiKeysTab')}
                                 </button>
                                 <button
                                     onClick={() => onTabChange(provider.id, 'models')}
-                                    className={`flex-1 p-2 font-bold uppercase text-xs tracking-wider transition-colors ${activeTab === 'models' ? 'bg-brutal-black text-white' : 'bg-white text-brutal-black hover:bg-neutral-100'}`}
+                                    className={`flex-1 p-2 font-bold uppercase text-xs tracking-wider transition-colors ${activeTab === 'models' ? 'bg-brutal-black text-white dark:bg-zinc-900' : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'}`}
                                 >
                                     {t('settings.providers.modelsTab')}
                                 </button>
@@ -110,19 +110,19 @@ export function ProvidersTab({
                                                                 value={val}
                                                                 onChange={(e) => onKeyChange(field.key, e.target.value)}
                                                                 placeholder={field.placeholder}
-                                                                className={`w-full bg-white border-2 border-brutal-black border-r-0 px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 transition-all ${isMasked ? 'text-neutral-500 italic' : ''}`}
+                                                                className={`w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black border-r-0 px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 transition-all dark:text-white ${isMasked ? 'text-neutral-500 italic' : ''}`}
                                                             />
                                                         </div>
                                                         {field.type === 'secret' && (
                                                             <button
                                                                 onClick={() => onToggleShowKey(field.key)}
-                                                                className="w-10 flex items-center justify-center bg-white border-2 border-brutal-black hover:bg-neutral-100 font-bold text-[10px]"
+                                                                className="w-10 flex items-center justify-center bg-white dark:bg-zinc-900 border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-800 font-bold text-[10px] dark:text-white"
                                                             >
                                                                 {showKey[field.key] ? 'H' : 'S'}
                                                             </button>
                                                         )}
                                                         {field.type !== 'secret' && (
-                                                            <div className="w-10 border-2 border-brutal-black border-l-0 bg-neutral-100"></div>
+                                                            <div className="w-10 border-2 border-brutal-black border-l-0 bg-neutral-100 dark:bg-zinc-800"></div>
                                                         )}
                                                     </div>
                                                 </div>
@@ -139,7 +139,7 @@ export function ProvidersTab({
                                                 <input
                                                     type="text"
                                                     placeholder={t('settings.providers.addModelIdPlaceholder')}
-                                                    className="flex-1 bg-white border-2 border-brutal-black border-r-0 px-3 py-2 font-mono text-xs focus:outline-none"
+                                                    className="flex-1 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Enter') {
                                                             onAddCustomModel(provider.id, e.currentTarget.value);

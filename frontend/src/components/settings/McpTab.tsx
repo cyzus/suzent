@@ -125,18 +125,18 @@ export function McpTab({
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between mb-4">
-                <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black">{t('settings.mcp.title')}</h2>
+                <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black dark:text-white">{t('settings.mcp.title')}</h2>
             </div>
 
             {/* Add MCP Server Card */}
-            <div className="bg-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
+            <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
                 <div className="flex items-start gap-4 mb-6">
                     <div className="w-12 h-12 bg-brutal-blue border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-white">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
                     </div>
                     <div>
                         <h3 className="text-xl font-bold uppercase">{t('settings.mcp.addNewServerTitle')}</h3>
-                        <p className="text-sm text-neutral-600 mt-1">{t('settings.mcp.addNewServerDesc')}</p>
+                        <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{t('settings.mcp.addNewServerDesc')}</p>
                     </div>
                 </div>
 
@@ -152,7 +152,7 @@ export function McpTab({
                             value={srvName}
                             onChange={e => setSrvName(e.target.value)}
                             placeholder={t('settings.mcp.nameOptionalPlaceholder')}
-                            className="w-40 bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
+                            className="w-40 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
                         />
                     </div>
 
@@ -162,13 +162,13 @@ export function McpTab({
                                 value={srvUrl}
                                 onChange={e => setSrvUrl(e.target.value)}
                                 placeholder="https://host/path"
-                                className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
+                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
                             />
                             <input
                                 value={srvHeaders}
                                 onChange={e => setSrvHeaders(e.target.value)}
                                 placeholder={t('settings.mcp.headersPlaceholder')}
-                                className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
+                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
                             />
                         </div>
                     ) : (
@@ -177,19 +177,19 @@ export function McpTab({
                                 value={stdioCmd}
                                 onChange={e => setStdioCmd(e.target.value)}
                                 placeholder={t('settings.mcp.commandPlaceholder')}
-                                className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
+                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
                             />
                             <input
                                 value={stdioArgs}
                                 onChange={e => setStdioArgs(e.target.value)}
                                 placeholder={t('settings.mcp.argsPlaceholder')}
-                                className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
+                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
                             />
                             <input
                                 value={stdioEnv}
                                 onChange={e => setStdioEnv(e.target.value)}
                                 placeholder={t('settings.mcp.envPlaceholder')}
-                                className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
+                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
                             />
                         </div>
                     )}
@@ -205,19 +205,19 @@ export function McpTab({
             </div>
 
             {/* Server List Card */}
-            <div className="bg-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6">
+            <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6">
                 <div className="flex items-start gap-4 mb-6">
                     <div className="w-12 h-12 bg-black border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-white">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" /></svg>
                     </div>
                     <div>
                         <h3 className="text-xl font-bold uppercase">{t('settings.mcp.configuredServersTitle')}</h3>
-                        <p className="text-sm text-neutral-600 mt-1">{t('settings.mcp.configuredServersDesc')}</p>
+                        <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{t('settings.mcp.configuredServersDesc')}</p>
                     </div>
                 </div>
 
                 {serverList.length === 0 ? (
-                    <div className="text-center py-8 text-neutral-500 font-bold uppercase">
+                    <div className="text-center py-8 text-neutral-500 dark:text-neutral-400 font-bold uppercase">
                         {t('settings.mcp.noServersConfigured')}
                     </div>
                 ) : (
@@ -225,7 +225,7 @@ export function McpTab({
                         {serverList.map((server) => (
                             <div
                                 key={server.name}
-                                className="flex items-center gap-4 bg-neutral-50 border-2 border-brutal-black p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                                className="flex items-center gap-4 bg-neutral-50 dark:bg-zinc-900 border-2 border-brutal-black p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
                             >
                                 <input
                                     type="checkbox"
@@ -236,18 +236,18 @@ export function McpTab({
                                 />
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
-                                        <span className="font-bold text-brutal-black">{server.name}</span>
+                                        <span className="font-bold text-brutal-black dark:text-white">{server.name}</span>
                                         <span className={`text-[10px] px-2 py-0.5 border-2 font-bold uppercase ${server.enabled ? 'border-brutal-black bg-brutal-green text-brutal-black' : 'border-brutal-black bg-neutral-200 text-brutal-black'}`}>
                                             {server.enabled ? t('common.on') : t('common.off')}
                                         </span>
-                                        <span className="text-[10px] px-2 py-0.5 border border-neutral-400 text-neutral-500 uppercase">
+                                        <span className="text-[10px] px-2 py-0.5 border border-neutral-400 text-neutral-500 dark:text-neutral-400 uppercase">
                                             {server.type === 'url' ? t('config.mcp.url') : t('config.mcp.stdio')}
                                         </span>
                                     </div>
                                     {server.type === 'url' ? (
-                                        <div className="text-xs font-mono text-neutral-500 truncate" title={server.url}>{server.url}</div>
+                                        <div className="text-xs font-mono text-neutral-500 dark:text-neutral-400 truncate" title={server.url}>{server.url}</div>
                                     ) : (
-                                        <div className="text-xs font-mono text-neutral-500 truncate">
+                                        <div className="text-xs font-mono text-neutral-500 dark:text-neutral-400 truncate">
                                             {server.command}
                                             {server.args && server.args.length > 0 && ` [${server.args.join(', ')}]`}
                                         </div>

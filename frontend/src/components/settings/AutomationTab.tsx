@@ -190,11 +190,11 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black">{t('settings.automation.title')}</h2>
+        <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black dark:text-white">{t('settings.automation.title')}</h2>
       </div>
 
       {/* Status Card */}
-      <div className="bg-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
+      <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
         <div className="flex items-start gap-4">
           <div className={`w-12 h-12 border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-white ${status?.scheduler_running ? 'bg-brutal-green' : 'bg-neutral-400'}`}>
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
@@ -203,7 +203,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
           </div>
           <div>
             <h3 className="text-xl font-bold uppercase">{t('settings.automation.schedulerStatusTitle')}</h3>
-            <p className="text-sm text-neutral-600 mt-1">
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
               {status?.scheduler_running ? (
                 <span className="text-green-700 font-bold">{t('settings.automation.running')}</span>
               ) : (
@@ -216,7 +216,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
       </div>
 
       {/* Heartbeat Card */}
-      <div className="bg-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
+      <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
         <div className="flex items-start gap-4 mb-4">
           <div className={`w-12 h-12 border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-white ${heartbeat?.enabled ? 'bg-brutal-green' : 'bg-neutral-400'}`}>
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
@@ -225,8 +225,8 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
           </div>
           <div className="flex-1">
             <h3 className="text-xl font-bold uppercase">{t('settings.automation.heartbeatTitle')}</h3>
-            <p className="text-sm text-neutral-600 mt-1">
-              {t('settings.automation.heartbeatDesc')} <span className="font-mono text-xs">/shared/HEARTBEAT.md</span> {t('settings.automation.heartbeatChecklist')}
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+              {t('settings.automation.heartbeatDesc')} <span className="font-mono text-xs text-brutal-black dark:text-white">/shared/HEARTBEAT.md</span> {t('settings.automation.heartbeatChecklist')}
               {heartbeat?.enabled
                 ? ` ${t('settings.automation.heartbeatRunning', { minutes: String(heartbeat.interval_minutes) })}`
                 : heartbeat?.heartbeat_md_exists
@@ -317,9 +317,9 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                   }
                   setMdEditing(!mdEditing);
                 }}
-                className="w-full px-3 py-2 text-left text-xs font-bold uppercase bg-neutral-100 hover:bg-neutral-200 transition-colors flex items-center justify-between"
+                className="w-full px-3 py-2 text-left text-xs font-bold uppercase bg-neutral-100 dark:bg-zinc-900 hover:bg-neutral-200 dark:hover:bg-zinc-800 transition-colors flex items-center justify-between"
               >
-                <span>HEARTBEAT.md</span>
+                <span className="text-brutal-black dark:text-white">HEARTBEAT.md</span>
                 <span className="text-neutral-400">{mdEditing ? t('settings.automation.collapse') : t('settings.automation.heartbeatMdEdit')}</span>
               </button>
               {mdEditing && (
@@ -329,7 +329,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                     onChange={e => { setMdContent(e.target.value); setMdDirty(true); }}
                     rows={10}
                     placeholder="# Heartbeat Checklist&#10;&#10;- Check for anything urgent&#10;- Review pending tasks"
-                    className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 resize-y"
+                    className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500 resize-y"
                   />
                   <div className="flex gap-2">
                     <button
@@ -354,7 +354,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
             </div>
 
             {heartbeat.last_run_at && (
-              <div className="text-xs text-neutral-500 space-y-1">
+              <div className="text-xs text-neutral-500 dark:text-neutral-400 space-y-1">
                 <div>{t('settings.automation.lastRun')} {formatDate(heartbeat.last_run_at)}</div>
                 {heartbeat.last_result && (
                   <div className="truncate" title={heartbeat.last_result}>
@@ -362,7 +362,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                   </div>
                 )}
                 {heartbeat.last_error && (
-                  <div className="text-red-600 truncate" title={heartbeat.last_error}>
+                  <div className="text-red-600 dark:text-red-400 truncate" title={heartbeat.last_error}>
                     {t('settings.automation.errorLabel')} {heartbeat.last_error}
                   </div>
                 )}
@@ -373,14 +373,14 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
       </div>
 
       {/* Add Job Form */}
-      <div className="bg-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
+      <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
         <div className="flex items-start gap-4 mb-6">
           <div className="w-12 h-12 bg-brutal-blue border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-white">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
           </div>
           <div>
             <h3 className="text-xl font-bold uppercase">{t('settings.automation.addNewJobTitle')}</h3>
-            <p className="text-sm text-neutral-600 mt-1">{t('settings.automation.addNewJobDesc')}</p>
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{t('settings.automation.addNewJobDesc')}</p>
           </div>
         </div>
 
@@ -390,13 +390,13 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder={t('settings.automation.jobNamePlaceholder')}
-              className="flex-1 bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
+              className="flex-1 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
             />
             <input
               value={cronExpr}
               onChange={e => setCronExpr(e.target.value)}
               placeholder={t('settings.automation.cronExprPlaceholder')}
-              className="w-52 bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
+              className="w-52 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
             />
           </div>
 
@@ -405,7 +405,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
             onChange={e => setPrompt(e.target.value)}
             placeholder={t('settings.automation.promptPlaceholder')}
             rows={3}
-            className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 resize-y"
+            className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500 resize-y"
           />
 
           <div className="flex flex-wrap gap-4 items-center">
@@ -450,7 +450,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
       </div>
 
       {/* Job List */}
-      <div className="bg-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6">
+      <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6">
         <div className="flex items-start gap-4 mb-6">
           <div className="w-12 h-12 bg-black border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-white">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
@@ -459,12 +459,12 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
           </div>
           <div>
             <h3 className="text-xl font-bold uppercase">{t('settings.automation.scheduledJobsTitle')}</h3>
-            <p className="text-sm text-neutral-600 mt-1">{t('settings.automation.scheduledJobsDesc')}</p>
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{t('settings.automation.scheduledJobsDesc')}</p>
           </div>
         </div>
 
         {jobs.length === 0 ? (
-          <div className="text-center py-8 text-neutral-500 font-bold uppercase">
+          <div className="text-center py-8 text-neutral-500 dark:text-neutral-400 font-bold uppercase">
             {t('settings.automation.noCronJobs')}
           </div>
         ) : (
@@ -472,7 +472,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
             {jobs.map(job => (
               <div
                 key={job.id}
-                className="bg-neutral-50 border-2 border-brutal-black p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                className="bg-neutral-50 dark:bg-zinc-900 border-2 border-brutal-black p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
               >
                 {editingJobId === job.id ? (
                   /* Edit mode */
@@ -482,20 +482,20 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                         value={editFields.name || ''}
                         onChange={e => setEditFields({ ...editFields, name: e.target.value })}
                         placeholder={t('settings.automation.jobNamePlaceholder')}
-                        className="flex-1 bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
+                        className="flex-1 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
                       />
                       <input
                         value={editFields.cron_expr || ''}
                         onChange={e => setEditFields({ ...editFields, cron_expr: e.target.value })}
                         placeholder={t('settings.automation.cronExpression')}
-                        className="w-52 bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50"
+                        className="w-52 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
                       />
                     </div>
                     <textarea
                       value={editFields.prompt || ''}
                       onChange={e => setEditFields({ ...editFields, prompt: e.target.value })}
                       rows={3}
-                      className="w-full bg-white border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 resize-y"
+                      className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500 resize-y"
                     />
                     <div className="flex flex-wrap gap-4 items-center">
                       <BrutalSelect
@@ -545,15 +545,15 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-brutal-black">{job.name}</span>
+                          <span className="font-bold text-brutal-black dark:text-white">{job.name}</span>
                           <span className={`text-[10px] px-2 py-0.5 border-2 font-bold uppercase ${job.active ? 'border-brutal-black bg-brutal-green text-brutal-black' : 'border-brutal-black bg-neutral-200 text-brutal-black'}`}>
                             {job.active ? t('common.on') : t('common.off')}
                           </span>
-                          <span className="text-[10px] px-2 py-0.5 border border-neutral-400 text-neutral-500 uppercase">
+                          <span className="text-[10px] px-2 py-0.5 border border-neutral-400 text-neutral-500 dark:text-neutral-400 uppercase">
                             {job.delivery_mode}
                           </span>
                         </div>
-                        <div className="text-xs font-mono text-neutral-500 mt-1">
+                        <div className="text-xs font-mono text-neutral-500 dark:text-neutral-400 mt-1">
                           <span className="font-bold">{job.cron_expr}</span>
                           {job.model_override && <span className="ml-2">model: {job.model_override}</span>}
                         </div>
@@ -584,7 +584,7 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                     </div>
 
                     {/* Run details */}
-                    <div className="text-xs text-neutral-500 mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
                       <div>Last run: {formatDate(job.last_run_at)}</div>
                       <div>{t('settings.automation.nextRun')} {formatDate(job.next_run_at)}</div>
                       {job.last_result && (
@@ -593,29 +593,29 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                         </div>
                       )}
                       {job.last_error && (
-                        <div className="col-span-2 text-red-600 truncate" title={job.last_error}>
+                        <div className="col-span-2 text-red-600 dark:text-red-400 truncate" title={job.last_error}>
                           {t('settings.automation.errorLabel')} {job.last_error}
                         </div>
                       )}
                     </div>
 
                     {/* Prompt preview */}
-                    <div className="mt-2 text-xs font-mono text-neutral-400 truncate" title={job.prompt}>
+                    <div className="mt-2 text-xs font-mono text-neutral-400 dark:text-neutral-500 truncate" title={job.prompt}>
                       {job.prompt.substring(0, 150)}{job.prompt.length > 150 ? '...' : ''}
                     </div>
 
                     {/* History toggle */}
                     <button
                       onClick={() => toggleHistory(job.id)}
-                      className="mt-2 text-[10px] font-bold uppercase text-neutral-400 hover:text-neutral-600 transition-colors"
+                      className="mt-2 text-[10px] font-bold uppercase text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
                     >
                       {historyJobId === job.id ? t('settings.automation.hideHistory') : t('settings.automation.showHistory')}
                     </button>
 
                     {historyJobId === job.id && (
-                      <div className="mt-2 border-t border-neutral-200 pt-2">
+                      <div className="mt-2 border-t border-neutral-200 dark:border-zinc-700 pt-2">
                         {historyRuns.length === 0 ? (
-                          <div className="text-xs text-neutral-400">{t('settings.automation.noRunHistory')}</div>
+                          <div className="text-xs text-neutral-400 dark:text-neutral-500">{t('settings.automation.noRunHistory')}</div>
                         ) : (
                           <div className="space-y-1">
                             {historyRuns.map(run => (
@@ -623,8 +623,8 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
                                 <span className={`font-bold ${run.status === 'success' ? 'text-green-600' : run.status === 'error' ? 'text-red-600' : 'text-yellow-600'}`}>
                                   {run.status === 'success' ? '+' : run.status === 'error' ? 'x' : '~'}
                                 </span>
-                                <span className="text-neutral-500 shrink-0">{formatDate(run.started_at)}</span>
-                                <span className="text-neutral-400 truncate" title={run.result || run.error || ''}>
+                                <span className="text-neutral-500 dark:text-neutral-400 shrink-0">{formatDate(run.started_at)}</span>
+                                <span className="text-neutral-400 dark:text-neutral-500 truncate" title={run.result || run.error || ''}>
                                   {run.error ? `ERROR: ${run.error.substring(0, 80)}` : run.result ? run.result.substring(0, 80) : ''}
                                 </span>
                               </div>

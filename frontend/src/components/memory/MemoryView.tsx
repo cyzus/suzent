@@ -138,18 +138,18 @@ export const MemoryView: React.FC = () => {
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
             {/* Core Memory Section */}
             <div className="xl:col-span-5 space-y-4">
-              <div className="flex items-center justify-between bg-brutal-black text-white p-3 border-3 border-brutal-black">
+              <div className="flex items-center justify-between bg-white dark:bg-zinc-800 text-brutal-black dark:text-white p-3 border-3 border-brutal-black">
                 <div>
                   <h3 className="font-brutal text-xl uppercase tracking-tight">
                     {t('memoryView.coreMemoryTitle')}
                   </h3>
-                  <p className="text-xs text-neutral-300 font-mono">
+                  <p className="text-xs text-neutral-600 dark:text-neutral-400 font-mono">
                     {t('memoryView.coreMemoryDesc')}
                   </p>
                 </div>
                 <button
                   onClick={() => setShowCoreMemory(!showCoreMemory)}
-                  className="px-2 py-1 border-2 border-white bg-brutal-black hover:bg-white hover:text-brutal-black font-bold text-xs uppercase transition-all"
+                  className="px-2 py-1 border-2 border-brutal-black dark:border-white bg-brutal-black text-white hover:bg-neutral-100 hover:text-brutal-black dark:bg-zinc-700 dark:hover:bg-zinc-600 font-bold text-xs uppercase transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
                 >
                   {showCoreMemory ? '\u2212' : '+'}
                 </button>

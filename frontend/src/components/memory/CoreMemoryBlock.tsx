@@ -207,7 +207,7 @@ export const CoreMemoryBlock: React.FC<CoreMemoryBlockProps> = ({
           </div>
         </div>
       ) : (
-        <div className="prose prose-sm max-w-none">
+        <div className="max-w-none">
           <pre
             className="whitespace-pre-wrap font-mono text-sm p-3 border-3 border-brutal-black rounded-none break-words max-h-[400px] overflow-y-auto scrollbar-thin bg-neutral-50 dark:bg-zinc-900 text-brutal-black dark:text-white"
           >

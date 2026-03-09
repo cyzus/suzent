@@ -138,7 +138,7 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
                         {label}
                     </label>
                 )}
-                <div className={`flex flex-col gap-2 w-full bg-neutral-50 border-2 border-brutal-black p-2 max-h-60 overflow-y-auto scrollbar-thin ${dropdownClassName}`}>
+                <div className={`flex flex-col gap-2 w-full bg-neutral-50 dark:bg-zinc-900 border-2 border-brutal-black p-2 max-h-60 overflow-y-auto scrollbar-thin ${dropdownClassName}`}>
                     {normalizedOptions.length === 0 && (
                         <div className="text-center py-8 text-neutral-500 font-bold uppercase text-xs">
                             {effectiveEmptyMessage}
@@ -154,10 +154,10 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
                                 onClick={() => handleToggle(option.value)}
                                 className={`flex items-center gap-3 px-3 py-2 border-2 text-xs font-bold uppercase transition-all duration-100 w-full text-left group ${active
                                     ? 'bg-brutal-green text-brutal-black border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[-1px] translate-y-[-1px]'
-                                    : 'border-brutal-black text-brutal-black bg-white hover:bg-neutral-100 brutal-btn shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+                                    : 'border-brutal-black text-brutal-black dark:text-white bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 brutal-btn shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
                                     }`}
                             >
-                                <div className={`w-4 h-4 border-2 border-brutal-black flex items-center justify-center transition-colors ${active ? 'bg-brutal-black' : 'bg-white'}`}>
+                                <div className={`w-4 h-4 border-2 border-brutal-black flex items-center justify-center transition-colors ${active ? 'bg-brutal-black' : 'bg-white dark:bg-zinc-900'}`}>
                                     {active && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
                                 </div>
                                 <span className="truncate" title={option.value}>{option.label}</span>
