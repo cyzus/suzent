@@ -31,7 +31,7 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
         <div className="absolute top-2 right-2 opacity-0 group-hover/code:opacity-100 transition-opacity z-10">
           <button
             onClick={handleCopy}
-            className="w-8 h-8 flex items-center justify-center bg-white dark:bg-zinc-700 text-brutal-black dark:text-white border-2 border-brutal-black hover:bg-brutal-yellow transition-colors shadow-sm"
+            className="w-8 h-8 flex items-center justify-center bg-white dark:bg-zinc-700 text-brutal-black dark:text-white border-2 border-brutal-black hover:bg-brutal-yellow dark:hover:bg-brutal-yellow/80 transition-colors shadow-sm"
             title={t('codeBlock.copyText')}
           >
             {copied ? (
@@ -47,7 +47,7 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
           </button>
         </div>
         <div className="bg-transparent overflow-hidden">
-          <pre className="max-w-full text-xs text-brutal-code-text p-0 font-sans leading-relaxed overflow-x-auto whitespace-pre-wrap break-all !bg-transparent">
+          <pre className="max-w-full text-xs text-brutal-code-text dark:text-neutral-300 p-0 font-sans leading-relaxed overflow-x-auto whitespace-pre-wrap break-all !bg-transparent">
             <code className={`language-${safeLang}`}>
               {content}
               {isStreaming && <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1"></span>}
@@ -101,8 +101,8 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
       </div>
 
       {/* Content Area */}
-      <div className={`bg-brutal-code-bg transition-all duration-300 ease-in-out overflow-hidden ${expanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
-        <pre className={`max-w-full text-xs text-brutal-code-text p-4 pt-4 leading-relaxed overflow-x-auto !bg-transparent whitespace-pre font-mono`}>
+      <div className={`bg-brutal-code-bg dark:bg-zinc-900 transition-all duration-300 ease-in-out overflow-hidden ${expanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
+        <pre className={`max-w-full text-xs text-brutal-code-text dark:text-neutral-300 p-4 pt-4 leading-relaxed overflow-x-auto !bg-transparent whitespace-pre font-mono`}>
           <code className={`language-${safeLang}`}>
             {content}
             {isStreaming && <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1"></span>}

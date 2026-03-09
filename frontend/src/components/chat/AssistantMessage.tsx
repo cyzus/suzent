@@ -139,12 +139,12 @@ const ToolSequenceGroup: React.FC<{
                   <span className="tool-group-icon bg-neutral-100 font-bold">+{tools.length - 4}</span>
                 )}
               </div>
-              <span className="text-[10px] font-mono font-bold text-neutral-500 uppercase tracking-tight group-hover/tools:text-brutal-black transition-colors">
+              <span className="text-[10px] font-mono font-bold text-neutral-500 uppercase tracking-tight group-hover/tools:text-brutal-black dark:group-hover/tools:text-white transition-colors">
                 {isAnyRunning ? 'Running' : tools.length} Steps
               </span>
             </>
           ) : (
-            <span className="text-[10px] font-mono font-bold text-neutral-500 uppercase tracking-tight group-hover/tools:text-brutal-black transition-colors">
+            <span className="text-[10px] font-mono font-bold text-neutral-500 uppercase tracking-tight group-hover/tools:text-brutal-black dark:group-hover/tools:text-white transition-colors">
               {isAnyRunning ? 'Running' : 'Hide'} {tools.length} Steps
             </span>
           )}
@@ -316,7 +316,7 @@ const MetricsBadge: React.FC<{ usage?: any; stepInfo?: string }> = ({ usage, ste
 
   return (
     <div className="flex justify-start w-full mt-2 pl-1">
-      <div className="inline-flex items-center gap-2 text-[10px] text-brutal-black font-mono font-bold px-3 py-1 bg-neutral-100 border-2 border-brutal-black shadow-sm select-none">
+      <div className="inline-flex items-center gap-2 text-[10px] text-brutal-black dark:text-neutral-300 font-mono font-bold px-3 py-1 bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-black dark:border-neutral-500 shadow-sm select-none">
         <span>{info}</span>
       </div>
     </div>
@@ -409,8 +409,8 @@ const AGUIPartsContent: React.FC<{
                     <div className="h-[2px] w-12 bg-neutral-400 animate-neo-pulse" />
                   )}
                 </summary>
-                <div className="mt-2 p-3 bg-neutral-50 rounded border border-neutral-200">
-                  <pre className="text-xs italic text-neutral-600 font-medium leading-snug whitespace-pre-wrap overflow-auto">
+                <div className="mt-2 p-3 bg-neutral-50 dark:bg-zinc-900/50 rounded border border-neutral-200 dark:border-zinc-700">
+                  <pre className="text-xs italic text-neutral-600 dark:text-neutral-300 font-medium leading-snug whitespace-pre-wrap overflow-auto">
                     {reasoningText}
                   </pre>
                 </div>
@@ -606,8 +606,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                             <div className="h-[2px] w-12 bg-neutral-400 animate-neo-pulse" />
                           )}
                         </summary>
-                        <div className="mt-2 p-3 bg-neutral-50 rounded border border-neutral-200">
-                          <pre className="text-xs italic text-neutral-600 font-medium leading-snug whitespace-pre-wrap overflow-auto">
+                        <div className="mt-2 p-3 bg-neutral-50 dark:bg-zinc-900/50 rounded border border-neutral-200 dark:border-zinc-700">
+                          <pre className="text-xs italic text-neutral-600 dark:text-neutral-300 font-medium leading-snug whitespace-pre-wrap overflow-auto">
                             {rb.content}
                           </pre>
                         </div>

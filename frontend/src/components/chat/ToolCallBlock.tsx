@@ -51,8 +51,8 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
       {/* Compact pill header */}
       <button
         onClick={() => hasDetails && setExpanded(!expanded)}
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm transition-colors select-none ${hasDetails ? 'cursor-pointer hover:bg-neutral-100' : 'cursor-default'
-          } ${expanded ? 'bg-neutral-100 text-brutal-black' : 'bg-transparent text-neutral-500 hover:text-brutal-black'}`}
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm transition-colors select-none ${hasDetails ? 'cursor-pointer hover:bg-neutral-100 dark:hover:bg-zinc-700' : 'cursor-default'
+          } ${expanded ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white' : 'bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white'}`}
       >
         {/* Icon */}
         <span className={`text-xs shrink-0 ${isStreaming && !hasOutput ? 'animate-spin-slow' : ''}`}>
@@ -123,12 +123,12 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
             {/* Arguments or Running status */}
             {(toolArgs || (isStreaming && !output)) && (
               <div className="min-w-0 w-full overflow-hidden">
-                <div className="text-[10px] font-mono font-bold text-neutral-400 uppercase mb-1 flex items-center gap-2">
+                <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-1 flex items-center gap-2">
                   {isStreaming && !output ? (
                     <>
-                      <span className="text-brutal-black animate-pulse">Running {displayName}...</span>
-                      <div className="h-[2px] flex-1 bg-neutral-100 overflow-hidden rounded-full">
-                        <div className="h-full bg-brutal-black w-1/3 animate-neo-scan" />
+                      <span className="text-brutal-black dark:text-neutral-300 animate-pulse">Running {displayName}...</span>
+                      <div className="h-[2px] flex-1 bg-neutral-100 dark:bg-zinc-700 overflow-hidden rounded-full">
+                        <div className="h-full bg-brutal-black dark:bg-neutral-400 w-1/3 animate-neo-scan" />
                       </div>
                     </>
                   ) : (
@@ -137,7 +137,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                 </div>
                 {toolArgs && (
                   <div className="max-h-[200px] overflow-y-auto scrollbar-thin w-full" style={{ overflowX: 'hidden' }}>
-                    <pre className="tool-call-pre text-[11px] text-neutral-600 leading-relaxed font-mono w-full">
+                    <pre className="tool-call-pre text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed font-mono w-full">
                       {toolArgs}
                     </pre>
                   </div>
@@ -182,9 +182,9 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
             {/* Output section */}
             {output && (
               <div className="min-w-0 w-full overflow-hidden">
-                <div className="text-[10px] font-mono font-bold text-neutral-400 uppercase mb-0.5">{t('toolCallBlock.output')}</div>
+                <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-0.5">{t('toolCallBlock.output')}</div>
                 <div className="max-h-[200px] overflow-y-auto scrollbar-thin w-full" style={{ overflowX: 'hidden' }}>
-                  <pre className="tool-call-pre text-[11px] text-neutral-600 leading-relaxed font-mono w-full">
+                  <pre className="tool-call-pre text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed font-mono w-full">
                     {output}
                   </pre>
                 </div>
