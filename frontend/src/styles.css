@@ -28,9 +28,9 @@ body,
 
 .dark {
   --scrollbar-track: #111111;
-  --scrollbar-thumb: #FF6600;
-  --scrollbar-thumb-hover: #CC5200;
-  --scrollbar-edge: #FF6600;
+  --scrollbar-thumb: var(--brutal-yellow);
+  --scrollbar-thumb-hover: var(--brutal-yellow);
+  --scrollbar-edge: var(--brutal-yellow);
   --brutal-yellow: #FF6600;
 }
 
