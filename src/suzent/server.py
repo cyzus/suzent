@@ -342,6 +342,13 @@ async def shutdown():
             node_manager.unregister_node(node.node_id)
         logger.info("Node system shut down")
 
+    try:
+        from suzent.core.task_registry import get_task_registry
+
+        await get_task_registry().shutdown(timeout=10.0)
+    except Exception as e:
+        logger.error(f"Error shutting down task registry: {e}")
+
     await shutdown_memory_system()
 
     try:
@@ -354,12 +361,15 @@ async def shutdown():
     # Gracefully shut down litellm's logging worker to avoid "Event loop is closed" noise
     try:
         from litellm.litellm_core_utils.logging_worker import GLOBAL_LOGGING_WORKER
+        import asyncio
 
         task = GLOBAL_LOGGING_WORKER._worker_task
         if task and not task.done():
             task.cancel()
             try:
                 await task
+            except asyncio.CancelledError:
+                pass
             except Exception:
                 pass
     except Exception:

@@ -264,6 +264,25 @@ class ChatProcessor:
                     if last_messages is None:
                         last_messages = getattr(agent, "_last_messages", [])
 
+                    # If the stream was interrupted, pydantic-ai does not emit the final ModelResponse.
+                    # We manually append the text generated so far so the agent remembers its interrupted thought.
+                    is_cancelled = (
+                        getattr(deps, "cancel_event", None)
+                        and deps.cancel_event.is_set()
+                    )
+                    if is_cancelled and full_response.strip() and last_messages:
+                        from pydantic_ai.messages import ModelResponse, TextPart
+
+                        if not isinstance(last_messages[-1], ModelResponse):
+                            logger.debug(
+                                f"[ChatProcessor] Stream was cancelled. Appending partial text to history: {len(full_response)} chars"
+                            )
+                            last_messages.append(
+                                ModelResponse(
+                                    parts=[TextPart(content=full_response.strip())]
+                                )
+                            )
+
                     msg_count = len(last_messages) if last_messages else 0
                     logger.debug(
                         f"[ChatProcessor] Starting background post-processing for {chat_id}. "
