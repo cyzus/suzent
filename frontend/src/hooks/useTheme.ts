@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, createElement, type ReactNode } from 'react';
 
 export type Theme = 'light' | 'dark';
 
@@ -19,7 +19,18 @@ function getInitialDarkColor(): string {
   return localStorage.getItem('suzent-color-dark') || DEFAULT_DARK_COLOR;
 }
 
-export function useTheme() {
+interface ThemeContextValue {
+  theme: Theme;
+  toggleTheme: () => void;
+  lightColor: string;
+  darkColor: string;
+  setLightColor: (color: string) => void;
+  setDarkColor: (color: string) => void;
+}
+
+const ThemeContext = createContext<ThemeContextValue | null>(null);
+
+export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [lightColor, setLightColorState] = useState<string>(getInitialLightColor);
   const [darkColor, setDarkColorState] = useState<string>(getInitialDarkColor);
@@ -53,5 +64,15 @@ export function useTheme() {
     setTheme(t => (t === 'dark' ? 'light' : 'dark'));
   }
 
-  return { theme, toggleTheme, lightColor, darkColor, setLightColor, setDarkColor };
+  return createElement(
+    ThemeContext.Provider,
+    { value: { theme, toggleTheme, lightColor, darkColor, setLightColor, setDarkColor } },
+    children,
+  );
+}
+
+export function useTheme(): ThemeContextValue {
+  const ctx = useContext(ThemeContext);
+  if (!ctx) throw new Error('useTheme must be used inside <ThemeProvider>');
+  return ctx;
 }
