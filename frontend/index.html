@@ -9,13 +9,18 @@
       (function () {
         var t = localStorage.getItem('suzent-theme');
         var isDark = t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        if (isDark) {
-          document.documentElement.classList.add('dark');
-        }
-        var color = isDark
-          ? (localStorage.getItem('suzent-color-dark') || '#FF6600')
-          : (localStorage.getItem('suzent-color-light') || '#FFE666');
-        document.documentElement.style.setProperty('--brutal-yellow', color);
+        if (isDark) document.documentElement.classList.add('dark');
+
+        var scheme = localStorage.getItem('suzent-scheme') || 'warm';
+        document.documentElement.dataset.scheme = scheme;
+
+        var colors = {
+          warm:  { light: '#FFE666', dark: '#FF6600' },
+          cold:  { light: '#7DD3FC', dark: '#38BDF8' },
+          green: { light: '#86EFAC', dark: '#4ADE80' },
+        };
+        var c = colors[scheme] || colors.warm;
+        document.documentElement.style.setProperty('--brutal-yellow', isDark ? c.dark : c.light);
       })();
     </script>
   </head>

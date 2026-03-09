@@ -34,6 +34,22 @@ body,
   --brutal-yellow: #FF6600;
 }
 
+/* ── Cold scheme: navy-tinted dark surfaces ────────────────────────────── */
+[data-scheme="cold"].dark .dark\:bg-zinc-900 { background-color: #0c1829; }
+[data-scheme="cold"].dark .dark\:bg-zinc-800 { background-color: #122035; }
+[data-scheme="cold"].dark .dark\:bg-zinc-700 { background-color: #1a2e47; }
+[data-scheme="cold"].dark .bg-dot-pattern {
+  background-image: radial-gradient(rgba(56, 189, 248, 0.18) 1px, transparent 1px);
+}
+
+/* ── Green scheme: forest-tinted dark surfaces ─────────────────────────── */
+[data-scheme="green"].dark .dark\:bg-zinc-900 { background-color: #0a1a0f; }
+[data-scheme="green"].dark .dark\:bg-zinc-800 { background-color: #101f16; }
+[data-scheme="green"].dark .dark\:bg-zinc-700 { background-color: #172b1e; }
+[data-scheme="green"].dark .bg-dot-pattern {
+  background-image: radial-gradient(rgba(74, 222, 128, 0.16) 1px, transparent 1px);
+}
+
 /* Custom scrollbar tuned for the neo-brutalist palette */
 .scrollbar-thin {
   scrollbar-width: thin;
