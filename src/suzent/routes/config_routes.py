@@ -235,11 +235,10 @@ async def verify_provider(request: Request) -> JSONResponse:
             )
 
         models = await provider.list_models()
-        success = await provider.validate_credentials()
 
         return JSONResponse(
             {
-                "success": success,
+                "success": len(models) > 0,
                 "models": [m.model_dump() for m in models],
             }
         )

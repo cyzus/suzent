@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Social Slash Commands**: `/help`, `/y`, `/n` command framework for social channels.
 - **Agent Steering**: user can send additional text while the agent is actively streaming to redirect its behavior. 
 - **Dark Mode**: Add dark mode to the desktop app.
+- **Provider Abstraction**: Add provider abstraction layer for easy provider management.
 
 ### ⚡ Changed
 - **Pydantic AI Migration**: Agent runtime moved from Smolagents to pydantic-ai, bringing native async streaming, structured tool definitions, and deferred-tool support for HITL.
