@@ -19,7 +19,7 @@ from pydantic_ai.messages import (
 from suzent.config import CONFIG
 from suzent.logger import get_logger
 from suzent.llm import LLMClient
-from suzent.core.provider_factory import get_effective_memory_config
+from suzent.core.providers import get_effective_memory_config
 
 logger = get_logger(__name__)
 

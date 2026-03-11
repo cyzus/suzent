@@ -15,9 +15,10 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from suzent.config import CONFIG
-from suzent.core.provider_factory import (
+from suzent.core.providers import (
     PROVIDER_CONFIG,
     ProviderFactory,
+    get_effective_memory_config,
     get_enabled_models_from_db,
 )
 from suzent.database import get_database
@@ -38,9 +39,6 @@ async def get_config(request: Request) -> JSONResponse:
     sandbox_enabled = getattr(CONFIG, "sandbox_enabled", False)
     sandbox_volumes = CONFIG.sandbox_volumes or []
     available_models = get_enabled_models_from_db()
-
-    # Get embedding/extraction models with fallback to CONFIG defaults
-    from suzent.core.provider_factory import get_effective_memory_config
 
     mem_config = get_effective_memory_config()
     embedding_model = mem_config["embedding_model"]

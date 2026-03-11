@@ -17,7 +17,7 @@ from pydantic_ai.tools import DeferredToolRequests
 
 from suzent.core.agent_deps import AgentDeps
 from suzent.core.model_factory import create_pydantic_ai_model
-from suzent.core.provider_factory import get_enabled_models_from_db
+from suzent.core.providers import get_enabled_models_from_db
 
 from suzent.config import CONFIG
 from suzent.logger import get_logger

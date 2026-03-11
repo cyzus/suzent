@@ -1,9 +1,4 @@
-"""
-Provider package for Suzent.
-
-Re-exports all public symbols so existing imports from
-`suzent.core.provider_factory` continue to work via the shim.
-"""
+"""Provider package for Suzent."""
 
 from suzent.core.providers.base import BaseProvider, Model, _temporary_env, prefixed
 from suzent.core.providers.catalog import (
