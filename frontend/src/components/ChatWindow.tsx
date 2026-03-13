@@ -301,6 +301,29 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   isRightSidebarOpen = false,
   onRightSidebarToggle = () => { }
 }) => {
+  const HEARTBEAT_HEALTHY_WINDOW_MS = 18_000;
+
+  const formatRelativeHeartbeatTime = (iso?: string): string | null => {
+    if (!iso) return null;
+    const timestamp = new Date(iso).getTime();
+    if (Number.isNaN(timestamp)) return null;
+    const deltaMs = Date.now() - timestamp;
+    if (deltaMs < 0) return null;
+
+    const deltaSec = Math.floor(deltaMs / 1000);
+    if (deltaSec < 10) return 'just now';
+    if (deltaSec < 60) return `${deltaSec}s ago`;
+
+    const deltaMin = Math.floor(deltaSec / 60);
+    if (deltaMin < 60) return `${deltaMin}m ago`;
+
+    const deltaHours = Math.floor(deltaMin / 60);
+    if (deltaHours < 24) return `${deltaHours}h ago`;
+
+    const deltaDays = Math.floor(deltaHours / 24);
+    return `${deltaDays}d ago`;
+  };
+
   // Store hooks
   const {
     messages,
@@ -346,6 +369,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Set to true when the backend signals HEARTBEAT_OK — onFinish should discard the message.
   const heartbeatOkRef = useRef(false);
+  const heartbeatInFlightRef = useRef(false);
+  const [heartbeatLastOkAt, setHeartbeatLastOkAt] = useState<string | null>(null);
 
   // ── AG-UI streaming hook ─────────────────────────────────────────────
   const {
@@ -367,6 +392,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       if (heartbeatOkRef.current) {
         // HEARTBEAT_OK: backend rolled back the messages; discard streamed content and reload.
+        heartbeatInFlightRef.current = false;
+        setHeartbeatLastOkAt(new Date().toISOString());
         heartbeatOkRef.current = false;
         setIsStreaming(false, chatId);
         streamingChatIdRef.current = null;
@@ -382,6 +409,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         addMessage(storeMsg, chatId);
       }
       setIsStreaming(false, chatId);
+      heartbeatInFlightRef.current = false;
       streamingChatIdRef.current = null;
       clearParts();
       setCurrentUsage(null);
@@ -399,12 +427,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         setCurrentUsage(value);
       } else if (name === 'heartbeat_ok') {
         // Backend signals that this heartbeat run was OK and messages were rolled back.
+        setHeartbeatLastOkAt(new Date().toISOString());
         heartbeatOkRef.current = true;
       }
     },
     onError: (error) => {
       console.error('AG-UI error:', error);
       const chatId = streamingChatIdRef.current || activeChatIdRef.current;
+      heartbeatInFlightRef.current = false;
       heartbeatOkRef.current = false;
       setIsStreaming(false, chatId);
       streamingChatIdRef.current = null;
@@ -416,8 +446,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     const handler = (e: any) => {
       const { body, options } = e.detail || {};
+      heartbeatInFlightRef.current = Boolean(body?.is_heartbeat);
       if (body) {
         sendAGUI(body, options).catch(err => {
+          heartbeatInFlightRef.current = false;
           console.error('[ChatWindow] External sendAGUI failed:', err);
         });
       }
@@ -559,6 +591,59 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // DEBUG — remove once streaming is fixed
   console.log('[stream]', { isStreaming, activeStreamingChatId, currentChatId, streamingForCurrentChat, parts: streamingParts.length });
   const configReady = !!(safeBackendConfig && safeConfig.model && safeConfig.agent);
+
+  const heartbeatEnabled = !!safeConfig.heartbeat_enabled;
+  const heartbeatIsRunning = heartbeatEnabled && heartbeatInFlightRef.current && streamingForCurrentChat;
+  const heartbeatLastSeen = heartbeatLastOkAt || safeConfig.heartbeat_last_run_at || null;
+  const heartbeatLastSeenTs = heartbeatLastSeen ? new Date(heartbeatLastSeen).getTime() : 0;
+  const heartbeatFresh = heartbeatEnabled && heartbeatLastSeenTs > 0 && (Date.now() - heartbeatLastSeenTs) <= HEARTBEAT_HEALTHY_WINDOW_MS;
+  const heartbeatRelative = formatRelativeHeartbeatTime(heartbeatLastSeen || undefined);
+
+  const heartbeatBadge = (() => {
+    if (!heartbeatEnabled) {
+      return {
+        signClass: 'bg-neutral-200 dark:bg-zinc-700 text-neutral-500 dark:text-neutral-400',
+        containerClass: 'bg-neutral-50 dark:bg-zinc-800 text-neutral-500 dark:text-neutral-400',
+        text: t('chatWindow.heartbeatOff'),
+        isBeating: false,
+        fast: false,
+        ekg: 'flat',
+      };
+    }
+
+    if (heartbeatIsRunning) {
+      return {
+        signClass: 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black',
+        containerClass: 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white bg-dot-pattern',
+        text: t('chatWindow.heartbeatRunning'),
+        isBeating: true,
+        fast: true,
+        ekg: 'active',
+      };
+    }
+
+    if (heartbeatFresh) {
+      return {
+        signClass: 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black',
+        containerClass: 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white',
+        text: t('chatWindow.heartbeatHealthy'),
+        isBeating: true,
+        fast: false,
+        ekg: 'active',
+      };
+    }
+
+    return {
+      signClass: 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white',
+      containerClass: 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white',
+      text: heartbeatRelative
+        ? t('chatWindow.heartbeatLastRun', { time: heartbeatRelative })
+        : t('chatWindow.heartbeatEnabled'),
+      isBeating: false,
+      fast: false,
+      ekg: 'slow',
+    };
+  })();
 
   // Auto-scroll
   const { scrollContainerRef, bottomRef, showScrollButton, scrollToBottom } = useAutoScroll(
@@ -779,6 +864,51 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {/* Main Chat Column */}
       <div className="flex flex-col flex-1 min-w-0 h-full relative">
+        <div className="absolute top-2 right-6 z-30 pointer-events-none">
+          <div
+            className={`inline-flex items-center shadow-[2px_2px_0_0_#000] border-2 border-brutal-black font-bold uppercase tracking-wide pointer-events-auto cursor-default group transition-transform hover:-translate-y-0.5`}
+            aria-live="polite"
+            title={heartbeatBadge.text}
+          >
+            <div className={`flex items-center justify-center px-1.5 py-1 h-full border-r-2 border-brutal-black ${heartbeatBadge.signClass}`}>
+              <svg 
+                className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${heartbeatBadge.isBeating ? (heartbeatBadge.fast ? 'pixel-heart-beat-fast' : 'pixel-heart-beat') : ''}`}
+                viewBox="0 0 24 24" 
+                fill="currentColor"
+              >
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+              </svg>
+            </div>
+            
+            <div className={`px-2 py-1 flex items-center gap-1.5 ${heartbeatBadge.containerClass}`}>
+              <div className="w-8 h-4 sm:w-10 sm:h-5 relative border-r-2 border-current pr-1 flex-shrink-0 opacity-80">
+                <svg viewBox="0 0 100 50" preserveAspectRatio="none" className="w-full h-full">
+                  {heartbeatBadge.ekg !== 'flat' ? (
+                    <path
+                      className={`ekg-active-wave ${heartbeatBadge.ekg === 'active' ? (heartbeatBadge.fast ? '[animation-duration:1.5s]' : '[animation-duration:3s]') : '[animation-duration:6s] opacity-50'}`}
+                      pathLength="100"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="6"
+                      d={heartbeatBadge.ekg === 'slow' ? "M 0 25 L 30 25 L 34 30 L 38 15 L 44 35 L 50 25 L 100 25" : "M 0 25 L 10 25 L 14 30 L 22 5 L 28 45 L 34 25 L 100 25"}
+                    />
+                  ) : (
+                    <path
+                      className="ekg-flatline"
+                      pathLength="100"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="6"
+                      d="M 0 25 L 100 25"
+                    />
+                  )}
+                </svg>
+              </div>
+              <span className="text-[10px] sm:text-xs max-w-[120px] sm:max-w-[180px] truncate">{heartbeatBadge.text}</span>
+            </div>
+          </div>
+        </div>
+
         <div className="relative flex-1 min-h-0">
           <div
             ref={scrollContainerRef}

@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pydantic AI Migration**: Agent runtime moved from Smolagents to pydantic-ai, bringing native async streaming, structured tool definitions, and deferred-tool support for HITL.
 - **Stream Parser**: Unified SSE parser (`StreamParser`) shared across CLI, social, and internal consumers — replaces per-module parsing logic.
 - **Approval Manager**: Centralized `approval_manager` module replaces per-stream approval state, enabling cross-interface resolution (e.g. approve from CLI while streaming in desktop).
+- **Heartbeat**: Heartbeat can be enabled per session.
 
 ### 🐛 Fixed
 - **Image Input**: Fixed image input error.
