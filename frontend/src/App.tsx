@@ -77,21 +77,38 @@ function AppInner(): React.ReactElement {
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
 
   const { refresh } = usePlan();
-  const { currentChatId, setViewSwitcher } = useChatStore();
+  const { currentChatId, setViewSwitcher, refreshChatList, chats, loadChat } = useChatStore();
   const setStatusMsg = useStatusStore(s => s.setStatus);
   const { theme, toggleTheme } = useTheme();
   const { t } = useI18n();
 
-  // Poll cron notifications every 5 seconds
+  // Use refs so the interval callback always sees the latest values without re-creating the interval.
+  const refreshChatListRef = React.useRef(refreshChatList);
+  const loadChatRef = React.useRef(loadChat);
+  const currentChatIdRef = React.useRef(currentChatId);
+  const chatsRef = React.useRef(chats);
+  React.useEffect(() => { refreshChatListRef.current = refreshChatList; }, [refreshChatList]);
+  React.useEffect(() => { loadChatRef.current = loadChat; }, [loadChat]);
+  React.useEffect(() => { currentChatIdRef.current = currentChatId; }, [currentChatId]);
+  React.useEffect(() => { chatsRef.current = chats; }, [chats]);
+
+  // Poll every 5 s: drain cron notifications + refresh sidebar + reload open social chat.
   React.useEffect(() => {
     const interval = setInterval(async () => {
       const notifications = await drainCronNotifications();
       for (const n of notifications) {
         setStatusMsg(`[${n.job_name}] ${n.result}`, 'info', 8000);
       }
+      refreshChatListRef.current();
+
+      // If a social chat is open, reload its messages (social brain writes silently to DB).
+      const chatId = currentChatIdRef.current;
+      if (chatId && chatsRef.current.some(c => c.id === chatId && !!c.platform)) {
+        loadChatRef.current(chatId);
+      }
     }, 5000);
     return () => clearInterval(interval);
-  }, [setStatusMsg]);
+  }, [setStatusMsg]); // stable: only depends on setStatusMsg
 
   function handleRightSidebarToggle(isOpen: boolean): void {
     setIsRightSidebarOpen(isOpen);

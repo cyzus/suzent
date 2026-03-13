@@ -12,11 +12,11 @@ Suzent has two separate automation systems:
 | | Cron | Heartbeat |
 |---|---|---|
 | **Purpose** | Execute a specific task at a specific time | Periodic "wake up, check if anything needs attention" |
-| **Session** | Isolated (`cron-{id}`) — fresh, stateless | Persistent (`heartbeat-main`) — accumulates context |
+| **Session** | Isolated (`cron-{id}`) — fresh, stateless | Per-session — executes in the target chat's context |
 | **Timing** | Cron expression (precise) | Configurable interval (default 30 min) |
-| **Config** | Per-job prompt | Single `/shared/HEARTBEAT.md` checklist |
+| **Config** | Per-job prompt | Per-session `heartbeat.md` instructions |
 | **Batching** | One job = one task | One tick can check multiple things |
-| **Context** | No conversation history | Sees recent check history |
+| **Context** | No conversation history | Sees recent check history in that chat session |
 
 **Use Cron when:** The user wants a scheduled action — daily reports, weekly summaries, timed reminders.
 
@@ -68,15 +68,15 @@ You should use the Bash tool to run these CLI commands.
 
 ### How It Works
 
-1. User creates `/shared/HEARTBEAT.md` (via Settings > Automation editor or file tools)
-2. HeartbeatRunner fires at a configurable interval (default 30 minutes) in a persistent `heartbeat-main` chat
-3. Agent reads the checklist, checks each item
-4. If nothing needs attention → reply `HEARTBEAT_OK` (notification suppressed)
-5. If something is actionable → surface it via the status bar
+1. User enables heartbeat in the chat's left sidebar settings (Config)
+2. HeartbeatRunner fires at a configurable interval (default 30 minutes) within the specific chat session
+3. Agent reads the `heartbeat.md` instructions configured for that chat, checks each item
+4. If nothing needs attention → reply `HEARTBEAT_OK` (notification suppressed and history rolled back)
+5. If something is actionable → surface it via the status bar or the chat
 
-### HEARTBEAT.md Format
+### heartbeat.md Format
 
-The checklist lives at `/shared/HEARTBEAT.md` (alongside `/shared/memory/`). Keep it concise:
+The checklist lives in the chat config itself. Keep it concise:
 
 ```markdown
 # Heartbeat Checklist
@@ -86,7 +86,7 @@ The checklist lives at `/shared/HEARTBEAT.md` (alongside `/shared/memory/`). Kee
 - Check for any pending follow-ups.
 ```
 
-The agent can read and edit this file directly using the file tools (`/shared/HEARTBEAT.md`). Users can also edit it from Settings > Automation in the heartbeat card.
+The user configures this from the specific chat's sidebar.
 
 Rules for the agent during heartbeat:
 - Follow the checklist strictly
@@ -96,18 +96,17 @@ Rules for the agent during heartbeat:
 ### Heartbeat CLI
 
 ```bash
-suzent heartbeat status
-suzent heartbeat enable
-suzent heartbeat disable
-suzent heartbeat run
-suzent heartbeat interval <minutes>   # set the check-in interval (e.g. 15)
+suzent heartbeat status -c <chat_id>
+suzent heartbeat enable -c <chat_id>
+suzent heartbeat disable -c <chat_id>
+suzent heartbeat run -c <chat_id>
+suzent heartbeat interval <minutes> -c <chat_id>   # set the check-in interval (e.g. 15)
 ```
 
 ## Important Notes
 
 - Cron jobs are **isolated and stateless** — each run starts fresh
-- Heartbeat is **persistent and context-aware** — sees its own recent history
+- Heartbeat executes in the **existing persistent chat session** allowing it to see its own recent history
 - **Memory is disabled** for both to avoid polluting the knowledge base
 - Cron jobs that fail 5 times are **automatically deactivated**
-- The cron scheduler ticks every 30 seconds; heartbeat interval is configurable via CLI (`suzent heartbeat interval <minutes>`), Settings UI, or REST API (default 30 min)
-- HEARTBEAT.md is stored in `/shared/` so both the agent and the frontend can access it
+- The cron scheduler ticks every 30 seconds; heartbeat polls every 1 minute and triggers based on the chat's configured interval (default 30 min)

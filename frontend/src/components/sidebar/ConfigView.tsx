@@ -7,6 +7,7 @@ import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalSelect } from '../BrutalSelect';
 import { useI18n } from '../../i18n';
 
+
 type MCPUrlServer = {
   type: 'url';
   name: string;
@@ -26,13 +27,90 @@ type MCPStdioServer = {
 type MCPServer = MCPUrlServer | MCPStdioServer;
 
 export function ConfigView(): React.ReactElement {
-  const { config, setConfig, backendConfig } = useChatStore();
+  const { config, setConfig, backendConfig, currentChatId, loadChat, isStreaming } = useChatStore();
   const { t } = useI18n();
 
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [loading, setLoading] = useState(false);
+  const [liveLastRunAt, setLiveLastRunAt] = useState<string | null>(null);
+  const [liveLastError, setLiveLastError] = useState<string | null>(null);
+  const [isEditingMd, setIsEditingMd] = useState(false);
+  const [mdDraft, setMdDraft] = useState('');
 
   const prevMcpStateRef = useRef<string>('');
+
+  // Keep stable refs to avoid re-running the poll effect when these change
+  const setConfigRef = useRef(setConfig);
+  const loadChatRef = useRef(loadChat);
+  const lastResultRef = useRef<string | null>(null);
+  const isEditingInstructionsRef = useRef(false); // don't overwrite mid-edit
+  const isStreamingRef = useRef(isStreaming);
+  const heartbeatDispatchedRef = useRef(false); // prevent double-dispatch per due cycle
+  const configRef = useRef(config);
+  useEffect(() => { setConfigRef.current = setConfig; }, [setConfig]);
+  useEffect(() => { loadChatRef.current = loadChat; }, [loadChat]);
+  useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
+  useEffect(() => { configRef.current = config; }, [config]);
+
+  // Poll live heartbeat status every 10 s — always active for the current chat.
+  // This syncs state from external changes (CLI, another session) back to the UI,
+  // and refreshes chat messages when a new non-OK heartbeat result is detected.
+  useEffect(() => {
+    if (!currentChatId) return;
+    lastResultRef.current = null; // reset on chat switch
+    heartbeatDispatchedRef.current = false;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const { fetchHeartbeatStatus } = await import('../../lib/api');
+        const status = await fetchHeartbeatStatus(currentChatId);
+        if (!cancelled) {
+          setLiveLastRunAt(status.last_run_at ?? null);
+          setLiveLastError(status.last_error ?? null);
+          // Sync enabled/interval/instructions back — bail out early if unchanged
+          setConfigRef.current(prev => {
+            const sameEnabled = prev.heartbeat_enabled === status.enabled;
+            const sameInterval = status.interval_minutes == null || prev.heartbeat_interval_minutes === status.interval_minutes;
+            const sameInstructions = isEditingInstructionsRef.current ||
+              status.heartbeat_instructions == null ||
+              prev.heartbeat_instructions === status.heartbeat_instructions;
+            if (sameEnabled && sameInterval && sameInstructions) return prev;
+            return {
+              ...prev,
+              heartbeat_enabled: status.enabled,
+              ...(status.interval_minutes != null ? { heartbeat_interval_minutes: status.interval_minutes } : {}),
+              ...(!isEditingInstructionsRef.current && status.heartbeat_instructions != null
+                ? { heartbeat_instructions: status.heartbeat_instructions } : {}),
+            };
+          });
+          // If there's a new non-OK result we haven't seen yet, refresh the chat messages
+          const newResult = status.last_result;
+          if (newResult && newResult !== 'HEARTBEAT_OK' && newResult !== lastResultRef.current) {
+            lastResultRef.current = newResult;
+            loadChatRef.current(currentChatId);
+          }
+
+          // If the backend signals a heartbeat is due, initiate the SSE stream from the frontend
+          // so the user sees streaming in the chat window.
+          if (status.heartbeat_due && !isStreamingRef.current && !heartbeatDispatchedRef.current) {
+            heartbeatDispatchedRef.current = true;
+            window.dispatchEvent(new CustomEvent('agui:send-message', {
+              detail: {
+                body: { message: '', chat_id: currentChatId, is_heartbeat: true },
+              },
+            }));
+          }
+          // Reset dispatch flag when heartbeat is no longer due
+          if (!status.heartbeat_due) {
+            heartbeatDispatchedRef.current = false;
+          }
+        }
+      } catch { /* silently ignore poll errors */ }
+    };
+    poll();
+    const id = setInterval(poll, 10_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [currentChatId]); // refs are intentionally omitted — updated via their own effects above
 
   useEffect(() => {
     fetchMcpServers().then(data => {
@@ -211,6 +289,135 @@ export function ConfigView(): React.ReactElement {
       </div>
 
       <div className="space-y-2">
+        <label className="block font-bold tracking-wide text-brutal-black dark:text-white uppercase">Session Heartbeat</label>
+        <button
+          type="button"
+          onClick={async () => {
+            const newEnabled = !config.heartbeat_enabled;
+            update({ heartbeat_enabled: newEnabled });
+            try {
+              if (newEnabled) {
+                const { enableHeartbeat } = await import('../../lib/api');
+                await enableHeartbeat(currentChatId || undefined);
+              } else {
+                const { disableHeartbeat } = await import('../../lib/api');
+                await disableHeartbeat(currentChatId || undefined);
+              }
+            } catch (e: any) {
+              // Roll back the optimistic update if the API call fails
+              update({ heartbeat_enabled: !newEnabled });
+              alert(e.message);
+            }
+          }}
+          className={`w-full px-3 py-2 border-3 text-xs font-bold uppercase transition-all duration-200 flex items-center justify-between ${config.heartbeat_enabled
+            ? 'bg-brutal-green text-brutal-black border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+            : 'border-brutal-black text-brutal-black dark:text-white bg-white dark:bg-zinc-800 hover:bg-brutal-yellow dark:hover:bg-zinc-700 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+            }`}
+        >
+          <span>Heartbeat</span>
+          <span className={`text-[10px] px-2 py-1 border-2 font-bold ${config.heartbeat_enabled
+            ? 'border-brutal-black bg-white text-brutal-black'
+            : 'border-brutal-black bg-neutral-200 dark:bg-zinc-600 text-brutal-black dark:text-white'
+            }`}>
+            {config.heartbeat_enabled ? t('common.enabled') : t('common.disabled')}
+          </span>
+        </button>
+        {config.heartbeat_enabled && (
+          <div className="space-y-2 mt-2 p-3 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold uppercase text-neutral-600 dark:text-neutral-400">Interval (minutes)</label>
+              <input
+                type="number"
+                min={1}
+                value={config.heartbeat_interval_minutes || 30}
+                onChange={e => update({ heartbeat_interval_minutes: parseInt(e.target.value, 10) || 30 })}
+                onBlur={async e => {
+                  const mins = parseInt(e.target.value, 10) || 30;
+                  try {
+                    const { setHeartbeatInterval } = await import('../../lib/api');
+                    await setHeartbeatInterval(mins, currentChatId || undefined);
+                  } catch { /* best-effort */ }
+                }}
+                className="w-24 bg-white dark:bg-zinc-800 border-2 border-brutal-black px-2 py-1 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-700 dark:text-white"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-bold uppercase text-neutral-600 dark:text-neutral-400">heartbeat.md</label>
+                {!isEditingMd ? (
+                  <button
+                    type="button"
+                    onClick={() => { setMdDraft(config.heartbeat_instructions || ''); setIsEditingMd(true); isEditingInstructionsRef.current = true; }}
+                    className="text-[10px] font-bold uppercase px-2 py-0.5 border border-brutal-black dark:border-neutral-500 hover:bg-brutal-yellow dark:hover:bg-zinc-700 transition-colors"
+                  >Edit</button>
+                ) : (
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const { saveHeartbeatMd } = await import('../../lib/api');
+                          await saveHeartbeatMd(mdDraft, currentChatId || undefined);
+                          update({ heartbeat_instructions: mdDraft });
+                        } catch { /* best-effort */ }
+                        setIsEditingMd(false);
+                        isEditingInstructionsRef.current = false;
+                      }}
+                      className="text-[10px] font-bold uppercase px-2 py-0.5 border border-brutal-black bg-brutal-green dark:bg-green-700 hover:brightness-105 transition-colors"
+                    >Save</button>
+                    <button
+                      type="button"
+                      onClick={() => { setIsEditingMd(false); isEditingInstructionsRef.current = false; }}
+                      className="text-[10px] font-bold uppercase px-2 py-0.5 border border-brutal-black hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors"
+                    >Cancel</button>
+                  </div>
+                )}
+              </div>
+              {isEditingMd ? (
+                <textarea
+                  value={mdDraft}
+                  onChange={e => setMdDraft(e.target.value)}
+                  autoFocus
+                  rows={6}
+                  placeholder="- Check for updates&#10;- Follow up on previous task"
+                  className="w-full bg-white dark:bg-zinc-800 border-2 border-brutal-black px-2 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-700 dark:text-white resize-y"
+                />
+              ) : (
+                <div className="min-h-[3rem] px-2 py-2 font-mono text-xs border border-brutal-black dark:border-neutral-600 bg-white dark:bg-zinc-800 dark:text-neutral-300 whitespace-pre-wrap break-words opacity-80">
+                  {config.heartbeat_instructions || <span className="italic text-neutral-400">No instructions yet — click Edit</span>}
+                </div>
+              )}
+            </div>
+            {(liveLastRunAt || config.heartbeat_last_run_at) && (
+              <div className="text-[10px] text-neutral-500 font-mono mt-1">
+                Last run: {new Date(liveLastRunAt || config.heartbeat_last_run_at!).toLocaleString()}
+              </div>
+            )}
+            {liveLastError && (
+              <div className="text-[10px] text-red-500 font-mono mt-1 break-all">
+                Last error: {liveLastError}
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!currentChatId) return;
+                  window.dispatchEvent(new CustomEvent('agui:send-message', {
+                    detail: { body: { message: '', chat_id: currentChatId, is_heartbeat: true } },
+                  }));
+                }}
+                className="px-3 py-1 bg-brutal-blue text-white border-2 border-brutal-black font-bold uppercase text-[10px] hover:brightness-110 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none transition-colors"
+              >
+                Run Now
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2">
         <div className="text-[10px] font-bold uppercase text-brutal-black dark:text-white">{t('config.volumeMounts.label')}</div>
 
         {/* Global volumes from config file (read-only) */}
@@ -235,10 +442,8 @@ export function ConfigView(): React.ReactElement {
           <div className="text-[9px] font-bold uppercase text-brutal-black dark:text-neutral-400 opacity-60">{t('config.volumeMounts.perChat')}</div>
 
           <div className="flex flex-col gap-2 p-2 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900">
-            <div className="flex flex-col gap-2 p-2 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900">
-              <div className="text-[10px] text-brutal-black dark:text-neutral-400 opacity-60 italic">
-                {t('config.volumeMounts.manageFromFolder')}
-              </div>
+            <div className="text-[10px] text-brutal-black dark:text-neutral-400 opacity-60 italic">
+              {t('config.volumeMounts.manageFromFolder')}
             </div>
           </div>
 
@@ -311,4 +516,4 @@ export function ConfigView(): React.ReactElement {
       </div>
     </div>
   );
-};
+}

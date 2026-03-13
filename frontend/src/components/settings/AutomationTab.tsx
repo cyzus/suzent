@@ -4,7 +4,6 @@ import { useI18n } from '../../i18n';
 import {
   CronJob,
   CronRun,
-  HeartbeatStatus,
   fetchCronJobs,
   createCronJob,
   updateCronJob,
@@ -12,32 +11,26 @@ import {
   triggerCronJob,
   fetchCronStatus,
   fetchCronJobRuns,
-  fetchHeartbeatStatus,
-  enableHeartbeat,
-  disableHeartbeat,
-  triggerHeartbeat,
-  setHeartbeatInterval,
-  fetchHeartbeatMd,
-  saveHeartbeatMd,
+  fetchHeartbeatGlobalConfig,
+  saveHeartbeatGlobalConfig,
 } from '../../lib/api';
+import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalSelect } from '../BrutalSelect';
 
 interface AutomationTabProps {
   models: string[];
+  tools?: string[];
 }
 
-export function AutomationTab({ models }: AutomationTabProps): React.ReactElement {
+export function AutomationTab({ models, tools = [] }: AutomationTabProps): React.ReactElement {
   const { t } = useI18n();
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [status, setStatus] = useState<{ scheduler_running: boolean; total_jobs: number; active_jobs: number } | null>(null);
-  const [heartbeat, setHeartbeat] = useState<HeartbeatStatus | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Heartbeat MD editor state
-  const [mdContent, setMdContent] = useState('');
-  const [mdEditing, setMdEditing] = useState(false);
-  const [mdSaving, setMdSaving] = useState(false);
-  const [mdDirty, setMdDirty] = useState(false);
+  // Global heartbeat allowed tools
+  const [heartbeatAllowedTools, setHeartbeatAllowedTools] = useState<string[]>([]);
+  const [useCustomHeartbeatTools, setUseCustomHeartbeatTools] = useState(false);
 
   // Form state (new job)
   const [name, setName] = useState('');
@@ -57,15 +50,11 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
 
   const refresh = async () => {
     try {
-      const [jobList, statusData, hbStatus, md] = await Promise.all([
-        fetchCronJobs(), fetchCronStatus(), fetchHeartbeatStatus(), fetchHeartbeatMd(),
+      const [jobList, statusData] = await Promise.all([
+        fetchCronJobs(), fetchCronStatus()
       ]);
       setJobs(jobList);
       setStatus(statusData);
-      setHeartbeat(hbStatus);
-      if (!mdDirty) {
-        setMdContent(md.content);
-      }
     } catch (e) {
       console.error('Failed to load automation data:', e);
     }
@@ -73,6 +62,11 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
 
   useEffect(() => {
     refresh();
+    fetchHeartbeatGlobalConfig().then(cfg => {
+      const allowed = cfg.allowed_tools || [];
+      setHeartbeatAllowedTools(allowed);
+      setUseCustomHeartbeatTools(allowed.length > 0);
+    });
   }, []);
 
   const handleCreate = async () => {
@@ -215,162 +209,67 @@ export function AutomationTab({ models }: AutomationTabProps): React.ReactElemen
         </div>
       </div>
 
-      {/* Heartbeat Card */}
-      <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
-        <div className="flex items-start gap-4 mb-4">
-          <div className={`w-12 h-12 border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-white ${heartbeat?.enabled ? 'bg-brutal-green' : 'bg-neutral-400'}`}>
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-            </svg>
-          </div>
-          <div className="flex-1">
-            <h3 className="text-xl font-bold uppercase">{t('settings.automation.heartbeatTitle')}</h3>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
-              {t('settings.automation.heartbeatDesc')} <span className="font-mono text-xs text-brutal-black dark:text-white">/shared/HEARTBEAT.md</span> {t('settings.automation.heartbeatChecklist')}
-              {heartbeat?.enabled
-                ? ` ${t('settings.automation.heartbeatRunning', { minutes: String(heartbeat.interval_minutes) })}`
-                : heartbeat?.heartbeat_md_exists
-                  ? ` ${t('settings.automation.heartbeatDisabled')}`
-                  : ` ${t('settings.automation.heartbeatCreate')}`}
-            </p>
-          </div>
-        </div>
 
-        {heartbeat && (
+
+      {/* Heartbeat Tool Approvals */}
+      {tools.length > 0 && (
+        <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
+          <div className="flex items-start gap-4 mb-6">
+            <div className="w-12 h-12 bg-brutal-green border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-brutal-black">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-xl font-bold uppercase">Heartbeat Tool Approvals</h3>
+              <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                Tools that are automatically approved when heartbeat runs. Leave on <strong>All Tools</strong> to approve everything, or pick <strong>Custom</strong> to restrict.
+              </p>
+            </div>
+          </div>
+
           <div className="space-y-3">
-            <div className="flex items-center gap-3">
+            <div className="flex gap-2">
               <button
-                onClick={async () => {
-                  setLoading(true);
-                  try {
-                    if (heartbeat.enabled) {
-                      await disableHeartbeat();
-                    } else {
-                      await enableHeartbeat();
-                    }
-                    await refresh();
-                  } catch (e: any) {
-                    alert(e.message);
-                  } finally {
-                    setLoading(false);
-                  }
+                onClick={() => {
+                  setUseCustomHeartbeatTools(false);
+                  setHeartbeatAllowedTools([]);
+                  saveHeartbeatGlobalConfig({ allowed_tools: [] });
                 }}
-                disabled={loading || !heartbeat.heartbeat_md_exists}
-                className={`px-4 py-2 border-2 border-brutal-black font-bold uppercase text-xs transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50 ${heartbeat.enabled ? 'bg-neutral-200 text-brutal-black' : 'bg-brutal-green text-brutal-black'}`}
+                className={`px-3 py-1 text-xs font-bold uppercase border-2 border-brutal-black transition-all ${!useCustomHeartbeatTools ? 'bg-brutal-black text-white' : 'bg-white dark:bg-zinc-700 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600'}`}
               >
-                {heartbeat.enabled ? t('settings.automation.disable') : t('settings.social.enable')}
+                All Tools
               </button>
               <button
-                onClick={async () => {
-                  setLoading(true);
-                  try {
-                    await triggerHeartbeat();
-                    setTimeout(refresh, 3000);
-                  } finally {
-                    setLoading(false);
-                  }
+                onClick={() => {
+                  setUseCustomHeartbeatTools(true);
                 }}
-                disabled={loading || !heartbeat.heartbeat_md_exists}
-                className="px-4 py-2 bg-brutal-blue text-white border-2 border-brutal-black font-bold uppercase text-xs transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
+                className={`px-3 py-1 text-xs font-bold uppercase border-2 border-brutal-black transition-all ${useCustomHeartbeatTools ? 'bg-brutal-black text-white' : 'bg-white dark:bg-zinc-700 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600'}`}
               >
-                {t('settings.automation.runNow')}
+                Custom
               </button>
-              <div className="flex items-center gap-1 ml-auto">
-                <label className="text-xs font-bold uppercase text-neutral-600">{t('settings.automation.heartbeatIntervalLabel')}</label>
-                <input
-                  type="number"
-                  min={1}
-                  defaultValue={heartbeat.interval_minutes}
-                  key={heartbeat.interval_minutes}
-                  onBlur={async (e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (!val || val < 1 || val === heartbeat.interval_minutes) return;
-                    setLoading(true);
-                    try {
-                      await setHeartbeatInterval(val);
-                      await refresh();
-                    } catch (err: any) {
-                      alert(err.message);
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
-                  onKeyDown={async (e) => {
-                    if (e.key === 'Enter') {
-                      (e.target as HTMLInputElement).blur();
-                    }
-                  }}
-                  className="w-16 bg-white border-2 border-brutal-black px-2 py-1 font-mono text-xs text-center focus:outline-none focus:bg-neutral-50"
-                />
-                <span className="text-xs text-neutral-500">{t('settings.automation.heartbeatMinutesUnit')}</span>
-              </div>
             </div>
-
-            {/* HEARTBEAT.md Editor */}
-            <div className="border-2 border-brutal-black">
-              <button
-                onClick={async () => {
-                  if (!mdEditing) {
-                    const md = await fetchHeartbeatMd();
-                    setMdContent(md.content);
-                    setMdDirty(false);
-                  }
-                  setMdEditing(!mdEditing);
+            {useCustomHeartbeatTools && (
+              <BrutalMultiSelect
+                variant="list"
+                value={heartbeatAllowedTools}
+                onChange={(newTools) => {
+                  setHeartbeatAllowedTools(newTools);
+                  saveHeartbeatGlobalConfig({ allowed_tools: newTools });
                 }}
-                className="w-full px-3 py-2 text-left text-xs font-bold uppercase bg-neutral-100 dark:bg-zinc-900 hover:bg-neutral-200 dark:hover:bg-zinc-800 transition-colors flex items-center justify-between"
-              >
-                <span className="text-brutal-black dark:text-white">HEARTBEAT.md</span>
-                <span className="text-neutral-400">{mdEditing ? t('settings.automation.collapse') : t('settings.automation.heartbeatMdEdit')}</span>
-              </button>
-              {mdEditing && (
-                <div className="p-3 space-y-2">
-                  <textarea
-                    value={mdContent}
-                    onChange={e => { setMdContent(e.target.value); setMdDirty(true); }}
-                    rows={10}
-                    placeholder="# Heartbeat Checklist&#10;&#10;- Check for anything urgent&#10;- Review pending tasks"
-                    className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500 resize-y"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={async () => {
-                        setMdSaving(true);
-                        try {
-                          await saveHeartbeatMd(mdContent);
-                          setMdDirty(false);
-                          await refresh();
-                        } finally {
-                          setMdSaving(false);
-                        }
-                      }}
-                      disabled={mdSaving || !mdDirty}
-                      className="px-4 py-1.5 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
-                    >
-                      {mdSaving ? t('common.saving') : t('common.save')}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {heartbeat.last_run_at && (
-              <div className="text-xs text-neutral-500 dark:text-neutral-400 space-y-1">
-                <div>{t('settings.automation.lastRun')} {formatDate(heartbeat.last_run_at)}</div>
-                {heartbeat.last_result && (
-                  <div className="truncate" title={heartbeat.last_result}>
-                    {t('settings.automation.result')} {heartbeat.last_result === 'HEARTBEAT_OK' ? t('settings.automation.resultOk') : heartbeat.last_result.substring(0, 120)}
-                  </div>
-                )}
-                {heartbeat.last_error && (
-                  <div className="text-red-600 dark:text-red-400 truncate" title={heartbeat.last_error}>
-                    {t('settings.automation.errorLabel')} {heartbeat.last_error}
-                  </div>
-                )}
-              </div>
+                options={tools
+                  .filter(t => !['MemorySearchTool', 'MemoryBlockUpdateTool'].includes(t))
+                  .map(t => ({
+                    value: t,
+                    label: t.replace(/Tool$/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase(),
+                  }))
+                }
+                emptyMessage="No tools selected"
+              />
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Add Job Form */}
       <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">

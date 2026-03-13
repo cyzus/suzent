@@ -76,6 +76,18 @@ You have the SocialMessageTool available for sending messages to social channels
 """
 
 
+HEARTBEAT_BASE_INSTRUCTIONS = (
+    "Check in on this session. Are there any open tasks, pending questions, "
+    "or things that need follow-up? If nothing needs attention, reply HEARTBEAT_OK."
+)
+
+HEARTBEAT_PROMPT_TEMPLATE = (
+    "Background Heartbeat Check. Read the following instructions and follow them strictly. "
+    "Do not infer or repeat old tasks from prior messages. "
+    "If nothing needs attention or you have completed the check, reply EXACTLY with 'HEARTBEAT_OK'.\n\n"
+    "---\n{instructions}\n---"
+)
+
 PLATFORM_CHAR_LIMITS = {
     "telegram": 4096,
     "slack": 40000,

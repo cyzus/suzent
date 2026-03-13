@@ -74,6 +74,7 @@ async def stream_agent_responses(
     message_history: list | None = None,
     chat_id: Optional[str] = None,
     deferred_tool_results: Optional[DeferredToolResults] = None,
+    is_heartbeat: bool = False,
 ) -> AsyncGenerator[str, None]:
     """
     Runs the pydantic-ai agent with streaming and yields AG-UI formatted events.
@@ -147,6 +148,8 @@ async def stream_agent_responses(
         finishes normally.
         """
         nonlocal partial_history
+        final_response_text = ""
+        original_count = len(message_history) if message_history else 0
         prompt = message
         history = list(message_history) if message_history else None
         current_deferred = deferred_tool_results
@@ -170,6 +173,7 @@ async def stream_agent_responses(
                             )
                             if isinstance(event, AgentRunResultEvent):
                                 last_result_event = event
+                                final_response_text = str(event.result.output)
                             await sse_queue.put(("event", event))
                         except Exception as e:
                             logger.error(
@@ -196,6 +200,19 @@ async def stream_agent_responses(
 
                         deferred = last_result_event.result.output
                         if deferred.approvals:
+                            # Short-circuit: if auto_approve_tools is set (e.g. heartbeat / scheduler),
+                            # approve all tools immediately without prompting the user.
+                            if getattr(deps, "auto_approve_tools", False):
+                                auto_approvals: Dict[str, bool] = {
+                                    tc.tool_call_id: True for tc in deferred.approvals
+                                }
+                                current_deferred = DeferredToolResults(
+                                    approvals=auto_approvals
+                                )
+                                history = current_history
+                                prompt = ""
+                                continue
+
                             # Split approvals into policy-decided (auto) and those
                             # still requiring the user's explicit decision.
                             auto_approvals: Dict[str, bool] = {}
@@ -251,6 +268,18 @@ async def stream_agent_responses(
 
                     # Agent finished (or was cancelled) — exit loop
                     break
+
+            # If this was a heartbeat run and it ended with HEARTBEAT_OK, rollback
+            if not control.cancel_event.is_set() and is_heartbeat and chat_id:
+                from suzent.core.heartbeat import get_active_heartbeat
+
+                runner = get_active_heartbeat()
+                if runner and runner._is_heartbeat_ok(final_response_text):
+                    logger.info(f"Heartbeat HEARTBEAT_OK for {chat_id}, rolling back.")
+                    partial_history = partial_history[:original_count]
+                    deps.last_messages = partial_history
+                    # Signal the frontend to discard the streamed heartbeat content.
+                    await sse_queue.put(("heartbeat_ok", None))
 
         except Exception as e:
             await sse_queue.put(("error", e))
@@ -332,6 +361,10 @@ async def stream_agent_responses(
                             ),
                         )
                     )
+
+                elif msg_type == "heartbeat_ok":
+                    # Tell the frontend to discard streamed heartbeat content.
+                    await out_queue.put(("chunk", _encode_custom("heartbeat_ok", {})))
 
                 elif msg_type == "done":
                     break

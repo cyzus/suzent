@@ -62,7 +62,7 @@ Unlike most agents, **SUZENT** features dual workspaces: a cross-session workspa
 
 **SUZENT** supports two independent automation systems for proactive, scheduled agent execution:
 - **Cron Jobs** — Schedule prompts to run on any cron expression in isolated sessions. Full CRUD via the Settings UI, CLI (`suzent cron`), and REST API.
-- **Heartbeat** — Periodic ambient monitoring that reads a checklist from your shared workspace and notifies you only when something needs attention.
+- **Heartbeat** — Periodic ambient monitoring that reads a per-session checklist configured in your chat and notifies you only when something needs attention.
 
 Both systems run with full memory enabled, so the agent retains context across scheduled tasks.
 

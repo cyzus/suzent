@@ -33,6 +33,10 @@ export interface ChatConfig {
   sandbox_enabled?: boolean;
   sandbox_volumes?: string[];
   tool_approval_policy?: Record<string, string>;
+  heartbeat_enabled?: boolean;
+  heartbeat_interval_minutes?: number;
+  heartbeat_instructions?: string;
+  heartbeat_last_run_at?: string;
 }
 
 export interface Chat {

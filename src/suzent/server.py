@@ -100,6 +100,8 @@ from suzent.routes.heartbeat_routes import (
     get_heartbeat_md,
     save_heartbeat_md,
     set_heartbeat_interval,
+    get_heartbeat_global_config,
+    save_heartbeat_global_config,
 )
 from suzent.channels.manager import ChannelManager
 from suzent.nodes.manager import NodeManager
@@ -197,7 +199,7 @@ async def startup():
         # Start heartbeat
         global heartbeat_runner
         try:
-            heartbeat_runner = HeartbeatRunner(interval_minutes=30)
+            heartbeat_runner = HeartbeatRunner(interval_minutes=1)
             # Route heartbeat alerts through the scheduler notification deque
             if scheduler_brain:
                 heartbeat_runner.set_notification_callback(
@@ -460,7 +462,9 @@ app = Starlette(
         Route("/heartbeat/trigger", trigger_heartbeat, methods=["POST"]),
         Route("/heartbeat/md", get_heartbeat_md, methods=["GET"]),
         Route("/heartbeat/md", save_heartbeat_md, methods=["PUT"]),
-        Route("/heartbeat/interval", set_heartbeat_interval, methods=["PUT"]),
+        Route("/heartbeat/interval", set_heartbeat_interval, methods=["PUT", "POST"]),
+        Route("/heartbeat/config", get_heartbeat_global_config, methods=["GET"]),
+        Route("/heartbeat/config", save_heartbeat_global_config, methods=["POST"]),
     ],
     middleware=[
         Middleware(

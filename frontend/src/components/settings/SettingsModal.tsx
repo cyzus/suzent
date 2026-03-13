@@ -389,6 +389,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                   {activeCategory === 'automation' && (
                     <AutomationTab
                       models={backendConfig?.models || []}
+                      tools={backendConfig?.tools || []}
                     />
                   )}
 

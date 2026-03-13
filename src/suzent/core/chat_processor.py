@@ -53,6 +53,7 @@ class ChatProcessor:
         config_override: Dict = None,
         is_social: bool = False,
         resume_approvals: List[Dict] = None,
+        is_heartbeat: bool = False,
         _message_history_override: list = None,
     ) -> AsyncGenerator[str, None]:
         """
@@ -235,6 +236,7 @@ class ChatProcessor:
                 message_history=message_history,
                 chat_id=chat_id,
                 deferred_tool_results=deferred_tool_results,
+                is_heartbeat=is_heartbeat,
             ):
                 try:
                     if chunk.startswith("data: "):
@@ -325,6 +327,7 @@ class ChatProcessor:
                         tool_names=getattr(agent, "_tool_names", []),
                         user_content=message_content,
                         agent_content=full_response,
+                        skip_messages=is_heartbeat,
                     )
                     logger.info(
                         f"[ChatProcessor] Background post-processing complete for {chat_id}"
@@ -476,6 +479,7 @@ class ChatProcessor:
         on_event: Any = None,
         resume_approvals: List[Dict] = None,
         is_social: bool = False,
+        is_heartbeat: bool = False,
     ) -> str:
         """Run a conversation turn and return only the final response text.
 
@@ -493,6 +497,7 @@ class ChatProcessor:
             config_override=config_override,
             resume_approvals=resume_approvals,
             is_social=is_social,
+            is_heartbeat=is_heartbeat,
         ):
             # Use the shared parser to turn raw SSE chunks into events
             for event in parser.parse([chunk]):
@@ -612,6 +617,7 @@ class ChatProcessor:
         tool_names: List[str],
         user_content: str,
         agent_content: str,
+        skip_messages: bool = False,
     ) -> None:
         """Persist conversation state to database."""
         try:
@@ -626,23 +632,41 @@ class ChatProcessor:
             chat_messages = current_chat.messages if current_chat else []
             prev_turn_count = getattr(current_chat, "turn_count", 0) or 0
 
-            # Only append if frontend didn't already save a rich HTML message for this turn.
-            # If the frontend pushed recently, the last message is already from the assistant
-            # (or the length of chat_messages grew).
-            if not chat_messages or chat_messages[-1].get("role") != "assistant":
-                if user_content:
-                    last_msg = chat_messages[-1] if chat_messages else None
-                    is_duplicate_user = (
-                        last_msg
-                        and last_msg.get("role") == "user"
-                        and last_msg.get("content") == user_content
-                    )
-                    if not is_duplicate_user:
-                        chat_messages.append({"role": "user", "content": user_content})
-                chat_messages.append({"role": "assistant", "content": agent_content})
-                db.update_chat(chat_id, agent_state=agent_state, messages=chat_messages)
-            else:
+            if skip_messages:
+                # Heartbeat: rollback already owns message state; only save agent_state.
                 db.update_chat(chat_id, agent_state=agent_state)
+            elif chat_id.startswith("social-"):
+                # Social chats: rebuild the complete display log from the full agent history
+                # so chat.messages is always a faithful log of all exchanges — including any
+                # that were missed while the old incremental-append logic was in use.
+                rebuilt = _rebuild_display_messages(messages)
+                db.update_chat(
+                    chat_id, agent_state=agent_state, messages=rebuilt or chat_messages
+                )
+            else:
+                # Desktop chats: frontend pushes messages via forceSaveNow ~200ms after stream.
+                # Only append here when the frontend hasn't already saved this turn.
+                last_msg_role = chat_messages[-1].get("role") if chat_messages else None
+                if last_msg_role != "assistant":
+                    if user_content:
+                        last_msg = chat_messages[-1] if chat_messages else None
+                        is_duplicate_user = (
+                            last_msg
+                            and last_msg.get("role") == "user"
+                            and last_msg.get("content") == user_content
+                        )
+                        if not is_duplicate_user:
+                            chat_messages.append(
+                                {"role": "user", "content": user_content}
+                            )
+                    chat_messages.append(
+                        {"role": "assistant", "content": agent_content}
+                    )
+                    db.update_chat(
+                        chat_id, agent_state=agent_state, messages=chat_messages
+                    )
+                else:
+                    db.update_chat(chat_id, agent_state=agent_state)
 
             # Update session lifecycle fields
             try:
@@ -714,3 +738,36 @@ def _extract_tool_calls(messages: list) -> List[AgentAction]:
                     )
 
     return actions
+
+
+def _rebuild_display_messages(messages: list) -> list:
+    """
+    Reconstruct a flat [{role, content}] display log from pydantic-ai message history.
+    Used for social chats so chat.messages is always a complete, faithful log.
+    """
+    from pydantic_ai.messages import (
+        ModelRequest,
+        ModelResponse,
+        UserPromptPart,
+        TextPart,
+    )
+
+    result = []
+    for msg in messages:
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, UserPromptPart):
+                    content = (
+                        part.content
+                        if isinstance(part.content, str)
+                        else str(part.content)
+                    )
+                    if content.strip():
+                        result.append({"role": "user", "content": content})
+        elif isinstance(msg, ModelResponse):
+            text = "".join(
+                part.content for part in msg.parts if isinstance(part, TextPart)
+            )
+            if text.strip():
+                result.append({"role": "assistant", "content": text})
+    return result

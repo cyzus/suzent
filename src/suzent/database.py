@@ -439,6 +439,13 @@ class ChatDatabase:
             session.commit()
             return len(plans)
 
+    def get_active_heartbeats(self) -> List[ChatModel]:
+        """Get all chats that have heartbeat enabled in their config."""
+        with self._session() as session:
+            statement = select(ChatModel)
+            chats = session.exec(statement).all()
+            return [c for c in chats if c.config.get("heartbeat_enabled") is True]
+
     # -------------------------------------------------------------------------
     # Plan Operations
     # -------------------------------------------------------------------------

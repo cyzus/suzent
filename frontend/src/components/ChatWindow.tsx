@@ -316,6 +316,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setIsStreaming,
     currentChatId,
     createNewChat,
+    loadChat,
     isStreaming,
     activeStreamingChatId,
   } = useChatStore();
@@ -343,6 +344,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Ref to lock the chat ID for the current stream so switching chats doesn't misroute messages
   const streamingChatIdRef = useRef<string | null>(null);
 
+  // Set to true when the backend signals HEARTBEAT_OK — onFinish should discard the message.
+  const heartbeatOkRef = useRef(false);
+
   // ── AG-UI streaming hook ─────────────────────────────────────────────
   const {
     parts: streamingParts,
@@ -355,12 +359,24 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     pendingApprovalCount,
     addApprovalDecision,
     consumeApprovalDecisions,
-    error: chatError,
   } = useAGUI({
     url: `${getApiBase()}/chat`,
     onFinish: (parts) => {
       const chatId = streamingChatIdRef.current || activeChatIdRef.current;
       console.log('[stream] onFinish', { chatId, parts: parts.length });
+
+      if (heartbeatOkRef.current) {
+        // HEARTBEAT_OK: backend rolled back the messages; discard streamed content and reload.
+        heartbeatOkRef.current = false;
+        setIsStreaming(false, chatId);
+        streamingChatIdRef.current = null;
+        clearParts();
+        setCurrentUsage(null);
+        // Reload chat from DB to reflect rolled-back state.
+        setTimeout(() => { try { loadChat(chatId!); } catch { } }, 300);
+        return;
+      }
+
       const storeMsg = aguiPartsToStoreMessage(parts, currentUsage);
       if (storeMsg.content.trim()) {
         addMessage(storeMsg, chatId);
@@ -381,16 +397,34 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         refreshPlan(chatId);
       } else if (name === 'usage_update') {
         setCurrentUsage(value);
+      } else if (name === 'heartbeat_ok') {
+        // Backend signals that this heartbeat run was OK and messages were rolled back.
+        heartbeatOkRef.current = true;
       }
     },
     onError: (error) => {
       console.error('AG-UI error:', error);
       const chatId = streamingChatIdRef.current || activeChatIdRef.current;
+      heartbeatOkRef.current = false;
       setIsStreaming(false, chatId);
       streamingChatIdRef.current = null;
       stopInFlightRef.current = false;
     },
   });
+
+  // Listen for external message triggers (e.g. from Heartbeat "Run Now")
+  useEffect(() => {
+    const handler = (e: any) => {
+      const { body, options } = e.detail || {};
+      if (body) {
+        sendAGUI(body, options).catch(err => {
+          console.error('[ChatWindow] External sendAGUI failed:', err);
+        });
+      }
+    };
+    window.addEventListener('agui:send-message', handler);
+    return () => window.removeEventListener('agui:send-message', handler);
+  }, [sendAGUI]);
 
   // HITL: tool approval handler (Stateless Resume)
   // Batches multiple approval decisions and only sends to backend when all are decided.

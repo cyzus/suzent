@@ -442,41 +442,55 @@ export interface HeartbeatStatus {
   enabled: boolean;
   running: boolean;
   interval_minutes: number;
-  heartbeat_md_exists: boolean;
+  heartbeat_instructions?: string;
   last_run_at: string | null;
   last_result: string | null;
   last_error: string | null;
+  heartbeat_due?: boolean;
 }
 
-export async function fetchHeartbeatStatus(): Promise<HeartbeatStatus> {
-  const res = await fetch(`${getApiBase()}/heartbeat/status`);
+export async function fetchHeartbeatStatus(chatId?: string): Promise<HeartbeatStatus> {
+  const url = chatId ? `${getApiBase()}/heartbeat/status?chat_id=${encodeURIComponent(chatId)}` : `${getApiBase()}/heartbeat/status`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error('Failed to fetch heartbeat status');
   return res.json();
 }
 
-export async function enableHeartbeat(): Promise<void> {
-  const res = await fetch(`${getApiBase()}/heartbeat/enable`, { method: 'POST' });
+export async function enableHeartbeat(chatId?: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/heartbeat/enable`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(chatId ? { chat_id: chatId } : {})
+  });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || 'Failed to enable heartbeat');
   }
 }
 
-export async function disableHeartbeat(): Promise<void> {
-  const res = await fetch(`${getApiBase()}/heartbeat/disable`, { method: 'POST' });
+export async function disableHeartbeat(chatId?: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/heartbeat/disable`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(chatId ? { chat_id: chatId } : {})
+  });
   if (!res.ok) throw new Error('Failed to disable heartbeat');
 }
 
-export async function triggerHeartbeat(): Promise<void> {
-  const res = await fetch(`${getApiBase()}/heartbeat/trigger`, { method: 'POST' });
+export async function triggerHeartbeat(chatId?: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/heartbeat/trigger`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(chatId ? { chat_id: chatId } : {})
+  });
   if (!res.ok) throw new Error('Failed to trigger heartbeat');
 }
 
-export async function setHeartbeatInterval(minutes: number): Promise<void> {
+export async function setHeartbeatInterval(minutes: number, chatId?: string): Promise<void> {
   const res = await fetch(`${getApiBase()}/heartbeat/interval`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ interval_minutes: minutes }),
+    body: JSON.stringify({ interval_minutes: minutes, chat_id: chatId }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -484,19 +498,43 @@ export async function setHeartbeatInterval(minutes: number): Promise<void> {
   }
 }
 
-export async function fetchHeartbeatMd(): Promise<{ content: string; exists: boolean }> {
-  const res = await fetch(`${getApiBase()}/heartbeat/md`);
+export async function fetchHeartbeatMd(chatId?: string): Promise<{ content: string; exists: boolean }> {
+  if (!chatId) return { content: '', exists: false };
+  const res = await fetch(`${getApiBase()}/heartbeat/md?chat_id=${encodeURIComponent(chatId)}`);
   if (!res.ok) return { content: '', exists: false };
   return res.json();
 }
 
-export async function saveHeartbeatMd(content: string): Promise<boolean> {
+export async function saveHeartbeatMd(content: string, chatId?: string): Promise<boolean> {
+  if (!chatId) return false;
   const res = await fetch(`${getApiBase()}/heartbeat/md`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, chat_id: chatId }),
   });
   return res.ok;
+}
+
+export interface HeartbeatGlobalConfig {
+  allowed_tools?: string[];
+}
+
+export async function fetchHeartbeatGlobalConfig(): Promise<HeartbeatGlobalConfig> {
+  try {
+    const res = await fetch(`${getApiBase()}/heartbeat/config`);
+    if (!res.ok) return {};
+    return res.json();
+  } catch {
+    return {};
+  }
+}
+
+export async function saveHeartbeatGlobalConfig(cfg: HeartbeatGlobalConfig): Promise<void> {
+  await fetch(`${getApiBase()}/heartbeat/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cfg),
+  });
 }
 
 export async function saveSocialConfig(config: SocialConfig): Promise<boolean> {

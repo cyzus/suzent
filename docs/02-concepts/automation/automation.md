@@ -9,11 +9,11 @@ Suzent has two separate automation systems that allow it to act proactively with
 | | Cron | Heartbeat |
 |---|---|---|
 | **Purpose** | Execute a specific task at a specific time | Periodic "wake up, check if anything needs attention" |
-| **Session** | Isolated (`cron-{id}`) — fresh, stateless | Persistent (`heartbeat-main`) — accumulates context |
+| **Session** | Isolated (`cron-{id}`) — fresh, stateless | Per-session — executes in the target chat's context |
 | **Timing** | Cron expression (precise) | Fixed interval (default 30 min) |
-| **Config** | Per-job prompt | Single `/shared/HEARTBEAT.md` checklist |
+| **Config** | Per-job prompt | Per-session `heartbeat.md` instructions |
 | **Batching** | One job = one task | One tick can check multiple things |
-| **Context** | No conversation history | Sees recent check history |
+| **Context** | No conversation history | Sees recent check history in that chat session |
 
 **Use Cron when:** you want a scheduled action — daily reports, weekly summaries, timed reminders.
 
@@ -116,18 +116,18 @@ suzent cron status
 
 ### How It Works
 
-1. Create a checklist at `/shared/HEARTBEAT.md` (via Settings > Automation editor or file tools)
-2. Enable the heartbeat system
-3. HeartbeatRunner fires at a configurable interval (default 30 minutes) in a persistent `heartbeat-main` chat
-4. Agent reads the checklist, checks each item
-5. If nothing needs attention, agent replies `HEARTBEAT_OK` (notification suppressed)
-6. If something is actionable, it surfaces via the status bar
+1. Enable the heartbeat system directly in the left sidebar **Config** tab of any chat
+2. Configure your specific `heartbeat.md` instructions directly in the chat's sidebar
+3. HeartbeatRunner fires at the configured interval (default 30 minutes) and executes those instructions
+4. Agent reads the checks, processes tasks
+5. If nothing needs attention, agent replies `HEARTBEAT_OK` and the turn is rolled back (suppressed) to avoid clogging your chat history
+6. If something is actionable, it surfaces via the status bar or the chat
 
-Unlike cron jobs, the heartbeat runs in a **persistent chat session** that accumulates context across ticks. This means the agent can see what it checked previously and avoid repeating stale information.
+Unlike cron jobs, the heartbeat executes in an **existing persistent chat session** allowing it to access previous interactions and context specific to that chat.
 
-### HEARTBEAT.md
+### heartbeat.md Instructions
 
-The checklist lives at `/shared/HEARTBEAT.md`, alongside the memory workspace (`/shared/memory/`). This location allows both the agent and the frontend to read and edit it.
+The checklist settings live directly inside the chat configuration of the session, rather than a global file.
 
 Example checklist:
 
@@ -139,15 +139,9 @@ Example checklist:
 - Check for any pending follow-ups.
 ```
 
-An example template is provided at `config/HEARTBEAT.example.md`.
+#### Editing heartbeat.md
 
-#### Editing HEARTBEAT.md
-
-There are three ways to edit the checklist:
-
-1. **Settings UI** — Open Settings > Automation, expand the HEARTBEAT.md editor in the heartbeat card
-2. **Agent** — Ask the agent to edit `/shared/HEARTBEAT.md` using file tools
-3. **CLI/File system** — Edit the file directly at `{sandbox_data_path}/shared/HEARTBEAT.md`
+1. **Sidebar UI** — Open the specific chat session, click the **Config** tab in the left sidebar, and edit the `heartbeat.md instructions` directly.
 
 #### Rules for the Agent During Heartbeat
 
@@ -162,32 +156,31 @@ When the agent determines nothing needs attention, it replies with `HEARTBEAT_OK
 
 ### Managing Heartbeat
 
-#### Settings UI
+#### Sidebar UI
 
-The heartbeat card in **Settings > Automation** shows:
-- Current status (enabled/disabled/running)
-- Configurable interval (editable inline) and whether HEARTBEAT.md exists
-- Enable/Disable toggle and Run Now button
-- Inline HEARTBEAT.md editor
-- Last run time, result, and errors
+The "Session Heartbeat" section in a chat's **Config** sidebar allows you to:
+- Toggle the heartbeat on or off
+- Configure the wait interval (in minutes)
+- Edit the session's specific `heartbeat.md`
+- See the last run time and trigger an immediate run
 
 #### CLI
 
 ```bash
-# Show heartbeat status
-suzent heartbeat status
+# Show heartbeat status for a session
+suzent heartbeat status -c <chat-id>
 
-# Enable heartbeat (requires HEARTBEAT.md to exist)
-suzent heartbeat enable
+# Enable heartbeat for a session
+suzent heartbeat enable -c <chat-id>
 
 # Disable heartbeat
-suzent heartbeat disable
+suzent heartbeat disable -c <chat-id>
 
 # Set the heartbeat interval (in minutes)
-suzent heartbeat interval 15
+suzent heartbeat interval 15 -c <chat-id>
 
 # Trigger an immediate heartbeat tick
-suzent heartbeat run
+suzent heartbeat run -c <chat-id>
 ```
 
 #### REST API
@@ -234,29 +227,29 @@ The `SchedulerBrain` follows the same singleton pattern as `SocialBrain`:
 
 ### Heartbeat
 
-The `HeartbeatRunner` runs independently:
+The `HeartbeatRunner` polls the database every 1 minute:
 
 ```
 ┌──────────────────┐
-│  HeartbeatRunner  │  sleep(interval)
+│  HeartbeatRunner  │  sleep(60s)
 │  ._run_loop()     │──────────────────┐
 └──────────────────┘                   │
                                        ▼
                               ┌─────────────────┐
-                              │ Read HEARTBEAT.md│
-                              │ from /shared/    │
+                              │ Poll DB for     │
+                              │ active sessions │
                               └────────┬────────┘
                                        │
                               ┌────────▼────────┐
-                              │ Process turn in  │
-                              │ heartbeat-main   │
-                              │ (persistent)     │
+                              │ Load config, run│
+                              │ heartbeat for   │
+                              │ due sessions    │
                               └────────┬────────┘
                                        │
                               ┌────────▼────────┐
-                              │ HEARTBEAT_OK?    │
-                              │ Yes → suppress   │
-                              │ No → notify      │
+                              │ HEARTBEAT_OK?   │
+                              │ Yes → rollback  │
+                              │ No → notify     │
                               └─────────────────┘
 ```
 
@@ -320,14 +313,14 @@ Memory is **disabled** for both cron and heartbeat executions to avoid polluting
 2. Fix the underlying issue (model auth, prompt errors, etc.)
 3. Re-enable the job via toggle in UI or `suzent cron toggle <id>`
 
-### Heartbeat Won't Enable
+### Heartbeat Won't Run
 
-**Problem:** "HEARTBEAT.md not found" error
+**Problem:** Heartbeat is enabled, but nothing happens
 
 **Solutions:**
-1. Create `/shared/HEARTBEAT.md` via the Settings editor or file tools
-2. Copy the template: `config/HEARTBEAT.example.md`
-3. Ensure the file has meaningful content (not just headers)
+1. Check the server logs (with `--debug` enabled) to ensure HeartbeatRunner is polling
+2. Verify your chat interval has passed
+3. If it outputs HEARTBEAT_OK, it successfully ran but rolled itself back (this is intended behavior to avoid contextual bloat)
 
 ### HEARTBEAT_OK Not Suppressing
 

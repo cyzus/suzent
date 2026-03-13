@@ -3668,7 +3668,7 @@ requires-dist = [
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.0.0" },
     { name = "psutil", specifier = ">=5.9.0" },
     { name = "pydantic", specifier = ">=2.0" },
-    { name = "pydantic-ai-slim", extras = ["openai", "anthropic", "google", "groq", "mcp", "ag-ui", "litellm"], specifier = ">=0.2.0" },
+    { name = "pydantic-ai-slim", extras = ["openai", "anthropic", "google", "groq", "mcp", "ag-ui"], specifier = ">=0.2.0" },
     { name = "pytest", specifier = ">=9.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },

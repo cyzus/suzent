@@ -12,6 +12,7 @@ import traceback
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
+from pathlib import Path
 
 from suzent.config import CONFIG
 from suzent.database import get_database
@@ -56,6 +57,7 @@ async def chat(request: Request) -> StreamingResponse:
                 resume_approvals = []
 
             files_list = form.getlist("files")
+            is_heartbeat = False
         else:
             data = await request.json()
             message = data.get("message", "").strip()
@@ -65,8 +67,9 @@ async def chat(request: Request) -> StreamingResponse:
             stream = data.get("stream", True)
             files_list = data.get("files", [])
             resume_approvals = data.get("resume_approvals", [])
+            is_heartbeat = data.get("is_heartbeat", False)
 
-        if not message and not files_list and not resume_approvals:
+        if not message and not files_list and not resume_approvals and not is_heartbeat:
             return StreamingResponse(
                 iter(
                     ['data: {"type": "error", "data": "Empty message received."}\n\n']
@@ -86,6 +89,73 @@ async def chat(request: Request) -> StreamingResponse:
         processor = ChatProcessor()
         config_override = build_agent_config(config, require_social_tool=False)
 
+        # When the frontend initiates a heartbeat SSE stream, claim the pending slot and
+        # update heartbeat_last_run_at so the backend deferred fallback doesn't double-run.
+        if is_heartbeat and chat_id:
+            try:
+                from suzent.core.heartbeat import get_active_heartbeat
+                from suzent.database import ChatModel
+                from datetime import datetime, timezone
+                from sqlmodel import Session
+                from sqlalchemy.orm.attributes import flag_modified
+
+                runner = get_active_heartbeat()
+                if runner:
+                    runner._pending_heartbeats.pop(chat_id, None)
+
+                    # Apply heartbeat tool-approval policy from global config.
+                    from suzent.routes.heartbeat_routes import _load_heartbeat_config
+
+                    allowed = _load_heartbeat_config().get("allowed_tools") or []
+                    if allowed:
+                        hb_policy = {t: "always_allow" for t in allowed}
+                        existing = config_override.get("tool_approval_policy") or {}
+                        config_override["tool_approval_policy"] = {
+                            **existing,
+                            **hb_policy,
+                        }
+                    else:
+                        config_override["auto_approve_tools"] = True
+
+                    # Update heartbeat_last_run_at so the deferred fallback doesn't double-run.
+                    db = get_database()
+                    with Session(db.engine) as _s:
+                        _chat = _s.get(ChatModel, chat_id)
+                        if _chat and _chat.config:
+                            _chat.config["heartbeat_last_run_at"] = datetime.now(
+                                timezone.utc
+                            ).isoformat()
+                            _chat.config.pop("heartbeat_last_result", None)
+                            flag_modified(_chat, "config")
+                            _s.commit()
+
+                # Build prompt from file — frontend no longer needs to know the template.
+                from suzent.prompts import (
+                    HEARTBEAT_BASE_INSTRUCTIONS,
+                    HEARTBEAT_PROMPT_TEMPLATE,
+                )
+                from pathlib import Path
+
+                hb_path = (
+                    Path(CONFIG.sandbox_data_path)
+                    / "sessions"
+                    / chat_id
+                    / "heartbeat.md"
+                )
+                custom = (
+                    hb_path.read_text(encoding="utf-8").strip()
+                    if hb_path.exists()
+                    else ""
+                )
+                combined = (
+                    (HEARTBEAT_BASE_INSTRUCTIONS + "\n\n" + custom)
+                    if custom
+                    else HEARTBEAT_BASE_INSTRUCTIONS
+                )
+                message = HEARTBEAT_PROMPT_TEMPLATE.format(instructions=combined)
+            except Exception as _hb_err:
+                logger.warning(f"Heartbeat pre-processing failed: {_hb_err}")
+
         generator = processor.process_turn(
             chat_id=chat_id,
             user_id=CONFIG.user_id,
@@ -93,6 +163,7 @@ async def chat(request: Request) -> StreamingResponse:
             files=files_list,
             config_override=config_override,
             resume_approvals=resume_approvals,
+            is_heartbeat=is_heartbeat,
         )
 
         if stream:
@@ -196,6 +267,17 @@ async def get_chat(request: Request) -> JSONResponse:
             mode="json", by_alias=True, exclude={"agent_state"}
         )
 
+        hb_path = Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
+        if hb_path.exists():
+            try:
+                if "config" not in response_chat:
+                    response_chat["config"] = {}
+                response_chat["config"]["heartbeat_instructions"] = hb_path.read_text(
+                    encoding="utf-8"
+                )
+            except Exception:
+                pass
+
         return JSONResponse(response_chat)
     except Exception as e:
         logger.error(f"Error in get_chat: {e}")
@@ -209,10 +291,25 @@ async def create_chat(request: Request) -> JSONResponse:
         data = await request.json()
         title = data.get("title", "New Chat")
         config = data.get("config", {})
+        instructions = (
+            config.pop("heartbeat_instructions", None)
+            if isinstance(config, dict)
+            else None
+        )
         messages = data.get("messages", [])
 
         db = get_database()
         chat_id = db.create_chat(title, config, messages)
+
+        if instructions is not None:
+            hb_path = (
+                Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
+            )
+            try:
+                hb_path.parent.mkdir(parents=True, exist_ok=True)
+                hb_path.write_text(instructions, encoding="utf-8")
+            except Exception as e:
+                logger.error(f"Failed to write initial heartbeat.md: {e}")
 
         chat = db.get_chat(chat_id)
         if not chat:
@@ -221,6 +318,11 @@ async def create_chat(request: Request) -> JSONResponse:
         response_chat = chat.model_dump(
             mode="json", by_alias=True, exclude={"agent_state"}
         )
+        if instructions is not None:
+            if "config" not in response_chat:
+                response_chat["config"] = {}
+            response_chat["config"]["heartbeat_instructions"] = instructions
+
         return JSONResponse(response_chat, status_code=201)
     except Exception as e:
         logger.error(f"Error in create_chat: {e}")
@@ -240,9 +342,23 @@ async def update_chat(request: Request) -> JSONResponse:
         config = data.get("config")
         messages = data.get("messages")
 
+        instructions = None
+        if isinstance(config, dict) and "heartbeat_instructions" in config:
+            instructions = config.pop("heartbeat_instructions")
+
         success = db.update_chat(chat_id, title=title, config=config, messages=messages)
         if not success:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
+
+        if instructions is not None:
+            hb_path = (
+                Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
+            )
+            try:
+                hb_path.parent.mkdir(parents=True, exist_ok=True)
+                hb_path.write_text(instructions, encoding="utf-8")
+            except Exception as e:
+                logger.error(f"Failed to write heartbeat.md during update: {e}")
 
         chat = db.get_chat(chat_id)
         if not chat:
@@ -253,6 +369,18 @@ async def update_chat(request: Request) -> JSONResponse:
         response_chat = chat.model_dump(
             mode="json", by_alias=True, exclude={"agent_state"}
         )
+
+        hb_path = Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
+        if hb_path.exists():
+            try:
+                if "config" not in response_chat:
+                    response_chat["config"] = {}
+                response_chat["config"]["heartbeat_instructions"] = hb_path.read_text(
+                    encoding="utf-8"
+                )
+            except Exception:
+                pass
+
         return JSONResponse(response_chat)
     except Exception as e:
         logger.error(f"Error in update_chat: {e}")

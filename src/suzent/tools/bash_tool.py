@@ -91,6 +91,7 @@ class BashTool(Tool):
         - WORKSPACE_ROOT: The workspace directory
         - PERSISTENCE_PATH: The resolved persistence directory path
         - SHARED_PATH: The resolved shared directory path
+        - CHAT_ID: The current chat/session identifier
         - MOUNT_*: Custom volume paths (e.g., MOUNT_SKILLS for /mnt/skills)
 
         Returns the execution output or error message.
@@ -219,6 +220,7 @@ class BashTool(Tool):
 
         sandbox_data_path = Path(CONFIG.sandbox_data_path).resolve()
         if self.chat_id:
+            env["CHAT_ID"] = self.chat_id
             env["PERSISTENCE_PATH"] = str(sandbox_data_path / "sessions" / self.chat_id)
         env["SHARED_PATH"] = str(sandbox_data_path / "shared")
 
