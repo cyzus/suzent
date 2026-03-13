@@ -39,6 +39,7 @@ class ChatSummaryModel(BaseModel):
     messageCount: int
     lastMessage: Optional[str] = None
     platform: Optional[str] = None
+    heartbeatEnabled: bool = False
 
 
 class ChatModel(SQLModel, table=True):
@@ -408,6 +409,7 @@ class ChatDatabase:
                         messageCount=len(messages),
                         lastMessage=last_message,
                         platform=chat.config.get("platform"),
+                        heartbeatEnabled=chat.config.get("heartbeat_enabled", False),
                     )
                 )
 

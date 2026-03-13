@@ -242,13 +242,14 @@ export const ChatList: React.FC = () => {
 
                 <div className="flex items-start justify-between pl-2">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 overflow-hidden">
                       {/* Platform Badge */}
                       {chat.platform && (
-                        <span className="text-[10px] font-bold uppercase px-1 py-0.5 bg-neutral-200 dark:bg-zinc-700 dark:text-white border border-brutal-black">
+                        <span className="text-[10px] font-bold uppercase px-1 py-0.5 bg-neutral-200 dark:bg-zinc-700 dark:text-white border border-brutal-black shrink-0">
                           {chat.platform}
                         </span>
                       )}
+                      
                       <h3 className={`font-bold text-sm truncate uppercase ${currentChatId === chat.id ? 'text-brutal-black' : 'text-neutral-800 dark:text-white'}`}>
                         {chat.title || t('chatList.untitled')}
                       </h3>
@@ -261,9 +262,23 @@ export const ChatList: React.FC = () => {
                     )}
 
                     <div className={`flex items-center justify-between mt-3 pt-2 border-t-2 ${currentChatId === chat.id ? 'border-brutal-black/20' : 'border-neutral-200/50'}`}>
-                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 border ${currentChatId === chat.id ? 'bg-white text-brutal-black border-brutal-black' : 'bg-neutral-100 dark:bg-zinc-700 text-neutral-500 dark:text-neutral-400 border-neutral-300 dark:border-zinc-600'}`}>
-                        {chat.messageCount} MSG
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 border ${currentChatId === chat.id ? 'bg-white text-brutal-black border-brutal-black' : 'bg-neutral-100 dark:bg-zinc-700 text-neutral-500 dark:text-neutral-400 border-neutral-300 dark:border-zinc-600'}`}>
+                          {chat.messageCount} MSG
+                        </span>
+                        
+                        {/* Heartbeat Status Icon */}
+                        {chat.heartbeatEnabled && (
+                          <span 
+                            className={`shrink-0 flex items-center justify-center px-1.5 py-0.5 border ${currentChatId === chat.id ? 'bg-white text-brutal-black border-brutal-black' : 'bg-neutral-100 dark:bg-zinc-700 text-neutral-500 dark:text-neutral-400 border-neutral-300 dark:border-zinc-600'}`} 
+                            title={t('chatWindow.heartbeatEnabled')}
+                          >
+                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="square" strokeLinejoin="miter">
+                              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                            </svg>
+                          </span>
+                        )}
+                      </div>
                       <span className={`text-[10px] font-bold uppercase ${currentChatId === chat.id ? 'text-brutal-black/60' : 'text-neutral-400 dark:text-neutral-500'}`}>
                         {formatDate(chat.updatedAt)}
                       </span>

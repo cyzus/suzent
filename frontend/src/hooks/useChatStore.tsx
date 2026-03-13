@@ -929,7 +929,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setMessagesByChat(prev => {
           const existing = prev[key] ?? [];
           const serverMessages = chat.messages ?? [];
-          if (existing.length >= serverMessages.length) {
+          // Social chats: backend is always the source of truth, always replace.
+          // Desktop chats: guard against overwriting frontend-streamed messages with a stale snapshot.
+          const isSocialChat = chatId.startsWith('social-');
+          if (!isSocialChat && existing.length >= serverMessages.length) {
             return prev;
           }
           return { ...prev, [key]: serverMessages };
