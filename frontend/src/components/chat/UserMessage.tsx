@@ -7,6 +7,16 @@ import { getApiBase, getSandboxParams } from '../../lib/api';
 import { useChatStore } from '../../hooks/useChatStore';
 import { useI18n } from '../../i18n';
 
+function formatMessageTime(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+  if (isToday) {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
 interface UserMessageProps {
   message: Message;
   chatId?: string;
@@ -101,9 +111,14 @@ export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onIma
         </div>
       )}
 
-      {/* User label */}
-      <div className="text-[10px] font-bold text-neutral-400 uppercase text-right pr-1 opacity-0 group-hover/message:opacity-100 transition-opacity select-none">
-        {t('chatMessage.userLabel')}
+      {/* User label + timestamp */}
+      <div className="text-[10px] font-bold text-neutral-400 uppercase text-right pr-1 opacity-0 group-hover/message:opacity-100 transition-opacity select-none flex justify-end gap-2">
+        {message.timestamp && (
+          <span className="normal-case font-normal">
+            {formatMessageTime(message.timestamp)}
+          </span>
+        )}
+        <span>{t('chatMessage.userLabel')}</span>
       </div>
     </div>
   );

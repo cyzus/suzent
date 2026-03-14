@@ -657,10 +657,18 @@ class ChatProcessor:
                         )
                         if not is_duplicate_user:
                             chat_messages.append(
-                                {"role": "user", "content": user_content}
+                                {
+                                    "role": "user",
+                                    "content": user_content,
+                                    "timestamp": datetime.now().isoformat(),
+                                }
                             )
                     chat_messages.append(
-                        {"role": "assistant", "content": agent_content}
+                        {
+                            "role": "assistant",
+                            "content": agent_content,
+                            "timestamp": datetime.now().isoformat(),
+                        }
                     )
                     db.update_chat(
                         chat_id, agent_state=agent_state, messages=chat_messages
@@ -763,11 +771,27 @@ def _rebuild_display_messages(messages: list) -> list:
                         else str(part.content)
                     )
                     if content.strip():
-                        result.append({"role": "user", "content": content})
+                        ts = (
+                            part.timestamp.isoformat()
+                            if getattr(part, "timestamp", None)
+                            else None
+                        )
+                        entry: dict = {"role": "user", "content": content}
+                        if ts:
+                            entry["timestamp"] = ts
+                        result.append(entry)
         elif isinstance(msg, ModelResponse):
             text = "".join(
                 part.content for part in msg.parts if isinstance(part, TextPart)
             )
             if text.strip():
-                result.append({"role": "assistant", "content": text})
+                ts = (
+                    msg.timestamp.isoformat()
+                    if getattr(msg, "timestamp", None)
+                    else None
+                )
+                entry = {"role": "assistant", "content": text}
+                if ts:
+                    entry["timestamp"] = ts
+                result.append(entry)
     return result

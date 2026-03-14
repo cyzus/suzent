@@ -63,7 +63,7 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any): Message {
       }
     }
   }
-  return { role: 'assistant', content, stepInfo: usage ? formatUsage(usage) : undefined };
+  return { role: 'assistant', content, timestamp: new Date().toISOString(), stepInfo: usage ? formatUsage(usage) : undefined };
 }
 
 // Drag overlay component
@@ -676,7 +676,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // If currently streaming for this chat, steer instead of sending new message
     if (streamingForCurrentChat && currentChatId) {
       setInput('');
-      addMessage({ role: 'user', content: prompt }, currentChatId);
+      addMessage({ role: 'user', content: prompt, timestamp: new Date().toISOString() }, currentChatId);
 
       steeringRef.current = true;
       try {
@@ -740,6 +740,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     addMessage({
       role: 'user',
       content: prompt,
+      timestamp: new Date().toISOString(),
       images: imagePreviews,
       files: uploadedFileMetadata
     }, chatIdForSend);

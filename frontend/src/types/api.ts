@@ -19,6 +19,7 @@ export interface FileAttachment {
 export interface Message {
   role: 'user' | 'assistant';
   content: string;
+  timestamp?: string;         // ISO 8601 timestamp when the message was created
   stepInfo?: string; // Step metadata like "Step: 1 | Input tokens: 100 | Output tokens: 50"
   images?: ImageAttachment[]; // Optional image attachments
   files?: FileAttachment[];   // Optional file attachments

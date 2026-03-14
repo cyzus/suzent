@@ -323,6 +323,16 @@ const MetricsBadge: React.FC<{ usage?: any; stepInfo?: string }> = ({ usage, ste
   );
 };
 
+function formatMessageTime(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+  if (isToday) {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
 // Helper to extract the first line of reasoning for the header
 const getReasoningHeader = (text: string) => {
   const firstLine = text.trim().split('\n')[0].trim();
@@ -503,6 +513,11 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               />
             ) : null}
             <MetricsBadge usage={usage} />
+            {message.timestamp && !isStreamingThis && (
+              <div className="text-[10px] text-neutral-400 pl-1 select-none">
+                {formatMessageTime(message.timestamp)}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -663,6 +678,11 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
             );
           })}
           <MetricsBadge stepInfo={message.stepInfo} />
+          {message.timestamp && !isStreamingThis && (
+            <div className="text-[10px] text-neutral-400 pl-1 select-none">
+              {formatMessageTime(message.timestamp)}
+            </div>
+          )}
         </div>
       </div>
     </div>
