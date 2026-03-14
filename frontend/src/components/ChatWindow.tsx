@@ -409,6 +409,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         addMessage(storeMsg, chatId);
       }
       setIsStreaming(false, chatId);
+      if (heartbeatInFlightRef.current) {
+        // Heartbeat ran but no heartbeat_ok signal — still record last run time.
+        setHeartbeatLastOkAt(new Date().toISOString());
+      }
       heartbeatInFlightRef.current = false;
       streamingChatIdRef.current = null;
       clearParts();

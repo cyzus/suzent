@@ -78,13 +78,14 @@ You have the SocialMessageTool available for sending messages to social channels
 
 HEARTBEAT_BASE_INSTRUCTIONS = (
     "Check in on this session. Are there any open tasks, pending questions, "
-    "or things that need follow-up? If nothing needs attention, reply HEARTBEAT_OK."
+    "or things that need follow-up?"
 )
 
 HEARTBEAT_PROMPT_TEMPLATE = (
     "Background Heartbeat Check. Read the following instructions and follow them strictly. "
     "Do not infer or repeat old tasks from prior messages. "
-    "If nothing needs attention or you have completed the check, reply EXACTLY with 'HEARTBEAT_OK'.\n\n"
+    "Reply EXACTLY with 'HEARTBEAT_OK' if nothing needs attention."
+    "Otherwise, report what needs attention or what tasks you have completed. \n\n"
     "---\n{instructions}\n---"
 )
 
