@@ -5,8 +5,9 @@ use std::time::Duration;
 use std::os::windows::process::CommandExt;
 use std::thread;
 use std::io::{BufRead, BufReader};
+use std::net::TcpListener;
 
-use tauri::Manager;
+use tauri::{Manager, Emitter};
 
 pub struct BackendProcess {
     child: Option<std::process::Child>,
@@ -37,7 +38,19 @@ impl BackendProcess {
             .map_err(|e| format!("Failed to get resource dir: {}", e))?;
 
         // First-run setup: create/update venv from bundled wheel
-        ensure_backend_setup(&resource_dir, &app_data_dir)?;
+        let app_handle_for_progress = app_handle.clone();
+        let window_for_progress = app_handle.get_webview_window("main");
+        ensure_backend_setup(&resource_dir, &app_data_dir, &|msg: &str| {
+            println!("SETUP: {}", msg);
+            // Emit event for listeners that are already registered
+            let _ = app_handle_for_progress.emit("setup-progress", msg);
+            // Also write to a JS global so the frontend can poll it immediately
+            // without depending on async listener registration timing
+            if let Some(w) = &window_for_progress {
+                let escaped = msg.replace('\\', "\\\\").replace('"', "\\\"");
+                let _ = w.eval(&format!("window.__SUZENT_SETUP_STEP__ = \"{}\";", escaped));
+            }
+        })?;
 
         // Copy config and skills to app data dir if needed
         sync_app_data(&resource_dir, &app_data_dir)?;
@@ -53,11 +66,14 @@ impl BackendProcess {
         // Generate CLI shim
         ensure_cli_shim(&app_data_dir, &python_exe)?;
 
+        // Attempt to reuse the last known port for a stable address across restarts.
+        let port_to_use = read_last_stable_port(&app_data_dir).unwrap_or(0);
+
         // Launch: python -m suzent.server
         let mut command = Command::new(&python_exe);
         command.args(["-m", "suzent.server"])
             .env("VIRTUAL_ENV", &venv_dir)
-            .env("SUZENT_PORT", "0")
+            .env("SUZENT_PORT", port_to_use.to_string())
             .env("SUZENT_HOST", "127.0.0.1")
             .env("SUZENT_APP_DATA", &app_data_dir)
             .env("CHATS_DB_PATH", app_data_dir.join("chats.db"))
@@ -186,7 +202,12 @@ fn get_venv_python(venv_dir: &Path) -> PathBuf {
 
 /// Ensure the backend venv exists and is up-to-date.
 /// On first run (or version change), creates a venv and installs the suzent wheel.
-pub fn ensure_backend_setup(resource_dir: &Path, app_data_dir: &Path) -> Result<(), String> {
+/// `on_progress` is called with a short status message at each setup step.
+pub fn ensure_backend_setup(
+    resource_dir: &Path,
+    app_data_dir: &Path,
+    on_progress: &dyn Fn(&str),
+) -> Result<(), String> {
     let venv_dir = app_data_dir.join("backend-venv");
     let marker = venv_dir.join(".suzent-version");
 
@@ -234,6 +255,7 @@ pub fn ensure_backend_setup(resource_dir: &Path, app_data_dir: &Path) -> Result<
     }
 
     println!("Setting up backend venv (v{})...", current_version);
+    on_progress("Setting up Python environment...");
 
     // Locate uv binary
     let uv_exe = find_uv(resource_dir)?;
@@ -259,6 +281,7 @@ pub fn ensure_backend_setup(resource_dir: &Path, app_data_dir: &Path) -> Result<
 
     // Step 1: Create venv
     println!("  Creating venv at {:?}...", venv_dir);
+    on_progress("Creating Python virtual environment...");
     let mut cmd = Command::new(&uv_exe);
     cmd.args(["venv", &venv_dir.to_string_lossy(), "--python", &bundled_python.to_string_lossy()])
        .stdin(Stdio::null())
@@ -276,15 +299,12 @@ pub fn ensure_backend_setup(resource_dir: &Path, app_data_dir: &Path) -> Result<
     }
 
     // Step 2: Find the wheel
-    let wheel_dir = resource_dir.join("resources").join("wheel");
-    // Also try directly under resource_dir (depends on Tauri resource flattening)
-    let wheel_path = find_wheel(&wheel_dir)
-        .or_else(|_| find_wheel(&resource_dir.join("wheel")))
-        .or_else(|_| find_wheel(resource_dir))?;
+    let wheel_path = find_wheel_in_resources(resource_dir)?;
 
     // Step 3: Install the wheel into the venv
     let venv_python = get_venv_python(&venv_dir);
     println!("  Installing suzent wheel...");
+    on_progress("Installing packages (this may take a minute)...");
     let mut cmd = Command::new(&uv_exe);
     cmd.args([
             "pip", "install",
@@ -308,23 +328,21 @@ pub fn ensure_backend_setup(resource_dir: &Path, app_data_dir: &Path) -> Result<
 
     // Step 4: Install Playwright Chromium browser
     println!("  Installing Playwright Chromium (this may take a few minutes)...");
+    on_progress("Installing Playwright Chromium browser (this may take a few minutes)...");
     let mut cmd = Command::new(&venv_python);
     cmd.args(["-m", "playwright", "install", "chromium"])
        .stdin(Stdio::null())
        .stdout(Stdio::null())
        .stderr(Stdio::null());
-       
+
     #[cfg(windows)]
     cmd.creation_flags(0x08000000);
 
-    let playwright_status = cmd.status();
-
-    match playwright_status {
+    match cmd.status() {
         Ok(status) if status.success() => {
             println!("  Playwright Chromium installed successfully.");
         }
         Ok(status) => {
-            // Non-fatal: browsing tool will retry on first use
             println!("  WARNING: Playwright install exited with code {:?} (will retry on first use)", status.code());
         }
         Err(e) => {
@@ -332,46 +350,70 @@ pub fn ensure_backend_setup(resource_dir: &Path, app_data_dir: &Path) -> Result<
         }
     }
 
+    on_progress("Finalizing setup...");
     // Write version marker
     std::fs::write(&marker, current_version)
         .map_err(|e| format!("Failed to write version marker: {}", e))?;
 
     println!("  Backend setup complete!");
+    on_progress("Starting backend...");
     Ok(())
+}
+
+/// Read the last used port from the port file written by Python on startup.
+/// Returns Some(port) only if the port is still free (i.e. we can reuse it safely).
+fn read_last_stable_port(app_data_dir: &Path) -> Option<u16> {
+    let port_file = app_data_dir.join("server.port");
+    let content = std::fs::read_to_string(&port_file).ok()?;
+    let port: u16 = content.trim().parse().ok()?;
+    if port == 0 {
+        return None;
+    }
+    // Check if the port is free by attempting to bind it
+    if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+        println!("Reusing last known backend port: {}", port);
+        Some(port)
+    } else {
+        println!("Last known port {} is in use, using dynamic port assignment", port);
+        None
+    }
+}
+
+/// Resolve the actual resources base directory, handling Tauri's resource nesting.
+///
+/// Tauri places bundled resources at `{resource_dir}/resources/` when using the
+/// map format `{"resources/": "resources/"}` in tauri.conf.prod.json.
+/// The nested path is canonical; the flat path is a fallback for edge cases.
+fn resolve_resources_base(resource_dir: &Path) -> PathBuf {
+    let nested = resource_dir.join("resources");
+    if nested.exists() {
+        nested
+    } else {
+        resource_dir.to_path_buf()
+    }
 }
 
 /// Find the uv binary inside the resource directory.
 fn find_uv(resource_dir: &Path) -> Result<PathBuf, String> {
     let exe_name = if cfg!(windows) { "uv.exe" } else { "uv" };
-
-    // Check directly in resources/
-    let direct = resource_dir.join(exe_name);
-    if direct.exists() {
-        return Ok(direct);
+    let base = resolve_resources_base(resource_dir);
+    let path = base.join(exe_name);
+    if path.exists() {
+        Ok(path)
+    } else {
+        Err(format!("uv binary not found at {:?}", path))
     }
-
-    // Check in resources/resources/ (Tauri nesting)
-    let nested = resource_dir.join("resources").join(exe_name);
-    if nested.exists() {
-        return Ok(nested);
-    }
-
-    Err(format!("uv binary not found in {:?}", resource_dir))
 }
 
 /// Find the bundled Python executable.
 fn find_bundled_python(resource_dir: &Path) -> Result<PathBuf, String> {
+    let base = resolve_resources_base(resource_dir);
     let candidates = if cfg!(windows) {
-        vec![
-            resource_dir.join("resources").join("python").join("python.exe"),
-            resource_dir.join("python").join("python.exe"),
-        ]
+        vec![base.join("python").join("python.exe")]
     } else {
         vec![
-            resource_dir.join("resources").join("python").join("bin").join("python3"),
-            resource_dir.join("python").join("bin").join("python3"),
-            resource_dir.join("resources").join("python").join("bin").join("python"),
-            resource_dir.join("python").join("bin").join("python"),
+            base.join("python").join("bin").join("python3"),
+            base.join("python").join("bin").join("python"),
         ]
     };
 
@@ -381,16 +423,17 @@ fn find_bundled_python(resource_dir: &Path) -> Result<PathBuf, String> {
         }
     }
 
-    Err(format!("Bundled Python not found in {:?}", resource_dir))
+    Err(format!("Bundled Python not found under {:?}", base.join("python")))
 }
 
-/// Find a .whl file in the given directory.
-fn find_wheel(dir: &Path) -> Result<PathBuf, String> {
-    if !dir.exists() {
-        return Err(format!("Wheel directory not found: {:?}", dir));
+/// Find a .whl file in the wheel directory.
+fn find_wheel_in_resources(resource_dir: &Path) -> Result<PathBuf, String> {
+    let base = resolve_resources_base(resource_dir);
+    let wheel_dir = base.join("wheel");
+    if !wheel_dir.exists() {
+        return Err(format!("Wheel directory not found: {:?}", wheel_dir));
     }
-
-    for entry in std::fs::read_dir(dir).map_err(|e| format!("Failed to read dir: {}", e))? {
+    for entry in std::fs::read_dir(&wheel_dir).map_err(|e| format!("Failed to read dir: {}", e))? {
         if let Ok(entry) = entry {
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "whl") {
@@ -398,37 +441,22 @@ fn find_wheel(dir: &Path) -> Result<PathBuf, String> {
             }
         }
     }
-
-    Err(format!("No .whl file found in {:?}", dir))
+    Err(format!("No .whl file found in {:?}", wheel_dir))
 }
 
 /// Sync config and skills from bundled resources to app data dir.
 pub fn sync_app_data(resource_dir: &Path, app_data_dir: &Path) -> Result<(), String> {
-    // Try both direct and nested resource paths
-    let prefixes = [
-        resource_dir.join("resources"),
-        resource_dir.to_path_buf(),
-    ];
+    let base = resolve_resources_base(resource_dir);
 
     for dir_name in &["config", "skills"] {
         let dest_dir = app_data_dir.join(dir_name);
+        let src_dir = base.join(dir_name);
 
-        // Find source
-        let mut src_dir = None;
-        for prefix in &prefixes {
-            let candidate = prefix.join(dir_name);
-            if candidate.exists() {
-                src_dir = Some(candidate);
-                break;
-            }
-        }
-
-        let src_dir = match src_dir {
-            Some(d) => d,
-            None => {
-                println!("  WARNING: Bundled {} directory not found, skipping", dir_name);
-                continue;
-            }
+        let src_dir = if src_dir.exists() {
+            src_dir
+        } else {
+            println!("  WARNING: Bundled {} directory not found, skipping", dir_name);
+            continue;
         };
 
         if !dest_dir.exists() {

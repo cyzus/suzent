@@ -323,6 +323,18 @@ function AppInner(): React.ReactElement {
 function BackendLoadingScreen({ error, onRetry }: { error?: string | null; onRetry?: () => void }) {
   const locale = getInitialLocale();
   const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
+  const [setupStep, setSetupStep] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (error) return;
+    // Poll the JS global written by Rust via window.eval() — reliable regardless of
+    // async listener registration timing.
+    const interval = setInterval(() => {
+      const step = (window as any).__SUZENT_SETUP_STEP__;
+      if (step) setSetupStep(step);
+    }, 150);
+    return () => clearInterval(interval);
+  }, [error]);
 
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-neutral-50 font-sans p-8 text-center border-8 border-brutal-black">
@@ -334,7 +346,7 @@ function BackendLoadingScreen({ error, onRetry }: { error?: string | null; onRet
           {error ? t('app.backendErrorTitle') : t('app.initializing')}
         </h1>
         <p className="font-bold text-lg mb-6 leading-tight">
-          {error || t('app.connectingToCore')}
+          {error || setupStep || t('app.connectingToCore')}
         </p>
         {error && onRetry ? (
           <button
@@ -377,14 +389,32 @@ export default function App() {
     );
   }
 
-  // Check for backend connection
-  const port = (window as any).__SUZENT_BACKEND_PORT__
-    || sessionStorage.getItem('SUZENT_PORT')
-    || localStorage.getItem('SUZENT_PORT');
-  const isBackendReady = !!port;
+  // `backendReady` is driven by the Tauri `backend-ready` event emitted after the backend
+  // is confirmed healthy. We never trust stale localStorage here — localStorage may hold
+  // a port from a previous session while the backend is still starting up.
+  // The initial value handles the rare race where Rust injects the port before React renders.
+  const [backendReady, setBackendReady] = React.useState<boolean>(
+    !!(window as any).__SUZENT_BACKEND_PORT__
+  );
+  const [backendError, setBackendError] = React.useState<string | null>(null);
 
-  if (!isBackendReady) {
-    return <BackendLoadingScreen />;
+  React.useEffect(() => {
+    if (backendReady) return;
+    let unlisten: (() => void) | undefined;
+    let unlistenErr: (() => void) | undefined;
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      listen<number>('backend-ready', () => {
+        setBackendReady(true);
+      }).then((fn) => { unlisten = fn; });
+      listen<string>('backend-error', (event) => {
+        setBackendError(event.payload);
+      }).then((fn) => { unlistenErr = fn; });
+    });
+    return () => { unlisten?.(); unlistenErr?.(); };
+  }, [backendReady]);
+
+  if (!backendReady || backendError) {
+    return <BackendLoadingScreen error={backendError} />;
   }
 
 

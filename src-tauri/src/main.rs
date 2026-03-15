@@ -72,7 +72,7 @@ fn main() {
                     // suzent_app_data is already defined above as Local/com.suzent.app
                     
                     // We use the exe directory as the resource directory
-                    if let Err(e) = backend::ensure_backend_setup(exe_dir, &suzent_app_data) {
+                    if let Err(e) = backend::ensure_backend_setup(exe_dir, &suzent_app_data, &|msg| eprintln!("Setup: {}", msg)) {
                         eprintln!("Warning: Environment setup failed: {}", e);
                     }
                     
@@ -156,6 +156,9 @@ try {{ localStorage.setItem('SUZENT_PORT', '{port}'); }} catch (e) {{}}
                         if let Err(e) = window.eval(&js) {
                             eprintln!("Failed to inject backend port: {}", e);
                             let _ = window.emit("backend-error", format!("Failed to inject backend port: {}", e));
+                        } else {
+                            // Signal the frontend that the backend is ready with the confirmed port
+                            let _ = app_handle.emit("backend-ready", port);
                         }
                     }
                     Err(e) => {

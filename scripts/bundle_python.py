@@ -67,65 +67,52 @@ def download_file(url: str, dest: Path, description: str = "") -> None:
 
 
 def download_python(target_dir: Path) -> Path:
-    """Download embeddable/standalone Python and extract to target_dir.
+    """Download python-build-standalone Python and extract to target_dir.
+
+    Uses python-build-standalone for all platforms (Windows, macOS, Linux)
+    for a consistent, complete Python distribution with full stdlib support.
 
     Returns the path to the python executable inside target_dir.
     """
     os_name, arch, exe_ext = get_platform_info()
     target_dir.mkdir(parents=True, exist_ok=True)
 
+    # Build the triple for python-build-standalone
     if os_name == "windows":
-        # Use the official embeddable zip from python.org
-        zip_name = f"python-{PYTHON_VERSION}-embed-amd64.zip"
-        url = f"https://www.python.org/ftp/python/{PYTHON_VERSION}/{zip_name}"
-        zip_path = target_dir / zip_name
-
-        download_file(url, zip_path, f"Python {PYTHON_VERSION} (embeddable)")
-
-        print("  Extracting Python...")
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            zf.extractall(target_dir)
-        zip_path.unlink()
-
-        # Enable site-packages by uncommenting the import site line in python312._pth
-        pth_files = list(target_dir.glob("python*._pth"))
-        for pth_file in pth_files:
-            content = pth_file.read_text(encoding="utf-8")
-            content = content.replace("#import site", "import site")
-            pth_file.write_text(content, encoding="utf-8")
-
-        return target_dir / f"python{exe_ext}"
-
+        triple = f"{arch}-pc-windows-msvc"
+    elif os_name == "macos":
+        triple = f"{arch}-apple-darwin"
     else:
-        # Use python-build-standalone for macOS/Linux
-        if os_name == "macos":
-            triple = f"{arch}-apple-darwin"
-        else:
-            triple = f"{arch}-unknown-linux-gnu"
+        triple = f"{arch}-unknown-linux-gnu"
 
-        tarball_name = f"cpython-{PYTHON_VERSION}+{PYTHON_STANDALONE_TAG}-{triple}-install_only_stripped.tar.gz"
-        url = f"https://github.com/indygreg/python-build-standalone/releases/download/{PYTHON_STANDALONE_TAG}/{tarball_name}"
-        tarball_path = target_dir / tarball_name
+    tarball_name = f"cpython-{PYTHON_VERSION}+{PYTHON_STANDALONE_TAG}-{triple}-install_only_stripped.tar.gz"
+    url = f"https://github.com/astral-sh/python-build-standalone/releases/download/{PYTHON_STANDALONE_TAG}/{tarball_name}"
+    tarball_path = target_dir / tarball_name
 
-        download_file(url, tarball_path, f"Python {PYTHON_VERSION} (standalone)")
+    download_file(url, tarball_path, f"Python {PYTHON_VERSION} (standalone, {triple})")
 
-        print("  Extracting Python...")
-        with tarfile.open(tarball_path, "r:gz") as tf:
-            tf.extractall(target_dir)
-        tarball_path.unlink()
+    print("  Extracting Python...")
+    with tarfile.open(tarball_path, "r:gz") as tf:
+        tf.extractall(target_dir)
+    tarball_path.unlink()
 
-        # python-build-standalone extracts to a 'python' subdirectory
-        python_inner = target_dir / "python"
-        if python_inner.exists():
-            # Move contents up one level
-            for item in python_inner.iterdir():
-                shutil.move(str(item), str(target_dir / item.name))
-            python_inner.rmdir()
+    # python-build-standalone extracts to a 'python' subdirectory
+    python_inner = target_dir / "python"
+    if python_inner.exists():
+        # Move contents up one level
+        for item in python_inner.iterdir():
+            shutil.move(str(item), str(target_dir / item.name))
+        python_inner.rmdir()
 
+    # Locate the Python executable
+    if os_name == "windows":
+        python_exe = target_dir / "python.exe"
+    else:
         python_exe = target_dir / "bin" / "python3"
         if not python_exe.exists():
             python_exe = target_dir / "bin" / "python"
-        return python_exe
+
+    return python_exe
 
 
 def download_uv(target_dir: Path) -> Path:
