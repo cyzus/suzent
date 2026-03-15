@@ -306,10 +306,10 @@ pub fn ensure_backend_setup(
     // Step 2: Find the wheel
     let wheel_path = find_wheel_in_resources(resource_dir)?;
 
-    // Step 3: Install the wheel into the venv
+    // Step 3: Install the wheel into the venv (stream output for live progress)
     let venv_python = get_venv_python(&venv_dir);
     println!("  Installing suzent wheel...");
-    on_progress("Installing packages (this may take a minute)...");
+    on_progress("Installing packages...");
     let mut cmd = Command::new(&uv_exe);
     cmd.args([
             "pip", "install",
@@ -318,17 +318,55 @@ pub fn ensure_backend_setup(
             "--force-reinstall",
         ])
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-        
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
     #[cfg(windows)]
     cmd.creation_flags(0x08000000);
 
-    let status = cmd.status()
+    let mut child = cmd.spawn()
         .map_err(|e| format!("Failed to run uv pip install: {}", e))?;
 
-    if !status.success() {
-        return Err("uv pip install failed".to_string());
+    let stdout = child.stdout.take().ok_or("Failed to capture uv stdout")?;
+    let stderr = child.stderr.take().ok_or("Failed to capture uv stderr")?;
+
+    // uv writes package lines to both stdout and stderr depending on version/mode.
+    // Merge both into a single channel.
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let tx2 = tx.clone();
+    thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().flatten() { let _ = tx.send(line); }
+    });
+    thread::spawn(move || {
+        for line in BufReader::new(stderr).lines().flatten() { let _ = tx2.send(line); }
+    });
+
+    // Poll child completion while forwarding package lines as progress
+    loop {
+        // Drain available lines
+        while let Ok(line) = rx.try_recv() {
+            let t = line.trim();
+            println!("uv: {}", t);
+            // uv emits "+ package==version" for each installed package
+            if let Some(pkg) = t.strip_prefix("+ ") {
+                on_progress(&format!("Installing {}", pkg));
+            } else if t.starts_with("Resolved ")
+                || t.starts_with("Prepared ")
+                || t.starts_with("Installed ")
+                || t.starts_with("Downloading ")
+            {
+                on_progress(t);
+            }
+        }
+        match child.try_wait().map_err(|e| format!("Failed to wait for uv: {}", e))? {
+            Some(status) => {
+                if !status.success() {
+                    return Err("uv pip install failed".to_string());
+                }
+                break;
+            }
+            None => thread::sleep(Duration::from_millis(100)),
+        }
     }
 
     // Step 4: Install Playwright Chromium browser

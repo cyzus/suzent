@@ -325,7 +325,7 @@ function AppInner(): React.ReactElement {
 const STEP_PROGRESS: Record<string, number> = {
   'Setting up Python environment...': 5,
   'Creating Python virtual environment...': 20,
-  'Installing packages (this may take a minute)...': 45,
+  'Installing packages...': 45,
   'Installing Playwright Chromium browser (this may take a few minutes)...': 70,
   'Finalizing setup...': 88,
   'Starting backend server...': 95,
