@@ -320,32 +320,47 @@ function AppInner(): React.ReactElement {
 };
 
 
+// Map each setup step message to a progress percentage.
+// Steps that aren't listed fall back to the previous progress value.
+const STEP_PROGRESS: Record<string, number> = {
+  'Setting up Python environment...': 5,
+  'Creating Python virtual environment...': 20,
+  'Installing packages (this may take a minute)...': 45,
+  'Installing Playwright Chromium browser (this may take a few minutes)...': 70,
+  'Finalizing setup...': 88,
+  'Starting backend server...': 95,
+  'Starting backend...': 95,
+};
+
 function BackendLoadingScreen({ error, onRetry }: { error?: string | null; onRetry?: () => void }) {
   const locale = getInitialLocale();
   const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
   const [setupStep, setSetupStep] = React.useState<string | null>(null);
+  const [progress, setProgress] = React.useState(0);
 
   React.useEffect(() => {
     if (error) return;
-    // Poll the JS global written by Rust via window.eval() — reliable regardless of
-    // async listener registration timing.
     const interval = setInterval(() => {
       const step = (window as any).__SUZENT_SETUP_STEP__;
-      if (step) setSetupStep(step);
+      if (step && step !== setupStep) {
+        setSetupStep(step);
+        const pct = STEP_PROGRESS[step];
+        if (pct !== undefined) setProgress(pct);
+      }
     }, 150);
     return () => clearInterval(interval);
-  }, [error]);
+  }, [error, setupStep]);
 
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-neutral-50 font-sans p-8 text-center border-8 border-brutal-black">
-      <div className="bg-white p-8 border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md flex flex-col items-center animate-pulse">
+      <div className="bg-white p-8 border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md w-full flex flex-col items-center">
         <div className="w-32 h-32 mb-6">
           <RobotAvatar variant={error ? 'ghost' : 'idle'} className="w-full h-full" />
         </div>
         <h1 className="text-4xl font-brutal font-black uppercase mb-4 text-brutal-black">
           {error ? t('app.backendErrorTitle') : t('app.initializing')}
         </h1>
-        <p className="font-bold text-lg mb-6 leading-tight">
+        <p className="font-bold text-lg mb-6 leading-tight min-h-[2rem]">
           {error || setupStep || t('app.connectingToCore')}
         </p>
         {error && onRetry ? (
@@ -356,8 +371,20 @@ function BackendLoadingScreen({ error, onRetry }: { error?: string | null; onRet
             {t('common.retry')}
           </button>
         ) : (
-          <div className="w-full h-4 bg-neutral-200 border-2 border-brutal-black overflow-hidden relative">
-            <div className="absolute top-0 left-0 h-full w-1/2 bg-brutal-black animate-[slide_1s_ease-in-out_infinite]"></div>
+          <div className="w-full">
+            <div className="w-full h-4 bg-neutral-200 border-2 border-brutal-black overflow-hidden relative">
+              {progress > 0 ? (
+                <div
+                  className="absolute top-0 left-0 h-full bg-brutal-black transition-all duration-500 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
+              ) : (
+                <div className="absolute top-0 left-0 h-full w-1/2 bg-brutal-black animate-[slide_1s_ease-in-out_infinite]" />
+              )}
+            </div>
+            {progress > 0 && (
+              <p className="text-right text-xs font-mono mt-1 text-neutral-500">{progress}%</p>
+            )}
           </div>
         )}
       </div>

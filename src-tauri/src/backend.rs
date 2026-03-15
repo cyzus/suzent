@@ -66,6 +66,11 @@ impl BackendProcess {
         // Generate CLI shim
         ensure_cli_shim(&app_data_dir, &python_exe)?;
 
+        // Emit a progress message for the normal (non-setup) launch path
+        if let Some(w) = &window_for_progress {
+            let _ = w.eval("window.__SUZENT_SETUP_STEP__ = \"Starting backend server...\";");
+        }
+
         // Attempt to reuse the last known port for a stable address across restarts.
         let port_to_use = read_last_stable_port(&app_data_dir).unwrap_or(0);
 
