@@ -17,7 +17,6 @@ logger = get_logger(__name__)
 
 class BrowserSessionManager:
     _instance = None
-    PORT = 9222
 
     def __init__(self):
         self._playwright: Optional[Playwright] = None
@@ -57,83 +56,142 @@ class BrowserSessionManager:
         try:
             current_loop = asyncio.get_running_loop()
             if current_loop is self._main_loop:
+                logger.debug("Already on main loop, awaiting coroutine directly.")
                 return await coro
         except RuntimeError:
-            pass  # No running loop?
+            logger.debug("No running loop in current thread.")
+            pass
 
         # Otherwise, we are in a worker thread/loop -> dispatch to main
+        logger.debug("Dispatching coroutine to main loop via threadsafe future.")
         future = asyncio.run_coroutine_threadsafe(coro, self._main_loop)
-        return await asyncio.wrap_future(future)
+
+        try:
+            # Add a timeout to avoid infinite hangs in the synchronization layer
+            return await asyncio.wait_for(asyncio.wrap_future(future), timeout=60.0)
+        except asyncio.TimeoutError:
+            logger.error("Timeout waiting for main loop coroutine to complete.")
+            raise RuntimeError("Browser action timed out during loop synchronization.")
 
     async def ensure_session(self, headless: bool = True):
         # We define the inner async function that does the actual work on the main loop
         async def _launch():
+            logger.debug("Entering _launch coroutine.")
             if not self._init_lock:
                 logger.warning("No init lock available, potential race condition.")
                 # Create logical fallback lock if needed, but set_main_loop should be called.
                 self._init_lock = asyncio.Lock()
 
+            logger.debug("Waiting for init lock...")
             async with self._init_lock:
+                logger.debug("Acquired init lock.")
+                # Health Check: If page exists, verify it is still functional
                 if self._page:
-                    return
+                    logger.debug("Page exists, performing health check...")
+                    try:
+                        # Check if browser and page are still alive
+                        if not self._page.is_closed() and self._browser.is_connected():
+                            logger.debug("Health check passed.")
+                            return
+                        logger.info(
+                            "Browser session disconnected or page closed. Re-initializing..."
+                        )
+                    except Exception as e:
+                        logger.warning(f"Health check failed: {e}. Re-initializing...")
+
+                    # Cleanup old session if it failed health check
+                    await self.close_session()
 
                 logger.info("Starting Browser Session...")
                 self._playwright = await async_playwright().start()
+                logger.debug("Playwright started.")
 
                 args = [
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
-                    f"--remote-debugging-port={self.PORT}",
                 ]
 
                 try:
-                    self._browser = await self._playwright.chromium.launch(
-                        headless=headless, args=args
-                    )
+                    logger.debug(f"Launching Chromium (headless={headless})...")
+                    # Add a timeout to the launch call itself
+                    try:
+                        self._browser = await asyncio.wait_for(
+                            self._playwright.chromium.launch(
+                                headless=headless, args=args
+                            ),
+                            timeout=30.0,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            "Chromium launch timed out with args. Retrying without custom args..."
+                        )
+                        self._browser = await asyncio.wait_for(
+                            self._playwright.chromium.launch(headless=headless),
+                            timeout=30.0,
+                        )
+                    logger.debug("Chromium launched.")
                 except Exception as e:
-                    if "executable doesn't exist" in str(e).lower():
+                    if (
+                        "executable doesn't exist" in str(e).lower()
+                        or "not installed" in str(e).lower()
+                    ):
                         logger.info(
                             "Chromium not installed. Installing now (this may take a few minutes)..."
                         )
-                        import subprocess
                         import sys
 
-                        result = subprocess.run(
-                            [sys.executable, "-m", "playwright", "install", "chromium"],
-                            capture_output=True,
-                            text=True,
-                            timeout=300,
+                        # Use asyncio.create_subprocess_exec to avoid blocking the loop
+                        process = await asyncio.create_subprocess_exec(
+                            sys.executable,
+                            "-m",
+                            "playwright",
+                            "install",
+                            "chromium",
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE,
                         )
-                        if result.returncode == 0:
+                        stdout, stderr = await process.communicate()
+
+                        if process.returncode == 0:
                             logger.info("Chromium installed successfully.")
                             self._browser = await self._playwright.chromium.launch(
                                 headless=headless, args=args
                             )
                         else:
+                            error_msg = (
+                                stderr.decode().strip() or stdout.decode().strip()
+                            )
                             raise RuntimeError(
-                                f"Failed to install Chromium: {result.stderr}"
+                                f"Failed to install Chromium: {error_msg}"
                             )
                     else:
+                        logger.error(f"Failed to launch browser: {e}")
                         raise
 
+                logger.debug("Creating browser context...")
                 # Create context with video size tailored for sidebar
                 self._context = await self._browser.new_context(
                     viewport={"width": 1280, "height": 800}
                 )
                 self._page = await self._context.new_page()
+                logger.debug("Browser context and page created.")
 
                 # Connect CDP for low-level control
                 self._client = await self._context.new_cdp_session(self._page)
+                logger.debug("CDP session connected.")
 
                 # Setup Screencast
                 self._client.on("Page.screencastFrame", self._on_screencast_frame)
 
                 # If we have waiting clients, start streaming immediately
                 if self._websockets:
+                    logger.debug("Starting streaming for existing clients...")
                     await self.start_streaming()
 
         # Execute on main loop
+        logger.debug("Calling ensure_session...")
         await self._run_on_main_loop(_launch())
+        logger.debug("ensure_session completed.")
 
     # --- Wrapper methods for Thread Safety ---
 
@@ -527,7 +585,7 @@ class BrowsingTool(Tool):
 
         return f"Unknown command {command}"
 
-    def forward(self, command: str, arguments: list = None) -> str:
+    async def forward(self, command: str, arguments: list = None) -> str:
         """Control a browser session to navigate and interact with web pages.
 
         Optimal workflow: open <url>, then snapshot to get element refs, then click/fill using refs.
@@ -536,4 +594,4 @@ class BrowsingTool(Tool):
             command: The command to execute (open, snapshot, click, fill, scroll, back, forward, refresh, click_coords).
             arguments: Optional arguments for the command (e.g., url, selector, text).
         """
-        return asyncio.run(self._execute(command, arguments))
+        return await self._execute(command, arguments)
