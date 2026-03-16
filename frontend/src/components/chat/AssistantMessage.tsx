@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { Message } from '../../types/api';
 import type { AGUIPart } from '../../hooks/useAGUI';
 import { splitAssistantContent, generateBlockKey, ContentBlock } from '../../lib/chatUtils';
@@ -349,12 +349,42 @@ const AGUIPartsContent: React.FC<{
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
 }> = ({ parts, messageIndex, isStreaming, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy }) => {
+  // Normalize tool parts: when resume/recovery emits another tool part with the
+  // same toolCallId later in the stream, merge it into the first occurrence so
+  // output stays under the initial tool call instead of rendering a split block.
+  const normalizedParts = useMemo<AGUIPart[]>(() => {
+    const result: AGUIPart[] = [];
+    const toolIndexById = new Map<string, number>();
+    for (const part of parts) {
+      if (part.type === 'tool' && part.toolCallId) {
+        const existingIndex = toolIndexById.get(part.toolCallId);
+        if (existingIndex !== undefined) {
+          const existing = result[existingIndex];
+          result[existingIndex] = {
+            ...existing,
+            ...part,
+            // Prefer freshest non-empty payload fields.
+            toolName: part.toolName || existing.toolName,
+            args: part.args ?? existing.args,
+            output: part.output ?? existing.output,
+            approvalId: part.approvalId ?? existing.approvalId,
+            state: part.state ?? existing.state,
+          };
+          continue;
+        }
+        toolIndexById.set(part.toolCallId, result.length);
+      }
+      result.push(part);
+    }
+    return result;
+  }, [parts]);
+
   // Group consecutive parts of the same type into chunks
   const chunks: { type: 'tool' | 'reasoning' | 'text'; items: AGUIPart[] }[] = [];
   let current: AGUIPart[] = [];
   let currentType: 'tool' | 'reasoning' | 'text' | null = null;
 
-  for (const part of parts) {
+  for (const part of normalizedParts) {
     const type = part.type;
     if (current.length === 0) {
       currentType = type;

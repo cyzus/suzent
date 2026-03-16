@@ -106,13 +106,23 @@ function parseSSEBuffer(buffer: string): { events: ParsedSSEEvent[]; remainder: 
 
 // ── Event Processor ──────────────────────────────────────────────────
 
+function stringifyContent(raw: unknown): string {
+  if (typeof raw === 'string') return raw;
+  if (raw == null) return '';
+  try {
+    return JSON.stringify(raw, null, 2);
+  } catch {
+    // Fallback for circular or non-serializable values.
+    return String(raw);
+  }
+}
+
 function processEvent(
   event: ParsedSSEEvent,
   parts: AGUIPart[],
   onCustomEvent?: (name: string, value: unknown) => void,
 ): { parts: AGUIPart[]; error?: string } {
   const { type, data } = event;
-  console.log('[AGUI]', type, data);
   // Clone parts array for immutable update
   const next = [...parts];
 
@@ -183,11 +193,13 @@ function processEvent(
         }
       }
       if (existingStartIdx >= 0) {
+        const existingOutput = next[existingStartIdx].output;
         next[existingStartIdx] = {
           ...next[existingStartIdx],
           args: '',          // reset so replayed TOOL_CALL_ARGS don't double-up
           state: 'running',
-          output: undefined,
+          // Keep any already-received output to avoid losing it on replayed starts.
+          output: existingOutput,
           approvalId: undefined,
         };
       } else {
@@ -220,7 +232,8 @@ function processEvent(
 
     case 'TOOL_CALL_RESULT': {
       const tcId = data.toolCallId as string;
-      const content = (data.content as string) || '';
+      const raw = data.content ?? data.output ?? data.result ?? '';
+      const content = stringifyContent(raw);
       for (let i = next.length - 1; i >= 0; i--) {
         if (next[i].type === 'tool' && next[i].toolCallId === tcId) {
           next[i] = { ...next[i], output: content, state: 'completed' };
@@ -268,6 +281,58 @@ function processEvent(
               : '',
             state: 'approval-requested',
             approvalId,
+          });
+        }
+      } else if (name === 'tool_approval_result') {
+        const resultData = value as Record<string, unknown>;
+        const tcId = resultData.toolCallId as string;
+        const toolName = (resultData.toolName as string) || 'unknown';
+        const raw = resultData.output ?? resultData.content ?? resultData.result ?? '';
+        const output = stringifyContent(raw);
+        let found = false;
+        for (let i = next.length - 1; i >= 0; i--) {
+          if (next[i].type === 'tool' && next[i].toolCallId === tcId) {
+            next[i] = {
+              ...next[i],
+              state: resultData.status === 'executed' ? 'completed' : 'error',
+              output,
+              approvalId: undefined // clear approval badge
+            };
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          // Fallback: attach to the most recent pending tool of the same name.
+          // This keeps output under the initial tool call even if toolCallId differs
+          // between approval request and recovery result.
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (
+              next[i].type === 'tool' &&
+              next[i].state === 'approval-requested' &&
+              (next[i].toolName || 'unknown') === toolName
+            ) {
+              next[i] = {
+                ...next[i],
+                toolCallId: next[i].toolCallId || tcId,
+                state: resultData.status === 'executed' ? 'completed' : 'error',
+                output,
+                approvalId: undefined,
+              };
+              found = true;
+              break;
+            }
+          }
+        }
+        if (!found) {
+          // Recovery event may arrive even when the original tool part is missing.
+          next.push({
+            type: 'tool',
+            toolCallId: tcId,
+            toolName,
+            output,
+            state: resultData.status === 'executed' ? 'completed' : 'error',
+            approvalId: undefined,
           });
         }
       } else if (name === 'tool_display') {
@@ -361,7 +426,15 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     remember?: 'session' | null,
     toolName?: string,
   ): boolean => {
-    approvalDecisionsRef.current.push({ approvalId, toolCallId, approved, remember, toolName });
+    const nextDecision = { approvalId, toolCallId, approved, remember, toolName };
+    const existingIdx = approvalDecisionsRef.current.findIndex(
+      d => d.approvalId === approvalId
+    );
+    if (existingIdx >= 0) {
+      approvalDecisionsRef.current[existingIdx] = nextDecision;
+    } else {
+      approvalDecisionsRef.current.push(nextDecision);
+    }
     const remaining = pendingApprovalCount - approvalDecisionsRef.current.length;
     return remaining <= 0;
   }, [pendingApprovalCount]);
@@ -383,6 +456,8 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     // DON'T clear parts — keep existing tool parts from first stream
     setError(undefined);
     setStatus('submitted');
+    setPendingApprovalCount(0);
+    approvalDecisionsRef.current = [];
 
     const controller = new AbortController();
     abortRef.current = controller;

@@ -388,7 +388,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     url: `${getApiBase()}/chat`,
     onFinish: (parts) => {
       const chatId = streamingChatIdRef.current || activeChatIdRef.current;
-      console.log('[stream] onFinish', { chatId, parts: parts.length });
+
+      const hasPendingApprovals = parts.some(
+        p => p.type === 'tool' && p.state === 'approval-requested'
+      );
 
       if (heartbeatOkRef.current) {
         // HEARTBEAT_OK: backend rolled back the messages; discard streamed content and reload.
@@ -401,6 +404,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         setCurrentUsage(null);
         // Reload chat from DB to reflect rolled-back state.
         setTimeout(() => { try { loadChat(chatId!); } catch { } }, 300);
+        return;
+      }
+
+      // Stream paused for HITL approvals: keep transient parts visible and
+      // wait for resume before persisting to the chat history.
+      if (hasPendingApprovals) {
+        setIsStreaming(false, chatId);
+        if (heartbeatInFlightRef.current) {
+          setHeartbeatLastOkAt(new Date().toISOString());
+        }
+        heartbeatInFlightRef.current = false;
+        setCurrentUsage(null);
         return;
       }
 
@@ -474,26 +489,59 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     const targetChatId = activeChatIdRef.current || currentChatId;
     if (!targetChatId) return;
 
+    const updateApprovalStateInHistory = (id: string, state: 'approved' | 'denied') => {
+      messages.forEach((m, idx) => {
+        if (m.role === 'assistant' && m.content.includes(`data-approval-id="${id}"`)) {
+          const finalContent = m.content.replace(
+            new RegExp(`(<details[^>]*data-approval-id="${id}"[^>]*data-approval-state=")pending(")`),
+            `$1${state}$2`
+          );
+
+          if (finalContent !== m.content) {
+            updateMessage(idx, { content: finalContent }, targetChatId);
+          }
+        }
+      });
+    };
+
     // Optimistic UI: instantly hide buttons before the backend responds
     resolveApproval(approvalId, approved);
 
     // Also update historical messages in the store if they contain this approval
     const newState = approved ? 'approved' : 'denied';
-    messages.forEach((m, idx) => {
-      if (m.role === 'assistant' && m.content.includes(`data-approval-id="${approvalId}"`)) {
-        const finalContent = m.content.replace(
-          new RegExp(`(<details[^>]*data-approval-id="${approvalId}"[^>]*data-approval-state=")pending(")`),
-          `$1${newState}$2`
-        );
-
-        if (finalContent !== m.content) {
-          updateMessage(idx, { content: finalContent }, targetChatId);
-        }
-      }
-    });
+    updateApprovalStateInHistory(approvalId, newState);
 
     // Accumulate decision; only send when all pending approvals are decided
-    const allDecided = addApprovalDecision(approvalId, toolCallId, approved, remember, toolName);
+    let allDecided = addApprovalDecision(approvalId, toolCallId, approved, remember, toolName);
+
+    // If user chose session policy on this tool, apply that same decision to all
+    // currently pending approvals of the same tool in this paused stream.
+    if (remember === 'session' && toolName) {
+      const linkedPending = streamingParts
+        .filter(
+          p =>
+            p.type === 'tool' &&
+            p.state === 'approval-requested' &&
+            p.toolName === toolName &&
+            p.approvalId &&
+            p.approvalId !== approvalId &&
+            p.toolCallId
+        )
+        .map(p => ({ approvalId: p.approvalId as string, toolCallId: p.toolCallId as string }));
+
+      for (const linked of linkedPending) {
+        resolveApproval(linked.approvalId, approved);
+        updateApprovalStateInHistory(linked.approvalId, newState);
+        allDecided = addApprovalDecision(
+          linked.approvalId,
+          linked.toolCallId,
+          approved,
+          null,
+          toolName
+        ) || allDecided;
+      }
+    }
+
     if (!allDecided) return; // Still waiting for more decisions
 
     // All approvals decided — batch and send
@@ -554,7 +602,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         try { await forceSaveNow(targetChatId); } catch { }
       }, 600);
     }
-  }, [currentChatId, config, resumeStream, resolveApproval, addApprovalDecision, consumeApprovalDecisions, updateMessage, setIsStreaming, forceSaveNow, setConfig]);
+  }, [currentChatId, config, resumeStream, resolveApproval, addApprovalDecision, consumeApprovalDecisions, updateMessage, setIsStreaming, forceSaveNow, setConfig, messages, streamingParts]);
 
   // Remove a tool from the approval policy
   const handleRemoveApprovalPolicy = useCallback((toolName: string) => {
@@ -592,8 +640,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const safeConfig = config || { model: '', agent: '', tools: [] };
   const safeBackendConfig = backendConfig || null;
   const streamingForCurrentChat = isStreaming && activeStreamingChatId === currentChatId;
-  // DEBUG — remove once streaming is fixed
-  console.log('[stream]', { isStreaming, activeStreamingChatId, currentChatId, streamingForCurrentChat, parts: streamingParts.length });
+  // Keep transient tool approvals attached to their source chat.
+  // Without this guard, switching chats can render stale approval UI
+  // from a different chat because AG-UI parts are kept for resume.
+  const transientPartsChatId = streamingChatIdRef.current || activeStreamingChatId;
+  const hasPendingTransientApprovals =
+    transientPartsChatId === currentChatId &&
+    streamingParts.some(p => p.type === 'tool' && p.state === 'approval-requested');
+  const showTransientAssistant = streamingForCurrentChat || hasPendingTransientApprovals;
   const configReady = !!(safeBackendConfig && safeConfig.model && safeConfig.agent);
 
   const heartbeatEnabled = !!safeConfig.heartbeat_enabled;
@@ -744,7 +798,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       images: imagePreviews,
       files: uploadedFileMetadata
     }, chatIdForSend);
-    console.log('[stream] calling setIsStreaming(true)', chatIdForSend);
     setIsStreaming(true, chatIdForSend);
     streamingChatIdRef.current = chatIdForSend;
     activeChatIdRef.current = chatIdForSend;
@@ -779,7 +832,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     } finally {
       // Safety net: onFinish/onError handle state, but ensure cleanup.
       // Skip if a steer is in progress — steer's own finally handles cleanup.
-      console.log('[stream] send() finally', { steeringRef: steeringRef.current });
       if (!steeringRef.current) {
         setIsStreaming(false, chatIdForSend);
       }
@@ -957,18 +1009,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   toolApprovalPolicy={safeConfig.tool_approval_policy}
                   onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
                 />
-                {/* Streaming assistant message from AG-UI */}
-                {streamingForCurrentChat && (
+                {/* Streaming/transient assistant message from AG-UI */}
+                {showTransientAssistant && (
                   <div className="space-y-6 mt-6">
                     <div className="w-full flex flex-col group/message">
                       <div className="flex justify-start w-full">
                         <AssistantMessage
                           message={{ role: 'assistant', content: '' }}
                           messageIndex={safeMessages.length}
-                          isStreaming={true}
+                          isStreaming={streamingForCurrentChat}
                           isLastMessage={true}
                           onFileClick={handleFileClick}
-                          aguiParts={streamingForCurrentChat ? streamingParts : undefined}
+                          aguiParts={streamingParts}
                           onToolApproval={handleToolApproval}
                           usage={currentUsage}
                           toolApprovalPolicy={safeConfig.tool_approval_policy}

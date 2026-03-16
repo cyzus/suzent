@@ -26,6 +26,7 @@ from suzent.database import get_database
 from suzent.tools.path_resolver import PathResolver
 from suzent.routes.sandbox_routes import sanitize_filename
 from suzent.core.stream_parser import StreamParser, TextChunk, ErrorEvent
+from suzent.core.stream_registry import pop_pending_auto_approvals
 
 
 logger = get_logger(__name__)
@@ -204,6 +205,11 @@ class ChatProcessor:
             from pydantic_ai.tools import DeferredToolResults
 
             approvals_dict = {}
+            # Include policy-decided approvals cached when a previous stream
+            # paused with a mixed auto/user approval batch.
+            cached_auto = pop_pending_auto_approvals(chat_id)
+            if cached_auto:
+                approvals_dict.update(cached_auto)
             for app in resume_approvals:
                 req_id = app.get("request_id")
                 if req_id:
@@ -220,6 +226,9 @@ class ChatProcessor:
                         deps.tool_approval_policy[tool_name] = (
                             "always_allow" if approved else "always_deny"
                         )
+        else:
+            # New user turn (not resume): clear any stale cached auto approvals.
+            pop_pending_auto_approvals(chat_id)
 
         logger.debug(
             f"[ChatProcessor] Prompt prepared. Length: {len(full_prompt)}. Streaming..."

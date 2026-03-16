@@ -23,6 +23,10 @@ class StreamControl:
 # Global registry of active streams: chat_id -> StreamControl
 stream_controls: Dict[str, StreamControl] = {}
 
+# Cache policy-decided approvals for suspended streams so resume payloads
+# can merge explicit user decisions with backend auto-decisions.
+pending_auto_approvals: Dict[str, Dict[str, bool]] = {}
+
 
 def stop_stream(chat_id: str, reason: str = "Stream stopped by user") -> bool:
     """Request to stop an active stream."""
@@ -32,3 +36,19 @@ def stop_stream(chat_id: str, reason: str = "Stream stopped by user") -> bool:
     control.reason = reason
     control.cancel_event.set()
     return True
+
+
+def merge_pending_auto_approvals(chat_id: str, approvals: Dict[str, bool]) -> None:
+    """Merge auto-approval decisions for a chat into the pending cache."""
+    if not chat_id or not approvals:
+        return
+    existing = pending_auto_approvals.get(chat_id, {})
+    existing.update(approvals)
+    pending_auto_approvals[chat_id] = existing
+
+
+def pop_pending_auto_approvals(chat_id: str) -> Dict[str, bool]:
+    """Return and clear cached auto-approvals for a chat."""
+    if not chat_id:
+        return {}
+    return pending_auto_approvals.pop(chat_id, {})

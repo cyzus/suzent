@@ -27,7 +27,13 @@ from ag_ui.core import RunAgentInput, CustomEvent, RunErrorEvent
 from ag_ui.encoder import EventEncoder
 
 from suzent.core.agent_deps import AgentDeps
-from suzent.core.stream_registry import StreamControl, stream_controls, stop_stream  # noqa: F401 — re-export for backwards compat
+from suzent.core.stream_registry import (
+    StreamControl,
+    stream_controls,
+    stop_stream,  # noqa: F401 — re-export for backwards compat
+    merge_pending_auto_approvals,
+    pop_pending_auto_approvals,
+)
 from suzent.plan import read_plan_from_database, plan_to_dict, auto_complete_current
 from loguru import logger
 
@@ -67,6 +73,64 @@ def _safe_args_preview(args: Any, max_len: int = 500) -> dict:
     return preview
 
 
+def _find_tool_return_parts(
+    msg: Any,
+    current_deferred: Optional[DeferredToolResults],
+    seen_tool_call_ids: Optional[set[str]] = None,
+) -> list[tuple[str, str, str, str]]:
+    """
+    Extract tool return parts from a message for HITL recovery events.
+
+    In pydantic-ai, ToolReturnPart is found inside ModelRequest messages
+    (not ModelResponse, which only holds model-generated text/tool-calls).
+
+    Returns list of tuples: (tool_call_id, tool_name, approval_status, output)
+    """
+    if not current_deferred or not hasattr(msg, "parts"):
+        return []
+    if msg.__class__.__name__ != "ModelRequest":
+        return []
+
+    results = []
+    for part in msg.parts:
+        if part.__class__.__name__ == "ToolReturnPart":
+            tool_call_id = getattr(part, "tool_call_id", None)
+            if tool_call_id and tool_call_id in current_deferred.approvals:
+                if (
+                    seen_tool_call_ids is not None
+                    and tool_call_id in seen_tool_call_ids
+                ):
+                    continue
+                tool_name = getattr(part, "tool_name", "unknown")
+                status = (
+                    "executed" if current_deferred.approvals[tool_call_id] else "denied"
+                )
+                output = (
+                    getattr(part, "output", None)
+                    or getattr(part, "content", None)
+                    or getattr(part, "text", None)
+                    or ""
+                )
+                output = str(output) if output else ""
+                logger.debug(
+                    f"[Streaming] Found tool return part: {tool_call_id} -> {tool_name}, "
+                    f"output_len={len(output)}"
+                )
+                results.append((tool_call_id, tool_name, status, output))
+                if seen_tool_call_ids is not None:
+                    seen_tool_call_ids.add(tool_call_id)
+    return results
+
+
+async def _queue_custom_event(
+    out_queue: asyncio.Queue,
+    event_name: str,
+    data: Any,
+) -> None:
+    """Encode and queue a custom AG-UI event."""
+    await out_queue.put(("chunk", _encode_custom(event_name, data)))
+
+
 async def stream_agent_responses(
     agent: Agent,
     message: str | list | None,
@@ -87,6 +151,9 @@ async def stream_agent_responses(
     control = StreamControl()
     if chat_id:
         stream_controls[chat_id] = control
+    # Indicates whether the stream paused waiting for user approvals.
+    # When True, keep cached auto-approvals for the next resume request.
+    deps.is_suspended = False
 
     sse_queue: asyncio.Queue = asyncio.Queue()
     deps.cancel_event = control.cancel_event
@@ -174,6 +241,36 @@ async def stream_agent_responses(
                             if isinstance(event, AgentRunResultEvent):
                                 last_result_event = event
                                 final_response_text = str(event.result.output)
+
+                                # HITL BUG FIX: Emit deferred tool recovery events with output
+                                if current_deferred:
+                                    seen_recovery_ids: set[str] = set()
+                                    for msg in event.result.all_messages():
+                                        for (
+                                            tool_call_id,
+                                            tool_name,
+                                            status,
+                                            output,
+                                        ) in _find_tool_return_parts(
+                                            msg,
+                                            current_deferred,
+                                            seen_tool_call_ids=seen_recovery_ids,
+                                        ):
+                                            logger.debug(
+                                                f"[Streaming] Emitting recovered tool event for {tool_call_id}"
+                                            )
+                                            await sse_queue.put(
+                                                (
+                                                    "tool_recovery",
+                                                    {
+                                                        "tool_call_id": tool_call_id,
+                                                        "tool_name": tool_name,
+                                                        "status": status,
+                                                        "output": output,
+                                                    },
+                                                )
+                                            )
+
                             await sse_queue.put(("event", event))
                         except Exception as e:
                             logger.error(
@@ -245,6 +342,10 @@ async def stream_agent_responses(
                                 continue  # restart loop
 
                             # Some tools still need the user's decision.
+                            # Persist policy-decided approvals so resume can merge
+                            # explicit user choices with these auto decisions.
+                            if chat_id and auto_approvals:
+                                merge_pending_auto_approvals(chat_id, auto_approvals)
                             deps.is_suspended = True  # Signal stream is pausing
                             for tc in pending_approvals:
                                 try:
@@ -345,26 +446,35 @@ async def stream_agent_responses(
 
                 elif msg_type == "approval":
                     # HITL: emit as AG-UI CustomEvent with all approval info
-                    await out_queue.put(
-                        (
-                            "chunk",
-                            _encode_custom(
-                                "tool_approval_request",
-                                {
-                                    "approvalId": payload["request_id"],
-                                    "toolCallId": payload.get("tool_call_id")
-                                    or payload["request_id"],
-                                    "toolName": payload.get("tool_name", ""),
-                                    "args": payload.get("args", {}),
-                                    "chatId": chat_id,
-                                },
-                            ),
-                        )
+                    await _queue_custom_event(
+                        out_queue,
+                        "tool_approval_request",
+                        {
+                            "approvalId": payload["request_id"],
+                            "toolCallId": payload.get("tool_call_id")
+                            or payload["request_id"],
+                            "toolName": payload.get("tool_name", ""),
+                            "args": payload.get("args", {}),
+                            "chatId": chat_id,
+                        },
+                    )
+
+                elif msg_type == "tool_recovery":
+                    # HITL: emit recovered tool result with output
+                    await _queue_custom_event(
+                        out_queue,
+                        "tool_approval_result",
+                        {
+                            "toolCallId": payload["tool_call_id"],
+                            "toolName": payload.get("tool_name", ""),
+                            "status": payload.get("status", "executed"),
+                            "output": payload.get("output", ""),
+                        },
                     )
 
                 elif msg_type == "heartbeat_ok":
                     # Tell the frontend to discard streamed heartbeat content.
-                    await out_queue.put(("chunk", _encode_custom("heartbeat_ok", {})))
+                    await _queue_custom_event(out_queue, "heartbeat_ok", {})
 
                 elif msg_type == "done":
                     break
@@ -459,6 +569,10 @@ async def stream_agent_responses(
                 pass
 
         if chat_id:
+            if not getattr(deps, "is_suspended", False):
+                # Stream ended (not paused for approvals), drop any stale cache.
+                pop_pending_auto_approvals(chat_id)
+
             if not control.cancel_event.is_set():
                 try:
                     auto_complete_current(chat_id)
