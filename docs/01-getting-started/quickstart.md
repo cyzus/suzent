@@ -79,9 +79,11 @@ suzent start
 
 This will:
 - Check system health.
-- Start the Backend (Brain) on port `25314`.
-- Start the Frontend (UI) on port `5173`.
+- Start the Backend (Brain).
+- Start the Frontend (UI).
 - Automatically manage local processes.
+
+For current local endpoints, see: `docs/03-developing/development-guide.md` ("Local Ports").
 
 **Start Chatting**
 

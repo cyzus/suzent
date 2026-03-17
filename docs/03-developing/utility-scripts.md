@@ -8,7 +8,7 @@ This directory contains automation scripts for the Suzent project.
 
  The main entry point for development. It simultaneously starts:
  - Starlette/Uvicorn backend (Port determined dynamically, usually 8000+)
- - Tauri/Vite frontend (Port 1420)
+ - Tauri/Vite frontend (see `docs/03-developing/development-guide.md` "Local Ports")
 
  Usage: `suzent start`
 

@@ -285,7 +285,7 @@ def register_commands(app: typer.Typer):
         # Pre-flight: ensure MSVC linker is available on Windows
         ensure_msvc_linker()
 
-        for port, name in [(25314, "Backend"), (5173, "Frontend")]:
+        for port, name in [(25314, "Backend"), (18080, "Frontend")]:
             pid = get_pid_on_port(port)
             if pid:
                 typer.echo(f"\n⚠️  {name} Port {port} is already in use by PID {pid}.")

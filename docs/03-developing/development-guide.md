@@ -68,10 +68,22 @@ npm run dev
 ```
 
 This will:
-1. Start Vite dev server (frontend) on http://localhost:5173
+1. Start Vite dev server (frontend)
 2. Compile the Rust code (first time only, takes a few minutes)
 3. Open a native desktop window
-4. Frontend connects to backend on port 25314
+4. Frontend connects to backend
+
+### Local Ports
+
+Default local endpoints for development:
+
+- Backend API: `http://127.0.0.1:25314`
+- Frontend dev server: `http://127.0.0.1:18080`
+
+To avoid Windows reserved-port conflicts, frontend port values are sourced from:
+
+- `frontend/vite.config.ts` (`server.port`)
+- `src-tauri/tauri.conf.json` (`build.devUrl`)
 
 
 ## Configuration
@@ -84,7 +96,7 @@ This will:
 | `tauri.conf.prod.json` | Production | Bundled Python + uv venv |
 
 **Development mode** (`npm run dev`):
-- No bundled backend - expects backend running on port 25314
+- No bundled backend - expects backend running on the local API endpoint
 - Frontend hot-reload enabled
 - DevTools available (right-click in window)
 

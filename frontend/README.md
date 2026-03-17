@@ -17,9 +17,9 @@ The React-based user interface for Suzent.
    ```bash
    npm run dev
    ```
-   The app will run at `http://localhost:5173`.
+   The app URL is printed by Vite in the terminal.
    
-   > **Note**: This requires the backend to be running on port 25314.
+   > **Note**: This requires the backend API to be running.
 
 ## Building for Production
 

@@ -102,15 +102,6 @@ npm install
 npm run dev
 ```
 
-**Browser mode** (no Rust needed):
-```bash
-# Terminal 1: Start backend
-python src/suzent/server.py
-
-# Terminal 2: Start frontend
-cd frontend && npm run dev
-# Then open http://localhost:5173
-```
 
 See [development-guide.md](./development-guide.md) for detailed development instructions.
 
