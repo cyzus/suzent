@@ -149,15 +149,28 @@ class SocialBrain(BaseBrain):
             )
             return
 
-        from suzent.social.commands import dispatch_command
-
-        if await dispatch_command(message, self.channel_manager):
-            return
-
         from suzent.channels.utils import extract_target_id
 
         target_id = extract_target_id(message)
         social_chat_id = f"social-{message.platform}-{target_id}"
+
+        # Unified slash command dispatch
+        from suzent.core.commands import dispatch as dispatch_command, CommandContext
+
+        ctx = CommandContext(
+            chat_id=social_chat_id,
+            user_id=self.user_id or "default-user",
+            platform=message.platform,
+            sender_id=message.sender_id,
+            channel_manager=self.channel_manager,
+        )
+        cmd_result = await dispatch_command(ctx, message.content)
+        if cmd_result is not None:
+            if cmd_result:  # empty string means handler sent its own reply
+                await self.channel_manager.send_message(
+                    message.platform, message.sender_id, cmd_result
+                )
+            return
 
         state = self._get_run_state(social_chat_id)
 

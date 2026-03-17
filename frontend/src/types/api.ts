@@ -96,6 +96,7 @@ export interface ConfigOptions {
   userId?: string;        // backend-provided user identifier for memory system alignment
   globalSandboxVolumes?: string[];  // global volumes from config file (read-only)
   sandboxEnabled?: boolean;         // global sandbox enable setting
+  maxContextTokens?: number;        // max context window size in tokens
   userPreferences?: {     // saved user preferences from database
     model: string;
     agent: string;

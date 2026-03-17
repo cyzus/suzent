@@ -32,6 +32,8 @@ from suzent.routes.chat_routes import (
     stop_chat,
     update_chat,
 )
+from suzent.routes.compact_routes import compact_chat
+from suzent.routes.commands_routes import get_commands
 from suzent.routes.config_routes import (
     get_api_keys_status,
     get_config,
@@ -385,6 +387,8 @@ app = Starlette(
         Route("/chat/stop", stop_chat, methods=["POST"]),
         Route("/chat/steer", steer_chat, methods=["POST"]),
         Route("/chat/approve-tool", approve_tool, methods=["POST"]),
+        Route("/chat/compact", compact_chat, methods=["POST"]),
+        Route("/commands", get_commands, methods=["GET"]),
         Route("/chats", get_chats, methods=["GET"]),
         Route("/chats", create_chat, methods=["POST"]),
         Route("/chats/{chat_id}", get_chat, methods=["GET"]),

@@ -54,6 +54,7 @@ async def get_config(request: Request) -> JSONResponse:
         "userId": CONFIG.user_id,
         "globalSandboxVolumes": sandbox_volumes,
         "sandboxEnabled": sandbox_enabled,
+        "maxContextTokens": CONFIG.max_context_tokens,
         "embeddingModel": CONFIG.embedding_model,
         "extractionModel": CONFIG.extraction_model,
     }

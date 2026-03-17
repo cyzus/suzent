@@ -6,6 +6,7 @@ import { FileIcon } from './FileIcon';
 import { PaperClipIcon, XMarkIcon, FolderIcon } from '@heroicons/react/24/outline';
 import { FolderContextPicker } from './chat/FolderContextPicker';
 import { useI18n } from '../i18n';
+import { useSlashCommands } from '../hooks/useSlashCommands';
 
 interface ChatInputPanelProps {
     input: string;
@@ -86,6 +87,9 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 }) => {
     // --- Volume Mounting Logic ---
     const { t } = useI18n();
+    const [selectedSuggestion, setSelectedSuggestion] = React.useState(0);
+    const suggestions = useSlashCommands(input);
+    React.useEffect(() => { setSelectedSuggestion(0); }, [suggestions.length]);
     const handleMountFolder = React.useCallback((paths: string[]) => {
         try {
             if (!paths || paths.length === 0) return;
@@ -221,6 +225,23 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 </div>
             )}
 
+            {/* Slash command suggestions */}
+            {suggestions.length > 0 && (
+                <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal-sm mb-1 overflow-hidden">
+                    {suggestions.map((cmd, i) => (
+                        <div
+                            key={cmd.name}
+                            className={`flex items-baseline gap-3 px-3 py-2 cursor-pointer text-sm ${i === selectedSuggestion ? 'bg-brutal-yellow dark:bg-yellow-600 text-brutal-black' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'}`}
+                            onMouseDown={(e) => { e.preventDefault(); setInput(cmd.usage + ' '); }}
+                        >
+                            <span className="font-bold font-mono shrink-0">{cmd.aliases[0]}</span>
+                            <span className="text-neutral-500 dark:text-neutral-400 truncate">{cmd.description}</span>
+                            <span className="ml-auto font-mono text-xs text-neutral-400 dark:text-neutral-500 shrink-0">{cmd.usage}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+
             < textarea
                 autoFocus
                 ref={textareaRef}
@@ -228,6 +249,16 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
+                    if (suggestions.length > 0) {
+                        if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedSuggestion(i => Math.max(0, i - 1)); return; }
+                        if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedSuggestion(i => Math.min(suggestions.length - 1, i + 1)); return; }
+                        if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                            e.preventDefault();
+                            setInput(suggestions[selectedSuggestion].usage + ' ');
+                            return;
+                        }
+                        if (e.key === 'Escape') { setInput(''); return; }
+                    }
                     if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
                         if (configReady && input.trim()) {

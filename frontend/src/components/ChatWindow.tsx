@@ -921,7 +921,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {/* Main Chat Column */}
       <div className="flex flex-col flex-1 min-w-0 h-full relative">
-        <div className="absolute top-2 right-6 z-30 pointer-events-none">
+        <div className="absolute top-2 right-6 z-30 pointer-events-none flex flex-col items-end gap-1">
+          {currentUsage && safeBackendConfig?.maxContextTokens && (
+            <div className="flex items-center gap-1.5 text-[10px] text-neutral-500 dark:text-neutral-400 pointer-events-none">
+              <div className="w-16 h-1.5 rounded-full bg-neutral-200 dark:bg-zinc-700 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-neutral-500 dark:bg-neutral-400 transition-all"
+                  style={{ width: `${Math.min(100, ((currentUsage.total_tokens ?? currentUsage.total ?? 0) / safeBackendConfig.maxContextTokens) * 100)}%` }}
+                />
+              </div>
+              <span>{((currentUsage.total_tokens ?? currentUsage.total ?? 0) / 1000).toFixed(0)}k / {(safeBackendConfig.maxContextTokens / 1000).toFixed(0)}k</span>
+            </div>
+          )}
           <div
             className={`inline-flex items-center shadow-[2px_2px_0_0_#000] border-2 border-brutal-black font-bold uppercase tracking-wide pointer-events-auto cursor-default group transition-transform hover:-translate-y-0.5`}
             aria-live="polite"

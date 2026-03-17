@@ -186,6 +186,42 @@ class ChatProcessor:
         if message_history is None:
             message_history = []
 
+        # Universal slash command dispatch (before history is modified or agent runs)
+        if message_content and not resume_approvals and not files and not is_heartbeat:
+            from suzent.core.commands import (
+                dispatch as _dispatch_command,
+                CommandContext as _CmdCtx,
+            )
+
+            cmd_result = await _dispatch_command(
+                _CmdCtx(chat_id=chat_id, user_id=user_id), message_content
+            )
+            if cmd_result is not None:
+                import uuid
+                from ag_ui.core import (
+                    RunStartedEvent,
+                    RunFinishedEvent,
+                    TextMessageStartEvent,
+                    TextMessageContentEvent,
+                    TextMessageEndEvent,
+                )
+                from ag_ui.encoder import EventEncoder as _Enc
+
+                _enc = _Enc()
+                run_id = str(uuid.uuid4())
+                msg_id = str(uuid.uuid4())
+                yield _enc.encode(RunStartedEvent(run_id=run_id, thread_id=chat_id))
+                yield _enc.encode(
+                    TextMessageStartEvent(message_id=msg_id, role="assistant")
+                )
+                yield _enc.encode(
+                    TextMessageContentEvent(message_id=msg_id, delta=cmd_result)
+                )
+                yield _enc.encode(TextMessageEndEvent(message_id=msg_id))
+                yield _enc.encode(RunFinishedEvent(run_id=run_id, thread_id=chat_id))
+                yield "data: [DONE]\n\n"
+                return
+
         # Only append a new user message if there's actual content or attachments
         # (For stateless resume, we might just be submitting tool results)
         full_prompt = ""
@@ -234,7 +270,21 @@ class ChatProcessor:
             f"[ChatProcessor] Prompt prepared. Length: {len(full_prompt)}. Streaming..."
         )
 
-        # 7. Stream Response
+        # 7. Pre-send tool result trimming (in-memory only, never persisted)
+        from suzent.core.context_compressor import ToolResultTrimmer, estimate_tokens
+        from suzent.config import CONFIG as _cfg
+
+        _budget = estimate_tokens(message_history or [], _cfg.max_context_tokens)
+        if _budget.over_hard:
+            message_history = ToolResultTrimmer.apply_hard_clear(
+                message_history, _budget
+            )
+        elif _budget.over_soft:
+            message_history = ToolResultTrimmer.apply_soft_trim(
+                message_history, _budget
+            )
+
+        # 8. Stream Response
         full_response = ""
 
         try:
@@ -262,7 +312,7 @@ class ChatProcessor:
 
                 yield chunk
         finally:
-            # 8. Post-Processing (Background)
+            # 9. Post-Processing (Background)
             # We use a background task so the SSE stream can close immediately
             # while heavy extraction/persistence runs.
             import asyncio

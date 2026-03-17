@@ -184,8 +184,13 @@ class ConfigModel(BaseModel):
     transcript_indexing_enabled: bool = False
 
     # Context management
-    max_history_steps: int = 20
     max_context_tokens: int = 800_000
+    context_compaction_trigger: float = 0.80
+    context_soft_trim_threshold: float = 0.60
+    context_hard_trim_threshold: float = 0.80
+    compaction_keep_recent_turns: int = 3
+    compaction_chunk_size: int = 20
+    compaction_timeout_seconds: int = 60
 
     # Streaming configuration
     plan_watcher_interval: float = 2.0  # Seconds between plan update checks

@@ -62,11 +62,21 @@ class TelegramChannel(SocialChannel):
             await self.app.initialize()
             await self.app.start()
 
-            # Run polling in extended loop or use updater?
-            # Since we are inside an existing generic async loop, we should use updater.start_polling()
-            # BUT updater.start_polling() is blocking or designed for main thread usually?
-            # python-telegram-bot v20+ async architecture:
-            # app.updater.start_polling() starts a background task.
+            # Register slash commands for Telegram's autocomplete menu
+            try:
+                from telegram import BotCommand
+                from suzent.core.commands.base import list_commands
+
+                tg_cmds = [
+                    BotCommand(m.name, m.description[:256])
+                    for m in list_commands(surface="social")
+                    if m.description
+                ]
+                if tg_cmds:
+                    await self.app.bot.set_my_commands(tg_cmds)
+                    logger.info(f"Registered {len(tg_cmds)} Telegram commands")
+            except Exception as e:
+                logger.warning(f"Failed to register Telegram commands: {e}")
 
             await self.app.updater.start_polling()
             self._running = True
