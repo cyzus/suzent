@@ -453,11 +453,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     onError: (error) => {
       console.error('AG-UI error:', error);
       const chatId = streamingChatIdRef.current || activeChatIdRef.current;
+      const wasHeartbeat = heartbeatInFlightRef.current;
       heartbeatInFlightRef.current = false;
       heartbeatOkRef.current = false;
       setIsStreaming(false, chatId);
       streamingChatIdRef.current = null;
       stopInFlightRef.current = false;
+      if (!wasHeartbeat) {
+        addMessage({ role: 'assistant', content: `\u26a0\ufe0f Error: ${error.message}` }, chatId);
+      }
     },
   });
 
