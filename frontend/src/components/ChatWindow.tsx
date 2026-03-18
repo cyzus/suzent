@@ -985,8 +985,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           <div
             ref={scrollContainerRef}
             className={safeMessages.length === 0
-              ? "h-full overflow-hidden p-4 md:p-6 pb-6"
-              : "h-full overflow-y-auto overflow-x-hidden p-4 md:p-6 pb-6 scrollbar-thin"
+              ? "h-full overflow-hidden p-4 md:p-6 pb-2"
+              : "h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-0 scrollbar-thin"
             }
           >
             {safeMessages.length === 0 ? (
@@ -1049,7 +1049,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             )}
 
             {!configReady && <LoadingIndicator />}
-            <div ref={bottomRef} className="h-4" />
+            <div ref={bottomRef} className="h-0" />
           </div>
 
           {showScrollButton && <ScrollToBottomButton onClick={scrollToBottom} />}
