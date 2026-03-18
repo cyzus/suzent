@@ -183,15 +183,15 @@ code {
 }
 
 .tool-group-summary.active-approval .tool-group-icon {
-  @apply bg-amber-100 dark:bg-amber-800 text-brutal-black dark:text-amber-100;
+  @apply text-brutal-black dark:text-amber-100;
 }
 
 .tool-group-icons {
-  @apply flex items-center -space-x-1;
+  @apply flex items-center gap-1;
 }
 
 .tool-group-icon {
-  @apply w-5 h-5 flex items-center justify-center bg-white rounded-full text-[10px] shadow-sm;
+  @apply text-xs leading-none;
 }
 
 /* Improve prose text selection by reducing margin interference */

@@ -133,10 +133,10 @@ const ToolSequenceGroup: React.FC<{
                 {tools.map((t, i) => {
                   if (i > 3) return null;
                   const icon = t.approvalState === 'pending' ? '⏳' : t.approvalState === 'denied' ? '🚫' : '🔧';
-                  return <span key={i} className={`tool-group-icon ${isStreaming && !t.output ? 'animate-spin-slow' : ''}`}>{icon}</span>;
+                  return <span key={i} className={`text-xs shrink-0 ${isStreaming && !t.output ? 'animate-spin-slow' : ''}`}>{icon}</span>;
                 })}
                 {tools.length > 4 && (
-                  <span className="tool-group-icon bg-neutral-100 font-bold">+{tools.length - 4}</span>
+                  <span className="text-[10px] font-mono font-bold text-neutral-500 dark:text-neutral-400 ml-1">+{tools.length - 4}</span>
                 )}
               </div>
               <span className="text-[10px] font-mono font-bold text-neutral-500 uppercase tracking-tight group-hover/tools:text-brutal-black dark:group-hover/tools:text-white transition-colors">
