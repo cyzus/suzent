@@ -110,7 +110,7 @@ Both systems run with full memory enabled, so the agent retains context across s
 
 ## **TECH STACK**
 
-*   **BACKEND**: Python 3.12, smolagents, litellm, Starlette, SQLite.
+*   **BACKEND**: Python 3.12, pydantic-ai, litellm, Starlette, SQLite.
 *   **FRONTEND**: React, TypeScript, Tailwind, Vite.
 *   **MEMORY**: LanceDB (Local Vector Store).
 *   **SANDBOX**: MicroSandbox.
