@@ -1,15 +1,15 @@
 # Filesystem & Execution
 
-Suzent provides secure file access and code execution through two modes: **Sandbox Mode** (isolated MicroVM) and **Host Mode** (direct execution with restrictions).
+Suzent provides secure file access and code execution through two modes: **Sandbox Mode** (isolated Docker container) and **Host Mode** (direct execution with restrictions).
 
 ## Execution Modes
 
 | Mode | BashTool | File Tools | Path Style |
 |------|----------|------------|------------|
-| **Sandbox** | Runs in MicroVM | Virtual filesystem | `/persistence`, `/shared`, `/mnt/*` |
+| **Sandbox** | Runs in Docker container | Virtual filesystem | `/persistence`, `/shared`, `/mnt/*` |
 | **Host** | Runs on host | Host filesystem | `$PERSISTENCE_PATH`, `$SHARED_PATH`, `$MOUNT_*` |
 
-Toggle sandbox in the chat settings when creating a conversation.
+Toggle sandbox in the chat settings panel when creating a conversation.
 
 ---
 
@@ -39,36 +39,97 @@ Now `/data/file.csv` maps to `D:/datasets/file.csv` on your host.
 
 ## Sandbox Mode
 
-Uses **Microsandbox** (Firecracker MicroVMs) for isolated execution.
+Uses Docker containers for isolated execution. Each chat session gets its own named container (`suzent-sandbox-{id}`) that starts on first use and is kept running for the duration of the session.
 
 ### Features
-- **Isolation**: Each session runs in its own MicroVM
-- **Auto-Healing**: Automatically restarts crashed sessions
-- **Multi-language**: Python, Node.js, shell commands
+- **Isolation**: Each session runs in its own container (network access on by default via `bridge`)
+- **Persistent data**: `/persistence` and `/shared` are bind-mounted from the host — data survives container restarts and removal
+- **Auto-healing**: Automatically restarts the container if it crashes
+- **Multi-language**: Python, Node.js (with custom image), shell commands
+- **Resource limits**: 512 MB memory, 1 CPU, 256 process limit
+
+### Requirements
+
+- **Docker Desktop** (Windows/macOS) or Docker Engine (Linux)
+- No KVM, no privileged mode, no extra services required
 
 ### Setup
 
-1. **Docker**: Required to run `microsandbox` service
-2. **Configure** `docker/sandbox-compose.yml`:
+1. Ensure Docker Desktop is running
 
-```yaml
-services:
-  microsandbox:
-    image: microsandbox/microsandbox:latest
-    privileged: true
-    volumes:
-      - microsandbox-data:/root/.local/share/microsandbox
-      - ..:/workspace
-      # Windows: Map for custom volumes
-      - C:/Users:/mnt/c/Users
-```
-
-3. **Configure** `config/default.yaml`:
+2. Enable sandbox in the chat config panel (sidebar), or set globally in `config/default.yaml`:
 
 ```yaml
 sandbox_enabled: true
-sandbox_server_url: "http://localhost:7263"
 ```
+
+3. *(Optional)* Change the container image:
+
+```yaml
+# Default — Python + bash only
+sandbox_image: python:3.11-slim
+
+# Custom image — Python + Node.js + common packages (see below)
+sandbox_image: suzent-sandbox
+```
+
+### Custom Sandbox Image (Python + Node.js)
+
+The default `python:3.11-slim` image covers Python and shell commands. For Node.js support and pre-installed packages (numpy, pandas, requests, etc.), build the custom image:
+
+```bash
+docker compose -f docker/sandbox-compose.yml build
+```
+
+Then set `sandbox_image: suzent-sandbox` in `config/default.yaml`.
+
+### Calling Suzent from Inside the Sandbox
+
+`SUZENT_BASE_URL` is injected automatically so sandboxed code can reach the running host server. This lets agent-written scripts do everything the `suzent` CLI can do, without the CLI being installed.
+
+| Variable | Example value |
+|----------|---------------|
+| `SUZENT_BASE_URL` | `http://host.docker.internal:25314` |
+
+**CLI → API mapping:**
+
+| CLI command | HTTP equivalent |
+|-------------|----------------|
+| `suzent cron list` | `GET  $SUZENT_BASE_URL/cron/jobs` |
+| `suzent cron add ...` | `POST $SUZENT_BASE_URL/cron/jobs` |
+| `suzent cron trigger {id}` | `POST $SUZENT_BASE_URL/cron/jobs/{id}/trigger` |
+| `suzent cron remove {id}` | `DELETE $SUZENT_BASE_URL/cron/jobs/{id}` |
+| `suzent agent chat "msg"` | `POST $SUZENT_BASE_URL/chat` (streaming) |
+| List chats | `GET  $SUZENT_BASE_URL/chats` |
+| Memory search | `GET  $SUZENT_BASE_URL/memory/archival?query=...` |
+
+Example — scheduling a cron job from sandboxed Python:
+
+```python
+import os, requests
+
+base = os.environ["SUZENT_BASE_URL"]
+
+requests.post(f"{base}/cron/jobs", json={
+    "name": "daily-report",
+    "cron": "0 9 * * *",
+    "prompt": "Summarize today's activity",
+    "delivery": "announce",
+})
+```
+
+### Configuration Reference
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `sandbox_enabled` | `false` | Enable sandbox mode |
+| `sandbox_image` | `python:3.11-slim` | Docker image to use |
+| `sandbox_network` | `bridge` | Network mode (`bridge` = internet access, `none` = isolated) |
+| `sandbox_idle_timeout_minutes` | `30` | Stop idle containers after N minutes (checked every 5 min) |
+| `sandbox_setup_command` | `""` | Shell command run once on container creation (login shell) |
+| `sandbox_env` | `{}` | Extra env vars injected into container (secrets are blocked) |
+| `sandbox_data_path` | `.suzent/sandbox` | Host path for persistent data |
+| `sandbox_volumes` | `[]` | Extra bind mounts (`host:container`) |
 
 ---
 
@@ -161,8 +222,9 @@ All paths are validated to prevent directory traversal:
 
 | Issue | Solution |
 |-------|----------|
-| **File not found** | Check `.suzent/sandbox/sessions/{chat_id}/` |
+| **File not found** | Check `.suzent/sandbox/sessions/{chat_id}/` on the host |
 | **Path traversal error** | Ensure path is within allowed directories |
 | **Volume not accessible** | Verify `sandbox_volumes` in config |
-| **Timeout/ConnectionRefused** | Check `sandbox_server_url` and Docker status |
-| **WSL issues** | Use WSL IP instead of `localhost` |
+| **Container fails to start** | Check Docker Desktop is running (`docker ps`) |
+| **Node.js not found** | Build the custom image: `docker compose -f docker/sandbox-compose.yml build`, set `sandbox_image: suzent-sandbox` |
+| **Internet in sandbox** | Ensure `sandbox_network: bridge` (default) — `none` fully isolates |

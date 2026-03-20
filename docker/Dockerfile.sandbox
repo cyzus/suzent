@@ -1,0 +1,49 @@
+# Suzent Sandbox Image
+# ====================
+# Python + Node.js + common tools pre-installed.
+# Run as non-root user for security.
+#
+# Build (from project root): docker compose -f docker/sandbox-compose.yml build
+# Configure in default.yaml:  sandbox_image: suzent-sandbox
+
+FROM python:3.11-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONIOENCODING=utf-8
+
+# Install Node.js and common system tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    bash \
+    ca-certificates \
+    ripgrep \
+    jq \
+    nodejs \
+    npm \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pre-install common Python packages
+RUN pip install --no-cache-dir \
+    numpy \
+    pandas \
+    requests \
+    httpx \
+    matplotlib \
+    Pillow \
+    beautifulsoup4 \
+    lxml
+
+# Create non-root sandbox user
+RUN useradd --create-home --shell /bin/bash --uid 1000 sandbox
+
+# Create mount points with correct ownership
+RUN mkdir -p /persistence /shared && chown sandbox:sandbox /persistence /shared
+
+USER sandbox
+WORKDIR /persistence
+
+CMD ["sleep", "infinity"]

@@ -2,38 +2,40 @@
 Sandbox Module
 ==============
 
-Provides isolated code execution with session persistence.
+Docker-based isolated code execution with session persistence.
 
 Configuration is read from suzent.config.CONFIG (single source of truth).
 
 Usage:
     from suzent.sandbox import SandboxManager, Language
 
-    async with SandboxManager() as manager:
-        result = await manager.execute("chat_id", "print('Hello!')")
-        result = await manager.execute("chat_id", "ls -la", Language.COMMAND)
+    with SandboxManager() as manager:
+        result = manager.execute("chat_id", "print('Hello!')")
+        result = manager.execute("chat_id", "ls -la", Language.COMMAND)
 """
 
 from .manager import (
     # Core classes
     SandboxManager,
-    SandboxSession,
+    DockerSession,
+    SandboxSession,  # backward compat alias
     ExecutionResult,
-    RPCClient,
     # Enums
     Language,
     # Constants
     Defaults,
     # Utilities
-    check_server_status,
+    check_docker_available,
+    check_server_status,  # backward compat alias
 )
 
 __all__ = [
     "SandboxManager",
+    "DockerSession",
     "SandboxSession",
     "ExecutionResult",
-    "RPCClient",
     "Language",
     "Defaults",
+    "check_docker_available",
     "check_server_status",
 ]

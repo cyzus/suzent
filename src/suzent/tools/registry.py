@@ -72,6 +72,7 @@ def _build_registry() -> Dict[str, Union[Callable, PydanticTool]]:
     from suzent.tools.websearch_tool import WebSearchTool
     from suzent.tools.webpage_tool import WebpageTool
     from suzent.tools.bash_tool import BashTool
+    from suzent.tools.process_tool import ProcessTool
     from suzent.tools.read_file_tool import ReadFileTool
     from suzent.tools.write_file_tool import WriteFileTool
     from suzent.tools.edit_file_tool import EditFileTool
@@ -89,6 +90,7 @@ def _build_registry() -> Dict[str, Union[Callable, PydanticTool]]:
         WebSearchTool,
         WebpageTool,
         BashTool,
+        ProcessTool,
         ReadFileTool,
         WriteFileTool,
         EditFileTool,

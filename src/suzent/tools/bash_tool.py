@@ -6,7 +6,7 @@ Provides code execution within agent conversations.
 Each chat session gets its own session with persistent storage.
 
 Supports two modes:
-- Sandbox mode: Execute in isolated Docker container (requires microsandbox)
+- Sandbox mode: Execute in isolated Docker container (requires Docker Desktop)
 - Host mode: Execute directly on host machine (restricted to workspace)
 """
 
@@ -74,6 +74,7 @@ class BashTool(Tool):
         content: str,
         language: Optional[str] = None,
         timeout: Optional[int] = None,
+        background: bool = False,
     ) -> str:
         """Execute code or command in a secure environment (sandbox or host mode).
 
@@ -100,12 +101,13 @@ class BashTool(Tool):
             ctx: The pydantic-ai run context with agent dependencies.
             content: The code or shell command to execute.
             language: Execution language: 'python', 'nodejs', or 'command'. Defaults to 'python'.
-            timeout: Execution timeout in seconds (optional).
+            timeout: Execution timeout in seconds (optional). For long-running tasks, use background=True instead.
+            background: If True, run in background and return a process_id. Use ProcessTool to poll/kill.
         """
         self.chat_id = ctx.deps.chat_id
         self.sandbox_enabled = ctx.deps.sandbox_enabled
         self.workspace_root = ctx.deps.workspace_root
-        if ctx.deps.custom_volumes:
+        if ctx.deps.custom_volumes and ctx.deps.custom_volumes != self.custom_volumes:
             self.set_custom_volumes(ctx.deps.custom_volumes)
 
         if not self.chat_id:
@@ -113,9 +115,30 @@ class BashTool(Tool):
 
         lang = language or "python"
 
+        if background:
+            if not self.sandbox_enabled:
+                return "Error: background=True requires sandbox mode."
+            return self._execute_background(content, lang)
+
         if self.sandbox_enabled:
             return self._execute_in_sandbox(content, lang, timeout)
         return self._execute_on_host(content, lang, timeout)
+
+    def _execute_background(self, content: str, language: str) -> str:
+        """Start a background process and return its process_id."""
+        try:
+            proc_id = self.manager.start_background(
+                session_id=self.chat_id,
+                content=content,
+                language=language,
+            )
+            return (
+                f"Background process started. process_id={proc_id}\n"
+                f"Use ProcessTool to poll output: process_manage(process_id={proc_id!r}, action='poll')"
+            )
+        except Exception as e:
+            logger.error(f"Background execution error: {e}")
+            return f"Error starting background process: {e}"
 
     def _execute_in_sandbox(
         self,

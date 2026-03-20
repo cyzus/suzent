@@ -51,7 +51,7 @@ Common patterns:
 - `0 9 * * 1-5` — weekdays at 9:00 AM
 - `0 9,18 * * *` — twice daily at 9 AM and 6 PM
 
-### Cron CLI
+### Cron CLI (host mode)
 
 ```bash
 suzent cron list [--verbose]
@@ -62,7 +62,43 @@ suzent cron remove <job_id>
 suzent cron status
 ```
 
-You should use the Bash tool to run these CLI commands.
+Use the Bash tool to run these CLI commands in host mode.
+
+### Cron API (sandbox mode)
+
+In sandbox mode the `suzent` CLI is not available. Use `$SUZENT_BASE_URL` with `requests` or `curl` instead:
+
+| Action | Method | Path |
+|--------|--------|------|
+| List jobs | `GET` | `/cron/jobs` |
+| Create job | `POST` | `/cron/jobs` |
+| Update job | `PUT` | `/cron/jobs/{id}` |
+| Delete job | `DELETE` | `/cron/jobs/{id}` |
+| Trigger job | `POST` | `/cron/jobs/{id}/trigger` |
+| Cron status | `GET` | `/cron/status` |
+
+```python
+import os, requests
+
+base = os.environ["SUZENT_BASE_URL"]
+
+# List
+jobs = requests.get(f"{base}/cron/jobs").json()
+
+# Create
+requests.post(f"{base}/cron/jobs", json={
+    "name": "daily-report",
+    "cron": "0 9 * * *",
+    "prompt": "Summarize today's activity",
+    "delivery": "announce",  # or "none"
+})
+
+# Trigger immediately
+requests.post(f"{base}/cron/jobs/{job_id}/trigger")
+
+# Delete
+requests.delete(f"{base}/cron/jobs/{job_id}")
+```
 
 ## Heartbeat
 
@@ -93,15 +129,25 @@ Rules for the agent during heartbeat:
 - Do not infer or repeat old tasks from prior heartbeats
 - Reply `HEARTBEAT_OK` if nothing needs attention
 
-### Heartbeat CLI
+### Heartbeat CLI (host mode)
 
 ```bash
 suzent heartbeat status -c <chat_id>
 suzent heartbeat enable -c <chat_id>
 suzent heartbeat disable -c <chat_id>
 suzent heartbeat run -c <chat_id>
-suzent heartbeat interval <minutes> -c <chat_id>   # set the check-in interval (e.g. 15)
+suzent heartbeat interval <minutes> -c <chat_id>
 ```
+
+### Heartbeat API (sandbox mode)
+
+| Action | Method | Path |
+|--------|--------|------|
+| Get status | `GET` | `/heartbeat/status?chat_id={id}` |
+| Enable | `POST` | `/heartbeat/enable` `{"chat_id": "..."}` |
+| Disable | `POST` | `/heartbeat/disable` `{"chat_id": "..."}` |
+| Trigger now | `POST` | `/heartbeat/trigger` `{"chat_id": "..."}` |
+| Set interval | `POST` | `/heartbeat/interval` `{"chat_id": "...", "interval": 15}` |
 
 ## Important Notes
 

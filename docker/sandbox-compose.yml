@@ -1,42 +1,15 @@
-# Microsandbox Server
-# Separate from main docker-compose due to special requirements (privileged, host network, KVM)
+# Suzent Sandbox Image Builder
+# =============================
+# Builds the custom sandbox image with Python + Node.js + common packages.
+#
+# Build: docker compose -f docker/sandbox-compose.yml build
+#
+# Then set in config/default.yaml:
+#   sandbox_image: suzent-sandbox
 
 services:
-  microsandbox:
-    container_name: suzent-microsandbox
-    image: suzent-microsandbox:latest
+  sandbox:
+    image: suzent-sandbox:latest
     build:
-      context: .
-      dockerfile: microsandbox.Dockerfile
-    privileged: true
-    network_mode: host  # Required for microVM portal communication
-    # NOTE: When using Windows + WSL2, you must use WSL2's IP address
-    # Run 'wsl hostname -I' to get it, then set in config/default.yaml:
-    # sandbox_server_url: "http://172.x.x.x:7263"
-    devices:
-      - /dev/kvm:/dev/kvm  # Required for microVM support
-    volumes:
-      - microsandbox-data:/root/.local/share/microsandbox
-      - microsandbox-config:/root/.config/microsandbox
-      - ..:/workspace  # Mount suzent root for session persistence
-      # mount custom volumes here e.g.:
-      # - D:/data:/mnt/d/data
-    working_dir: /workspace
-    environment:
-      - RUST_LOG=${RUST_LOG:-info}
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-volumes:
-  microsandbox-data:
-    driver: local
-  microsandbox-config:
-    driver: local
+      context: ..
+      dockerfile: docker/Dockerfile.sandbox

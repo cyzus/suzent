@@ -35,6 +35,7 @@ dependencies = [
     "sounddevice>=0.5.5",
     "opencv-python>=4.8.0",
     "croniter>=2.0.0",
+    "docker>=7.0",
 ]
 
 [project.scripts]
@@ -72,7 +73,7 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
 markers = [
-    "sandbox: marks tests that require microsandbox server (deselect with '-m \"not sandbox\"')",
+    "sandbox: marks tests that require Docker daemon (deselect with '-m \"not sandbox\"')",
     "integration: marks tests that require external services",
     "slow: marks tests that take significant time to run",
     "stress: marks stress/load tests",

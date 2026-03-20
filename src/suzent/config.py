@@ -166,7 +166,11 @@ class ConfigModel(BaseModel):
 
     # Sandbox
     sandbox_enabled: bool = False
-    sandbox_server_url: str = "http://localhost:7263"
+    sandbox_image: str = "python:3.11-slim"
+    sandbox_network: str = "bridge"
+    sandbox_idle_timeout_minutes: int = 30
+    sandbox_setup_command: str = ""
+    sandbox_env: Dict[str, Any] = {}
     sandbox_data_path: str = str(DATA_DIR / "sandbox")
     sandbox_volumes: List[str] = []
 

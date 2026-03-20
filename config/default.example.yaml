@@ -63,8 +63,21 @@ USER_ID: "default-user"
 # Extraction model for LLM-based fact extraction (leave empty for heuristic-based)
 EXTRACTION_MODEL: "gemini/gemini-2.5-flash" # "" to disable
 
-# Sandbox
+# Sandbox (requires Docker Desktop)
 SANDBOX_ENABLED: false
-SANDBOX_SERVER_URL: http://sandbox_ip:port
+# Docker image to use. Options:
+#   python:3.11-slim       — default, Python + bash only
+#   suzent-sandbox         — recommended: Node.js, curl, numpy, pandas, and suzent CLI
+#                            Build with: docker compose -f docker/sandbox-compose.yml build
+SANDBOX_IMAGE: python:3.11-slim
+# Network mode: "bridge" (internet access) or "none" (fully isolated)
+SANDBOX_NETWORK: bridge
+# Stop idle containers after N minutes of inactivity
+SANDBOX_IDLE_TIMEOUT_MINUTES: 30
+# Command to run once after container creation (login shell, so PATH includes ~/.local/bin)
+# Useful for pre-installing packages: "pip install pandas requests"
+SANDBOX_SETUP_COMMAND: ""
+# Extra environment variables injected into the container (secrets are blocked automatically)
+SANDBOX_ENV: {}
 SANDBOX_VOLUMES:
   - ".suzent/notebook:/mnt/notebook"
