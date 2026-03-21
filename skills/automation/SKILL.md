@@ -88,9 +88,9 @@ jobs = requests.get(f"{base}/cron/jobs").json()
 # Create
 requests.post(f"{base}/cron/jobs", json={
     "name": "daily-report",
-    "cron": "0 9 * * *",
+    "cron_expr": "0 9 * * *",
     "prompt": "Summarize today's activity",
-    "delivery": "announce",  # or "none"
+    "delivery_mode": "announce",  # or "none"
 })
 
 # Trigger immediately
@@ -147,7 +147,7 @@ suzent heartbeat interval <minutes> -c <chat_id>
 | Enable | `POST` | `/heartbeat/enable` `{"chat_id": "..."}` |
 | Disable | `POST` | `/heartbeat/disable` `{"chat_id": "..."}` |
 | Trigger now | `POST` | `/heartbeat/trigger` `{"chat_id": "..."}` |
-| Set interval | `POST` | `/heartbeat/interval` `{"chat_id": "...", "interval": 15}` |
+| Set interval | `POST`/`PUT` | `/heartbeat/interval` `{"chat_id": "...", "interval_minutes": 15}` |
 
 ## Important Notes
 

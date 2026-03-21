@@ -24,12 +24,56 @@ Nodes are companion devices (phones, desktops, headless servers) that connect to
 └───────────────────┘                     └──────┬────────────┘
                                                  │ REST API
                                           ┌──────▼────────────┐
-                                          │   CLI / Agent     │
-                                          │  suzent nodes ... │
+                                          │  CLI / REST Agent │
+                                          │ suzent nodes / API│
                                           └───────────────────┘
 ```
 
-## Using Nodes via CLI
+## Using Nodes in Sandbox (REST API)
+
+In sandbox mode, `suzent` CLI is not installed. Use `SUZENT_BASE_URL` and call the REST API directly.
+
+### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/nodes` | List all connected nodes |
+| GET | `/nodes/{node_id_or_name}` | Describe a specific node |
+| POST | `/nodes/{node_id_or_name}/invoke` | Invoke a command on a node |
+| WS | `/ws/node` | WebSocket endpoint for node connections |
+
+### Sandbox Python Example
+
+```python
+import os
+import requests
+
+base = os.environ["SUZENT_BASE_URL"]
+
+# List nodes
+nodes = requests.get(f"{base}/nodes", timeout=30).json().get("nodes", [])
+if not nodes:
+    raise RuntimeError("No nodes connected")
+
+# Resolve by display name (recommended)
+target_name = "MyPhone"
+target = next((n for n in nodes if n.get("display_name") == target_name), nodes[0])
+node_id = target["node_id"]
+
+# Describe
+detail = requests.get(f"{base}/nodes/{node_id}", timeout=30).json()
+
+# Invoke
+resp = requests.post(
+    f"{base}/nodes/{node_id}/invoke",
+    json={"command": "camera.snap", "params": {"format": "png"}},
+    timeout=60,
+)
+resp.raise_for_status()
+print(resp.json())
+```
+
+## Using Nodes via CLI (Host Mode)
 
 Nodes are controlled through the `suzent nodes` CLI subcommands. The agent uses these same commands via `BashTool`.
 
@@ -199,15 +243,6 @@ suzent config get nodes_enabled
 suzent config set nodes_enabled true
 ```
 
-## REST API
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/nodes` | List all connected nodes |
-| GET | `/nodes/{node_id}` | Describe a specific node |
-| POST | `/nodes/{node_id}/invoke` | Invoke a command on a node |
-| WS | `/ws/node` | WebSocket endpoint for node connections |
-
 ## Pydantic Models
 
 All protocol messages and API schemas are defined as Pydantic models in `src/suzent/nodes/models.py`:
@@ -216,9 +251,6 @@ All protocol messages and API schemas are defined as Pydantic models in `src/suz
 - **API**: `NodeInfo`, `NodeListResponse`, `InvokeRequest`, `InvokeResponse`, `CapabilitySchema`
 
 ## Troubleshooting
-
-### "Server error: 404" on `suzent nodes list`
-The server was started before the node routes were added. Restart the server.
 
 ### Node disconnects immediately
 Check that the `connect` message has valid JSON with required `display_name` field. Review server logs for handshake errors.
