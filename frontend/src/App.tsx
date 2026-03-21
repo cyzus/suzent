@@ -392,6 +392,43 @@ function BackendLoadingScreen({ error, onRetry }: { error?: string | null; onRet
   );
 }
 
+function hasPersistedBackendPort(): boolean {
+  try {
+    return !!sessionStorage.getItem('SUZENT_PORT') || !!localStorage.getItem('SUZENT_PORT');
+  } catch {
+    return false;
+  }
+}
+
+async function isBackendReachable(): Promise<boolean> {
+  const apiBase = (() => {
+    try {
+      const injected = (window as any).__SUZENT_BACKEND_PORT__;
+      if (typeof injected === 'number' && Number.isFinite(injected)) {
+        return `http://localhost:${injected}`;
+      }
+      const persisted = sessionStorage.getItem('SUZENT_PORT') || localStorage.getItem('SUZENT_PORT');
+      if (persisted) return `http://localhost:${persisted}`;
+    } catch {
+      // ignore
+    }
+    return '';
+  })();
+
+  if (!apiBase) return false;
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 1500);
+  try {
+    const res = await fetch(`${apiBase}/config`, { signal: controller.signal });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export default function App() {
   const locale = getInitialLocale();
   const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
@@ -421,7 +458,7 @@ export default function App() {
   // a port from a previous session while the backend is still starting up.
   // The initial value handles the rare race where Rust injects the port before React renders.
   const [backendReady, setBackendReady] = React.useState<boolean>(
-    !!(window as any).__SUZENT_BACKEND_PORT__
+    !!(window as any).__SUZENT_BACKEND_PORT__ || hasPersistedBackendPort()
   );
   const [backendError, setBackendError] = React.useState<string | null>(null);
 
@@ -429,6 +466,19 @@ export default function App() {
     if (backendReady) return;
     let unlisten: (() => void) | undefined;
     let unlistenErr: (() => void) | undefined;
+    let cancelled = false;
+
+    // Handle WebView refresh race: backend-ready may have been emitted before listeners attach.
+    // If we have a persisted port, probe backend health and continue without waiting forever.
+    if (hasPersistedBackendPort()) {
+      isBackendReachable().then((ok) => {
+        if (!cancelled && ok) {
+          setBackendReady(true);
+          setBackendError(null);
+        }
+      });
+    }
+
     import('@tauri-apps/api/event').then(({ listen }) => {
       listen<number>('backend-ready', () => {
         setBackendReady(true);
@@ -437,7 +487,11 @@ export default function App() {
         setBackendError(event.payload);
       }).then((fn) => { unlistenErr = fn; });
     });
-    return () => { unlisten?.(); unlistenErr?.(); };
+    return () => {
+      cancelled = true;
+      unlisten?.();
+      unlistenErr?.();
+    };
   }, [backendReady]);
 
   if (!backendReady || backendError) {
