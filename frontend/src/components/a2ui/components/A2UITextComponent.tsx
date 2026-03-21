@@ -14,13 +14,17 @@ function looksLikeMarkdown(input: string): boolean {
     /^\s*\d+\.\s+/m.test(text) ||
     /\[[^\]]+\]\([^\)]+\)/.test(text) ||
     /^>\s+/m.test(text) ||
-    /\|.+\|/.test(text)
+    /\|.+\|/.test(text) ||
+    /\*\*[^*]+\*\*/.test(text) ||
+    /\*[^*\n]+\*/.test(text)
   );
 }
 
 export const A2UITextComponent: React.FC<Props> = ({ component }) => {
   const { variant = 'body', markdown = false } = component;
-  const content = component.content ?? (component as any).text ?? (component as any).value ?? '';
+  const rawContent = component.content ?? (component as any).text ?? (component as any).value ?? '';
+  // Normalize literal \n sequences the LLM sometimes emits instead of real newlines
+  const content = typeof rawContent === 'string' ? rawContent.replace(/\\n/g, '\n') : rawContent;
   const shouldRenderMarkdown = (markdown || looksLikeMarkdown(content)) && variant !== 'code';
 
   if (shouldRenderMarkdown) {
