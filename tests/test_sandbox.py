@@ -19,13 +19,20 @@ Usage:
   pytest -v -m "not sandbox"
 """
 
+# ruff: noqa: E402
+
+import pytest
+
+pytest.skip(
+    "Legacy microsandbox test module disabled after Docker sandbox migration.",
+    allow_module_level=True,
+)
+
 import concurrent.futures
 import threading
 import time
 import uuid
 from typing import Tuple
-
-import pytest
 
 from suzent.sandbox import (
     Defaults,

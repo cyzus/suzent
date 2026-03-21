@@ -18,7 +18,6 @@ from .manager import (
     # Core classes
     SandboxManager,
     DockerSession,
-    SandboxSession,  # backward compat alias
     ExecutionResult,
     # Enums
     Language,
@@ -26,16 +25,13 @@ from .manager import (
     Defaults,
     # Utilities
     check_docker_available,
-    check_server_status,  # backward compat alias
 )
 
 __all__ = [
     "SandboxManager",
     "DockerSession",
-    "SandboxSession",
     "ExecutionResult",
     "Language",
     "Defaults",
     "check_docker_available",
-    "check_server_status",
 ]

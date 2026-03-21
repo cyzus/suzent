@@ -802,10 +802,6 @@ else:
         )
 
 
-# Backward compat alias
-SandboxSession = DockerSession
-
-
 # =============================================================================
 # Sandbox Manager
 # =============================================================================
@@ -1011,10 +1007,6 @@ class SandboxManager:
         except Exception:
             return False
 
-    # Backward compat
-    def is_server_available(self) -> bool:
-        return self.is_available()
-
     @property
     def active_sessions(self) -> List[str]:
         return [sid for sid, s in self._sessions.items() if s.is_running]
@@ -1036,8 +1028,3 @@ def check_docker_available() -> bool:
         return True
     except Exception:
         return False
-
-
-# Backward compat
-def check_server_status(server_url: Optional[str] = None) -> bool:
-    return check_docker_available()

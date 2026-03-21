@@ -113,7 +113,7 @@ Both systems run with full memory enabled, so the agent retains context across s
 *   **BACKEND**: Python 3.12, pydantic-ai, litellm, Starlette, SQLite.
 *   **FRONTEND**: React, TypeScript, Tailwind, Vite.
 *   **MEMORY**: LanceDB (Local Vector Store).
-*   **SANDBOX**: MicroSandbox.
+*   **SANDBOX**: Docker.
 
 ---
 
