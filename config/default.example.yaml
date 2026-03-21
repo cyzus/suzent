@@ -67,7 +67,7 @@ EXTRACTION_MODEL: "gemini/gemini-2.5-flash" # "" to disable
 SANDBOX_ENABLED: false
 # Docker image to use. Options:
 #   python:3.11-slim       — default, Python + bash only
-#   suzent-sandbox         — recommended: Node.js, curl, numpy, pandas, and suzent CLI
+#   suzent-sandbox         — recommended: Node.js, curl, numpy, pandas, etc.
 #                            Build with: docker compose -f docker/sandbox-compose.yml build
 SANDBOX_IMAGE: python:3.11-slim
 # Network mode: "bridge" (internet access) or "none" (fully isolated)

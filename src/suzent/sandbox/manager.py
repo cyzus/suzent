@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import threading
 import time
 import uuid
@@ -34,6 +35,8 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 _orphan_cleanup_done = False
+_manager_singletons: Dict[tuple, "SandboxManager"] = {}
+_manager_singletons_lock = threading.Lock()
 
 
 # =============================================================================
@@ -255,6 +258,36 @@ class DockerSession:
     @property
     def is_running(self) -> bool:
         return self._is_running
+
+    @staticmethod
+    def _validate_proc_id(proc_id: str) -> str:
+        """Validate background process id format to avoid script/code injection."""
+        if not isinstance(proc_id, str) or not re.fullmatch(r"[a-f0-9]{12}", proc_id):
+            raise ValueError("Invalid process_id format")
+        return proc_id
+
+    def _ensure_container(self, start_if_needed: bool = False) -> bool:
+        """Ensure self._container references an existing container.
+
+        If ``start_if_needed`` is True, starts the session when missing/stopped.
+        """
+        import docker.errors
+
+        if self._container is not None:
+            return True
+
+        try:
+            container = self._client.containers.get(self.container_name)
+            self._container = container
+            self._is_running = container.status == "running"
+            if not self._is_running and start_if_needed:
+                return self.start()
+            return True
+        except docker.errors.NotFound:
+            self._is_running = False
+            if start_if_needed:
+                return self.start()
+            return False
 
     # -------------------------------------------------------------------------
     # Runtime environment
@@ -621,6 +654,16 @@ with open(log_path, "wb", buffering=0) as log:
 
     def poll_process(self, proc_id: str, offset: int = 0) -> dict:
         """Read new output from a background process since byte offset."""
+        proc_id = self._validate_proc_id(proc_id)
+        with self._lock:
+            if not self._ensure_container(start_if_needed=True):
+                return {
+                    "output": "",
+                    "offset": offset,
+                    "done": True,
+                    "exit_code": None,
+                    "error": "container not available",
+                }
         script = f"""
 import os, json
 log_path  = "/tmp/suzent_proc_{proc_id}.log"
@@ -647,6 +690,10 @@ print(json.dumps(out))
 
     def kill_process(self, proc_id: str) -> bool:
         """Send SIGTERM to a background process."""
+        proc_id = self._validate_proc_id(proc_id)
+        with self._lock:
+            if not self._ensure_container(start_if_needed=True):
+                return False
         script = f"""
 import os, signal
 pid_path = "/tmp/suzent_proc_{proc_id}.pid"
@@ -777,7 +824,20 @@ class SandboxManager:
             result = manager.execute("chat_id", "print('hello')")
     """
 
+    def __new__(cls, custom_volumes: Optional[List[str]] = None):
+        """Return a singleton manager per volume configuration."""
+        key = tuple(sorted(custom_volumes or ["__default__"]))
+        with _manager_singletons_lock:
+            inst = _manager_singletons.get(key)
+            if inst is None:
+                inst = super().__new__(cls)
+                _manager_singletons[key] = inst
+            return inst
+
     def __init__(self, custom_volumes: Optional[List[str]] = None):
+        if getattr(self, "_initialized", False):
+            return
+
         import docker
 
         from suzent.config import CONFIG, get_effective_volumes
@@ -800,6 +860,7 @@ class SandboxManager:
         self._ensure_directories()
         self._cleanup_orphans()
         self._start_idle_cleanup_thread()
+        self._initialized = True
 
     def _ensure_directories(self) -> None:
         base = Path(self.data_path)
@@ -937,6 +998,10 @@ class SandboxManager:
         self._stop_event.set()
         for session_id in list(self._sessions.keys()):
             self.stop_session(session_id)
+        try:
+            self._client.close()
+        except Exception:
+            pass
 
     def is_available(self) -> bool:
         """Check if Docker daemon is reachable."""
