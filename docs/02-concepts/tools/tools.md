@@ -94,7 +94,7 @@ Performs web searches using SearXNG (self-hosted, privacy-focused) with automati
 
 ### `bash_execute`
 
-Executes code in a secure environment. Runs inside a Firecracker MicroVM when sandbox mode is enabled, or on the host when disabled.
+Executes code in a secure environment. Runs inside an isolated Docker container when sandbox mode is enabled, or on the host when disabled.
 
 **Parameters:**
 - `content` (required): Code or shell command to execute
