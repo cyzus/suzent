@@ -7,56 +7,66 @@
 /* Neo-Brutalist Theme Overrides */
 :root {
   /* Suzent Brand Colors */
-  --suzent-blue: #0066FF;
   --suzent-green: #A8E6A3;
   --suzent-yellow: #FFE666;
+  --suzent-yellow-strong: #e0b800;
+  --suzent-yellow-soft: #FFE666;
   --suzent-red: #FF0000;
   --suzent-black: #000000;
   --suzent-white: #FFFFFF;
-  --suzent-gray: #f8fafc;
-  /* brand.50 */
+  --suzent-gray: #f8f8f5;
+  --suzent-code-bg: #f5f5f5;
+  --suzent-code-fg: #1a1a1a;
+  --suzent-border-light: #000000;
+  --suzent-dark-1: #18181b;
+  --suzent-dark-2: #27272a;
+  --suzent-dark-3: #3f3f46;
+  --suzent-dark-border: #a3a3a3;
+  --suzent-dark-text: #f5f5f5;
 
-  /* Docusaurus Primary Color Overrides (Blue) */
-  --ifm-color-primary: var(--suzent-blue);
-  --ifm-color-primary-dark: #005ce6;
-  --ifm-color-primary-darker: #0057d9;
-  --ifm-color-primary-darkest: #0047b3;
-  --ifm-color-primary-light: #1a75ff;
-  --ifm-color-primary-lighter: #267dff;
-  --ifm-color-primary-lightest: #4d94ff;
+  /* Docusaurus Primary Color Overrides (ink-like dark text) */
+  --ifm-color-primary: #1f2937;
+  --ifm-color-primary-dark: #111827;
+  --ifm-color-primary-darker: #0f172a;
+  --ifm-color-primary-darkest: #000000;
+  --ifm-color-primary-light: #374151;
+  --ifm-color-primary-lighter: #4b5563;
+  --ifm-color-primary-lightest: #6b7280;
 
   --ifm-code-font-size: 95%;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
 
   /* Navbar */
-  --ifm-navbar-background-color: var(--suzent-white);
+  --ifm-navbar-background-color: var(--suzent-gray);
   --ifm-navbar-shadow: 4px 4px 0px var(--suzent-black);
 
   /* Layout */
   --ifm-background-color: var(--suzent-gray);
+  --ifm-background-surface-color: var(--suzent-white);
   --ifm-font-family-base: 'Inter', system-ui, -apple-system, sans-serif;
   --ifm-heading-font-family: 'Arial Black', 'Inter', sans-serif;
+
+  /* Code (light mode) */
+  --ifm-code-background: var(--suzent-code-bg);
+  --ifm-code-color: var(--suzent-code-fg);
 }
 
 /* For readability concerns, you should choose a lighter palette in dark mode. */
 [data-theme='dark'] {
-  --ifm-color-primary: #38bdf8;
-  /* Lighter blue for dark mode */
-  --ifm-color-primary-dark: #21af90;
-  --ifm-color-primary-darker: #1fa588;
-  --ifm-color-primary-darkest: #1a8870;
-  --ifm-color-primary-light: #29d5b0;
-  --ifm-color-primary-lighter: #32d8b4;
-  --ifm-color-primary-lightest: #4fddbf;
+  --ifm-color-primary: #d4d4d8;
+  --ifm-color-primary-dark: #c4c4c9;
+  --ifm-color-primary-darker: #b8b8be;
+  --ifm-color-primary-darkest: #9a9aa2;
+  --ifm-color-primary-light: #dfdfe3;
+  --ifm-color-primary-lighter: #e7e7ea;
+  --ifm-color-primary-lightest: #f1f1f3;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 
-  --suzent-gray: #1e293b;
-  /* brand.800 */
+  --suzent-gray: var(--suzent-dark-1);
   --ifm-background-color: var(--suzent-gray);
-  --ifm-navbar-background-color: #0f172a;
-  /* brand.900 */
-  --ifm-navbar-shadow: 4px 4px 0px #ffffff;
-  /* White shadow in dark mode */
+  --ifm-background-surface-color: var(--suzent-dark-2);
+  --ifm-navbar-background-color: var(--suzent-dark-2);
+  --ifm-navbar-shadow: 4px 4px 0px #000000;
 }
 
 /* Neo-Brutalist Components */
@@ -64,6 +74,12 @@
 /* Navbar */
 .navbar {
   border-bottom: 3px solid var(--suzent-black);
+}
+
+.navbar__title,
+.navbar__brand,
+.navbar__link {
+  color: var(--suzent-black);
 }
 
 /* Buttons */
@@ -90,6 +106,40 @@
   color: var(--suzent-black) !important;
 }
 
+/* Use yellow as accent background in docs nav, not global font color */
+.menu__link--active {
+  background-color: var(--suzent-yellow-soft);
+  color: var(--suzent-black) !important;
+  border: none;
+}
+
+.menu__link--active:not(.menu__link--sublist) {
+  border: 2px solid var(--suzent-black);
+}
+
+.navbar__link--active {
+  color: var(--suzent-black) !important;
+  text-decoration: underline;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 6px;
+}
+
+.breadcrumbs__item--active .breadcrumbs__link {
+  background-color: var(--suzent-yellow-soft);
+  color: var(--suzent-black);
+  border: 2px solid var(--suzent-black);
+}
+
+.theme-doc-markdown a:not(.button) {
+  color: #1f2937;
+  text-decoration-color: #1f2937;
+}
+
+.theme-doc-markdown a:not(.button):hover {
+  color: #000000;
+  background: var(--suzent-yellow-soft);
+}
+
 /* Cards */
 .card {
   border: 3px solid var(--suzent-black);
@@ -98,10 +148,25 @@
   background-color: var(--suzent-white);
 }
 
+/* Code blocks (light mode) align with desktop app */
+[data-theme='light'] pre[class*='language-'],
+[data-theme='light'] .theme-code-block,
+[data-theme='light'] .theme-code-block pre {
+  background: var(--suzent-code-bg) !important;
+  color: var(--suzent-code-fg);
+  border: 2px solid var(--suzent-black);
+  box-shadow: 4px 4px 0px var(--suzent-black);
+}
+
+[data-theme='light'] code {
+  background: var(--suzent-code-bg);
+  color: var(--suzent-code-fg);
+}
+
 [data-theme='dark'] .card {
-  background-color: #1e293b;
-  border-color: #ffffff;
-  box-shadow: 6px 6px 0px #ffffff;
+  background-color: var(--suzent-dark-2);
+  border-color: var(--suzent-dark-border);
+  box-shadow: 6px 6px 0px #000000;
 }
 
 /* Animations */
@@ -132,10 +197,128 @@
 }
 
 [data-theme='dark'] .navbar {
-  border-bottom: 3px solid #ffffff;
+  border-bottom: 3px solid var(--suzent-dark-border);
+}
+
+[data-theme='dark'] .navbar__title,
+[data-theme='dark'] .navbar__brand,
+[data-theme='dark'] .navbar__link,
+[data-theme='dark'] .navbar__toggle {
+  color: var(--suzent-dark-text);
+}
+
+[data-theme='dark'] .navbar__link--active {
+  color: var(--suzent-dark-text) !important;
+  text-decoration-color: var(--suzent-yellow);
 }
 
 [data-theme='dark'] .button {
-  border-color: #ffffff;
-  box-shadow: 4px 4px 0px #ffffff;
+  border-color: var(--suzent-dark-border);
+  box-shadow: 4px 4px 0px #000000;
+}
+
+[data-theme='dark'] .button--white {
+  background-color: #f3f4f6 !important;
+  color: #000000 !important;
+}
+
+[data-theme='dark'] .theme-doc-markdown a:not(.button) {
+  color: #f3f4f6;
+  text-decoration-color: #f3f4f6;
+}
+
+[data-theme='dark'] .theme-doc-markdown a:not(.button):hover {
+  color: #ffffff;
+  background: var(--suzent-dark-3);
+}
+
+/* Systematic docs dark-theme surface alignment */
+[data-theme='dark'] body,
+[data-theme='dark'] .main-wrapper {
+  background: var(--suzent-dark-1);
+  color: var(--suzent-dark-text);
+}
+
+[data-theme='dark'] .theme-doc-sidebar-container,
+[data-theme='dark'] .menu,
+[data-theme='dark'] .table-of-contents {
+  background: var(--suzent-dark-1);
+}
+
+[data-theme='dark'] .theme-doc-sidebar-container {
+  border-right: 1px solid var(--suzent-dark-3);
+}
+
+[data-theme='dark'] .menu__link {
+  color: var(--suzent-dark-text);
+  border-radius: 0;
+}
+
+[data-theme='dark'] .menu__list-item-collapsible,
+[data-theme='dark'] .menu__list-item-collapsible .menu__link,
+[data-theme='dark'] .menu__caret,
+[data-theme='dark'] .menu__caret::before {
+  color: var(--suzent-dark-text) !important;
+}
+
+[data-theme='dark'] .menu__list-item-collapsible {
+  background: var(--suzent-dark-2);
+  border: 1px solid var(--suzent-dark-3);
+}
+
+[data-theme='dark'] .menu__link:hover {
+  background: var(--suzent-dark-3);
+}
+
+[data-theme='dark'] .menu__link--active {
+  background: var(--suzent-yellow-soft);
+  color: #000000 !important;
+  border: none;
+}
+
+[data-theme='dark'] .menu__link--active:not(.menu__link--sublist) {
+  border: 2px solid #000000;
+}
+
+[data-theme='dark'] .breadcrumbs__item--active .breadcrumbs__link {
+  background: var(--suzent-yellow-soft);
+  color: #000000;
+  border: 2px solid #000000;
+}
+
+[data-theme='dark'] .table-of-contents__link {
+  color: #e4e4e7;
+}
+
+[data-theme='dark'] .table-of-contents__link:hover {
+  color: #ffffff;
+}
+
+[data-theme='dark'] .table-of-contents__link--active {
+  color: #ffffff;
+  background: var(--suzent-dark-3);
+  padding: 0.2rem 0.45rem;
+  border-left: 3px solid var(--suzent-yellow);
+}
+
+[data-theme='dark'] table {
+  background: var(--suzent-dark-2);
+}
+
+[data-theme='dark'] table th,
+[data-theme='dark'] table td {
+  border-color: var(--suzent-dark-3);
+}
+
+[data-theme='dark'] :not(pre)>code {
+  background: var(--suzent-dark-3);
+  color: #f8fafc;
+  border: 1px solid var(--suzent-dark-border);
+}
+
+[data-theme='dark'] pre[class*='language-'],
+[data-theme='dark'] .theme-code-block,
+[data-theme='dark'] .theme-code-block pre {
+  background: #111111 !important;
+  border: 1px solid var(--suzent-dark-border);
 }

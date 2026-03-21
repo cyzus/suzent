@@ -1,0 +1,8 @@
+{
+  "label": "Tools",
+  "position": 3,
+  "link": {
+    "type": "generated-index",
+    "description": "All available tools: web search, file I/O, bash execution, planning, memory, and social messaging."
+  }
+}

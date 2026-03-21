@@ -1,0 +1,38 @@
+{
+  "sidebar.tutorialSidebar.category.Getting Started": {
+    "message": "快速开始",
+    "description": "Sidebar category: Getting Started"
+  },
+  "sidebar.tutorialSidebar.category.Concepts": {
+    "message": "核心概念",
+    "description": "Sidebar category: Concepts"
+  },
+  "sidebar.tutorialSidebar.category.Development": {
+    "message": "开发指南",
+    "description": "Sidebar category: Development"
+  },
+  "sidebar.tutorialSidebar.category.Memory": {
+    "message": "记忆系统",
+    "description": "Sidebar category: Memory"
+  },
+  "sidebar.tutorialSidebar.category.Tools": {
+    "message": "工具",
+    "description": "Sidebar category: Tools"
+  },
+  "sidebar.tutorialSidebar.category.Skills": {
+    "message": "技能",
+    "description": "Sidebar category: Skills"
+  },
+  "sidebar.tutorialSidebar.category.Social Messaging": {
+    "message": "社交消息",
+    "description": "Sidebar category: Social Messaging"
+  },
+  "sidebar.tutorialSidebar.category.Nodes": {
+    "message": "节点",
+    "description": "Sidebar category: Nodes"
+  },
+  "sidebar.tutorialSidebar.category.Automation": {
+    "message": "自动化",
+    "description": "Sidebar category: Automation"
+  }
+}

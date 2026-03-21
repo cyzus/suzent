@@ -1,0 +1,8 @@
+{
+  "label": "Social Messaging",
+  "position": 5,
+  "link": {
+    "type": "generated-index",
+    "description": "Connect Suzent to Telegram, Slack, Discord, and Feishu for remote control and messaging."
+  }
+}

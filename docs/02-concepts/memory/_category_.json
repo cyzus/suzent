@@ -1,0 +1,8 @@
+{
+  "label": "Memory",
+  "position": 2,
+  "link": {
+    "type": "generated-index",
+    "description": "Dual-tier memory architecture: fast markdown recall and semantic LanceDB search."
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "link.title.Get Started": {
+    "message": "快速入门",
+    "description": "Footer column title: Get Started"
+  },
+  "link.item.label.What is Suzent?": {
+    "message": "Suzent 是什么？",
+    "description": "Footer link: What is Suzent?"
+  },
+  "link.item.label.Quickstart": {
+    "message": "快速开始",
+    "description": "Footer link: Quickstart"
+  },
+  "link.item.label.Filesystem": {
+    "message": "文件系统",
+    "description": "Footer link: Filesystem"
+  },
+  "link.title.Concepts": {
+    "message": "核心概念",
+    "description": "Footer column title: Concepts"
+  },
+  "link.item.label.Tools": {
+    "message": "工具",
+    "description": "Footer link: Tools"
+  },
+  "link.item.label.Memory": {
+    "message": "记忆系统",
+    "description": "Footer link: Memory"
+  },
+  "link.item.label.Automation": {
+    "message": "自动化",
+    "description": "Footer link: Automation"
+  },
+  "link.title.Community": {
+    "message": "社区",
+    "description": "Footer column title: Community"
+  },
+  "link.item.label.Issues": {
+    "message": "问题反馈",
+    "description": "Footer link: Issues"
+  }
+}

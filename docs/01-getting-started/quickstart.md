@@ -1,119 +1,116 @@
-# Suzent Quickstart Guide
+---
+sidebar_position: 2
+title: Quickstart
+---
 
-This guide will help you set up Suzent, your sovereign digital co-worker.
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Quickstart
+
+Get Suzent running in under 5 minutes.
 
 ---
 
-## 1. Get an API Key
+## 1. Install
 
-Suzent is model-agnostic but needs a "brain" to work. You need an API key from one of these providers:
+**Prerequisites:** [Node.js 20+](https://nodejs.org/) and [Git](https://git-scm.com/downloads).
 
-### OpenAI (ChatGPT)
-1. Go to [platform.openai.com](https://platform.openai.com/)
-2. Sign up or log in
-3. Go to **API Keys** and create a new secret key
-4. Copy the key (starts with `sk-...`)
+<Tabs groupId="os">
+<TabItem value="windows" label="Windows" default>
 
-### Anthropic (Claude)
-1. Go to [console.anthropic.com](https://console.anthropic.com/)
-2. Sign up or log in
-3. Click **Get API Keys** and create a key
-4. Copy the key (starts with `sk-ant-...`)
-
-### Google (Gemini) - **Free Tier Available**
-1. Go to [aistudio.google.com](https://aistudio.google.com/app/apikey)
-2. Create an API key
-3. Copy the key
-
----
-
-## 2. Installation (Native Setup)
-
-The recommended way to run Suzent is natively on your machine using our setup script.
-
-**Prerequisites:**
-- **Node.js 20+**: [Download here](https://nodejs.org/)
-- **Git**: [Download here](https://git-scm.com/downloads)
-
-### Fast Install
-
-Run the following command in your terminal to install `suzent` and its dependencies (UV, Rust, etc.):
-
-**Windows (PowerShell):**
 ```powershell
 powershell -c "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
 ```
 
-**Mac / Linux:**
+</TabItem>
+<TabItem value="mac-linux" label="Mac / Linux">
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | bash
 ```
 
-> **Note:** The setup script will attempt to install `uv` (Python package manager) and `Rust` (for core performance) if they are missing. On Windows, it may also install C++ Build Tools if needed.
+</TabItem>
+</Tabs>
+
+The script installs Suzent and any missing dependencies (Python/uv, Rust, build tools).
 
 ---
 
-## 3. Configure Your Agent
-
-1. The setup script created a `.env` file in the project directory.
-2. Open this file in any text editor.
-3. Paste your API Key from **Step 1**:
-
-```env
-OPENAI_API_KEY=sk-your-key-here
-# or
-GEMINI_API_KEY=your-key-here
-```
-
-4. Save and close the file.
-
----
-
-## 4. Launch Suzent
-
-To start your agent, simply run:
+## 2. Launch
 
 ```bash
 suzent start
 ```
 
-This will:
-- Check system health.
-- Start the Backend (Brain).
-- Start the Frontend (UI).
-- Automatically manage local processes.
+This starts the backend and opens the UI in your browser. The default address is **http://localhost:25315**.
 
-For current local endpoints, see: `docs/03-developing/development-guide.md` ("Local Ports").
+---
 
-**Start Chatting**
+## 3. Add Your Model Provider
+
+Once the UI is open, go to **Settings → Providers** to configure your API key. The most common starting points:
+
+<Tabs groupId="provider">
+<TabItem value="openai" label="OpenAI" default>
+
+**Get your key:** [platform.openai.com/api-keys](https://platform.openai.com/api-keys) → Create new secret key (starts with `sk-...`)
+
+In Settings, paste it into **OpenAI → API Key**, enable the models you want, then click **Save → Verify**.
+
+</TabItem>
+<TabItem value="anthropic" label="Anthropic">
+
+**Get your key:** [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) → Create Key (starts with `sk-ant-...`)
+
+In Settings, paste it into **Anthropic → API Key**, enable the models you want, then click **Save → Verify**.
+
+</TabItem>
+<TabItem value="gemini" label="Google Gemini">
+
+**Get your key (free tier available):** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) → Create API Key (starts with `AIza...`)
+
+In Settings, paste it into **Google Gemini → API Key**, enable the models you want, then click **Save → Verify**.
+
+</TabItem>
+</Tabs>
+
+Using DeepSeek, Grok, OpenRouter, Ollama, or another provider? See the full [Providers reference](../concepts/providers).
+
+---
+
+## 4. Start Chatting
+
+Pick a model from the model selector in the chat window and send your first message.
+
+**That's it.** Your agent has memory, tools, and automation ready out of the box.
 
 ---
 
 ## Troubleshooting
 
-### "Command not found: suzent"
-Restart your terminal after installation to refresh your `PATH`. If it still fails, check the output of the setup script for manually adding the scripts folder to your PATH.
+**"Command not found: suzent"** — Restart your terminal after installation. If it still fails, check the setup script output for how to manually add the scripts folder to your PATH.
 
-### "System Health Check Failed"
-Run the doctor command to identify missing tools:
+**"System Health Check Failed"**
+
 ```bash
 suzent doctor
 ```
 
-### Port Conflicts
-If Suzent fails to start because ports are in use, `suzent start` will ask if you want to kill the conflicting processes. You can say 'y' to proceed.
+**Port conflict on startup** — `suzent start` detects conflicts and asks if you want to kill blocking processes. Type `y` to proceed.
 
-### Updating Suzent
-To get the latest features and fixes:
+**Updating**
+
 ```bash
 suzent upgrade
 ```
 
 ---
 
-## Advanced
+## Next Steps
 
-### Local Web Search (Privacy Focused)
-By default, Suzent uses DuckDuckGo for search (no setup required). To use a private, self-hosted search engine (SearXNG), you can use Docker.
-
-See: [Docker Services](../03-developing/docker-services.md)
+- [What is Suzent?](./intro) — Understand the architecture
+- [Providers](../concepts/providers) — Full list of supported models and providers
+- [Tools](../concepts/tools) — See everything your agent can do
+- [Memory](../concepts/memory) — How persistent memory works
+- [Automation](../concepts/automation) — Schedule tasks and set up heartbeat monitors

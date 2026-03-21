@@ -8,6 +8,8 @@
   text-align: center;
   position: relative;
   overflow: hidden;
+  background: #ffffff;
+  border-bottom: 3px solid #000;
 }
 
 @media screen and (max-width: 996px) {
@@ -20,5 +22,237 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 20px;
+}
+
+.kicker {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.heroLayout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3rem;
+  margin-top: 1rem;
+}
+
+.heroText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  max-width: 480px;
+}
+
+.heroRobot {
+  width: 300px;
+  height: 300px;
+  flex-shrink: 0;
+}
+
+.subtitle {
+  margin: 0 0 1.5rem;
+  font-size: 1.1rem;
+}
+
+.main {
+  padding: 2.5rem 0 4rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.featureCard {
+  border: 3px solid #000;
+  box-shadow: 6px 6px 0 #000;
+  background: #fff;
+  padding: 1rem;
+}
+
+.featureCard h3 {
+  margin-bottom: 0.5rem;
+}
+
+.featureCard p {
+  margin: 0;
+}
+
+.howItWorksSection {
+  padding: 2.5rem 0;
+  border-top: 3px solid #000;
+  border-bottom: 3px solid #000;
+  margin-bottom: 2.5rem;
+  background: #f8f8f5;
+}
+
+.sectionHeading {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.stepsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.step {
+  padding: 1.5rem;
+  border: 3px solid #000;
+  box-shadow: 6px 6px 0 #000;
+  background: #fff;
+}
+
+.stepNumber {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  background: #000;
+  color: #ffe666;
+  padding: 0.15rem 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.step h3 {
+  margin-bottom: 0.5rem;
+}
+
+.step p {
+  margin: 0;
+}
+
+.callout {
+  position: relative;
+  border: 3px solid #000;
+  box-shadow: 8px 8px 0 #000;
+  background: #fff;
+  padding: 1.5rem;
+  text-align: center;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.callout h2 {
+  margin: 0 0 0.4rem;
+}
+
+.callout p {
+  margin: 0 auto 1.1rem;
+  max-width: 820px;
+  color: #1f2937;
+}
+
+.calloutButtons {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.calloutPrimaryButton {
+  background: #000 !important;
+  color: #fff !important;
+  border-color: #000 !important;
+}
+
+.calloutSecondaryButton {
+  background: #fff !important;
+  color: #000 !important;
+  border-color: #000 !important;
+}
+
+@media screen and (max-width: 996px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .heroLayout {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .heroText {
+    align-items: center;
+    text-align: center;
+  }
+
+  .heroRobot {
+    width: 220px;
+    height: 220px;
+  }
+
+  .stepsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .callout {
+    padding: 1.35rem 1rem 1.1rem;
+  }
+}
+
+:global([data-theme='dark']) .heroBanner {
+  background: #18181b;
+  border-bottom: 3px solid #d4d4d4;
+}
+
+:global([data-theme='dark']) .kicker,
+:global([data-theme='dark']) .subtitle {
+  color: #f5f5f5;
+}
+
+:global([data-theme='dark']) .featureCard {
+  background: #27272a;
+  border-color: #d4d4d4;
+  box-shadow: 6px 6px 0 #000;
+}
+
+:global([data-theme='dark']) .howItWorksSection {
+  background: #18181b;
+  border-color: #a3a3a3;
+}
+
+:global([data-theme='dark']) .step {
+  background: #27272a;
+  border-color: #d4d4d4;
+  box-shadow: 6px 6px 0 #000;
+  color: #f5f5f5;
+}
+
+:global([data-theme='dark']) .stepNumber {
+  background: #d4d4d4;
+  color: #000;
+}
+
+:global([data-theme='dark']) .callout {
+  background: #27272a;
+  color: #f5f5f5;
+  border-color: #d4d4d4;
+  box-shadow: 8px 8px 0 #000;
+}
+
+:global([data-theme='dark']) .callout p {
+  color: #e5e7eb;
+}
+
+:global([data-theme='dark']) .calloutPrimaryButton {
+  background: #ffe666 !important;
+  color: #000 !important;
+  border-color: #000 !important;
+}
+
+:global([data-theme='dark']) .calloutSecondaryButton {
+  background: #3f3f46 !important;
+  color: #f5f5f5 !important;
+  border-color: #d4d4d4 !important;
 }

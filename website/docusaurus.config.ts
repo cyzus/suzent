@@ -31,7 +31,15 @@ const config: Config = {
   // may want to replace "en" with "zh-Hans".
   i18n: {
     defaultLocale: 'en',
-    locales: ['en'],
+    locales: ['en', 'zh-Hans'],
+    localeConfigs: {
+      en: {
+        label: 'English',
+      },
+      'zh-Hans': {
+        label: '简体中文',
+      },
+    },
   },
 
   presets: [
@@ -59,6 +67,13 @@ const config: Config = {
   ],
 
   themeConfig: {
+    announcementBar: {
+      id: 'github_star',
+      content: 'If you find Suzent useful, give it a star on <a href="https://github.com/cyzus/suzent" target="_blank" rel="noopener noreferrer">GitHub</a>!',
+      backgroundColor: '#ffe666',
+      textColor: '#000000',
+      isCloseable: true,
+    },
     // Replace with your project's social card
     image: 'img/docusaurus-social-card.jpg',
     colorMode: {
@@ -84,21 +99,46 @@ const config: Config = {
           label: 'GitHub',
           position: 'right',
         },
+        {
+          type: 'localeDropdown',
+          position: 'right',
+        },
       ],
     },
     footer: {
       style: 'light', // Use light style to match brutalist theme better or custom
       links: [
         {
-          title: 'Docs',
+          title: 'Get Started',
           items: [
             {
-              label: 'Getting Started',
+              label: 'What is Suzent?',
+              to: '/docs/getting-started/intro',
+            },
+            {
+              label: 'Quickstart',
               to: '/docs/getting-started/quickstart',
             },
             {
-              label: 'Concepts',
+              label: 'Filesystem',
               to: '/docs/concepts/filesystem',
+            },
+          ],
+        },
+        {
+          title: 'Concepts',
+          items: [
+            {
+              label: 'Tools',
+              to: '/docs/concepts/tools',
+            },
+            {
+              label: 'Memory',
+              to: '/docs/concepts/memory',
+            },
+            {
+              label: 'Automation',
+              to: '/docs/concepts/automation',
             },
           ],
         },
@@ -109,13 +149,17 @@ const config: Config = {
               label: 'GitHub',
               href: 'https://github.com/cyzus/suzent',
             },
+            {
+              label: 'Issues',
+              href: 'https://github.com/cyzus/suzent/issues',
+            },
           ],
         },
       ],
       copyright: `Copyright © ${new Date().getFullYear()} Suzent. Built with Docusaurus.`,
     },
     prism: {
-      theme: prismThemes.dracula, // Use dark theme even for light mode to match frontend
+      theme: prismThemes.github,
       darkTheme: prismThemes.dracula,
     },
   } satisfies Preset.ThemeConfig,
