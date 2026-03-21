@@ -1,7 +1,7 @@
 # Example override file for local configuration
 # Rename this to sandbox-compose.override.yml to use it
 services:
-  microsandbox:
+  sandbox:
     volumes:
       # Add your local volume mounts here
       # - /path/to/local/data:/mnt/data
