@@ -1,0 +1,118 @@
+{
+  "homepage.meta.title": {
+    "message": "你的超级个人协作智能体",
+    "description": "Homepage meta title"
+  },
+  "homepage.meta.description": {
+    "message": "与模型无关、本地优先的 AI 智能体，内置持久记忆、自动化任务调度，数据完全自主掌控。",
+    "description": "Homepage meta description"
+  },
+  "homepage.hero.kicker": {
+    "message": "超级个人协作智能体",
+    "description": "Hero section kicker above the title"
+  },
+  "homepage.hero.subtitle": {
+    "message": "掌控你的工作流。守护你的数据。按你的方式运行 AI。",
+    "description": "Hero subtitle"
+  },
+  "homepage.hero.cta.primary": {
+    "message": "快速开始 — 5 分钟",
+    "description": "Primary CTA button in hero"
+  },
+  "homepage.hero.cta.github": {
+    "message": "在 GitHub 上查看",
+    "description": "GitHub CTA button in hero"
+  },
+  "homepage.features.modelAgnostic.title": {
+    "message": "与模型无关",
+    "description": "Feature card title"
+  },
+  "homepage.features.modelAgnostic.desc": {
+    "message": "通过统一界面使用 GPT、Claude、Gemini 等。切换模型无需修改任何配置。",
+    "description": "Feature card description"
+  },
+  "homepage.features.memory.title": {
+    "message": "持久记忆",
+    "description": "Feature card title"
+  },
+  "homepage.features.memory.desc": {
+    "message": "双层记忆架构：快速 Markdown 召回 + LanceDB 语义搜索。智能体跨会话记住一切。",
+    "description": "Feature card description"
+  },
+  "homepage.features.private.title": {
+    "message": "默认私密",
+    "description": "Feature card title"
+  },
+  "homepage.features.private.desc": {
+    "message": "本地优先架构，沙箱隔离执行。你的数据始终留在你的机器上。",
+    "description": "Feature card description"
+  },
+  "homepage.features.automation.title": {
+    "message": "内置自动化",
+    "description": "Feature card title"
+  },
+  "homepage.features.automation.desc": {
+    "message": "通过定时任务（Cron）安排任务，或运行持续的心跳监控——无需额外工具。",
+    "description": "Feature card description"
+  },
+  "homepage.features.skills.title": {
+    "message": "可通过技能扩展",
+    "description": "Feature card title"
+  },
+  "homepage.features.skills.desc": {
+    "message": "将领域知识打包为 Markdown 技能。放入即用，智能体立刻获得新能力。",
+    "description": "Feature card description"
+  },
+  "homepage.features.crossPlatform.title": {
+    "message": "跨平台",
+    "description": "Feature card title"
+  },
+  "homepage.features.crossPlatform.desc": {
+    "message": "支持 Windows、macOS 和 Linux。通过节点（Nodes）以 WebSocket 连接伴侣设备。",
+    "description": "Feature card description"
+  },
+  "homepage.howItWorks.heading": {
+    "message": "工作原理",
+    "description": "How it works section heading"
+  },
+  "homepage.howItWorks.install.title": {
+    "message": "安装",
+    "description": "Step title"
+  },
+  "homepage.howItWorks.install.desc": {
+    "message": "运行对应平台的安装脚本。Suzent 在一分钟内完成配置。",
+    "description": "Step description"
+  },
+  "homepage.howItWorks.configure.title": {
+    "message": "配置",
+    "description": "Step title"
+  },
+  "homepage.howItWorks.configure.desc": {
+    "message": "打开 设置 → 提供商，添加你的模型 API 密钥。支持 GPT、Claude、Gemini 等任意兼容模型。",
+    "description": "Step description"
+  },
+  "homepage.howItWorks.launch.title": {
+    "message": "启动",
+    "description": "Step title"
+  },
+  "homepage.howItWorks.launch.desc": {
+    "message": "运行 suzent start，立即上线——记忆、工具和自动化全部就绪。",
+    "description": "Step description"
+  },
+  "homepage.callout.heading": {
+    "message": "5 分钟上手",
+    "description": "Callout section heading"
+  },
+  "homepage.callout.desc": {
+    "message": "安装 Suzent，配置你的模型密钥，启动你的第一个本地智能体会话。",
+    "description": "Callout section description"
+  },
+  "homepage.callout.cta.primary": {
+    "message": "查看快速开始",
+    "description": "Callout primary CTA"
+  },
+  "homepage.callout.cta.secondary": {
+    "message": "浏览核心工具",
+    "description": "Callout secondary CTA"
+  }
+}

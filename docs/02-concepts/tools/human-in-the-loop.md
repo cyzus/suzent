@@ -1,4 +1,4 @@
-# Human-in-the-Loop (HITL) Tool Approval
+# Tool Approval
 
 Dangerous tools require explicit user approval before execution. This prevents the agent from running destructive commands, overwriting files, or sending messages without the user's consent.
 
