@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🚀 Added
 - **Slash Command System**: Introduce slash command system registered to desktop app and telegram.
+- **Canvas (A2UI)**: Agents can render interactive UI surfaces in the sidebar canvas panel or inline in chat using the `render_ui` tool.
+  - Component types: `card`, `stack`, `columns`, `text`, `badge`, `button`, `table`, `form`, `list`, `progress`, `divider`.
+  - Canvas tab auto-opens when a surface is rendered; supports multiple named surfaces with a tab strip.
+  - Button clicks and form submits are sent back to the agent as structured messages, enabling interactive workflows.
+  - Surfaces persist across the session; re-rendering with the same `surface_id` upserts in place.
+  - Fullscreen mode, drag-to-resize sidebar, and markdown rendering in text/list/table cells.
+  - New `canvas` skill (`skill_execute("canvas")`) provides the agent with full component reference and examples.
 
 ### ⚡ Changed
 - **Context Compact System**: Optimize the context compressor. It can be triggered manually or when the estimated tokens beyond a threshold.
