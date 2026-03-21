@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.9.2">
 <title data-rh="true">Tools | SUZENT</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://suzent.com/img/docusaurus-social-card.jpg"><meta data-rh="true" name="twitter:image" content="https://suzent.com/img/docusaurus-social-card.jpg"><meta data-rh="true" property="og:url" content="https://suzent.com/docs/concepts/tools/"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Tools | SUZENT"><meta data-rh="true" name="description" content="Tools extend the agent&#x27;s capabilities, allowing it to interact with the filesystem, web, memory, social platforms, and more. Each tool is a function registered on the pydantic-ai Agent via the tool registry."><meta data-rh="true" property="og:description" content="Tools extend the agent&#x27;s capabilities, allowing it to interact with the filesystem, web, memory, social platforms, and more. Each tool is a function registered on the pydantic-ai Agent via the tool registry."><link data-rh="true" rel="icon" href="/img/logo.svg"><link data-rh="true" rel="canonical" href="https://suzent.com/docs/concepts/tools/"><link data-rh="true" rel="alternate" href="https://suzent.com/docs/concepts/tools/" hreflang="en"><link data-rh="true" rel="alternate" href="https://suzent.com/docs/concepts/tools/" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Tools","item":"https://suzent.com/docs/concepts/tools/"}]}</script><link rel="stylesheet" href="/assets/css/styles.92074ac2.css">
-<script src="/assets/js/runtime~main.f108e501.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.d617f12a.js" defer="defer"></script>
 <script src="/assets/js/main.3e3a8e99.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -45,7 +45,7 @@
 </ul>
 <p><strong>Configuration:</strong> Set <code>SEARXNG_BASE_URL</code> in <code>.env</code> for SearXNG. Without it, falls back to DuckDuckGo.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="bash_execute"><code>bash_execute</code><a href="#bash_execute" class="hash-link" aria-label="Direct link to bash_execute" title="Direct link to bash_execute" translate="no">​</a></h3>
-<p>Executes code in a secure environment. Runs inside a Firecracker MicroVM when sandbox mode is enabled, or on the host when disabled.</p>
+<p>Executes code in a secure environment. Runs inside an isolated Docker container when sandbox mode is enabled, or on the host when disabled.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
 <li class=""><code>content</code> (required): Code or shell command to execute</li>
