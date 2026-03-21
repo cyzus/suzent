@@ -391,8 +391,7 @@ async def stream_agent_responses(
 
     # --- Native stream generator that feeds AGUIEventStream ---
     async def native_stream_generator() -> AsyncGenerator[Any, None]:
-        while True:
-            # Drain plan updates as AG-UI CustomEvent
+        async def _drain_plan_updates() -> None:
             while not plan_queue.empty():
                 try:
                     snapshot = plan_queue.get_nowait()
@@ -401,6 +400,34 @@ async def stream_agent_responses(
                     )
                 except asyncio.QueueEmpty:
                     break
+
+        async def _drain_a2ui_events() -> None:
+            a2ui_queue = getattr(deps, "a2ui_queue", None)
+            while a2ui_queue and not a2ui_queue.empty():
+                try:
+                    ev = a2ui_queue.get_nowait()
+                    await out_queue.put(
+                        (
+                            "chunk",
+                            _encode_custom(
+                                ev["event"],
+                                {
+                                    "id": ev["id"],
+                                    "title": ev.get("title", ""),
+                                    "component": ev["component"],
+                                    "target": ev.get("target", "canvas"),
+                                    "chatId": chat_id,
+                                },
+                            ),
+                        )
+                    )
+                except asyncio.QueueEmpty:
+                    break
+
+        while True:
+            # Drain plan/canvas updates before waiting for stream events.
+            await _drain_plan_updates()
+            await _drain_a2ui_events()
 
             try:
                 msg = await asyncio.wait_for(sse_queue.get(), timeout=0.1)
@@ -477,6 +504,10 @@ async def stream_agent_responses(
                     await _queue_custom_event(out_queue, "heartbeat_ok", {})
 
                 elif msg_type == "done":
+                    # Final flush to avoid dropping last-moment plan/canvas updates
+                    # that can be queued right before completion.
+                    await _drain_plan_updates()
+                    await _drain_a2ui_events()
                     break
 
                 elif msg_type == "error":

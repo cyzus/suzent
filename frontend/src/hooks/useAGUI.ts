@@ -9,7 +9,7 @@ import { useState, useCallback, useRef } from 'react';
 // ── Types ────────────────────────────────────────────────────────────
 
 export interface AGUIPart {
-  type: 'text' | 'reasoning' | 'tool';
+  type: 'text' | 'reasoning' | 'tool' | 'a2ui';
   /** Text content (for text and reasoning parts) */
   text?: string;
   /** AG-UI message_id for correlating text deltas */
@@ -28,6 +28,8 @@ export interface AGUIPart {
   approvalId?: string;
   /** Rich display data from CustomEvent (for future use) */
   displayData?: unknown;
+  /** Inline A2UI surface (type === 'a2ui') */
+  surface?: unknown;
 }
 
 export type AGUIStatus = 'idle' | 'submitted' | 'streaming' | 'error';
@@ -344,6 +346,15 @@ function processEvent(
             next[i] = { ...next[i], displayData: display };
             break;
           }
+        }
+      } else if (name === 'a2ui.render') {
+        const surface = value as Record<string, unknown>;
+        if (surface?.target === 'inline') {
+          // Inline: embed as a part inside the current message
+          next.push({ type: 'a2ui', surface });
+        } else {
+          // Canvas: forward to ChatWindow's onCustomEvent handler
+          onCustomEvent?.(name, value);
         }
       } else {
         // Forward other custom events (plan_refresh, usage_update, etc.)

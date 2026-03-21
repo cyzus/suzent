@@ -105,6 +105,7 @@ from suzent.routes.heartbeat_routes import (
     get_heartbeat_global_config,
     save_heartbeat_global_config,
 )
+from suzent.routes.a2ui_routes import a2ui_action
 from suzent.channels.manager import ChannelManager
 from suzent.nodes.manager import NodeManager
 
@@ -469,6 +470,7 @@ app = Starlette(
         Route("/heartbeat/interval", set_heartbeat_interval, methods=["PUT", "POST"]),
         Route("/heartbeat/config", get_heartbeat_global_config, methods=["GET"]),
         Route("/heartbeat/config", save_heartbeat_global_config, methods=["POST"]),
+        Route("/canvas/{chat_id}/action", a2ui_action, methods=["POST"]),
     ],
     middleware=[
         Middleware(

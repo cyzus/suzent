@@ -1,6 +1,6 @@
 
 export interface ContentBlock {
-  type: 'markdown' | 'code' | 'log' | 'toolCall' | 'codeStep' | 'reasoning';
+  type: 'markdown' | 'code' | 'log' | 'toolCall' | 'codeStep' | 'reasoning' | 'a2ui';
   content: string;
   lang?: string;
   title?: string;
@@ -9,6 +9,8 @@ export interface ContentBlock {
   toolCallId?: string;
   approvalId?: string;
   approvalState?: string;
+  /** Parsed A2UI surface (type === 'a2ui') */
+  a2uiSurface?: unknown;
 }
 
 // Helper to normalize Python code indentation
@@ -56,7 +58,7 @@ export function isToolOnlyContent(content: string | undefined): boolean {
   if (filtered.length === 0) return false;
   // Check if all remaining blocks are toolCall, or have no meaningful content
   const contentBlocks = filtered.filter(b => b.type !== 'toolCall');
-  const hasContent = contentBlocks.some(b => b.content.trim().length > 0);
+  const hasContent = contentBlocks.some(b => b.type === 'a2ui' || b.content.trim().length > 0);
   return !hasContent;
 }
 
@@ -71,21 +73,36 @@ export function isIntermediateStepContent(content: string | undefined, stepInfo?
 }
 
 
-// Helper to split assistant content into markdown + code + log + toolCall blocks
+// Helper to split assistant content into markdown + code + log + toolCall + a2ui blocks
 export function splitAssistantContent(content: string): ContentBlock[] {
   const blocks: ContentBlock[] = [];
+
+  // Pre-pass: extract inline A2UI surfaces, replace with stable placeholders
+  // so the existing <details> regex doesn't need to be modified.
+  const a2uiSurfaces: unknown[] = [];
+  const a2uiRegex = /<div data-a2ui="([^"]+)"><\/div>/g;
+  const processedContent = content.replace(a2uiRegex, (_match, encoded) => {
+    try {
+      a2uiSurfaces.push(JSON.parse(decodeURIComponent(encoded)));
+    } catch {
+      a2uiSurfaces.push(null);
+    }
+    return `__A2UI_SURFACE_${a2uiSurfaces.length - 1}__`;
+  });
 
   // Regex to find <details> blocks (logs, tool calls, and now reasoning)
   const detailsRegex = /<details(?:\s+data-tool-call-id="([^"]*)")?(?:\s+data-approval-id="([^"]*)")?(?:\s+data-approval-state="([^"]*)")?(?:\s+data-reasoning="([^"]*)")?\s*>\s*<summary>\s*(.*?)\s*<\/summary>\s*(?:<pre><code(?:\s+class="language-[^"]*")?\s*>([\s\S]*?)<\/code><\/pre>|([\s\S]*?))\s*<\/details>/g;
 
   let lastIndex = 0;
   let match;
+  // Use processedContent (with placeholders) for <details> parsing
+  const content_ref = processedContent;
 
   // First pass: split by log/details blocks
   const splits: { type: 'markdown' | 'log' | 'reasoning'; content: string; title?: string; toolCallId?: string; approvalId?: string; approvalState?: string }[] = [];
 
-  while ((match = detailsRegex.exec(content)) !== null) {
-    const before = content.slice(lastIndex, match.index);
+  while ((match = detailsRegex.exec(content_ref)) !== null) {
+    const before = content_ref.slice(lastIndex, match.index);
     if (before && before.trim().length > 0) {
       splits.push({ type: 'markdown', content: before });
     }
@@ -125,7 +142,7 @@ export function splitAssistantContent(content: string): ContentBlock[] {
     lastIndex = detailsRegex.lastIndex;
   }
 
-  const remaining = content.slice(lastIndex);
+  const remaining = content_ref.slice(lastIndex);
   if (remaining) {
     splits.push({ type: 'markdown', content: remaining });
   }
@@ -222,9 +239,39 @@ export function splitAssistantContent(content: string): ContentBlock[] {
     }
   }
 
+  // Post-process: expand __A2UI_SURFACE_N__ placeholders in markdown blocks into a2ui ContentBlocks
+  const expandedBlocks: ContentBlock[] = [];
+  const a2uiPlaceholderRegex = /__A2UI_SURFACE_(\d+)__/g;
+  for (const block of blocks) {
+    if (block.type !== 'markdown' || !block.content.includes('__A2UI_SURFACE_')) {
+      expandedBlocks.push(block);
+      continue;
+    }
+    // Split markdown content by placeholders
+    let lastPos = 0;
+    let m: RegExpExecArray | null;
+    a2uiPlaceholderRegex.lastIndex = 0;
+    while ((m = a2uiPlaceholderRegex.exec(block.content)) !== null) {
+      const before = block.content.slice(lastPos, m.index);
+      if (before.trim()) {
+        expandedBlocks.push({ type: 'markdown', content: before.trim() });
+      }
+      const surfaceIdx = parseInt(m[1], 10);
+      const surface = a2uiSurfaces[surfaceIdx];
+      if (surface != null) {
+        expandedBlocks.push({ type: 'a2ui', content: '', a2uiSurface: surface });
+      }
+      lastPos = m.index + m[0].length;
+    }
+    const after = block.content.slice(lastPos);
+    if (after.trim()) {
+      expandedBlocks.push({ type: 'markdown', content: after.trim() });
+    }
+  }
+
   // Post-process: convert tool-titled log blocks to toolCall blocks FIRST
   // Tool call invocations have title starting with 🔧, tool outputs with 📦
-  const converted = blocks
+  const converted = expandedBlocks
     .map(b => {
       if (b.type !== 'log' || !b.title) return b;
 
@@ -254,7 +301,7 @@ export function splitAssistantContent(content: string): ContentBlock[] {
       return b;
     })
     // Filter AFTER conversion so toolCall blocks with empty content are kept
-    .filter(b => b.content !== '' || b.type === 'toolCall');
+    .filter(b => b.content !== '' || b.type === 'toolCall' || b.type === 'a2ui');
 
   return mergeToolCallPairs(converted);
 }

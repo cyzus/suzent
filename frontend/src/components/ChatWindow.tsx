@@ -6,6 +6,8 @@ import type { Message, FileAttachment } from '../types/api';
 import { isIntermediateStepContent, splitAssistantContent, mergeToolCallPairs, type ContentBlock } from '../lib/chatUtils';
 import { usePlan } from '../hooks/usePlan';
 import { useMemory } from '../hooks/useMemory';
+import { useCanvas } from '../hooks/useCanvas';
+import type { A2UISurface } from '../types/a2ui';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useUnifiedFileUpload } from '../hooks/useUnifiedFileUpload';
 import { PlanProgress } from './PlanProgress';
@@ -61,6 +63,10 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any): Message {
       if (part.output != null) {
         content += `\n\n<details data-tool-call-id="${toolCallId}"><summary>\u{1F4E6} ${toolName}</summary>\n\n<pre><code class="language-text">${escapeHtmlForStore(part.output)}</code></pre>\n\n</details>\n\n`;
       }
+    } else if (part.type === 'a2ui' && part.surface) {
+      // Inline A2UI surface — stored as a data attribute for re-hydration
+      const encoded = encodeURIComponent(JSON.stringify(part.surface));
+      content += `\n\n<div data-a2ui="${encoded}"></div>\n\n`;
     }
   }
   return { role: 'assistant', content, timestamp: new Date().toISOString(), stepInfo: usage ? formatUsage(usage) : undefined };
@@ -123,7 +129,8 @@ const MessageList: React.FC<{
   onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
-}> = ({ messages, isStreaming, streamingForCurrentChat, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy }) => (
+  onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
+}> = ({ messages, isStreaming, streamingForCurrentChat, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction }) => (
   <div className="space-y-6">
     {(() => {
       // Pre-compute tool-only groups: consecutive tool-only assistant messages
@@ -259,6 +266,17 @@ const MessageList: React.FC<{
 
         const stepSummary = precedingGroup?.stepSummary || null;
 
+        // Canvas action message — lightweight dashed pill
+        if (m.role === 'canvas_action') {
+          return (
+            <div key={idx} className="w-full flex justify-start pl-2">
+              <div className="border-2 border-dashed border-brutal-black px-4 py-2 text-sm font-mono text-neutral-500 dark:text-neutral-400 italic bg-white dark:bg-zinc-800">
+                {m.content}
+              </div>
+            </div>
+          );
+        }
+
         return (
           <div key={idx} className="w-full flex flex-col group/message">
             <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} w-full`}>
@@ -274,6 +292,7 @@ const MessageList: React.FC<{
                   onToolApproval={onToolApproval}
                   toolApprovalPolicy={toolApprovalPolicy}
                   onRemoveApprovalPolicy={onRemoveApprovalPolicy}
+                  onInlineAction={onInlineAction}
                 />
               )}
             </div>
@@ -295,11 +314,19 @@ const MessageList: React.FC<{
 interface ChatWindowProps {
   isRightSidebarOpen?: boolean;
   onRightSidebarToggle?: (isOpen: boolean) => void;
+  onRightSidebarWidthChange?: (width: number | null) => void;
+  rightSidebarMaxWidthPx?: number;
+  viewportWidthPx?: number;
+  rightSidebarForceFullView?: boolean;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   isRightSidebarOpen = false,
-  onRightSidebarToggle = () => { }
+  onRightSidebarToggle = () => { },
+  onRightSidebarWidthChange,
+  rightSidebarMaxWidthPx,
+  viewportWidthPx,
+  rightSidebarForceFullView = false,
 }) => {
   const HEARTBEAT_HEALTHY_WINDOW_MS = 18_000;
 
@@ -346,6 +373,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const { refresh: refreshPlan, applySnapshot: applyPlanSnapshot, plan } = usePlan();
   const { loadCoreMemory, loadStats } = useMemory();
+  const canvas = useCanvas(currentChatId);
   const { t } = useI18n();
 
   // Local state
@@ -448,6 +476,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         // Backend signals that this heartbeat run was OK and messages were rolled back.
         setHeartbeatLastOkAt(new Date().toISOString());
         heartbeatOkRef.current = true;
+      } else if (name === 'a2ui.render') {
+        const rawSurface = value as (A2UISurface & { chatId?: string }) | null;
+        if (!rawSurface || typeof rawSurface !== 'object' || !('id' in rawSurface) || !('component' in rawSurface)) {
+          return;
+        }
+        const sourceChatId = rawSurface.chatId || streamingChatIdRef.current || activeStreamingChatId || null;
+        const viewedChatId = activeChatIdRef.current;
+        if (sourceChatId && viewedChatId && sourceChatId !== viewedChatId) {
+          return;
+        }
+        const { chatId: _eventChatId, ...surfaceData } = rawSurface;
+        const surface = surfaceData as A2UISurface;
+        const isFirst = !canvas.hasSurfaces;
+        canvas.setSurface(surface);
+        if (isFirst) {
+          onRightSidebarToggle(true);
+        }
       }
     },
     onError: (error) => {
@@ -620,6 +665,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     });
   }, [setConfig]);
 
+  // handleCanvasDispatch is defined after safeConfig below
+
   // Custom hooks
   const {
     selectedFiles,
@@ -642,6 +689,52 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Safe values
   const safeMessages = messages || [];
   const safeConfig = config || { model: '', agent: '', tools: [] };
+
+  // Unified canvas action dispatcher — used by both the canvas sidebar panel and inline surfaces.
+  // Adds a decorative canvas_action pill to the chat, then starts a real AG-UI stream so the
+  // agent's reply appears with full streaming (tool calls, typewriter, etc.).
+  const handleCanvasDispatch = useCallback(async (
+    action: string,
+    context: Record<string, unknown>,
+    surfaceId: string,
+  ) => {
+    if (!currentChatId) return;
+    const buttonLabel = context.button_label as string | undefined;
+    const ctxRest = { ...context };
+    delete ctxRest.button_label;
+    if (surfaceId && !('surface_id' in ctxRest)) {
+      ctxRest.surface_id = surfaceId;
+    }
+    const labelStr = buttonLabel ? ` "${buttonLabel}"` : '';
+    const contextStr = Object.keys(ctxRest).length > 0 ? ` ${JSON.stringify(ctxRest)}` : '';
+    const messageContent = `[canvas: ${action}]${labelStr}${contextStr}`;
+
+    addMessage(
+      { role: 'canvas_action', content: messageContent, timestamp: new Date().toISOString() },
+      currentChatId,
+    );
+
+    setIsStreaming(true, currentChatId);
+    streamingChatIdRef.current = currentChatId;
+    activeChatIdRef.current = currentChatId;
+    stopInFlightRef.current = false;
+
+    try {
+      await sendAGUI({ message: messageContent, config: safeConfig, chat_id: currentChatId });
+    } catch (err) {
+      console.error('[A2UI] canvas dispatch failed:', err);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentChatId, addMessage, setIsStreaming, sendAGUI]);
+
+  const handleInlineAction = useCallback((
+    surfaceId: string,
+    action: string,
+    context: Record<string, unknown>,
+  ) => {
+    void handleCanvasDispatch(action, context, surfaceId);
+  }, [handleCanvasDispatch]);
+
   const safeBackendConfig = backendConfig || null;
   const streamingForCurrentChat = isStreaming && activeStreamingChatId === currentChatId;
   // Keep transient tool approvals attached to their source chat.
@@ -709,7 +802,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Auto-scroll
   const { scrollContainerRef, bottomRef, showScrollButton, scrollToBottom } = useAutoScroll(
-    [safeMessages, isStreaming]
+    [safeMessages, isStreaming, isRightSidebarOpen, isPlanExpanded, canvas?.hasSurfaces]
   );
 
   // Refresh plan when chat changes
@@ -915,7 +1008,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   return (
     <div
-      className="flex flex-row flex-1 h-full overflow-x-hidden bg-neutral-50 dark:bg-zinc-900 relative"
+      className="flex flex-row flex-1 h-full min-h-0 overflow-x-hidden bg-neutral-50 dark:bg-zinc-900 relative"
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
@@ -924,8 +1017,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       {isDragging && <DragOverlay />}
 
       {/* Main Chat Column */}
-      <div className="flex flex-col flex-1 min-w-0 h-full relative">
-        <div className="absolute top-2 right-6 z-30 pointer-events-none flex flex-col items-end gap-1">
+      <div className="flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
+        <div className="absolute top-2 right-6 z-10 pointer-events-none flex flex-col items-end gap-1">
           {currentUsage && safeBackendConfig?.maxContextTokens && (
             <div className="flex items-center gap-1.5 text-[10px] text-neutral-500 dark:text-neutral-400 pointer-events-none">
               <div className="w-16 h-1.5 rounded-full bg-neutral-200 dark:bg-zinc-700 overflow-hidden">
@@ -986,7 +1079,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             ref={scrollContainerRef}
             className={safeMessages.length === 0
               ? "h-full overflow-hidden p-4 md:p-6 pb-2"
-              : "h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-0 scrollbar-thin"
+              : "h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-6 scrollbar-thin"
             }
           >
             {safeMessages.length === 0 ? (
@@ -1023,6 +1116,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   onToolApproval={handleToolApproval}
                   toolApprovalPolicy={safeConfig.tool_approval_policy}
                   onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
+                  onInlineAction={(surfaceId, action, context) => handleCanvasDispatch(action, context, surfaceId)}
                 />
                 {/* Streaming/transient assistant message from AG-UI */}
                 {showTransientAssistant && (
@@ -1040,6 +1134,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                           usage={currentUsage}
                           toolApprovalPolicy={safeConfig.tool_approval_policy}
                           onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
+                          onInlineAction={(surfaceId, action, context) => handleCanvasDispatch(action, context, surfaceId)}
                         />
                       </div>
                     </div>
@@ -1057,7 +1152,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
         {/* Input Panel (shown when messages exist) */}
         {safeMessages.length > 0 && (
-          <div className="p-4 flex flex-col gap-3 bg-neutral-50 dark:bg-zinc-900 z-30">
+          <div className="p-4 flex flex-col gap-3 bg-neutral-50 dark:bg-zinc-900 relative z-10 shrink-0">
             {!isRightSidebarOpen && (
               <PlanProgress
                 plan={plan}
@@ -1101,11 +1196,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       <RightSidebar
         isOpen={isRightSidebarOpen}
         onClose={() => onRightSidebarToggle(false)}
+        onWidthChange={onRightSidebarWidthChange}
+        maxWidthPx={rightSidebarMaxWidthPx}
+        viewportWidthPx={viewportWidthPx}
+        forceFullView={rightSidebarForceFullView}
         plan={plan}
         isPlanExpanded={isPlanExpanded}
         onTogglePlanExpand={() => setIsPlanExpanded(!isPlanExpanded)}
         fileToPreview={sidebarFilePreview}
         onMaximizeFile={handleMaximizeFile}
+        canvas={canvas}
+        onCanvasDispatch={handleCanvasDispatch}
       />
 
       <ImageViewer

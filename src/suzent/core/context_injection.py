@@ -118,4 +118,5 @@ def build_agent_deps(
         skill_manager=skill_manager,
         auto_approve_tools=auto_approve_tools,
         tool_approval_policy=tool_approval_policy,
+        a2ui_queue=asyncio.Queue(),
     )

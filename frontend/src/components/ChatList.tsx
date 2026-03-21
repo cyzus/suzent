@@ -122,7 +122,7 @@ export const ChatList: React.FC = () => {
       )}
 
       {/* Unified Header: Search + Filter + Action */}
-      <div className="p-3 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 space-y-3">
+      <div className="p-3 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 space-y-3 flex-shrink-0">
         {/* Row 1: Search + New Chat */}
         <div className="flex gap-2">
           <div className="relative flex-1">
@@ -192,8 +192,8 @@ export const ChatList: React.FC = () => {
         )}
       </div>
 
-      {/* Chat List */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin">
+      {/* Chat List - Scrollable Content */}
+      <div className="flex-1 overflow-y-auto scrollbar-thin min-h-0">
         {displayedChats.length === 0 ? (
           <div className="p-8 text-center">
             <div className="w-16 h-16 mx-auto mb-3">

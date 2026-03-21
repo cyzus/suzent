@@ -10,6 +10,8 @@ import { ToolCallBlock } from './ToolCallBlock';
 import { CodeBlockComponent } from './CodeBlockComponent';
 import { CopyButton } from './CopyButton';
 import { RobotAvatar } from './RobotAvatar';
+import { A2UIRenderer } from '../a2ui/A2UIRenderer';
+import type { A2UISurface } from '../../types/a2ui';
 
 interface AssistantMessageProps {
   message: Message;
@@ -27,6 +29,8 @@ interface AssistantMessageProps {
   toolApprovalPolicy?: Record<string, string>;
   /** Callback to remove a tool from auto-approval */
   onRemoveApprovalPolicy?: (toolName: string) => void;
+  /** Handler for inline A2UI button actions */
+  onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
 }
 
 // Names that should be filtered out from tool call display
@@ -267,7 +271,8 @@ const StaticContent: React.FC<{
   onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
-}> = ({ blocks, messageIndex, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy }) => {
+  onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
+}> = ({ blocks, messageIndex, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction }) => {
   return (
     <>
       {blocks.map((b, bi) => {
@@ -276,6 +281,16 @@ const StaticContent: React.FC<{
           return <MarkdownRenderer key={blockKey} content={b.content} onFileClick={onFileClick} />;
         } else if (b.type === 'log') {
           return <LogBlock key={blockKey} title={b.title} content={b.content} />;
+        } else if (b.type === 'a2ui' && b.a2uiSurface) {
+          const surface = b.a2uiSurface as A2UISurface;
+          return (
+            <div key={blockKey} className="my-2">
+              <A2UIRenderer
+                component={surface.component}
+                onAction={(action, context) => onInlineAction?.(surface.id, action, context ?? {})}
+              />
+            </div>
+          );
         } else if (b.type === 'toolCall') {
           const isPending = b.approvalState === 'pending';
           const isAutoApproved = toolApprovalPolicy?.[b.toolName || ''] === 'always_allow';
@@ -348,7 +363,8 @@ const AGUIPartsContent: React.FC<{
   onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
-}> = ({ parts, messageIndex, isStreaming, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy }) => {
+  onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
+}> = ({ parts, messageIndex, isStreaming, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction }) => {
   // Normalize tool parts: when resume/recovery emits another tool part with the
   // same toolCallId later in the stream, merge it into the first occurrence so
   // output stays under the initial tool call instead of rendering a split block.
@@ -380,12 +396,12 @@ const AGUIPartsContent: React.FC<{
   }, [parts]);
 
   // Group consecutive parts of the same type into chunks
-  const chunks: { type: 'tool' | 'reasoning' | 'text'; items: AGUIPart[] }[] = [];
+  const chunks: { type: 'tool' | 'reasoning' | 'text' | 'a2ui'; items: AGUIPart[] }[] = [];
   let current: AGUIPart[] = [];
-  let currentType: 'tool' | 'reasoning' | 'text' | null = null;
+  let currentType: 'tool' | 'reasoning' | 'text' | 'a2ui' | null = null;
 
   for (const part of normalizedParts) {
-    const type = part.type;
+    const type = part.type as 'tool' | 'reasoning' | 'text' | 'a2ui';
     if (current.length === 0) {
       currentType = type;
       current.push(part);
@@ -459,6 +475,25 @@ const AGUIPartsContent: React.FC<{
           );
         }
 
+        if (chunk.type === 'a2ui') {
+          return (
+            <React.Fragment key={ci}>
+              {chunk.items.map((p, pi) => {
+                const surface = p.surface as A2UISurface | undefined;
+                if (!surface) return null;
+                return (
+                  <div key={pi} className="my-2">
+                    <A2UIRenderer
+                      component={surface.component}
+                      onAction={(action, context) => onInlineAction?.(surface.id, action, context ?? {})}
+                    />
+                  </div>
+                );
+              })}
+            </React.Fragment>
+          );
+        }
+
         // Text chunk
         const fullText = chunk.items.map(p => p.text || '').join('');
         const isLastChunk = ci === chunks.length - 1;
@@ -492,6 +527,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   usage,
   toolApprovalPolicy,
   onRemoveApprovalPolicy,
+  onInlineAction,
 }) => {
   const isStreamingThis = isStreaming && isLastMessage;
   const hasParts = aguiParts && aguiParts.length > 0;
@@ -540,6 +576,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                 onToolApproval={onToolApproval}
                 toolApprovalPolicy={toolApprovalPolicy}
                 onRemoveApprovalPolicy={onRemoveApprovalPolicy}
+                onInlineAction={onInlineAction}
               />
             ) : null}
             <MetricsBadge usage={usage} />
@@ -588,7 +625,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     const isStep = b.type === 'toolCall';
     const isReasoning = b.type === 'reasoning';
     // Use the type directly for chunking to preserve interleaved order
-    const type = (b.type === 'markdown' || b.type === 'code' || b.type === 'log') ? 'content' : b.type;
+    const type = (b.type === 'markdown' || b.type === 'code' || b.type === 'log') ? 'content' : b.type === 'a2ui' ? 'a2ui' : b.type;
 
     if (currentGroup.length === 0) {
       currentType = type;
@@ -673,6 +710,25 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               );
             }
 
+            if (chunk.type === 'a2ui') {
+              return (
+                <div key={idx} className="flex flex-col space-y-2">
+                  {chunk.blocks.map((b, bi) => {
+                    const surface = b.a2uiSurface as A2UISurface | undefined;
+                    if (!surface) return null;
+                    return (
+                      <div key={bi} className="my-2">
+                        <A2UIRenderer
+                          component={surface.component}
+                          onAction={(action, context) => onInlineAction?.(surface.id, action, context ?? {})}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            }
+
             const cleanContent = chunk.blocks
               .filter(b => b.type !== 'log' && b.type !== 'reasoning')
               .map(b => (b.type === 'code' ? '```' + (b.lang || '') + '\n' + b.content + '\n```' : b.content))
@@ -701,7 +757,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                   {isStreamingChunk ? (
                     <StreamingContent blocks={contentBlocks} messageIndex={messageIndex} showCursor={cursorReady} onFileClick={onFileClick} />
                   ) : (
-                    <StaticContent blocks={contentBlocks} messageIndex={messageIndex} onFileClick={onFileClick} onToolApproval={onToolApproval} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} />
+                    <StaticContent blocks={contentBlocks} messageIndex={messageIndex} onFileClick={onFileClick} onToolApproval={onToolApproval} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} onInlineAction={onInlineAction} />
                   )}
                 </div>
               </div>

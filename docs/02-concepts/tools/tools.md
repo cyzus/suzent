@@ -28,6 +28,7 @@ class AgentDeps:
     memory_manager: MemoryManager # Long-term memory system
     channel_manager: Any          # Social messaging channels
     skill_manager: Any            # User-defined skills
+    a2ui_queue: asyncio.Queue     # Canvas UI event queue (render_ui)
     # ... plus HITL fields (see Human-in-the-Loop doc)
 ```
 
@@ -66,6 +67,14 @@ Tools that are **stateless** (e.g. `web_search`, `webpage_fetch`) omit `RunConte
 | PlanningTool | `planning_update` | chat_id | Create and manage structured task plans |
 | MemorySearchTool | `memory_search` | MemoryManager | Semantic search over long-term memory |
 | MemoryBlockUpdateTool | `memory_block_update` | MemoryManager | Update core memory blocks (persona, user, facts, context) |
+
+### Canvas & UI
+
+| Tool | Function | Context | Description |
+|------|----------|---------|-------------|
+| RenderUITool | `render_ui` | a2ui_queue | Render interactive UI surfaces (tables, forms, cards, buttons) in the sidebar canvas or inline in chat |
+
+See [Canvas (A2UI)](./canvas.md) for full documentation.
 
 ### Social & Output
 

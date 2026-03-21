@@ -60,3 +60,8 @@ class AgentDeps:
     auto_approve_tools: bool = False
     cancel_event: Any = None  # asyncio.Event — set when stream is cancelled
     last_messages: Optional[list] = None  # To preserve session history correctly
+
+    # --- A2UI canvas ---
+    a2ui_queue: Optional[asyncio.Queue] = (
+        None  # surface events queued by render_ui tool
+    )

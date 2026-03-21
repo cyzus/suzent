@@ -16,6 +16,14 @@ import { PlanProvider, usePlan } from './hooks/usePlan';
 import { useStatusStore } from './hooks/useStatusStore';
 import { useTheme } from './hooks/useTheme';
 import { drainCronNotifications } from './lib/api';
+import {
+  DESKTOP_BREAKPOINT_PX,
+  LEFT_SIDEBAR_WIDTH_PX,
+  MAX_RIGHT_SIDEBAR_WIDTH_PX,
+  clampRightSidebarWidth,
+  shouldCollapseLeftSidebarOnRightOpen,
+  shouldUseFullWidthRightSidebar,
+} from './lib/layout';
 import { TitleBar } from './components/TitleBar';
 import { useI18n, getInitialLocale, tForLocale } from './i18n';
 
@@ -73,8 +81,20 @@ function AppInner(): React.ReactElement {
   const [sidebarTab, setSidebarTab] = useState<'chats' | 'config'>('chats');
   const [mainView, setMainView] = useState<MainView>('chat');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(window.innerWidth >= 1024);
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(window.innerWidth >= DESKTOP_BREAKPOINT_PX);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState<number | null>(null);
+  const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
+
+  const rightSidebarMaxWidthPx = clampRightSidebarWidth(
+    MAX_RIGHT_SIDEBAR_WIDTH_PX,
+    viewportWidth,
+    isLeftSidebarOpen ? LEFT_SIDEBAR_WIDTH_PX : 0,
+  );
+  const rightSidebarForceFullView = shouldUseFullWidthRightSidebar(
+    viewportWidth,
+    isLeftSidebarOpen ? LEFT_SIDEBAR_WIDTH_PX : 0,
+  );
 
   const { refresh } = usePlan();
   const { currentChatId, setViewSwitcher, refreshChatList, chats, loadChat } = useChatStore();
@@ -112,13 +132,29 @@ function AppInner(): React.ReactElement {
 
   function handleRightSidebarToggle(isOpen: boolean): void {
     setIsRightSidebarOpen(isOpen);
-    if (isOpen && window.innerWidth >= 768) {
+    if (!isOpen) {
+      return;
+    }
+
+    const currentWidth = window.innerWidth;
+    if (currentWidth < DESKTOP_BREAKPOINT_PX) {
+      setIsLeftSidebarOpen(false);
+      return;
+    }
+
+    if (shouldCollapseLeftSidebarOnRightOpen(currentWidth, rightSidebarWidth)) {
       setIsLeftSidebarOpen(false);
     }
   }
 
   function toggleLeftSidebar(): void {
-    setIsLeftSidebarOpen(prev => !prev);
+    setIsLeftSidebarOpen(prev => {
+      const next = !prev;
+      if (next) {
+        setIsRightSidebarOpen(false);
+      }
+      return next;
+    });
   }
 
   React.useEffect(() => {
@@ -134,10 +170,25 @@ function AppInner(): React.ReactElement {
       setIsRightSidebarOpen(false);
     }
 
-    if (window.innerWidth < 1024) {
+    if (window.innerWidth < DESKTOP_BREAKPOINT_PX) {
       setIsLeftSidebarOpen(false);
     }
   }, [currentChatId, refresh]);
+
+  React.useEffect(() => {
+    if (!isLeftSidebarOpen || !isRightSidebarOpen) {
+      return;
+    }
+
+    if (shouldCollapseLeftSidebarOnRightOpen(viewportWidth, rightSidebarWidth)) {
+      setIsLeftSidebarOpen(false);
+    }
+  }, [
+    isLeftSidebarOpen,
+    isRightSidebarOpen,
+    viewportWidth,
+    rightSidebarWidth,
+  ]);
 
   // Track previous width to only auto-close when crossing the threshold
   const prevWidthRef = React.useRef(window.innerWidth);
@@ -146,9 +197,10 @@ function AppInner(): React.ReactElement {
     const handleResize = () => {
       const currentWidth = window.innerWidth;
       // Close sidebar only when crossing the threshold from desktop to mobile
-      if (prevWidthRef.current >= 1024 && currentWidth < 1024) {
+      if (prevWidthRef.current >= DESKTOP_BREAKPOINT_PX && currentWidth < DESKTOP_BREAKPOINT_PX) {
         setIsLeftSidebarOpen(false);
       }
+      setViewportWidth(currentWidth);
       prevWidthRef.current = currentWidth;
     };
 
@@ -294,6 +346,10 @@ function AppInner(): React.ReactElement {
               <ChatWindow
                 isRightSidebarOpen={isRightSidebarOpen}
                 onRightSidebarToggle={handleRightSidebarToggle}
+                onRightSidebarWidthChange={setRightSidebarWidth}
+                rightSidebarMaxWidthPx={rightSidebarMaxWidthPx}
+                viewportWidthPx={viewportWidth}
+                rightSidebarForceFullView={rightSidebarForceFullView}
               />
             </div>
           )}

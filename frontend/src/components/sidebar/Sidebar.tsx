@@ -105,19 +105,19 @@ export function Sidebar({
           })}
         </nav>
         <div
-          className={`flex-1 flex flex-col overflow-hidden relative ${animateContent ? 'animate-brutal-drop' : ''
+          className={`flex-1 flex flex-col overflow-hidden relative min-h-0 ${animateContent ? 'animate-brutal-drop' : ''
             }`}
         >
-          <div className={activeTab === 'chats' ? 'h-full' : 'hidden'} aria-hidden={activeTab !== 'chats'}>
+          <div className={activeTab === 'chats' ? 'h-full min-h-0 flex flex-col' : 'hidden'} aria-hidden={activeTab !== 'chats'}>
             {mountedTabs.has('chats') ? chatsContent : null}
           </div>
-          <div className={`${activeTab === 'config' ? '' : 'hidden'} h-full overflow-y-auto scrollbar-thin p-4 space-y-4`} aria-hidden={activeTab !== 'config'}>
+          <div className={`${activeTab === 'config' ? '' : 'hidden'} h-full overflow-y-auto scrollbar-thin p-4 space-y-4 min-h-0`} aria-hidden={activeTab !== 'config'}>
             {mountedTabs.has('config') ? configContent : null}
           </div>
         </div>
 
         {/* User / Global Settings - Bottom Stick */}
-        <div className="border-t-3 border-brutal-black bg-white dark:bg-zinc-800 p-3 md:p-4 sticky bottom-0 z-20">
+        <div className="border-t-3 border-brutal-black bg-white dark:bg-zinc-800 p-3 md:p-4 relative z-20 shrink-0">
           <button
             onClick={onOpenSettings}
             className="w-full flex items-center gap-3 p-3 bg-neutral-100 dark:bg-zinc-700 hover:bg-brutal-yellow dark:hover:bg-brutal-yellow border-2 border-brutal-black transition-colors group text-left"

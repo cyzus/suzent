@@ -71,6 +71,9 @@ class CustomEventName(str, Enum):
     # Usage tracking
     USAGE_UPDATE = "usage_update"
 
+    # A2UI canvas rendering
+    A2UI_RENDER = "a2ui.render"
+
 
 # Backwards compatibility aliases
 TEXT_MESSAGE_CONTENT = StreamEventType.TEXT_MESSAGE_CONTENT
