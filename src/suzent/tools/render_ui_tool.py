@@ -47,7 +47,9 @@ class RenderUITool(Tool):
             target:     "canvas" (sidebar, default) or "inline" (inside chat message).
 
         Interactions are returned as: [canvas: <action>] "<button_label>"
-        Always set "action" on buttons/forms to identify what was triggered.
+        Always set "action" on buttons/forms. Use inline buttons to ask the user
+        to choose between options instead of plain text questions.
+        For full reference and examples, call: skill_execute("canvas")
         """
         if ctx.deps.a2ui_queue is not None:
             await ctx.deps.a2ui_queue.put(

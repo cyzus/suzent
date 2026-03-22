@@ -182,6 +182,49 @@ render_ui(
 )
 ```
 
+## Ask Question Tool
+
+For collecting user input during a task, prefer `ask_question` over `render_ui`. It blocks the agent until the user responds, then returns the answers as structured data.
+
+```python
+ask_question(questions=[
+    QuestionItem(question="What's your goal?", options=["Build a feature", "Fix a bug", "Refactor"], required=True),
+    QuestionItem(question="Any additional context?"),
+])
+# Returns: User answered: {"what_s_your_goal": "Fix a bug", "any_additional_context": "..."}
+```
+
+### Rendering Behaviour
+
+| Shape | Renders as |
+|-------|------------|
+| Single question + `options`, no `multi_select` | Inline button list |
+| Multiple questions or `multi_select=True` | Paged form (one question per page) |
+| No `options` | Free-text `textarea` |
+
+### QuestionItem Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `question` | `str` | The question text |
+| `options` | `list[str] \| None` | Selectable choices |
+| `multi_select` | `bool` | Allow multiple selections (checkbox list) |
+| `allow_free_text` | `bool` | Add "Type something else…" as the last option |
+| `field_name` | `str` | Response key (auto-slugged from question if omitted) |
+| `required` | `bool` | Mark the field required |
+
+### Paged Form UX
+
+When rendered as a form, `ask_question` shows one question at a time with **Back**, **Skip**, and **Next/Submit** navigation. The user can skip optional questions; **Next** is only enabled once the current field has a value.
+
+For `select` and `multiselect` fields with `allow_free_text=True`, a "Type something else…" item appears inline as the last option — clicking it expands a text input on the same page.
+
+### Callbacks
+
+- Button click → `[canvas: choose_option] "<label>"`
+- Form submit → `[canvas: submit_question] {"field": "value", ...}`
+  - Single-select → `string`; multi-select → `list[str]`; textarea → `string`
+
 ## Canvas Persistence
 
 Canvas surfaces are persisted to `localStorage` keyed by chat ID. They survive page reloads and are restored when switching back to a conversation.

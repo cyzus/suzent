@@ -42,8 +42,9 @@ export interface A2UITable {
 export interface A2UIFormField {
   name: string;
   label: string;
-  type?: 'text' | 'number' | 'select' | 'checkbox' | 'textarea';
+  type?: 'text' | 'number' | 'select' | 'multiselect' | 'checkbox' | 'textarea';
   options?: string[];
+  allow_free_text?: boolean;
   required?: boolean;
   default?: unknown;
   placeholder?: string;
@@ -54,6 +55,7 @@ export interface A2UIForm {
   fields: A2UIFormField[];
   submit_label?: string;
   action: string;
+  paged?: boolean;
 }
 
 export interface A2UIList {
@@ -115,4 +117,8 @@ export interface A2UISurface {
   component: A2UIComponent;
   /** "canvas" (default): sidebar panel. "inline": inside the chat message. */
   target?: 'canvas' | 'inline';
+  /** If true, the surface was rendered by ask_question and the agent is blocked
+   *  awaiting a response. Interactions should POST to /canvas/{chatId}/answer
+   *  instead of /canvas/{chatId}/action. */
+  deferred?: boolean;
 }

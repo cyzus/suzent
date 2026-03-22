@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Surfaces persist across the session; re-rendering with the same `surface_id` upserts in place.
   - Fullscreen mode, drag-to-resize sidebar, and markdown rendering in text/list/table cells.
   - New `canvas` skill (`skill_execute("canvas")`) provides the agent with full component reference and examples.
+- **`ask_question` tool**: Dedicated tool for collecting user input that blocks the agent until the user responds, then returns answers as structured data.
+  - Single question with options renders as an inline button list; multiple questions or multi-select render as a paged form (one question per page).
+  - Paged form includes Back / Skip / Next navigation; Next is only enabled once the current field has a value.
+  - `allow_free_text` adds a "Type something else…" option inline as the last list item.
+  - **Form field types**: `select` and `multiselect` fields render as inline option lists instead of dropdowns — no portal positioning issues inside inline surfaces.
+  - **Paged form mode**: Forms support `paged: true` to show one question at a time with progress indicator.
 
 ### ⚡ Changed
 - **Context Compact System**: Optimize the context compressor. It can be triggered manually or when the estimated tokens beyond a threshold.

@@ -416,6 +416,7 @@ async def stream_agent_responses(
                                     "title": ev.get("title", ""),
                                     "component": ev["component"],
                                     "target": ev.get("target", "canvas"),
+                                    "deferred": ev.get("deferred", False),
                                     "chatId": chat_id,
                                 },
                             ),
@@ -440,8 +441,17 @@ async def stream_agent_responses(
 
                     # AgentRunResultEvent: final result with all messages
                     if isinstance(payload, AgentRunResultEvent):
+                        # Save message history — must not be gated on usage extraction
                         try:
-                            # Extract usage data
+                            agent._last_messages = payload.result.all_messages()  # type: ignore[attr-defined]
+                            deps.last_messages = agent._last_messages
+                        except Exception as e:
+                            logger.warning(
+                                f"[Streaming] Failed to extract message history: {e}"
+                            )
+
+                        # Extract usage data (independent — failure doesn't affect history)
+                        try:
                             usage = payload.result.usage()
                             usage_data = {
                                 "input_tokens": usage.request_tokens,
@@ -452,15 +462,10 @@ async def stream_agent_responses(
                             await out_queue.put(
                                 ("chunk", _encode_custom("usage_update", usage_data))
                             )
-
-                            agent._last_messages = payload.result.all_messages()  # type: ignore[attr-defined]
-                            deps.last_messages = agent._last_messages
                         except Exception as e:
                             logger.warning(
                                 f"[Streaming] Failed to extract usage data: {e}"
                             )
-                            agent._last_messages = []
-                            deps.last_messages = []
 
                     try:
                         yield payload

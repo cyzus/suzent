@@ -45,6 +45,10 @@ export interface CanvasState {
   setActiveSurface: (id: string) => void;
   /** Clear all surfaces and remove from localStorage */
   clearSurfaces: () => void;
+  /** IDs of surfaces that are deferred (ask_question) — interactions go to /answer */
+  deferredIds: Set<string>;
+  /** Register a surface id as deferred (called for inline surfaces) */
+  markDeferred: (id: string) => void;
 }
 
 export function useCanvas(chatId: string | null): CanvasState {
@@ -56,6 +60,7 @@ export function useCanvas(chatId: string | null): CanvasState {
     const initial = chatId ? loadFromStorage(chatId) : [];
     return initial.length > 0 ? initial[0].id : null;
   });
+  const [deferredIds, setDeferredIds] = useState<Set<string>>(new Set());
 
   // Track previous chatId to detect chat switches
   const prevChatIdRef = useRef<string | null>(chatId);
@@ -80,7 +85,14 @@ export function useCanvas(chatId: string | null): CanvasState {
       return next;
     });
     setActiveSurfaceId(prev => prev ?? surface.id);
+    if (surface.deferred) {
+      setDeferredIds(prev => new Set([...prev, surface.id]));
+    }
   }, [chatId]);
+
+  const markDeferred = useCallback((id: string) => {
+    setDeferredIds(prev => new Set([...prev, id]));
+  }, []);
 
   const setActiveSurface = useCallback((id: string) => {
     setActiveSurfaceId(id);
@@ -101,5 +113,7 @@ export function useCanvas(chatId: string | null): CanvasState {
     setSurface,
     setActiveSurface,
     clearSurfaces,
+    deferredIds,
+    markDeferred,
   };
 }

@@ -12,6 +12,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
 
 from suzent.logger import get_logger
+from suzent.a2ui import pending as pending_questions
 
 logger = get_logger(__name__)
 
@@ -87,4 +88,40 @@ async def a2ui_action(request: Request) -> StreamingResponse:
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
         },
+    )
+
+
+async def a2ui_answer(request: Request) -> JSONResponse:
+    """
+    POST /canvas/{chat_id}/answer
+
+    Resolves a pending ask_question deferred tool call.
+    The agent is blocked waiting for this; sending the answer unblocks it
+    and lets the current agent run continue (no new SSE stream needed).
+
+    Body:
+        surface_id  str   – must match the surface_id used in ask_question
+        answer      dict  – the user's response data
+    """
+    chat_id = request.path_params.get("chat_id")
+    if not chat_id:
+        return JSONResponse({"error": "chat_id required"}, status_code=400)
+
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    surface_id = data.get("surface_id", "")
+    answer = data.get("answer", {})
+
+    resolved = pending_questions.resolve(chat_id, surface_id, answer)
+    if resolved:
+        logger.info(
+            f"Resolved pending question — chat_id={chat_id}, surface={surface_id}"
+        )
+        return JSONResponse({"status": "resolved"})
+
+    return JSONResponse(
+        {"error": "No pending question for this surface"}, status_code=404
     )

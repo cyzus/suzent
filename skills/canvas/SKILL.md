@@ -146,10 +146,40 @@ render_ui(
 )
 ```
 
+## Asking for Clarification — Option Selection
+
+**Prefer `render_ui` over plain text when asking the user to choose.** Render an inline surface with one button per option; the user clicks instead of typing, and you get a structured callback.
+
+```python
+render_ui(
+    surface_id="clarify_tone",
+    target="inline",
+    component={
+        "type": "stack",
+        "children": [
+            {"type": "text", "content": "What tone should the report use?", "variant": "subheading"},
+            {"type": "button", "label": "Formal",   "action": "choose_tone", "context": {"tone": "formal"}},
+            {"type": "button", "label": "Casual",   "action": "choose_tone", "context": {"tone": "casual"},   "variant": "secondary"},
+            {"type": "button", "label": "Technical", "action": "choose_tone", "context": {"tone": "technical"}, "variant": "secondary"},
+        ],
+    }
+)
+```
+
+You will receive: `[canvas: choose_tone] "Formal"` — use `button_label` or `context` to determine the choice.
+
+For binary yes/no confirmations:
+```python
+{"type": "button", "label": "Yes, proceed", "action": "confirm", "variant": "primary"},
+{"type": "button", "label": "Cancel",       "action": "cancel",  "variant": "secondary"},
+```
+
+For longer option lists, use `direction: "horizontal"` on the stack to render buttons side by side.
+
 ## When to Use Canvas
 
 - Displaying structured data (tables, lists of items with actions)
 - Multi-step workflows where you want persistent controls visible alongside chat
 - Forms that collect user input before proceeding
 - Status dashboards that update as work progresses (upsert the same surface_id)
-- Inline: compact one-shot choices or confirmations directly in the message flow
+- **Clarifications**: whenever you'd ask the user to pick from a known set of options — use inline buttons instead of free-text questions

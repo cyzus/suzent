@@ -105,7 +105,7 @@ from suzent.routes.heartbeat_routes import (
     get_heartbeat_global_config,
     save_heartbeat_global_config,
 )
-from suzent.routes.a2ui_routes import a2ui_action
+from suzent.routes.a2ui_routes import a2ui_action, a2ui_answer
 from suzent.channels.manager import ChannelManager
 from suzent.nodes.manager import NodeManager
 
@@ -312,9 +312,22 @@ def ensure_app_data():
     print("INFO: App Data Verification Complete.", flush=True)
 
 
+async def _stop(coro, name: str, timeout: float = 5.0):
+    import asyncio
+
+    try:
+        await asyncio.wait_for(coro, timeout=timeout)
+    except asyncio.TimeoutError:
+        logger.warning(f"{name} did not stop within {timeout}s, continuing shutdown")
+    except Exception as e:
+        logger.error(f"Error stopping {name}: {e}")
+
+
 async def shutdown():
     """Cleanup services on application shutdown."""
+    import asyncio
     from suzent.memory.lifecycle import shutdown_memory_system
+    from suzent.a2ui import pending as pending_questions
 
     logger.info("Application shutdown - cleaning up services")
 
@@ -325,17 +338,20 @@ async def shutdown():
         scheduler_brain, \
         heartbeat_runner
 
+    # Cancel any pending ask_question futures so their tasks can exit cleanly
+    pending_questions.cancel_all()
+
     if heartbeat_runner:
-        await heartbeat_runner.stop()
+        await _stop(heartbeat_runner.stop(), "HeartbeatRunner")
 
     if scheduler_brain:
-        await scheduler_brain.stop()
+        await _stop(scheduler_brain.stop(), "SchedulerBrain")
 
     if social_brain:
-        await social_brain.stop()
+        await _stop(social_brain.stop(), "SocialBrain")
 
     if channel_manager:
-        await channel_manager.stop_all()
+        await _stop(channel_manager.stop_all(), "ChannelManager")
 
     if node_manager:
         for node in list(node_manager.nodes.values()):
@@ -471,6 +487,7 @@ app = Starlette(
         Route("/heartbeat/config", get_heartbeat_global_config, methods=["GET"]),
         Route("/heartbeat/config", save_heartbeat_global_config, methods=["POST"]),
         Route("/canvas/{chat_id}/action", a2ui_action, methods=["POST"]),
+        Route("/canvas/{chat_id}/answer", a2ui_answer, methods=["POST"]),
     ],
     middleware=[
         Middleware(

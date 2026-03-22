@@ -38,6 +38,7 @@ interface UseAGUIOptions {
   url: string;
   onFinish?: (parts: AGUIPart[]) => void;
   onCustomEvent?: (name: string, value: unknown) => void;
+  onMarkDeferred?: (surfaceId: string) => void;
   onError?: (error: Error) => void;
 }
 
@@ -52,6 +53,8 @@ interface UseAGUIReturn {
   steerStream: (body: Record<string, unknown>) => Promise<void>;
   stop: () => void;
   clearParts: () => void;
+  /** Remove an inline A2UI surface part by surface id (e.g. after ask_question is answered) */
+  removeInlineSurface: (surfaceId: string) => void;
   /** Optimistically resolve a tool approval (instantly updates UI before backend responds) */
   resolveApproval: (approvalId: string, approved: boolean) => void;
   /** Number of tool approvals still awaiting user decision */
@@ -123,6 +126,7 @@ function processEvent(
   event: ParsedSSEEvent,
   parts: AGUIPart[],
   onCustomEvent?: (name: string, value: unknown) => void,
+  onMarkDeferred?: (surfaceId: string) => void,
 ): { parts: AGUIPart[]; error?: string } {
   const { type, data } = event;
   // Clone parts array for immutable update
@@ -352,6 +356,9 @@ function processEvent(
         if (surface?.target === 'inline') {
           // Inline: embed as a part inside the current message
           next.push({ type: 'a2ui', surface });
+          if (surface.deferred && surface.id) {
+            onMarkDeferred?.(surface.id as string);
+          }
         } else {
           // Canvas: forward to ChatWindow's onCustomEvent handler
           onCustomEvent?.(name, value);
@@ -404,6 +411,16 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   const clearParts = useCallback(() => {
     setParts([]);
     partsRef.current = [];
+  }, []);
+
+  const removeInlineSurface = useCallback((surfaceId: string) => {
+    setParts(prev => {
+      const next = prev.filter(
+        p => !(p.type === 'a2ui' && (p.surface as Record<string, unknown>)?.id === surfaceId)
+      );
+      partsRef.current = next;
+      return next;
+    });
   }, []);
 
   const stop = useCallback(() => {
@@ -462,7 +479,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
    * Merges new events (tool results, text) into the existing parts array.
    */
   const resumeStream = useCallback(async (body: Record<string, unknown>) => {
-    const { url, onFinish, onCustomEvent, onError } = optionsRef.current;
+    const { url, onFinish, onCustomEvent, onMarkDeferred, onError } = optionsRef.current;
 
     // DON'T clear parts — keep existing tool parts from first stream
     setError(undefined);
@@ -503,6 +520,9 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         const { done, value } = await reader.read();
         if (done) break;
 
+        // Sync with any out-of-band part mutations (e.g. removeInlineSurface)
+        currentParts = [...partsRef.current];
+
         buffer += decoder.decode(value, { stream: true });
         const { events, remainder } = parseSSEBuffer(buffer);
         buffer = remainder;
@@ -512,7 +532,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
           if (event.type === 'CUSTOM' && (event.data.name as string) === 'tool_approval_request') {
             newApprovalCount++;
           }
-          const result = processEvent(event, currentParts, onCustomEvent);
+          const result = processEvent(event, currentParts, onCustomEvent, onMarkDeferred);
           currentParts = result.parts;
 
           if (result.error) {
@@ -560,7 +580,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
    * stream from /chat/steer preserving existing parts.
    */
   const steerStream = useCallback(async (body: Record<string, unknown>) => {
-    const { onFinish, onCustomEvent, onError } = optionsRef.current;
+    const { onFinish, onCustomEvent, onMarkDeferred, onError } = optionsRef.current;
     // Derive steer URL from the base chat URL
     const steerUrl = optionsRef.current.url.replace(/\/chat$/, '/chat/steer');
 
@@ -623,6 +643,9 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         const { done, value } = await reader.read();
         if (done) break;
 
+        // Sync with any out-of-band part mutations (e.g. removeInlineSurface)
+        currentParts = [...partsRef.current];
+
         buffer += decoder.decode(value, { stream: true });
         const { events, remainder } = parseSSEBuffer(buffer);
         buffer = remainder;
@@ -631,7 +654,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
           if (event.type === 'CUSTOM' && (event.data.name as string) === 'tool_approval_request') {
             newApprovalCount++;
           }
-          const result = processEvent(event, currentParts, onCustomEvent);
+          const result = processEvent(event, currentParts, onCustomEvent, onMarkDeferred);
           currentParts = result.parts;
 
           if (result.error) {
@@ -676,7 +699,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     body: Record<string, unknown>,
     opts?: { formData?: FormData },
   ) => {
-    const { url, onFinish, onCustomEvent, onError } = optionsRef.current;
+    const { url, onFinish, onCustomEvent, onMarkDeferred, onError } = optionsRef.current;
 
     // Reset state
     setParts([]);
@@ -723,6 +746,10 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         const { done, value } = await reader.read();
         if (done) break;
 
+        // Sync with any out-of-band part mutations (e.g. removeInlineSurface)
+        // that may have updated partsRef.current between read() calls.
+        currentParts = [...partsRef.current];
+
         buffer += decoder.decode(value, { stream: true });
         const { events, remainder } = parseSSEBuffer(buffer);
         buffer = remainder;
@@ -732,7 +759,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
           if (event.type === 'CUSTOM' && (event.data.name as string) === 'tool_approval_request') {
             newApprovalCount++;
           }
-          const result = processEvent(event, currentParts, onCustomEvent);
+          const result = processEvent(event, currentParts, onCustomEvent, onMarkDeferred);
           currentParts = result.parts;
 
           if (result.error) {
@@ -774,5 +801,5 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     }
   }, []);
 
-  return { parts, status, error, sendMessage, resumeStream, steerStream, stop, clearParts, resolveApproval, pendingApprovalCount, addApprovalDecision, consumeApprovalDecisions };
+  return { parts, status, error, sendMessage, resumeStream, steerStream, stop, clearParts, removeInlineSurface, resolveApproval, pendingApprovalCount, addApprovalDecision, consumeApprovalDecisions };
 }

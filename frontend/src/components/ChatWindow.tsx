@@ -63,8 +63,9 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any): Message {
       if (part.output != null) {
         content += `\n\n<details data-tool-call-id="${toolCallId}"><summary>\u{1F4E6} ${toolName}</summary>\n\n<pre><code class="language-text">${escapeHtmlForStore(part.output)}</code></pre>\n\n</details>\n\n`;
       }
-    } else if (part.type === 'a2ui' && part.surface) {
-      // Inline A2UI surface — stored as a data attribute for re-hydration
+    } else if (part.type === 'a2ui' && part.surface && !part.surface.deferred) {
+      // Inline A2UI surface — stored as a data attribute for re-hydration.
+      // Deferred surfaces (ask_question) are transient and must not persist in history.
       const encoded = encodeURIComponent(JSON.stringify(part.surface));
       content += `\n\n<div data-a2ui="${encoded}"></div>\n\n`;
     }
@@ -130,7 +131,7 @@ const MessageList: React.FC<{
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
   onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
-}> = ({ messages, isStreaming, streamingForCurrentChat, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction }) => (
+}> = ({ messages, streamingForCurrentChat, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction }) => (
   <div className="space-y-6">
     {(() => {
       // Pre-compute tool-only groups: consecutive tool-only assistant messages
@@ -180,8 +181,8 @@ const MessageList: React.FC<{
             let totalInput = 0;
             let totalOutput = 0;
             for (const info of allStepInfos) {
-              const inputMatch = info.match(/Input\s+tokens:\s+([\d,]+)/i);
-              const outputMatch = info.match(/Output\s+tokens:\s+([\d,]+)/i);
+              const inputMatch = info.match(/Input(?:\s+tokens)?:\s+([\d,]+)/i);
+              const outputMatch = info.match(/Output(?:\s+tokens)?:\s+([\d,]+)/i);
               if (inputMatch) totalInput += parseInt(inputMatch[1].replace(/,/g, ''), 10);
               if (outputMatch) totalOutput += parseInt(outputMatch[1].replace(/,/g, ''), 10);
             }
@@ -355,7 +356,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const {
     messages,
     addMessage,
-    updateLastUserMessageImages,
     config,
     backendConfig,
     setConfig,
@@ -409,9 +409,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     stop: stopAGUIStream,
     clearParts,
     resolveApproval,
-    pendingApprovalCount,
     addApprovalDecision,
     consumeApprovalDecisions,
+    removeInlineSurface,
   } = useAGUI({
     url: `${getApiBase()}/chat`,
     onFinish: (parts) => {
@@ -464,6 +464,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         try { await forceSaveNow(chatId); } catch { }
       }, 200);
       try { loadCoreMemory(); loadStats(); } catch { }
+    },
+    onMarkDeferred: (surfaceId) => {
+      canvas.markDeferred(surfaceId);
     },
     onCustomEvent: (name, value) => {
       if (name === 'plan_refresh') {
@@ -699,6 +702,29 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     surfaceId: string,
   ) => {
     if (!currentChatId) return;
+
+    // Deferred surface (ask_question): resolve the waiting tool call directly,
+    // no new agent turn needed — the existing stream will continue.
+    if (canvas.deferredIds.has(surfaceId)) {
+      const answer = { ...context };
+      delete answer.button_label;
+      // If it was a button click, use the label as the answer value
+      if (context.button_label) answer.answer = context.button_label;
+      // Remove the form immediately — the tool is done, no need to keep it visible
+      removeInlineSurface(surfaceId);
+      try {
+        await fetch(`${getApiBase()}/canvas/${currentChatId}/answer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ surface_id: surfaceId, answer }),
+        });
+      } catch (err) {
+        console.error('[A2UI] answer dispatch failed:', err);
+      }
+      return;
+    }
+
+    // Regular canvas action: add a pill message and start a new agent stream.
     const buttonLabel = context.button_label as string | undefined;
     const ctxRest = { ...context };
     delete ctxRest.button_label;
@@ -725,15 +751,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       console.error('[A2UI] canvas dispatch failed:', err);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentChatId, addMessage, setIsStreaming, sendAGUI]);
+  }, [currentChatId, canvas.deferredIds, addMessage, setIsStreaming, sendAGUI]);
 
-  const handleInlineAction = useCallback((
-    surfaceId: string,
-    action: string,
-    context: Record<string, unknown>,
-  ) => {
-    void handleCanvasDispatch(action, context, surfaceId);
-  }, [handleCanvasDispatch]);
 
   const safeBackendConfig = backendConfig || null;
   const streamingForCurrentChat = isStreaming && activeStreamingChatId === currentChatId;

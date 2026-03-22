@@ -4,6 +4,7 @@ Top-level CLI commands: start, doctor, upgrade, setup-build-tools.
 
 import io
 import os
+import signal
 import shutil
 import subprocess
 import sys
@@ -262,6 +263,44 @@ def run_command(
     subprocess.run(cmd, cwd=cwd, check=check, shell=use_shell)
 
 
+def _terminate_process_gracefully(process: subprocess.Popen, timeout: float = 5.0):
+    """Attempt graceful child-process shutdown, then escalate if needed."""
+    if process.poll() is not None:
+        return
+
+    # First attempt: signal for graceful shutdown
+    try:
+        if IS_WINDOWS:
+            ctrl_break = getattr(signal, "CTRL_BREAK_EVENT", None)
+            if ctrl_break is not None:
+                process.send_signal(ctrl_break)
+            else:
+                process.terminate()
+        else:
+            process.send_signal(signal.SIGINT)
+        process.wait(timeout=timeout)
+        return
+    except Exception:
+        pass
+
+    # Second attempt: terminate
+    if process.poll() is None:
+        try:
+            process.terminate()
+            process.wait(timeout=timeout)
+            return
+        except Exception:
+            pass
+
+    # Last attempt: hard kill
+    if process.poll() is None:
+        try:
+            process.kill()
+            process.wait(timeout=2)
+        except Exception:
+            pass
+
+
 def register_commands(app: typer.Typer):
     """Register top-level commands onto the app."""
 
@@ -407,10 +446,25 @@ def register_commands(app: typer.Typer):
             cmd.append("--debug")
 
         try:
-            # Run directly (blocking)
-            subprocess.run(cmd, env=env, check=True)
+            creationflags = 0
+            if IS_WINDOWS:
+                creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+
+            # Keep a process handle so Ctrl+C can shut down the child reliably.
+            process = subprocess.Popen(cmd, env=env, creationflags=creationflags)
+            return_code = process.wait()
+
+            # 130 = terminated via SIGINT/Ctrl+C on many platforms.
+            if return_code not in (0, 130):
+                typer.echo(f"❌ Server failed with exit code {return_code}")
+                raise typer.Exit(code=1)
         except KeyboardInterrupt:
-            typer.echo("\n🛑 Server stopped.")
+            typer.echo("\n🛑 Stopping server...")
+            try:
+                _terminate_process_gracefully(process)
+            except Exception:
+                pass
+            typer.echo("🛑 Server stopped.")
         except Exception as e:
             typer.echo(f"❌ Server failed: {e}")
             raise typer.Exit(code=1)
