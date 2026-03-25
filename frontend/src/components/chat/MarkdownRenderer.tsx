@@ -36,7 +36,7 @@ const FileButton: React.FC<{
         e.stopPropagation();
         onFileClick(path, fileName, e.shiftKey);
       }}
-      className="inline-flex items-center gap-1 bg-brutal-yellow border-2 border-brutal-black px-2 py-0.5 font-mono text-xs font-bold text-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn transition-all cursor-pointer"
+      className="inline-flex max-w-full items-center gap-1 bg-brutal-yellow border-2 border-brutal-black px-2 py-0.5 font-mono text-xs font-bold text-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn transition-all cursor-pointer"
       title={t('fileLink.clickToView', { path })}
       role="button"
       tabIndex={0}
@@ -47,8 +47,8 @@ const FileButton: React.FC<{
         }
       }}
     >
-      <DocumentTextIcon className="w-3 h-3 stroke-[3]" />
-      <span>{displayName}</span>
+      <DocumentTextIcon className="w-3 h-3 stroke-[3] shrink-0" />
+      <span className="truncate">{displayName}</span>
     </span>
   );
 };
@@ -158,7 +158,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
             }
             return (
               <code
-                className="bg-brutal-yellow px-1.5 py-0.5 border-2 border-brutal-black text-[11px] font-mono text-brutal-black font-bold break-words"
+                className="bg-brutal-yellow px-1.5 py-0.5 border-2 border-brutal-black text-[11px] font-mono text-brutal-black font-bold break-words break-all whitespace-pre-wrap box-decoration-clone"
                 {...rest}
               >
                 {children}
