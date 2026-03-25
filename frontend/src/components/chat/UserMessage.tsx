@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { Message } from '../../types/api';
 import { FileIcon } from '../FileIcon';
 import { ClickableContent } from '../ClickableContent';
@@ -6,6 +6,88 @@ import { ArrowDownTrayIcon, EyeIcon } from '@heroicons/react/24/outline';
 import { getApiBase, getSandboxParams } from '../../lib/api';
 import { useChatStore } from '../../hooks/useChatStore';
 import { useI18n } from '../../i18n';
+
+// Must match the CSS max-w-sm / max-h-64 constraints on the rendered <img>.
+const IMG_MAX_W = 384;
+const IMG_MAX_H = 256;
+
+/**
+ * Downsamples a base64 image to display size via canvas before creating an object URL.
+ * Caps the GPU texture to ≤384×256 and enables loading="lazy" (a no-op on data: URLs).
+ */
+function LazyImage({
+  data,
+  mimeType,
+  alt,
+  className,
+  title,
+  onClick,
+  style,
+}: {
+  data: string;
+  mimeType: string;
+  alt?: string;
+  className?: string;
+  title?: string;
+  onClick?: () => void;
+  style?: React.CSSProperties;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const img = new window.Image();
+    img.onload = () => {
+      if (cancelled) return;
+      const scale = Math.min(1, IMG_MAX_W / img.naturalWidth, IMG_MAX_H / img.naturalHeight);
+      const w = Math.round(img.naturalWidth * scale);
+      const h = Math.round(img.naturalHeight * scale);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+
+      canvas.toBlob(blob => {
+        if (cancelled || !blob) return;
+        const url = URL.createObjectURL(blob);
+        blobUrlRef.current = url;
+        setSrc(url);
+      }, 'image/jpeg', 0.88);
+    };
+    img.onerror = () => {
+      if (!cancelled) setSrc(`data:${mimeType};base64,${data}`);
+    };
+    img.src = `data:${mimeType};base64,${data}`;
+
+    return () => {
+      cancelled = true;
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
+    };
+  }, [data, mimeType]);
+
+  if (!src) {
+    return <div className="w-24 h-16 bg-neutral-200 dark:bg-zinc-700 border-2 border-brutal-black animate-pulse" />;
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      title={title}
+      onClick={onClick}
+      style={style}
+      loading="lazy"
+      decoding="async"
+    />
+  );
+}
 
 function formatMessageTime(iso: string): string {
   const date = new Date(iso);
@@ -42,8 +124,9 @@ export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onIma
         <div className="flex flex-wrap gap-3 justify-end">
           {message.images.map((img, imgIdx) => (
             <div key={imgIdx} className="relative group animate-brutal-pop">
-              <img
-                src={`data:${img.mime_type};base64,${img.data}`}
+              <LazyImage
+                data={img.data}
+                mimeType={img.mime_type}
                 alt={img.filename}
                 className="max-w-sm max-h-64 border-4 border-brutal-black shadow-brutal-lg object-contain bg-white"
                 title={img.filename}

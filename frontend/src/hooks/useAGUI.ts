@@ -5,6 +5,7 @@
  * that parses AG-UI events and builds up parts-based state.
  */
 import { useState, useCallback, useRef } from 'react';
+import type { A2UISurface } from '../types/a2ui';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -29,7 +30,7 @@ export interface AGUIPart {
   /** Rich display data from CustomEvent (for future use) */
   displayData?: unknown;
   /** Inline A2UI surface (type === 'a2ui') */
-  surface?: unknown;
+  surface?: A2UISurface & { target?: string };
 }
 
 export type AGUIStatus = 'idle' | 'submitted' | 'streaming' | 'error';
@@ -46,7 +47,7 @@ interface UseAGUIReturn {
   parts: AGUIPart[];
   status: AGUIStatus;
   error: string | undefined;
-  sendMessage: (body: Record<string, unknown>, opts?: { formData?: FormData }) => Promise<void>;
+  sendMessage: (body: Record<string, unknown>, opts?: { formData?: FormData; urlOverride?: string; onStreamStart?: () => void }) => Promise<boolean>;
   /** Resume a stream after approval without clearing existing parts */
   resumeStream: (body: Record<string, unknown>) => Promise<void>;
   /** Interrupt the current stream and redirect the agent with a new message */
@@ -697,17 +698,24 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
   const sendMessage = useCallback(async (
     body: Record<string, unknown>,
-    opts?: { formData?: FormData },
-  ) => {
+    opts?: { formData?: FormData; urlOverride?: string; onStreamStart?: () => void },
+  ): Promise<boolean> => {
     const { url, onFinish, onCustomEvent, onMarkDeferred, onError } = optionsRef.current;
+    const targetUrl = opts?.urlOverride ?? url;
+    // For live-stream probes (urlOverride) we defer the state reset until we know
+    // there is actually an active stream — this prevents every 204 probe from
+    // clearing streaming parts that should stay visible.
+    const isProbe = !!opts?.urlOverride;
 
-    // Reset state
-    setParts([]);
-    partsRef.current = [];
-    setError(undefined);
-    setStatus('submitted');
-    setPendingApprovalCount(0);
-    approvalDecisionsRef.current = [];
+    if (!isProbe) {
+      // Normal send: reset immediately so the UI shows "submitted" while waiting.
+      setParts([]);
+      partsRef.current = [];
+      setError(undefined);
+      setStatus('submitted');
+      setPendingApprovalCount(0);
+      approvalDecisionsRef.current = [];
+    }
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -718,12 +726,18 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         ? {} // Let browser set Content-Type for FormData
         : { 'Content-Type': 'application/json' };
 
-      const response = await fetch(url, {
+      const response = await fetch(targetUrl, {
         method: 'POST',
         headers,
         body: fetchBody,
         signal: controller.signal,
       });
+
+      // 204: no active stream (e.g. /chat/live when no background run is in progress)
+      if (response.status === 204) {
+        if (!isProbe) setStatus('idle');
+        return false;
+      }
 
       if (!response.ok) {
         const text = await response.text().catch(() => response.statusText);
@@ -734,6 +748,18 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         throw new Error('Response body is null');
       }
 
+      if (isProbe) {
+        // Stream confirmed active — reset state now (not on every silent 204 probe).
+        setParts([]);
+        partsRef.current = [];
+        setError(undefined);
+        setStatus('submitted');
+        setPendingApprovalCount(0);
+        approvalDecisionsRef.current = [];
+      }
+
+      // Notify caller (e.g. set isLiveStreamRef) before entering the read loop.
+      opts?.onStreamStart?.();
       setStatus('streaming');
 
       const reader = response.body.getReader();
@@ -741,7 +767,6 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       let buffer = '';
       let currentParts: AGUIPart[] = [];
       let newApprovalCount = 0;
-
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -768,7 +793,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
             setParts(currentParts);
             partsRef.current = currentParts;
             onError?.(new Error(result.error));
-            return;
+            return true;
           }
         }
 
@@ -783,6 +808,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
       setStatus('idle');
       onFinish?.(currentParts);
+      return true;
 
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
@@ -798,6 +824,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         setStatus('error');
         onError?.(err as Error);
       }
+      return false;
     }
   }, []);
 

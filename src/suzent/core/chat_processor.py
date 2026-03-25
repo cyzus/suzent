@@ -507,8 +507,14 @@ class ChatProcessor:
         steer_message: str,
         config_override: Dict = None,
         on_event: Any = None,
+        _stream_queue=None,
     ) -> str:
-        """Run a steer and return only the final response text."""
+        """Run a steer and return only the final response text.
+
+        If `_stream_queue` is an asyncio.Queue, each raw SSE chunk is also put
+        on that queue so live subscribers can receive events in real time.
+        A None sentinel is put at the end to signal completion.
+        """
         full_response = ""
         parser = StreamParser()
 
@@ -518,6 +524,8 @@ class ChatProcessor:
             steer_message=steer_message,
             config_override=config_override,
         ):
+            if _stream_queue is not None:
+                await _stream_queue.put(chunk)
             for event in parser.parse([chunk]):
                 if on_event:
                     await on_event(event)
@@ -525,6 +533,9 @@ class ChatProcessor:
                     full_response += event.content
                 elif isinstance(event, ErrorEvent):
                     raise RuntimeError(event.message)
+
+        if _stream_queue is not None:
+            await _stream_queue.put(None)  # sentinel: stream finished
 
         return full_response.strip()
 
@@ -539,11 +550,16 @@ class ChatProcessor:
         resume_approvals: List[Dict] = None,
         is_social: bool = False,
         is_heartbeat: bool = False,
+        _stream_queue=None,
     ) -> str:
         """Run a conversation turn and return only the final response text.
 
         Allows for an optional async 'on_event' callback to handle intermediate
         events (like tool approval requests) while draining the stream.
+
+        If `_stream_queue` is an asyncio.Queue, each raw SSE chunk is also put
+        on that queue so live subscribers can receive events in real time.
+        A None sentinel is put at the end to signal completion.
         """
         full_response = ""
         parser = StreamParser()
@@ -558,6 +574,9 @@ class ChatProcessor:
             is_social=is_social,
             is_heartbeat=is_heartbeat,
         ):
+            if _stream_queue is not None:
+                await _stream_queue.put(chunk)
+
             # Use the shared parser to turn raw SSE chunks into events
             for event in parser.parse([chunk]):
                 if on_event:
@@ -567,6 +586,9 @@ class ChatProcessor:
                     full_response += event.content
                 elif isinstance(event, ErrorEvent):
                     raise RuntimeError(event.message)
+
+        if _stream_queue is not None:
+            await _stream_queue.put(None)  # sentinel: stream finished
 
         return full_response.strip()
 

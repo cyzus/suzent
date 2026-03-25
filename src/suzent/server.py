@@ -28,6 +28,7 @@ from suzent.routes.chat_routes import (
     delete_chat,
     get_chat,
     get_chats,
+    live_stream,
     steer_chat,
     stop_chat,
     update_chat,
@@ -203,20 +204,6 @@ async def startup():
         global heartbeat_runner
         try:
             heartbeat_runner = HeartbeatRunner(interval_minutes=1)
-            # Route heartbeat alerts through the scheduler notification deque
-            if scheduler_brain:
-                heartbeat_runner.set_notification_callback(
-                    lambda msg: scheduler_brain._pending_notifications.append(
-                        {
-                            "job_id": 0,
-                            "job_name": "Heartbeat",
-                            "result": msg[:500],
-                            "timestamp": __import__("datetime")
-                            .datetime.now()
-                            .isoformat(),
-                        }
-                    )
-                )
             app.state.heartbeat_runner = heartbeat_runner
             await heartbeat_runner.start()
         except Exception as e:
@@ -401,6 +388,7 @@ app = Starlette(
     debug=True,
     routes=[
         Route("/chat", chat, methods=["POST"]),
+        Route("/chat/live", live_stream, methods=["POST"]),
         Route("/chat/stop", stop_chat, methods=["POST"]),
         Route("/chat/steer", steer_chat, methods=["POST"]),
         Route("/chat/approve-tool", approve_tool, methods=["POST"]),

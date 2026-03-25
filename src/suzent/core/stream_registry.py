@@ -6,7 +6,7 @@ can check for active streams without importing the full streaming module.
 """
 
 import asyncio
-from typing import Dict
+from typing import Dict, Optional
 
 
 class StreamControl:
@@ -52,3 +52,34 @@ def pop_pending_auto_approvals(chat_id: str) -> Dict[str, bool]:
     if not chat_id:
         return {}
     return pending_auto_approvals.pop(chat_id, {})
+
+
+# ---------------------------------------------------------------------------
+# Background stream queues
+# Maps chat_id → asyncio.Queue of raw SSE chunks from background executors.
+# A None sentinel in the queue signals end-of-stream.
+# ---------------------------------------------------------------------------
+
+background_queues: Dict[str, asyncio.Queue] = {}
+
+
+def register_background_stream(chat_id: str) -> asyncio.Queue:
+    """Create and register a background SSE queue for a chat. Returns the queue."""
+    q: asyncio.Queue = asyncio.Queue()
+    background_queues[chat_id] = q
+    return q
+
+
+def unregister_background_stream(chat_id: str) -> None:
+    """Remove the background queue for a chat (signals no active stream)."""
+    background_queues.pop(chat_id, None)
+
+
+def get_background_queue(chat_id: str) -> Optional[asyncio.Queue]:
+    """Return the active background queue for a chat, or None if not streaming."""
+    return background_queues.get(chat_id)
+
+
+def is_background_streaming(chat_id: str) -> bool:
+    """Return True if a background stream is currently active for this chat."""
+    return chat_id in background_queues

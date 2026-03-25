@@ -17,6 +17,8 @@ import { ImageViewer } from './ImageViewer';
 import { FileViewer } from './FileViewer';
 import { UserMessage, AssistantMessage, ToolCallBlock, RightSidebar } from './chat';
 import { useI18n } from '../i18n';
+import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
+
 
 // ── AGUIPart[] → Store Message conversion ────────────────────────────
 function escapeHtmlForStore(unsafe: string): string {
@@ -122,7 +124,6 @@ const LoadingIndicator: React.FC = () => {
 // Message list component (renders historical / store messages only)
 const MessageList: React.FC<{
   messages: Message[];
-  isStreaming: boolean;
   streamingForCurrentChat: boolean;
   chatId?: string;
   onImageClick?: (src: string) => void;
@@ -207,7 +208,7 @@ const MessageList: React.FC<{
         // Intermediate step group representative: render merged pills (no badge here — shows after final answer)
         if (group) {
           return (
-            <div key={idx} className="w-full flex flex-col group/message">
+            <div key={idx} className="chat-msg-row w-full flex flex-col group/message">
               <div className="flex justify-start w-full">
                 <div className="w-full max-w-4xl text-sm leading-relaxed pl-2">
                   {group.mergedBlocks.map((b, bi) => {
@@ -270,7 +271,7 @@ const MessageList: React.FC<{
         // Canvas action message — lightweight dashed pill
         if (m.role === 'canvas_action') {
           return (
-            <div key={idx} className="w-full flex justify-start pl-2">
+            <div key={idx} className="chat-msg-row w-full flex justify-start pl-2">
               <div className="border-2 border-dashed border-brutal-black px-4 py-2 text-sm font-mono text-neutral-500 dark:text-neutral-400 italic bg-white dark:bg-zinc-800">
                 {m.content}
               </div>
@@ -279,7 +280,7 @@ const MessageList: React.FC<{
         }
 
         return (
-          <div key={idx} className="w-full flex flex-col group/message">
+          <div key={idx} className="chat-msg-row w-full flex flex-col group/message">
             <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} w-full`}>
               {isUser ? (
                 <UserMessage message={m} chatId={chatId} onImageClick={onImageClick} onFileClick={onFileClick} />
@@ -312,6 +313,10 @@ const MessageList: React.FC<{
   </div>
 );
 
+// Memoised so scroll-driven setShowScrollButton re-renders in ChatWindow don't
+// retrigger the O(n) message grouping logic.
+const MessageListMemo = React.memo(MessageList);
+
 interface ChatWindowProps {
   isRightSidebarOpen?: boolean;
   onRightSidebarToggle?: (isOpen: boolean) => void;
@@ -329,28 +334,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   viewportWidthPx,
   rightSidebarForceFullView = false,
 }) => {
-  const HEARTBEAT_HEALTHY_WINDOW_MS = 18_000;
-
-  const formatRelativeHeartbeatTime = (iso?: string): string | null => {
-    if (!iso) return null;
-    const timestamp = new Date(iso).getTime();
-    if (Number.isNaN(timestamp)) return null;
-    const deltaMs = Date.now() - timestamp;
-    if (deltaMs < 0) return null;
-
-    const deltaSec = Math.floor(deltaMs / 1000);
-    if (deltaSec < 10) return 'just now';
-    if (deltaSec < 60) return `${deltaSec}s ago`;
-
-    const deltaMin = Math.floor(deltaSec / 60);
-    if (deltaMin < 60) return `${deltaMin}m ago`;
-
-    const deltaHours = Math.floor(deltaMin / 60);
-    if (deltaHours < 24) return `${deltaHours}h ago`;
-
-    const deltaDays = Math.floor(deltaHours / 24);
-    return `${deltaDays}d ago`;
-  };
 
   // Store hooks
   const {
@@ -369,12 +352,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     loadChat,
     isStreaming,
     activeStreamingChatId,
+    chats,
   } = useChatStore();
 
   const { refresh: refreshPlan, applySnapshot: applyPlanSnapshot, plan } = usePlan();
   const { loadCoreMemory, loadStats } = useMemory();
   const canvas = useCanvas(currentChatId);
   const { t } = useI18n();
+  const setHeartbeatRunning = useHeartbeatRunning(s => s.setRunning);
 
   // Local state
   const [input, setInput] = useState('');
@@ -398,7 +383,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Set to true when the backend signals HEARTBEAT_OK — onFinish should discard the message.
   const heartbeatOkRef = useRef(false);
   const heartbeatInFlightRef = useRef(false);
-  const [heartbeatLastOkAt, setHeartbeatLastOkAt] = useState<string | null>(null);
+  // Set to true while a live background stream is active — onFinish should skip addMessage/forceSaveNow.
+  const isLiveStreamRef = useRef(false);
 
   // ── AG-UI streaming hook ─────────────────────────────────────────────
   const {
@@ -423,8 +409,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       if (heartbeatOkRef.current) {
         // HEARTBEAT_OK: backend rolled back the messages; discard streamed content and reload.
+        setHeartbeatRunning(false, null);
         heartbeatInFlightRef.current = false;
-        setHeartbeatLastOkAt(new Date().toISOString());
         heartbeatOkRef.current = false;
         setIsStreaming(false, chatId);
         streamingChatIdRef.current = null;
@@ -440,9 +426,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (hasPendingApprovals) {
         setIsStreaming(false, chatId);
         if (heartbeatInFlightRef.current) {
-          setHeartbeatLastOkAt(new Date().toISOString());
         }
         heartbeatInFlightRef.current = false;
+        setCurrentUsage(null);
+        return;
+      }
+
+      if (isLiveStreamRef.current) {
+        // Live background stream: backend already persisted the message.
+        // Do NOT call addMessage, forceSaveNow, setIsStreaming(false), or clearParts here.
+        // The live stream effect's finally() handles all cleanup AFTER loadChat resolves,
+        // so streaming parts stay visible until the DB reload completes — no blank flash.
+        streamingChatIdRef.current = null;
         setCurrentUsage(null);
         return;
       }
@@ -454,7 +449,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       setIsStreaming(false, chatId);
       if (heartbeatInFlightRef.current) {
         // Heartbeat ran but no heartbeat_ok signal — still record last run time.
-        setHeartbeatLastOkAt(new Date().toISOString());
+        setHeartbeatRunning(false, null);
       }
       heartbeatInFlightRef.current = false;
       streamingChatIdRef.current = null;
@@ -477,7 +472,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         setCurrentUsage(value);
       } else if (name === 'heartbeat_ok') {
         // Backend signals that this heartbeat run was OK and messages were rolled back.
-        setHeartbeatLastOkAt(new Date().toISOString());
         heartbeatOkRef.current = true;
       } else if (name === 'a2ui.render') {
         const rawSurface = value as (A2UISurface & { chatId?: string }) | null;
@@ -502,6 +496,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       console.error('AG-UI error:', error);
       const chatId = streamingChatIdRef.current || activeChatIdRef.current;
       const wasHeartbeat = heartbeatInFlightRef.current;
+      if (wasHeartbeat) setHeartbeatRunning(false, null);
       heartbeatInFlightRef.current = false;
       heartbeatOkRef.current = false;
       setIsStreaming(false, chatId);
@@ -517,17 +512,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     const handler = (e: any) => {
       const { body, options } = e.detail || {};
-      heartbeatInFlightRef.current = Boolean(body?.is_heartbeat);
+      const isHeartbeat = Boolean(body?.is_heartbeat);
+      heartbeatInFlightRef.current = isHeartbeat;
       if (body) {
+        const chatId = body.chat_id || currentChatId;
+        if (isHeartbeat) setHeartbeatRunning(true, chatId);
         sendAGUI(body, options).catch(err => {
           heartbeatInFlightRef.current = false;
+          if (isHeartbeat) setHeartbeatRunning(false, null);
           console.error('[ChatWindow] External sendAGUI failed:', err);
         });
       }
     };
     window.addEventListener('agui:send-message', handler);
     return () => window.removeEventListener('agui:send-message', handler);
-  }, [sendAGUI]);
+  }, [sendAGUI, currentChatId, setHeartbeatRunning]);
 
   // HITL: tool approval handler (Stateless Resume)
   // Batches multiple approval decisions and only sends to backend when all are decided.
@@ -691,7 +690,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Safe values
   const safeMessages = messages || [];
-  const safeConfig = config || { model: '', agent: '', tools: [] };
+  const _prefs = backendConfig?.userPreferences;
+  const _base = config || { model: '', agent: '', tools: [] as string[] };
+  // Platform chats (cron, social) have no model/agent — fall back to user prefs.
+  // The config selector is hidden for these chats so users can't override the managed config.
+  const _isPlatformChat = !!(config as any)?.platform;
+  const safeConfig = {
+    ..._base,
+    model: _base.model || (_isPlatformChat ? (_prefs?.model || backendConfig?.models?.[0] || '') : ''),
+    agent: _base.agent || (_isPlatformChat ? (_prefs?.agent || backendConfig?.agents?.[0] || '') : ''),
+    tools: _base.tools?.length ? _base.tools : (_isPlatformChat ? (_prefs?.tools ?? []) : []),
+  };
 
   // Unified canvas action dispatcher — used by both the canvas sidebar panel and inline surfaces.
   // Adds a decorative canvas_action pill to the chat, then starts a real AG-UI stream so the
@@ -766,58 +775,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const showTransientAssistant = streamingForCurrentChat || hasPendingTransientApprovals;
   const configReady = !!(safeBackendConfig && safeConfig.model && safeConfig.agent);
 
-  const heartbeatEnabled = !!safeConfig.heartbeat_enabled;
-  const heartbeatIsRunning = heartbeatEnabled && heartbeatInFlightRef.current && streamingForCurrentChat;
-  const heartbeatLastSeen = heartbeatLastOkAt || safeConfig.heartbeat_last_run_at || null;
-  const heartbeatLastSeenTs = heartbeatLastSeen ? new Date(heartbeatLastSeen).getTime() : 0;
-  const heartbeatFresh = heartbeatEnabled && heartbeatLastSeenTs > 0 && (Date.now() - heartbeatLastSeenTs) <= HEARTBEAT_HEALTHY_WINDOW_MS;
-  const heartbeatRelative = formatRelativeHeartbeatTime(heartbeatLastSeen || undefined);
-
-  const heartbeatBadge = (() => {
-    if (!heartbeatEnabled) {
-      return {
-        signClass: 'bg-neutral-200 dark:bg-zinc-700 text-neutral-500 dark:text-neutral-400',
-        containerClass: 'bg-neutral-50 dark:bg-zinc-800 text-neutral-500 dark:text-neutral-400',
-        text: t('chatWindow.heartbeatOff'),
-        isBeating: false,
-        fast: false,
-        ekg: 'flat',
-      };
-    }
-
-    if (heartbeatIsRunning) {
-      return {
-        signClass: 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black',
-        containerClass: 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white bg-dot-pattern',
-        text: t('chatWindow.heartbeatRunning'),
-        isBeating: true,
-        fast: true,
-        ekg: 'active',
-      };
-    }
-
-    if (heartbeatFresh) {
-      return {
-        signClass: 'bg-brutal-black text-white dark:bg-white dark:text-brutal-black',
-        containerClass: 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white',
-        text: t('chatWindow.heartbeatHealthy'),
-        isBeating: true,
-        fast: false,
-        ekg: 'active',
-      };
-    }
-
-    return {
-      signClass: 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white',
-      containerClass: 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white',
-      text: heartbeatRelative
-        ? t('chatWindow.heartbeatLastRun', { time: heartbeatRelative })
-        : t('chatWindow.heartbeatEnabled'),
-      isBeating: false,
-      fast: false,
-      ekg: 'slow',
-    };
-  })();
 
   // Auto-scroll
   const { scrollContainerRef, bottomRef, showScrollButton, scrollToBottom } = useAutoScroll(
@@ -828,6 +785,59 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     refreshPlan(currentChatId);
   }, [currentChatId, refreshPlan]);
+
+  // Live background stream: when a background platform chat (cron/heartbeat/social) is open,
+  // poll /chat/live/{chat_id} on a tight 2s interval. As soon as a stream is active (non-204),
+  // subscribe and render events live. This avoids the 5s chat-list poll delay that would
+  // otherwise cause late joins or missed fast streams.
+  const currentChatSummary = chats.find(c => c.id === currentChatId);
+  const isBackgroundChat = !!currentChatSummary?.platform || !!currentChatSummary?.heartbeatEnabled;
+  useEffect(() => {
+    if (!currentChatId || !isBackgroundChat) return;
+
+    let cancelled = false;
+
+    const tryConnect = async () => {
+      if (isLiveStreamRef.current) return; // already streaming
+      const liveUrl = `${getApiBase()}/chat/live`;
+      const chatIdAtStart = currentChatId;
+
+      // Single fetch: connectToLiveStream handles 204 (no stream) returning false,
+      // or streams and returns true. onStreamStart fires only when a real stream is found.
+      const streamed = await sendAGUI({ chat_id: currentChatId }, {
+        urlOverride: liveUrl,
+        onStreamStart: () => {
+          isLiveStreamRef.current = true;
+          setIsStreaming(true, chatIdAtStart);
+        },
+      });
+
+      if (!streamed || cancelled) return;
+
+      // Keep isLiveStreamRef = true during cleanup so the 2s poll guard
+      // (above) prevents a new probe from clearing parts while loadChat is pending.
+      try { await loadChat(chatIdAtStart); } catch { /* ignore */ }
+      setIsStreaming(false, chatIdAtStart);
+      clearParts();
+      isLiveStreamRef.current = false; // Only release after full cleanup
+    };
+
+    // Poll every 2s
+    const id = setInterval(() => {
+      if (!cancelled) tryConnect();
+    }, 2000);
+
+    // Also try immediately
+    tryConnect();
+
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      stopAGUIStream();
+      isLiveStreamRef.current = false;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentChatId, isBackgroundChat]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -1049,56 +1059,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               <span>{((currentUsage.total_tokens ?? currentUsage.total ?? 0) / 1000).toFixed(0)}k / {(safeBackendConfig.maxContextTokens / 1000).toFixed(0)}k</span>
             </div>
           )}
-          <div
-            className={`inline-flex items-center shadow-[2px_2px_0_0_#000] border-2 border-brutal-black font-bold uppercase tracking-wide pointer-events-auto cursor-default group transition-transform hover:-translate-y-0.5`}
-            aria-live="polite"
-            title={heartbeatBadge.text}
-          >
-            <div className={`flex items-center justify-center px-1.5 py-1 h-full border-r-2 border-brutal-black ${heartbeatBadge.signClass}`}>
-              <svg 
-                className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${heartbeatBadge.isBeating ? (heartbeatBadge.fast ? 'pixel-heart-beat-fast' : 'pixel-heart-beat') : ''}`}
-                viewBox="0 0 24 24" 
-                fill="currentColor"
-              >
-                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-              </svg>
-            </div>
-            
-            <div className={`px-2 py-1 flex items-center gap-1.5 ${heartbeatBadge.containerClass}`}>
-              <div className="w-8 h-4 sm:w-10 sm:h-5 relative border-r-2 border-current pr-1 flex-shrink-0 opacity-80">
-                <svg viewBox="0 0 100 50" preserveAspectRatio="none" className="w-full h-full">
-                  {heartbeatBadge.ekg !== 'flat' ? (
-                    <path
-                      className={`ekg-active-wave ${heartbeatBadge.ekg === 'active' ? (heartbeatBadge.fast ? '[animation-duration:1.5s]' : '[animation-duration:3s]') : '[animation-duration:6s] opacity-50'}`}
-                      pathLength="100"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="6"
-                      d={heartbeatBadge.ekg === 'slow' ? "M 0 25 L 30 25 L 34 30 L 38 15 L 44 35 L 50 25 L 100 25" : "M 0 25 L 10 25 L 14 30 L 22 5 L 28 45 L 34 25 L 100 25"}
-                    />
-                  ) : (
-                    <path
-                      className="ekg-flatline"
-                      pathLength="100"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="6"
-                      d="M 0 25 L 100 25"
-                    />
-                  )}
-                </svg>
-              </div>
-              <span className="text-[10px] sm:text-xs max-w-[120px] sm:max-w-[180px] truncate">{heartbeatBadge.text}</span>
-            </div>
-          </div>
         </div>
 
         <div className="relative flex-1 min-h-0">
           <div
             ref={scrollContainerRef}
             className={safeMessages.length === 0
-              ? "h-full overflow-hidden p-4 md:p-6 pb-2"
-              : "h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-6 scrollbar-thin"
+              ? "h-full overflow-hidden p-4 md:p-6 pb-2 bg-neutral-50 dark:bg-zinc-900"
+              : "h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-6 scrollbar-thin bg-neutral-50 dark:bg-zinc-900"
             }
           >
             {safeMessages.length === 0 ? (
@@ -1125,9 +1093,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               />
             ) : (
               <>
-                <MessageList
+                <MessageListMemo
                   messages={safeMessages}
-                  isStreaming={isStreaming}
                   streamingForCurrentChat={streamingForCurrentChat}
                   chatId={currentChatId ?? undefined}
                   onImageClick={setViewingImage}
@@ -1204,6 +1171,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               stopStreaming={stopStreaming}
               stopInFlight={stopInFlightRef.current}
               modelSelectDropUp={true}
+              hideConfigSelector={_isPlatformChat}
               onPaste={handlePaste}
               onImageClick={setViewingImage}
             />

@@ -13,6 +13,10 @@ from suzent.core.approval_manager import PendingApprovalSession
 from suzent.core.stream_parser import ApprovalRequest
 from suzent.core.run_state import ChatRunState
 from suzent.database import get_database
+from suzent.core.stream_registry import (
+    register_background_stream,
+    unregister_background_stream,
+)
 
 logger = get_logger(__name__)
 
@@ -405,23 +409,34 @@ class SocialBrain(BaseBrain):
                     )
                     collected_approvals.append(event)
 
-            if is_steer:
-                full_response = await processor.process_steer_text(
-                    chat_id=social_chat_id,
-                    user_id=CONFIG.user_id,
-                    steer_message=enriched_content,
-                    config_override=config_override,
-                    on_event=on_event,
-                )
-            else:
-                full_response = await processor.process_turn_text(
-                    chat_id=social_chat_id,
-                    user_id=CONFIG.user_id,
-                    message_content=enriched_content,
-                    files=message.attachments,
-                    config_override=config_override,
-                    on_event=on_event,
-                )
+            stream_queue = register_background_stream(social_chat_id)
+            try:
+                if is_steer:
+                    full_response = await processor.process_steer_text(
+                        chat_id=social_chat_id,
+                        user_id=CONFIG.user_id,
+                        steer_message=enriched_content,
+                        config_override=config_override,
+                        on_event=on_event,
+                        _stream_queue=stream_queue,
+                    )
+                else:
+                    full_response = await processor.process_turn_text(
+                        chat_id=social_chat_id,
+                        user_id=CONFIG.user_id,
+                        message_content=enriched_content,
+                        files=message.attachments,
+                        config_override=config_override,
+                        on_event=on_event,
+                        _stream_queue=stream_queue,
+                    )
+            finally:
+                unregister_background_stream(social_chat_id)
+
+            try:
+                get_database().set_last_result_at(social_chat_id)
+            except Exception:
+                pass
 
             # If tools need approval, store the session and prompt the first one
             if collected_approvals:
