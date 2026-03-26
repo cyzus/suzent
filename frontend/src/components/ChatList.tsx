@@ -65,10 +65,11 @@ export const ChatList: React.FC = () => {
     return Math.max(0, chat.messageCount - (lastViewed[chat.id]?.count ?? 0));
   };
 
-  // Mark current chat read when it changes (e.g. opened from notification toast)
+  // Mark current chat read when it becomes active, and re-mark whenever the
+  // chat list refreshes (new messages arrive) while the user is viewing it.
   useEffect(() => {
     if (currentChatId) markRead(currentChatId);
-  }, [currentChatId, markRead]);
+  }, [currentChatId, chats, markRead]);
 
   // Sync local search with global search on mount
   useEffect(() => {
@@ -323,9 +324,15 @@ export const ChatList: React.FC = () => {
 
                     <div className={`flex items-center justify-between mt-3 pt-2 border-t-2 ${currentChatId === chat.id ? 'border-brutal-black/20' : 'border-neutral-200/50'}`}>
                       <div className="flex items-center gap-1.5">
-                        <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 border ${currentChatId === chat.id ? 'bg-white text-brutal-black border-brutal-black' : 'bg-neutral-100 dark:bg-zinc-700 text-neutral-500 dark:text-neutral-400 border-neutral-300 dark:border-zinc-600'}`}>
-                          {chat.messageCount} MSG
-                        </span>
+                        {(() => {
+                          const count = currentChatId === chat.id ? 0 : unreadMessages(chat);
+                          if (count <= 0) return null;
+                          return (
+                            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 border bg-brutal-yellow text-brutal-black border-brutal-black">
+                              {count} NEW
+                            </span>
+                          );
+                        })()}
                         
                         {/* Heartbeat Status Icon */}
                         {chat.heartbeatEnabled && (

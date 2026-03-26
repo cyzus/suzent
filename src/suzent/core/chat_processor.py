@@ -65,6 +65,18 @@ class ChatProcessor:
         4. Background Tasks (Memory, Compression, Persistence)
         """
 
+        # 0. Wait for any pending post-processing from the previous turn to finish.
+        # This prevents resuming with a stale message history from the DB if the user
+        # approves/denies a tool call (or steers) very quickly.
+        try:
+            from suzent.core.task_registry import wait_for_background_task_prefix
+
+            await wait_for_background_task_prefix(
+                f"post_process_{chat_id}_", timeout=10.0
+            )
+        except Exception as e:
+            logger.warning(f"Error waiting for previous post-processing: {e}")
+
         # 1. Configuration
         logger.debug(f"[ChatProcessor] Starting process_turn for chat_id={chat_id}")
         config = {
@@ -442,9 +454,17 @@ class ChatProcessor:
         5. Start new agent run
         """
         from suzent.core.run_state import cancel_and_wait
+        from suzent.core.task_registry import wait_for_background_task_prefix
 
         # 1. Cancel and wait for cleanup
         await cancel_and_wait(chat_id)
+
+        try:
+            await wait_for_background_task_prefix(
+                f"post_process_{chat_id}_", timeout=10.0
+            )
+        except Exception as e:
+            logger.warning(f"Error waiting for previous post-processing in steer: {e}")
 
         # 2. Load persisted state from DB
         message_history = None

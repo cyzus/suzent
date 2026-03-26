@@ -157,6 +157,40 @@ class BackgroundTaskRegistry:
 
         logger.info("All background tasks completed")
 
+    async def wait_for_task_prefix(self, prefix: str, timeout: Optional[float] = None):
+        """
+        Wait for all registered tasks with IDs starting with a prefix to complete.
+
+        Args:
+            prefix: The task_id prefix to wait for
+            timeout: Maximum time to wait in seconds (None = wait forever)
+
+        Raises:
+            asyncio.TimeoutError: If timeout is exceeded
+        """
+        async with self._lock:
+            tasks = [
+                info.task
+                for task_id, info in self._tasks.items()
+                if task_id.startswith(prefix) and not info.task.done()
+            ]
+
+        if not tasks:
+            return
+
+        logger.info(
+            f"Waiting for {len(tasks)} background tasks with prefix '{prefix}' to complete..."
+        )
+
+        if timeout:
+            await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True), timeout
+            )
+        else:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        logger.info(f"All background tasks with prefix '{prefix}' completed")
+
     async def cancel_all(self):
         """Cancel all registered tasks."""
         async with self._lock:
@@ -264,3 +298,15 @@ async def register_background_task(
     """
     registry = get_task_registry()
     return await registry.register(coro, task_id, description)
+
+
+async def wait_for_background_task_prefix(prefix: str, timeout: Optional[float] = None):
+    """Wait for all tasks with a specific prefix to complete."""
+    registry = get_task_registry()
+    await registry.wait_for_task_prefix(prefix, timeout)
+
+
+async def wait_for_all_background_tasks(timeout: Optional[float] = None):
+    """Wait for all background tasks to complete."""
+    registry = get_task_registry()
+    await registry.wait_for_all(timeout)

@@ -10,6 +10,7 @@ import { useCanvas } from '../hooks/useCanvas';
 import type { A2UISurface } from '../types/a2ui';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useUnifiedFileUpload } from '../hooks/useUnifiedFileUpload';
+import { useToolApproval } from '../hooks/chat/useToolApproval';
 import { PlanProgress } from './PlanProgress';
 import { NewChatView } from './NewChatView';
 import { ChatInputPanel } from './ChatInputPanel';
@@ -432,6 +433,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         }
         heartbeatInFlightRef.current = false;
         setCurrentUsage(null);
+        // For live background streams (social/cron), save the parts so tryConnect's
+        // cleanup can detect the pending-approval state and skip clearParts().
+        if (isLiveStreamRef.current) {
+          liveStreamPartsRef.current = parts;
+        }
         return;
       }
 
@@ -540,131 +546,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     return () => window.removeEventListener('agui:send-message', handler);
   }, [sendAGUI, currentChatId, setHeartbeatRunning]);
 
-  // HITL: tool approval handler (Stateless Resume)
-  // Batches multiple approval decisions and only sends to backend when all are decided.
-  const handleToolApproval = useCallback(async (
-    approvalId: string,
-    toolCallId: string,
-    approved: boolean,
-    remember?: 'session' | null,
-    toolName?: string
-  ) => {
-    const targetChatId = activeChatIdRef.current || currentChatId;
-    if (!targetChatId) return;
-
-    const updateApprovalStateInHistory = (id: string, state: 'approved' | 'denied') => {
-      messages.forEach((m, idx) => {
-        if (m.role === 'assistant' && m.content.includes(`data-approval-id="${id}"`)) {
-          const finalContent = m.content.replace(
-            new RegExp(`(<details[^>]*data-approval-id="${id}"[^>]*data-approval-state=")pending(")`),
-            `$1${state}$2`
-          );
-
-          if (finalContent !== m.content) {
-            updateMessage(idx, { content: finalContent }, targetChatId);
-          }
-        }
-      });
-    };
-
-    // Optimistic UI: instantly hide buttons before the backend responds
-    resolveApproval(approvalId, approved);
-
-    // Also update historical messages in the store if they contain this approval
-    const newState = approved ? 'approved' : 'denied';
-    updateApprovalStateInHistory(approvalId, newState);
-
-    // Accumulate decision; only send when all pending approvals are decided
-    let allDecided = addApprovalDecision(approvalId, toolCallId, approved, remember, toolName);
-
-    // If user chose session policy on this tool, apply that same decision to all
-    // currently pending approvals of the same tool in this paused stream.
-    if (remember === 'session' && toolName) {
-      const linkedPending = streamingParts
-        .filter(
-          p =>
-            p.type === 'tool' &&
-            p.state === 'approval-requested' &&
-            p.toolName === toolName &&
-            p.approvalId &&
-            p.approvalId !== approvalId &&
-            p.toolCallId
-        )
-        .map(p => ({ approvalId: p.approvalId as string, toolCallId: p.toolCallId as string }));
-
-      for (const linked of linkedPending) {
-        resolveApproval(linked.approvalId, approved);
-        updateApprovalStateInHistory(linked.approvalId, newState);
-        allDecided = addApprovalDecision(
-          linked.approvalId,
-          linked.toolCallId,
-          approved,
-          null,
-          toolName
-        ) || allDecided;
-      }
-    }
-
-    if (!allDecided) return; // Still waiting for more decisions
-
-    // All approvals decided — batch and send
-    const decisions = consumeApprovalDecisions();
-
-    // If any decision had "remember: session", update the UI config.
-    // The backend gets the new config immediately via the payload.
-    let currentConfig = config || { model: '', agent: '', tools: [] };
-    let hasPolicyUpdate = false;
-    const policyUpdates: Record<string, string> = {};
-
-    decisions.forEach(d => {
-      if (d.remember === 'session' && d.toolName) {
-        policyUpdates[d.toolName] = d.approved ? 'always_allow' : 'always_deny';
-        hasPolicyUpdate = true;
-      }
-    });
-
-    if (hasPolicyUpdate) {
-      currentConfig = {
-        ...currentConfig,
-        tool_approval_policy: {
-          ...(currentConfig.tool_approval_policy || {}),
-          ...policyUpdates
-        }
-      };
-      setConfig(currentConfig);
-    }
-
-    const resumeApprovals = decisions.map(d => ({
-      request_id: d.approvalId,
-      tool_call_id: d.toolCallId,
-      approved: d.approved,
-      remember: d.remember,
-      tool_name: d.toolName,
-    }));
-
-    try {
-      const payload: Record<string, unknown> = {
-        message: "",
-        config: currentConfig,
-        chat_id: targetChatId,
-        reset: false,
-        resume_approvals: resumeApprovals,
-      };
-
-      setIsStreaming(true, targetChatId);
-      streamingChatIdRef.current = targetChatId;
-      stopInFlightRef.current = false;
-      // Use resumeStream to preserve existing tool parts in the UI
-      await resumeStream(payload);
-    } catch (error) {
-      console.error('Failed to resume with tool approval:', error);
-    } finally {
-      setIsStreaming(false, targetChatId);
-      stopInFlightRef.current = false;
-      // resumeStream's onFinish() callback handles cleanup (optimistic append, loadChat, clearParts).
-      // Don't call clearParts here—it races with onFinish and wipes the streamed response.
-    }
-  }, [currentChatId, config, resumeStream, resolveApproval, addApprovalDecision, consumeApprovalDecisions, updateMessage, setIsStreaming, loadChat, clearParts, setConfig, messages, streamingParts]);
+  const { handleToolApproval } = useToolApproval({
+    currentChatId,
+    activeStreamingChatId,
+    config,
+    messages,
+    streamingParts,
+    streamingChatIdRef,
+    activeChatIdRef,
+    stopInFlightRef,
+    setConfig,
+    updateMessage,
+    setIsStreaming,
+    resumeStream,
+    resolveApproval,
+    addApprovalDecision,
+    consumeApprovalDecisions,
+  });
 
   // Remove a tool from the approval policy
   const handleRemoveApprovalPolicy = useCallback((toolName: string) => {
@@ -835,6 +733,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       if (!streamed || cancelled) return;
 
+      // If the stream paused for tool approval, onFinish saved the parts to
+      // liveStreamPartsRef. Keep the approval UI visible and let the 2-second
+      // poll re-subscribe when the resume stream starts; don't clearParts.
+      const pendingApproval = liveStreamPartsRef.current.some(
+        p => p.type === 'tool' && p.state === 'approval-requested'
+      );
+      if (pendingApproval) {
+        isLiveStreamRef.current = false;
+        liveStreamPartsRef.current = [];
+        return;
+      }
+
       // Convert the captured streaming parts to a rich message (includes tool-step HTML).
       // This must happen before clearParts so the parts are still populated.
       const richMsg = aguiPartsToStoreMessage(liveStreamPartsRef.current, null);
@@ -900,12 +810,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     const prompt = input.trim();
     if (!prompt || !configReady || isUploading) return;
 
-    // If currently streaming for this chat, steer instead of sending new message
-    if (streamingForCurrentChat && currentChatId) {
+    // If currently streaming (or paused on pending approvals) for this chat,
+    // steer instead of starting a brand-new turn.
+    if ((streamingForCurrentChat || hasPendingTransientApprovals) && currentChatId) {
       setInput('');
       addMessage({ role: 'user', content: prompt, timestamp: new Date().toISOString() }, currentChatId);
 
       steeringRef.current = true;
+      setIsStreaming(true, currentChatId);
+      streamingChatIdRef.current = currentChatId;
+      activeChatIdRef.current = currentChatId;
+      stopInFlightRef.current = false;
       try {
         await steerStream({
           chat_id: currentChatId,

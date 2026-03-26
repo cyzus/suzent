@@ -403,6 +403,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
   // Pending approval tracking
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
+  const pendingApprovalCountRef = useRef(0);
   const approvalDecisionsRef = useRef<Array<{ approvalId: string; toolCallId: string; approved: boolean; remember?: 'session' | null; toolName?: string }>>([]);
 
   // Stable refs for callbacks to avoid re-creating sendMessage
@@ -413,6 +414,16 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     setParts([]);
     partsRef.current = [];
   }, []);
+
+  const setPendingApprovalCountSync = useCallback((count: number) => {
+    pendingApprovalCountRef.current = count;
+    setPendingApprovalCount(prev => (prev === count ? prev : count));
+  }, []);
+
+  const resetApprovalTracking = useCallback(() => {
+    setPendingApprovalCountSync(0);
+    approvalDecisionsRef.current = [];
+  }, [setPendingApprovalCountSync]);
 
   const removeInlineSurface = useCallback((surfaceId: string) => {
     setParts(prev => {
@@ -464,16 +475,15 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     } else {
       approvalDecisionsRef.current.push(nextDecision);
     }
-    const remaining = pendingApprovalCount - approvalDecisionsRef.current.length;
-    return remaining <= 0;
-  }, [pendingApprovalCount]);
+    const requiredDecisions = pendingApprovalCountRef.current;
+    return requiredDecisions > 0 && approvalDecisionsRef.current.length >= requiredDecisions;
+  }, []);
 
   const consumeApprovalDecisions = useCallback(() => {
     const decisions = [...approvalDecisionsRef.current];
-    approvalDecisionsRef.current = [];
-    setPendingApprovalCount(0);
+    resetApprovalTracking();
     return decisions;
-  }, []);
+  }, [resetApprovalTracking]);
 
   /**
    * Resume a stream after tool approval without clearing existing parts.
@@ -484,9 +494,8 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
     // DON'T clear parts — keep existing tool parts from first stream
     setError(undefined);
-    setStatus('submitted');
-    setPendingApprovalCount(0);
-    approvalDecisionsRef.current = [];
+    setStatus('streaming');
+    resetApprovalTracking();
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -508,14 +517,12 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         throw new Error('Response body is null');
       }
 
-      setStatus('streaming');
-
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
       // Start from existing parts instead of empty array
       let currentParts = [...partsRef.current];
-      let newApprovalCount = 0;
+      const pendingApprovalIds = new Set<string>();
 
       while (true) {
         const { done, value } = await reader.read();
@@ -529,9 +536,13 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         buffer = remainder;
 
         for (const event of events) {
-          // Track new approval requests
+          // Track unique approval requests in this paused stream segment.
           if (event.type === 'CUSTOM' && (event.data.name as string) === 'tool_approval_request') {
-            newApprovalCount++;
+            const approval = event.data.value as Record<string, unknown> | undefined;
+            const approvalId = approval?.approvalId;
+            if (typeof approvalId === 'string' && approvalId.length > 0) {
+              pendingApprovalIds.add(approvalId);
+            }
           }
           const result = processEvent(event, currentParts, onCustomEvent, onMarkDeferred);
           currentParts = result.parts;
@@ -549,9 +560,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         if (events.length > 0) {
           setParts(currentParts);
           partsRef.current = currentParts;
-          if (newApprovalCount > 0) {
-            setPendingApprovalCount(newApprovalCount);
-          }
+          setPendingApprovalCountSync(pendingApprovalIds.size);
         }
       }
 
@@ -584,6 +593,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     const { onFinish, onCustomEvent, onMarkDeferred, onError } = optionsRef.current;
     // Derive steer URL from the base chat URL
     const steerUrl = optionsRef.current.url.replace(/\/chat$/, '/chat/steer');
+    const previousParts = [...partsRef.current];
 
     // Mark any pending approvals as cancelled before aborting,
     // so they won't show approval buttons after being saved to the store
@@ -604,13 +614,11 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     isSteeringRef.current = true;
     abortRef.current?.abort();
 
-    // Clear existing parts so the steer stream starts fresh
-    setParts([]);
-    partsRef.current = [];
+    // Keep existing parts visible until the steer response is confirmed.
+    // This prevents a blank UI when steering fails before the first chunk.
     setError(undefined);
     setStatus('submitted');
-    setPendingApprovalCount(0);
-    approvalDecisionsRef.current = [];
+    resetApprovalTracking();
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -632,13 +640,16 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         throw new Error('Response body is null');
       }
 
+      // Steer stream is confirmed active; start with a fresh transient message.
+      setParts([]);
+      partsRef.current = [];
       setStatus('streaming');
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
       let currentParts = [...partsRef.current];
-      let newApprovalCount = 0;
+      const pendingApprovalIds = new Set<string>();
 
       while (true) {
         const { done, value } = await reader.read();
@@ -653,7 +664,11 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
         for (const event of events) {
           if (event.type === 'CUSTOM' && (event.data.name as string) === 'tool_approval_request') {
-            newApprovalCount++;
+            const approval = event.data.value as Record<string, unknown> | undefined;
+            const approvalId = approval?.approvalId;
+            if (typeof approvalId === 'string' && approvalId.length > 0) {
+              pendingApprovalIds.add(approvalId);
+            }
           }
           const result = processEvent(event, currentParts, onCustomEvent, onMarkDeferred);
           currentParts = result.parts;
@@ -672,9 +687,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         if (events.length > 0) {
           setParts(currentParts);
           partsRef.current = currentParts;
-          if (newApprovalCount > 0) {
-            setPendingApprovalCount(newApprovalCount);
-          }
+          setPendingApprovalCountSync(pendingApprovalIds.size);
         }
       }
 
@@ -688,6 +701,11 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         setStatus('idle');
         onFinish?.(partsRef.current);
       } else {
+        // Restore previous parts if steer failed before the replacement stream started.
+        if (partsRef.current.length === 0 && previousParts.length > 0) {
+          partsRef.current = previousParts;
+          setParts(previousParts);
+        }
         const errorMsg = (err as Error).message;
         setError(errorMsg);
         setStatus('error');
@@ -713,8 +731,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       partsRef.current = [];
       setError(undefined);
       setStatus('submitted');
-      setPendingApprovalCount(0);
-      approvalDecisionsRef.current = [];
+      resetApprovalTracking();
     }
 
     const controller = new AbortController();
@@ -754,8 +771,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         partsRef.current = [];
         setError(undefined);
         setStatus('submitted');
-        setPendingApprovalCount(0);
-        approvalDecisionsRef.current = [];
+        resetApprovalTracking();
       }
 
       // Notify caller (e.g. set isLiveStreamRef) before entering the read loop.
@@ -766,7 +782,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       const decoder = new TextDecoder();
       let buffer = '';
       let currentParts: AGUIPart[] = [];
-      let newApprovalCount = 0;
+      const pendingApprovalIds = new Set<string>();
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -782,7 +798,11 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         for (const event of events) {
           // Track approval requests
           if (event.type === 'CUSTOM' && (event.data.name as string) === 'tool_approval_request') {
-            newApprovalCount++;
+            const approval = event.data.value as Record<string, unknown> | undefined;
+            const approvalId = approval?.approvalId;
+            if (typeof approvalId === 'string' && approvalId.length > 0) {
+              pendingApprovalIds.add(approvalId);
+            }
           }
           const result = processEvent(event, currentParts, onCustomEvent, onMarkDeferred);
           currentParts = result.parts;
@@ -800,9 +820,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         if (events.length > 0) {
           setParts(currentParts);
           partsRef.current = currentParts;
-          if (newApprovalCount > 0) {
-            setPendingApprovalCount(newApprovalCount);
-          }
+          setPendingApprovalCountSync(pendingApprovalIds.size);
         }
       }
 
@@ -826,7 +844,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       }
       return false;
     }
-  }, []);
+  }, [resetApprovalTracking, setPendingApprovalCountSync]);
 
   return { parts, status, error, sendMessage, resumeStream, steerStream, stop, clearParts, removeInlineSurface, resolveApproval, pendingApprovalCount, addApprovalDecision, consumeApprovalDecisions };
 }
