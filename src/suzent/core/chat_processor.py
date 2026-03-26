@@ -235,6 +235,25 @@ class ChatProcessor:
             new_request = ModelRequest(parts=parts)
             message_history.append(new_request)
 
+            # Pre-save the user message to the DB display log for social chats so the
+            # frontend can show it as soon as the stream starts, without waiting for the
+            # background post-processing task that normally persists the full history.
+            if (
+                chat_id
+                and chat_id.startswith("social-")
+                and isinstance(full_prompt, str)
+                and full_prompt.strip()
+            ):
+                try:
+                    _db = get_database()
+                    _chat = _db.get_chat(chat_id)
+                    if _chat is not None:
+                        _existing = list(_chat.messages or [])
+                        _user_entry: dict = {"role": "user", "content": full_prompt}
+                        _db.update_chat(chat_id, messages=_existing + [_user_entry])
+                except Exception:
+                    pass  # Non-fatal; post-processing will persist the full history anyway
+
         # Handle stateless resume
         deferred_tool_results = None
         if resume_approvals:
@@ -247,9 +266,9 @@ class ChatProcessor:
             if cached_auto:
                 approvals_dict.update(cached_auto)
             for app in resume_approvals:
-                req_id = app.get("request_id")
-                if req_id:
-                    approvals_dict[req_id] = bool(app.get("approved"))
+                tool_call_id = app.get("tool_call_id") or app.get("request_id")
+                if tool_call_id:
+                    approvals_dict[tool_call_id] = bool(app.get("approved"))
 
             if approvals_dict:
                 deferred_tool_results = DeferredToolResults(approvals=approvals_dict)
@@ -716,46 +735,13 @@ class ChatProcessor:
             if skip_messages:
                 # Heartbeat: rollback already owns message state; only save agent_state.
                 db.update_chat(chat_id, agent_state=agent_state)
-            elif chat_id.startswith("social-"):
-                # Social chats: rebuild the complete display log from the full agent history
-                # so chat.messages is always a faithful log of all exchanges — including any
-                # that were missed while the old incremental-append logic was in use.
+            else:
+                # 100% Backend Authored: rebuild the complete display log from the full agent history
+                # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
                 rebuilt = _rebuild_display_messages(messages)
                 db.update_chat(
                     chat_id, agent_state=agent_state, messages=rebuilt or chat_messages
                 )
-            else:
-                # Desktop chats: frontend pushes messages via forceSaveNow ~200ms after stream.
-                # Only append here when the frontend hasn't already saved this turn.
-                last_msg_role = chat_messages[-1].get("role") if chat_messages else None
-                if last_msg_role != "assistant":
-                    if user_content:
-                        last_msg = chat_messages[-1] if chat_messages else None
-                        is_duplicate_user = (
-                            last_msg
-                            and last_msg.get("role") == "user"
-                            and last_msg.get("content") == user_content
-                        )
-                        if not is_duplicate_user:
-                            chat_messages.append(
-                                {
-                                    "role": "user",
-                                    "content": user_content,
-                                    "timestamp": datetime.now().isoformat(),
-                                }
-                            )
-                    chat_messages.append(
-                        {
-                            "role": "assistant",
-                            "content": agent_content,
-                            "timestamp": datetime.now().isoformat(),
-                        }
-                    )
-                    db.update_chat(
-                        chat_id, agent_state=agent_state, messages=chat_messages
-                    )
-                else:
-                    db.update_chat(chat_id, agent_state=agent_state)
 
             # Update session lifecycle fields
             try:
@@ -831,15 +817,26 @@ def _extract_tool_calls(messages: list) -> List[AgentAction]:
 
 def _rebuild_display_messages(messages: list) -> list:
     """
-    Reconstruct a flat [{role, content}] display log from pydantic-ai message history.
-    Used for social chats so chat.messages is always a complete, faithful log.
+    Reconstruct an OpenAI-like JSON display log from pydantic-ai message history.
+    This ensures that tool calls and tool results are preserved in the database.
     """
     from pydantic_ai.messages import (
         ModelRequest,
         ModelResponse,
         UserPromptPart,
         TextPart,
+        ToolCallPart,
+        ToolReturnPart,
     )
+    import json
+
+    # First pass: find all tool calls that have a corresponding return
+    executed_tool_calls = set()
+    for msg in messages:
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, ToolReturnPart):
+                    executed_tool_calls.add(part.tool_call_id)
 
     result = []
     for msg in messages:
@@ -851,28 +848,61 @@ def _rebuild_display_messages(messages: list) -> list:
                         if isinstance(part.content, str)
                         else str(part.content)
                     )
-                    if content.strip():
-                        ts = (
-                            part.timestamp.isoformat()
-                            if getattr(part, "timestamp", None)
-                            else None
-                        )
-                        entry: dict = {"role": "user", "content": content}
-                        if ts:
-                            entry["timestamp"] = ts
-                        result.append(entry)
+                    ts = (
+                        part.timestamp.isoformat()
+                        if getattr(part, "timestamp", None)
+                        else None
+                    )
+                    entry: dict = {"role": "user", "content": content}
+                    if ts:
+                        entry["timestamp"] = ts
+                    result.append(entry)
+                elif isinstance(part, ToolReturnPart):
+                    ts = (
+                        part.timestamp.isoformat()
+                        if getattr(part, "timestamp", None)
+                        else None
+                    )
+                    entry = {
+                        "role": "tool",
+                        "tool_call_id": part.tool_call_id,
+                        "name": part.tool_name,
+                        "content": str(part.content),
+                    }
+                    if ts:
+                        entry["timestamp"] = ts
+                    result.append(entry)
         elif isinstance(msg, ModelResponse):
-            text = "".join(
-                part.content for part in msg.parts if isinstance(part, TextPart)
-            )
-            if text.strip():
-                ts = (
-                    msg.timestamp.isoformat()
-                    if getattr(msg, "timestamp", None)
-                    else None
-                )
-                entry = {"role": "assistant", "content": text}
-                if ts:
-                    entry["timestamp"] = ts
-                result.append(entry)
+            text_parts = []
+            tool_calls = []
+            for part in msg.parts:
+                if isinstance(part, TextPart):
+                    text_parts.append(part.content)
+                elif isinstance(part, ToolCallPart):
+                    args_str = (
+                        json.dumps(part.args)
+                        if isinstance(part.args, dict)
+                        else str(part.args)
+                    )
+                    tc_dict = {
+                        "id": part.tool_call_id,
+                        "type": "function",
+                        "function": {"name": part.tool_name, "arguments": args_str},
+                    }
+                    if part.tool_call_id not in executed_tool_calls:
+                        tc_dict["state"] = "approval-requested"
+                    tool_calls.append(tc_dict)
+
+            text_content = "".join(text_parts) if text_parts else None
+            # Only skip if there's no text AND no tool calls
+            if not text_content and not tool_calls:
+                continue
+
+            ts = msg.timestamp.isoformat() if getattr(msg, "timestamp", None) else None
+            entry = {"role": "assistant", "content": text_content}
+            if tool_calls:
+                entry["tool_calls"] = tool_calls
+            if ts:
+                entry["timestamp"] = ts
+            result.append(entry)
     return result

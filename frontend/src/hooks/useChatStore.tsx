@@ -522,7 +522,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      const payload: any = { config: chatConfig, messages: chatMessages };
+      const payload: any = { config: chatConfig };
       if (updateTitle) payload.title = updateTitle;
 
       const res = await fetch(`${getApiBase()}/chats/${chatId}`, {
@@ -927,15 +927,65 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.warn('Failed to save config to localStorage:', e);
         }
         setMessagesByChat(prev => {
-          const existing = prev[key] ?? [];
-          const serverMessages = chat.messages ?? [];
-          // Social chats: backend is always the source of truth, always replace.
-          // Desktop chats: guard against overwriting frontend-streamed messages with a stale snapshot.
-          const isSocialChat = chatId.startsWith('social-');
-          if (!isSocialChat && existing.length >= serverMessages.length) {
+          // 100% Backend Authored: backend is ALWAYS the source of truth for ALL chats.
+          // Map backend JSON (which includes strict tool_calls arrays and 'tool' roles)
+          // into the legacy HTML `<details>` string blocks that the UI parser expects.
+          const serverMessages: any[] = chat.messages || [];
+          const mappedMessages: Message[] = [];
+          
+          let currentAssistant: Partial<Message> | null = null;
+          
+          for (const msg of serverMessages) {
+            if (msg.role === 'user') {
+              if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
+              mappedMessages.push(msg);
+            } else if (msg.role === 'assistant') {
+              if (!currentAssistant) {
+                currentAssistant = { ...msg, content: msg.content || '' };
+              } else {
+                if (msg.content) {
+                  currentAssistant.content = (currentAssistant.content ? currentAssistant.content + '\n\n' : '') + msg.content;
+                }
+              }
+              if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+                msg.tool_calls.forEach((tc: any) => {
+                  const args = typeof tc.function.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function.arguments);
+                  const stateAttr = tc.state === 'approval-requested' ? ' data-approval-state="pending"' : '';
+                  const idAttr = tc.id ? ` data-approval-id="${tc.id}"` : '';
+                  currentAssistant!.content += `\n<details data-tool-call-id="${tc.id}"${idAttr}${stateAttr}><summary>🔧 ${tc.function.name}</summary>\n<pre><code class="language-json">${args}</code></pre>\n</details>\n`;
+                });
+              }
+            } else if (msg.role === 'tool') {
+              if (!currentAssistant) {
+                currentAssistant = { role: 'assistant', content: '' };
+              }
+              currentAssistant.content += `\n<details data-tool-call-id="${msg.tool_call_id}"><summary>📦 ${msg.name}</summary>\n<pre><code class="language-text">${msg.content}</code></pre>\n</details>\n`;
+            } else {
+              if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
+              mappedMessages.push(msg);
+            }
+          }
+          if (currentAssistant) { mappedMessages.push(currentAssistant as Message); }
+
+          // Prevent UI flicker: if local store has more messages (e.g. optimistic append right after stream),
+          // don't let stale backend DB state overwrite it. Wait until DB catches up.
+          const existing = prev[key] || [];
+          if (existing.length > mappedMessages.length) {
             return prev;
           }
-          return { ...prev, [key]: serverMessages };
+          // Guard against replacing locally-resolved content with a stale pending-approval
+          // DB state. This race occurs when loadChat is called immediately after a resume
+          // stream ends but before the backend persists the final resolved state.
+          const serverHasPendingApproval = mappedMessages.some(
+            (m: Message) => typeof m.content === 'string' && m.content.includes('data-approval-state="pending"')
+          );
+          const localHasNoPendingApproval = existing.length > 0 && !existing.some(
+            (m: Message) => typeof m.content === 'string' && m.content.includes('data-approval-state="pending"')
+          );
+          if (serverHasPendingApproval && localHasNoPendingApproval) {
+            return prev;
+          }
+          return { ...prev, [key]: mappedMessages };
         });
         setShouldResetNext(false);
       } else {

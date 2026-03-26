@@ -12,7 +12,7 @@ interface HeartbeatRunningState {
   statusError: string | null;
 
   setRunning: (running: boolean, chatId: string | null) => void;
-  setStatus: (status: { running: boolean; last_ping_at: string | null; error: string | null }) => void;
+  setStatus: (status: import('../lib/api').HeartbeatStatus) => void;
 }
 
 export const useHeartbeatRunning = create<HeartbeatRunningState>((set) => ({
@@ -22,6 +22,6 @@ export const useHeartbeatRunning = create<HeartbeatRunningState>((set) => ({
   lastPingAt: null,
   statusError: null,
   setRunning: (running, chatId) => set({ inFlight: running, inFlightChatId: chatId }),
-  setStatus: ({ running, last_ping_at, error }) =>
-    set({ loopRunning: running, lastPingAt: last_ping_at, statusError: error }),
+  setStatus: (status) =>
+    set({ loopRunning: status.running, lastPingAt: status.last_run_at, statusError: status.last_error }),
 }));

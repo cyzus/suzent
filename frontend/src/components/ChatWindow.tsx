@@ -385,6 +385,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const heartbeatInFlightRef = useRef(false);
   // Set to true while a live background stream is active — onFinish should skip addMessage/forceSaveNow.
   const isLiveStreamRef = useRef(false);
+  // Captures the final AGUI parts from a live background stream so the cleanup path can
+  // convert them to a persisted rich message (with tool-step HTML) after clearParts.
+  const liveStreamPartsRef = useRef<AGUIPart[]>([]);
 
   // ── AG-UI streaming hook ─────────────────────────────────────────────
   const {
@@ -434,30 +437,39 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       if (isLiveStreamRef.current) {
         // Live background stream: backend already persisted the message.
+        // Capture final parts so the cleanup path can persist the rich (tool-step) version.
         // Do NOT call addMessage, forceSaveNow, setIsStreaming(false), or clearParts here.
         // The live stream effect's finally() handles all cleanup AFTER loadChat resolves,
         // so streaming parts stay visible until the DB reload completes — no blank flash.
+        liveStreamPartsRef.current = parts;
         streamingChatIdRef.current = null;
         setCurrentUsage(null);
         return;
       }
 
-      const storeMsg = aguiPartsToStoreMessage(parts, currentUsage);
-      if (storeMsg.content.trim()) {
-        addMessage(storeMsg, chatId);
-      }
-      setIsStreaming(false, chatId);
+      // 100% Backend Authored: instead of pushing frontend-assembled HTML,
+      // load the official JSON-based chat history from the backend.
       if (heartbeatInFlightRef.current) {
-        // Heartbeat ran but no heartbeat_ok signal — still record last run time.
         setHeartbeatRunning(false, null);
       }
       heartbeatInFlightRef.current = false;
       streamingChatIdRef.current = null;
-      clearParts();
+
+      // Optimistic append: convert parts to HTML and store locally, preventing
+      // a blank flash while loadChat waits for the backend to finish DB writes.
+      const storeMsg = aguiPartsToStoreMessage(parts, currentUsage);
+      if (storeMsg.content.trim()) {
+        addMessage(storeMsg, chatId!);
+      }
+
       setCurrentUsage(null);
-      setTimeout(async () => {
-        try { await forceSaveNow(chatId); } catch { }
-      }, 200);
+
+      // Load official chat history to ensure we have exact DB state (with JSON tools & reasoning mapped to HTML)
+      loadChat(chatId!).finally(() => {
+        setIsStreaming(false, chatId);
+        clearParts();
+      });
+
       try { loadCoreMemory(); loadStats(); } catch { }
     },
     onMarkDeferred: (surfaceId) => {
@@ -502,7 +514,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       setIsStreaming(false, chatId);
       streamingChatIdRef.current = null;
       stopInFlightRef.current = false;
-      if (!wasHeartbeat) {
+      if (!wasHeartbeat && !isLiveStreamRef.current) {
         addMessage({ role: 'assistant', content: `\u26a0\ufe0f Error: ${error.message}` }, chatId);
       }
     },
@@ -649,11 +661,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     } finally {
       setIsStreaming(false, targetChatId);
       stopInFlightRef.current = false;
-      setTimeout(async () => {
-        try { await forceSaveNow(targetChatId); } catch { }
-      }, 600);
+      // resumeStream's onFinish() callback handles cleanup (optimistic append, loadChat, clearParts).
+      // Don't call clearParts here—it races with onFinish and wipes the streamed response.
     }
-  }, [currentChatId, config, resumeStream, resolveApproval, addApprovalDecision, consumeApprovalDecisions, updateMessage, setIsStreaming, forceSaveNow, setConfig, messages, streamingParts]);
+  }, [currentChatId, config, resumeStream, resolveApproval, addApprovalDecision, consumeApprovalDecisions, updateMessage, setIsStreaming, loadChat, clearParts, setConfig, messages, streamingParts]);
 
   // Remove a tool from the approval policy
   const handleRemoveApprovalPolicy = useCallback((toolName: string) => {
@@ -797,6 +808,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
     let cancelled = false;
 
+    // On re-entry: reload from DB so any stream that completed while away is visible.
+    loadChat(currentChatId).catch(() => {});
+
     const tryConnect = async () => {
       if (isLiveStreamRef.current) return; // already streaming
       const liveUrl = `${getApiBase()}/chat/live`;
@@ -808,18 +822,51 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         urlOverride: liveUrl,
         onStreamStart: () => {
           isLiveStreamRef.current = true;
+          // Pin the streaming chat ID so onFinish uses the correct chat even if
+          // the user navigates away (causing activeChatIdRef to point elsewhere).
+          streamingChatIdRef.current = chatIdAtStart;
           setIsStreaming(true, chatIdAtStart);
+          // Reload messages now that the stream has confirmed active: the backend
+          // pre-saves the user message to DB before yielding the first SSE event,
+          // so this loadChat will pick it up and show it alongside the stream.
+          loadChat(chatIdAtStart).catch(() => {});
         },
       });
 
       if (!streamed || cancelled) return;
 
-      // Keep isLiveStreamRef = true during cleanup so the 2s poll guard
-      // (above) prevents a new probe from clearing parts while loadChat is pending.
-      try { await loadChat(chatIdAtStart); } catch { /* ignore */ }
+      // Convert the captured streaming parts to a rich message (includes tool-step HTML).
+      // This must happen before clearParts so the parts are still populated.
+      const richMsg = aguiPartsToStoreMessage(liveStreamPartsRef.current, null);
+
+      const isSocialStream = chatIdAtStart.startsWith('social-');
+
+      // Stop streaming indicator before any async work so transient parts stop
+      // rendering while we wait for the DB reload.
       setIsStreaming(false, chatIdAtStart);
+
+      if (isSocialStream) {
+        // Social chats: backend rebuilds the full message log asynchronously after the
+        // stream, so loadChat may return stale (pre-rebuild) data if called immediately.
+        // Add the optimistic rich message first — the loadChat length guard will then
+        // block any stale DB state from overwriting it, preventing a blank flash.
+        if (richMsg.content.trim()) {
+          addMessage(richMsg, chatIdAtStart);
+        }
+        try { await loadChat(chatIdAtStart); } catch { /* ignore */ }
+      }
+
       clearParts();
-      isLiveStreamRef.current = false; // Only release after full cleanup
+      liveStreamPartsRef.current = [];
+      isLiveStreamRef.current = false;
+
+      // Desktop/heartbeat/cron: add the rich message (tool-step HTML) to the store.
+      // addMessage schedules an 800ms autosave, which is faster than the 5-s polling
+      // loadChat, so the store guard (existing.length >= serverMessages.length) will
+      // preserve the rich message through polling reloads until the autosave fires.
+      if (!isSocialStream && richMsg.content.trim()) {
+        addMessage(richMsg, chatIdAtStart);
+      }
     };
 
     // Poll every 2s
@@ -1069,7 +1116,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               : "h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-6 scrollbar-thin bg-neutral-50 dark:bg-zinc-900"
             }
           >
-            {safeMessages.length === 0 ? (
+            {safeMessages.length === 0 && !showTransientAssistant ? (
               <NewChatView
                 input={input}
                 setInput={setInput}
@@ -1093,17 +1140,19 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               />
             ) : (
               <>
-                <MessageListMemo
-                  messages={safeMessages}
-                  streamingForCurrentChat={streamingForCurrentChat}
-                  chatId={currentChatId ?? undefined}
-                  onImageClick={setViewingImage}
-                  onFileClick={handleFileClick}
-                  onToolApproval={handleToolApproval}
-                  toolApprovalPolicy={safeConfig.tool_approval_policy}
-                  onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
-                  onInlineAction={(surfaceId, action, context) => handleCanvasDispatch(action, context, surfaceId)}
-                />
+                {safeMessages.length > 0 && (
+                  <MessageListMemo
+                    messages={safeMessages}
+                    streamingForCurrentChat={false}
+                    chatId={currentChatId ?? undefined}
+                    onImageClick={setViewingImage}
+                    onFileClick={handleFileClick}
+                    onToolApproval={handleToolApproval}
+                    toolApprovalPolicy={safeConfig.tool_approval_policy}
+                    onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
+                    onInlineAction={(surfaceId, action, context) => handleCanvasDispatch(action, context, surfaceId)}
+                  />
+                )}
                 {/* Streaming/transient assistant message from AG-UI */}
                 {showTransientAssistant && (
                   <div className="space-y-6 mt-6">

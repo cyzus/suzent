@@ -353,7 +353,7 @@ function processEvent(
           }
         }
       } else if (name === 'a2ui.render') {
-        const surface = value as Record<string, unknown>;
+        const surface = value as A2UISurface & { target?: string; deferred?: boolean };
         if (surface?.target === 'inline') {
           // Inline: embed as a part inside the current message
           next.push({ type: 'a2ui', surface });
@@ -417,7 +417,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   const removeInlineSurface = useCallback((surfaceId: string) => {
     setParts(prev => {
       const next = prev.filter(
-        p => !(p.type === 'a2ui' && (p.surface as Record<string, unknown>)?.id === surfaceId)
+        p => !(p.type === 'a2ui' && (p.surface as A2UISurface)?.id === surfaceId)
       );
       partsRef.current = next;
       return next;
