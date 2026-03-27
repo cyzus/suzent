@@ -55,6 +55,41 @@ const FileButton: React.FC<{
 
 export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, onFileClick }) => {
   const RM: any = ReactMarkdown;
+  const openingLinksRef = React.useRef(new Map<string, number>());
+
+  const isExternalLink = React.useCallback((href: string): boolean => {
+    return /^(https?:|mailto:|tel:)/i.test(href.trim());
+  }, []);
+
+  const openExternalLink = React.useCallback(async (href: string) => {
+    const link = href.trim();
+    if (!link) return;
+
+    // Guard against duplicate click events firing close together.
+    const now = Date.now();
+    const lastOpen = openingLinksRef.current.get(link);
+    if (lastOpen && now - lastOpen < 750) {
+      return;
+    }
+    openingLinksRef.current.set(link, now);
+
+    try {
+      if (window.__TAURI__) {
+        const { open } = await import('@tauri-apps/plugin-shell');
+        await open(link);
+        return;
+      }
+
+      window.open(link, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      console.warn('Failed to open external link', err);
+    } finally {
+      // Keep a short cooldown to suppress accidental double opens.
+      window.setTimeout(() => {
+        openingLinksRef.current.delete(link);
+      }, 750);
+    }
+  }, []);
 
   // Normalize content
   const normalized = String(content)
@@ -179,8 +214,13 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
             return (
               <a
                 href={hrefStr}
-                target="_blank"
                 rel="noopener noreferrer"
+                onClick={(e) => {
+                  if (!isExternalLink(hrefStr)) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void openExternalLink(hrefStr);
+                }}
                 className="text-brutal-blue hover:bg-brutal-yellow font-bold underline break-words transition-colors duration-100"
               >
                 {children}
