@@ -161,6 +161,9 @@ class BackgroundTaskRegistry:
         """
         Wait for all registered tasks with IDs starting with a prefix to complete.
 
+        Uses a retry loop so newly registered tasks with the same prefix that
+        arrive between lock release and gather are not missed.
+
         Args:
             prefix: The task_id prefix to wait for
             timeout: Maximum time to wait in seconds (None = wait forever)
@@ -168,28 +171,39 @@ class BackgroundTaskRegistry:
         Raises:
             asyncio.TimeoutError: If timeout is exceeded
         """
-        async with self._lock:
-            tasks = [
-                info.task
-                for task_id, info in self._tasks.items()
-                if task_id.startswith(prefix) and not info.task.done()
-            ]
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout if timeout is not None else None
 
-        if not tasks:
-            return
+        while True:
+            async with self._lock:
+                tasks = [
+                    info.task
+                    for task_id, info in self._tasks.items()
+                    if task_id.startswith(prefix) and not info.task.done()
+                ]
 
-        logger.info(
-            f"Waiting for {len(tasks)} background tasks with prefix '{prefix}' to complete..."
-        )
+            if not tasks:
+                return
 
-        if timeout:
-            await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=True), timeout
+            logger.info(
+                f"Waiting for {len(tasks)} background tasks with prefix '{prefix}' to complete..."
             )
-        else:
-            await asyncio.gather(*tasks, return_exceptions=True)
 
-        logger.info(f"All background tasks with prefix '{prefix}' completed")
+            remaining = (deadline - loop.time()) if deadline is not None else None
+            if remaining is not None and remaining <= 0:
+                raise asyncio.TimeoutError()
+
+            # Wait up to 1 s at a time so we can re-check for newly added tasks.
+            slice_timeout = min(remaining, 1.0) if remaining is not None else 1.0
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True),
+                    timeout=slice_timeout,
+                )
+            except asyncio.TimeoutError:
+                if deadline is not None and loop.time() >= deadline:
+                    raise
+                # Re-check: new tasks may have been added under this prefix.
 
     async def cancel_all(self):
         """Cancel all registered tasks."""

@@ -7,6 +7,7 @@ This module handles all chat endpoints including:
 - Stopping active streams
 """
 
+import asyncio
 import json
 import traceback
 
@@ -18,7 +19,11 @@ from suzent.config import CONFIG
 from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.streaming import stop_stream
-from suzent.core.stream_registry import get_background_queue, is_background_streaming
+from suzent.core.stream_registry import (
+    get_background_queue,
+    is_background_streaming,
+    get_or_create_stream_start_event,
+)
 
 logger = get_logger(__name__)
 
@@ -232,7 +237,6 @@ async def live_stream(request: Request) -> StreamingResponse:
     Returns text/event-stream SSE (same format as /chat) if active, 204 if not.
     If `wait_ms` is provided (>0), waits up to that long for a stream to appear.
     """
-    import asyncio
     from starlette.responses import Response
 
     try:
@@ -252,13 +256,17 @@ async def live_stream(request: Request) -> StreamingResponse:
 
     q = get_background_queue(chat_id)
     if q is None and wait_ms > 0:
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + (wait_ms / 1000.0)
-        while loop.time() < deadline:
-            await asyncio.sleep(0.15)
+        event = get_or_create_stream_start_event(chat_id)
+        event.clear()
+        # Re-check after clearing: stream may have started between the first
+        # get_background_queue call and the event.clear().
+        q = get_background_queue(chat_id)
+        if q is None:
+            try:
+                await asyncio.wait_for(event.wait(), timeout=wait_ms / 1000.0)
+            except asyncio.TimeoutError:
+                pass
             q = get_background_queue(chat_id)
-            if q is not None:
-                break
 
     if q is None:
         return Response(status_code=204)

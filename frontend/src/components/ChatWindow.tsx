@@ -460,6 +460,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
       heartbeatInFlightRef.current = false;
       streamingChatIdRef.current = null;
+      // Clear any stale live-stream parts from a previous background turn so
+      // tryConnect's cleanup path doesn't convert them to a redundant message.
+      liveStreamPartsRef.current = [];
 
       // Optimistic append: convert parts to HTML and store locally, preventing
       // a blank flash while loadChat waits for the backend to finish DB writes.
@@ -523,6 +526,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (!wasHeartbeat && !isLiveStreamRef.current) {
         addMessage({ role: 'assistant', content: `\u26a0\ufe0f Error: ${error.message}` }, chatId);
       }
+      isLiveStreamRef.current = false;
+      liveStreamPartsRef.current = [];
     },
   });
 
@@ -960,7 +965,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   // Handle file click from chat messages
-  const handleFileClick = async (path: string, name: string, shiftKey?: boolean) => {
+  const handleFileClick = useCallback(async (path: string, name: string, shiftKey?: boolean) => {
     // Let the click animation finish first
     await new Promise(resolve => setTimeout(resolve, 150));
 
@@ -990,7 +995,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     } catch (error) {
       // Error checking file - do nothing (animation already played)
     }
-  };
+  }, [currentChatId, config.sandbox_volumes, isRightSidebarOpen, onRightSidebarToggle]);
+
+  const handleInlineAction = useCallback((surfaceId: string, action: string, context: Record<string, unknown>) => {
+    handleCanvasDispatch(action, context, surfaceId);
+  }, [handleCanvasDispatch]);
 
   // Handle maximize button from sidebar
   const handleMaximizeFile = (path: string, name: string) => {
@@ -1065,7 +1074,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     onToolApproval={handleToolApproval}
                     toolApprovalPolicy={safeConfig.tool_approval_policy}
                     onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
-                    onInlineAction={(surfaceId, action, context) => handleCanvasDispatch(action, context, surfaceId)}
+                    onInlineAction={handleInlineAction}
                   />
                 )}
                 {/* Streaming/transient assistant message from AG-UI */}
@@ -1084,7 +1093,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                           usage={currentUsage}
                           toolApprovalPolicy={safeConfig.tool_approval_policy}
                           onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
-                          onInlineAction={(surfaceId, action, context) => handleCanvasDispatch(action, context, surfaceId)}
+                          onInlineAction={handleInlineAction}
                         />
                       </div>
                     </div>

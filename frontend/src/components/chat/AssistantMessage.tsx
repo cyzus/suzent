@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Message } from '../../types/api';
 import type { AGUIPart } from '../../hooks/useAGUI';
-import { splitAssistantContent, generateBlockKey, ContentBlock } from '../../lib/chatUtils';
+import { splitAssistantContent, generateBlockKey, ContentBlock, formatMessageTime } from '../../lib/chatUtils';
 import { useTypewriter } from '../../hooks/useTypewriter';
 import { ThinkingAnimation, AgentBadge } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -338,15 +338,6 @@ const MetricsBadge: React.FC<{ usage?: any; stepInfo?: string }> = ({ usage, ste
   );
 };
 
-function formatMessageTime(iso: string): string {
-  const date = new Date(iso);
-  const now = new Date();
-  const isToday = date.toDateString() === now.toDateString();
-  if (isToday) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
-  return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
 
 // Helper to extract the first line of reasoning for the header
 const getReasoningHeader = (text: string) => {

@@ -6,7 +6,9 @@ AgentDeps, and message-history-based state persistence.
 """
 
 import json
+import mimetypes
 import os
+import re
 import shutil
 import time
 from pathlib import Path
@@ -759,6 +761,23 @@ class ChatProcessor:
                 # 100% Backend Authored: rebuild the complete display log from the full agent history
                 # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
                 rebuilt = _rebuild_display_messages(messages)
+
+                # Guard: if the agent produced no output and this is a social chat, the
+                # pre-save at turn start left an orphaned user message in chat_messages.
+                # Roll it back so the history doesn't show a user turn with no reply.
+                if (
+                    not agent_content.strip()
+                    and chat_id.startswith("social-")
+                    and not rebuilt
+                ):
+                    chat_messages = [
+                        m
+                        for m in chat_messages
+                        if not (
+                            m.get("role") == "user" and m.get("content") == user_content
+                        )
+                    ]
+
                 db.update_chat(
                     chat_id, agent_state=agent_state, messages=rebuilt or chat_messages
                 )
@@ -798,6 +817,35 @@ class ChatProcessor:
 
 
 # ─── Utility ───────────────────────────────────────────────────────────
+
+
+_ATTACHMENT_PATTERN = re.compile(r"\n?\[User attached (?:an image|a file): ([^\]]+)\]")
+
+
+def _extract_attachment_files(text: str) -> list:
+    """Parse [User attached …] annotations into FileAttachment-like dicts."""
+    from pathlib import PurePosixPath
+
+    files = []
+    for m in _ATTACHMENT_PATTERN.finditer(text):
+        vpath = m.group(1).strip()
+        name = PurePosixPath(vpath).name
+        files.append(
+            {
+                "id": vpath,
+                "filename": name,
+                "path": vpath,
+                "size": 0,
+                "mime_type": mimetypes.guess_type(name)[0]
+                or "application/octet-stream",
+            }
+        )
+    return files
+
+
+def _strip_attachment_annotations(text: str) -> str:
+    """Remove [User attached …] annotations from display text."""
+    return _ATTACHMENT_PATTERN.sub("", text).strip()
 
 
 def _extract_tool_calls(messages: list) -> List[AgentAction]:
@@ -863,17 +911,34 @@ def _rebuild_display_messages(messages: list) -> list:
         if isinstance(msg, ModelRequest):
             for part in msg.parts:
                 if isinstance(part, UserPromptPart):
-                    content = (
-                        part.content
-                        if isinstance(part.content, str)
-                        else str(part.content)
-                    )
+                    if isinstance(part.content, str):
+                        raw_text = part.content
+                    elif isinstance(part.content, list):
+                        # Mixed list of strings + BinaryContent/ImageUrl objects.
+                        # Take only the first string segment (the user's actual text +
+                        # any attachment annotations injected by process_turn).
+                        raw_text = next(
+                            (item for item in part.content if isinstance(item, str)), ""
+                        )
+                    else:
+                        raw_text = str(part.content)
+
+                    # Parse attachment annotations injected by process_turn and convert
+                    # them to structured FileAttachment entries so the frontend renders
+                    # the proper file/image card rather than raw path text.
+                    files = _extract_attachment_files(raw_text)
+                    # Strip the annotations from the displayed text since the cards
+                    # already communicate the same information.
+                    clean_text = _strip_attachment_annotations(raw_text)
+
                     ts = (
                         part.timestamp.isoformat()
                         if getattr(part, "timestamp", None)
                         else None
                     )
-                    entry: dict = {"role": "user", "content": content}
+                    entry: dict = {"role": "user", "content": clean_text}
+                    if files:
+                        entry["files"] = files
                     if ts:
                         entry["timestamp"] = ts
                     result.append(entry)
