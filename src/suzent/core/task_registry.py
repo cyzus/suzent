@@ -183,7 +183,23 @@ class BackgroundTaskRegistry:
                 ]
 
             if not tasks:
-                return
+                # No matching tasks right now, but a new one could be registered
+                # just after this snapshot. Wait briefly and re-check once before
+                # returning so callers get a stronger "truly empty" guarantee.
+                remaining = (deadline - loop.time()) if deadline is not None else None
+                if remaining is not None and remaining <= 0:
+                    return
+                await asyncio.sleep(
+                    min(remaining, 0.1) if remaining is not None else 0.1
+                )
+                async with self._lock:
+                    still_none = not any(
+                        task_id.startswith(prefix) and not info.task.done()
+                        for task_id, info in self._tasks.items()
+                    )
+                if still_none:
+                    return
+                continue
 
             logger.info(
                 f"Waiting for {len(tasks)} background tasks with prefix '{prefix}' to complete..."

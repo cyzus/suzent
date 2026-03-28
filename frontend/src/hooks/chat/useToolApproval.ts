@@ -1,4 +1,4 @@
-import { useCallback, type MutableRefObject } from 'react';
+import { useCallback, useRef, type MutableRefObject } from 'react';
 import type { ChatConfig, Message } from '../../types/api';
 import type { AGUIPart } from '../useAGUI';
 
@@ -63,6 +63,12 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
     consumeApprovalDecisions,
   } = options;
 
+  // Keep refs so the callback never needs to re-create just because messages/parts changed.
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const streamingPartsRef = useRef(streamingParts);
+  streamingPartsRef.current = streamingParts;
+
   const handleToolApproval = useCallback(async (
     approvalId: string,
     toolCallId: string,
@@ -79,7 +85,7 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
     if (!targetChatId) return;
 
     const updateApprovalStateInHistory = (id: string, state: 'approved' | 'denied') => {
-      messages.forEach((m, idx) => {
+      messagesRef.current.forEach((m, idx) => {
         if (m.role === 'assistant' && m.content.includes(`data-approval-id="${id}"`)) {
           const finalContent = m.content.replace(
             new RegExp(`(<details[^>]*data-approval-id="${id}"[^>]*data-approval-state=")pending(")`),
@@ -101,7 +107,7 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
     let allDecided = addApprovalDecision(approvalId, toolCallId, approved, remember, toolName);
 
     if (remember === 'session' && toolName) {
-      const linkedPending = streamingParts
+      const linkedPending = streamingPartsRef.current
         .filter(
           p =>
             p.type === 'tool' &&
@@ -179,11 +185,9 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
     activeStreamingChatId,
     activeChatIdRef,
     currentChatId,
-    messages,
     updateMessage,
     resolveApproval,
     addApprovalDecision,
-    streamingParts,
     consumeApprovalDecisions,
     config,
     setConfig,

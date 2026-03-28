@@ -719,7 +719,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (isLiveStreamRef.current) return; // already streaming
       // Don't probe while a user-initiated stream is active — it shares the same
       // AbortController ref and probing would overwrite the real stream's controller.
-      if (activeStreamingChatId === currentChatId) return;
+      // Use the ref (not the closed-over state) so this is never stale.
+      if (streamingChatIdRef.current === currentChatId) return;
       const liveUrl = `${getApiBase()}/chat/live`;
       const chatIdAtStart = currentChatId;
 

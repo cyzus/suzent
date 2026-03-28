@@ -77,7 +77,7 @@ def register_background_stream(chat_id: str) -> asyncio.Queue:
             existing.put_nowait(None)
         except asyncio.QueueFull:
             pass
-    q: asyncio.Queue = asyncio.Queue()
+    q: asyncio.Queue = asyncio.Queue(maxsize=2000)
     background_queues[chat_id] = q
     # Wake any /chat/live waiters that are blocking on this chat's start event.
     event = _stream_start_events.get(chat_id)

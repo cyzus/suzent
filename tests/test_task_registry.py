@@ -124,21 +124,27 @@ class TestBackgroundTaskRegistry:
             await asyncio.sleep(delay)
             return delay
 
+        # Use an event so the unrelated task is guaranteed still active after the
+        # prefix wait completes, regardless of CI timing jitter.
+        release_event = asyncio.Event()
+
+        async def blocked_task():
+            await release_event.wait()
+
         await registry.register(
             task_with_delay(0.05), task_id="post_process_chat1_1", description="A"
         )
         await registry.register(
             task_with_delay(0.05), task_id="post_process_chat1_2", description="B"
         )
-        await registry.register(
-            task_with_delay(0.2), task_id="other_chat_1", description="C"
-        )
+        await registry.register(blocked_task(), task_id="other_chat_1", description="C")
 
         # Should wait for the post_process tasks only.
         await registry.wait_for_task_prefix("post_process_chat1_", timeout=1.0)
 
-        # The unrelated task should still be active at this point.
+        # The unrelated task must still be active — it's blocked on release_event.
         assert registry.active_count == 1
+        release_event.set()
 
     async def test_cancel_all(self):
         """Test cancelling all tasks."""
