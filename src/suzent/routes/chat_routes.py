@@ -19,11 +19,7 @@ from suzent.config import CONFIG
 from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.streaming import stop_stream
-from suzent.core.stream_registry import (
-    get_background_queue,
-    is_background_streaming,
-    get_or_create_stream_start_event,
-)
+from suzent.core.stream_registry import get_background_queue, is_background_streaming
 
 logger = get_logger(__name__)
 
@@ -256,17 +252,13 @@ async def live_stream(request: Request) -> StreamingResponse:
 
     q = get_background_queue(chat_id)
     if q is None and wait_ms > 0:
-        event = get_or_create_stream_start_event(chat_id)
-        event.clear()
-        # Re-check after clearing: stream may have started between the first
-        # get_background_queue call and the event.clear().
-        q = get_background_queue(chat_id)
-        if q is None:
-            try:
-                await asyncio.wait_for(event.wait(), timeout=wait_ms / 1000.0)
-            except asyncio.TimeoutError:
-                pass
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + (wait_ms / 1000.0)
+        while loop.time() < deadline:
+            await asyncio.sleep(0.15)
             q = get_background_queue(chat_id)
+            if q is not None:
+                break
 
     if q is None:
         return Response(status_code=204)

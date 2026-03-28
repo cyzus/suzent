@@ -144,7 +144,10 @@ class TestBackgroundTaskRegistry:
 
         # The unrelated task must still be active — it's blocked on release_event.
         assert registry.active_count == 1
+
+        # Release and await so the task doesn't leak into subsequent tests.
         release_event.set()
+        await registry.wait_for_all(timeout=1.0)
 
     async def test_cancel_all(self):
         """Test cancelling all tasks."""
