@@ -194,16 +194,13 @@ class BackgroundTaskRegistry:
                 raise asyncio.TimeoutError()
 
             # Wait up to 1 s at a time so we can re-check for newly added tasks.
+            # Use asyncio.wait (not wait_for+gather) so slice timeouts don't cancel
+            # the underlying tasks — they just stop waiting for this slice.
             slice_timeout = min(remaining, 1.0) if remaining is not None else 1.0
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*tasks, return_exceptions=True),
-                    timeout=slice_timeout,
-                )
-            except asyncio.TimeoutError:
-                if deadline is not None and loop.time() >= deadline:
-                    raise
-                # Re-check: new tasks may have been added under this prefix.
+            await asyncio.wait(tasks, timeout=slice_timeout)
+            if deadline is not None and loop.time() >= deadline:
+                raise asyncio.TimeoutError()
+            # Re-check: tasks may have completed or new ones may have been added.
 
     async def cancel_all(self):
         """Cancel all registered tasks."""

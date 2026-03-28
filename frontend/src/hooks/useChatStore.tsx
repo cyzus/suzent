@@ -2,6 +2,10 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { Message, ChatConfig, ConfigOptions, Chat, ChatSummary } from '../types/api';
 import { getApiBase } from '../lib/api';
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 interface ChatContextValue {
   messages: Message[];
   config: ChatConfig;
@@ -949,17 +953,17 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
               }
               if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
                 msg.tool_calls.forEach((tc: any) => {
-                  const args = typeof tc.function.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function.arguments);
+                  const args = escapeHtml(typeof tc.function.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function.arguments));
                   const stateAttr = tc.state === 'approval-requested' ? ' data-approval-state="pending"' : '';
-                  const idAttr = tc.id ? ` data-approval-id="${tc.id}"` : '';
-                  currentAssistant!.content += `\n<details data-tool-call-id="${tc.id}"${idAttr}${stateAttr}><summary>🔧 ${tc.function.name}</summary>\n<pre><code class="language-json">${args}</code></pre>\n</details>\n`;
+                  const idAttr = tc.id ? ` data-approval-id="${escapeHtml(tc.id)}"` : '';
+                  currentAssistant!.content += `\n<details data-tool-call-id="${escapeHtml(tc.id ?? '')}"${idAttr}${stateAttr}><summary>🔧 ${escapeHtml(tc.function.name)}</summary>\n<pre><code class="language-json">${args}</code></pre>\n</details>\n`;
                 });
               }
             } else if (msg.role === 'tool') {
               if (!currentAssistant) {
                 currentAssistant = { role: 'assistant', content: '' };
               }
-              currentAssistant.content += `\n<details data-tool-call-id="${msg.tool_call_id}"><summary>📦 ${msg.name}</summary>\n<pre><code class="language-text">${msg.content}</code></pre>\n</details>\n`;
+              currentAssistant.content += `\n<details data-tool-call-id="${escapeHtml(msg.tool_call_id ?? '')}"><summary>📦 ${escapeHtml(msg.name ?? '')}</summary>\n<pre><code class="language-text">${escapeHtml(msg.content ?? '')}</code></pre>\n</details>\n`;
             } else {
               if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
               mappedMessages.push(msg);

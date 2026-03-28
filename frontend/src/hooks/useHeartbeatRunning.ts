@@ -22,6 +22,12 @@ export const useHeartbeatRunning = create<HeartbeatRunningState>((set) => ({
   lastPingAt: null,
   statusError: null,
   setRunning: (running, chatId) => set({ inFlight: running, inFlightChatId: chatId }),
-  setStatus: (status) =>
-    set({ loopRunning: status.running, lastPingAt: status.last_run_at, statusError: status.last_error }),
+  setStatus: (status) => {
+    const s = status as any;
+    set({
+      loopRunning: status.running,
+      lastPingAt: s.last_run_at ?? s.last_ping_at ?? null,
+      statusError: s.last_error ?? s.error ?? null,
+    });
+  },
 }));

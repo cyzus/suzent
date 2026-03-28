@@ -49,14 +49,22 @@ function LazyImage({
       const canvas = document.createElement('canvas');
       canvas.width = w;
       canvas.height = h;
-      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        if (!cancelled) setSrc(`data:${mimeType};base64,${data}`);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
 
+      const outputMime = (mimeType === 'image/png' || mimeType === 'image/webp' || mimeType === 'image/jpeg')
+        ? mimeType
+        : 'image/jpeg';
       canvas.toBlob(blob => {
         if (cancelled || !blob) return;
         const url = URL.createObjectURL(blob);
         blobUrlRef.current = url;
         setSrc(url);
-      }, 'image/jpeg', 0.88);
+      }, outputMime, outputMime === 'image/jpeg' ? 0.88 : undefined);
     };
     img.onerror = () => {
       if (!cancelled) setSrc(`data:${mimeType};base64,${data}`);

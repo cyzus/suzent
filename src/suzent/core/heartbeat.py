@@ -168,10 +168,8 @@ class HeartbeatRunner(BaseBrain):
             "running": self._running,
             "polling_interval": self.polling_interval_minutes,
             "active_sessions": sessions,
-            "last_ping_at": self._last_run_at.isoformat()
-            if self._last_run_at
-            else None,
-            "error": self._last_error,
+            "last_run_at": self._last_run_at.isoformat() if self._last_run_at else None,
+            "last_error": self._last_error,
         }
 
     async def _tick(self):

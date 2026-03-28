@@ -6,7 +6,7 @@ Provides a clean, type-safe interface for all database operations.
 
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
@@ -377,7 +377,7 @@ class ChatDatabase:
         with self._session() as session:
             chat = session.get(ChatModel, chat_id)
             if chat:
-                chat.last_result_at = datetime.now()
+                chat.last_result_at = datetime.now(timezone.utc)
                 session.add(chat)
                 session.commit()
 

@@ -523,7 +523,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       setIsStreaming(false, chatId);
       streamingChatIdRef.current = null;
       stopInFlightRef.current = false;
-      if (!wasHeartbeat && !isLiveStreamRef.current) {
+      const isNetworkError = error.message === 'Failed to fetch' || error instanceof TypeError;
+      if (!wasHeartbeat && !isLiveStreamRef.current && !isNetworkError) {
         addMessage({ role: 'assistant', content: `\u26a0\ufe0f Error: ${error.message}` }, chatId);
       }
       isLiveStreamRef.current = false;
@@ -716,6 +717,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
     const tryConnect = async () => {
       if (isLiveStreamRef.current) return; // already streaming
+      // Don't probe while a user-initiated stream is active — it shares the same
+      // AbortController ref and probing would overwrite the real stream's controller.
+      if (activeStreamingChatId === currentChatId) return;
       const liveUrl = `${getApiBase()}/chat/live`;
       const chatIdAtStart = currentChatId;
 
@@ -888,7 +892,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       role: 'user',
       content: prompt,
       timestamp: new Date().toISOString(),
-      images: imagePreviews,
+      images: uploadedFileMetadata ? undefined : imagePreviews,
       files: uploadedFileMetadata
     }, chatIdForSend);
     setIsStreaming(true, chatIdForSend);

@@ -559,24 +559,25 @@ class ChatProcessor:
         full_response = ""
         parser = StreamParser()
 
-        async for chunk in self.process_steer(
-            chat_id=chat_id,
-            user_id=user_id,
-            steer_message=steer_message,
-            config_override=config_override,
-        ):
+        try:
+            async for chunk in self.process_steer(
+                chat_id=chat_id,
+                user_id=user_id,
+                steer_message=steer_message,
+                config_override=config_override,
+            ):
+                if _stream_queue is not None:
+                    await _stream_queue.put(chunk)
+                for event in parser.parse([chunk]):
+                    if on_event:
+                        await on_event(event)
+                    if isinstance(event, TextChunk):
+                        full_response += event.content
+                    elif isinstance(event, ErrorEvent):
+                        raise RuntimeError(event.message)
+        finally:
             if _stream_queue is not None:
-                await _stream_queue.put(chunk)
-            for event in parser.parse([chunk]):
-                if on_event:
-                    await on_event(event)
-                if isinstance(event, TextChunk):
-                    full_response += event.content
-                elif isinstance(event, ErrorEvent):
-                    raise RuntimeError(event.message)
-
-        if _stream_queue is not None:
-            await _stream_queue.put(None)  # sentinel: stream finished
+                await _stream_queue.put(None)  # sentinel: stream finished (or errored)
 
         return full_response.strip()
 
@@ -605,31 +606,32 @@ class ChatProcessor:
         full_response = ""
         parser = StreamParser()
 
-        async for chunk in self.process_turn(
-            chat_id=chat_id,
-            user_id=user_id,
-            message_content=message_content,
-            files=files,
-            config_override=config_override,
-            resume_approvals=resume_approvals,
-            is_social=is_social,
-            is_heartbeat=is_heartbeat,
-        ):
+        try:
+            async for chunk in self.process_turn(
+                chat_id=chat_id,
+                user_id=user_id,
+                message_content=message_content,
+                files=files,
+                config_override=config_override,
+                resume_approvals=resume_approvals,
+                is_social=is_social,
+                is_heartbeat=is_heartbeat,
+            ):
+                if _stream_queue is not None:
+                    await _stream_queue.put(chunk)
+
+                # Use the shared parser to turn raw SSE chunks into events
+                for event in parser.parse([chunk]):
+                    if on_event:
+                        await on_event(event)
+
+                    if isinstance(event, TextChunk):
+                        full_response += event.content
+                    elif isinstance(event, ErrorEvent):
+                        raise RuntimeError(event.message)
+        finally:
             if _stream_queue is not None:
-                await _stream_queue.put(chunk)
-
-            # Use the shared parser to turn raw SSE chunks into events
-            for event in parser.parse([chunk]):
-                if on_event:
-                    await on_event(event)
-
-                if isinstance(event, TextChunk):
-                    full_response += event.content
-                elif isinstance(event, ErrorEvent):
-                    raise RuntimeError(event.message)
-
-        if _stream_queue is not None:
-            await _stream_queue.put(None)  # sentinel: stream finished
+                await _stream_queue.put(None)  # sentinel: stream finished (or errored)
 
         return full_response.strip()
 
