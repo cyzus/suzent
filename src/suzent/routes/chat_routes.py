@@ -7,6 +7,7 @@ This module handles all chat endpoints including:
 - Stopping active streams
 """
 
+import asyncio
 import json
 import traceback
 
@@ -18,6 +19,7 @@ from suzent.config import CONFIG
 from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.streaming import stop_stream
+from suzent.core.stream_registry import get_background_queue, is_background_streaming
 
 logger = get_logger(__name__)
 
@@ -224,6 +226,67 @@ async def stop_chat(request: Request) -> JSONResponse:
     return JSONResponse({"status": "stopping", "reason": reason})
 
 
+async def live_stream(request: Request) -> StreamingResponse:
+    """Subscribe to a live background stream for a chat (cron, heartbeat, social).
+
+    Accepts POST with JSON body: {"chat_id": "...", "wait_ms": 25000}
+    Returns text/event-stream SSE (same format as /chat) if active, 204 if not.
+    If `wait_ms` is provided (>0), waits up to that long for a stream to appear.
+    """
+    from starlette.responses import Response
+
+    try:
+        data = await request.json()
+    except Exception:
+        return Response(status_code=400)
+
+    chat_id = data.get("chat_id", "")
+    wait_ms_raw = data.get("wait_ms", 0)
+    try:
+        wait_ms = max(0, int(wait_ms_raw or 0))
+    except Exception:
+        wait_ms = 0
+
+    if not chat_id:
+        return Response(status_code=400)
+
+    q = get_background_queue(chat_id)
+    if q is None and wait_ms > 0:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + (wait_ms / 1000.0)
+        while loop.time() < deadline:
+            await asyncio.sleep(0.15)
+            q = get_background_queue(chat_id)
+            if q is not None:
+                break
+
+    if q is None:
+        return Response(status_code=204)
+
+    async def generate():
+        while True:
+            try:
+                chunk = await asyncio.wait_for(q.get(), timeout=60.0)
+            except asyncio.TimeoutError:
+                # Heartbeat to keep connection alive
+                yield ": keep-alive\n\n"
+                continue
+            if chunk is None:
+                return
+            yield chunk
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 async def get_chats(request: Request) -> JSONResponse:
     """Return list of chat summaries with pagination and optional search."""
     try:
@@ -237,8 +300,14 @@ async def get_chats(request: Request) -> JSONResponse:
         chats = db.list_chats(limit=limit, offset=offset, search=search)
         total = db.get_chat_count(search=search)
 
-        # Convert Pydantic models to dicts
-        chats_data = [c.model_dump(mode="json", by_alias=True) for c in chats]
+        # Convert Pydantic models to dicts, annotating live background streams
+        chats_data = [
+            {
+                **c.model_dump(mode="json", by_alias=True),
+                "isRunning": is_background_streaming(c.id),
+            }
+            for c in chats
+        ]
 
         return JSONResponse(
             {

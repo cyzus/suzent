@@ -1,4 +1,13 @@
 
+export function formatMessageTime(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
 export interface ContentBlock {
   type: 'markdown' | 'code' | 'log' | 'toolCall' | 'codeStep' | 'reasoning' | 'a2ui';
   content: string;

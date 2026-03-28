@@ -9,6 +9,7 @@
         "dialog:default",
         "core:window:default",
         "shell:allow-execute",
+        "shell:allow-open",
         "core:window:allow-start-dragging",
         "core:window:allow-close",
         "core:window:allow-minimize",

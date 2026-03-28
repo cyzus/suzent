@@ -6,6 +6,12 @@
   .brutal-btn {
     @apply hover:-translate-y-[1px] hover:shadow-[4px_4px_0_0_#000] active:translate-y-[2px] active:shadow-none transition-all;
   }
+
+  /* Skips paint/composite for off-screen message rows, preventing GPU layer exhaustion on long histories. */
+  .chat-msg-row {
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 120px;
+  }
 }
 
 html,

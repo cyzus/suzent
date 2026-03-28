@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
 import { ChatSummary } from '../types/api';
 import { RobotAvatar } from './chat/RobotAvatar';
@@ -26,7 +26,50 @@ export const ChatList: React.FC = () => {
   const [showRefreshIndicator, setShowRefreshIndicator] = useState(false);
   const [localSearchQuery, setLocalSearchQuery] = useState<string>('');
   const [viewMode, setViewMode] = useState<'personal' | 'social'>('personal');
+  const [lastViewed, setLastViewed] = useState<Record<string, { at: string; count: number }>>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('chat_last_viewed') || '{}');
+      // Migrate old format (plain string timestamps) to new { at, count } format
+      const result: Record<string, { at: string; count: number }> = {};
+      for (const [id, val] of Object.entries(raw)) {
+        if (typeof val === 'string') result[id] = { at: val, count: 0 };
+        else if (val && typeof val === 'object' && 'at' in val) result[id] = val as { at: string; count: number };
+      }
+      return result;
+    } catch { return {}; }
+  });
   const { t } = useI18n();
+
+  // Keep a ref so markRead always reads the latest chats without going stale.
+  const chatsRef = useRef(chats);
+  useEffect(() => { chatsRef.current = chats; }, [chats]);
+
+  const markRead = useCallback((chatId: string) => {
+    const count = chatsRef.current.find(c => c.id === chatId)?.messageCount ?? 0;
+    setLastViewed(prev => {
+      const next = { ...prev, [chatId]: { at: new Date().toISOString(), count } };
+      try { localStorage.setItem('chat_last_viewed', JSON.stringify(next)); } catch { }
+      return next;
+    });
+  }, []);
+
+  const isUnread = (chat: ChatSummary) => {
+    if (!chat.lastResultAt) return false;
+    const viewed = lastViewed[chat.id];
+    if (!viewed) return true;
+    return new Date(chat.lastResultAt) > new Date(viewed.at);
+  };
+
+  const unreadMessages = (chat: ChatSummary) => {
+    if (!isUnread(chat)) return 0;
+    return Math.max(0, chat.messageCount - (lastViewed[chat.id]?.count ?? 0));
+  };
+
+  // Mark current chat read when it becomes active, and re-mark whenever the
+  // chat list refreshes (new messages arrive) while the user is viewing it.
+  useEffect(() => {
+    if (currentChatId) markRead(currentChatId);
+  }, [currentChatId, chats, markRead]);
 
   // Sync local search with global search on mount
   useEffect(() => {
@@ -99,6 +142,10 @@ export const ChatList: React.FC = () => {
     }
     return !chat.platform;
   });
+
+  const socialUnreadCount = chats
+    .filter(c => !!c.platform)
+    .reduce((sum, c) => sum + unreadMessages(c), 0);
 
   if (loadingChats) {
     return (
@@ -185,7 +232,14 @@ export const ChatList: React.FC = () => {
                     : 'bg-white dark:bg-zinc-700 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-zinc-600 hover:text-brutal-black dark:hover:text-white'
                   }`}
               >
-                {mode === 'personal' ? t('chatList.view.desktop') : t('chatList.view.social')}
+                <span className="flex items-center justify-center gap-1">
+                  {mode === 'personal' ? t('chatList.view.desktop') : t('chatList.view.social')}
+                  {mode === 'social' && socialUnreadCount > 0 && (
+                    <span className="inline-flex items-center justify-center min-w-[14px] h-[14px] px-0.5 bg-brutal-yellow text-brutal-black dark:bg-brutal-yellow dark:text-brutal-black text-[9px] font-bold leading-none">
+                      {socialUnreadCount}
+                    </span>
+                  )}
+                </span>
               </button>
             ))}
           </div>
@@ -212,6 +266,7 @@ export const ChatList: React.FC = () => {
               <div
                 key={chat.id}
                 onClick={() => {
+                  markRead(chat.id);
                   loadChat(chat.id);
                   // Switch back to chat view when loading a chat
                   if (switchToView) {
@@ -243,13 +298,19 @@ export const ChatList: React.FC = () => {
                 <div className="flex items-start justify-between pl-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 overflow-hidden">
+                      {/* Unread dot */}
+                      {isUnread(chat) && (
+                        (!!chat.platform || (chat.heartbeatEnabled && !chat.platform))
+                      ) && currentChatId !== chat.id && (
+                        <span className="w-2 h-2 rounded-full bg-brutal-red shrink-0" aria-label="Unread" />
+                      )}
                       {/* Platform Badge */}
                       {chat.platform && (
                         <span className="text-[10px] font-bold uppercase px-1 py-0.5 bg-neutral-200 dark:bg-zinc-700 dark:text-white border border-brutal-black shrink-0">
                           {chat.platform}
                         </span>
                       )}
-                      
+
                       <h3 className={`font-bold text-sm truncate uppercase ${currentChatId === chat.id ? 'text-brutal-black' : 'text-neutral-800 dark:text-white'}`}>
                         {chat.title || t('chatList.untitled')}
                       </h3>
@@ -263,9 +324,15 @@ export const ChatList: React.FC = () => {
 
                     <div className={`flex items-center justify-between mt-3 pt-2 border-t-2 ${currentChatId === chat.id ? 'border-brutal-black/20' : 'border-neutral-200/50'}`}>
                       <div className="flex items-center gap-1.5">
-                        <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 border ${currentChatId === chat.id ? 'bg-white text-brutal-black border-brutal-black' : 'bg-neutral-100 dark:bg-zinc-700 text-neutral-500 dark:text-neutral-400 border-neutral-300 dark:border-zinc-600'}`}>
-                          {chat.messageCount} MSG
-                        </span>
+                        {(() => {
+                          const count = currentChatId === chat.id ? 0 : unreadMessages(chat);
+                          if (count <= 0) return null;
+                          return (
+                            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 border bg-brutal-yellow text-brutal-black border-brutal-black">
+                              {count} NEW
+                            </span>
+                          );
+                        })()}
                         
                         {/* Heartbeat Status Icon */}
                         {chat.heartbeatEnabled && (

@@ -446,12 +446,11 @@ def register_commands(app: typer.Typer):
             cmd.append("--debug")
 
         try:
-            creationflags = 0
-            if IS_WINDOWS:
-                creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-
             # Keep a process handle so Ctrl+C can shut down the child reliably.
-            process = subprocess.Popen(cmd, env=env, creationflags=creationflags)
+            # NOTE: Do NOT use CREATE_NEW_PROCESS_GROUP on Windows here.
+            # It can prevent Ctrl+C from propagating naturally from the console,
+            # leaving the backend process alive after the CLI is interrupted.
+            process = subprocess.Popen(cmd, env=env)
             return_code = process.wait()
 
             # 130 = terminated via SIGINT/Ctrl+C on many platforms.

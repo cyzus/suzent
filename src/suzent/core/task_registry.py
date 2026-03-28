@@ -157,6 +157,67 @@ class BackgroundTaskRegistry:
 
         logger.info("All background tasks completed")
 
+    async def wait_for_task_prefix(self, prefix: str, timeout: Optional[float] = None):
+        """
+        Wait for all registered tasks with IDs starting with a prefix to complete.
+
+        Uses a retry loop so newly registered tasks with the same prefix that
+        arrive between lock release and gather are not missed.
+
+        Args:
+            prefix: The task_id prefix to wait for
+            timeout: Maximum time to wait in seconds (None = wait forever)
+
+        Raises:
+            asyncio.TimeoutError: If timeout is exceeded
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout if timeout is not None else None
+
+        while True:
+            async with self._lock:
+                tasks = [
+                    info.task
+                    for task_id, info in self._tasks.items()
+                    if task_id.startswith(prefix) and not info.task.done()
+                ]
+
+            if not tasks:
+                # No matching tasks right now, but a new one could be registered
+                # just after this snapshot. Wait briefly and re-check once before
+                # returning so callers get a stronger "truly empty" guarantee.
+                remaining = (deadline - loop.time()) if deadline is not None else None
+                if remaining is not None and remaining <= 0:
+                    return
+                await asyncio.sleep(
+                    min(remaining, 0.1) if remaining is not None else 0.1
+                )
+                async with self._lock:
+                    still_none = not any(
+                        task_id.startswith(prefix) and not info.task.done()
+                        for task_id, info in self._tasks.items()
+                    )
+                if still_none:
+                    return
+                continue
+
+            logger.info(
+                f"Waiting for {len(tasks)} background tasks with prefix '{prefix}' to complete..."
+            )
+
+            remaining = (deadline - loop.time()) if deadline is not None else None
+            if remaining is not None and remaining <= 0:
+                raise asyncio.TimeoutError()
+
+            # Wait up to 1 s at a time so we can re-check for newly added tasks.
+            # Use asyncio.wait (not wait_for+gather) so slice timeouts don't cancel
+            # the underlying tasks — they just stop waiting for this slice.
+            slice_timeout = min(remaining, 1.0) if remaining is not None else 1.0
+            await asyncio.wait(tasks, timeout=slice_timeout)
+            if deadline is not None and loop.time() >= deadline:
+                raise asyncio.TimeoutError()
+            # Re-check: tasks may have completed or new ones may have been added.
+
     async def cancel_all(self):
         """Cancel all registered tasks."""
         async with self._lock:
@@ -264,3 +325,15 @@ async def register_background_task(
     """
     registry = get_task_registry()
     return await registry.register(coro, task_id, description)
+
+
+async def wait_for_background_task_prefix(prefix: str, timeout: Optional[float] = None):
+    """Wait for all tasks with a specific prefix to complete."""
+    registry = get_task_registry()
+    await registry.wait_for_task_prefix(prefix, timeout)
+
+
+async def wait_for_all_background_tasks(timeout: Optional[float] = None):
+    """Wait for all background tasks to complete."""
+    registry = get_task_registry()
+    await registry.wait_for_all(timeout)

@@ -16,7 +16,11 @@ from suzent.config import CONFIG
 from suzent.core.base_brain import BaseBrain, get_active
 from suzent.database import get_database
 from suzent.logger import get_logger
-from suzent.core.stream_registry import stream_controls
+from suzent.core.stream_registry import (
+    stream_controls,
+    register_background_stream,
+    unregister_background_stream,
+)
 from suzent.core.chat_processor import ChatProcessor
 
 logger = get_logger(__name__)
@@ -164,6 +168,8 @@ class HeartbeatRunner(BaseBrain):
             "running": self._running,
             "polling_interval": self.polling_interval_minutes,
             "active_sessions": sessions,
+            "last_run_at": self._last_run_at.isoformat() if self._last_run_at else None,
+            "last_error": self._last_error,
         }
 
     async def _tick(self):
@@ -327,6 +333,8 @@ class HeartbeatRunner(BaseBrain):
             except Exception as _e:
                 logger.warning(f"Failed to persist heartbeat_last_result: {_e}")
 
+            db.set_last_result_at(chat_id)
+
             if self._notification_callback and response_text:
                 self._notification_callback(f"Chat {chat_id[:8]}: {response_text}")
 
@@ -354,6 +362,7 @@ class HeartbeatRunner(BaseBrain):
 
         config_override = self._build_config_override(heartbeat_allowed_tools)
 
+        stream_queue = register_background_stream(chat_id)
         try:
             return await processor.process_turn_text(
                 chat_id=chat_id,
@@ -361,10 +370,13 @@ class HeartbeatRunner(BaseBrain):
                 message_content=prompt,
                 config_override=config_override,
                 is_heartbeat=True,
+                _stream_queue=stream_queue,
             )
         except RuntimeError as e:
             self._last_error = str(e)
             return ""
+        finally:
+            unregister_background_stream(chat_id)
 
     def _rollback_heartbeat_messages(self, chat_id: str, original_count: int, db):
         """Remove the heartbeat prompt and Ok response if no action was needed."""
