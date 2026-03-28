@@ -62,10 +62,6 @@ def pop_pending_auto_approvals(chat_id: str) -> Dict[str, bool]:
 
 background_queues: Dict[str, asyncio.Queue] = {}
 
-# Per-chat events set when a background stream is registered.
-# Allows /chat/live to block efficiently instead of polling with asyncio.sleep.
-_stream_start_events: Dict[str, asyncio.Event] = {}
-
 
 def register_background_stream(chat_id: str) -> asyncio.Queue:
     """Create and register a background SSE queue for a chat. Returns the queue."""
@@ -79,24 +75,12 @@ def register_background_stream(chat_id: str) -> asyncio.Queue:
             pass
     q: asyncio.Queue = asyncio.Queue(maxsize=2000)
     background_queues[chat_id] = q
-    # Wake any /chat/live waiters that are blocking on this chat's start event.
-    event = _stream_start_events.get(chat_id)
-    if event is not None:
-        event.set()
     return q
 
 
 def unregister_background_stream(chat_id: str) -> None:
     """Remove the background queue for a chat (signals no active stream)."""
     background_queues.pop(chat_id, None)
-    _stream_start_events.pop(chat_id, None)
-
-
-def get_or_create_stream_start_event(chat_id: str) -> asyncio.Event:
-    """Return (creating if needed) the stream-start event for a chat."""
-    if chat_id not in _stream_start_events:
-        _stream_start_events[chat_id] = asyncio.Event()
-    return _stream_start_events[chat_id]
 
 
 def get_background_queue(chat_id: str) -> Optional[asyncio.Queue]:
