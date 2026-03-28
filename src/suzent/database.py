@@ -6,7 +6,7 @@ Provides a clean, type-safe interface for all database operations.
 
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
@@ -40,6 +40,7 @@ class ChatSummaryModel(BaseModel):
     lastMessage: Optional[str] = None
     platform: Optional[str] = None
     heartbeatEnabled: bool = False
+    lastResultAt: Optional[str] = None
 
 
 class ChatModel(SQLModel, table=True):
@@ -58,6 +59,9 @@ class ChatModel(SQLModel, table=True):
     # Session lifecycle fields
     last_active_at: Optional[datetime] = None
     turn_count: int = Field(default=0)
+
+    # Background execution tracking — written only by background executors
+    last_result_at: Optional[datetime] = None
 
     plans: List["PlanModel"] = Relationship(
         back_populates="chat",
@@ -273,6 +277,10 @@ class ChatDatabase:
                             "ALTER TABLE chats ADD COLUMN turn_count INTEGER DEFAULT 0"
                         )
                     )
+                if "last_result_at" not in columns:
+                    conn.execute(
+                        text("ALTER TABLE chats ADD COLUMN last_result_at DATETIME")
+                    )
                 conn.commit()
 
     def _session(self) -> Session:
@@ -364,6 +372,15 @@ class ChatDatabase:
             session.commit()
             return True
 
+    def set_last_result_at(self, chat_id: str) -> None:
+        """Mark that a background executor just completed a turn for this chat."""
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if chat:
+                chat.last_result_at = datetime.now(timezone.utc)
+                session.add(chat)
+                session.commit()
+
     def list_chats(
         self,
         limit: int = 50,
@@ -387,7 +404,23 @@ class ChatDatabase:
                 messages = chat.messages or []
                 last_message = None
                 if messages:
-                    content = messages[-1].get("content", "")
+                    last_msg = messages[-1]
+                    if isinstance(last_msg, dict):
+                        content = last_msg.get("content") or ""
+                    else:
+                        content = str(last_msg)
+
+                    if isinstance(content, list):
+                        # Extract text from list of dicts (e.g. OpenAI vision)
+                        text_parts = []
+                        for part in content:
+                            if isinstance(part, dict) and part.get("type") == "text":
+                                text_parts.append(part.get("text", ""))
+                            elif isinstance(part, str):
+                                text_parts.append(part)
+                        content = " ".join(text_parts)
+                    elif not isinstance(content, str):
+                        content = str(content)
 
                     # 1. completely eradicate any <details> tool blocks (including inner text)
                     clean_content = re.sub(
@@ -400,6 +433,7 @@ class ChatDatabase:
                     if len(clean_content) > 100:
                         last_message += "..."
 
+                config = chat.config or {}
                 results.append(
                     ChatSummaryModel(
                         id=chat.id,
@@ -408,8 +442,11 @@ class ChatDatabase:
                         updatedAt=chat.updated_at.isoformat(),
                         messageCount=len(messages),
                         lastMessage=last_message,
-                        platform=chat.config.get("platform"),
-                        heartbeatEnabled=chat.config.get("heartbeat_enabled", False),
+                        platform=config.get("platform"),
+                        heartbeatEnabled=config.get("heartbeat_enabled", False),
+                        lastResultAt=chat.last_result_at.isoformat()
+                        if chat.last_result_at
+                        else None,
                     )
                 )
 

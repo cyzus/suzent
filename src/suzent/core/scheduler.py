@@ -16,7 +16,11 @@ from suzent.config import CONFIG
 from suzent.core.base_brain import BaseBrain, get_active
 from suzent.database import get_database
 from suzent.logger import get_logger
-from suzent.core.stream_registry import stream_controls
+from suzent.core.stream_registry import (
+    stream_controls,
+    register_background_stream,
+    unregister_background_stream,
+)
 
 logger = get_logger(__name__)
 
@@ -131,6 +135,7 @@ class SchedulerBrain(BaseBrain):
 
             db.update_cron_job_run_state(job_id, last_result=response_text)
             db.finish_cron_run(run_id, "success", result=response_text)
+            db.set_last_result_at(chat_id)
 
             if job.delivery_mode == "announce" and response_text:
                 self._pending_notifications.append(
@@ -158,18 +163,22 @@ class SchedulerBrain(BaseBrain):
             db, model_override=job.model_override
         )
 
+        stream_queue = register_background_stream(chat_id)
         try:
             return await processor.process_turn_text(
                 chat_id=chat_id,
                 user_id=CONFIG.user_id,
                 message_content=job.prompt,
                 config_override=config_override,
+                _stream_queue=stream_queue,
             )
         except RuntimeError as e:
             logger.error(f"Cron job {job_id} error: {e}")
             db.update_cron_job_run_state(job_id, last_error=str(e))
             db.finish_cron_run(run_id, "error", error=str(e))
             return ""
+        finally:
+            unregister_background_stream(chat_id)
 
     def _build_config_override(
         self, db, *, model_override: Optional[str] = None

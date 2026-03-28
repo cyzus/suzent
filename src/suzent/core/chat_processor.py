@@ -6,7 +6,9 @@ AgentDeps, and message-history-based state persistence.
 """
 
 import json
+import mimetypes
 import os
+import re
 import shutil
 import time
 from pathlib import Path
@@ -64,6 +66,18 @@ class ChatProcessor:
         3. Response Streaming (pydantic-ai async)
         4. Background Tasks (Memory, Compression, Persistence)
         """
+
+        # 0. Wait for any pending post-processing from the previous turn to finish.
+        # This prevents resuming with a stale message history from the DB if the user
+        # approves/denies a tool call (or steers) very quickly.
+        try:
+            from suzent.core.task_registry import wait_for_background_task_prefix
+
+            await wait_for_background_task_prefix(
+                f"post_process_{chat_id}_", timeout=10.0
+            )
+        except Exception as e:
+            logger.warning(f"Error waiting for previous post-processing: {e}")
 
         # 1. Configuration
         logger.debug(f"[ChatProcessor] Starting process_turn for chat_id={chat_id}")
@@ -235,6 +249,25 @@ class ChatProcessor:
             new_request = ModelRequest(parts=parts)
             message_history.append(new_request)
 
+            # Pre-save the user message to the DB display log for social chats so the
+            # frontend can show it as soon as the stream starts, without waiting for the
+            # background post-processing task that normally persists the full history.
+            if (
+                chat_id
+                and chat_id.startswith("social-")
+                and isinstance(full_prompt, str)
+                and full_prompt.strip()
+            ):
+                try:
+                    _db = get_database()
+                    _chat = _db.get_chat(chat_id)
+                    if _chat is not None:
+                        _existing = list(_chat.messages or [])
+                        _user_entry: dict = {"role": "user", "content": full_prompt}
+                        _db.update_chat(chat_id, messages=_existing + [_user_entry])
+                except Exception:
+                    pass  # Non-fatal; post-processing will persist the full history anyway
+
         # Handle stateless resume
         deferred_tool_results = None
         if resume_approvals:
@@ -247,9 +280,9 @@ class ChatProcessor:
             if cached_auto:
                 approvals_dict.update(cached_auto)
             for app in resume_approvals:
-                req_id = app.get("request_id")
-                if req_id:
-                    approvals_dict[req_id] = bool(app.get("approved"))
+                tool_call_id = app.get("tool_call_id") or app.get("request_id")
+                if tool_call_id:
+                    approvals_dict[tool_call_id] = bool(app.get("approved"))
 
             if approvals_dict:
                 deferred_tool_results = DeferredToolResults(approvals=approvals_dict)
@@ -423,9 +456,17 @@ class ChatProcessor:
         5. Start new agent run
         """
         from suzent.core.run_state import cancel_and_wait
+        from suzent.core.task_registry import wait_for_background_task_prefix
 
         # 1. Cancel and wait for cleanup
         await cancel_and_wait(chat_id)
+
+        try:
+            await wait_for_background_task_prefix(
+                f"post_process_{chat_id}_", timeout=10.0
+            )
+        except Exception as e:
+            logger.warning(f"Error waiting for previous post-processing in steer: {e}")
 
         # 2. Load persisted state from DB
         message_history = None
@@ -507,24 +548,36 @@ class ChatProcessor:
         steer_message: str,
         config_override: Dict = None,
         on_event: Any = None,
+        _stream_queue=None,
     ) -> str:
-        """Run a steer and return only the final response text."""
+        """Run a steer and return only the final response text.
+
+        If `_stream_queue` is an asyncio.Queue, each raw SSE chunk is also put
+        on that queue so live subscribers can receive events in real time.
+        A None sentinel is put at the end to signal completion.
+        """
         full_response = ""
         parser = StreamParser()
 
-        async for chunk in self.process_steer(
-            chat_id=chat_id,
-            user_id=user_id,
-            steer_message=steer_message,
-            config_override=config_override,
-        ):
-            for event in parser.parse([chunk]):
-                if on_event:
-                    await on_event(event)
-                if isinstance(event, TextChunk):
-                    full_response += event.content
-                elif isinstance(event, ErrorEvent):
-                    raise RuntimeError(event.message)
+        try:
+            async for chunk in self.process_steer(
+                chat_id=chat_id,
+                user_id=user_id,
+                steer_message=steer_message,
+                config_override=config_override,
+            ):
+                if _stream_queue is not None:
+                    await _stream_queue.put(chunk)
+                for event in parser.parse([chunk]):
+                    if on_event:
+                        await on_event(event)
+                    if isinstance(event, TextChunk):
+                        full_response += event.content
+                    elif isinstance(event, ErrorEvent):
+                        raise RuntimeError(event.message)
+        finally:
+            if _stream_queue is not None:
+                await _stream_queue.put(None)  # sentinel: stream finished (or errored)
 
         return full_response.strip()
 
@@ -539,34 +592,46 @@ class ChatProcessor:
         resume_approvals: List[Dict] = None,
         is_social: bool = False,
         is_heartbeat: bool = False,
+        _stream_queue=None,
     ) -> str:
         """Run a conversation turn and return only the final response text.
 
         Allows for an optional async 'on_event' callback to handle intermediate
         events (like tool approval requests) while draining the stream.
+
+        If `_stream_queue` is an asyncio.Queue, each raw SSE chunk is also put
+        on that queue so live subscribers can receive events in real time.
+        A None sentinel is put at the end to signal completion.
         """
         full_response = ""
         parser = StreamParser()
 
-        async for chunk in self.process_turn(
-            chat_id=chat_id,
-            user_id=user_id,
-            message_content=message_content,
-            files=files,
-            config_override=config_override,
-            resume_approvals=resume_approvals,
-            is_social=is_social,
-            is_heartbeat=is_heartbeat,
-        ):
-            # Use the shared parser to turn raw SSE chunks into events
-            for event in parser.parse([chunk]):
-                if on_event:
-                    await on_event(event)
+        try:
+            async for chunk in self.process_turn(
+                chat_id=chat_id,
+                user_id=user_id,
+                message_content=message_content,
+                files=files,
+                config_override=config_override,
+                resume_approvals=resume_approvals,
+                is_social=is_social,
+                is_heartbeat=is_heartbeat,
+            ):
+                if _stream_queue is not None:
+                    await _stream_queue.put(chunk)
 
-                if isinstance(event, TextChunk):
-                    full_response += event.content
-                elif isinstance(event, ErrorEvent):
-                    raise RuntimeError(event.message)
+                # Use the shared parser to turn raw SSE chunks into events
+                for event in parser.parse([chunk]):
+                    if on_event:
+                        await on_event(event)
+
+                    if isinstance(event, TextChunk):
+                        full_response += event.content
+                    elif isinstance(event, ErrorEvent):
+                        raise RuntimeError(event.message)
+        finally:
+            if _stream_queue is not None:
+                await _stream_queue.put(None)  # sentinel: stream finished (or errored)
 
         return full_response.strip()
 
@@ -694,46 +759,30 @@ class ChatProcessor:
             if skip_messages:
                 # Heartbeat: rollback already owns message state; only save agent_state.
                 db.update_chat(chat_id, agent_state=agent_state)
-            elif chat_id.startswith("social-"):
-                # Social chats: rebuild the complete display log from the full agent history
-                # so chat.messages is always a faithful log of all exchanges — including any
-                # that were missed while the old incremental-append logic was in use.
+            else:
+                # 100% Backend Authored: rebuild the complete display log from the full agent history
+                # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
                 rebuilt = _rebuild_display_messages(messages)
+
+                # Guard: if the agent produced no output and this is a social chat, the
+                # pre-save at turn start left an orphaned user message in chat_messages.
+                # Roll it back so the history doesn't show a user turn with no reply.
+                if (
+                    not agent_content.strip()
+                    and chat_id.startswith("social-")
+                    and not rebuilt
+                ):
+                    chat_messages = [
+                        m
+                        for m in chat_messages
+                        if not (
+                            m.get("role") == "user" and m.get("content") == user_content
+                        )
+                    ]
+
                 db.update_chat(
                     chat_id, agent_state=agent_state, messages=rebuilt or chat_messages
                 )
-            else:
-                # Desktop chats: frontend pushes messages via forceSaveNow ~200ms after stream.
-                # Only append here when the frontend hasn't already saved this turn.
-                last_msg_role = chat_messages[-1].get("role") if chat_messages else None
-                if last_msg_role != "assistant":
-                    if user_content:
-                        last_msg = chat_messages[-1] if chat_messages else None
-                        is_duplicate_user = (
-                            last_msg
-                            and last_msg.get("role") == "user"
-                            and last_msg.get("content") == user_content
-                        )
-                        if not is_duplicate_user:
-                            chat_messages.append(
-                                {
-                                    "role": "user",
-                                    "content": user_content,
-                                    "timestamp": datetime.now().isoformat(),
-                                }
-                            )
-                    chat_messages.append(
-                        {
-                            "role": "assistant",
-                            "content": agent_content,
-                            "timestamp": datetime.now().isoformat(),
-                        }
-                    )
-                    db.update_chat(
-                        chat_id, agent_state=agent_state, messages=chat_messages
-                    )
-                else:
-                    db.update_chat(chat_id, agent_state=agent_state)
 
             # Update session lifecycle fields
             try:
@@ -770,6 +819,35 @@ class ChatProcessor:
 
 
 # ─── Utility ───────────────────────────────────────────────────────────
+
+
+_ATTACHMENT_PATTERN = re.compile(r"\n?\[User attached (?:an image|a file): ([^\]]+)\]")
+
+
+def _extract_attachment_files(text: str) -> list:
+    """Parse [User attached …] annotations into FileAttachment-like dicts."""
+    from pathlib import PurePosixPath
+
+    files = []
+    for m in _ATTACHMENT_PATTERN.finditer(text):
+        vpath = m.group(1).strip()
+        name = PurePosixPath(vpath).name
+        files.append(
+            {
+                "id": vpath,
+                "filename": name,
+                "path": vpath,
+                "size": 0,
+                "mime_type": mimetypes.guess_type(name)[0]
+                or "application/octet-stream",
+            }
+        )
+    return files
+
+
+def _strip_attachment_annotations(text: str) -> str:
+    """Remove [User attached …] annotations from display text."""
+    return _ATTACHMENT_PATTERN.sub("", text).strip()
 
 
 def _extract_tool_calls(messages: list) -> List[AgentAction]:
@@ -809,48 +887,109 @@ def _extract_tool_calls(messages: list) -> List[AgentAction]:
 
 def _rebuild_display_messages(messages: list) -> list:
     """
-    Reconstruct a flat [{role, content}] display log from pydantic-ai message history.
-    Used for social chats so chat.messages is always a complete, faithful log.
+    Reconstruct an OpenAI-like JSON display log from pydantic-ai message history.
+    This ensures that tool calls and tool results are preserved in the database.
     """
     from pydantic_ai.messages import (
         ModelRequest,
         ModelResponse,
         UserPromptPart,
         TextPart,
+        ToolCallPart,
+        ToolReturnPart,
     )
+    import json
+
+    # First pass: find all tool calls that have a corresponding return
+    executed_tool_calls = set()
+    for msg in messages:
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, ToolReturnPart):
+                    executed_tool_calls.add(part.tool_call_id)
 
     result = []
     for msg in messages:
         if isinstance(msg, ModelRequest):
             for part in msg.parts:
                 if isinstance(part, UserPromptPart):
-                    content = (
-                        part.content
-                        if isinstance(part.content, str)
-                        else str(part.content)
-                    )
-                    if content.strip():
-                        ts = (
-                            part.timestamp.isoformat()
-                            if getattr(part, "timestamp", None)
-                            else None
+                    if isinstance(part.content, str):
+                        raw_text = part.content
+                    elif isinstance(part.content, list):
+                        # Mixed list of strings + BinaryContent/ImageUrl objects.
+                        # Take only the first string segment (the user's actual text +
+                        # any attachment annotations injected by process_turn).
+                        raw_text = next(
+                            (item for item in part.content if isinstance(item, str)), ""
                         )
-                        entry: dict = {"role": "user", "content": content}
-                        if ts:
-                            entry["timestamp"] = ts
-                        result.append(entry)
+                    else:
+                        raw_text = str(part.content)
+
+                    # Parse attachment annotations injected by process_turn and convert
+                    # them to structured FileAttachment entries so the frontend renders
+                    # the proper file/image card rather than raw path text.
+                    files = _extract_attachment_files(raw_text)
+                    # Strip the annotations from the displayed text since the cards
+                    # already communicate the same information.
+                    clean_text = _strip_attachment_annotations(raw_text)
+
+                    ts = (
+                        part.timestamp.isoformat()
+                        if getattr(part, "timestamp", None)
+                        else None
+                    )
+                    entry: dict = {"role": "user", "content": clean_text}
+                    if files:
+                        entry["files"] = files
+                    if ts:
+                        entry["timestamp"] = ts
+                    result.append(entry)
+                elif isinstance(part, ToolReturnPart):
+                    ts = (
+                        part.timestamp.isoformat()
+                        if getattr(part, "timestamp", None)
+                        else None
+                    )
+                    entry = {
+                        "role": "tool",
+                        "tool_call_id": part.tool_call_id,
+                        "name": part.tool_name,
+                        "content": str(part.content),
+                    }
+                    if ts:
+                        entry["timestamp"] = ts
+                    result.append(entry)
         elif isinstance(msg, ModelResponse):
-            text = "".join(
-                part.content for part in msg.parts if isinstance(part, TextPart)
-            )
-            if text.strip():
-                ts = (
-                    msg.timestamp.isoformat()
-                    if getattr(msg, "timestamp", None)
-                    else None
-                )
-                entry = {"role": "assistant", "content": text}
-                if ts:
-                    entry["timestamp"] = ts
-                result.append(entry)
+            text_parts = []
+            tool_calls = []
+            for part in msg.parts:
+                if isinstance(part, TextPart):
+                    text_parts.append(part.content)
+                elif isinstance(part, ToolCallPart):
+                    args_str = (
+                        json.dumps(part.args)
+                        if isinstance(part.args, dict)
+                        else str(part.args)
+                    )
+                    tc_dict = {
+                        "id": part.tool_call_id,
+                        "type": "function",
+                        "function": {"name": part.tool_name, "arguments": args_str},
+                    }
+                    if part.tool_call_id not in executed_tool_calls:
+                        tc_dict["state"] = "approval-requested"
+                    tool_calls.append(tc_dict)
+
+            text_content = "".join(text_parts) if text_parts else None
+            # Only skip if there's no text AND no tool calls
+            if not text_content and not tool_calls:
+                continue
+
+            ts = msg.timestamp.isoformat() if getattr(msg, "timestamp", None) else None
+            entry = {"role": "assistant", "content": text_content}
+            if tool_calls:
+                entry["tool_calls"] = tool_calls
+            if ts:
+                entry["timestamp"] = ts
+            result.append(entry)
     return result

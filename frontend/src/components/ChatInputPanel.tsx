@@ -29,6 +29,7 @@ interface ChatInputPanelProps {
     stopStreaming?: () => void; // Optional because only used in footer sometimes
     stopInFlight?: boolean;
     modelSelectDropUp?: boolean;
+    hideConfigSelector?: boolean;
     onPaste?: (files: File[]) => void;
     onImageClick?: (src: string) => void;
 }
@@ -82,6 +83,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     stopStreaming,
     stopInFlight = false,
     modelSelectDropUp = true,
+    hideConfigSelector = false,
     onPaste,
     onImageClick,
 }) => {
@@ -332,7 +334,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 </div>
 
                 <div className="flex flex-nowrap gap-2 items-center justify-end flex-1 min-w-0">
-                    {configReady && (
+                    {configReady && !hideConfigSelector && (
                         <div className="relative shrink-0">
                             <BrutalSelect
                                 value={config.model}

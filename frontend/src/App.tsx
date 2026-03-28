@@ -15,7 +15,8 @@ import { ChatProvider, useChatStore } from './hooks/useChatStore.js';
 import { PlanProvider, usePlan } from './hooks/usePlan';
 import { useStatusStore } from './hooks/useStatusStore';
 import { useTheme } from './hooks/useTheme';
-import { drainCronNotifications } from './lib/api';
+import { drainCronNotifications, fetchHeartbeatStatus } from './lib/api';
+import { useHeartbeatRunning } from './hooks/useHeartbeatRunning';
 import {
   DESKTOP_BREAKPOINT_PX,
   LEFT_SIDEBAR_WIDTH_PX,
@@ -99,6 +100,7 @@ function AppInner(): React.ReactElement {
   const { refresh } = usePlan();
   const { currentChatId, setViewSwitcher, refreshChatList, chats, loadChat } = useChatStore();
   const setStatusMsg = useStatusStore(s => s.setStatus);
+  const setHeartbeatStatus = useHeartbeatRunning(s => s.setStatus);
   const { theme, toggleTheme } = useTheme();
   const { t } = useI18n();
 
@@ -112,23 +114,31 @@ function AppInner(): React.ReactElement {
   React.useEffect(() => { currentChatIdRef.current = currentChatId; }, [currentChatId]);
   React.useEffect(() => { chatsRef.current = chats; }, [chats]);
 
-  // Poll every 5 s: drain cron notifications + refresh sidebar + reload open social chat.
+  // Poll every 5 s: drain cron notifications + heartbeat status + refresh sidebar + reload open chat.
   React.useEffect(() => {
     const interval = setInterval(async () => {
-      const notifications = await drainCronNotifications();
-      for (const n of notifications) {
-        setStatusMsg(`[${n.job_name}] ${n.result}`, 'info', 8000);
+      // Heartbeat status runs in parallel with notification drain.
+      const [notifications] = await Promise.all([
+        drainCronNotifications(),
+        fetchHeartbeatStatus().then(setHeartbeatStatus).catch(() => {}),
+      ]);
+      if (notifications.length === 1) {
+        setStatusMsg(`[${notifications[0].job_name}] finished — view in Social`, 'info', 4000);
+      } else if (notifications.length > 1) {
+        setStatusMsg(`${notifications.length} tasks finished — view in Social`, 'info', 4000);
       }
       refreshChatListRef.current();
 
-      // If a social chat is open, reload its messages (social brain writes silently to DB).
+      // If a platform chat (cron/social) is open, reload its messages from DB.
+      // Skip if a live background stream is active — the SSE connection already delivers events.
       const chatId = currentChatIdRef.current;
-      if (chatId && chatsRef.current.some(c => c.id === chatId && !!c.platform)) {
+      const openChat = chatsRef.current.find(c => c.id === chatId);
+      if (chatId && (openChat?.platform || openChat?.heartbeatEnabled) && !openChat?.isRunning) {
         loadChatRef.current(chatId);
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [setStatusMsg]); // stable: only depends on setStatusMsg
+  }, [setStatusMsg, setHeartbeatStatus]); // stable Zustand actions
 
   function handleRightSidebarToggle(isOpen: boolean): void {
     setIsRightSidebarOpen(isOpen);

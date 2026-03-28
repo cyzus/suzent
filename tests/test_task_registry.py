@@ -114,6 +114,41 @@ class TestBackgroundTaskRegistry:
         # All tasks should be done
         assert registry.active_count == 0
 
+    async def test_wait_for_task_prefix(self):
+        """Test waiting only for tasks matching a task_id prefix."""
+        from suzent.core.task_registry import BackgroundTaskRegistry
+
+        registry = BackgroundTaskRegistry()
+
+        async def task_with_delay(delay):
+            await asyncio.sleep(delay)
+            return delay
+
+        # Use an event so the unrelated task is guaranteed still active after the
+        # prefix wait completes, regardless of CI timing jitter.
+        release_event = asyncio.Event()
+
+        async def blocked_task():
+            await release_event.wait()
+
+        await registry.register(
+            task_with_delay(0.05), task_id="post_process_chat1_1", description="A"
+        )
+        await registry.register(
+            task_with_delay(0.05), task_id="post_process_chat1_2", description="B"
+        )
+        await registry.register(blocked_task(), task_id="other_chat_1", description="C")
+
+        # Should wait for the post_process tasks only.
+        await registry.wait_for_task_prefix("post_process_chat1_", timeout=1.0)
+
+        # The unrelated task must still be active — it's blocked on release_event.
+        assert registry.active_count == 1
+
+        # Release and await so the task doesn't leak into subsequent tests.
+        release_event.set()
+        await registry.wait_for_all(timeout=1.0)
+
     async def test_cancel_all(self):
         """Test cancelling all tasks."""
         from suzent.core.task_registry import BackgroundTaskRegistry
@@ -181,6 +216,34 @@ class TestBackgroundTaskRegistry:
         task = await register_background_task(test_task(), description="Global test")
         result = await task
         assert result == "test"
+
+    async def test_wait_for_background_task_prefix(self):
+        """Test module-level prefix wait helper."""
+        from suzent.core.task_registry import (
+            register_background_task,
+            wait_for_background_task_prefix,
+            wait_for_all_background_tasks,
+        )
+
+        async def task_with_delay(delay):
+            await asyncio.sleep(delay)
+            return delay
+
+        await register_background_task(
+            task_with_delay(0.05),
+            task_id="post_process_test_chat_1",
+            description="Prefix wait target",
+        )
+        await register_background_task(
+            task_with_delay(0.2),
+            task_id="unrelated_task_1",
+            description="Unrelated task",
+        )
+
+        await wait_for_background_task_prefix("post_process_test_chat_", timeout=1.0)
+
+        # Cleanup remaining global tasks for test isolation.
+        await wait_for_all_background_tasks(timeout=1.0)
 
 
 if __name__ == "__main__":
