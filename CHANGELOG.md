@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `allow_free_text` adds a "Type something else…" option inline as the last list item.
   - **Form field types**: `select` and `multiselect` fields render as inline option lists instead of dropdowns — no portal positioning issues inside inline surfaces.
   - **Paged form mode**: Forms support `paged: true` to show one question at a time with progress indicator.
+  - **Notification Rework**: Move heartbeat badge to the notification bar. Add notification pins.
 
 ### ⚡ Changed
 - **Context Compact System**: Optimize the context compressor. It can be triggered manually or when the estimated tokens beyond a threshold.

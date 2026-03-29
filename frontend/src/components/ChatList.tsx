@@ -62,7 +62,9 @@ export const ChatList: React.FC = () => {
 
   const unreadMessages = (chat: ChatSummary) => {
     if (!isUnread(chat)) return 0;
-    return Math.max(0, chat.messageCount - (lastViewed[chat.id]?.count ?? 0));
+    // Use at least 1 so stale localStorage counts (saved under the old raw-message
+    // counting scheme) never suppress the badge when isUnread is already true.
+    return Math.max(1, chat.messageCount - (lastViewed[chat.id]?.count ?? 0));
   };
 
   // Mark current chat read when it becomes active, and re-mark whenever the

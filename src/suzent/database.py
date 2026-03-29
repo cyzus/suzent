@@ -434,13 +434,22 @@ class ChatDatabase:
                         last_message += "..."
 
                 config = chat.config or {}
+                # Count only assistant messages for unread badge purposes.
+                # User messages are already known to the sender; tool-result
+                # messages (role="tool") are collapsed into the preceding
+                # assistant bubble in the UI.
+                visible_count = sum(
+                    1
+                    for m in messages
+                    if isinstance(m, dict) and m.get("role") == "assistant"
+                )
                 results.append(
                     ChatSummaryModel(
                         id=chat.id,
                         title=chat.title,
                         createdAt=chat.created_at.isoformat(),
                         updatedAt=chat.updated_at.isoformat(),
-                        messageCount=len(messages),
+                        messageCount=visible_count,
                         lastMessage=last_message,
                         platform=config.get("platform"),
                         heartbeatEnabled=config.get("heartbeat_enabled", False),
