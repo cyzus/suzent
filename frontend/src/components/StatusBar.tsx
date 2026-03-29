@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStatusStore, StatusType } from '../hooks/useStatusStore';
-import { useChatStore } from '../hooks/useChatStore';
+import { useChatCoreStore } from '../hooks/useChatStore';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 
@@ -50,7 +50,7 @@ function formatRelativeTime(iso: string | null): string | null {
 }
 
 function HeartbeatWidget() {
-  const { currentChatId, config } = useChatStore();
+  const { currentChatId, config } = useChatCoreStore();
   const { t } = useI18n();
   const { inFlight, inFlightChatId, loopRunning, lastPingAt, statusError } = useHeartbeatRunning();
 

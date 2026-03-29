@@ -647,12 +647,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // On re-entry: reload from DB so any stream that completed while away is visible.
     loadChat(currentChatId).catch(() => {});
 
-    const tryConnect = async () => {
-      if (isLiveStreamRef.current) return; // already streaming
+    const tryConnect = async (): Promise<boolean> => {
+      if (isLiveStreamRef.current) return false; // already streaming
       // Don't probe while a user-initiated stream is active — it shares the same
       // AbortController ref and probing would overwrite the real stream's controller.
       // Use the ref (not the closed-over state) so this is never stale.
-      if (streamingChatIdRef.current === currentChatId) return;
+      if (streamingChatIdRef.current === currentChatId) return false;
       const liveUrl = `${getApiBase()}/chat/live`;
       const chatIdAtStart = currentChatId;
 
@@ -673,7 +673,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         },
       });
 
-      if (!streamed || cancelled) return;
+      if (!streamed || cancelled) return false;
 
       // If the stream paused for tool approval, onFinish saved the parts to
       // liveStreamPartsRef. Keep the approval UI visible and let the 2-second
@@ -684,7 +684,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (pendingApproval) {
         isLiveStreamRef.current = false;
         liveStreamPartsRef.current = [];
-        return;
+        return true;
       }
 
       // Convert the captured streaming parts to a rich message (includes tool-step HTML).
@@ -719,19 +719,36 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (!isSocialStream && richMsg.content.trim()) {
         addMessage(richMsg, chatIdAtStart);
       }
+
+      return true;
     };
 
-    // Poll every 2s
-    const id = setInterval(() => {
-      if (!cancelled) tryConnect();
-    }, 2000);
+    let probeDelayMs = 2000;
+    let timer: NodeJS.Timeout | null = null;
 
-    // Also try immediately
-    tryConnect();
+    const scheduleProbe = (delayMs: number) => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(async () => {
+        if (cancelled) return;
+
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+          probeDelayMs = Math.min(Math.max(probeDelayMs, 8000), 15000);
+          scheduleProbe(probeDelayMs);
+          return;
+        }
+
+        const connected = await tryConnect();
+        probeDelayMs = connected ? 2000 : Math.min(probeDelayMs + 1500, 10000);
+        scheduleProbe(probeDelayMs);
+      }, delayMs);
+    };
+
+    // Probe immediately, then adaptively back off while idle.
+    scheduleProbe(0);
 
     return () => {
       cancelled = true;
-      clearInterval(id);
+      if (timer) clearTimeout(timer);
       stopAGUIStream();
       isLiveStreamRef.current = false;
     };

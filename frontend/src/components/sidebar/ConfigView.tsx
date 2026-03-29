@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 
-import { useChatStore } from '../../hooks/useChatStore';
+import { useChatCoreStore, useChatStreamingStore } from '../../hooks/useChatStore';
 import { fetchMcpServers, setMcpServerEnabled } from '../../lib/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalSelect } from '../BrutalSelect';
@@ -26,8 +26,13 @@ type MCPStdioServer = {
 
 type MCPServer = MCPUrlServer | MCPStdioServer;
 
-export function ConfigView(): React.ReactElement {
-  const { config, setConfig, backendConfig, currentChatId, loadChat, isStreaming } = useChatStore();
+interface ConfigViewProps {
+  isActive?: boolean;
+}
+
+export function ConfigView({ isActive = true }: ConfigViewProps): React.ReactElement {
+  const { config, setConfig, backendConfig, currentChatId, loadChat } = useChatCoreStore();
+  const { isStreaming } = useChatStreamingStore();
   const { t } = useI18n();
 
   const [servers, setServers] = useState<MCPServer[]>([]);
@@ -56,11 +61,12 @@ export function ConfigView(): React.ReactElement {
   // This syncs state from external changes (CLI, another session) back to the UI,
   // and refreshes chat messages when a new non-OK heartbeat result is detected.
   useEffect(() => {
-    if (!currentChatId) return;
+    if (!currentChatId || !isActive) return;
     lastResultRef.current = null; // reset on chat switch
     heartbeatDispatchedRef.current = false;
     let cancelled = false;
     const poll = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       try {
         const { fetchHeartbeatStatus } = await import('../../lib/api');
         const status = await fetchHeartbeatStatus(currentChatId);
@@ -110,7 +116,7 @@ export function ConfigView(): React.ReactElement {
     poll();
     const id = setInterval(poll, 10_000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [currentChatId]); // refs are intentionally omitted — updated via their own effects above
+  }, [currentChatId, isActive]); // refs are intentionally omitted — updated via their own effects above
 
   useEffect(() => {
     fetchMcpServers().then(data => {

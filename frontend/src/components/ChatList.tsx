@@ -54,10 +54,18 @@ export const ChatList: React.FC = () => {
   }, []);
 
   const isUnread = (chat: ChatSummary) => {
-    if (!chat.lastResultAt) return false;
     const viewed = lastViewed[chat.id];
     if (!viewed) return true;
-    return new Date(chat.lastResultAt) > new Date(viewed.at);
+    
+    if (chat.lastResultAt && new Date(chat.lastResultAt) > new Date(viewed.at)) {
+      return true;
+    }
+    
+    if (chat.messageCount > viewed.count) {
+      return true;
+    }
+    
+    return false;
   };
 
   const unreadMessages = (chat: ChatSummary) => {

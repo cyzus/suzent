@@ -6,8 +6,13 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-interface ChatContextValue {
+interface ChatStreamingContextValue {
   messages: Message[];
+  isStreaming: boolean;
+  activeStreamingChatId: string | null;
+}
+
+interface ChatCoreContextValue {
   config: ChatConfig;
   setConfig: (c: ChatConfig | ((prev: ChatConfig) => ChatConfig)) => void;
   addMessage: (m: Message, chatId?: string | null) => void;
@@ -21,8 +26,6 @@ interface ChatContextValue {
   shouldResetNext: boolean;
   consumeResetFlag: () => void;
   setIsStreaming: (streaming: boolean, chatId?: string | null) => void;
-  isStreaming: boolean;
-  activeStreamingChatId: string | null;
   removeEmptyAssistantMessage: (chatId?: string | null) => void;
   currentChatId: string | null;
   chats: ChatSummary[];
@@ -45,7 +48,10 @@ interface ChatContextValue {
   toggleHideToolCalls: () => void;
 }
 
-const ChatContext = createContext<ChatContextValue | null>(null);
+type ChatContextValue = ChatCoreContextValue & ChatStreamingContextValue;
+
+const ChatCoreContext = createContext<ChatCoreContextValue | null>(null);
+const ChatStreamingContext = createContext<ChatStreamingContextValue | null>(null);
 
 const defaultConfig: ChatConfig = {
   model: '',
@@ -188,6 +194,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [refreshingChats, setRefreshingChats] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const chatsLoadedRef = useRef(false);
+  const refreshInFlightRef = useRef(false);
+  const lastRefreshAtRef = useRef(0);
   const chatCreationPromiseRef = useRef<Promise<string | null> | null>(null);
   const saveTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
   const messagesByChatRef = useRef(messagesByChat);
@@ -388,6 +396,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshChatList = useCallback(async (search?: string, attempt = 1, maxAttempts = 5) => {
     const isFirstLoad = !chatsLoadedRef.current;
+
+    // Deduplicate overlapping non-initial refreshes to reduce repeated /chats traffic.
+    if (!isFirstLoad) {
+      const now = Date.now();
+      if (refreshInFlightRef.current) return;
+      if (now - lastRefreshAtRef.current < 3500) return;
+      refreshInFlightRef.current = true;
+      lastRefreshAtRef.current = now;
+    }
+
     if (isFirstLoad) {
       setLoadingChats(true);
     } else {
@@ -464,6 +482,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       if (!isFirstLoad) {
         setRefreshingChats(false);
+        refreshInFlightRef.current = false;
       }
     }
   }, [currentChatId, currentChatTitle, getMessagesForChat, searchQuery]);
@@ -1027,9 +1046,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [beginNewChat, currentChatId, refreshChatList]);
 
-  return (
-    <ChatContext.Provider value={{
-      messages,
+  const coreValue = useMemo<ChatCoreContextValue>(() => ({
       config,
       setConfig: optimizedSetConfig,
       addMessage,
@@ -1043,8 +1060,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       shouldResetNext,
       consumeResetFlag,
       setIsStreaming: setStreamingState,
-      isStreaming,
-      activeStreamingChatId,
       removeEmptyAssistantMessage,
       currentChatId,
       chats,
@@ -1065,14 +1080,71 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       switchToView,
       hideToolCalls,
       toggleHideToolCalls
-    }}>
-      {children}
-    </ChatContext.Provider>
+  }), [
+    config,
+    optimizedSetConfig,
+    addMessage,
+    updateLastUserMessageImages,
+    updateAssistantStreaming,
+    backendConfig,
+    refreshBackendConfig,
+    newAssistantMessage,
+    setStepInfo,
+    resetChat,
+    shouldResetNext,
+    consumeResetFlag,
+    setStreamingState,
+    removeEmptyAssistantMessage,
+    currentChatId,
+    chats,
+    loadingChats,
+    refreshingChats,
+    searchQuery,
+    setSearchQuery,
+    beginNewChat,
+    createNewChat,
+    loadChat,
+    saveCurrentChat,
+    finalSave,
+    forceSaveNow,
+    deleteChat,
+    refreshChatList,
+    updateMessage,
+    setViewSwitcher,
+    switchToView,
+    hideToolCalls,
+    toggleHideToolCalls,
+  ]);
+
+  const streamingValue = useMemo<ChatStreamingContextValue>(() => ({
+    messages,
+    isStreaming,
+    activeStreamingChatId,
+  }), [messages, isStreaming, activeStreamingChatId]);
+
+  return (
+    <ChatCoreContext.Provider value={coreValue}>
+      <ChatStreamingContext.Provider value={streamingValue}>
+        {children}
+      </ChatStreamingContext.Provider>
+    </ChatCoreContext.Provider>
   );
 };
 
-export const useChatStore = () => {
-  const ctx = useContext(ChatContext);
-  if (!ctx) throw new Error('useChatStore must be used within ChatProvider');
+export const useChatCoreStore = () => {
+  const ctx = useContext(ChatCoreContext);
+  if (!ctx) throw new Error('useChatCoreStore must be used within ChatProvider');
   return ctx;
+};
+
+export const useChatStreamingStore = () => {
+  const ctx = useContext(ChatStreamingContext);
+  if (!ctx) throw new Error('useChatStreamingStore must be used within ChatProvider');
+  return ctx;
+};
+
+export const useChatStore = (): ChatContextValue => {
+  const core = useChatCoreStore();
+  const streaming = useChatStreamingStore();
+  return useMemo(() => ({ ...core, ...streaming }), [core, streaming]);
 };

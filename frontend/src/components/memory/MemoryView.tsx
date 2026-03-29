@@ -6,7 +6,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useI18n } from '../../i18n';
 import { useMemory } from '../../hooks/useMemory';
-import { useChatStore } from '../../hooks/useChatStore';
+import { useChatStreamingStore } from '../../hooks/useChatStore';
 import { CoreMemoryBlock } from './CoreMemoryBlock';
 import { ArchivalMemoryList } from './ArchivalMemoryList';
 import { MemoryStatsComponent } from './MemoryStats';
@@ -36,7 +36,7 @@ export const MemoryView: React.FC = () => {
     updateCoreMemoryBlock,
     loadStats,
   } = useMemory();
-  const { isStreaming } = useChatStore();
+  const { isStreaming } = useChatStreamingStore();
   const prevStreamingRef = useRef(isStreaming);
 
   const [activeTab, setActiveTab] = useState<MemoryTab>('overview');

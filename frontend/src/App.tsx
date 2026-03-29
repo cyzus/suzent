@@ -11,7 +11,7 @@ import { ConfigView } from './components/sidebar/ConfigView';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { SkillsView } from './components/skills/SkillsView';
 import { StatusBar } from './components/StatusBar';
-import { ChatProvider, useChatStore } from './hooks/useChatStore.js';
+import { ChatProvider, useChatCoreStore } from './hooks/useChatStore.js';
 import { PlanProvider, usePlan } from './hooks/usePlan';
 import { useStatusStore } from './hooks/useStatusStore';
 import { useTheme } from './hooks/useTheme';
@@ -34,7 +34,7 @@ interface HeaderTitleProps {
 }
 
 function HeaderTitle({ text, onUnlock }: HeaderTitleProps): React.ReactElement {
-  const { backendConfig } = useChatStore();
+  const { backendConfig } = useChatCoreStore();
   const [clicks, setClicks] = React.useState(0);
   const timerRef = React.useRef<NodeJS.Timeout | null>(null);
 
@@ -98,7 +98,7 @@ function AppInner(): React.ReactElement {
   );
 
   const { refresh } = usePlan();
-  const { currentChatId, setViewSwitcher, refreshChatList, chats, loadChat } = useChatStore();
+  const { currentChatId, setViewSwitcher, refreshChatList, chats, loadChat } = useChatCoreStore();
   const setStatusMsg = useStatusStore(s => s.setStatus);
   const setHeartbeatStatus = useHeartbeatRunning(s => s.setStatus);
   const { theme, toggleTheme } = useTheme();
@@ -114,9 +114,12 @@ function AppInner(): React.ReactElement {
   React.useEffect(() => { currentChatIdRef.current = currentChatId; }, [currentChatId]);
   React.useEffect(() => { chatsRef.current = chats; }, [chats]);
 
-  // Poll every 5 s: drain cron notifications + heartbeat status + refresh sidebar + reload open chat.
+  // Poll every 8 s: drain cron notifications + heartbeat status + refresh sidebar + reload open chat.
   React.useEffect(() => {
     const interval = setInterval(async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
       // Heartbeat status runs in parallel with notification drain.
       const [notifications] = await Promise.all([
         drainCronNotifications(),
@@ -127,16 +130,22 @@ function AppInner(): React.ReactElement {
       } else if (notifications.length > 1) {
         setStatusMsg(`${notifications.length} tasks finished — view in Social`, 'info', 4000);
       }
-      refreshChatListRef.current();
 
       // If a platform chat (cron/social) is open, reload its messages from DB.
       // Skip if a live background stream is active — the SSE connection already delivers events.
       const chatId = currentChatIdRef.current;
       const openChat = chatsRef.current.find(c => c.id === chatId);
+      const isLiveStreamRunning = !!openChat?.isRunning;
+
+      // Avoid redundant sidebar refreshes while SSE is already updating the active chat.
+      if (!isLiveStreamRunning) {
+        refreshChatListRef.current();
+      }
+
       if (chatId && (openChat?.platform || openChat?.heartbeatEnabled) && !openChat?.isRunning) {
         loadChatRef.current(chatId);
       }
-    }, 5000);
+    }, 8000);
     return () => clearInterval(interval);
   }, [setStatusMsg, setHeartbeatStatus]); // stable Zustand actions
 
@@ -239,7 +248,7 @@ function AppInner(): React.ReactElement {
           activeTab={sidebarTab}
           onTabChange={setSidebarTab}
           chatsContent={<ChatList />}
-          configContent={<ConfigView />}
+          configContent={<ConfigView isActive={sidebarTab === 'config' && isLeftSidebarOpen} />}
           isOpen={isLeftSidebarOpen}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onClose={() => setIsLeftSidebarOpen(false)}
