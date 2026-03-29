@@ -21,7 +21,7 @@ body,
 }
 
 .prose pre {
-  background: #111827;
+  background: transparent;
 }
 
 :root {

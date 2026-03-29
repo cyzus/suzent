@@ -61,7 +61,7 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
   return (
     <div className="my-4 font-mono text-sm border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white dark:bg-zinc-800 group/code relative">
       {/* Header Bar */}
-      <div className="flex items-center justify-between px-3 py-2 bg-brutal-black border-b-3 border-brutal-black select-none overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 bg-neutral-900 dark:bg-zinc-700 border-b-3 border-brutal-black select-none overflow-hidden">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <div className="flex items-center justify-center w-6 h-6 bg-white border-2 border-white text-brutal-black font-bold text-xs shrink-0">
             <span>{'{}'}</span>
@@ -76,7 +76,7 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
         <div className="flex items-center gap-2">
           <button
             onClick={handleCopy}
-            className="w-8 h-8 flex items-center justify-center bg-brutal-black text-white border-2 border-white hover:bg-white hover:text-brutal-black transition-colors"
+            className="w-8 h-8 flex items-center justify-center bg-neutral-900 dark:bg-zinc-700 text-white border-2 border-white hover:bg-white hover:text-brutal-black transition-colors"
             title={t('codeBlock.copyCode')}
           >
             {copied ? (
@@ -92,7 +92,7 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
           </button>
           <button
             onClick={() => setExpanded(!expanded)}
-            className="w-8 h-8 flex items-center justify-center bg-brutal-black text-white text-lg font-bold border-2 border-white hover:bg-white hover:text-brutal-black transition-colors uppercase"
+            className="w-8 h-8 flex items-center justify-center bg-neutral-900 dark:bg-zinc-700 text-white text-lg font-bold border-2 border-white hover:bg-white hover:text-brutal-black transition-colors uppercase"
             title={expanded ? t('codeBlock.collapse') : t('codeBlock.expand')}
           >
             {expanded ? '−' : '+'}
@@ -101,7 +101,7 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
       </div>
 
       {/* Content Area */}
-      <div className={`bg-brutal-code-bg dark:bg-zinc-900 transition-all duration-300 ease-in-out overflow-hidden ${expanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
+      <div className={`bg-neutral-100 dark:bg-zinc-900/70 transition-all duration-300 ease-in-out overflow-hidden ${expanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
         <pre className={`max-w-full text-xs text-brutal-code-text dark:text-neutral-300 p-4 pt-4 leading-relaxed overflow-x-auto !bg-transparent whitespace-pre font-mono`}>
           <code className={`language-${safeLang}`}>
             {content}

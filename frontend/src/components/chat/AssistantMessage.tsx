@@ -231,6 +231,23 @@ const StepPills: React.FC<{
   return <ToolSequenceGroup tools={tools} isStreaming={isStreaming} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} />;
 };
 
+const StreamingMarkdownBlock: React.FC<{
+  content: string;
+  isLastBlock: boolean;
+  showCursor: boolean;
+  onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
+}> = ({ content, isLastBlock, showCursor, onFileClick }) => {
+  const typedContent = useTypewriter(content, 10, isLastBlock);
+  const renderedContent = isLastBlock ? typedContent : content;
+
+  return (
+    <>
+      <MarkdownRenderer content={renderedContent} onFileClick={onFileClick} streamingLite={isLastBlock} />
+      {isLastBlock && showCursor && <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1" />}
+    </>
+  );
+};
+
 // Streaming content with typewriter effect
 const StreamingContent: React.FC<{
   blocks: ContentBlock[];
@@ -246,15 +263,32 @@ const StreamingContent: React.FC<{
 
         if (b.type === 'markdown') {
           return (
-            <React.Fragment key={blockKey}>
-              <MarkdownRenderer content={isLastBlock ? useTypewriter(b.content, 10, true) : b.content} onFileClick={onFileClick} />
-              {isLastBlock && showCursor && <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1" />}
-            </React.Fragment>
+            <StreamingMarkdownBlock
+              key={blockKey}
+              content={b.content}
+              isLastBlock={isLastBlock}
+              showCursor={showCursor}
+              onFileClick={onFileClick}
+            />
           );
         } else if (b.type === 'log') {
           return <LogBlock key={blockKey} title={b.title} content={b.content} />;
         } else if (b.type === 'toolCall') {
           return null; // Handled outside in StepPills
+        } else if (b.type === 'code') {
+          // During live streaming, fenced blocks can be incomplete.
+          // Always keep code rendering in lightweight preview mode here.
+          return (
+            <div key={blockKey} className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900/70">
+              <div className="px-3 py-1 border-b-2 border-brutal-black text-[10px] font-mono font-bold uppercase text-neutral-600 dark:text-neutral-300 bg-white dark:bg-zinc-800">
+                {(b as any).lang || 'text'}
+              </div>
+              <pre className="p-3 text-xs font-mono leading-relaxed whitespace-pre-wrap break-all overflow-x-auto max-h-[48vh]">
+                <code>{b.content}</code>
+                {isLastBlock && showCursor && <span className="animate-brutal-blink inline-block w-2 h-4 bg-neutral-700 dark:bg-neutral-300 align-middle ml-1" />}
+              </pre>
+            </div>
+          );
         } else {
           return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} isStreaming={isLastBlock} />;
         }
@@ -495,7 +529,7 @@ const AGUIPartsContent: React.FC<{
               <CopyButton text={fullText.trim()} className="absolute top-2 right-2 z-10" />
             )}
             <div className="space-y-4">
-              <MarkdownRenderer content={fullText} onFileClick={onFileClick} />
+              <MarkdownRenderer content={fullText} onFileClick={onFileClick} streamingLite={Boolean(isStreaming && isLastChunk)} />
               {isLastChunk && (
                 <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1" />
               )}

@@ -18,6 +18,7 @@ const ALLOWED_LANGUAGES = new Set([
 interface MarkdownRendererProps {
   content: string;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
+  streamingLite?: boolean;
 }
 
 // Reusable clickable file button component
@@ -53,7 +54,7 @@ const FileButton: React.FC<{
   );
 };
 
-export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, onFileClick }) => {
+export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, onFileClick, streamingLite = false }) => {
   const RM: any = ReactMarkdown;
   const openingLinksRef = React.useRef(new Map<string, number>());
 
@@ -129,7 +130,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
     <div className="prose dark:prose-invert tight-lists prose-sm max-w-none break-words select-text">
       <RM
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypePrism]}
+        rehypePlugins={streamingLite ? [] : [rehypePrism]}
         urlTransform={safeUrlTransform}
         components={{
           pre: (p: any) => {
@@ -189,6 +190,13 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
             }
 
             if (!isInline && !(isText && isSingleLine && isShort)) {
+              if (streamingLite) {
+                return (
+                  <pre className="bg-neutral-50 dark:bg-zinc-800 p-4 overflow-x-auto font-mono text-xs text-brutal-black dark:text-neutral-200 leading-relaxed whitespace-pre-wrap break-all">
+                    <code>{codeContent}</code>
+                  </pre>
+                );
+              }
               return <CodeBlockComponent lang={lang || 'text'} content={codeContent} />;
             }
             return (

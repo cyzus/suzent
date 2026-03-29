@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
 import { useAGUI, type AGUIPart } from '../hooks/useAGUI';
 import { getApiBase, getSandboxParams } from '../lib/api';
 import type { Message, FileAttachment } from '../types/api';
-import { isIntermediateStepContent, splitAssistantContent, mergeToolCallPairs, type ContentBlock } from '../lib/chatUtils';
+import type { ContentBlock } from '../lib/chatUtils';
+import { buildMessageRenderPlan } from '../lib/messageRenderPlan';
 import { usePlan } from '../hooks/usePlan';
 import { useMemory } from '../hooks/useMemory';
 import { useCanvas } from '../hooks/useCanvas';
@@ -120,8 +121,6 @@ const LoadingIndicator: React.FC = () => {
   );
 };
 
-
-
 // Message list component (renders historical / store messages only)
 const MessageList: React.FC<{
   messages: Message[];
@@ -133,72 +132,15 @@ const MessageList: React.FC<{
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
   onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
-}> = ({ messages, streamingForCurrentChat, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction }) => (
-  <div className="space-y-6">
-    {(() => {
-      // Pre-compute tool-only groups: consecutive tool-only assistant messages
-      // are rendered as a single merged pill group instead of individual messages
-      const IGNORED_TOOL_NAMES = ['final_answer', 'final answer'];
+}> = ({ messages, streamingForCurrentChat, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction }) => {
+  const { skipIndices, groupRenders, stepSummaryByMessageIndex } = useMemo(
+    () => buildMessageRenderPlan(messages),
+    [messages],
+  );
 
-      const filterIgnored = (blocks: ContentBlock[]) =>
-        blocks.filter(b => {
-          if (b.type !== 'toolCall') return true;
-          return !IGNORED_TOOL_NAMES.includes((b.toolName || '').toLowerCase());
-        });
-
-      // Build a set of message indices that belong to tool-only groups
-      // and determine which index is the "representative" that renders the merged pills
-      const skipIndices = new Set<number>();
-      const groupRenders = new Map<number, { mergedBlocks: ContentBlock[]; stepSummary: string | null }>();
-
-      let i = 0;
-      while (i < messages.length) {
-        const m = messages[i];
-        if (m.role !== 'user' && isIntermediateStepContent(m.content, m.stepInfo)) {
-          // Start of a step group — collect all consecutive intermediate step messages
-          const groupStart = i;
-          const allBlocks: ContentBlock[] = [];
-          const allStepInfos: string[] = [];
-          while (i < messages.length && messages[i].role !== 'user' && isIntermediateStepContent(messages[i].content, messages[i].stepInfo)) {
-            const parsed = filterIgnored(splitAssistantContent(messages[i].content));
-            // Include both tool calls and reasoning in the step blocks
-            const stepBlocks = parsed.filter(b => b.type === 'toolCall' || b.type === 'reasoning');
-            if (stepBlocks.length > 0) {
-              allBlocks.push(...stepBlocks);
-            }
-            if (messages[i].stepInfo) allStepInfos.push(messages[i].stepInfo!);
-            if (i > groupStart) skipIndices.add(i); // skip non-representative messages
-            i++;
-          }
-          // Merge invocations with outputs for toolCalls; reasoning blocks pass through
-          const merged = mergeToolCallPairs(allBlocks);
-
-          // Also check if the next message is a content message — collect its stepInfo too
-          if (i < messages.length && messages[i].role !== 'user' && !isIntermediateStepContent(messages[i].content, messages[i].stepInfo)) {
-            if (messages[i].stepInfo) allStepInfos.push(messages[i].stepInfo!);
-          }
-
-          let stepSummary: string | null = null;
-          if (allStepInfos.length > 0) {
-            let totalInput = 0;
-            let totalOutput = 0;
-            for (const info of allStepInfos) {
-              const inputMatch = info.match(/Input(?:\s+tokens)?:\s+([\d,]+)/i);
-              const outputMatch = info.match(/Output(?:\s+tokens)?:\s+([\d,]+)/i);
-              if (inputMatch) totalInput += parseInt(inputMatch[1].replace(/,/g, ''), 10);
-              if (outputMatch) totalOutput += parseInt(outputMatch[1].replace(/,/g, ''), 10);
-            }
-            const fmtNum = (n: number) => n.toLocaleString();
-            stepSummary = `${allStepInfos.length} steps | Input: ${fmtNum(totalInput)} tokens | Output: ${fmtNum(totalOutput)} tokens`;
-          }
-
-          groupRenders.set(groupStart, { mergedBlocks: merged, stepSummary });
-        } else {
-          i++;
-        }
-      }
-
-      return messages.map((m, idx) => {
+  return (
+    <div className="space-y-6">
+      {messages.map((m, idx) => {
         if (skipIndices.has(idx)) return null; // Part of a group, rendered by representative
 
         const isUser = m.role === 'user';
@@ -257,17 +199,7 @@ const MessageList: React.FC<{
         }
 
         // Regular message rendering
-        // For content messages after a tool-only group, show the group's step summary
-        const precedingGroup = isAssistant && !isUser ? (() => {
-          for (let j = idx - 1; j >= 0; j--) {
-            if (groupRenders.has(j)) return groupRenders.get(j)!;
-            if (skipIndices.has(j)) continue;
-            break;
-          }
-          return null;
-        })() : null;
-
-        const stepSummary = precedingGroup?.stepSummary || null;
+        const stepSummary = isAssistant ? (stepSummaryByMessageIndex.get(idx) || null) : null;
 
         // Canvas action message — lightweight dashed pill
         if (m.role === 'canvas_action') {
@@ -309,10 +241,10 @@ const MessageList: React.FC<{
             )}
           </div>
         );
-      });
-    })()}
-  </div>
-);
+      })}
+    </div>
+  );
+};
 
 // Memoised so scroll-driven setShowScrollButton re-renders in ChatWindow don't
 // retrigger the O(n) message grouping logic.
