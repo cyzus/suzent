@@ -1037,31 +1037,62 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [chats, configByChat, currentChatId, clearScheduledSave]);
 
   const deleteChat = useCallback(async (chatId: string) => {
+    const key = keyForChat(chatId);
+    const deletedSummary = chats.find(c => c.id === chatId);
+    const deletedIndex = chats.findIndex(c => c.id === chatId);
+    const deletedMessages = messagesByChatRef.current[key];
+    const deletedConfig = configByChatRef.current[key];
+    const wasCurrent = currentChatId === chatId;
+
+    // Optimistic UI: remove immediately so delete feels instant.
+    setChats(prev => prev.filter(c => c.id !== chatId));
+    setMessagesByChat(prev => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    setConfigByChat(prev => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    if (wasCurrent) {
+      beginNewChat();
+    }
+
     try {
       const res = await fetch(`${getApiBase()}/chats/${chatId}`, { method: 'DELETE' });
-      if (res.ok) {
-        const key = keyForChat(chatId);
-        setMessagesByChat(prev => {
-          const next = { ...prev };
-          delete next[key];
-          return next;
-        });
-        setConfigByChat(prev => {
-          const next = { ...prev };
-          delete next[key];
-          return next;
-        });
-        if (currentChatId === chatId) {
-          beginNewChat();
-        }
-        await refreshChatList();
-      } else {
-        console.error('Failed to delete chat:', res.status, res.statusText);
+      if (!res.ok) {
+        throw new Error(`Failed to delete chat: ${res.status} ${res.statusText}`);
       }
+
+      // Background consistency sync (non-blocking).
+      void refreshChatListSilently();
     } catch (error) {
       console.error('Error deleting chat:', error);
+
+      // Roll back optimistic removal if delete fails.
+      if (deletedSummary) {
+        setChats(prev => {
+          if (prev.some(c => c.id === deletedSummary.id)) return prev;
+          const next = [...prev];
+          const idx = deletedIndex >= 0 ? Math.min(deletedIndex, next.length) : next.length;
+          next.splice(idx, 0, deletedSummary);
+          return next;
+        });
+      }
+      if (deletedMessages) {
+        setMessagesByChat(prev => ({ ...prev, [key]: deletedMessages }));
+      }
+      if (deletedConfig) {
+        setConfigByChat(prev => ({ ...prev, [key]: deletedConfig }));
+      }
+      if (wasCurrent) {
+        // Try to restore the previously selected chat after rollback.
+        try { await loadChat(chatId); } catch { /* ignore */ }
+      }
     }
-  }, [beginNewChat, currentChatId, refreshChatList]);
+  }, [beginNewChat, chats, currentChatId, loadChat, refreshChatListSilently]);
 
   const coreValue = useMemo<ChatCoreContextValue>(() => ({
       config,
