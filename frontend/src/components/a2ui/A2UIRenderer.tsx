@@ -23,7 +23,28 @@ interface Props {
 
 const GAP: Record<string, string> = { sm: 'gap-2', md: 'gap-4', lg: 'gap-6' };
 
+interface LegacyStackHeaderVertical {
+  type: 'stackHeaderVertical';
+  children?: A2UIComponent[];
+  gap?: 'sm' | 'md' | 'lg';
+}
+
 export const A2UIRenderer: React.FC<Props> = ({ component, onAction }) => {
+  const rawType = (component as { type?: string }).type;
+
+  if (rawType === 'stackHeaderVertical') {
+    const legacy = component as unknown as LegacyStackHeaderVertical;
+    const gapCls = GAP[legacy.gap ?? 'md'] ?? GAP.md;
+    const stackChildren = legacy.children ?? [];
+    return (
+      <div className={`flex flex-col ${gapCls}`}>
+        {stackChildren.map((child: A2UIComponent, i: number) => (
+          <A2UIRenderer key={i} component={child} onAction={onAction} />
+        ))}
+      </div>
+    );
+  }
+
   switch (component.type) {
     case 'text':
       return <A2UITextComponent component={component} />;
