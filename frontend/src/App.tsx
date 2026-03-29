@@ -98,7 +98,7 @@ function AppInner(): React.ReactElement {
   );
 
   const { refresh } = usePlan();
-  const { currentChatId, setViewSwitcher, refreshChatList, chats, loadChat } = useChatCoreStore();
+  const { currentChatId, setViewSwitcher, refreshChatList, refreshChatListSilently, chats, loadChat } = useChatCoreStore();
   const setStatusMsg = useStatusStore(s => s.setStatus);
   const setHeartbeatStatus = useHeartbeatRunning(s => s.setStatus);
   const { theme, toggleTheme } = useTheme();
@@ -106,10 +106,12 @@ function AppInner(): React.ReactElement {
 
   // Use refs so the interval callback always sees the latest values without re-creating the interval.
   const refreshChatListRef = React.useRef(refreshChatList);
+  const refreshChatListSilentRef = React.useRef(refreshChatListSilently);
   const loadChatRef = React.useRef(loadChat);
   const currentChatIdRef = React.useRef(currentChatId);
   const chatsRef = React.useRef(chats);
   React.useEffect(() => { refreshChatListRef.current = refreshChatList; }, [refreshChatList]);
+  React.useEffect(() => { refreshChatListSilentRef.current = refreshChatListSilently; }, [refreshChatListSilently]);
   React.useEffect(() => { loadChatRef.current = loadChat; }, [loadChat]);
   React.useEffect(() => { currentChatIdRef.current = currentChatId; }, [currentChatId]);
   React.useEffect(() => { chatsRef.current = chats; }, [chats]);
@@ -139,7 +141,7 @@ function AppInner(): React.ReactElement {
 
       // Avoid redundant sidebar refreshes while SSE is already updating the active chat.
       if (!isLiveStreamRunning) {
-        refreshChatListRef.current();
+        refreshChatListSilentRef.current();
       }
 
       if (chatId && (openChat?.platform || openChat?.heartbeatEnabled) && !openChat?.isRunning) {

@@ -41,6 +41,7 @@ interface ChatCoreContextValue {
   forceSaveNow: (chatId?: string | null) => Promise<void>;
   deleteChat: (chatId: string) => Promise<void>;
   refreshChatList: (searchQuery?: string) => Promise<void>;
+  refreshChatListSilently: (searchQuery?: string) => Promise<void>;
   updateMessage: (index: number, update: Partial<Message>, chatId?: string | null) => void;
   setViewSwitcher?: (switcher: (view: 'chat' | 'memory') => void) => void;
   switchToView?: (view: 'chat' | 'memory') => void;
@@ -394,7 +395,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchConfigWithRetry();
   }, [fetchConfigWithRetry]);
 
-  const refreshChatList = useCallback(async (search?: string, attempt = 1, maxAttempts = 5) => {
+  const refreshChatListInternal = useCallback(async (
+    search?: string,
+    options?: { silent?: boolean },
+    attempt = 1,
+    maxAttempts = 5,
+  ) => {
+    const silent = !!options?.silent;
     const isFirstLoad = !chatsLoadedRef.current;
 
     // Deduplicate overlapping non-initial refreshes to reduce repeated /chats traffic.
@@ -408,7 +415,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isFirstLoad) {
       setLoadingChats(true);
-    } else {
+    } else if (!silent) {
       setRefreshingChats(true);
     }
     const currentMessages = currentChatId ? getMessagesForChat(currentChatId) : null;
@@ -454,7 +461,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Backend not ready on first load, retry with exponential backoff
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
         console.log(`Backend not ready for chat list (${res.status}), retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`);
-        setTimeout(() => refreshChatList(search, attempt + 1, maxAttempts), delay);
+        setTimeout(() => refreshChatListInternal(search, options, attempt + 1, maxAttempts), delay);
         return; // Don't clear loading state yet
       } else {
         console.error('Failed to fetch chats:', res.status, res.statusText);
@@ -464,7 +471,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Network error on first load, retry with exponential backoff
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
         console.log(`Error fetching chat list, retrying in ${delay}ms... (attempt ${attempt}/${maxAttempts})`);
-        setTimeout(() => refreshChatList(search, attempt + 1, maxAttempts), delay);
+        setTimeout(() => refreshChatListInternal(search, options, attempt + 1, maxAttempts), delay);
         return; // Don't clear loading state yet
       } else {
         console.error('Error fetching chats:', error);
@@ -480,12 +487,22 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       }
-      if (!isFirstLoad) {
+      if (!isFirstLoad && !silent) {
         setRefreshingChats(false);
+      }
+      if (!isFirstLoad) {
         refreshInFlightRef.current = false;
       }
     }
   }, [currentChatId, currentChatTitle, getMessagesForChat, searchQuery]);
+
+  const refreshChatList = useCallback(async (search?: string) => {
+    await refreshChatListInternal(search, { silent: false });
+  }, [refreshChatListInternal]);
+
+  const refreshChatListSilently = useCallback(async (search?: string) => {
+    await refreshChatListInternal(search, { silent: true });
+  }, [refreshChatListInternal]);
 
   // Load chat list on mount (and when refreshChatList reference changes)
   useEffect(() => {
@@ -908,7 +925,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const result = await promise;
     chatCreationPromiseRef.current = null;
     return result;
-  }, [currentChatId, messagesByChat, configByChat, computeDefaultConfig, generateChatTitle, refreshChatList, clearScheduledSave]);
+  }, [currentChatId, messagesByChat, configByChat, computeDefaultConfig, generateChatTitle, refreshChatListInternal, clearScheduledSave]);
 
   const loadChat = useCallback(async (chatId: string) => {
     // Clear any pending saves for the previous chat before switching
@@ -1075,6 +1092,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       forceSaveNow,
       deleteChat,
       refreshChatList,
+      refreshChatListSilently,
       updateMessage,
       setViewSwitcher,
       switchToView,
@@ -1109,6 +1127,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     forceSaveNow,
     deleteChat,
     refreshChatList,
+    refreshChatListSilently,
     updateMessage,
     setViewSwitcher,
     switchToView,
