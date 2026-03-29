@@ -1016,13 +1016,25 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Guard against replacing locally-resolved content with a stale pending-approval
           // DB state. This race occurs when loadChat is called immediately after a resume
           // stream ends but before the backend persists the final resolved state.
+          // Compare the LAST assistant message on each side — this avoids false negatives
+          // when earlier history messages happen to contain pending state from old sessions.
           const serverHasPendingApproval = mappedMessages.some(
             (m: Message) => typeof m.content === 'string' && m.content.includes('data-approval-state="pending"')
           );
-          const localHasNoPendingApproval = existing.length > 0 && !existing.some(
-            (m: Message) => typeof m.content === 'string' && m.content.includes('data-approval-state="pending"')
+          const lastLocalAssistant = existing.length > 0
+            ? [...existing].reverse().find((m: Message) => m.role === 'assistant')
+            : undefined;
+          const localLastAssistantHasNoPending = lastLocalAssistant != null &&
+            !(typeof lastLocalAssistant.content === 'string' && lastLocalAssistant.content.includes('data-approval-state="pending"'));
+          if (serverHasPendingApproval && localLastAssistantHasNoPending) {
+            return prev;
+          }
+          // Guard: local has completed tool outputs (📦) that the server hasn't persisted yet.
+          // Count output blocks — if local has more, server is still catching up.
+          const countOutputs = (msgs: Message[]) => msgs.reduce(
+            (n, m) => n + (typeof m.content === 'string' ? (m.content.match(/<summary>📦/g) ?? []).length : 0), 0
           );
-          if (serverHasPendingApproval && localHasNoPendingApproval) {
+          if (existing.length > 0 && countOutputs(existing) > countOutputs(mappedMessages)) {
             return prev;
           }
           return { ...prev, [key]: mappedMessages };

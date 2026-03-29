@@ -396,20 +396,27 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // tryConnect's cleanup path doesn't convert them to a redundant message.
       liveStreamPartsRef.current = [];
 
-      // Optimistic append: convert parts to HTML and store locally, preventing
-      // a blank flash while loadChat waits for the backend to finish DB writes.
+      // Optimistic append: convert parts to HTML and store locally so the
+      // message is visible immediately — no blank flash while loadChat fetches DB.
       const storeMsg = aguiPartsToStoreMessage(parts, currentUsage);
       if (storeMsg.content.trim()) {
         addMessage(storeMsg, chatId!);
       }
 
       setCurrentUsage(null);
+      // Clear streaming state synchronously in the same React batch as addMessage so
+      // the transient assistant bubble is replaced by the optimistic message in one
+      // render. Previously these lived in .finally(), causing a window where the
+      // transient disappeared but the DB reload hadn't returned yet — the user saw
+      // stale pending-approval tool blocks from the backend race condition.
+      setIsStreaming(false, chatId);
+      clearParts();
 
-      // Load official chat history to ensure we have exact DB state (with JSON tools & reasoning mapped to HTML)
-      loadChat(chatId!).finally(() => {
-        setIsStreaming(false, chatId);
-        clearParts();
-      });
+      // Background DB sync — delay slightly so the backend has time to commit tool
+      // results before we reload. An immediate reload risks getting stale
+      // approval-requested state that the guards may not catch in all edge cases.
+      const _syncChatId = chatId!;
+      setTimeout(() => { try { loadChat(_syncChatId); } catch { } }, 800);
 
       try { loadCoreMemory(); loadStats(); } catch { }
     },
