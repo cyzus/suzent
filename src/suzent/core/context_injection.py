@@ -56,7 +56,7 @@ def build_agent_deps(
     )
 
     # Build PathResolver
-    from suzent.tools.path_resolver import PathResolver
+    from suzent.tools.filesystem.path_resolver import PathResolver
 
     path_resolver = PathResolver(
         chat_id,

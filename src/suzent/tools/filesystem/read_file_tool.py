@@ -11,10 +11,19 @@ from typing import Optional
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool
+from suzent.tools.base import Tool, ToolErrorCode, ToolResult
+from suzent.tools.filesystem.file_tool_utils import (
+    detect_text_encoding,
+    get_or_create_path_resolver,
+    is_binary_content,
+    is_windows_unc_path,
+)
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+MAX_READ_FILE_SIZE = 50 * 1024 * 1024  # 50 MiB
 
 
 class ReadFileTool(Tool):
@@ -41,7 +50,7 @@ class ReadFileTool(Tool):
         file_path: str,
         offset: Optional[int] = None,
         limit: Optional[int] = None,
-    ) -> str:
+    ) -> ToolResult:
         """Read file content from the filesystem.
 
         Supports various file formats including text files (.txt, .py, .js, .json, .md, .csv, etc.),
@@ -55,34 +64,38 @@ class ReadFileTool(Tool):
             limit: Number of lines to read (omit for all).
 
         Returns:
-            File content as string, or error message.
+            ToolResult with file content or error.
         """
-        deps = ctx.deps
-        if deps.path_resolver:
-            resolver = deps.path_resolver
-        else:
-            from suzent.tools.path_resolver import PathResolver
-            from suzent.config import CONFIG
-
-            resolver = PathResolver(
-                deps.chat_id,
-                deps.sandbox_enabled,
-                sandbox_data_path=CONFIG.sandbox_data_path,
-                custom_volumes=deps.custom_volumes,
-                workspace_root=deps.workspace_root,
-            )
-            deps.path_resolver = resolver
+        resolver = get_or_create_path_resolver(ctx.deps)
 
         try:
+            if is_windows_unc_path(file_path):
+                return ToolResult.error_result(
+                    ToolErrorCode.UNC_PATH_NOT_SUPPORTED,
+                    "UNC paths are not supported by read_file",
+                )
+
             # Resolve the path
             resolved_path = resolver.resolve(file_path)
 
             # Check if file exists
             if not resolved_path.exists():
-                return f"Error: File not found: {file_path}"
+                return ToolResult.error_result(
+                    ToolErrorCode.FILE_NOT_FOUND, f"File not found: {file_path}"
+                )
 
             if not resolved_path.is_file():
-                return f"Error: Path is not a file: {file_path}"
+                return ToolResult.error_result(
+                    ToolErrorCode.FILE_REQUIRED, f"Path is not a file: {file_path}"
+                )
+
+            file_stat = resolved_path.stat()
+            if file_stat.st_size > MAX_READ_FILE_SIZE:
+                return ToolResult.error_result(
+                    ToolErrorCode.FILE_TOO_LARGE,
+                    f"File too large to read ({file_stat.st_size} bytes). "
+                    f"Max size is {MAX_READ_FILE_SIZE} bytes",
+                )
 
             # Get file extension
             ext = resolved_path.suffix.lower()
@@ -122,18 +135,37 @@ class ReadFileTool(Tool):
                 return self._convert_file(resolved_path, offset, limit)
 
         except ValueError as e:
-            return f"Error: {str(e)}"
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT, f"Invalid argument: {str(e)}"
+            )
         except Exception as e:
             logger.error(f"Error reading file {file_path}: {e}")
-            return f"Error reading file: {str(e)}"
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED, f"Error reading file: {str(e)}"
+            )
 
     def _read_text_file(
         self, path: Path, offset: Optional[int], limit: Optional[int]
-    ) -> str:
+    ) -> ToolResult:
         """Read a text file with offset/limit support."""
         try:
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
-                lines = f.readlines()
+            raw = path.read_bytes()
+            encoding = detect_text_encoding(raw)
+            if is_binary_content(raw, encoding):
+                return ToolResult.error_result(
+                    ToolErrorCode.BINARY_FILE,
+                    "File appears to be binary, cannot read as text",
+                )
+
+            try:
+                content = raw.decode(encoding)
+            except UnicodeDecodeError:
+                return ToolResult.error_result(
+                    ToolErrorCode.BINARY_FILE,
+                    "File appears to be binary, cannot read as text",
+                )
+
+            lines = content.splitlines(keepends=True)
 
             total_lines = len(lines)
 
@@ -142,7 +174,10 @@ class ReadFileTool(Tool):
             if start < 0:
                 start = 0
             if start >= total_lines:
-                return f"(File has {total_lines} lines, offset {start} is beyond end)"
+                return ToolResult.success_result(
+                    f"(File has {total_lines} lines, offset {start} is beyond end)",
+                    metadata={"total_lines": total_lines},
+                )
 
             # Apply limit
             if limit is not None and limit > 0:
@@ -156,16 +191,28 @@ class ReadFileTool(Tool):
             # Add info header if using offset/limit
             if offset is not None or limit is not None:
                 header = f"[Lines {start + 1}-{end} of {total_lines}]\n"
-                return header + content
+                return ToolResult.success_result(
+                    header + content,
+                    metadata={
+                        "total_lines": total_lines,
+                        "start_line": start + 1,
+                        "end_line": end,
+                    },
+                )
 
-            return content
+            return ToolResult.success_result(
+                content, metadata={"total_lines": total_lines}
+            )
 
         except UnicodeDecodeError:
-            return "Error: File appears to be binary, cannot read as text"
+            return ToolResult.error_result(
+                ToolErrorCode.BINARY_FILE,
+                "File appears to be binary, cannot read as text",
+            )
 
     def _convert_file(
         self, path: Path, offset: Optional[int], limit: Optional[int]
-    ) -> str:
+    ) -> ToolResult:
         """Convert file to markdown using MarkItDown."""
         try:
             if self._converter is None:
@@ -184,7 +231,9 @@ class ReadFileTool(Tool):
                 content = str(result)
 
             if not content or not content.strip():
-                return f"Warning: File converted but appears empty: {path.name}"
+                return ToolResult.success_result(
+                    f"Warning: File converted but appears empty: {path.name}"
+                )
 
             # Apply offset/limit to converted content
             if offset is not None or limit is not None:
@@ -197,8 +246,13 @@ class ReadFileTool(Tool):
                 content = "\n".join(lines)
 
             logger.info(f"Successfully converted: {path.name} ({len(content)} chars)")
-            return content
+            return ToolResult.success_result(
+                content,
+                metadata={"format": path.suffix, "content_length": len(content)},
+            )
 
         except Exception as e:
             logger.error(f"Error converting file {path}: {e}")
-            return f"Error converting file: {str(e)}"
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED, f"Error converting file: {str(e)}"
+            )

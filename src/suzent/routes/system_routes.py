@@ -11,7 +11,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from suzent.logger import get_logger
-from suzent.tools.path_resolver import PathResolver
+from suzent.tools.filesystem.path_resolver import PathResolver
 from suzent.database import get_database
 from suzent.config import get_effective_volumes
 

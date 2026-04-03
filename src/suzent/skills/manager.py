@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Optional
 from suzent.config import PROJECT_DIR
 from suzent.logger import get_logger
-from suzent.tools.path_resolver import PathResolver
+from suzent.tools.filesystem.path_resolver import PathResolver
 from .loader import SkillLoader
 
 logger = get_logger(__name__)

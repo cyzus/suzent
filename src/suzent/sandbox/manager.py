@@ -371,7 +371,7 @@ class DockerSession:
             },
         }
 
-        from suzent.tools.path_resolver import PathResolver
+        from suzent.tools.filesystem.path_resolver import PathResolver
 
         for vol in self.custom_volumes:
             parsed = PathResolver.parse_volume_string(vol)

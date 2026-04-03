@@ -4,7 +4,7 @@ API routes for skill management.
 
 from starlette.responses import JSONResponse
 from suzent.skills import get_skill_manager
-from suzent.tools.path_resolver import PathResolver
+from suzent.tools.filesystem.path_resolver import PathResolver
 
 
 async def get_skills(request):

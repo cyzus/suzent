@@ -248,7 +248,7 @@ class BashTool(Tool):
         env["SHARED_PATH"] = str(sandbox_data_path / "shared")
 
         if self.custom_volumes:
-            from suzent.tools.path_resolver import PathResolver
+            from suzent.tools.filesystem.path_resolver import PathResolver
 
             for mount_str in self.custom_volumes:
                 parsed = PathResolver.parse_volume_string(mount_str)

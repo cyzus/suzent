@@ -73,11 +73,13 @@ def _build_registry() -> Dict[str, Union[Callable, PydanticTool]]:
     from suzent.tools.webpage_tool import WebpageTool
     from suzent.tools.bash_tool import BashTool
     from suzent.tools.process_tool import ProcessTool
-    from suzent.tools.read_file_tool import ReadFileTool
-    from suzent.tools.write_file_tool import WriteFileTool
-    from suzent.tools.edit_file_tool import EditFileTool
-    from suzent.tools.glob_tool import GlobTool
-    from suzent.tools.grep_tool import GrepTool
+    from suzent.tools.filesystem import (
+        ReadFileTool,
+        WriteFileTool,
+        EditFileTool,
+        GlobTool,
+        GrepTool,
+    )
     from suzent.tools.planning_tool import PlanningTool
     from suzent.tools.browsing_tool import BrowsingTool
     from suzent.tools.skill_tool import SkillTool

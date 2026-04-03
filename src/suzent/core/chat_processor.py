@@ -25,7 +25,7 @@ from suzent.memory.lifecycle import get_memory_manager
 from suzent.streaming import stream_agent_responses
 from suzent.memory import ConversationTurn, Message, AgentAction
 from suzent.database import get_database
-from suzent.tools.path_resolver import PathResolver
+from suzent.tools.filesystem.path_resolver import PathResolver
 from suzent.routes.sandbox_routes import sanitize_filename
 from suzent.core.stream_parser import StreamParser, TextChunk, ErrorEvent
 from suzent.core.stream_registry import pop_pending_auto_approvals

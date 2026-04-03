@@ -12,7 +12,7 @@ from suzent.core.agent_deps import AgentDeps
 from suzent.tools.base import Tool
 
 from suzent.logger import get_logger
-from suzent.tools.path_resolver import PathResolver
+from suzent.tools.filesystem.path_resolver import PathResolver
 
 logger = get_logger(__name__)
 
@@ -59,7 +59,7 @@ class GrepTool(Tool):
         if deps.path_resolver:
             self._resolver = deps.path_resolver
         else:
-            from suzent.tools.path_resolver import PathResolver
+            from suzent.tools.filesystem.path_resolver import PathResolver
             from suzent.config import CONFIG
 
             self._resolver = PathResolver(

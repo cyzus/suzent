@@ -97,7 +97,7 @@ def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[st
     raw_volumes = list(set(global_volumes + per_chat_volumes))
     volumes = []
 
-    from .tools.path_resolver import PathResolver
+    from .tools.filesystem.path_resolver import PathResolver
 
     for vol in raw_volumes:
         parsed = PathResolver.parse_volume_string(vol)
