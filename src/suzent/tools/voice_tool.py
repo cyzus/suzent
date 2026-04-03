@@ -18,7 +18,7 @@ class SpeakTool(Tool):
         self._sink = None
         self._speech = None
 
-    def forward(self, text: str, prompt: str = "") -> str:
+    async def forward(self, text: str, prompt: str = "") -> str:
         """Speak the given text aloud using text-to-speech.
 
         Args:
@@ -50,16 +50,7 @@ class SpeakTool(Tool):
                     output_rate=24000,
                 )
 
-            # Run async speak in a format compatible with synchronous tool
-            import asyncio
-
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            loop.run_until_complete(self._speech.speak(text))
+            await self._speech.speak(text, prompt=prompt)
             return f"Spoke: {text}"
 
         except Exception as e:

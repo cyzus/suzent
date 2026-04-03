@@ -1,3 +1,5 @@
+import asyncio
+
 from suzent.tools.voice_tool import SpeakTool
 
 
@@ -6,7 +8,7 @@ def test_speak():
     tool = SpeakTool()
 
     print("Speaking...")
-    result = tool.forward("Hello, I am Suzent. I can speak now.")
+    result = asyncio.run(tool.forward("Hello, I am Suzent. I can speak now."))
     print(f"Result: {result}")
 
 

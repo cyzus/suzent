@@ -1,7 +1,6 @@
-from suzent.tools.base import Tool
-
-import asyncio
 from crawl4ai import AsyncWebCrawler
+
+from suzent.tools.base import Tool
 
 
 class WebpageTool(Tool):
@@ -22,12 +21,14 @@ class WebpageTool(Tool):
             # (crawl4ai's str subclass fails to unpickle because its __new__ expects
             #  a MarkdownGenerationResult object, not a raw string)
             markdown = result.markdown
-            return str(markdown) if markdown else ""
+            if not markdown:
+                return "Error: Unable to retrieve content from the specified URL."
+            return str(markdown)
 
-    def forward(self, url: str) -> str:
+    async def forward(self, url: str) -> str:
         """Fetch and extract content from a web page as markdown.
 
         Args:
             url: The URL of the page to retrieve content from.
         """
-        return asyncio.run(self._crawl_url(url))
+        return await self._crawl_url(url)
