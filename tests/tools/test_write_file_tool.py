@@ -18,8 +18,21 @@ def _ctx(tmp_path):
         sandbox_enabled=False,
         custom_volumes=[],
         workspace_root=str(tmp_path),
+        auto_approve_tools=False,
+        tool_approval_policy={},
     )
     return SimpleNamespace(deps=deps)
+
+
+def test_respects_explicit_deny_policy(tmp_path):
+    deps = _ctx(tmp_path).deps
+    deps.tool_approval_policy["write_file"] = "always_deny"
+
+    result = WriteFileTool().forward(SimpleNamespace(deps=deps), "sample.txt", "hi")
+
+    assert not result.success
+    assert result.error_code == ToolErrorCode.PERMISSION_DENIED
+    assert "denied by policy" in result.message
 
 
 def test_preserves_utf16_encoding_on_overwrite(tmp_path):

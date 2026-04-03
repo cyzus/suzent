@@ -46,10 +46,30 @@ class WriteFileTool(Tool):
         Returns:
             ToolResult indicating success or failure.
         """
+        denied_reason = self.is_tool_denied(ctx.deps, self.tool_name)
+        if denied_reason:
+            self.audit_operation(
+                self.tool_name,
+                "write",
+                "denied",
+                file_path=file_path,
+                reason=denied_reason,
+            )
+            return ToolResult.error_result(
+                ToolErrorCode.PERMISSION_DENIED, denied_reason
+            )
+
         resolver = get_or_create_path_resolver(ctx.deps)
 
         try:
             if is_windows_unc_path(file_path):
+                self.audit_operation(
+                    self.tool_name,
+                    "write",
+                    "rejected",
+                    file_path=file_path,
+                    reason="unc",
+                )
                 return ToolResult.error_result(
                     ToolErrorCode.UNC_PATH_NOT_SUPPORTED,
                     "UNC paths are not supported by write_file",
@@ -63,12 +83,26 @@ class WriteFileTool(Tool):
 
             if existed:
                 if not resolved_path.is_file():
+                    self.audit_operation(
+                        self.tool_name,
+                        "write",
+                        "rejected",
+                        file_path=file_path,
+                        reason="not_a_file",
+                    )
                     return ToolResult.error_result(
                         ToolErrorCode.FILE_REQUIRED, f"Path is not a file: {file_path}"
                     )
 
                 file_stat = resolved_path.stat()
                 if file_stat.st_size > MAX_WRITE_FILE_SIZE:
+                    self.audit_operation(
+                        self.tool_name,
+                        "write",
+                        "rejected",
+                        file_path=file_path,
+                        reason="too_large",
+                    )
                     return ToolResult.error_result(
                         ToolErrorCode.FILE_TOO_LARGE,
                         f"File too large to overwrite ({file_stat.st_size} bytes). "
@@ -79,6 +113,13 @@ class WriteFileTool(Tool):
                 encoding = detect_text_encoding(raw)
 
                 if is_binary_content(raw, encoding):
+                    self.audit_operation(
+                        self.tool_name,
+                        "write",
+                        "rejected",
+                        file_path=file_path,
+                        reason="binary",
+                    )
                     return ToolResult.error_result(
                         ToolErrorCode.BINARY_FILE,
                         "Refusing to overwrite binary file with write_file",
@@ -87,12 +128,26 @@ class WriteFileTool(Tool):
                 try:
                     old_content = raw.decode(encoding)
                 except UnicodeDecodeError:
+                    self.audit_operation(
+                        self.tool_name,
+                        "write",
+                        "rejected",
+                        file_path=file_path,
+                        reason="decode_error",
+                    )
                     return ToolResult.error_result(
                         ToolErrorCode.BINARY_FILE,
                         "Refusing to overwrite non-text file with write_file",
                     )
 
                 if old_content == content:
+                    self.audit_operation(
+                        self.tool_name,
+                        "write",
+                        "noop",
+                        file_path=file_path,
+                        bytes_written=0,
+                    )
                     return ToolResult.success_result(
                         f"No changes: {file_path} already has the requested content"
                     )
@@ -107,6 +162,14 @@ class WriteFileTool(Tool):
             action = "Overwrote" if existed else "Created"
             size = len(content.encode(encoding, errors="replace"))
             logger.info(f"{action} file: {file_path} ({size} bytes)")
+            self.audit_operation(
+                self.tool_name,
+                "write",
+                "success",
+                file_path=file_path,
+                action=action.lower(),
+                bytes_written=size,
+            )
 
             return ToolResult.success_result(
                 f"{action} file: {file_path} ({size} bytes written)",
@@ -117,11 +180,17 @@ class WriteFileTool(Tool):
             )
 
         except ValueError as e:
+            self.audit_operation(
+                self.tool_name, "write", "invalid_argument", file_path=file_path
+            )
             return ToolResult.error_result(
                 ToolErrorCode.INVALID_ARGUMENT, f"Invalid argument: {str(e)}"
             )
         except Exception as e:
             logger.error(f"Error writing file {file_path}: {e}")
+            self.audit_operation(
+                self.tool_name, "write", "error", file_path=file_path, error=str(e)
+            )
             return ToolResult.error_result(
                 ToolErrorCode.EXECUTION_FAILED, f"Error writing file: {str(e)}"
             )

@@ -15,6 +15,10 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
+from suzent.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class ToolErrorCode(Enum):
     """Standard error codes for tool failures, enabling meaningful recovery strategies."""
@@ -118,3 +122,28 @@ class Tool:
 
     def forward(self, **kwargs):
         raise NotImplementedError("Subclasses must implement forward()")
+
+    @staticmethod
+    def is_tool_denied(deps: Any, tool_name: str) -> Optional[str]:
+        """Return a denial reason when policy explicitly blocks a tool."""
+        if getattr(deps, "auto_approve_tools", False):
+            return None
+
+        policy = getattr(deps, "tool_approval_policy", {}) or {}
+        decision = policy.get(tool_name)
+        if decision == "always_deny":
+            return f"Tool '{tool_name}' is denied by policy"
+        return None
+
+    @staticmethod
+    def audit_operation(
+        tool_name: str, operation: str, outcome: str, **metadata
+    ) -> None:
+        """Emit a structured audit log entry for a tool operation."""
+        details = ", ".join(
+            f"{key}={value!r}" for key, value in metadata.items() if value is not None
+        )
+        message = f"[audit] tool={tool_name} operation={operation} outcome={outcome}"
+        if details:
+            message = f"{message} {details}"
+        logger.info(message)

@@ -40,6 +40,7 @@ class BashTool(Tool):
     name = "BashTool"
     tool_name = "bash_execute"
     requires_approval = True
+    _SUPPORTED_LANGUAGES = {"python", "nodejs", "command"}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -113,7 +114,32 @@ class BashTool(Tool):
         if not self.chat_id:
             return "Error: No chat context. Cannot determine execution session."
 
-        lang = language or "python"
+        denied_reason = self.is_tool_denied(ctx.deps, self.tool_name)
+        if denied_reason:
+            self.audit_operation(
+                self.tool_name,
+                "execute",
+                "denied",
+                language=language or "python",
+                background=background,
+                reason=denied_reason,
+            )
+            return f"Error: {denied_reason}"
+
+        lang = (language or "python").strip().lower()
+        if lang not in self._SUPPORTED_LANGUAGES:
+            self.audit_operation(
+                self.tool_name,
+                "execute",
+                "rejected",
+                language=lang,
+                background=background,
+                reason="unsupported_language",
+            )
+            return (
+                f"Error: Unsupported language '{language}'. "
+                "Use 'python', 'nodejs', or 'command'."
+            )
 
         if background:
             if not self.sandbox_enabled:
@@ -132,12 +158,26 @@ class BashTool(Tool):
                 content=content,
                 language=language,
             )
+            self.audit_operation(
+                self.tool_name,
+                "background",
+                "success",
+                language=language,
+                process_id=proc_id,
+            )
             return (
                 f"Background process started. process_id={proc_id}\n"
                 f"Use ProcessTool to poll output: process_manage(process_id={proc_id!r}, action='poll')"
             )
         except Exception as e:
             logger.error(f"Background execution error: {e}")
+            self.audit_operation(
+                self.tool_name,
+                "background",
+                "error",
+                language=language,
+                error=str(e),
+            )
             return f"Error starting background process: {e}"
 
     def _execute_in_sandbox(
@@ -161,13 +201,42 @@ class BashTool(Tool):
                 logger.info(
                     f"Sandbox execution successful [{language}] for chat {self.chat_id}"
                 )
+                self.audit_operation(
+                    self.tool_name,
+                    "execute",
+                    "success",
+                    mode="sandbox",
+                    language=language,
+                    timeout=timeout,
+                    background=False,
+                )
                 return output
             else:
                 logger.warning(f"Sandbox execution error: {result.error}")
+                self.audit_operation(
+                    self.tool_name,
+                    "execute",
+                    "error",
+                    mode="sandbox",
+                    language=language,
+                    timeout=timeout,
+                    background=False,
+                    error=result.error,
+                )
                 return f"Execution Error: {result.error}"
 
         except Exception as e:
             logger.error(f"Sandbox tool error: {e}")
+            self.audit_operation(
+                self.tool_name,
+                "execute",
+                "error",
+                mode="sandbox",
+                language=language,
+                timeout=timeout,
+                background=False,
+                error=str(e),
+            )
             return f"Sandbox Error: {str(e)}"
 
     def _execute_on_host(
@@ -184,7 +253,7 @@ class BashTool(Tool):
             cmd = ["python", "-c", content]
         elif language == "nodejs":
             cmd = ["node", "-e", content]
-        elif os.name == "nt":
+        elif language == "command" and os.name == "nt":
             # Force PowerShell to output UTF-8 so non-ASCII characters
             # (e.g. localized adapter names) are captured correctly.
             utf8_preamble = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
@@ -221,16 +290,55 @@ class BashTool(Tool):
             logger.info(
                 f"Host execution successful [{language}] for chat {self.chat_id}"
             )
+            self.audit_operation(
+                self.tool_name,
+                "execute",
+                "success",
+                mode="host",
+                language=language,
+                timeout=effective_timeout,
+                background=False,
+                returncode=result.returncode,
+            )
             return output if output.strip() else "(no output)"
 
         except subprocess.TimeoutExpired:
             logger.warning(f"Host execution timed out after {effective_timeout}s")
+            self.audit_operation(
+                self.tool_name,
+                "execute",
+                "timeout",
+                mode="host",
+                language=language,
+                timeout=effective_timeout,
+                background=False,
+            )
             return f"[Error: Command timed out after {effective_timeout} seconds]"
         except FileNotFoundError as e:
             logger.error(f"Host execution command not found: {e}")
+            self.audit_operation(
+                self.tool_name,
+                "execute",
+                "error",
+                mode="host",
+                language=language,
+                timeout=effective_timeout,
+                background=False,
+                error=str(e),
+            )
             return f"[Error: Command not found - {e}]"
         except Exception as e:
             logger.error(f"Host execution error: {e}")
+            self.audit_operation(
+                self.tool_name,
+                "execute",
+                "error",
+                mode="host",
+                language=language,
+                timeout=effective_timeout,
+                background=False,
+                error=str(e),
+            )
             return f"[Error: {str(e)}]"
 
     def _get_host_env(self) -> dict:
