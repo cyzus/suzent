@@ -184,6 +184,11 @@ class PathResolver:
         Raises:
             ValueError: If path traversal is detected or path is not allowed
         """
+        if os.name == "nt" and (
+            virtual_path.startswith("\\\\") or virtual_path.startswith("//")
+        ):
+            raise ValueError("UNC paths are not supported")
+
         # Normalize path separators
         virtual_path = virtual_path.replace("\\", "/").strip()
 
