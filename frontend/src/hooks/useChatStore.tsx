@@ -560,12 +560,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (res.ok) {
-        if (updateTitle) {
-          setChats(prev => prev.map(chat => chat.id === chatId ? { ...chat, title: updateTitle } : chat));
-          if (currentChatId === chatId) {
-            setCurrentChatTitle(updateTitle);
-          }
-        }
         if (!skipRefresh) await refreshChatList();
       } else {
         console.error('Failed to save chat:', res.status, res.statusText);
