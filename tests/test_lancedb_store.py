@@ -109,3 +109,41 @@ async def test_hybrid_search(store):
 
     assert len(results) >= 1
     assert "apple" in results[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_access_count_increments_on_retrieval(store):
+    await store.add_memory(
+        content="Track this memory access",
+        embedding=TEST_EMBEDDING,
+        user_id="user1",
+    )
+
+    # First retrieval increments access_count from 0 -> 1
+    semantic_results = await store.semantic_search(
+        query_embedding=TEST_EMBEDDING,
+        user_id="user1",
+        limit=5,
+    )
+    assert len(semantic_results) == 1
+
+    stats_after_semantic = await store.get_memory_stats(user_id="user1")
+    assert stats_after_semantic["total_accesses"] == 1
+    assert stats_after_semantic["utilized_memories"] == 1
+    assert stats_after_semantic["cold_memories"] == 0
+    assert stats_after_semantic["utilization_rate"] == pytest.approx(1.0)
+    assert stats_after_semantic["recent_activity_rate_7d"] == pytest.approx(1.0)
+    assert stats_after_semantic["access_distribution"]["light"] == 1
+
+    # Second retrieval increments access_count from 1 -> 2
+    hybrid_results = await store.hybrid_search(
+        query_embedding=TEST_EMBEDDING,
+        query_text="Track",
+        user_id="user1",
+        limit=5,
+    )
+    assert len(hybrid_results) == 1
+
+    stats_after_hybrid = await store.get_memory_stats(user_id="user1")
+    assert stats_after_hybrid["total_accesses"] == 2
+    assert stats_after_hybrid["access_distribution"]["light"] == 1

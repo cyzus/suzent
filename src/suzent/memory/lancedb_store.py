@@ -458,10 +458,19 @@ class LanceDBMemoryStore:
                 qb.distance_type("cosine").where(where).limit(limit).to_list()
             )
 
-            return [
+            formatted_results = [
                 self._format_memory_result(r, similarity=1.0 - r["_distance"])
                 for r in results
             ]
+
+            try:
+                await self._record_memory_accesses(formatted_results)
+            except Exception as access_error:
+                logger.warning(
+                    f"Failed to update access counts in semantic search: {access_error}"
+                )
+
+            return formatted_results
 
         except Exception as e:
             logger.error(f"Semantic search failed: {e}")
@@ -547,6 +556,26 @@ class LanceDBMemoryStore:
 
         return scored_results
 
+    async def _record_memory_accesses(self, results: List[Dict[str, Any]]) -> None:
+        """Increment access counters for retrieved memories."""
+        if not results:
+            return
+
+        now = _utc_now()
+        for result in results:
+            memory_id = result.get("id")
+            if not memory_id:
+                continue
+
+            current_access_count = int(result.get("access_count", 0))
+            await self.archival_table.update(
+                where=f"id = '{_escape_sql(str(memory_id))}'",
+                updates={
+                    "access_count": current_access_count + 1,
+                    "accessed_at": now,
+                },
+            )
+
     async def hybrid_search(
         self,
         query_embedding: List[float],
@@ -587,7 +616,15 @@ class LanceDBMemoryStore:
 
             # Sort and limit
             scored_results.sort(key=lambda x: x["score"], reverse=True)
-            return scored_results[:limit]
+            final_results = scored_results[:limit]
+            try:
+                await self._record_memory_accesses(final_results)
+            except Exception as access_error:
+                logger.warning(
+                    f"Failed to update access counts in hybrid search: {access_error}"
+                )
+
+            return final_results
 
         except Exception as e:
             logger.error(f"Hybrid search failed: {e}")
@@ -733,6 +770,13 @@ class LanceDBMemoryStore:
             "total_accesses": 0,
             "avg_access_count": 0.0,
             "importance_distribution": {"high": 0, "medium": 0, "low": 0},
+            "utilized_memories": 0,
+            "utilization_rate": 0.0,
+            "recently_accessed_memories_7d": 0,
+            "recent_activity_rate_7d": 0.0,
+            "cold_memories": 0,
+            "cold_memory_ratio": 0.0,
+            "access_distribution": {"unaccessed": 0, "light": 0, "engaged": 0},
         }
 
     @staticmethod
@@ -749,6 +793,31 @@ class LanceDBMemoryStore:
             "low": counts.get("low", 0),
         }
 
+    @staticmethod
+    def _categorize_access(access_counts: List[int]) -> Dict[str, int]:
+        """Group memories by access intensity."""
+        categories = [
+            "unaccessed" if count <= 0 else "light" if count <= 2 else "engaged"
+            for count in access_counts
+        ]
+        counts = Counter(categories)
+        return {
+            "unaccessed": counts.get("unaccessed", 0),
+            "light": counts.get("light", 0),
+            "engaged": counts.get("engaged", 0),
+        }
+
+    @staticmethod
+    def _is_recent_access(accessed_at: Optional[datetime], now: datetime) -> bool:
+        """Check if memory has been accessed in the last 7 days."""
+        if accessed_at is None:
+            return False
+
+        if accessed_at.tzinfo is None:
+            accessed_at = accessed_at.replace(tzinfo=timezone.utc)
+
+        return (now - accessed_at).days < 7
+
     async def get_memory_stats(self, user_id: str) -> Dict[str, Any]:
         """Get memory statistics for a user."""
         try:
@@ -760,11 +829,18 @@ class LanceDBMemoryStore:
             if not rows:
                 return self._empty_stats()
 
+            total_memories = len(rows)
+            now = datetime.now(timezone.utc)
             importances = [r["importance"] for r in rows]
             access_counts = [r["access_count"] for r in rows]
+            utilized_memories = sum(1 for count in access_counts if count > 0)
+            cold_memories = total_memories - utilized_memories
+            recently_accessed_memories_7d = sum(
+                1 for row in rows if self._is_recent_access(row.get("accessed_at"), now)
+            )
 
             return {
-                "total_memories": len(rows),
+                "total_memories": total_memories,
                 "avg_importance": statistics.mean(importances),
                 "max_importance": max(importances),
                 "min_importance": min(importances),
@@ -773,6 +849,14 @@ class LanceDBMemoryStore:
                 if access_counts
                 else 0.0,
                 "importance_distribution": self._categorize_importance(importances),
+                "utilized_memories": utilized_memories,
+                "utilization_rate": utilized_memories / total_memories,
+                "recently_accessed_memories_7d": recently_accessed_memories_7d,
+                "recent_activity_rate_7d": recently_accessed_memories_7d
+                / total_memories,
+                "cold_memories": cold_memories,
+                "cold_memory_ratio": cold_memories / total_memories,
+                "access_distribution": self._categorize_access(access_counts),
             }
 
         except Exception as e:

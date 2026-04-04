@@ -29,6 +29,17 @@ export interface MemoryStats {
     medium?: number;
     low?: number;
   };
+  utilized_memories?: number;
+  utilization_rate?: number;
+  recently_accessed_memories_7d?: number;
+  recent_activity_rate_7d?: number;
+  cold_memories?: number;
+  cold_memory_ratio?: number;
+  access_distribution?: {
+    unaccessed?: number;
+    light?: number;
+    engaged?: number;
+  };
 }
 
 export interface MemorySearchResponse {

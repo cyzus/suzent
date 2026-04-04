@@ -33,11 +33,12 @@ export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({ stats, isLoad
 
   if (!stats) return null;
 
-  const importanceDistribution = stats.importance_distribution || {};
-  const high = importanceDistribution.high || 0;
-  const medium = importanceDistribution.medium || 0;
-  const low = importanceDistribution.low || 0;
-  const total = high + medium + low || 1; // Prevent division by zero
+  const toPercent = (value?: number) => `${((value || 0) * 100).toFixed(1)}%`;
+  const accessDistribution = stats.access_distribution || {};
+  const unaccessed = accessDistribution.unaccessed || 0;
+  const light = accessDistribution.light || 0;
+  const engaged = accessDistribution.engaged || 0;
+  const total = unaccessed + light + engaged || 1;
 
   return (
     <div className="space-y-4">
@@ -51,99 +52,108 @@ export const MemoryStatsComponent: React.FC<MemoryStatsProps> = ({ stats, isLoad
           <div className="font-brutal text-3xl text-brutal-black dark:text-white">{stats.total_memories}</div>
         </div>
 
-        {/* Avg Importance */}
+        {/* Memory Utilization */}
         <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] p-4 brutal-btn transition-all">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400">{t('memoryStats.avgImportance')}</span>
+            <span className="text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400">{t('memoryStats.memoryUtilization')}</span>
           </div>
           <div className="font-brutal text-3xl text-brutal-black dark:text-white">
-            {stats.avg_importance.toFixed(2)}
+            {toPercent(stats.utilization_rate)}
+          </div>
+          <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+            {t('memoryStats.utilizedCount', {
+              active: String(stats.utilized_memories || 0),
+              total: String(stats.total_memories || 0),
+            })}
           </div>
           <div className="mt-2 h-2 bg-white dark:bg-zinc-700 border-3 border-brutal-black">
             <div
               className="h-full bg-brutal-black transition-all duration-500"
-              style={{ width: `${stats.avg_importance * 100}%` }}
+              style={{ width: toPercent(stats.utilization_rate) }}
             />
           </div>
         </div>
 
-        {/* Total Accesses */}
+        {/* 7d Activity */}
         <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] p-4 brutal-btn transition-all">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400">{t('memoryStats.totalAccesses')}</span>
+            <span className="text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400">{t('memoryStats.activity7d')}</span>
           </div>
           <div className="font-brutal text-3xl text-brutal-black dark:text-white">
-            {stats.total_accesses || 0}
+            {toPercent(stats.recent_activity_rate_7d)}
           </div>
           <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-            {t('memoryStats.avgPerMemory', { avg: stats.avg_access_count?.toFixed(1) || '0.0' })}
+            {t('memoryStats.recentCount', {
+              recent: String(stats.recently_accessed_memories_7d || 0),
+              total: String(stats.total_memories || 0),
+            })}
           </div>
         </div>
 
-        {/* Importance Range */}
+        {/* Cold Memory Ratio */}
         <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] p-4 brutal-btn transition-all">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400">{t('memoryStats.importanceRange')}</span>
+            <span className="text-xs font-bold uppercase text-neutral-600 dark:text-neutral-400">{t('memoryStats.coldMemoryRatio')}</span>
           </div>
-          <div className="flex items-baseline gap-1">
-            <span className="font-brutal text-xl text-brutal-black dark:text-white">
-              {stats.max_importance?.toFixed(2) || '0.00'}
-            </span>
-            <span className="text-brutal-black dark:text-white">→</span>
-            <span className="font-brutal text-xl text-brutal-gray dark:text-neutral-400">
-              {stats.min_importance?.toFixed(2) || '0.00'}
-            </span>
+          <div className="font-brutal text-3xl text-brutal-black dark:text-white">
+            {toPercent(stats.cold_memory_ratio)}
+          </div>
+          <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+            {t('memoryStats.coldCount', {
+              cold: String(stats.cold_memories || 0),
+              total: String(stats.total_memories || 0),
+            })}
           </div>
         </div>
       </div>
 
-      {/* Importance Distribution Bar */}
-      {(high > 0 || medium > 0 || low > 0) && (
+      {/* Access Distribution Bar */}
+      {(unaccessed > 0 || light > 0 || engaged > 0) && (
         <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal p-4">
           <h4 className="font-bold text-xs uppercase text-neutral-600 dark:text-neutral-400 mb-3">
-            {t('memoryStats.importanceDistribution')}
+            {t('memoryStats.accessDistribution')}
           </h4>
           <div className="flex h-8 border-3 border-brutal-black overflow-hidden bg-white dark:bg-zinc-700">
-            {high > 0 && (
+            {unaccessed > 0 && (
               <div
                 className="bg-brutal-black flex items-center justify-center text-white text-xs font-bold transition-all duration-500"
-                style={{ width: `${(high / total) * 100}%` }}
-                title={t('memoryStats.distributionTooltipHigh', { count: String(high) })}
+                style={{ width: `${(unaccessed / total) * 100}%` }}
+                title={t('memoryStats.distributionTooltipUnaccessed', { count: String(unaccessed) })}
               >
-                {high > 0 && `${high}`}
+                {`${unaccessed}`}
               </div>
             )}
-            {medium > 0 && (
+            {light > 0 && (
               <div
                 className="bg-brutal-gray flex items-center justify-center text-white text-xs font-bold transition-all duration-500"
-                style={{ width: `${(medium / total) * 100}%` }}
-                title={t('memoryStats.distributionTooltipMedium', { count: String(medium) })}
+                style={{ width: `${(light / total) * 100}%` }}
+                title={t('memoryStats.distributionTooltipLight', { count: String(light) })}
               >
-                {medium > 0 && `${medium}`}
+                {`${light}`}
               </div>
             )}
-            {low > 0 && (
+            {engaged > 0 && (
               <div
                 className="bg-white dark:bg-zinc-600 border-l-3 border-brutal-black flex items-center justify-center text-brutal-black dark:text-white text-xs font-bold transition-all duration-500"
-                style={{ width: `${(low / total) * 100}%` }}
-                title={t('memoryStats.distributionTooltipLow', { count: String(low) })}
+                style={{ width: `${(engaged / total) * 100}%` }}
+                title={t('memoryStats.distributionTooltipEngaged', { count: String(engaged) })}
               >
-                {low > 0 && `${low}`}
+                {`${engaged}`}
               </div>
             )}
           </div>
           <div className="flex justify-between mt-2 text-xs dark:text-neutral-300">
             <div className="flex items-center gap-1">
               <div className="w-3 h-3 bg-brutal-black border-2 border-brutal-black"></div>
-              <span>{t('memoryStats.highRangeCount', { count: String(high) })}</span>
+              <span>{t('memoryStats.unaccessedCount', { count: String(unaccessed) })}</span>
             </div>
             <div className="flex items-center gap-1">
               <div className="w-3 h-3 bg-brutal-gray border-2 border-brutal-black"></div>
-              <span>{t('memoryStats.mediumRangeCount', { count: String(medium) })}</span>
+              <span>{t('memoryStats.lightCount', { count: String(light) })}</span>
             </div>
             <div className="flex items-center gap-1">
               <div className="w-3 h-3 bg-white dark:bg-zinc-500 border-2 border-brutal-black"></div>
-              <span>{t('memoryStats.lowRangeCount', { count: String(low) })}</span>
+              <span>{t('memoryStats.engagedCount', { count: String(engaged) })}</span>
             </div>
           </div>
         </div>
