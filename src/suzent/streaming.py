@@ -406,6 +406,17 @@ async def stream_agent_responses(
             while a2ui_queue and not a2ui_queue.empty():
                 try:
                     ev = a2ui_queue.get_nowait()
+                    if (
+                        ev.get("event") == "a2ui.render"
+                        and ev.get("target") == "inline"
+                        and ev.get("id")
+                    ):
+                        try:
+                            deps.inline_a2ui_surfaces[ev["id"]] = dict(ev)
+                        except Exception:
+                            logger.debug(
+                                "[Streaming] Failed to cache inline A2UI surface"
+                            )
                     await out_queue.put(
                         (
                             "chunk",

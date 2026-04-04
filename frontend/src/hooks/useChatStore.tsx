@@ -1037,6 +1037,37 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (existing.length > 0 && countOutputs(existing) > countOutputs(mappedMessages)) {
             return prev;
           }
+
+          // Guard: prevent stale backend snapshots from replacing richer local assistant
+          // content with a shorter/empty variant when counts are otherwise equal.
+          const getLastAssistant = (msgs: Message[]) =>
+            msgs.length > 0 ? [...msgs].reverse().find((m: Message) => m.role === 'assistant') : undefined;
+          const localLastAssistant = getLastAssistant(existing);
+          const serverLastAssistant = getLastAssistant(mappedMessages);
+          if (localLastAssistant && serverLastAssistant) {
+            const localContent = typeof localLastAssistant.content === 'string' ? localLastAssistant.content.trim() : '';
+            const serverContent = typeof serverLastAssistant.content === 'string' ? serverLastAssistant.content.trim() : '';
+
+            // If server regresses to much shorter content while structure counts are equal,
+            // keep optimistic local data until the backend catches up.
+            if (
+              localContent.length > 0 &&
+              serverContent.length > 0 &&
+              existing.length === mappedMessages.length &&
+              countOutputs(existing) === countOutputs(mappedMessages) &&
+              serverContent.length + 40 < localContent.length
+            ) {
+              return prev;
+            }
+
+            if (
+              localContent.length > 0 &&
+              serverContent.length === 0 &&
+              existing.length === mappedMessages.length
+            ) {
+              return prev;
+            }
+          }
           return { ...prev, [key]: mappedMessages };
         });
         setShouldResetNext(false);

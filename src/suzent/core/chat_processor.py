@@ -420,6 +420,9 @@ class ChatProcessor:
                         user_content=message_content,
                         agent_content=full_response,
                         skip_messages=is_heartbeat,
+                        inline_a2ui_surfaces=getattr(
+                            deps, "inline_a2ui_surfaces", None
+                        ),
                     )
                     logger.info(
                         f"[ChatProcessor] Background post-processing complete for {chat_id}"
@@ -742,6 +745,7 @@ class ChatProcessor:
         user_content: str,
         agent_content: str,
         skip_messages: bool = False,
+        inline_a2ui_surfaces: Optional[dict] = None,
     ) -> None:
         """Persist conversation state to database."""
         try:
@@ -763,6 +767,7 @@ class ChatProcessor:
                 # 100% Backend Authored: rebuild the complete display log from the full agent history
                 # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
                 rebuilt = _rebuild_display_messages(messages)
+                rebuilt = _append_inline_a2ui_surfaces(rebuilt, inline_a2ui_surfaces)
 
                 # Guard: if the agent produced no output and this is a social chat, the
                 # pre-save at turn start left an orphaned user message in chat_messages.
@@ -895,10 +900,17 @@ def _rebuild_display_messages(messages: list) -> list:
         ModelResponse,
         UserPromptPart,
         TextPart,
+        ThinkingPart,
         ToolCallPart,
         ToolReturnPart,
     )
     import json
+
+    def render_reasoning_block(text: str) -> str:
+        text = text.strip()
+        if not text:
+            return ""
+        return f'\n\n<details data-reasoning="true"><summary>Thinking</summary>\n\n{text}\n\n</details>\n\n'
 
     # First pass: find all tool calls that have a corresponding return
     executed_tool_calls = set()
@@ -916,21 +928,13 @@ def _rebuild_display_messages(messages: list) -> list:
                     if isinstance(part.content, str):
                         raw_text = part.content
                     elif isinstance(part.content, list):
-                        # Mixed list of strings + BinaryContent/ImageUrl objects.
-                        # Take only the first string segment (the user's actual text +
-                        # any attachment annotations injected by process_turn).
                         raw_text = next(
                             (item for item in part.content if isinstance(item, str)), ""
                         )
                     else:
                         raw_text = str(part.content)
 
-                    # Parse attachment annotations injected by process_turn and convert
-                    # them to structured FileAttachment entries so the frontend renders
-                    # the proper file/image card rather than raw path text.
                     files = _extract_attachment_files(raw_text)
-                    # Strip the annotations from the displayed text since the cards
-                    # already communicate the same information.
                     clean_text = _strip_attachment_annotations(raw_text)
 
                     ts = (
@@ -960,11 +964,13 @@ def _rebuild_display_messages(messages: list) -> list:
                         entry["timestamp"] = ts
                     result.append(entry)
         elif isinstance(msg, ModelResponse):
-            text_parts = []
+            ordered_content_parts = []
             tool_calls = []
             for part in msg.parts:
                 if isinstance(part, TextPart):
-                    text_parts.append(part.content)
+                    ordered_content_parts.append(part.content)
+                elif isinstance(part, ThinkingPart):
+                    ordered_content_parts.append(render_reasoning_block(part.content))
                 elif isinstance(part, ToolCallPart):
                     args_str = (
                         json.dumps(part.args)
@@ -980,16 +986,52 @@ def _rebuild_display_messages(messages: list) -> list:
                         tc_dict["state"] = "approval-requested"
                     tool_calls.append(tc_dict)
 
-            text_content = "".join(text_parts) if text_parts else None
-            # Only skip if there's no text AND no tool calls
-            if not text_content and not tool_calls:
+            ordered_content = (
+                "".join(ordered_content_parts) if ordered_content_parts else None
+            )
+            if not ordered_content and not tool_calls:
                 continue
 
             ts = msg.timestamp.isoformat() if getattr(msg, "timestamp", None) else None
-            entry = {"role": "assistant", "content": text_content}
+            entry = {"role": "assistant", "content": ordered_content}
             if tool_calls:
                 entry["tool_calls"] = tool_calls
             if ts:
                 entry["timestamp"] = ts
             result.append(entry)
+
     return result
+
+
+def _append_inline_a2ui_surfaces(
+    display_messages: list, inline_a2ui_surfaces: dict | None
+) -> list:
+    if not inline_a2ui_surfaces:
+        return display_messages
+
+    surfaces = [
+        surface
+        for surface in inline_a2ui_surfaces.values()
+        if isinstance(surface, dict)
+    ]
+    if not surfaces:
+        return display_messages
+
+    import json
+    from urllib.parse import quote
+
+    def render_inline_a2ui(surface: dict) -> str:
+        encoded = quote(json.dumps(surface, ensure_ascii=False))
+        return f'\n\n<div data-a2ui="{encoded}"></div>\n\n'
+
+    target_entry = next(
+        (m for m in reversed(display_messages) if m.get("role") == "assistant"), None
+    )
+    if target_entry is None:
+        target_entry = {"role": "assistant", "content": ""}
+        display_messages.append(target_entry)
+
+    target_entry["content"] = (target_entry.get("content") or "") + "".join(
+        render_inline_a2ui(surface) for surface in surfaces
+    )
+    return display_messages

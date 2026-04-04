@@ -65,3 +65,4 @@ class AgentDeps:
     a2ui_queue: Optional[asyncio.Queue] = (
         None  # surface events queued by render_ui tool
     )
+    inline_a2ui_surfaces: dict[str, dict[str, Any]] = field(default_factory=dict)

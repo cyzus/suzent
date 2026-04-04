@@ -119,4 +119,5 @@ def build_agent_deps(
         auto_approve_tools=auto_approve_tools,
         tool_approval_policy=tool_approval_policy,
         a2ui_queue=asyncio.Queue(),
+        inline_a2ui_surfaces={},
     )
