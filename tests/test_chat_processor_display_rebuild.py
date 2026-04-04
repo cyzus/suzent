@@ -9,6 +9,7 @@ from pydantic_ai.messages import (
 )
 
 from suzent.core.chat_processor import (
+    _append_command_messages,
     _append_inline_a2ui_surfaces,
     _rebuild_display_messages,
 )
@@ -85,3 +86,19 @@ def test_append_inline_a2ui_surfaces_attaches_to_last_assistant_message():
 
     assert updated[1]["role"] == "assistant"
     assert "data-a2ui=" in updated[1]["content"]
+
+
+def test_append_command_messages_adds_user_and_assistant_entries():
+    existing = [{"role": "assistant", "content": "old"}]
+    updated = _append_command_messages(existing, "/compact", "Compaction done")
+
+    assert len(updated) == 3
+    assert updated[-2] == {"role": "user", "content": "/compact"}
+    assert updated[-1] == {"role": "assistant", "content": "Compaction done"}
+
+
+def test_append_command_messages_skips_empty_assistant_payload():
+    updated = _append_command_messages([], "/somecmd", "")
+
+    assert len(updated) == 1
+    assert updated[0] == {"role": "user", "content": "/somecmd"}

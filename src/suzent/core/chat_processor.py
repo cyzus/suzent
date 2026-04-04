@@ -44,6 +44,18 @@ def _resolve_target_path(host_path: Path, filename: str) -> Path:
     return target
 
 
+def _append_command_messages(
+    existing_messages: list[dict[str, Any]], user_content: str, assistant_content: str
+) -> list[dict[str, Any]]:
+    """Append a slash-command user/assistant pair to display messages."""
+    updated = list(existing_messages or [])
+    if user_content and user_content.strip():
+        updated.append({"role": "user", "content": user_content})
+    if assistant_content and assistant_content.strip():
+        updated.append({"role": "assistant", "content": assistant_content})
+    return updated
+
+
 class ChatProcessor:
     """Encapsulates the lifecycle of a single conversation turn."""
 
@@ -211,6 +223,20 @@ class ChatProcessor:
                 _CmdCtx(chat_id=chat_id, user_id=user_id), message_content
             )
             if cmd_result is not None:
+                try:
+                    db = get_database()
+                    chat = db.get_chat(chat_id)
+                    if chat is not None:
+                        existing_messages = list(chat.messages or [])
+                        updated_messages = _append_command_messages(
+                            existing_messages, message_content, cmd_result
+                        )
+                        db.update_chat(chat_id, messages=updated_messages)
+                except Exception as e:
+                    logger.debug(
+                        f"Failed to persist slash command result for {chat_id}: {e}"
+                    )
+
                 import uuid
                 from ag_ui.core import (
                     RunStartedEvent,
