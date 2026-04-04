@@ -179,7 +179,7 @@ export const ChatList: React.FC = () => {
       )}
 
       {/* Unified Header: Search + Filter + Action */}
-      <div className="p-3 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 space-y-3 flex-shrink-0">
+      <div className="p-3 bg-white dark:bg-zinc-800 space-y-3 flex-shrink-0">
         {/* Row 1: Search + New Chat */}
         <div className="flex gap-2">
           <div className="relative flex-1">
@@ -259,7 +259,7 @@ export const ChatList: React.FC = () => {
       {/* Chat List - Scrollable Content */}
       <div className="flex-1 overflow-y-auto scrollbar-thin min-h-0">
         {displayedChats.length === 0 ? (
-          <div className="p-8 text-center">
+          <div className="p-8 text-center bg-white dark:bg-zinc-800">
             <div className="w-16 h-16 mx-auto mb-3">
               <RobotAvatar variant={searchQuery ? "ghost" : "portal"} />
             </div>
@@ -271,11 +271,12 @@ export const ChatList: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="p-3 space-y-3">
+          <div className="flex flex-col bg-white dark:bg-zinc-800 pt-[3px]">
             {displayedChats.map((chat: ChatSummary, idx: number) => (
               <div
                 key={chat.id}
                 onClick={() => {
+                  if (confirmDeleteId) return;
                   markRead(chat.id);
                   loadChat(chat.id);
                   // Switch back to chat view when loading a chat
@@ -283,15 +284,19 @@ export const ChatList: React.FC = () => {
                     switchToView('chat');
                   }
                 }}
-                className={`group relative p-3 cursor-pointer transition-all duration-200 animate-brutal-drop ${currentChatId === chat.id
-                  ? 'bg-brutal-yellow border-3 border-brutal-black shadow-[2px_2px_0_0_#000] translate-y-[2px]'
-                  : 'bg-white dark:bg-zinc-800 hover:bg-neutral-50 dark:hover:bg-zinc-700 border-3 border-brutal-black hover:shadow-brutal-sm'
+                className={`group relative overflow-hidden px-3 py-2.5 transition-colors border-b-2 last:border-b-0 
+                  ${confirmDeleteId ? (confirmDeleteId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : 'cursor-pointer'} 
+                  ${currentChatId === chat.id
+                    ? 'bg-brutal-yellow border-transparent z-10'
+                    : 'border-neutral-200 dark:border-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-700/80 hover:border-neutral-300 dark:hover:border-zinc-600'
                   }`}
-                style={{ animationDelay: `${idx * 0.05}s` }}
               >
-                {/* Active Indicator */}
+                {/* Active Indicator Overlay */}
                 {currentChatId === chat.id && (
-                  <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-8 bg-brutal-black"></div>
+                  <div
+                    className="absolute pointer-events-none inset-0 border-brutal-black border-x-[3px] border-b-[3px] transition-all"
+                    style={{ borderTopWidth: '3px' }}
+                  />
                 )}
 
                 {/* Inline delete confirmation overlay */}
@@ -302,77 +307,69 @@ export const ChatList: React.FC = () => {
                     isDeleting={deletingChatId === chat.id}
                     title={t('chatList.delete.confirmTitle')}
                     confirmText={t('chatList.delete.confirm')}
+                    layout="horizontal"
                   />
                 )}
 
-                <div className="flex items-start justify-between pl-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 overflow-hidden">
-                      {/* Unread dot */}
-                      {isUnread(chat) && (
-                        (!!chat.platform || (chat.heartbeatEnabled && !chat.platform))
-                      ) && currentChatId !== chat.id && (
-                        <span className="w-2 h-2 rounded-full bg-brutal-red shrink-0" aria-label="Unread" />
-                      )}
-                      {/* Platform Badge */}
-                      {chat.platform && (
-                        <span className="text-[10px] font-bold uppercase px-1 py-0.5 bg-neutral-200 dark:bg-zinc-700 dark:text-white border border-brutal-black shrink-0">
-                          {chat.platform}
-                        </span>
-                      )}
+                <div className="flex items-center gap-1.5 overflow-hidden">
+                  {/* Unread dot */}
+                  {isUnread(chat) && (
+                    (!!chat.platform || (chat.heartbeatEnabled && !chat.platform))
+                  ) && currentChatId !== chat.id && (
+                    <span className="w-2.5 h-2.5 rounded-full bg-brutal-red border border-brutal-black shrink-0 shadow-[1px_1px_0_0_rgba(0,0,0,1)]" aria-label="Unread" />
+                  )}
 
-                      <h3 className={`font-bold text-sm truncate uppercase ${currentChatId === chat.id ? 'text-brutal-black' : 'text-neutral-800 dark:text-white'}`}>
-                        {chat.title || t('chatList.untitled')}
-                      </h3>
-                    </div>
+                  {/* Platform Badge */}
+                  {chat.platform && (
+                    <span className="text-[9px] font-extrabold uppercase px-1 py-0.5 bg-white dark:bg-zinc-800 text-brutal-black dark:text-white border-2 border-brutal-black shrink-0 shadow-[1px_1px_0_0_rgba(0,0,0,1)]">
+                      {chat.platform}
+                    </span>
+                  )}
 
-                    {chat.lastMessage && (
-                      <p className={`text-xs mt-1 line-clamp-2 font-mono ${currentChatId === chat.id ? 'text-brutal-black/80' : 'text-neutral-600 dark:text-neutral-400'}`}>
-                        {chat.lastMessage}
-                      </p>
-                    )}
+                  {/* Title */}
+                  <h3 className={`font-extrabold text-xs truncate flex-1 min-w-0 transition-colors ${currentChatId === chat.id ? 'text-brutal-black' : 'text-neutral-800 dark:text-neutral-100 group-hover:text-brutal-black dark:group-hover:text-white'}`}>
+                    {chat.title || t('chatList.untitled')}
+                  </h3>
 
-                    <div className={`flex items-center justify-between mt-3 pt-2 border-t-2 ${currentChatId === chat.id ? 'border-brutal-black/20' : 'border-neutral-200/50'}`}>
-                      <div className="flex items-center gap-1.5">
-                        {(() => {
-                          const count = currentChatId === chat.id ? 0 : unreadMessages(chat);
-                          if (count <= 0) return null;
-                          return (
-                            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 border bg-brutal-yellow text-brutal-black border-brutal-black">
-                              {count} NEW
-                            </span>
-                          );
-                        })()}
-                        
-                        {/* Heartbeat Status Icon */}
-                        {chat.heartbeatEnabled && (
-                          <span 
-                            className={`shrink-0 flex items-center justify-center px-1.5 py-0.5 border ${currentChatId === chat.id ? 'bg-white text-brutal-black border-brutal-black' : 'bg-neutral-100 dark:bg-zinc-700 text-neutral-500 dark:text-neutral-400 border-neutral-300 dark:border-zinc-600'}`} 
-                            title={t('chatWindow.heartbeatEnabled')}
-                          >
-                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="square" strokeLinejoin="miter">
-                              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-                            </svg>
-                          </span>
-                        )}
-                      </div>
-                      <span className={`text-[10px] font-bold uppercase ${currentChatId === chat.id ? 'text-brutal-black/60' : 'text-neutral-400 dark:text-neutral-500'}`}>
-                        {formatDate(chat.updatedAt)}
+                  {/* Unread count badge */}
+                  {(() => {
+                    const count = currentChatId === chat.id ? 0 : unreadMessages(chat);
+                    if (count <= 0) return null;
+                    return (
+                      <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 border-2 bg-brutal-yellow text-brutal-black border-brutal-black shrink-0 shadow-[1px_1px_0_0_rgba(0,0,0,1)]">
+                        {count}
                       </span>
-                    </div>
-                  </div>
+                    );
+                  })()}
 
-                  {/* Delete Button */}
-                  <div className="ml-2">
+                  {/* Heartbeat icon */}
+                  {chat.heartbeatEnabled && (
+                    <span
+                      className={`shrink-0 flex items-center justify-center px-1 py-0.5 border-2 ${currentChatId === chat.id ? 'bg-white text-brutal-black border-brutal-black shadow-[1px_1px_0_0_rgba(0,0,0,1)]' : 'bg-neutral-100 dark:bg-zinc-800 text-neutral-600 dark:text-neutral-300 border-neutral-400 dark:border-zinc-500 shadow-[1px_1px_0_0_rgba(163,163,163,0.5)] group-hover:border-brutal-black group-hover:shadow-[1px_1px_0_0_rgba(0,0,0,1)] group-hover:text-brutal-black transition-all'}`}
+                      title={t('chatWindow.heartbeatEnabled')}
+                    >
+                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square" strokeLinejoin="miter">
+                        <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                      </svg>
+                    </span>
+                  )}
+
+                  {/* Date */}
+                  <span className={`text-[9px] font-extrabold uppercase shrink-0 transition-opacity group-hover:opacity-0 ${currentChatId === chat.id ? 'text-brutal-black/70' : 'text-neutral-400 dark:text-neutral-500'}`}>
+                    {formatDate(chat.updatedAt)}
+                  </span>
+
+                  {/* Delete Button (Absolute Overlay) */}
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-end">
                     {deletingChatId === chat.id ? (
-                      <div className="w-7 h-7 flex items-center justify-center animate-brutal-blink text-brutal-black font-bold text-xs" title={t('chatList.delete.deleting')}>
+                      <div className="w-7 h-7 flex items-center justify-center animate-brutal-blink text-brutal-black font-bold text-xs bg-brutal-red border-2 border-brutal-black shadow-[2px_2px_0_0_rgba(0,0,0,1)]" title={t('chatList.delete.deleting')}>
                         X
                       </div>
                     ) : (
                       <BrutalDeleteButton
                         onClick={(e) => handleDeleteClick(chat.id, e)}
                         isActive={currentChatId === chat.id}
-                        className="opacity-0 group-hover:opacity-100"
+                        className="scale-90"
                         title={t('chatList.delete.buttonTitle')}
                         disabled={deletingChatId === chat.id}
                       />

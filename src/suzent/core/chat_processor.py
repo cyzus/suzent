@@ -450,6 +450,7 @@ class ChatProcessor:
                             deps, "inline_a2ui_surfaces", None
                         ),
                     )
+
                     logger.info(
                         f"[ChatProcessor] Background post-processing complete for {chat_id}"
                     )

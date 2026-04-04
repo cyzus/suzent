@@ -50,7 +50,7 @@ export const en = {
       browser: 'Browser',
     },
     settings: 'Settings',
-    settingsDesc: 'Configure models, social, etc.',
+    settingsDesc: '',
   },
   titlebar: {
     minimize: 'Minimize',

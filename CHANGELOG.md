@@ -23,10 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Form field types**: `select` and `multiselect` fields render as inline option lists instead of dropdowns — no portal positioning issues inside inline surfaces.
   - **Paged form mode**: Forms support `paged: true` to show one question at a time with progress indicator.
   - **Notification Rework**: Move heartbeat badge to the notification bar. Add notification pins.
+  - **Auto title**: Auto generation of chat title
 
 ### ⚡ Changed
 - **Context Compact System**: Optimize the context compressor. It can be triggered manually or when the estimated tokens beyond a threshold.
 - **Sandbox Docker**: Use Docker as the default sandbox.
+- **Chat list**: Improve the design of chat list.
 
 
 ## [v0.4.0]

@@ -199,6 +199,60 @@ async def stream_agent_responses(
         else None
     )
 
+    # Auto-title: kick off in parallel for the first turn using only the user message
+    # Extract text content for title generation
+    _title_text: str | None = None
+    if message and isinstance(message, str):
+        _title_text = message.strip() or None
+    elif message and isinstance(message, list):
+        for _part in message:
+            if isinstance(_part, dict) and _part.get("type") == "text":
+                _title_text = (_part.get("text") or "").strip() or None
+                break
+            elif isinstance(_part, str):
+                _title_text = _part.strip() or None
+                break
+    elif not _title_text and message_history:
+        # message=None means the user text is already in message_history
+        try:
+            from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+            for _msg in reversed(message_history):
+                if isinstance(_msg, ModelRequest):
+                    for _part in _msg.parts:
+                        if isinstance(_part, UserPromptPart) and isinstance(
+                            _part.content, str
+                        ):
+                            _title_text = _part.content.strip() or None
+                            break
+                    if _title_text:
+                        break
+        except Exception:
+            pass
+
+    title_task = None
+    if chat_id and not is_heartbeat and _title_text:
+        try:
+            from suzent.database import get_database as _get_db
+
+            _chat = _get_db().get_chat(chat_id)
+            _turn_count = getattr(_chat, "turn_count", 0) or 0
+            logger.info(f"[AutoTitle] chat={chat_id} turn_count={_turn_count}")
+            if _chat and _turn_count == 0:
+                from suzent.core.auto_title import generate_auto_title
+
+                _agent_model = getattr(agent, "_model_id", None) or getattr(
+                    agent, "model", None
+                )
+                logger.info(f"[AutoTitle] creating task, model={_agent_model}")
+                title_task = asyncio.create_task(
+                    generate_auto_title(
+                        chat_id, _title_text, fallback_model=_agent_model
+                    )
+                )
+        except Exception as e:
+            logger.warning(f"[AutoTitle] setup failed: {e}")
+
     # History tracker for cancellation recovery
     partial_history = list(message_history) if message_history else []
 
@@ -582,6 +636,17 @@ async def stream_agent_responses(
         # --- After stream completes ---
         if not control.cancel_event.is_set() and chat_id:
             yield _encode_custom("plan_refresh", _plan_snapshot(chat_id))
+
+        # Deliver auto-title (runs in parallel, should already be done by now)
+        if title_task is not None and not control.cancel_event.is_set():
+            try:
+                title = await title_task
+                if title:
+                    yield _encode_custom(
+                        "chat_title_updated", {"chat_id": chat_id, "title": title}
+                    )
+            except Exception:
+                pass
 
     except Exception as e:
         if not control.cancel_event.is_set():

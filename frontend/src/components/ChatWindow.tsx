@@ -286,6 +286,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     isStreaming,
     activeStreamingChatId,
     chats,
+    refreshChatListSilently,
+    updateChatTitleLocally,
   } = useChatStore();
 
   const { refresh: refreshPlan, applySnapshot: applyPlanSnapshot, plan } = usePlan();
@@ -424,7 +426,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       canvas.markDeferred(surfaceId);
     },
     onCustomEvent: (name, value) => {
-      if (name === 'plan_refresh') {
+      if (name === 'chat_title_updated') {
+        const { chat_id: titleChatId, title } = value as { chat_id: string; title: string };
+        if (titleChatId && title) updateChatTitleLocally(titleChatId, title);
+        return;
+      } else if (name === 'plan_refresh') {
         const chatId = streamingChatIdRef.current || activeChatIdRef.current;
         applyPlanSnapshot(value as any);
         refreshPlan(chatId);

@@ -42,6 +42,7 @@ interface ChatCoreContextValue {
   deleteChat: (chatId: string) => Promise<void>;
   refreshChatList: (searchQuery?: string) => Promise<void>;
   refreshChatListSilently: (searchQuery?: string) => Promise<void>;
+  updateChatTitleLocally: (chatId: string, title: string) => void;
   updateMessage: (index: number, update: Partial<Message>, chatId?: string | null) => void;
   setViewSwitcher?: (switcher: (view: 'chat' | 'memory') => void) => void;
   switchToView?: (view: 'chat' | 'memory') => void;
@@ -327,13 +328,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const messages = useMemo(() => getMessagesForChat(currentChatId), [getMessagesForChat, currentChatId]);
 
-  // Helper to generate chat title from first message
-  const generateChatTitle = useCallback((firstMessage: string): string => {
-    if (!firstMessage.trim()) return 'New Chat';
-    const title = firstMessage.trim().split('\n')[0];
-    return title.length > 50 ? `${title.substring(0, 47)}...` : title;
-  }, []);
-
   // Fetch backend config with retry logic
   const fetchConfigWithRetry = useCallback(async (attempt = 1, maxAttempts = 5) => {
     try {
@@ -504,6 +498,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await refreshChatListInternal(search, { silent: true });
   }, [refreshChatListInternal]);
 
+  const updateChatTitleLocally = useCallback((chatId: string, title: string) => {
+    setChats(prev => prev.map(c => c.id === chatId ? { ...c, title } : c));
+    if (chatId === currentChatId) setCurrentChatTitle(title);
+  }, [currentChatId]);
+
   // Load chat list on mount (and when refreshChatList reference changes)
   useEffect(() => {
     refreshChatList();
@@ -517,7 +516,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (!chatId) {
       if (chatMessages.length === 0) return;
-      const chatTitle = chatMessages[0].role === 'user' ? generateChatTitle(chatMessages[0].content) : 'New Chat';
+      const chatTitle = 'New Chat';
       try {
         const res = await fetch(`${getApiBase()}/chats`, {
           method: 'POST',
@@ -552,18 +551,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      let updateTitle: string | undefined;
-      let baselineTitle: string = 'New Chat';
-      if (chatMessages.length > 0 && chatMessages[0].role === 'user') {
-        const existingSummary = chats.find(c => c.id === chatId);
-        baselineTitle = existingSummary ? existingSummary.title : (currentChatId === chatId ? currentChatTitle : 'New Chat');
-        if (baselineTitle === 'New Chat') {
-          updateTitle = generateChatTitle(chatMessages[0].content);
-        }
-      }
-
       const payload: any = { config: chatConfig };
-      if (updateTitle) payload.title = updateTitle;
 
       const res = await fetch(`${getApiBase()}/chats/${chatId}`, {
         method: 'PUT',
@@ -585,7 +573,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error saving chat:', error);
     }
-  }, [chats, config, currentChatId, currentChatTitle, generateChatTitle, refreshChatList]);
+  }, [chats, config, currentChatId, currentChatTitle, refreshChatList]);
   // Note: messagesByChat and configByChat removed from deps - using refs instead
 
   const saveCurrentChat = useCallback(async (skipRefresh = false) => {
@@ -854,8 +842,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           : { ...(baseConfig.mcp_urls || {}) }
       };
 
-      const firstUserMessage = chatMessages.find(msg => msg.role === 'user');
-      const chatTitle = firstUserMessage ? generateChatTitle(firstUserMessage.content) : 'New Chat';
+      const chatTitle = 'New Chat';
 
       try {
         const res = await fetch(`${getApiBase()}/chats`, {
@@ -925,7 +912,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const result = await promise;
     chatCreationPromiseRef.current = null;
     return result;
-  }, [currentChatId, messagesByChat, configByChat, computeDefaultConfig, generateChatTitle, refreshChatListInternal, clearScheduledSave]);
+  }, [currentChatId, messagesByChat, configByChat, computeDefaultConfig, refreshChatListInternal, clearScheduledSave]);
 
   const loadChat = useCallback(async (chatId: string) => {
     // Clear any pending saves for the previous chat before switching
@@ -1167,6 +1154,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       deleteChat,
       refreshChatList,
       refreshChatListSilently,
+      updateChatTitleLocally,
       updateMessage,
       setViewSwitcher,
       switchToView,
@@ -1202,6 +1190,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     deleteChat,
     refreshChatList,
     refreshChatListSilently,
+    updateChatTitleLocally,
     updateMessage,
     setViewSwitcher,
     switchToView,

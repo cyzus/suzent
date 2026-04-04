@@ -50,7 +50,7 @@ export const zhCN = {
       browser: '浏览器',
     },
     settings: '设置',
-    settingsDesc: '配置模型/社交等',
+    settingsDesc: '',
   },
   titlebar: {
     minimize: '最小化',

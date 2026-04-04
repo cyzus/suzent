@@ -256,7 +256,7 @@ function AppInner(): React.ReactElement {
           onClose={() => setIsLeftSidebarOpen(false)}
         />
         <div className="flex-1 flex flex-col overflow-hidden w-full">
-          <header className="border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-14">
+          <header className="border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12">
             <div className="flex items-center gap-2 md:gap-0">
               {isLeftSidebarOpen ? (
                 <div className="h-10 w-10 mr-3" aria-hidden="true" />
