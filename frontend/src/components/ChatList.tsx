@@ -336,8 +336,8 @@ export const ChatList: React.FC = () => {
                     const count = currentChatId === chat.id ? 0 : unreadMessages(chat);
                     if (count <= 0) return null;
                     return (
-                      <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 border-2 bg-brutal-yellow text-brutal-black border-brutal-black shrink-0 shadow-[1px_1px_0_0_rgba(0,0,0,1)]">
-                        {count}
+                      <span className="text-[9px] font-extrabold min-w-[16px] h-[16px] px-0.5 flex items-center justify-center bg-brutal-yellow text-brutal-black border-[1.5px] border-brutal-black leading-none shrink-0">
+                        {count > 99 ? '99+' : count}
                       </span>
                     );
                   })()}

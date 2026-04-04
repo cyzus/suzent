@@ -78,6 +78,62 @@ function HeaderTitle({ text, onUnlock }: HeaderTitleProps): React.ReactElement {
 
 type MainView = 'chat' | 'memory' | 'skills' | 'emotes';
 
+function NavTabs({ mainView, setMainView }: { mainView: MainView; setMainView: (v: MainView) => void }): React.ReactElement {
+  const { t } = useI18n();
+  const [sliderStyle, setSliderStyle] = React.useState({ left: 3, width: 0 });
+  const navRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (navRef.current) {
+      const timeout = setTimeout(() => {
+        if (!navRef.current) return;
+        const activeBtn = navRef.current.querySelector<HTMLButtonElement>(`button[data-view="${mainView}"]`);
+        if (activeBtn) {
+          setSliderStyle({ left: activeBtn.offsetLeft, width: activeBtn.offsetWidth });
+        }
+      }, 10);
+      return () => clearTimeout(timeout);
+    }
+  }, [mainView, t]);
+
+  return (
+    <div
+      ref={navRef}
+      className="relative flex items-center p-0.5 border-3 border-brutal-black bg-neutral-100 dark:bg-zinc-800 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+    >
+      {/* Background Slider */}
+      <div
+        className="absolute top-0.5 bottom-0.5 bg-brutal-black dark:bg-brutal-yellow transition-all duration-300 ease-out pointer-events-none"
+        style={{
+          left: sliderStyle.left,
+          width: sliderStyle.width,
+        }}
+      />
+
+      {[
+        { id: 'chat' as MainView, label: t('nav.chat') },
+        { id: 'memory' as MainView, label: t('nav.memory') },
+        { id: 'skills' as MainView, label: t('nav.skills') }
+      ].map((view) => (
+        <button
+          key={view.id}
+          data-view={view.id}
+          onClick={() => setMainView(view.id)}
+          className={`
+            relative z-10 px-2 py-0.5 font-bold uppercase text-[10px] md:text-sm transition-colors whitespace-nowrap
+            ${mainView === view.id
+              ? 'text-white dark:text-brutal-black'
+              : 'text-brutal-black dark:text-white hover:bg-black/5 dark:hover:bg-white/5'
+            }
+          `}
+        >
+          {view.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function AppInner(): React.ReactElement {
   const [sidebarTab, setSidebarTab] = useState<'chats' | 'config'>('chats');
   const [mainView, setMainView] = useState<MainView>('chat');
@@ -290,26 +346,7 @@ function AppInner(): React.ReactElement {
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="flex border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                {[
-                  { id: 'chat' as MainView, label: t('nav.chat') },
-                  { id: 'memory' as MainView, label: t('nav.memory') },
-                  { id: 'skills' as MainView, label: t('nav.skills') }
-                ].map((view) => (
-                  <button
-                    key={view.id}
-                    onClick={() => setMainView(view.id)}
-                    className={`
-                      px-4 py-2 font-bold uppercase text-xs md:text-sm transition-colors border-r-3 border-brutal-black last:border-r-0
-                      ${mainView === view.id
-                        ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black'
-                        : 'bg-white dark:bg-zinc-700 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600'}
-                    `}
-                  >
-                    {view.label}
-                  </button>
-                ))}
-              </div>
+              <NavTabs mainView={mainView} setMainView={setMainView} />
 
               {/* Dark mode toggle */}
               <button
@@ -586,3 +623,16 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
