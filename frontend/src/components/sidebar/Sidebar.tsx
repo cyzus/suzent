@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
+import { detectDesktopPlatform } from '../../lib/titleBarPlatform';
 
 type SidebarTab = 'chats' | 'config';
 
@@ -25,6 +26,12 @@ export function Sidebar({
   const [animateContent, setAnimateContent] = useState(false);
   const [mountedTabs, setMountedTabs] = useState<Set<SidebarTab>>(() => new Set(['chats']));
   const { t } = useI18n();
+  const desktopPlatform = React.useMemo(
+    () => detectDesktopPlatform(navigator.userAgent, navigator.platform),
+    [],
+  );
+  const canDragWindowFromSidebar = !!window.__TAURI__ && desktopPlatform === 'windows';
+  const appWindow = window.__TAURI__?.window.getCurrentWindow();
 
   const TAB_LABELS: Record<SidebarTab, string> = {
     chats: t('sidebar.tabs.chats'),
@@ -46,6 +53,22 @@ export function Sidebar({
     });
   }, [activeTab]);
 
+  function handleSidebarHeaderMouseDown(event: React.MouseEvent<HTMLElement>): void {
+    if (!canDragWindowFromSidebar) {
+      return;
+    }
+
+    const target = event.target as HTMLElement;
+    const interactiveSelector = 'button, a, input, textarea, select, [role="button"]';
+    if (target.closest(interactiveSelector)) {
+      return;
+    }
+
+    appWindow?.startDragging().catch(() => {
+      // No-op: dragging is best-effort for custom titlebars.
+    });
+  }
+
   return (
     <>
       {/* Mobile Backdrop */}
@@ -63,7 +86,10 @@ export function Sidebar({
         transition-all duration-300 ease-in-out
         ${isOpen ? 'translate-x-0 lg:ml-0' : '-translate-x-full lg:translate-x-0 lg:-ml-80'}
       `}>
-        <div className="h-12 flex items-center justify-start px-4 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 sticky top-0 z-10 shrink-0">
+        <div
+          className="h-12 flex items-center justify-start px-4 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 sticky top-0 z-10 shrink-0"
+          onMouseDown={handleSidebarHeaderMouseDown}
+        >
           {/* Toggle Button (Close) */}
           <button
             onClick={onClose}

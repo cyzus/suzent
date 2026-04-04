@@ -26,6 +26,7 @@ import {
   shouldUseFullWidthRightSidebar,
 } from './lib/layout';
 import { TitleBar } from './components/TitleBar';
+import { detectDesktopPlatform } from './lib/titleBarPlatform';
 import { useI18n, getInitialLocale, tForLocale } from './i18n';
 
 interface HeaderTitleProps {
@@ -159,6 +160,15 @@ function AppInner(): React.ReactElement {
   const setHeartbeatStatus = useHeartbeatRunning(s => s.setStatus);
   const { theme, toggleTheme } = useTheme();
   const { t } = useI18n();
+  const [isWindowsMaximized, setIsWindowsMaximized] = useState(false);
+
+  const desktopPlatform = React.useMemo(
+    () => detectDesktopPlatform(navigator.userAgent, navigator.platform),
+    [],
+  );
+  const showStandaloneTitleBar = desktopPlatform !== 'windows';
+  const showWindowsWindowControls = desktopPlatform === 'windows';
+  const appWindow = window.__TAURI__?.window.getCurrentWindow();
 
   // Use refs so the interval callback always sees the latest values without re-creating the interval.
   const refreshChatListRef = React.useRef(refreshChatList);
@@ -234,6 +244,27 @@ function AppInner(): React.ReactElement {
     });
   }
 
+  async function toggleWindowsMaximize(): Promise<void> {
+    await appWindow?.toggleMaximize();
+    setIsWindowsMaximized(prev => !prev);
+  }
+
+  function handleWindowsHeaderMouseDown(event: React.MouseEvent<HTMLElement>): void {
+    if (!showWindowsWindowControls) {
+      return;
+    }
+
+    const target = event.target as HTMLElement;
+    const interactiveSelector = 'button, a, input, textarea, select, [role="button"]';
+    if (target.closest(interactiveSelector)) {
+      return;
+    }
+
+    appWindow?.startDragging().catch(() => {
+      // No-op: dragging is best-effort for custom titlebars.
+    });
+  }
+
   React.useEffect(() => {
     setViewSwitcher?.(setMainView as (view: 'chat' | 'memory') => void);
   }, [setViewSwitcher, setMainView]);
@@ -301,7 +332,7 @@ function AppInner(): React.ReactElement {
   return (
     <div className="h-full w-full bg-neutral-50 dark:bg-zinc-900 text-brutal-black dark:text-white font-sans">
       <TitleBar />
-      <div className={`flex h-full relative ${window.__TAURI__ ? 'pt-8' : ''}`}>
+      <div className={`flex h-full relative ${showStandaloneTitleBar ? 'pt-8' : ''}`}>
         <Sidebar
           activeTab={sidebarTab}
           onTabChange={setSidebarTab}
@@ -312,7 +343,10 @@ function AppInner(): React.ReactElement {
           onClose={() => setIsLeftSidebarOpen(false)}
         />
         <div className="flex-1 flex flex-col overflow-hidden w-full">
-          <header className="border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12">
+          <header
+            className="relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12"
+            onMouseDown={handleWindowsHeaderMouseDown}
+          >
             <div className="flex items-center gap-2 md:gap-0">
               {isLeftSidebarOpen ? (
                 <div className="h-10 w-10 mr-3" aria-hidden="true" />
@@ -345,7 +379,7 @@ function AppInner(): React.ReactElement {
               <HeaderTitle text={getTitle()} onUnlock={() => setMainView('emotes')} />
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className={`flex items-center gap-3 ${showWindowsWindowControls ? 'pr-[108px]' : ''}`}>
               <NavTabs mainView={mainView} setMainView={setMainView} />
 
               {/* Dark mode toggle */}
@@ -394,6 +428,46 @@ function AppInner(): React.ReactElement {
               ) : (
                 <div className="h-10 w-10" aria-hidden="true" />
               )}
+
+              {showWindowsWindowControls ? (
+                <div className="absolute right-0 top-0 bottom-0 flex text-brutal-black dark:text-white overflow-hidden">
+                  <button
+                    onClick={() => appWindow?.minimize()}
+                    className="h-full w-9 flex items-center justify-center hover:bg-brutal-black dark:hover:bg-zinc-600 hover:text-brutal-white transition-colors"
+                    title={t('titlebar.minimize')}
+                  >
+                    <svg width="10" height="2" viewBox="0 0 10 2" fill="currentColor">
+                      <rect width="10" height="2" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={toggleWindowsMaximize}
+                    className="h-full w-9 flex items-center justify-center hover:bg-brutal-black dark:hover:bg-zinc-600 hover:text-brutal-white transition-colors"
+                    title={isWindowsMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
+                  >
+                    {isWindowsMaximized ? (
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="2" y="0" width="8" height="8" rx="0" />
+                        <rect x="0" y="2" width="8" height="8" rx="0" />
+                      </svg>
+                    ) : (
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="0" y="0" width="10" height="10" rx="0" />
+                      </svg>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => appWindow?.close()}
+                    className="h-full w-9 flex items-center justify-center hover:bg-brutal-red hover:text-white transition-colors"
+                    title={t('titlebar.close')}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="0" y1="0" x2="10" y2="10" />
+                      <line x1="10" y1="0" x2="0" y2="10" />
+                    </svg>
+                  </button>
+                </div>
+              ) : null}
             </div>
           </header>
 
