@@ -184,9 +184,10 @@ class PathResolver:
         Raises:
             ValueError: If path traversal is detected or path is not allowed
         """
-        if os.name == "nt" and (
-            virtual_path.startswith("\\\\") or virtual_path.startswith("//")
-        ):
+        # Treat UNC-style paths as disallowed regardless of host OS.
+        # This blocks network-share style inputs such as \\server\share\file
+        # and //server/share/file before any normalization occurs.
+        if virtual_path.startswith("\\\\") or virtual_path.startswith("//"):
             raise ValueError("UNC paths are not supported")
 
         # Normalize path separators

@@ -1,3 +1,4 @@
+import os
 from types import SimpleNamespace
 
 from suzent.tools.bash_tool import BashTool
@@ -55,9 +56,12 @@ def test_accepts_command_language_on_host(monkeypatch, tmp_path):
     result = tool.forward(_ctx(tmp_path), content="echo hi", language="command")
 
     assert result == "ok"
-    assert captured["cmd"][0] == "powershell"
-    assert captured["cmd"][1:] == [
-        "-NoProfile",
-        "-Command",
-        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; echo hi",
-    ]
+    if os.name == "nt":
+        assert captured["cmd"][0] == "powershell"
+        assert captured["cmd"][1:] == [
+            "-NoProfile",
+            "-Command",
+            "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; echo hi",
+        ]
+    else:
+        assert captured["cmd"] == ["bash", "-c", "echo hi"]
