@@ -56,20 +56,26 @@ body,
   background-image: radial-gradient(rgba(74, 222, 128, 0.10) 1px, transparent 1px);
 }
 
-/* Custom scrollbar tuned for the neo-brutalist palette */
+/* Global themed scrollbar tuned for the neo-brutalist palette */
+*,
 .scrollbar-thin {
   scrollbar-width: thin;
   /* Make track transparent to avoid white block overlaying header/border lines */
   scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.scrollbar-thin {
   /* Firefox */
   scrollbar-gutter: stable;
 }
 
+*::-webkit-scrollbar,
 .scrollbar-thin::-webkit-scrollbar {
   width: 14px;
   height: 14px;
 }
 
+*::-webkit-scrollbar-track,
 .scrollbar-thin::-webkit-scrollbar-track {
   background-color: transparent;
   /* Prevent covering underlying separators */
@@ -77,6 +83,7 @@ body,
   margin: 3px 0;
 }
 
+*::-webkit-scrollbar-thumb,
 .scrollbar-thin::-webkit-scrollbar-thumb {
   background-color: var(--scrollbar-thumb);
   border-radius: 0;
@@ -85,6 +92,7 @@ body,
   transition: background-color 0.15s ease;
 }
 
+*::-webkit-scrollbar-thumb:hover,
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background-color: var(--scrollbar-thumb-hover);
 }
