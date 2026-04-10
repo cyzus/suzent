@@ -99,10 +99,10 @@ const ScrollToBottomButton: React.FC<{ onClick: () => void }> = ({ onClick }) =>
   return (
     <button
       onClick={onClick}
-      className="absolute bottom-6 right-6 z-20 w-10 h-10 bg-brutal-black text-white border-2 border-white shadow-brutal-lg flex items-center justify-center hover:bg-brutal-blue transition-colors animate-brutal-pop"
+      className="absolute bottom-6 right-6 z-20 w-10 h-10 bg-white dark:bg-zinc-800 text-brutal-black dark:text-white border-2 border-brutal-black dark:border-zinc-600 shadow-[4px_4px_0_0_#000] flex items-center justify-center hover:bg-neutral-100 dark:hover:bg-zinc-700 active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all animate-brutal-pop"
       title={t('chatWindow.scrollToBottom')}
     >
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
       </svg>
     </button>
