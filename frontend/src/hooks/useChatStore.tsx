@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Message, ChatConfig, ConfigOptions, Chat, ChatSummary } from '../types/api';
 import { getApiBase } from '../lib/api';
+import { shouldKeepLocalAssistantContent } from '../lib/chatSyncGuards';
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -991,6 +992,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Prevent UI flicker: if local store has more messages (e.g. optimistic append right after stream),
           // don't let stale backend DB state overwrite it. Wait until DB catches up.
           const existing = prev[key] || [];
+          if (shouldKeepLocalAssistantContent(existing, mappedMessages)) {
+            return prev;
+          }
           if (existing.length > mappedMessages.length) {
             return prev;
           }
