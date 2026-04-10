@@ -19,7 +19,7 @@ from typing import Optional
 
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool
+from suzent.tools.base import Tool, ToolGroup
 
 from suzent.logger import get_logger
 
@@ -39,6 +39,7 @@ class BashTool(Tool):
 
     name = "BashTool"
     tool_name = "bash_execute"
+    group = ToolGroup.EXECUTION
     requires_approval = True
     _SUPPORTED_LANGUAGES = {"python", "nodejs", "command"}
 

@@ -11,13 +11,23 @@ messages, and optional metadata for advanced retry and recovery logic.
 """
 
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from pydantic import BaseModel, Field
 
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class ToolGroup(str, Enum):
+    """UI display group for a tool. Extending str means values serialise as plain strings."""
+
+    FILESYSTEM = "Filesystem"
+    EXECUTION = "Execution"
+    WEB = "Web"
+    AGENT = "Agent"
+    CREATIVE = "Creative"
 
 
 class ToolErrorCode(Enum):
@@ -115,6 +125,7 @@ class Tool:
 
     name: str = ""  # Registry key (e.g., "ReadFileTool")
     tool_name: str = ""  # pydantic-ai function name (e.g., "read_file")
+    group: Union[ToolGroup, str] = ""  # empty = hidden from UI
     requires_approval: bool = False
 
     def __init__(self, *args, **kwargs):

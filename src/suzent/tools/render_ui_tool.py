@@ -11,13 +11,14 @@ from typing import Any
 
 from pydantic_ai import RunContext
 
-from suzent.tools.base import Tool
+from suzent.tools.base import Tool, ToolGroup
 from suzent.core.agent_deps import AgentDeps
 
 
 class RenderUITool(Tool):
     name = "RenderUITool"
     tool_name = "render_ui"
+    group = ToolGroup.AGENT
     requires_approval = False
 
     async def forward(

@@ -14,7 +14,7 @@ import httpx
 from urllib.parse import urlparse
 from typing import Optional, List, Dict, Any
 
-from suzent.tools.base import Tool
+from suzent.tools.base import Tool, ToolGroup
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -30,6 +30,7 @@ class WebSearchTool(Tool):
 
     name: str = "WebSearchTool"
     tool_name: str = "web_search"
+    group: ToolGroup = ToolGroup.WEB
 
     # Constants
     TIME_RANGE_MAPPING = {

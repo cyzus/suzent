@@ -9,7 +9,7 @@ from playwright.async_api import (
     CDPSession,
 )
 from starlette.websockets import WebSocket
-from suzent.tools.base import Tool
+from suzent.tools.base import Tool, ToolGroup
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -508,6 +508,7 @@ class BrowserSessionManager:
 class BrowsingTool(Tool):
     name = "BrowsingTool"
     tool_name = "browser_action"
+    group = ToolGroup.WEB
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

@@ -5,7 +5,7 @@ from datetime import datetime
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
 
-from suzent.tools.base import Tool
+from suzent.tools.base import Tool, ToolGroup
 from suzent.llm import ImageGenerator
 from suzent.config import CONFIG
 from suzent.logger import get_logger
@@ -18,6 +18,7 @@ class ImageGenerationTool(Tool):
 
     name: str = "ImageGenerationTool"
     tool_name: str = "generate_image"
+    group: ToolGroup = ToolGroup.CREATIVE
     requires_approval: bool = True
 
     async def forward(self, ctx: RunContext[AgentDeps], prompt: str) -> str:

@@ -2,7 +2,7 @@
 Voice tool for speaking text.
 """
 
-from suzent.tools.base import Tool
+from suzent.tools.base import Tool, ToolGroup
 from suzent.logger import get_logger
 from suzent.voice.speech import SpeechOutput
 from suzent.voice.audio_io import SoundDeviceSink
@@ -13,6 +13,7 @@ logger = get_logger(__name__)
 class SpeakTool(Tool):
     name = "SpeakTool"
     tool_name = "speak"
+    group = ToolGroup.CREATIVE
 
     def __init__(self):
         self._sink = None

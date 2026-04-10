@@ -11,7 +11,7 @@ from typing import Optional
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool, ToolErrorCode, ToolResult
+from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 from suzent.tools.filesystem.file_tool_utils import (
     detect_text_encoding,
     get_or_create_path_resolver,
@@ -39,6 +39,7 @@ class ReadFileTool(Tool):
 
     name = "ReadFileTool"
     tool_name = "read_file"
+    group = ToolGroup.FILESYSTEM
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

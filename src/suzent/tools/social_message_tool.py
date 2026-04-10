@@ -10,7 +10,7 @@ from typing import Optional
 
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool
+from suzent.tools.base import Tool, ToolGroup
 
 from suzent.logger import get_logger
 
@@ -28,6 +28,7 @@ PLATFORM_CHAR_LIMITS = {
 class SocialMessageTool(Tool):
     name = "SocialMessageTool"
     tool_name = "social_message"
+    group = ToolGroup.CREATIVE
     requires_approval = False
 
     def __init__(self):

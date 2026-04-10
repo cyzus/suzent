@@ -5,7 +5,7 @@ WriteFileTool - Create or overwrite files.
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool, ToolErrorCode, ToolResult
+from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 from suzent.tools.filesystem.file_tool_utils import (
     detect_text_encoding,
     get_or_create_path_resolver,
@@ -28,6 +28,7 @@ class WriteFileTool(Tool):
 
     name = "WriteFileTool"
     tool_name = "write_file"
+    group = ToolGroup.FILESYSTEM
     requires_approval = True
 
     def forward(

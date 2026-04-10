@@ -94,6 +94,7 @@ export interface ConfigOptions {
   agents: string[];
   tools: string[];        // full list of tool options
   defaultTools: string[]; // default enabled tools
+  toolGroups?: { label: string; tools: string[] }[];
   codeTag: string;        // CODE_TAG (e.g. <code>) so frontend can parse blocks consistently
   userId?: string;        // backend-provided user identifier for memory system alignment
   globalSandboxVolumes?: string[];  // global volumes from config file

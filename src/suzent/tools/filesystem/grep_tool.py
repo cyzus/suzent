@@ -9,7 +9,7 @@ from typing import Optional, List, Tuple
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool
+from suzent.tools.base import Tool, ToolGroup
 
 from suzent.logger import get_logger
 from suzent.tools.filesystem.path_resolver import PathResolver
@@ -24,6 +24,7 @@ class GrepTool(Tool):
 
     name = "GrepTool"
     tool_name = "grep_search"
+    group = ToolGroup.FILESYSTEM
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

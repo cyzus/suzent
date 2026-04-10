@@ -27,7 +27,7 @@ from typing import Optional
 
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool
+from suzent.tools.base import Tool, ToolGroup
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -47,6 +47,7 @@ class ProcessTool(Tool):
 
     name = "ProcessTool"
     tool_name = "process_manage"
+    group = ToolGroup.EXECUTION
     requires_approval = False
     _VALID_ACTIONS = {"poll", "status", "kill"}
 

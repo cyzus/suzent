@@ -66,9 +66,8 @@ def _make_tool(tool_cls) -> Union[Callable, PydanticTool]:
 _REGISTRY: Optional[Dict[str, Union[Callable, PydanticTool]]] = None
 
 
-def _build_registry() -> Dict[str, Union[Callable, PydanticTool]]:
-    """Import all Tool classes and build the registry."""
-
+def _all_tool_classes() -> list:
+    """Import and return all tool classes in display order."""
     from suzent.tools.websearch_tool import WebSearchTool
     from suzent.tools.webpage_tool import WebpageTool
     from suzent.tools.bash_tool import BashTool
@@ -90,30 +89,44 @@ def _build_registry() -> Dict[str, Union[Callable, PydanticTool]]:
     from suzent.tools.render_ui_tool import RenderUITool
     from suzent.tools.ask_question_tool import AskQuestionTool
 
-    ALL_TOOLS = [
-        WebSearchTool,
-        WebpageTool,
-        BashTool,
-        ProcessTool,
-        ReadFileTool,
-        WriteFileTool,
-        EditFileTool,
+    return [
         GlobTool,
         GrepTool,
-        PlanningTool,
+        ReadFileTool,
+        EditFileTool,
+        WriteFileTool,
+        BashTool,
+        ProcessTool,
         BrowsingTool,
-        SkillTool,
-        SocialMessageTool,
-        SpeakTool,
+        WebpageTool,
+        WebSearchTool,
+        AskQuestionTool,
+        PlanningTool,
+        RenderUITool,
         ImageGenerationTool,
+        SpeakTool,
+        SocialMessageTool,
+        SkillTool,
         MemorySearchTool,
         MemoryBlockUpdateTool,
-        RenderUITool,
-        AskQuestionTool,
     ]
 
+
+def get_tool_groups() -> List[Dict]:
+    """Derive UI tool groups from each tool's ``group`` class attribute."""
+    groups: Dict[str, List[str]] = {}
+    for cls in _all_tool_classes():
+        g = getattr(cls, "group", "")
+        if not g:
+            continue
+        groups.setdefault(g, []).append(cls.name)
+    return [{"label": label, "tools": tools} for label, tools in groups.items()]
+
+
+def _build_registry() -> Dict[str, Union[Callable, PydanticTool]]:
+    """Import all Tool classes and build the registry."""
     registry: Dict[str, Union[Callable, PydanticTool]] = {}
-    for cls in ALL_TOOLS:
+    for cls in _all_tool_classes():
         try:
             registry[cls.name] = _make_tool(cls)
         except Exception as e:

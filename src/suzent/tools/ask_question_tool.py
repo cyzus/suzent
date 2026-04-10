@@ -13,7 +13,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 from pydantic_ai import RunContext
 
-from suzent.tools.base import Tool
+from suzent.tools.base import Tool, ToolGroup
 from suzent.core.agent_deps import AgentDeps
 from suzent.a2ui import pending as pending_questions
 
@@ -47,6 +47,7 @@ class QuestionItem(BaseModel):
 class AskQuestionTool(Tool):
     name = "AskQuestionTool"
     tool_name = "ask_question"
+    group = ToolGroup.AGENT
     requires_approval = False
 
     async def forward(

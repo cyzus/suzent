@@ -21,6 +21,7 @@ from suzent.core.providers import (
     get_effective_memory_config,
     get_enabled_models_from_db,
 )
+from suzent.tools.registry import get_tool_groups
 from suzent.database import get_database
 
 
@@ -49,6 +50,7 @@ async def get_config(request: Request) -> JSONResponse:
         "models": available_models,
         "agents": CONFIG.agent_options,
         "tools": [t for t in CONFIG.tool_options if t != "SkillTool"],
+        "toolGroups": get_tool_groups(),
         "defaultTools": [t for t in CONFIG.default_tools if t != "SkillTool"],
         "codeTag": CONFIG.code_tag,
         "userId": CONFIG.user_id,

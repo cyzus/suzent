@@ -9,7 +9,7 @@ from typing import Optional
 
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool
+from suzent.tools.base import Tool, ToolGroup
 
 from suzent.logger import get_logger
 from suzent.plan import (
@@ -31,6 +31,7 @@ class PlanningTool(Tool):
 
     name: str = "PlanningTool"
     tool_name: str = "planning_update"
+    group: ToolGroup = ToolGroup.AGENT
 
     def __init__(self):
         self._current_chat_id = None

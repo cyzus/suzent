@@ -1,6 +1,6 @@
 from crawl4ai import AsyncWebCrawler
 
-from suzent.tools.base import Tool
+from suzent.tools.base import Tool, ToolGroup
 
 
 class WebpageTool(Tool):
@@ -10,6 +10,7 @@ class WebpageTool(Tool):
 
     name: str = "WebpageTool"
     tool_name: str = "webpage_fetch"
+    group: ToolGroup = ToolGroup.WEB
 
     async def _crawl_url(self, url: str) -> str:
         """Async helper to properly initialize and use the crawler."""
