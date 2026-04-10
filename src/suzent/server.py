@@ -95,6 +95,7 @@ from suzent.routes.cron_routes import (
     get_cron_status,
     get_cron_notifications,
     get_cron_job_runs,
+    install_cron_presets,
 )
 from suzent.routes.heartbeat_routes import (
     get_heartbeat_status,
@@ -464,6 +465,7 @@ app = Starlette(
         Route("/cron/jobs/{job_id:int}", update_cron_job, methods=["PUT"]),
         Route("/cron/jobs/{job_id:int}", delete_cron_job, methods=["DELETE"]),
         Route("/cron/jobs/{job_id:int}/trigger", trigger_cron_job, methods=["POST"]),
+        Route("/cron/presets/install", install_cron_presets, methods=["POST"]),
         Route("/cron/status", get_cron_status, methods=["GET"]),
         Route("/cron/notifications", get_cron_notifications, methods=["GET"]),
         Route("/cron/jobs/{job_id:int}/runs", get_cron_job_runs, methods=["GET"]),

@@ -160,7 +160,13 @@ class ConfigModel(BaseModel):
     # Memory
     memory_enabled: bool = False
     markdown_memory_enabled: bool = True
+    wiki_enabled: bool = True
     extraction_model: Optional[str] = None
+
+    # Cron presets — declarative list of jobs to ensure on startup.
+    # Each entry: {name, cron_expr, prompt, delivery_mode?, model_override?, enabled?, requires?}
+    # `requires`: optional config field name that must be truthy for the job to be created.
+    cron_presets: List[Dict[str, Any]] = []
     user_id: str = "default-user"
     lancedb_uri: str = str(DATA_DIR / "memory")
 

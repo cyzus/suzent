@@ -182,6 +182,22 @@ async def get_cron_job_runs(request: Request) -> JSONResponse:
     return JSONResponse({"runs": [_run_to_dict(r) for r in runs]})
 
 
+async def install_cron_presets(request: Request) -> JSONResponse:
+    """Install or update builtin cron presets."""
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    activate_existing = bool(data.get("activate_existing", False))
+
+    from suzent.core.scheduler import ensure_cron_presets
+
+    db = get_database()
+    result = ensure_cron_presets(db, activate_existing=activate_existing)
+    return JSONResponse(result)
+
+
 def _run_to_dict(run) -> dict:
     """Serialize a CronRunModel to a JSON-safe dict."""
     return {

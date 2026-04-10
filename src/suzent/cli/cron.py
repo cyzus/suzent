@@ -216,3 +216,30 @@ def scheduler_status():
     status = "RUNNING" if running else "STOPPED"
     typer.echo(f"  Scheduler: {status}")
     typer.echo(f"  Jobs:      {active} active / {total} total")
+
+
+@cron_app.command("install-presets")
+def install_presets(
+    activate_existing: bool = typer.Option(
+        False,
+        "--activate-existing",
+        help="Activate matching existing preset jobs if they are disabled",
+    ),
+):
+    """Install or update builtin cron presets for wiki ingest/lint."""
+    payload = {"activate_existing": activate_existing}
+    data = _http_post("/cron/presets/install", payload)
+
+    if not data.get("success"):
+        reason = data.get("reason", "unknown")
+        typer.echo(f"Preset installation skipped: {reason}")
+        return
+
+    created = data.get("created", [])
+    updated = data.get("updated", [])
+    unchanged = data.get("unchanged", [])
+
+    typer.echo("Cron presets processed")
+    typer.echo(f"  Created:   {len(created)}")
+    typer.echo(f"  Updated:   {len(updated)}")
+    typer.echo(f"  Unchanged: {len(unchanged)}")

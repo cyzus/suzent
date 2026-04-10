@@ -30,6 +30,109 @@ def get_active_scheduler() -> Optional["SchedulerBrain"]:
     return get_active(SchedulerBrain)
 
 
+def ensure_cron_presets(db, activate_existing: bool = False) -> dict:
+    """Idempotently create or update cron jobs declared in CONFIG.cron_presets.
+
+    Each preset spec supports:
+      name          (str, required)  — unique job name
+      cron_expr     (str, required)  — standard cron expression
+      prompt        (str, required)  — message sent to the agent
+      delivery_mode (str)            — "announce" | "silent" (default: "silent")
+      model_override (str|None)      — optional model override
+      enabled       (bool)           — hard-disable this preset (default: True)
+      requires      (str)            — CONFIG field name that must be truthy
+    """
+    presets = getattr(CONFIG, "cron_presets", [])
+    if not presets:
+        return {
+            "success": True,
+            "created": [],
+            "updated": [],
+            "unchanged": [],
+            "skipped": [],
+        }
+
+    jobs_by_name = {job.name: job for job in db.list_cron_jobs()}
+    now = datetime.now()
+    created, updated, unchanged, skipped = [], [], [], []
+
+    for spec in presets:
+        name = spec.get("name")
+        if not name:
+            continue
+
+        # Per-preset enabled flag
+        if not spec.get("enabled", True):
+            skipped.append(name)
+            continue
+
+        # Feature-flag guard: skip if a required config field is falsy
+        requires = spec.get("requires")
+        if requires and not getattr(CONFIG, requires, False):
+            skipped.append(name)
+            continue
+
+        cron_expr = spec.get("cron_expr")
+        prompt = spec.get("prompt", "")
+        delivery_mode = spec.get("delivery_mode", "silent")
+        model_override = spec.get("model_override") or None
+
+        if not cron_expr:
+            logger.warning(f"Cron preset '{name}' has no cron_expr, skipping")
+            skipped.append(name)
+            continue
+
+        desired = {
+            "cron_expr": cron_expr,
+            "prompt": prompt,
+            "delivery_mode": delivery_mode,
+            "model_override": model_override,
+        }
+
+        existing = jobs_by_name.get(name)
+        if not existing:
+            job_id = db.create_cron_job(
+                name=name,
+                cron_expr=cron_expr,
+                prompt=prompt,
+                active=True,
+                delivery_mode=delivery_mode,
+                model_override=model_override,
+            )
+            next_run = croniter(cron_expr, now).get_next(datetime)
+            db.update_cron_job_run_state(job_id, next_run_at=next_run)
+            created.append(name)
+            continue
+
+        patch = {k: v for k, v in desired.items() if getattr(existing, k) != v}
+        if activate_existing and not existing.active:
+            patch["active"] = True
+
+        if patch:
+            db.update_cron_job(existing.id, **patch)
+            active_after = patch.get("active", existing.active)
+            cron_expr_after = patch.get("cron_expr", existing.cron_expr)
+            if active_after and ("cron_expr" in patch or not existing.next_run_at):
+                next_run = croniter(cron_expr_after, now).get_next(datetime)
+                db.update_cron_job_run_state(existing.id, next_run_at=next_run)
+            updated.append(name)
+        else:
+            unchanged.append(name)
+
+    return {
+        "success": True,
+        "created": created,
+        "updated": updated,
+        "unchanged": unchanged,
+        "skipped": skipped,
+    }
+
+
+# Shim for any callers that still reference the old name.
+def ensure_wiki_cron_presets(db, activate_existing: bool = False) -> dict:
+    return ensure_cron_presets(db, activate_existing=activate_existing)
+
+
 class SchedulerBrain(BaseBrain):
     """
     Periodically checks cron jobs and executes them via ChatProcessor.
@@ -46,6 +149,21 @@ class SchedulerBrain(BaseBrain):
     async def start(self):
         """Start the scheduler loop."""
         await super().start()
+
+        try:
+            db = get_database()
+            preset_result = ensure_cron_presets(db)
+            if preset_result.get("success"):
+                logger.info(
+                    "Cron presets ensured: "
+                    f"created={len(preset_result['created'])}, "
+                    f"updated={len(preset_result['updated'])}, "
+                    f"unchanged={len(preset_result['unchanged'])}, "
+                    f"skipped={len(preset_result['skipped'])}"
+                )
+        except Exception as e:
+            logger.error(f"Failed to ensure cron presets: {e}")
+
         self._initialize_schedules()
 
     async def trigger_job_now(self, job_id: int):

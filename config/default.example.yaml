@@ -58,6 +58,28 @@ IMAGE_GENERATION_MODEL: "gemini/gemini-3.1-flash-image-preview"
 MEMORY_ENABLED: true
 EMBEDDING_MODEL: gemini/gemini-embedding-001
 EMBEDDING_DIMENSION: 3072
+WIKI_ENABLED: true
+
+# Declarative cron job presets — created/updated idempotently on startup.
+# Fields: name, cron_expr, prompt, delivery_mode (announce|silent), model_override, enabled, requires
+# `requires`: name of a CONFIG field that must be truthy for this job to be active.
+# Add new presets here without touching any Python code.
+CRON_PRESETS:
+  - name: wiki-ingest-daily
+    cron_expr: "0 2 * * *"
+    prompt: "Run the ingest skill for daily memory logs. Follow /mnt/skills/notebook/ingest.md exactly."
+    delivery_mode: announce
+    requires: wiki_enabled
+  - name: wiki-lint-weekly
+    cron_expr: "0 3 * * 0"
+    prompt: "Run the lint skill. Follow /mnt/skills/notebook/lint.md exactly."
+    delivery_mode: announce
+    requires: wiki_enabled
+  # Example — add your own presets:
+  # - name: daily-summary
+  #   cron_expr: "0 20 * * *"
+  #   prompt: "Summarize what was accomplished today and write it to /shared/memory/summaries/."
+  #   delivery_mode: announce
 
 USER_ID: "default-user"
 # Extraction model for LLM-based fact extraction (leave empty for heuristic-based)
