@@ -25,11 +25,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Notification Rework**: Move heartbeat badge to the notification bar. Add notification pins.
   - **Auto title**: Auto generation of chat title.
   - **Desktop Single Instance**: Block multiple desktop instances running at the same time.
+  - **LLM Wiki**: Update notebook skill based on the ideas from Karpathy's [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
 
 ### ⚡ Changed
 - **Context Compact System**: Optimize the context compressor. It can be triggered manually or when the estimated tokens beyond a threshold.
 - **Sandbox Docker**: Use Docker as the default sandbox.
 - **Chat list**: Improve the design of chat list.
+
+### 🐛 Fixed
+- **Host Prompt Path Leakage**: Fixed host-mode instruction leakage of sandbox virtual paths (`/mnt/*`, `/shared/*`) across memory and skill contexts.
+  - Memory context rendering is now mode-aware and uses host environment paths outside sandbox mode.
+  - Skills XML locations now render host-resolvable paths in host mode.
+  - SkillTool now adapts loaded skill content to host-safe path variables when sandbox is disabled.
 
 
 ## [v0.4.0]
