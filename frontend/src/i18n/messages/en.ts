@@ -364,6 +364,8 @@ export const en = {
     dragDropDesc: 'Images, PDFs, documents, etc.',
     scrollToBottom: 'Scroll to bottom',
     connecting: 'Connecting to Neural Core...',
+    outputValidationRetryError: 'The model response format failed validation too many times. Please retry this message.',
+    genericError: 'Something went wrong. Please try again.',
     heartbeatOff: 'Heartbeat off',
     heartbeatRunning: 'Heartbeat running',
     heartbeatHealthy: 'Heartbeat healthy',

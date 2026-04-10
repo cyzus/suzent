@@ -468,9 +468,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       setIsStreaming(false, chatId);
       streamingChatIdRef.current = null;
       stopInFlightRef.current = false;
-      const isNetworkError = error.message === 'Failed to fetch' || error instanceof TypeError;
+      const errorMessage = typeof error?.message === 'string' ? error.message : '';
+      const isNetworkError = errorMessage === 'Failed to fetch' || error instanceof TypeError;
+      const isOutputValidationRetryError =
+        errorMessage.includes('output validation') &&
+        errorMessage.includes('Exceeded maximum retries');
+
+      const displayMessage = isOutputValidationRetryError
+        ? t('chatWindow.outputValidationRetryError')
+        : (errorMessage || t('chatWindow.genericError'));
+
       if (!wasHeartbeat && !isLiveStreamRef.current && !isNetworkError) {
-        addMessage({ role: 'assistant', content: `\u26a0\ufe0f Error: ${error.message}` }, chatId);
+        addMessage({ role: 'assistant', content: `\u26a0\ufe0f Error: ${displayMessage}` }, chatId);
       }
       isLiveStreamRef.current = false;
       liveStreamPartsRef.current = [];

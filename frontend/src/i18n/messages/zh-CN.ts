@@ -291,6 +291,8 @@ export const zhCN = {
     dragDropDesc: '支持图片、PDF、文档等',
     scrollToBottom: '滚动到底部',
     connecting: '正在连接核心服务...',
+    outputValidationRetryError: '模型输出格式校验多次失败，请重试这条消息。',
+    genericError: '发生错误，请重试。',
     heartbeatOff: '心跳已关闭',
     heartbeatRunning: '心跳运行中',
     heartbeatHealthy: '心跳健康',
