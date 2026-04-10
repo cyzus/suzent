@@ -11,7 +11,7 @@ from .manager import MemoryManager
 from .lancedb_store import LanceDBMemoryStore
 from .markdown_store import MarkdownMemoryStore
 from .indexer import MarkdownIndexer, TranscriptIndexer
-from .tools import MemorySearchTool, MemoryBlockUpdateTool
+from suzent.tools.memory_tools import MemorySearchTool, MemoryBlockUpdateTool
 from . import memory_context
 from .models import (
     Message,
