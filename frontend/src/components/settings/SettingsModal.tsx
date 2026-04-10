@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
 import { useChatStore } from '../../hooks/useChatStore';
-import { ApiProvider, fetchApiKeys, fetchEmbeddingModels, fetchSocialConfig, fetchMcpServers, saveApiKeys, saveSocialConfig, saveUserPreferences, SocialConfig, UserConfig, verifyProvider } from '../../lib/api';
+import { ApiProvider, fetchApiKeys, fetchEmbeddingModels, fetchSocialConfig, fetchMcpServers, saveApiKeys, saveGlobalSandboxConfig, saveSocialConfig, saveUserPreferences, SocialConfig, UserConfig, verifyProvider } from '../../lib/api';
 import { AppearanceTab } from './AppearanceTab';
 import { AutomationTab } from './AutomationTab';
 import { McpTab } from './McpTab';
@@ -60,12 +60,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
   const [mcpServers, setMcpServers] = useState<{ urls: Record<string, string>; stdio: Record<string, any>; enabled: Record<string, boolean> } | null>(null);
   const [useCustomTools, setUseCustomTools] = useState(false);
   const [useCustomMcp, setUseCustomMcp] = useState(false);
+  const [globalNotebookHostPath, setGlobalNotebookHostPath] = useState('');
 
   // MCP Server Management State
   const [mcpServerList, setMcpServerList] = useState<MCPServer[]>([]);
 
   useEffect(() => {
     if (!isOpen) return;
+
+    setActiveCategory('providers');
 
     setLoading(true);
     fetchApiKeys().then(data => {
@@ -135,6 +138,19 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
     if (prefs) {
       setSelectedEmbeddingModel(prefs.embedding_model || '');
       setSelectedExtractionModel(prefs.extraction_model || '');
+    }
+
+    const globalVolumes = backendConfig?.globalSandboxVolumes || [];
+    const notebookVolume = globalVolumes.find((volume) => {
+      const lastColon = volume.lastIndexOf(':');
+      if (lastColon === -1) return false;
+      return volume.substring(lastColon + 1) === '/mnt/notebook';
+    });
+    if (notebookVolume) {
+      const lastColon = notebookVolume.lastIndexOf(':');
+      setGlobalNotebookHostPath(notebookVolume.substring(0, lastColon));
+    } else {
+      setGlobalNotebookHostPath('');
     }
   }, [isOpen, backendConfig]);
 
@@ -206,6 +222,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
     }
 
     await saveSocialConfig(socialConfig);
+    const sandboxVolumes = globalNotebookHostPath.trim()
+      ? [`${globalNotebookHostPath.trim()}:/mnt/notebook`]
+      : [];
+    await saveGlobalSandboxConfig(sandboxVolumes);
     await refreshBackendConfig();
 
     setSaving(false);
@@ -256,7 +276,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
           <path strokeLinecap="round" strokeLinejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
         </svg>
       )
-    }
+    },
   ];
 
   return (
@@ -359,8 +379,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                       models={backendConfig?.models || []}
                       selectedEmbeddingModel={selectedEmbeddingModel}
                       selectedExtractionModel={selectedExtractionModel}
+                      globalNotebookHostPath={globalNotebookHostPath}
                       onEmbeddingModelChange={setSelectedEmbeddingModel}
                       onExtractionModelChange={setSelectedExtractionModel}
+                      onGlobalNotebookHostPathChange={setGlobalNotebookHostPath}
                     />
                   )}
 

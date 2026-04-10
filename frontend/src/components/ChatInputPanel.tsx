@@ -7,6 +7,7 @@ import { PaperClipIcon, XMarkIcon, FolderIcon } from '@heroicons/react/24/outlin
 import { FolderContextPicker } from './chat/FolderContextPicker';
 import { useI18n } from '../i18n';
 import { useSlashCommands } from '../hooks/useSlashCommands';
+import { buildMountedVolumes } from '../lib/volumeMounts';
 
 interface ChatInputPanelProps {
     input: string;
@@ -98,39 +99,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 
             setConfig((prev) => {
                 const currentVolumes = prev.sandbox_volumes || [];
-                const newVolumes = [...currentVolumes];
-
-                paths.forEach((hostPath) => {
-                    // Normalize path separators
-                    const normalizedHost = hostPath.replace(/\\/g, '/');
-                    // Extract safe folder name
-                    const folderName = normalizedHost.split('/').pop() || 'data';
-
-                    // Simple collision handling
-                    let containerPath = `/mnt/${folderName}`;
-                    let counter = 1;
-
-                    // Check if this container path is already taken by a DIFFERENT host path
-                    // Or if we just want uniqueness in the container list
-                    while (newVolumes.some(v => {
-                        const lastSemi = v.lastIndexOf(':');
-                        const existContainer = v.substring(lastSemi + 1);
-                        return existContainer === containerPath;
-                    })) {
-                        containerPath = `/mnt/${folderName}-${counter}`;
-                        counter++;
-                    }
-
-                    // Avoid re-mounting same host path (update its container mapping if changed, or skip)
-                    // For simplicity, if host path exists, we assume user might want to re-add? 
-                    // Let's filter out existing host path first to be safe or just skip
-                    const existsIndex = newVolumes.findIndex(v => v.substring(0, v.lastIndexOf(':')) === hostPath);
-                    if (existsIndex === -1) {
-                        newVolumes.push(`${hostPath}:${containerPath}`);
-                    }
-                });
-
-                return { ...prev, sandbox_volumes: newVolumes };
+                return { ...prev, sandbox_volumes: buildMountedVolumes(currentVolumes, paths) };
             });
 
         } catch (err) {

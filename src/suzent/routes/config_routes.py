@@ -111,6 +111,87 @@ async def save_preferences(request: Request) -> JSONResponse:
     return JSONResponse({"error": "Failed to save preferences"}, status_code=500)
 
 
+def _get_default_config_path() -> Path:
+    from suzent.config import PROJECT_DIR
+
+    return PROJECT_DIR / "config" / "default.yaml"
+
+
+def _load_default_config_file() -> dict[str, Any]:
+    path = _get_default_config_path()
+    if not path.exists():
+        return {}
+
+    try:
+        import yaml  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(
+            "PyYAML is required to update global sandbox mounts"
+        ) from exc
+
+    with path.open("r", encoding="utf-8") as file:
+        data = yaml.safe_load(file) or {}
+
+    if not isinstance(data, dict):
+        raise ValueError("config/default.yaml must contain a mapping at the root")
+    return data
+
+
+def _save_default_config_file(config_data: dict[str, Any]) -> None:
+    path = _get_default_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        import yaml  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(
+            "PyYAML is required to update global sandbox mounts"
+        ) from exc
+
+    with path.open("w", encoding="utf-8") as file:
+        yaml.safe_dump(config_data, file, sort_keys=False, allow_unicode=False)
+
+
+def _normalize_sandbox_volumes(raw_volumes: Any) -> list[str]:
+    if not isinstance(raw_volumes, list):
+        raise ValueError("sandbox_volumes must be an array of strings")
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for volume in raw_volumes:
+        if not isinstance(volume, str):
+            raise ValueError("sandbox_volumes must contain only strings")
+
+        cleaned = volume.strip()
+        if not cleaned or cleaned in seen:
+            continue
+
+        normalized.append(cleaned)
+        seen.add(cleaned)
+
+    return normalized
+
+
+async def save_global_sandbox_config(request: Request) -> JSONResponse:
+    """Persist global sandbox settings to config/default.yaml."""
+    try:
+        payload = await request.json()
+        sandbox_volumes = _normalize_sandbox_volumes(payload.get("sandbox_volumes", []))
+
+        config_data = _load_default_config_file()
+        config_data["SANDBOX_VOLUMES"] = sandbox_volumes
+        _save_default_config_file(config_data)
+
+        # Keep runtime config in sync without requiring restart.
+        CONFIG.sandbox_volumes = sandbox_volumes
+
+        return JSONResponse({"success": True, "globalSandboxVolumes": sandbox_volumes})
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
 async def get_api_keys_status(request: Request) -> JSONResponse:
     """Get configured providers and their status with masked secrets."""
     try:

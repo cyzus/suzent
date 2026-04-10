@@ -69,22 +69,15 @@ export const en = {
     toolsEmpty: 'No tools available',
     memory: {
       label: 'Memory System',
-      button: '🧠 Memory Tools',
+      button: 'Memory Tools',
       enabledDesc: '✓ Agent can search and update memory',
       disabledDesc: 'Memory tools are disabled',
     },
     sandbox: {
       label: 'Sandbox System',
-      button: '📦 Sandbox Execution',
+      button: 'Sandbox Execution',
       enabledDesc: '✓ Agent can run code in isolated sandbox',
       disabledDesc: 'Sandbox execution is disabled',
-    },
-    volumeMounts: {
-      label: 'Volume Mounts',
-      globalFromConfig: 'Global (from config.yaml)',
-      perChat: 'Per-Chat (this chat only)',
-      manageFromFolder: 'Manage volumes from the chat input "Folder" button.',
-      globalBadge: 'Global',
     },
     mcp: {
       label: 'MCP Servers',
@@ -157,6 +150,15 @@ export const en = {
       mcp: 'MCP Servers',
       automation: 'Automation',
       appearance: 'Appearance',
+    },
+    sandbox: {
+      title: 'Notebook',
+      subtitle: 'Pick one folder to use as /mnt/notebook for all chats.',
+      mountTarget: 'Container Path',
+      hostFolder: 'Host Folder',
+      notConfigured: 'Not configured',
+      chooseFolder: 'Choose Folder',
+      saveHint: 'Changes are applied when you click Save Changes.',
     },
     appearance: {
       title: 'Appearance',

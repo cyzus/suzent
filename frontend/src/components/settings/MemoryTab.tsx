@@ -1,4 +1,5 @@
 import React from 'react';
+import { open } from '@tauri-apps/plugin-dialog';
 
 import { useI18n } from '../../i18n';
 import { BrutalSelect } from '../BrutalSelect';
@@ -8,8 +9,10 @@ interface MemoryTabProps {
     models: string[];
     selectedEmbeddingModel: string;
     selectedExtractionModel: string;
+    globalNotebookHostPath: string;
     onEmbeddingModelChange: (model: string) => void;
     onExtractionModelChange: (model: string) => void;
+    onGlobalNotebookHostPathChange: (path: string) => void;
 }
 
 export function MemoryTab({
@@ -17,10 +20,25 @@ export function MemoryTab({
     models,
     selectedEmbeddingModel,
     selectedExtractionModel,
+    globalNotebookHostPath,
     onEmbeddingModelChange,
     onExtractionModelChange,
+    onGlobalNotebookHostPathChange,
 }: MemoryTabProps): React.ReactElement {
     const { t } = useI18n();
+
+    const pickDirectory = async () => {
+        try {
+            const selected = await open({
+                directory: true,
+                multiple: false,
+            });
+            if (!selected || Array.isArray(selected)) return;
+            onGlobalNotebookHostPathChange(selected);
+        } catch (error) {
+            console.error('Failed to pick global notebook folder', error);
+        }
+    };
 
     return (
         <div className="space-y-6">
@@ -71,6 +89,39 @@ export function MemoryTab({
                             placeholder={t('settings.memoryConfig.embeddingModelPlaceholder')}
                             className="z-10"
                         />
+                    </div>
+                </div>
+
+                <div className="mt-6 pt-6 border-t-2 border-dashed border-brutal-black space-y-3">
+                    <div>
+                        <h3 className="text-lg font-bold uppercase">{t('settings.sandbox.title')}</h3>
+                        <p className="text-sm text-neutral-600 mt-1">{t('settings.sandbox.subtitle')}</p>
+                    </div>
+
+                    <div className="text-xs font-bold uppercase text-neutral-500">{t('settings.sandbox.mountTarget')}</div>
+                    <div className="font-mono text-sm border-2 border-brutal-black bg-brutal-yellow/30 px-3 py-2 inline-block">
+                        /mnt/notebook
+                    </div>
+
+                    <div>
+                        <div className="text-xs font-bold uppercase text-neutral-500 mb-1">{t('settings.sandbox.hostFolder')}</div>
+                        <div className="font-mono text-xs border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2 break-all min-h-[2.25rem]">
+                            {globalNotebookHostPath || t('settings.sandbox.notConfigured')}
+                        </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                        <button
+                            type="button"
+                            onClick={pickDirectory}
+                            className="px-4 py-2 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:brightness-110 transition-colors"
+                        >
+                            {t('settings.sandbox.chooseFolder')}
+                        </button>
+                    </div>
+
+                    <div className="text-xs text-neutral-600 dark:text-neutral-400">
+                        {t('settings.sandbox.saveHint')}
                     </div>
                 </div>
             </div>

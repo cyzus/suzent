@@ -185,6 +185,22 @@ export async function fetchBackendConfig(): Promise<ConfigOptions | null> {
   }
 }
 
+export async function saveGlobalSandboxConfig(sandbox_volumes: string[]): Promise<string[]> {
+  const res = await fetch(`${getApiBase()}/config/sandbox-global`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sandbox_volumes })
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'Failed to save global sandbox configuration');
+  }
+
+  const data = await res.json();
+  return data.globalSandboxVolumes || sandbox_volumes;
+}
+
 export async function saveUserPreferences(preferences: {
   model?: string;
   agent?: string;

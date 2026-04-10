@@ -16,6 +16,7 @@ interface FolderContextPickerProps {
     onRemoveVolume?: (index: number) => void;
     disabled?: boolean;
     dropUp?: boolean;
+    buttonLabel?: string;
 }
 
 const HISTORY_KEY = 'suzent_folder_history';
@@ -26,7 +27,8 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
     activeVolumes = [],
     onRemoveVolume,
     disabled = false,
-    dropUp = true
+    dropUp = true,
+    buttonLabel
 }) => {
     const { t } = useI18n();
     const [history, setHistory] = useState<RecentFolder[]>([]);
@@ -287,7 +289,7 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
                 `}
             >
                 <FolderIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">{t('folderContext.context')}</span>
+                <span className="hidden sm:inline">{buttonLabel || t('folderContext.context')}</span>
                 {activeCount > 0 && (
                     <span className="bg-brutal-black text-white px-1.5 rounded-full text-[10px] min-w-[1.2em] text-center font-bold">
                         {activeCount}

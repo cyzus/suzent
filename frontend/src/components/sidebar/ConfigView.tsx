@@ -429,57 +429,6 @@ export function ConfigView({ isActive = true }: ConfigViewProps): React.ReactEle
       </div>
 
       <div className="space-y-2">
-        <div className="text-[10px] font-bold uppercase text-brutal-black dark:text-white">{t('config.volumeMounts.label')}</div>
-
-        {backendConfig.globalSandboxVolumes && backendConfig.globalSandboxVolumes.length > 0 && (
-          <div className="space-y-1">
-            <div className="text-[9px] font-bold uppercase text-brutal-black dark:text-neutral-400 opacity-60">{t('config.volumeMounts.globalFromConfig')}</div>
-            <ul className="space-y-1">
-              {backendConfig.globalSandboxVolumes.map((vol: string, idx: number) => (
-                <li key={`global-${idx}`} className="flex items-center gap-2 bg-brutal-yellow border-3 border-brutal-black px-2 py-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                  <span className="flex-1 font-mono text-xs font-bold truncate" title={vol}>{vol}</span>
-                  <span className="text-[9px] font-bold uppercase bg-brutal-black text-white px-1.5 py-0.5 border-2 border-brutal-black">
-                    {t('config.volumeMounts.globalBadge')}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <div className="space-y-2">
-          <div className="text-[9px] font-bold uppercase text-brutal-black dark:text-neutral-400 opacity-60">{t('config.volumeMounts.perChat')}</div>
-
-          <div className="flex flex-col gap-2 p-2 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900">
-            <div className="text-[10px] text-brutal-black dark:text-neutral-400 opacity-60 italic">
-              {t('config.volumeMounts.manageFromFolder')}
-            </div>
-          </div>
-
-          {(config.sandbox_volumes || []).length > 0 && (
-            <ul className="space-y-1">
-              {(config.sandbox_volumes || []).map((vol: string, idx: number) => (
-                <li key={idx} className="flex items-center gap-2 bg-white dark:bg-zinc-800 border-3 border-brutal-black px-2 py-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                  <span className="flex-1 font-mono text-xs font-bold truncate" title={vol}>{vol}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const current = config.sandbox_volumes || [];
-                      update({ sandbox_volumes: current.filter((_: string, index: number) => index !== idx) });
-                    }}
-                    className="text-white bg-brutal-red border-2 border-brutal-black text-xs font-bold px-1.5 py-0.5 hover:bg-red-600 transition-colors"
-                    title={t('common.remove')}
-                  >
-                    x
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
-      <div className="space-y-2">
         <div className="flex items-center justify-between">
           <label className="block font-bold tracking-wide text-brutal-black dark:text-white uppercase">{t('config.mcp.label')}</label>
           <span className="text-[9px] font-bold uppercase text-neutral-500">{t('config.mcp.manageInSettings')}</span>

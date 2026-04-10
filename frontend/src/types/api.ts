@@ -96,7 +96,7 @@ export interface ConfigOptions {
   defaultTools: string[]; // default enabled tools
   codeTag: string;        // CODE_TAG (e.g. <code>) so frontend can parse blocks consistently
   userId?: string;        // backend-provided user identifier for memory system alignment
-  globalSandboxVolumes?: string[];  // global volumes from config file (read-only)
+  globalSandboxVolumes?: string[];  // global volumes from config file
   sandboxEnabled?: boolean;         // global sandbox enable setting
   maxContextTokens?: number;        // max context window size in tokens
   userPreferences?: {     // saved user preferences from database

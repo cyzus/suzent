@@ -62,29 +62,22 @@ export const zhCN = {
     loading: '正在加载配置...',
     agentLabel: '智能体',
     agent: {
-      code: '📝 编写并执行 Python 代码',
+      code: '编写并执行 Python 代码',
       toolcalling: '🔧 直接调用工具（无需写代码）',
     },
     toolsLabel: '工具',
     toolsEmpty: '暂无可用工具',
     memory: {
       label: '记忆系统',
-      button: '🧠 记忆工具',
+      button: '记忆工具',
       enabledDesc: '✓ 智能体可搜索与更新记忆',
       disabledDesc: '记忆工具已禁用',
     },
     sandbox: {
       label: '沙箱系统',
-      button: '📦 沙箱执行',
+      button: '沙箱执行',
       enabledDesc: '✓ 智能体可在隔离沙箱中运行代码',
       disabledDesc: '沙箱执行已禁用',
-    },
-    volumeMounts: {
-      label: '卷挂载',
-      globalFromConfig: '全局（来自 config.yaml）',
-      perChat: '按对话（仅当前对话）',
-      manageFromFolder: '请在输入框的"Folder"按钮中管理挂载目录。',
-      globalBadge: '全局',
     },
     mcp: {
       label: 'MCP 服务器',
@@ -157,6 +150,15 @@ export const zhCN = {
       mcp: 'MCP 服务器',
       automation: '自动化',
       appearance: '外观',
+    },
+    sandbox: {
+      title: '笔记目录',
+      subtitle: '选择一个目录，作为所有对话统一挂载到 /mnt/notebook。',
+      mountTarget: '容器路径',
+      hostFolder: '主机目录',
+      notConfigured: '未配置',
+      chooseFolder: '选择目录',
+      saveHint: '点击“保存更改”后生效。',
     },
     appearance: {
       title: '外观',

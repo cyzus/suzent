@@ -41,6 +41,7 @@ from suzent.routes.config_routes import (
     get_embedding_models,
     save_api_keys,
     save_preferences,
+    save_global_sandbox_config,
     verify_provider,
     get_social_config,
     save_social_config,
@@ -403,6 +404,7 @@ app = Starlette(
         Route("/plan", get_plan, methods=["GET"]),
         Route("/config", get_config, methods=["GET"]),
         Route("/preferences", save_preferences, methods=["POST"]),
+        Route("/config/sandbox-global", save_global_sandbox_config, methods=["POST"]),
         Route("/config/api-keys", get_api_keys_status, methods=["GET"]),
         Route("/config/api-keys", save_api_keys, methods=["POST"]),
         Route(
