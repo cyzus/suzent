@@ -8,6 +8,7 @@ Three storage layers:
 """
 
 from .manager import MemoryManager
+from .wiki_manager import WikiManager
 from .lancedb_store import LanceDBMemoryStore
 from .markdown_store import MarkdownMemoryStore
 from .indexer import MarkdownIndexer, TranscriptIndexer
@@ -33,6 +34,7 @@ from .lifecycle import (
 
 __all__ = [
     "MemoryManager",
+    "WikiManager",
     "LanceDBMemoryStore",
     "MarkdownMemoryStore",
     "MarkdownIndexer",

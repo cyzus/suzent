@@ -65,6 +65,22 @@ async def init_memory_system() -> bool:
             markdown_store=markdown_store,
         )
 
+        notebook_host_path = None
+        from suzent.tools.filesystem.path_resolver import PathResolver
+
+        for vol in CONFIG.sandbox_volumes or []:
+            parsed = PathResolver.parse_volume_string(vol)
+            if parsed and parsed[1] == "/mnt/notebook":
+                notebook_host_path = parsed[0]
+                break
+
+        if notebook_host_path:
+            from suzent.memory.wiki_manager import WikiManager
+
+            resolved_notebook = str(Path(notebook_host_path).resolve())
+            memory_manager.wiki_manager = WikiManager(notebook_path=resolved_notebook)
+            logger.info(f"WikiManager initialized at {resolved_notebook}")
+
         logger.info(
             f"Memory system initialized successfully "
             f"(extraction: {'LLM' if CONFIG.extraction_model else 'heuristic'}, "

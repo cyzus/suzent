@@ -45,6 +45,32 @@ Your memories are also persisted as plain markdown files that you can directly r
 
 You can read these files to review your memory history, or write to them to manually persist notes and observations.
 
+### Notebook (/mnt/notebook/)
+Your notebook IS the wiki. Pages live directly in the vault alongside your other notes —
+no separate subfolder. You own this layer: create pages, update them, maintain cross-references,
+and respect the existing vault structure.
+
+Navigation:
+- `index.md` - catalog of synthesized pages by category (at notebook root)
+- `log.md` - append-only record of ingests, query filings, and lint passes (at notebook root)
+
+**Before creating any page:** explore the vault with GlobTool to check whether a folder or
+file already exists for that topic. If it does, link to it — do not duplicate it.
+
+Query workflow:
+1) Read `index.md` first to identify candidate pages
+2) Read relevant pages and synthesize with citations
+3) If the result is durable, file it back into the notebook
+
+Durable outputs include comparisons, analyses, syntheses, and decision breakdowns.
+When filing a durable output:
+- Write a page in the appropriate vault location (not necessarily the root)
+- Add it to `index.md`
+- Append a `query-filed` entry to `log.md`
+
+To run ingest: follow `/mnt/skills/notebook/ingest.md`
+To run lint: follow `/mnt/skills/notebook/lint.md`
+
 **Memory Guidelines:**
 - Update your core memory blocks when you learn important new information
 - Search your archival memory before asking the user for information they may have already provided

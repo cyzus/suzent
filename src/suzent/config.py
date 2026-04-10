@@ -160,7 +160,6 @@ class ConfigModel(BaseModel):
     # Memory
     memory_enabled: bool = False
     markdown_memory_enabled: bool = True
-    wiki_enabled: bool = True
     extraction_model: Optional[str] = None
 
     # Cron presets — declarative list of jobs to ensure on startup.

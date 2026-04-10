@@ -2,7 +2,7 @@
 Memory Manager - orchestrates core and archival memory operations.
 """
 
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional, Union, TYPE_CHECKING
 from datetime import datetime
 
 from suzent.logger import get_logger
@@ -19,6 +19,9 @@ from .models import (
 )
 
 logger = get_logger(__name__)
+
+if TYPE_CHECKING:
+    from .wiki_manager import WikiManager
 
 # Memory system constants
 DEFAULT_MEMORY_RETRIEVAL_LIMIT = 5
@@ -70,6 +73,7 @@ class MemoryManager:
         self.llm_client = (
             LLMClient(model=llm_for_extraction) if llm_for_extraction else None
         )
+        self.wiki_manager: Optional["WikiManager"] = None
         logger.info(
             f"MemoryManager initialized with embedding model: {embedding_model}, "
             f"extraction model: {llm_for_extraction}, "
@@ -227,12 +231,10 @@ class MemoryManager:
             if not memories:
                 return ""
 
-            # Format memories for context injection
-            memory_context_str = memory_context.format_retrieved_memories_section(
+            logger.info(f"Retrieved {len(memories)} relevant memories for query")
+            return memory_context.format_retrieved_memories_section(
                 memories, tag_important=True
             )
-            logger.info(f"Retrieved {len(memories)} relevant memories for query")
-            return memory_context_str
 
         except Exception as e:
             logger.error(f"Failed to retrieve relevant memories: {e}")

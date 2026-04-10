@@ -224,6 +224,7 @@ def create_agent(
         toolsets=mcp_servers if mcp_servers else [],
         instructions=instructions,
         output_type=[str, DeferredToolRequests],
+        output_retries=3,
     )
 
     # Store metadata for later introspection

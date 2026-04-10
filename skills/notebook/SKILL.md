@@ -1,30 +1,74 @@
 ---
-name: notebook-skill
-description: Gain access to the notebook vault.
+name: notebook
+description: Access and maintain the notebook knowledge base with Obsidian markdown conventions.
 ---
 
 # Notebook Skill
 
-This skill enables agents to access the user's notebook vault, create and edit Obsidian Flavored Markdown.
+The notebook at `/mnt/notebook` is your personal vault and knowledge base. You read and
+write it using standard file tools (`ReadFileTool`, `WriteFileTool`, `EditFileTool`,
+`GlobTool`, `GrepTool`).
 
-## Access Path
+**Always read `/mnt/notebook/schema.md` before doing any work in the notebook.**
+The schema defines this vault's structure, conventions, and rules. Follow it exactly.
 
-| Mode | Path |
-|------|------|
-| **Sandbox** | `/mnt/notebook` |
-| **Host** | `$MOUNT_NOTEBOOK` or `cd $MOUNT_NOTEBOOK` |
+Operational procedures:
+- Ingest: `/mnt/skills/notebook/ingest.md`
+- Lint: `/mnt/skills/notebook/lint.md`
 
-## Obsidian Markdown Flavor
+---
 
-- [CommonMark](https://commonmark.org/)
-- [GitHub Flavored Markdown](https://github.github.com/gfm/)
-- [LaTeX](https://www.latex-project.org/) for math
-- Obsidian extensions: wikilinks `[[page]]`, callouts, embeds `![[file]]`
+## Navigation Files
 
-## Notebook Hierarchy & Organization
+Three files at the notebook root are agent-maintained:
 
-Before creating new notes, **always** explore the existing folder structure to understand the notebook's hierarchy.
-- Use tools (like `GlobTool` or `BashTool`) to list directories and find where your note best fits.
-- **Do not** simply dump new notes into the root directory unless explicitly asked or if it's a general index.
-- If the appropriate folder does not exist, consider creating it to maintain an organized vault.
-- If you are unsure where a note belongs after reviewing the hierarchy, ask the user for clarification.
+**`schema.md`** — vault conventions, folder layout, page types, index categories.
+The authoritative source for how to work with this notebook. Read it first, every time.
+
+**`index.md`** — catalog of synthesized pages. Revised freely on every ingest or query filing.
+Format: `- [[path/to/page]] — one-line summary`, organized by category per schema.md.
+
+**`log.md`** — append-only chronological record. Never edit existing entries.
+Required prefix per entry: `## [YYYY-MM-DD] operation | description`
+Operations: `ingest`, `query-filed`, `lint`
+
+---
+
+## Obsidian Markdown
+
+- CommonMark + GitHub Flavored Markdown
+- LaTeX for math
+- Wikilinks: `[[page]]` or `[[path/to/page]]` — use full vault paths
+- Callouts: `> [!note]`, `> [!warning]`
+
+---
+
+## Page Format
+
+```yaml
+---
+type: <per schema.md>
+name: Canonical Name
+aliases: []
+tags: []
+created: YYYY-MM-DD
+updated: YYYY-MM-DD
+---
+```
+
+Standard sections: `## Overview`, `## Key Facts`, `## Related`, `## Sources`.
+Use whatever additional sections the content warrants.
+
+`## Overview` must be a coherent synthesis paragraph — not a stub, not a list.
+`## Related` links must use full vault paths and explain the connection in one line.
+
+---
+
+## When to File a Query Result
+
+When a conversation produces something durable — a comparison, analysis, synthesis,
+or decision — file it back into the notebook rather than letting it disappear.
+
+1. Write the page in the location specified by schema.md
+2. Add an entry to `index.md`
+3. Append a `query-filed` entry to `log.md`

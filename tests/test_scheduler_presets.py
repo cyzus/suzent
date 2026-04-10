@@ -14,20 +14,17 @@ def _wiki_presets():
             "cron_expr": "0 2 * * *",
             "prompt": "Run ingest.",
             "delivery_mode": "announce",
-            "requires": "wiki_enabled",
         },
         {
             "name": LINT_NAME,
             "cron_expr": "0 3 * * 0",
             "prompt": "Run lint.",
             "delivery_mode": "announce",
-            "requires": "wiki_enabled",
         },
     ]
 
 
 def test_ensure_cron_presets_creates_jobs(temp_db, monkeypatch):
-    monkeypatch.setattr(CONFIG, "wiki_enabled", True)
     monkeypatch.setattr(CONFIG, "cron_presets", _wiki_presets())
 
     result = ensure_cron_presets(temp_db)
@@ -43,7 +40,6 @@ def test_ensure_cron_presets_creates_jobs(temp_db, monkeypatch):
 
 
 def test_ensure_cron_presets_is_idempotent(temp_db, monkeypatch):
-    monkeypatch.setattr(CONFIG, "wiki_enabled", True)
     monkeypatch.setattr(CONFIG, "cron_presets", _wiki_presets())
 
     first = ensure_cron_presets(temp_db)
@@ -55,8 +51,11 @@ def test_ensure_cron_presets_is_idempotent(temp_db, monkeypatch):
 
 
 def test_ensure_cron_presets_skips_when_requires_is_falsy(temp_db, monkeypatch):
-    monkeypatch.setattr(CONFIG, "wiki_enabled", False)
-    monkeypatch.setattr(CONFIG, "cron_presets", _wiki_presets())
+    presets = _wiki_presets()
+    for p in presets:
+        p["requires"] = "memory_enabled"
+    monkeypatch.setattr(CONFIG, "memory_enabled", False)
+    monkeypatch.setattr(CONFIG, "cron_presets", presets)
 
     result = ensure_cron_presets(temp_db)
 
@@ -70,7 +69,6 @@ def test_ensure_cron_presets_skips_when_enabled_false(temp_db, monkeypatch):
     presets = _wiki_presets()
     for p in presets:
         p["enabled"] = False
-    monkeypatch.setattr(CONFIG, "wiki_enabled", True)
     monkeypatch.setattr(CONFIG, "cron_presets", presets)
 
     result = ensure_cron_presets(temp_db)
@@ -80,7 +78,6 @@ def test_ensure_cron_presets_skips_when_enabled_false(temp_db, monkeypatch):
 
 
 def test_ensure_cron_presets_updates_stale_jobs(temp_db, monkeypatch):
-    monkeypatch.setattr(CONFIG, "wiki_enabled", True)
     monkeypatch.setattr(CONFIG, "cron_presets", _wiki_presets())
 
     # Seed an existing job with a stale cron_expr and prompt.
@@ -103,7 +100,6 @@ def test_ensure_cron_presets_updates_stale_jobs(temp_db, monkeypatch):
 
 
 def test_ensure_cron_presets_can_activate_existing(temp_db, monkeypatch):
-    monkeypatch.setattr(CONFIG, "wiki_enabled", True)
     monkeypatch.setattr(CONFIG, "cron_presets", _wiki_presets())
 
     ingest_id = temp_db.create_cron_job(
