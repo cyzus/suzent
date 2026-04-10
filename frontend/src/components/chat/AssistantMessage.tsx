@@ -635,8 +635,20 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
 
   if (toolOnly) {
     return (
-      <div className="w-full max-w-4xl text-sm leading-relaxed pl-2">
-        <StepPills blocks={blocks} messageIndex={messageIndex} onToolApproval={onToolApproval} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} />
+      <div className="group w-full max-w-4xl break-all overflow-x-hidden text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
+        <div className="border-3 border-brutal-black shadow-brutal-lg overflow-hidden relative w-[90px] h-[40px] bg-white dark:bg-zinc-800 ml-0 mr-auto mb-2">
+          <ThinkingAnimation isThinking={false} />
+          <AgentBadge isThinking={false} isStreaming={false} />
+        </div>
+        <div className="pl-1 pr-2 pb-1">
+          <StepPills
+            blocks={blocks}
+            messageIndex={messageIndex}
+            onToolApproval={onToolApproval}
+            toolApprovalPolicy={toolApprovalPolicy}
+            onRemoveApprovalPolicy={onRemoveApprovalPolicy}
+          />
+        </div>
       </div>
     );
   }

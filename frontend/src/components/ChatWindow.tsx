@@ -17,7 +17,7 @@ import { NewChatView } from './NewChatView';
 import { ChatInputPanel } from './ChatInputPanel';
 import { ImageViewer } from './ImageViewer';
 import { FileViewer } from './FileViewer';
-import { UserMessage, AssistantMessage, ToolCallBlock, RightSidebar } from './chat';
+import { UserMessage, AssistantMessage, RightSidebar } from './chat';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 
@@ -75,6 +75,30 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any): Message {
     }
   }
   return { role: 'assistant', content, timestamp: new Date().toISOString(), stepInfo: usage ? formatUsage(usage) : undefined };
+}
+
+function groupedBlocksToAssistantContent(blocks: ContentBlock[]): string {
+  let content = '';
+  for (const block of blocks) {
+    if (block.type === 'toolCall') {
+      const toolName = block.toolName || 'unknown';
+      const toolCallId = block.toolCallId || '';
+      const argsStr = block.toolArgs || '';
+      const approvalId = block.approvalId || '';
+      const stateAttr = block.approvalState === 'pending' ? 'pending' : (block.approvalState === 'denied' ? 'denied' : '');
+      const attrs = ` data-tool-call-id="${toolCallId}"` +
+        (approvalId ? ` data-approval-id="${approvalId}"` : '') +
+        (stateAttr ? ` data-approval-state="${stateAttr}"` : '');
+
+      content += `\n\n<details${attrs}><summary>\u{1F527} ${toolName}</summary>\n\n<pre><code class="language-text">${escapeHtmlForStore(argsStr)}</code></pre>\n\n</details>\n\n`;
+      if (block.content) {
+        content += `\n\n<details data-tool-call-id="${toolCallId}"><summary>\u{1F4E6} ${toolName}</summary>\n\n<pre><code class="language-text">${escapeHtmlForStore(block.content)}</code></pre>\n\n</details>\n\n`;
+      }
+    } else if (block.type === 'reasoning' && block.content.trim()) {
+      content += `\n\n<details data-reasoning="true"><summary>Thinking</summary>\n\n${block.content}\n\n</details>\n\n`;
+    }
+  }
+  return content;
 }
 
 // Drag overlay component
@@ -150,49 +174,25 @@ const MessageList: React.FC<{
 
         // Intermediate step group representative: render merged pills (no badge here — shows after final answer)
         if (group) {
+          const groupedMessage: Message = {
+            role: 'assistant',
+            content: groupedBlocksToAssistantContent(group.mergedBlocks),
+            timestamp: m.timestamp,
+          };
           return (
             <div key={idx} className="chat-msg-row w-full flex flex-col group/message">
               <div className="flex justify-start w-full">
-                <div className="w-full max-w-4xl text-sm leading-relaxed pl-2">
-                  {group.mergedBlocks.map((b, bi) => {
-                    if (b.type === 'toolCall') {
-                      const isPending = b.approvalState === 'pending';
-                      return (
-                        <ToolCallBlock
-                          key={`group-${idx}-${bi}`}
-                          toolName={b.toolName || 'unknown'}
-                          toolArgs={b.toolArgs}
-                          output={b.content || undefined}
-                          approvalState={b.approvalState as 'pending' | 'denied' | undefined}
-                          onApprove={(isPending && b.approvalId && onToolApproval)
-                            ? (remember) => onToolApproval(b.approvalId!, b.toolCallId || '', true, remember, b.toolName)
-                            : undefined}
-                          onDeny={(isPending && b.approvalId && onToolApproval)
-                            ? () => onToolApproval(b.approvalId!, b.toolCallId || '', false, null, b.toolName)
-                            : undefined}
-                          defaultCollapsed={!isPending}
-                        />
-                      );
-                    }
-                    if (b.type === 'reasoning' && b.content.trim()) {
-                      return (
-                        <div key={`group-${idx}-${bi}`} className="pl-4 pr-6 py-1 border-l-2 border-neutral-200 ml-1">
-                          <details className="group">
-                            <summary className="text-xs italic text-neutral-500 font-medium cursor-pointer select-none hover:text-neutral-700 flex items-center gap-1">
-                              <span className="truncate">{b.content.trim().split('\n')[0].trim() || 'Thinking'}</span>
-                            </summary>
-                            <div className="mt-1 p-2 bg-neutral-50/50 rounded border border-neutral-100">
-                              <pre className="text-[11px] italic text-neutral-500 font-medium leading-snug whitespace-pre-wrap overflow-auto">
-                                {b.content.trim()}
-                              </pre>
-                            </div>
-                          </details>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })}
-                </div>
+                <AssistantMessage
+                  message={groupedMessage}
+                  messageIndex={idx}
+                  isStreaming={false}
+                  isLastMessage={false}
+                  onFileClick={onFileClick}
+                  onToolApproval={onToolApproval}
+                  toolApprovalPolicy={toolApprovalPolicy}
+                  onRemoveApprovalPolicy={onRemoveApprovalPolicy}
+                  onInlineAction={onInlineAction}
+                />
               </div>
             </div>
           );

@@ -14,6 +14,10 @@ export interface MessageRenderPlan {
 
 const IGNORED_TOOL_NAMES = ['final_answer', 'final answer'];
 
+function isEmptyAssistantPlaceholder(message: Message): boolean {
+  return message.role !== 'user' && !message.content?.trim() && !message.stepInfo;
+}
+
 function filterIgnoredToolCalls(blocks: ContentBlock[]): ContentBlock[] {
   return blocks.filter((block) => {
     if (block.type !== 'toolCall') return true;
@@ -56,16 +60,21 @@ export function buildMessageRenderPlan(messages: Message[]): MessageRenderPlan {
     while (
       i < messages.length &&
       messages[i].role !== 'user' &&
-      isIntermediateStepContent(messages[i].content, messages[i].stepInfo)
+      (
+        isIntermediateStepContent(messages[i].content, messages[i].stepInfo) ||
+        isEmptyAssistantPlaceholder(messages[i])
+      )
     ) {
-      const parsedBlocks = filterIgnoredToolCalls(splitAssistantContent(messages[i].content));
-      const stepBlocks = parsedBlocks.filter((block) => block.type === 'toolCall' || block.type === 'reasoning');
-      if (stepBlocks.length > 0) {
-        allBlocks.push(...stepBlocks);
-      }
-      const stepInfo = messages[i].stepInfo;
-      if (stepInfo) {
-        allStepInfos.push(stepInfo);
+      if (!isEmptyAssistantPlaceholder(messages[i])) {
+        const parsedBlocks = filterIgnoredToolCalls(splitAssistantContent(messages[i].content));
+        const stepBlocks = parsedBlocks.filter((block) => block.type === 'toolCall' || block.type === 'reasoning');
+        if (stepBlocks.length > 0) {
+          allBlocks.push(...stepBlocks);
+        }
+        const stepInfo = messages[i].stepInfo;
+        if (stepInfo) {
+          allStepInfos.push(stepInfo);
+        }
       }
       if (i > groupStart) {
         skipIndices.add(i);

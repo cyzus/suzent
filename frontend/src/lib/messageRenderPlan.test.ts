@@ -53,4 +53,22 @@ describe('buildMessageRenderPlan', () => {
     expect(plan.groupRenders.size).toBe(0);
     expect(plan.stepSummaryByMessageIndex.size).toBe(0);
   });
+
+  it('keeps consecutive tool steps in one group across empty assistant placeholders', () => {
+    const messages: Message[] = [
+      assistant('<details><summary>🔧 bash_execute</summary><pre><code class="language-text">{"cmd":"a"}</code></pre></details>', 'Input: 10 | Output: 2'),
+      assistant(''),
+      assistant('<details><summary>🔧 bash_execute</summary><pre><code class="language-text">{"cmd":"b"}</code></pre></details>', 'Input: 20 | Output: 3'),
+      assistant('Final answer body', 'Input: 5 | Output: 4'),
+    ];
+
+    const plan = buildMessageRenderPlan(messages);
+
+    expect(plan.groupRenders.has(0)).toBe(true);
+    expect(plan.skipIndices.has(1)).toBe(true);
+    expect(plan.skipIndices.has(2)).toBe(true);
+    expect(plan.stepSummaryByMessageIndex.get(3)).toContain('3 steps');
+    expect(plan.stepSummaryByMessageIndex.get(3)).toContain('Input: 35 tokens');
+    expect(plan.stepSummaryByMessageIndex.get(3)).toContain('Output: 9 tokens');
+  });
 });
