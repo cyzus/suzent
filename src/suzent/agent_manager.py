@@ -193,6 +193,8 @@ def create_agent(
     mcp_servers = _build_mcp_servers(config)
 
     # --- Build instructions ---
+    sandbox_enabled = config.get("sandbox_enabled", CONFIG.sandbox_enabled)
+    workspace_root = config.get("workspace_root", CONFIG.workspace_root)
     base_instructions = config.get("instructions", CONFIG.instructions)
     sandbox_volumes = config.get("sandbox_volumes")
     custom_volumes = get_effective_volumes(sandbox_volumes)
@@ -203,7 +205,7 @@ def create_agent(
         from suzent.prompts import SKILLS_CONTEXT_SECTION
 
         skills_context = SKILLS_CONTEXT_SECTION.format(
-            skills_xml=skill_manager.get_skills_xml()
+            skills_xml=skill_manager.get_skills_xml(sandbox_enabled=sandbox_enabled)
         )
 
     instructions = format_instructions(
@@ -212,8 +214,8 @@ def create_agent(
         custom_volumes=custom_volumes,
         social_context=build_social_context(social_ctx) if social_ctx else "",
         skills_context=skills_context,
-        sandbox_enabled=CONFIG.sandbox_enabled,
-        workspace_root=CONFIG.workspace_root,
+        sandbox_enabled=sandbox_enabled,
+        workspace_root=workspace_root,
     )
 
     # --- Create pydantic-ai Agent ---
@@ -312,9 +314,12 @@ async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Ag
             if mem_manager and memory_enabled:
                 chat_id = config.get("_chat_id")
                 user_id = config.get("_user_id", "default-user")
+                sandbox_enabled = config.get("sandbox_enabled", CONFIG.sandbox_enabled)
                 try:
                     memory_context = await mem_manager.format_core_memory_for_context(
-                        chat_id=chat_id, user_id=user_id
+                        chat_id=chat_id,
+                        user_id=user_id,
+                        sandbox_enabled=sandbox_enabled,
                     )
                     if memory_context:
                         logger.debug(f"Fetched core memory context for user={user_id}")

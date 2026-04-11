@@ -192,7 +192,10 @@ class MemoryManager:
             logger.error(f"Failed to refresh core memory facts: {e}")
 
     async def format_core_memory_for_context(
-        self, chat_id: Optional[str] = None, user_id: Optional[str] = None
+        self,
+        chat_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        sandbox_enabled: bool = True,
     ) -> str:
         """Format core memory as text for prompt injection."""
         try:
@@ -201,7 +204,9 @@ class MemoryManager:
             logger.error(f"Error getting core memory blocks: {e}")
             return ""
 
-        return memory_context.format_core_memory_section(blocks)
+        return memory_context.format_core_memory_section(
+            blocks, sandbox_enabled=sandbox_enabled
+        )
 
     async def retrieve_relevant_memories(
         self,

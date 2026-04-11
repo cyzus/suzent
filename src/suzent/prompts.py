@@ -47,7 +47,7 @@ You are in a sandbox environment. Use virtual paths (e.g., `/persistence`, `/mnt
 EXECUTION_MODE_SECTION_HOST = """# Environment: Host
 You are on the host machine ({os_name}). Use host paths (e.g., `{workspace_root}`).
 Do NOT use virtual `/mnt/...` paths.
-Env vars available: PERSISTENCE_PATH, SHARED_PATH, WORKSPACE_ROOT.
+Env vars available: PERSISTENCE_PATH, SHARED_PATH, WORKSPACE_ROOT, and MOUNT_* for mapped volumes.
 """
 
 BASE_INSTRUCTIONS_SECTION = """# Base Instructions

@@ -29,7 +29,7 @@ When referencing files for the user, format as clickable markdown links:
 `[filename](file:///full/path/to/file)`
 
 Examples:
-- "I saved the report to [report.pdf](file:///persistence/report.pdf)"
-- "Check [data.csv](file:///mnt/data/data.csv) for the analysis"
-- "Created [config.json](file:///persistence/config.json)"
+- "I saved the report to [report.pdf](file:///D:/workspace/report.pdf)" (Host example)
+- "Check [data.csv](file:///persistence/data.csv) for the analysis" (Sandbox example)
+- "Created [config.json](file:///shared/config.json)" (Sandbox example)
 

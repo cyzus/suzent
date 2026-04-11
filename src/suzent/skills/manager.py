@@ -112,7 +112,7 @@ class SkillManager:
             if self.is_skill_enabled(skill.metadata.name)
         )
 
-    def get_skills_xml(self) -> str:
+    def get_skills_xml(self, sandbox_enabled: bool = True) -> str:
         """
         Generate skills XML for context injection (Layer 1).
         Adheres to agentskills.io standard.
@@ -131,14 +131,18 @@ class SkillManager:
                 f"    <description>{skill.metadata.description}</description>"
             )
 
-            # Virtual path in sandbox
-            virtual_path = PathResolver.get_skill_virtual_path(skill.metadata.name)
-            xml_lines.append(f"    <location>{virtual_path}</location>")
+            if sandbox_enabled:
+                location = PathResolver.get_skill_virtual_path(skill.metadata.name)
+            else:
+                location = str(skill.path.resolve())
+            xml_lines.append(f"    <location>{location}</location>")
             xml_lines.append("  </skill>")
         xml_lines.append("</available_skills>")
         return "\n".join(xml_lines)
 
-    def get_skill_content(self, name: str) -> Optional[str]:
+    def get_skill_content(
+        self, name: str, sandbox_enabled: bool = True
+    ) -> Optional[str]:
         """
         Get full skill content for injection (Layer 2 + 3).
         """
@@ -147,6 +151,8 @@ class SkillManager:
             return None
 
         content = f"# Skill: {skill.metadata.name}\n\n{skill.body}"
+        if not sandbox_enabled:
+            content = self._adapt_skill_content_for_host(content)
 
         # List available resources (Layer 3 hints)
         resources = []
@@ -167,6 +173,22 @@ class SkillManager:
             content += "\n".join(f"- {r}" for r in resources)
 
         return content
+
+    @staticmethod
+    def _adapt_skill_content_for_host(content: str) -> str:
+        """Rewrite sandbox-only path literals to host-friendly env var paths."""
+        replacements = [
+            ("/mnt/notebook", "${MOUNT_NOTEBOOK}"),
+            ("/mnt/skills", "${MOUNT_SKILLS}"),
+            ("/shared/memory", "${SHARED_PATH}/memory"),
+            ("/shared", "${SHARED_PATH}"),
+            ("/persistence", "${PERSISTENCE_PATH}"),
+        ]
+
+        adapted = content
+        for old, new in replacements:
+            adapted = adapted.replace(old, new)
+        return adapted
 
 
 def get_skill_manager():

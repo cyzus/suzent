@@ -10,12 +10,15 @@ from typing import Dict, List, Any
 # ===== Core Memory Context Prompts =====
 
 
-def format_core_memory_section(blocks: Dict[str, str]) -> str:
+def format_core_memory_section(
+    blocks: Dict[str, str], sandbox_enabled: bool = True
+) -> str:
     """
     Format core memory blocks for agent context injection.
 
     Args:
         blocks: Dictionary of memory block labels to content
+        sandbox_enabled: Whether sandbox mode is active
 
     Returns:
         Formatted string for prompt injection
@@ -28,6 +31,32 @@ def format_core_memory_section(blocks: Dict[str, str]) -> str:
     else:
         core_blocks_text = "\nNo core memory blocks configured.\n"
 
+    if sandbox_enabled:
+        memory_workspace_title = "### Memory Workspace (/shared/memory/)"
+        memory_files = (
+            "- `/shared/memory/MEMORY.md` - Curated long-term memory (auto-updated from important facts)\n"
+            "- `/shared/memory/YYYY-MM-DD.md` - Daily logs with timestamped facts from conversations"
+        )
+        notebook_title = "### Notebook (/mnt/notebook/)"
+        notebook_runbook = (
+            "To run ingest: follow `/mnt/skills/notebook/ingest.md`\n"
+            "To run lint: follow `/mnt/skills/notebook/lint.md`"
+        )
+        curated_memory_hint = "- You can read `/shared/memory/MEMORY.md` for a curated summary of everything you know about the user"
+    else:
+        memory_workspace_title = "### Memory Workspace (Host Paths)"
+        memory_files = (
+            "- `${SHARED_PATH}/memory/MEMORY.md` - Curated long-term memory (auto-updated from important facts)\n"
+            "- `${SHARED_PATH}/memory/YYYY-MM-DD.md` - Daily logs with timestamped facts from conversations"
+        )
+        notebook_title = "### Notebook (Host-Mounted Paths)"
+        notebook_runbook = (
+            "To run ingest: follow `${MOUNT_SKILLS}/notebook/ingest.md`\n"
+            "To run lint: follow `${MOUNT_SKILLS}/notebook/lint.md`\n"
+            "If `${MOUNT_NOTEBOOK}` is not configured in this session, skip notebook operations."
+        )
+        curated_memory_hint = "- You can read `${SHARED_PATH}/memory/MEMORY.md` for a curated summary of everything you know about the user"
+
     return f"""## Memory System
 
 You have access to a multi-tier memory system:
@@ -38,14 +67,13 @@ This is your active working memory. You can edit these blocks using the `memory_
 ### Archival Memory (Search When Needed)
 You have unlimited long-term memory storage that is automatically managed. Use `memory_search` to find relevant past information when needed.
 
-### Memory Workspace (/shared/memory/)
+{memory_workspace_title}
 Your memories are also persisted as plain markdown files that you can directly read and write:
-- `/shared/memory/MEMORY.md` - Curated long-term memory (auto-updated from important facts)
-- `/shared/memory/YYYY-MM-DD.md` - Daily logs with timestamped facts from conversations
+{memory_files}
 
 You can read these files to review your memory history, or write to them to manually persist notes and observations.
 
-### Notebook (/mnt/notebook/)
+{notebook_title}
 Your notebook IS the wiki. Pages live directly in the vault alongside your other notes —
 no separate subfolder. You own this layer: create pages, update them, maintain cross-references,
 and respect the existing vault structure.
@@ -68,15 +96,14 @@ When filing a durable output:
 - Add it to `index.md`
 - Append a `query-filed` entry to `log.md`
 
-To run ingest: follow `/mnt/skills/notebook/ingest.md`
-To run lint: follow `/mnt/skills/notebook/lint.md`
+{notebook_runbook}
 
 **Memory Guidelines:**
 - Update your core memory blocks when you learn important new information
 - Search your archival memory before asking the user for information they may have already provided
 - Core memory blocks are structured sections you can update; archival memory is automatically stored as you interact
 - Use core memory for information you need to reference frequently; use archival memory for detailed historical context
-- You can read `/shared/memory/MEMORY.md` for a curated summary of everything you know about the user
+{curated_memory_hint}
 - Important decisions, preferences, and lasting facts should be written to memory for durability
 """
 

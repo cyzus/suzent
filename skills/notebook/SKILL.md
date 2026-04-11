@@ -5,16 +5,20 @@ description: Access and maintain the notebook knowledge base with Obsidian markd
 
 # Notebook Skill
 
-The notebook at `/mnt/notebook` is your personal vault and knowledge base. You read and
-write it using standard file tools (`ReadFileTool`, `WriteFileTool`, `EditFileTool`,
-`GlobTool`, `GrepTool`).
+The notebook is your personal vault and knowledge base. You read and write it using
+standard file tools (`ReadFileTool`, `WriteFileTool`, `EditFileTool`, `GlobTool`,
+`GrepTool`).
 
-**Always read `/mnt/notebook/schema.md` before doing any work in the notebook.**
+Path rules by execution mode:
+- Sandbox Mode: notebook root is `/mnt/notebook`.
+- Host Mode: notebook root is `${MOUNT_NOTEBOOK}` if mounted.
+
+**Always read `schema.md` from the notebook root before doing any work in the notebook.**
 The schema defines this vault's structure, conventions, and rules. Follow it exactly.
 
 Operational procedures:
-- Ingest: `/mnt/skills/notebook/ingest.md`
-- Lint: `/mnt/skills/notebook/lint.md`
+- Ingest: `notebook/ingest.md` under your skills root.
+- Lint: `notebook/lint.md` under your skills root.
 
 ---
 

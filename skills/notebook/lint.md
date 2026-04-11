@@ -11,8 +11,12 @@ A periodic editorial pass. Not just hygiene — lint surfaces new questions to i
 
 ## Step 1 — Read schema.md and index.md
 
-Read `/mnt/notebook/SCHEMA.md` first. The schema defines the vault's conventions
+Read `SCHEMA.md` from the notebook root first. The schema defines the vault's conventions
 and what structure to expect.
+
+Notebook root by execution mode:
+- Sandbox Mode: `/mnt/notebook`
+- Host Mode: `${MOUNT_NOTEBOOK}` (if mounted)
 
 Then read `index.md` to understand what synthesized pages exist and how they are organized.
 

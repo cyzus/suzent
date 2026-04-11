@@ -29,7 +29,9 @@ class SkillTool(Tool):
 
             sm = get_skill_manager()
 
-        content = sm.get_skill_content(skill_name)
+        content = sm.get_skill_content(
+            skill_name, sandbox_enabled=ctx.deps.sandbox_enabled
+        )
         if content:
             return content
         return f"Error: Skill '{skill_name}' not found. Available skills: {sm.get_skill_descriptions()}"

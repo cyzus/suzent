@@ -12,7 +12,15 @@ Synthesize — do not transcribe.
 
 ## Step 1 — Read schema.md
 
-Read `/mnt/notebook/SCHEMA.md` (or `schema.md`) completely before doing anything else.
+Read `SCHEMA.md` (or `schema.md`) from the notebook root completely before doing anything else.
+
+Notebook root by execution mode:
+- Sandbox Mode: `/mnt/notebook`
+- Host Mode: `${MOUNT_NOTEBOOK}` (if mounted)
+
+Memory root by execution mode:
+- Sandbox Mode: `/shared/memory`
+- Host Mode: `${SHARED_PATH}/memory`
 
 The schema defines:
 - The vault's folder structure (e.g., Projects vs. Wiki/Concepts).
@@ -29,10 +37,10 @@ Everything you do in subsequent steps must follow the schema.
 Read `log.md` at the notebook root.
 
 **Daily logs:** find the latest entry with prefix `## [...] ingest | daily logs`.
-Extract the end date. Unprocessed = all `/shared/memory/YYYY-MM-DD.md` files newer than that date.
+Extract the end date. Unprocessed = all `YYYY-MM-DD.md` files in the memory root newer than that date.
 
 **Inbox files:** collect all filenames already listed under "Sources:" in any log entry.
-Unprocessed = all files in `/mnt/notebook/inbox/` not already listed and not in `processed/`.
+Unprocessed = all files in `inbox/` under notebook root not already listed and not in `processed/`.
 
 If nothing is unprocessed, report and stop.
 
