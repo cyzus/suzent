@@ -3,16 +3,20 @@
 ## System Layers
 
 ```
-┌─────────────────────────────────┐
-│      Agent Tools                │  memory_search, memory_block_update
-├─────────────────────────────────┤
-│      MemoryManager              │  Orchestration & extraction
-├─────────────┬───────────────────┤
-│  LanceDB    │  MarkdownStore    │  Dual-write storage
-│  (search)   │  (source of truth)│
-├─────────────┴───────────────────┤
-│      Session Layer              │  Transcripts, state, lifecycle
+┌─────────────────────────────────┐   ┌──────────────────────────────┐
+│      Agent Tools                │   │      Notebook Skill          │
+│  memory_search, block_update    │   │  ingest / lint / query-file  │
+├─────────────────────────────────┤   ├──────────────────────────────┤
+│      MemoryManager              │   │      WikiManager             │
+│  Orchestration & extraction     │   │  Bootstrap schema/index/log  │
+├─────────────┬───────────────────┤   ├──────────────────────────────┤
+│  LanceDB    │  MarkdownStore    │   │  Obsidian Vault              │
+│  (search)   │  (source of truth)│   │  /mnt/notebook               │
+├─────────────┴───────────────────┤   └──────────────────────────────┘
+│      Session Layer              │
+│  Transcripts, state, lifecycle  │
 └─────────────────────────────────┘
+       Conversation Memory                   LLM Wiki
 ```
 
 ## Storage Tiers
@@ -61,6 +65,14 @@
 - Deduplication via similarity threshold (0.85)
 - Core memory refresh when high-importance facts are found
 - Transcript linkage: facts track `source_session_id`, `source_transcript_line`, `source_timestamp`
+
+### WikiManager (wiki_manager.py)
+**LLM Wiki bootstrap**
+
+- Initializes the Obsidian-style vault at the notebook root (`/mnt/notebook` in sandbox)
+- Seeds three navigation files on first init: `schema.md` (from `skills/notebook/schema_example.md`), `index.md`, `log.md`
+- After bootstrap, the agent owns the vault entirely — `WikiManager` makes no further writes
+- Separate from conversation memory: no LanceDB involvement, no automatic extraction
 
 ### MarkdownIndexer (indexer.py)
 **Recovery mechanism**
@@ -207,10 +219,17 @@ src/suzent/memory/
 ├── markdown_store.py    # Markdown source of truth (/shared/memory/)
 ├── indexer.py           # MarkdownIndexer + TranscriptIndexer
 ├── manager.py           # Orchestration & dual-write
+├── wiki_manager.py      # LLM Wiki bootstrap (schema/index/log)
 ├── memory_context.py    # Prompt templates
 ├── tools.py             # Agent tools
 ├── models.py            # Pydantic models
 └── lifecycle.py         # Initialization
+
+skills/notebook/
+├── SKILL.md             # Notebook skill definition
+├── schema_example.md    # Default schema seeded into new vaults
+├── ingest.md            # Ingest procedure
+└── lint.md              # Lint procedure
 
 src/suzent/session/
 ├── __init__.py
@@ -236,6 +255,12 @@ data/sandbox-data/
       MEMORY.md                     # Curated long-term memory
       2026-02-08.md                 # Daily append-only logs
 
+/mnt/notebook/  (or $MOUNT_NOTEBOOK)  # LLM Wiki vault (Obsidian-style)
+  schema.md                         # Vault conventions — agent reads first
+  index.md                          # Catalog of synthesized pages
+  log.md                            # Append-only operation log
+  <user notes and folders...>
+
 .suzent/
   chats.db                          # SQLite + session lifecycle fields
   memory/                           # LanceDB search index
@@ -254,3 +279,4 @@ data/sandbox-data/
 5. **Separation of Concerns** - Agent-facing (`/shared/`) vs internal (`.suzent/`)
 6. **Async by Default** - Non-blocking I/O throughout
 7. **Backward Compatible** - Legacy pickle deserialization, nullable migrations
+8. **Wiki as Agent-Owned Knowledge** - The LLM Wiki vault is bootstrapped once, then entirely maintained by the agent via direct file tool access; the system does not auto-write to it. Pattern from Karpathy's [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): raw sources → LLM-maintained wiki → schema conventions
