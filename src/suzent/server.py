@@ -116,6 +116,7 @@ from suzent.routes.subagent_routes import (
     stop_subagent_route,
     stream_subagents,
 )
+from suzent.routes.event_bus_routes import event_bus_stream
 from suzent.channels.manager import ChannelManager
 from suzent.nodes.manager import NodeManager
 
@@ -489,6 +490,7 @@ app = Starlette(
         Route("/heartbeat/config", save_heartbeat_global_config, methods=["POST"]),
         Route("/canvas/{chat_id}/action", a2ui_action, methods=["POST"]),
         Route("/canvas/{chat_id}/answer", a2ui_answer, methods=["POST"]),
+        Route("/events/stream", event_bus_stream, methods=["GET"]),
         Route("/subagents/active", list_active_subagents, methods=["GET"]),
         Route("/subagents/stream", stream_subagents, methods=["GET"]),
         Route("/subagents", list_subagents, methods=["GET"]),

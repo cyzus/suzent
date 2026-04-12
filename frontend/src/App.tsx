@@ -16,6 +16,7 @@ import { PlanProvider, usePlan } from './hooks/usePlan';
 import { useStatusStore } from './hooks/useStatusStore';
 import { useTheme } from './hooks/useTheme';
 import { drainCronNotifications, fetchHeartbeatStatus } from './lib/api';
+import { isBusStreaming } from './hooks/useEventBus';
 import { useHeartbeatRunning } from './hooks/useHeartbeatRunning';
 import {
   DESKTOP_BREAKPOINT_PX,
@@ -209,7 +210,7 @@ function AppInner(): React.ReactElement {
       // If a platform chat (cron/social) is open, reload its messages from DB.
       // Skip if a live background stream is active — the SSE connection already delivers events.
       const openChat = chatsRef.current.find(c => c.id === chatId);
-      const isLiveStreamRunning = !!openChat?.isRunning;
+      const isLiveStreamRunning = chatId ? isBusStreaming(chatId) : false;
 
       // Avoid redundant sidebar refreshes while SSE is already updating the active chat.
       if (!isLiveStreamRunning) {

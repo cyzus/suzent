@@ -22,6 +22,7 @@ import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 import { SubAgentView } from './sidebar/SubAgentView';
 import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
+import { useEventBus, isBusStreaming, subscribeToStreamEvents } from '../hooks/useEventBus';
 import { useStatusStore } from '../hooks/useStatusStore';
 import type { SubAgentStatus } from './chat/SubAgentCallBlock';
 import type {
@@ -531,16 +532,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (body) {
         const chatId = body.chat_id || currentChatId;
         if (isHeartbeat) setHeartbeatRunning(true, chatId);
+        // Mirror what handleSend does so the streaming overlay renders.
+        setIsStreaming(true, chatId);
+        streamingChatIdRef.current = chatId;
         sendAGUI(body, options).catch(err => {
           heartbeatInFlightRef.current = false;
           if (isHeartbeat) setHeartbeatRunning(false, null);
           console.error('[ChatWindow] External sendAGUI failed:', err);
+        }).finally(() => {
+          setIsStreaming(false, chatId);
         });
       }
     };
     window.addEventListener('agui:send-message', handler);
     return () => window.removeEventListener('agui:send-message', handler);
-  }, [sendAGUI, currentChatId, setHeartbeatRunning]);
+  }, [sendAGUI, currentChatId, setHeartbeatRunning, setIsStreaming]);
 
   const { handleToolApproval } = useToolApproval({
     currentChatId,
@@ -702,124 +708,94 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     refreshPlan(currentChatId);
   }, [currentChatId, refreshPlan]);
 
-  // Live background stream: when a background platform chat (cron/heartbeat/social) is open,
-  // poll /chat/live/{chat_id} on a tight 2s interval. As soon as a stream is active (non-204),
-  // subscribe and render events live. This avoids the 5s chat-list poll delay that would
-  // otherwise cause late joins or missed fast streams.
+  // Background stream subscription: connect to /chat/live the moment the event bus
+  // fires stream_started for this chat. Works for all chat types (heartbeat, cron,
+  // social, and regular chats receiving a subagent wakeup).
   const currentChatSummary = chats.find(c => c.id === currentChatId);
   const isBackgroundChat = !!currentChatSummary?.platform || !!currentChatSummary?.heartbeatEnabled;
-  useEffect(() => {
-    if (!currentChatId || !isBackgroundChat) return;
+  // Keep useEventBus subscribed so the singleton EventSource stays open.
+  useEventBus();
 
+  useEffect(() => {
+    if (!currentChatId) return;
+
+    const chatIdAtMount = currentChatId;
     let cancelled = false;
 
-    // On re-entry: reload from DB so any stream that completed while away is visible.
-    loadChat(currentChatId).catch(() => {});
+    // On entry into a background chat: reload from DB so any completed stream is visible.
+    if (isBackgroundChat) {
+      loadChat(chatIdAtMount).catch(() => {});
+    }
 
-    const tryConnect = async (): Promise<boolean> => {
-      if (isLiveStreamRef.current) return false; // already streaming
-      // Don't probe while a user-initiated stream is active — it shares the same
-      // AbortController ref and probing would overwrite the real stream's controller.
-      // Use the ref (not the closed-over state) so this is never stale.
-      if (streamingChatIdRef.current === currentChatId) return false;
+    const tryConnect = async (): Promise<void> => {
+      if (cancelled) return;
+      if (isLiveStreamRef.current) return;
+      if (streamingChatIdRef.current === chatIdAtMount) return;
+
       const liveUrl = `${getApiBase()}/chat/live`;
-      const chatIdAtStart = currentChatId;
 
-      // Single fetch: connectToLiveStream handles 204 (no stream) returning false,
-      // or streams and returns true. onStreamStart fires only when a real stream is found.
-      const streamed = await sendAGUI({ chat_id: currentChatId }, {
+      const streamed = await sendAGUI({ chat_id: chatIdAtMount }, {
         urlOverride: liveUrl,
         onStreamStart: () => {
           isLiveStreamRef.current = true;
           // Pin the streaming chat ID so onFinish uses the correct chat even if
-          // the user navigates away (causing activeChatIdRef to point elsewhere).
-          streamingChatIdRef.current = chatIdAtStart;
-          setIsStreaming(true, chatIdAtStart);
-          // Reload messages now that the stream has confirmed active: the backend
-          // pre-saves the user message to DB before yielding the first SSE event,
-          // so this loadChat will pick it up and show it alongside the stream.
-          loadChat(chatIdAtStart).catch(() => {});
+          // the user navigates away mid-stream.
+          streamingChatIdRef.current = chatIdAtMount;
+          setIsStreaming(true, chatIdAtMount);
+          loadChat(chatIdAtMount).catch(() => {});
         },
       });
 
-      if (!streamed || cancelled) return false;
+      if (!streamed || cancelled) return;
 
-      // If the stream paused for tool approval, onFinish saved the parts to
-      // liveStreamPartsRef. Keep the approval UI visible and let the 2-second
-      // poll re-subscribe when the resume stream starts; don't clearParts.
+      // If the stream paused for tool approval, keep the approval UI visible.
+      // The event bus will fire stream_started again when the resume stream begins.
       const pendingApproval = liveStreamPartsRef.current.some(
         p => p.type === 'tool' && p.state === 'approval-requested'
       );
       if (pendingApproval) {
         isLiveStreamRef.current = false;
         liveStreamPartsRef.current = [];
-        return true;
+        return;
       }
 
-      // Convert the captured streaming parts to a rich message (includes tool-step HTML).
-      // This must happen before clearParts so the parts are still populated.
       const richMsg = aguiPartsToStoreMessage(liveStreamPartsRef.current, null);
-
-      const isSocialStream = chatIdAtStart.startsWith('social-');
-
-      // Stop streaming indicator before any async work so transient parts stop
-      // rendering while we wait for the DB reload.
-      setIsStreaming(false, chatIdAtStart);
+      const isSocialStream = chatIdAtMount.startsWith('social-');
+      setIsStreaming(false, chatIdAtMount);
 
       if (isSocialStream) {
-        // Social chats: backend rebuilds the full message log asynchronously after the
-        // stream, so loadChat may return stale (pre-rebuild) data if called immediately.
-        // Add the optimistic rich message first — the loadChat length guard will then
-        // block any stale DB state from overwriting it, preventing a blank flash.
-        if (richMsg.content.trim()) {
-          addMessage(richMsg, chatIdAtStart);
-        }
-        try { await loadChat(chatIdAtStart); } catch { /* ignore */ }
+        if (richMsg.content.trim()) addMessage(richMsg, chatIdAtMount);
+        try { await loadChat(chatIdAtMount); } catch { /* ignore */ }
       }
 
       clearParts();
       liveStreamPartsRef.current = [];
       isLiveStreamRef.current = false;
 
-      // Desktop/heartbeat/cron: add the rich message (tool-step HTML) to the store.
-      // addMessage schedules an 800ms autosave, which is faster than the 5-s polling
-      // loadChat, so the store guard (existing.length >= serverMessages.length) will
-      // preserve the rich message through polling reloads until the autosave fires.
       if (!isSocialStream && richMsg.content.trim()) {
-        addMessage(richMsg, chatIdAtStart);
+        addMessage(richMsg, chatIdAtMount);
       }
-
-      return true;
     };
 
-    let probeDelayMs = 2000;
-    let timer: NodeJS.Timeout | null = null;
+    // If a stream is already active when this chat is opened, connect immediately.
+    if (isBusStreaming(chatIdAtMount)) {
+      tryConnect();
+    }
 
-    const scheduleProbe = (delayMs: number) => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(async () => {
-        if (cancelled) return;
-
-        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-          probeDelayMs = Math.min(Math.max(probeDelayMs, 8000), 15000);
-          scheduleProbe(probeDelayMs);
-          return;
-        }
-
-        const connected = await tryConnect();
-        probeDelayMs = connected ? 2000 : Math.min(probeDelayMs + 1500, 10000);
-        scheduleProbe(probeDelayMs);
-      }, delayMs);
-    };
-
-    // Probe immediately, then adaptively back off while idle.
-    scheduleProbe(0);
+    // Subscribe directly to stream_started — bypasses the React render cycle so
+    // there is zero frame delay between the SSE event arriving and tryConnect() firing.
+    const unsubEvents = subscribeToStreamEvents(chatIdAtMount, { onStart: tryConnect });
 
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
-      stopAGUIStream();
-      isLiveStreamRef.current = false;
+      unsubEvents();
+      // Only stop the AG-UI connection if this effect started a background live stream.
+      // Leave user-initiated /chat streams alone (they use a different code path).
+      if (isLiveStreamRef.current && streamingChatIdRef.current === chatIdAtMount) {
+        stopAGUIStream();
+        isLiveStreamRef.current = false;
+        streamingChatIdRef.current = null;
+      }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentChatId, isBackgroundChat]);
