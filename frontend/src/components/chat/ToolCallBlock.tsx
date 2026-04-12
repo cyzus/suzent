@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useI18n } from '../../i18n';
+import { MarkdownRenderer } from './MarkdownRenderer';
+import { WebSearchRenderer } from './WebSearchRenderer';
 
 export type ApprovalState = 'pending' | 'approved' | 'denied' | undefined;
 
@@ -46,6 +48,17 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const isPending = approvalState === 'pending';
   const isDenied = approvalState === 'denied';
 
+  const getToolIcon = () => {
+    if (isPending) return '⏳';
+    if (isDenied) return '🚫';
+    if (toolName.includes('search') || toolName.includes('web')) return '🔍';
+    if (toolName.includes('file') || toolName.includes('dir') || toolName.includes('read') || toolName.includes('write')) return '📁';
+    if (toolName.includes('bash') || toolName.includes('shell') || toolName.includes('python') || toolName.includes('cmd')) return '💻';
+    if (toolName.includes('database') || toolName.includes('sql')) return '🗄️';
+    if (toolName.includes('plan')) return '📋';
+    return '🔧';
+  };
+
   return (
     <div className="my-1.5 min-w-0 w-full overflow-x-hidden">
       {/* Compact pill header */}
@@ -56,7 +69,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
       >
         {/* Icon */}
         <span className={`text-xs shrink-0 ${isStreaming && !hasOutput ? 'animate-spin-slow' : ''}`}>
-          {isPending ? '⏳' : isDenied ? '🚫' : '🔧'}
+          {getToolIcon()}
         </span>
 
         {/* Tool name */}
@@ -183,10 +196,14 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
             {output && (
               <div className="min-w-0 w-full overflow-hidden">
                 <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-0.5">{t('toolCallBlock.output')}</div>
-                <div className="max-h-[200px] overflow-y-auto scrollbar-thin w-full" style={{ overflowX: 'hidden' }}>
-                  <pre className="tool-call-pre text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed font-mono w-full">
-                    {output}
-                  </pre>
+                <div className="max-h-[300px] overflow-y-auto scrollbar-thin w-full" style={{ overflowX: 'hidden' }}>
+                  {toolName.includes('search') || toolName.includes('web') ? (
+                    <WebSearchRenderer output={output} />
+                  ) : (
+                    <pre className="tool-call-pre text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed font-mono w-full">
+                      {output}
+                    </pre>
+                  )}
                 </div>
               </div>
             )}

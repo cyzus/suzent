@@ -14,7 +14,7 @@ import httpx
 from urllib.parse import urlparse
 from typing import Optional, List, Dict, Any
 
-from suzent.tools.base import Tool, ToolGroup
+from suzent.tools.base import Tool, ToolGroup, ToolResult, ToolErrorCode
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -90,7 +90,7 @@ class WebSearchTool(Tool):
         max_results: Optional[int] = 10,
         time_range: Optional[str] = None,
         page: Optional[int] = 1,
-    ) -> str:
+    ) -> ToolResult:
         """Perform a web search using SearXNG or DuckDuckGo.
 
         Args:
@@ -116,7 +116,7 @@ class WebSearchTool(Tool):
         max_results: Optional[int] = 10,
         time_range: Optional[str] = None,
         page: Optional[int] = 1,
-    ) -> str:
+    ) -> ToolResult:
         """Perform search using DuckDuckGo."""
         timelimit = (
             self.TIME_RANGE_MAPPING.get(time_range.lower()) if time_range else None
@@ -172,18 +172,29 @@ class WebSearchTool(Tool):
                 )
             except asyncio.TimeoutError:
                 logger.error("DDGS search timed out at the thread level.")
-                return (
-                    "Error: DDGS search timed out. The search library might be hanging."
+                return ToolResult.error_result(
+                    ToolErrorCode.TIMEOUT,
+                    "Error: DDGS search timed out. The search library might be hanging.",
                 )
 
             if not results:
-                return f"No results found for query: '{query}'"
+                return ToolResult.success_result(
+                    self._format_results(
+                        [], source=source_label, query=query, category=category
+                    )
+                )
 
-            return self._format_results(results, source=source_label, category=category)
+            return ToolResult.success_result(
+                self._format_results(
+                    results, source=source_label, query=query, category=category
+                )
+            )
 
         except Exception as e:
             logger.error(f"DDGS search failed: {e}")
-            return f"Error querying DDGS: {str(e)}"
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED, f"Error querying DDGS: {str(e)}"
+            )
 
     async def _search_with_searxng(
         self,
@@ -192,7 +203,7 @@ class WebSearchTool(Tool):
         max_results: Optional[int] = 10,
         time_range: Optional[str] = None,
         page: Optional[int] = 1,
-    ) -> str:
+    ) -> ToolResult:
         """Perform a search using SearXNG instance."""
         try:
             params = {
@@ -225,13 +236,18 @@ class WebSearchTool(Tool):
 
             try:
                 data = json.loads(response.text)
-                return self._format_results(
-                    data.get("results", []),
-                    source="SearXNG",
-                    query=data.get("query", query),
+                return ToolResult.success_result(
+                    self._format_results(
+                        data.get("results", []),
+                        source="SearXNG",
+                        query=data.get("query", query),
+                    )
                 )
             except json.JSONDecodeError:
-                return response.text
+                return ToolResult.error_result(
+                    ToolErrorCode.EXECUTION_FAILED,
+                    f"Invalid JSON returned from SearXNG: {response.text}",
+                )
 
         except httpx.HTTPStatusError as e:
             logger.warning(
@@ -265,13 +281,15 @@ class WebSearchTool(Tool):
         category: Optional[str] = None,
     ) -> str:
         """
-        Unified results formatting for both providers.
+        Unified results formatting returning a JSON string for frontend rendering.
         """
         if not results:
-            return "No results found."
+            return json.dumps(
+                {"source": source, "query": query, "category": category, "results": []},
+                ensure_ascii=False,
+            )
 
-        output = [f"# Search Results (via {source})\n"]
-
+        formatted_results = []
         for i, result in enumerate(results, 1):
             # Normalize fields based on category/source
 
@@ -307,14 +325,23 @@ class WebSearchTool(Tool):
                 if len(content) > 300:  # Allow slightly more context
                     content = content[:297] + "..."
 
-            output.append(f"## {i}. {title}")
-            output.append(f"**URL:** {url}")
-            output.append(f"**Description:** {content}")
-            if engines:
-                output.append(f"**Sources:** {', '.join(engines)}")
-            output.append("")
+            formatted_results.append(
+                {
+                    "title": title,
+                    "url": url,
+                    "description": content,
+                    "sources": ", ".join(engines) if engines else None,
+                }
+            )
 
-        return "\n".join(output)
+        output_dict = {
+            "source": source,
+            "query": query,
+            "category": category,
+            "results": formatted_results,
+        }
+
+        return json.dumps(output_dict, ensure_ascii=False)
 
     def __del__(self):
         """Clean up HTTP client."""
