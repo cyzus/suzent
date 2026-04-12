@@ -15,7 +15,23 @@ interface SearchResult {
 export const WebSearchRenderer: React.FC<WebSearchRendererProps> = ({ output }) => {
   const parseResults = (): { source: string; results: SearchResult[]; isSuccess: boolean } => {
     try {
-      const data = JSON.parse(output);
+      const parsedOutput = JSON.parse(output);
+      
+      // Check if it is a ToolResult envelope
+      let data = parsedOutput;
+      if (parsedOutput && typeof parsedOutput === 'object' && 'success' in parsedOutput && typeof parsedOutput.message === 'string') {
+        if (!parsedOutput.success) {
+           return { source: 'Web Search', results: [], isSuccess: false };
+        }
+        // Parse the inner JSON payload
+        try {
+          data = JSON.parse(parsedOutput.message);
+        } catch (e) {
+          // Inner message is not JSON, might be raw text
+          data = { results: [] };
+        }
+      }
+
       if (data && data.results && Array.isArray(data.results)) {
         return { 
           source: data.source || 'Web Search', 
