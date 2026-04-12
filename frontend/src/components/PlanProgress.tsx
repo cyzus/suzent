@@ -21,7 +21,7 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
     }
 
     if (!plan) {
-        return <div className="text-xs text-neutral-500 italic p-4 text-center">{t('planProgress.noActivePlan')}</div>;
+        return <div className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400 p-4 text-center">{t('planProgress.noActivePlan')}</div>;
     }
 
     const totalPhases = plan.phases.length;
@@ -48,90 +48,99 @@ export const PlanProgress: React.FC<PlanProgressProps> = ({ plan, isDocked, onTo
     };
 
     if (isDocked) {
-        // Detailed View (based on original PlanView)
         return (
-            <div className="space-y-3 relative z-0">
-                {/* Compact Header Info */}
-                <div className="text-[10px] text-brutal-black dark:text-white font-bold uppercase border-b border-brutal-black pb-2">
-                    <div className="flex flex-wrap gap-x-2 opacity-70">
-                        <span>{plan.id != null ? `PLAN #${plan.id}` : 'PLAN'}</span>
-                        {plan.versionKey && !plan.versionKey.startsWith('snapshot:') && <span>· v{plan.versionKey}</span>}
-                        {plan.updatedAt && <span>· UPDATED {formatTimestamp(plan.updatedAt)}</span>}
+            <div className="flex flex-col h-full min-h-0">
+                {/* Header */}
+                <div className="flex items-start justify-between px-3 py-2 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0 gap-2">
+                    <div className="min-w-0">
+                        <div className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400">
+                            {plan.id != null ? `Plan #${plan.id}` : 'Plan'}
+                            {plan.versionKey && !plan.versionKey.startsWith('snapshot:') && (
+                                <span className="ml-1 opacity-60">· v{plan.versionKey}</span>
+                            )}
+                        </div>
+                        {plan.objective && (
+                            <div className="text-xs font-bold text-brutal-black dark:text-white leading-snug mt-0.5">
+                                {plan.objective}
+                            </div>
+                        )}
                     </div>
-                    <div className="mt-1 text-sm font-black leading-tight">
-                        {plan.objective}
-                    </div>
-                </div>
-
-                {/* Progress Bar */}
-                <div className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-bold uppercase">
-                        <span>{t('planProgress.progress')}</span>
-                        <span>{Math.round(progress * 100)}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-neutral-200 dark:bg-zinc-700 border border-brutal-black overflow-hidden relative">
-                        <div
-                            className="h-full bg-brutal-blue transition-all duration-300 linear will-change-[width]"
-                            style={{ width: `${progress * 100}%` }}
-                        />
+                    <div className="shrink-0 ml-2 text-right">
+                        <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 border border-brutal-black ${isAllCompleted ? 'bg-brutal-green text-brutal-black' : 'bg-brutal-blue text-white'}`}>
+                            {completed}/{totalPhases}
+                        </span>
                     </div>
                 </div>
 
-                {/* Phase List */}
-                <ul className="space-y-2 text-[11px]">
-                    {plan.phases.map((phase, index) => {
-                        const statusColors: Record<string, string> = {
-                            pending: 'bg-white opacity-80',
-                            in_progress: 'bg-white border-brutal-blue',
-                            completed: 'bg-brutal-green/20',
-                        };
-                        // Simplified coloring logic for cleaner look
-                        const isCompleted = phase.status === 'completed';
-                        const isInProgress = phase.status === 'in_progress';
+                {/* Body */}
+                <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3 space-y-3 min-h-0">
+                    {/* Progress Bar */}
+                    <div className="space-y-1">
+                        <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider font-mono">
+                            <span className="text-neutral-500 dark:text-neutral-400">{t('planProgress.progress')}</span>
+                            <span className="text-brutal-black dark:text-white">{Math.round(progress * 100)}%</span>
+                        </div>
+                        <div className="w-full h-2 bg-neutral-200 dark:bg-zinc-700 border border-brutal-black overflow-hidden">
+                            <div
+                                className={`h-full transition-all duration-300 ${isAllCompleted ? 'bg-brutal-green' : 'bg-brutal-blue'}`}
+                                style={{ width: `${progress * 100}%` }}
+                            />
+                        </div>
+                    </div>
 
-                        return (
-                            <li
-                                key={phase.id || index}
-                                className={`
-                            relative border-2 border-brutal-black p-2 transition-all
-                            ${isInProgress ? 'bg-white dark:bg-zinc-700 shadow-[2px_2px_0px_0px_#000] translate-y-[2px]' : 'bg-neutral-50 dark:bg-zinc-800 hover:bg-white dark:hover:bg-zinc-700'}
-                            ${isCompleted ? 'opacity-70' : ''}
-                          `}
-                            >
-                                <div className="flex gap-3">
-                                    {/* Number Icon */}
-                                    <div className={`
-                                    shrink-0 w-5 h-5 flex items-center justify-center font-bold text-[10px] border-2 border-brutal-black
-                                    ${isCompleted ? 'bg-brutal-green text-brutal-black' : isInProgress ? 'bg-brutal-blue text-white animate-pulse' : 'bg-white dark:bg-zinc-600 text-brutal-black dark:text-white'}
-                                `}>
-                                        {isCompleted ? '✓' : phase.number}
-                                    </div>
+                    {/* Phase List */}
+                    <ul className="space-y-1.5">
+                        {plan.phases.map((phase, index) => {
+                            const isCompleted = phase.status === 'completed';
+                            const isInProgress = phase.status === 'in_progress';
 
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-start gap-2">
-                                            <div className="font-bold text-xs leading-snug text-brutal-black dark:text-white truncate pr-2">
+                            return (
+                                <li
+                                    key={phase.id || index}
+                                    className={`border-2 border-brutal-black p-2 transition-all
+                                        ${isInProgress ? 'bg-white dark:bg-zinc-700 shadow-[2px_2px_0px_0px_#000]' : 'bg-neutral-50 dark:bg-zinc-800'}
+                                        ${isCompleted ? 'opacity-60' : ''}
+                                    `}
+                                >
+                                    <div className="flex gap-2">
+                                        <div className={`shrink-0 w-5 h-5 flex items-center justify-center font-bold text-[10px] border-2 border-brutal-black
+                                            ${isCompleted ? 'bg-brutal-green text-brutal-black' : isInProgress ? 'bg-brutal-blue text-white animate-pulse' : 'bg-white dark:bg-zinc-600 text-brutal-black dark:text-white'}`}>
+                                            {isCompleted ? '✓' : phase.number ?? index + 1}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-xs font-bold leading-snug text-brutal-black dark:text-white">
                                                 {phase.title || phase.description}
                                             </div>
+                                            {phase.capabilities && (
+                                                <div className="flex gap-1 mt-1 flex-wrap">
+                                                    {Array.isArray(phase.capabilities)
+                                                        ? phase.capabilities.map((cap: any, idx: number) => (
+                                                            <span key={idx} className="text-[9px] px-1 py-0.5 bg-neutral-200 dark:bg-zinc-600 dark:text-neutral-200 border border-brutal-black">{String(cap)}</span>
+                                                        ))
+                                                        : Object.keys(phase.capabilities).map(cap => (
+                                                            <span key={cap} className="text-[9px] px-1 py-0.5 bg-neutral-200 dark:bg-zinc-600 dark:text-neutral-200 border border-brutal-black">{cap}</span>
+                                                        ))
+                                                    }
+                                                </div>
+                                            )}
+                                            {phase.note && (
+                                                <div className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400 border-l-2 border-neutral-300 dark:border-zinc-600 pl-1.5">
+                                                    {phase.note}
+                                                </div>
+                                            )}
                                         </div>
-
-                                        {/* Capabilities/Tags - Compact */}
-                                        {phase.capabilities && (
-                                            <div className="flex gap-1 mt-1 flex-wrap">
-                                                {Array.isArray(phase.capabilities)
-                                                    ? phase.capabilities.map((cap: any, idx: number) => <span key={idx} className="text-[9px] leading-none px-1 py-0.5 bg-neutral-200 dark:bg-zinc-600 dark:text-neutral-200 border border-brutal-black">{String(cap)}</span>)
-                                                    : Object.keys(phase.capabilities).map(cap => <span key={cap} className="text-[9px] leading-none px-1 py-0.5 bg-neutral-200 dark:bg-zinc-600 dark:text-neutral-200 border border-brutal-black">{cap}</span>)
-                                                }
-                                            </div>
-                                        )}
-
-                                        {/* Note */}
-                                        {phase.note && <div className="mt-1.5 text-[10px] leading-tight text-neutral-600 dark:text-neutral-400 italic border-l-2 border-neutral-300 dark:border-zinc-600 pl-1.5">{phase.note}</div>}
                                     </div>
-                                </div>
-                            </li>
-                        );
-                    })}
-                </ul>
+                                </li>
+                            );
+                        })}
+                    </ul>
+
+                    {plan.updatedAt && (
+                        <div className="text-[9px] font-mono text-neutral-400 dark:text-neutral-500 uppercase tracking-widest">
+                            Updated {formatTimestamp(plan.updatedAt)}
+                        </div>
+                    )}
+                </div>
             </div>
         );
     }

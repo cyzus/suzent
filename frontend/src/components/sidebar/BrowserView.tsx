@@ -173,11 +173,11 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
 
     return (
         <div className="flex flex-col h-full bg-neutral-100 dark:bg-zinc-900" ref={containerRef}>
-            <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-zinc-800 border-b border-gray-200 dark:border-zinc-700">
-                <span className="font-bold text-xs uppercase text-gray-500 dark:text-zinc-400">
+            <div className="flex items-center justify-between px-3 py-2 bg-white dark:bg-zinc-800 border-b-3 border-brutal-black shrink-0">
+                <span className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-zinc-400">
                     {t('browser.title')}
                 </span>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
                     {status === 'connected' && imageSrc && (
                         <BrutalButton
                             onClick={toggleControl}
@@ -189,10 +189,10 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
                         </BrutalButton>
                     )}
                     <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${status === 'connected' ? 'bg-green-500' :
-                            status === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
+                        <div className={`w-2 h-2 rounded-none border border-brutal-black ${status === 'connected' ? 'bg-brutal-green' :
+                            status === 'connecting' ? 'bg-brutal-yellow animate-pulse' : 'bg-neutral-300 dark:bg-zinc-600'
                             }`} />
-                        <span className="text-xs font-mono text-gray-400 dark:text-zinc-500 capitalize">{t(`browser.status.${status}`)}</span>
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500 dark:text-zinc-400">{t(`browser.status.${status}`)}</span>
                     </div>
                 </div>
             </div>
@@ -244,10 +244,10 @@ export function BrowserView({ onStreamActive }: BrowserViewProps) {
                         )}
                     </div>
                 ) : (
-                    <div className="text-gray-500 dark:text-zinc-400 text-sm text-center font-mono">
-                        <p className="mb-2">WAITING_FOR_STREAM</p>
+                    <div className="text-neutral-400 dark:text-zinc-500 text-[11px] text-center font-mono">
+                        <p className="mb-2 font-bold uppercase tracking-widest">WAITING_FOR_STREAM</p>
                         {status === 'connected' &&
-                            <p className="text-xs text-gray-600 dark:text-zinc-500 opacity-70">{t('browser.executeHint')}</p>
+                            <p className="text-[10px] opacity-70">{t('browser.executeHint')}</p>
                         }
                     </div>
                 )}

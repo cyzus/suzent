@@ -75,7 +75,7 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full text-[11px] text-neutral-400 font-mono animate-pulse">
+      <div className="flex items-center justify-center h-full text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400 animate-pulse">
         Loading...
       </div>
     );
@@ -83,7 +83,7 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
 
   if (tasks.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-[11px] text-neutral-400 font-mono">
+      <div className="flex items-center justify-center h-full text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400">
         No sub-agents in this session
       </div>
     );
@@ -91,8 +91,8 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
 
   return (
     <div className="flex flex-col h-full min-h-0 font-mono">
-      <div className="px-3 py-2 border-b border-neutral-200 dark:border-zinc-700 shrink-0">
-        <span className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">
+      <div className="px-3 py-2 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0">
+        <span className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400">
           Sub-agents ({tasks.length})
         </span>
       </div>

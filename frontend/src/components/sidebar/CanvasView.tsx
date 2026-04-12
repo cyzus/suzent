@@ -35,26 +35,25 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
 
   if (!activeSurface) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-center px-6 py-12 gap-3">
-        <div className="text-4xl">🖼️</div>
-        <p className="text-sm font-bold text-brutal-black dark:text-white uppercase tracking-wide">
-          Canvas
+      <div className="flex flex-col items-center justify-center h-full text-center px-6 py-12 gap-2">
+        <p className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400 dark:text-neutral-500">
+          No canvas surfaces
         </p>
-        <p className="text-xs text-neutral-400 dark:text-neutral-500">
-          The agent will render interactive surfaces here — tables, forms, cards, and more.
+        <p className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
+          The agent will render interactive surfaces here.
         </p>
       </div>
     );
   }
 
   const surfaceNav = (
-    <div className="flex border-b-2 border-brutal-black shrink-0 bg-white dark:bg-zinc-800">
+    <div className="flex border-b-3 border-brutal-black shrink-0 bg-white dark:bg-zinc-800">
       <div className="flex-1 overflow-x-auto flex">
         {surfaces.length > 1 ? surfaces.map(s => (
           <button
             key={s.id}
             onClick={() => setActiveSurface(s.id)}
-            className={`px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap border-r-2 border-brutal-black transition-colors
+            className={`px-3 py-2 text-[10px] font-bold uppercase tracking-widest font-mono whitespace-nowrap border-r-2 border-brutal-black transition-colors
               ${s.id === activeSurfaceId
                 ? 'bg-brutal-black text-white'
                 : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'
@@ -63,8 +62,8 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
             {s.title ?? s.id}
           </button>
         )) : (
-          <div className="px-4 py-2 bg-neutral-50 dark:bg-zinc-800">
-            <span className="text-xs font-bold uppercase tracking-widest text-brutal-black dark:text-white">
+          <div className="px-3 py-2 bg-neutral-50 dark:bg-zinc-800">
+            <span className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400">
               {activeSurface.title ?? activeSurface.id}
             </span>
           </div>
@@ -82,7 +81,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
   return (
     <>
       <div className="flex flex-col h-full min-h-0">
-        <div className="flex items-center border-b-2 border-brutal-black shrink-0 bg-white dark:bg-zinc-800">
+        <div className="flex items-center border-b-3 border-brutal-black shrink-0 bg-white dark:bg-zinc-800">
           <div className="flex-1 min-w-0">{surfaceNav}</div>
           <div className="px-2 py-1 border-l-2 border-brutal-black">
             <BrutalButton

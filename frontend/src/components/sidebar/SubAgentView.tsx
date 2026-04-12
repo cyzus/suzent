@@ -148,16 +148,16 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
   return (
     <div className="flex flex-col h-full min-h-0 font-mono">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-200 dark:border-zinc-700 shrink-0">
+      <div className="flex items-center justify-between px-3 py-2 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <span className={`text-sm ${isRunning ? 'animate-spin-slow' : ''}`}>
             {task?.status === 'completed' ? '✅' : task?.status === 'failed' ? '❌' : '🤖'}
           </span>
           <div className="min-w-0">
-            <div className="text-[11px] font-bold uppercase text-neutral-600 dark:text-neutral-400 truncate">
+            <div className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400 truncate">
               Sub-agent
             </div>
-            <div className="text-[10px] text-neutral-400 dark:text-neutral-500 truncate">
+            <div className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 truncate">
               {task?.task_id ?? taskId}
             </div>
           </div>

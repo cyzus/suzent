@@ -1185,6 +1185,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       <RightSidebar
         isOpen={isRightSidebarOpen}
         onClose={() => onRightSidebarToggle(false)}
+        onOpen={() => onRightSidebarToggle(true)}
         onWidthChange={onRightSidebarWidthChange}
         maxWidthPx={rightSidebarMaxWidthPx}
         viewportWidthPx={viewportWidthPx}
@@ -1198,6 +1199,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onCanvasDispatch={handleCanvasDispatch}
         viewingSubAgentTaskId={viewingSubAgentTaskId}
         onCloseSubAgent={() => setViewingSubAgentTaskId(null)}
+        onSelectSubAgent={(taskId) => setViewingSubAgentTaskId(taskId)}
+        currentChatId={currentChatId}
+        hasSubAgents={Object.keys(subAgentTasks).length > 0}
       />
 
       <ImageViewer
