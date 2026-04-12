@@ -56,6 +56,7 @@ export enum CustomEventName {
 
 export interface SubAgentSpawnedPayload {
   task_id: string;
+  parent_chat_id: string;
   chat_id: string;
   description: string;
   tools_allowed: string[];

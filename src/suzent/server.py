@@ -114,6 +114,7 @@ from suzent.routes.subagent_routes import (
     list_subagents,
     get_subagent,
     stop_subagent_route,
+    stream_subagents,
 )
 from suzent.channels.manager import ChannelManager
 from suzent.nodes.manager import NodeManager
@@ -361,7 +362,7 @@ async def shutdown():
     try:
         from suzent.core.task_registry import get_task_registry
 
-        await get_task_registry().shutdown(timeout=10.0)
+        await get_task_registry().shutdown(timeout=3.0)
     except Exception as e:
         logger.error(f"Error shutting down task registry: {e}")
 
@@ -487,6 +488,7 @@ app = Starlette(
         Route("/canvas/{chat_id}/action", a2ui_action, methods=["POST"]),
         Route("/canvas/{chat_id}/answer", a2ui_answer, methods=["POST"]),
         Route("/subagents/active", list_active_subagents, methods=["GET"]),
+        Route("/subagents/stream", stream_subagents, methods=["GET"]),
         Route("/subagents", list_subagents, methods=["GET"]),
         Route("/subagents/{task_id}", get_subagent, methods=["GET"]),
         Route("/subagents/{task_id}/stop", stop_subagent_route, methods=["POST"]),
@@ -674,4 +676,8 @@ if __name__ == "__main__":
     else:
         logger.info(f"Starting Suzent server on http://{host}:{effective_port}")
 
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        # Graceful shutdown timed out or was interrupted a second time — force exit.
+        os._exit(0)

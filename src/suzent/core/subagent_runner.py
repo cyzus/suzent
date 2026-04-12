@@ -7,6 +7,7 @@ at runtime (via spawn_subagent tool) rather than a cron schedule.
 """
 
 import asyncio
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -59,6 +60,50 @@ def list_all_tasks(parent_chat_id: str = None) -> list[SubAgentTask]:
     if parent_chat_id:
         tasks = [t for t in tasks if t.parent_chat_id == parent_chat_id]
     return sorted(tasks, key=lambda t: t.started_at or datetime.min, reverse=True)
+
+
+# ─── SSE subscriber broadcast ─────────────────────────────────────────────────
+
+_sse_subscribers: set[asyncio.Queue] = set()
+
+
+def register_sse_subscriber() -> asyncio.Queue:
+    """Register a new SSE subscriber and return its queue."""
+    q: asyncio.Queue = asyncio.Queue(maxsize=500)
+    _sse_subscribers.add(q)
+    return q
+
+
+def unregister_sse_subscriber(q: asyncio.Queue) -> None:
+    """Remove a subscriber queue."""
+    _sse_subscribers.discard(q)
+
+
+def _task_to_sse_dict(task: SubAgentTask) -> dict:
+    return {
+        "task_id": task.task_id,
+        "parent_chat_id": task.parent_chat_id,
+        "chat_id": task.chat_id,
+        "description": task.description,
+        "tools_allowed": task.tools_allowed,
+        "status": task.status,
+        "started_at": task.started_at.isoformat() if task.started_at else None,
+        "finished_at": task.finished_at.isoformat() if task.finished_at else None,
+        "result_summary": task.result_summary,
+        "error": task.error,
+    }
+
+
+def _broadcast_task_update(task: SubAgentTask) -> None:
+    """Push a task-state event to all active SSE subscribers (non-blocking)."""
+    payload = json.dumps({"event": "task_update", "task": _task_to_sse_dict(task)})
+    dead: set[asyncio.Queue] = set()
+    for q in _sse_subscribers:
+        try:
+            q.put_nowait(payload)
+        except asyncio.QueueFull:
+            dead.add(q)
+    _sse_subscribers.difference_update(dead)
 
 
 # ─── Tool name resolution ─────────────────────────────────────────────────────
@@ -123,6 +168,7 @@ async def spawn_subagent(
 
     async with _tasks_lock:
         _tasks[task_id] = task
+    _broadcast_task_update(task)
 
     # Fire-and-forget — parent chat keeps streaming
     asyncio.create_task(
@@ -140,6 +186,7 @@ async def _run_subagent(task: SubAgentTask, model_override: Optional[str] = None
     """Execute the sub-agent in an isolated chat, then notify the parent."""
     task.status = "running"
     task.started_at = datetime.now()
+    _broadcast_task_update(task)
 
     db = get_database()
 
@@ -162,6 +209,7 @@ async def _run_subagent(task: SubAgentTask, model_override: Optional[str] = None
         "subagent_spawned",
         {
             "task_id": task.task_id,
+            "parent_chat_id": task.parent_chat_id,
             "chat_id": task.chat_id,
             "description": task.description,
             "tools_allowed": task.tools_allowed,
@@ -199,6 +247,7 @@ async def _run_subagent(task: SubAgentTask, model_override: Optional[str] = None
         task.status = "completed"
         task.result_summary = result_text[:1000] if result_text else "(no output)"
         task.finished_at = datetime.now()
+        _broadcast_task_update(task)
 
         await _notify_parent(
             task,
@@ -217,6 +266,7 @@ async def _run_subagent(task: SubAgentTask, model_override: Optional[str] = None
         task.status = "failed"
         task.error = str(e)
         task.finished_at = datetime.now()
+        _broadcast_task_update(task)
 
         await _notify_parent(
             task,

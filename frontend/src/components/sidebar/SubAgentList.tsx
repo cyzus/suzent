@@ -1,18 +1,11 @@
 /**
  * SubAgentList — shows all sub-agents spawned in the current session.
- * Fetches /subagents?parent_chat_id=... on mount and on a short poll while
- * any task is still running/queued.
+ * Fetches history from /subagents once on mount, then overlays live state
+ * from the shared useSubAgentStatus EventSource hook.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { getApiBase } from '../../lib/api';
-
-interface SubAgentSummary {
-  task_id: string;
-  description: string;
-  status: 'queued' | 'running' | 'completed' | 'failed';
-  started_at: string | null;
-  finished_at: string | null;
-}
+import { useSubAgentStatus, SubAgentSummary } from '../../hooks/useSubAgentStatus';
 
 interface SubAgentListProps {
   chatId: string;
@@ -34,44 +27,44 @@ const STATUS_ICON: Record<string, string> = {
 };
 
 export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) => {
-  const [tasks, setTasks] = useState<SubAgentSummary[]>([]);
+  const [historicTasks, setHistoricTasks] = useState<SubAgentSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { activeTasks } = useSubAgentStatus();
+  const knownActiveIdsRef = useRef<Set<string>>(new Set());
 
-  const fetchTasks = async () => {
-    try {
-      const res = await fetch(`${getApiBase()}/subagents?parent_chat_id=${encodeURIComponent(chatId)}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setTasks(data.tasks ?? []);
-    } catch { /* ignore */ } finally {
-      setLoading(false);
-    }
-  };
+  const fetchTasks = (chatId: string) =>
+    fetch(`${getApiBase()}/subagents?parent_chat_id=${encodeURIComponent(chatId)}`)
+      .then(r => r.json())
+      .then(d => setHistoricTasks(d.tasks ?? []))
+      .catch(() => {});
 
+  // Initial fetch on mount / chat switch.
   useEffect(() => {
     setLoading(true);
-    fetchTasks();
-
-    intervalRef.current = setInterval(() => {
-      fetchTasks();
-    }, 3000);
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
+    knownActiveIdsRef.current = new Set();
+    fetchTasks(chatId).finally(() => setLoading(false));
   }, [chatId]);
 
-  // Stop polling once all tasks are terminal
+  // Re-fetch when EventSource delivers new tasks for this chat that we haven't seen yet.
+  // This catches cases where the initial fetch ran before the sub-agent was spawned.
   useEffect(() => {
-    const allDone = tasks.length > 0 && tasks.every(
-      (t) => t.status === 'completed' || t.status === 'failed',
-    );
-    if (allDone && intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+    const newIds = activeTasks
+      .filter(t => t.parent_chat_id === chatId)
+      .map(t => t.task_id)
+      .filter(id => !knownActiveIdsRef.current.has(id));
+    if (newIds.length > 0) {
+      newIds.forEach(id => knownActiveIdsRef.current.add(id));
+      fetchTasks(chatId);
     }
-  }, [tasks]);
+  }, [activeTasks, chatId]);
+
+  // Merge: active tasks from SSE override historic tasks by task_id.
+  const chatActiveTasks = activeTasks.filter(t => t.parent_chat_id === chatId);
+  const activeIds = new Set(chatActiveTasks.map(t => t.task_id));
+  const tasks = [
+    ...chatActiveTasks,
+    ...historicTasks.filter(t => !activeIds.has(t.task_id)),
+  ];
 
   if (loading) {
     return (

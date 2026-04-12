@@ -158,6 +158,7 @@ function AppInner(): React.ReactElement {
   const { currentChatId, setViewSwitcher, refreshChatList, refreshChatListSilently, chats, loadChat } = useChatCoreStore();
   const setStatusMsg = useStatusStore(s => s.setStatus);
   const setHeartbeatStatus = useHeartbeatRunning(s => s.setStatus);
+  const setChatHeartbeatStatus = useHeartbeatRunning(s => s.setChatStatus);
   const { theme, toggleTheme } = useTheme();
   const { t } = useI18n();
   const [isWindowsMaximized, setIsWindowsMaximized] = useState(false);
@@ -176,11 +177,13 @@ function AppInner(): React.ReactElement {
   const loadChatRef = React.useRef(loadChat);
   const currentChatIdRef = React.useRef(currentChatId);
   const chatsRef = React.useRef(chats);
+  const setChatHeartbeatStatusRef = React.useRef(setChatHeartbeatStatus);
   React.useEffect(() => { refreshChatListRef.current = refreshChatList; }, [refreshChatList]);
   React.useEffect(() => { refreshChatListSilentRef.current = refreshChatListSilently; }, [refreshChatListSilently]);
   React.useEffect(() => { loadChatRef.current = loadChat; }, [loadChat]);
   React.useEffect(() => { currentChatIdRef.current = currentChatId; }, [currentChatId]);
   React.useEffect(() => { chatsRef.current = chats; }, [chats]);
+  React.useEffect(() => { setChatHeartbeatStatusRef.current = setChatHeartbeatStatus; }, [setChatHeartbeatStatus]);
 
   // Poll every 8 s: drain cron notifications + heartbeat status + refresh sidebar + reload open chat.
   React.useEffect(() => {
@@ -189,9 +192,13 @@ function AppInner(): React.ReactElement {
         return;
       }
       // Heartbeat status runs in parallel with notification drain.
+      const chatId = currentChatIdRef.current;
       const [notifications] = await Promise.all([
         drainCronNotifications(),
         fetchHeartbeatStatus().then(setHeartbeatStatus).catch(() => {}),
+        chatId
+          ? fetchHeartbeatStatus(chatId).then(s => setChatHeartbeatStatusRef.current(chatId, s)).catch(() => {})
+          : Promise.resolve(),
       ]);
       if (notifications.length === 1) {
         setStatusMsg(`[${notifications[0].job_name}] finished — view in Social`, 'info', 4000);
@@ -201,7 +208,6 @@ function AppInner(): React.ReactElement {
 
       // If a platform chat (cron/social) is open, reload its messages from DB.
       // Skip if a live background stream is active — the SSE connection already delivers events.
-      const chatId = currentChatIdRef.current;
       const openChat = chatsRef.current.find(c => c.id === chatId);
       const isLiveStreamRunning = !!openChat?.isRunning;
 

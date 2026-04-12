@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useChatCoreStore, useChatStreamingStore } from '../../hooks/useChatStore';
+import { useHeartbeatRunning } from '../../hooks/useHeartbeatRunning';
 import { fetchMcpServers, setMcpServerEnabled } from '../../lib/api';
 import { BrutalSelect } from '../BrutalSelect';
 import { useI18n } from '../../i18n';
@@ -53,76 +54,59 @@ export function ConfigView({ isActive = true }: ConfigViewProps): React.ReactEle
   useEffect(() => { loadChatRef.current = loadChat; }, [loadChat]);
   useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
 
-  // Poll live heartbeat status every 10 s — always active for the current chat.
-  // This syncs state from external changes (CLI, another session) back to the UI,
-  // and refreshes chat messages when a new non-OK heartbeat result is detected.
+  // Read per-chat heartbeat status from shared Zustand store (populated by App.tsx 8s poll).
+  const chatHeartbeatStatus = useHeartbeatRunning(
+    s => currentChatId ? s.chatStatus[currentChatId] ?? null : null,
+  );
+
+  // Reset guards when the active chat changes.
   useEffect(() => {
-    if (!currentChatId || !isActive) return;
-    lastResultRef.current = null; // reset on chat switch
+    lastResultRef.current = null;
     heartbeatDispatchedRef.current = false;
-    let cancelled = false;
+  }, [currentChatId]);
 
-    const poll = async () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-      try {
-        const { fetchHeartbeatStatus } = await import('../../lib/api');
-        const status = await fetchHeartbeatStatus(currentChatId);
-        if (!cancelled) {
-          setLiveLastRunAt(status.last_run_at ?? null);
-          setLiveLastError(status.last_error ?? null);
+  // Sync heartbeat status from store into local state and config whenever it updates.
+  useEffect(() => {
+    if (!chatHeartbeatStatus || !currentChatId) return;
+    const status = chatHeartbeatStatus;
 
-          // Sync enabled/interval/instructions back — bail out early if unchanged
-          setConfigRef.current(prev => {
-            const sameEnabled = prev.heartbeat_enabled === status.enabled;
-            const sameInterval = status.interval_minutes == null || prev.heartbeat_interval_minutes === status.interval_minutes;
-            const sameInstructions = isEditingInstructionsRef.current ||
-              status.heartbeat_instructions == null ||
-              prev.heartbeat_instructions === status.heartbeat_instructions;
-            if (sameEnabled && sameInterval && sameInstructions) return prev;
-            return {
-              ...prev,
-              heartbeat_enabled: status.enabled,
-              ...(status.interval_minutes != null ? { heartbeat_interval_minutes: status.interval_minutes } : {}),
-              ...(!isEditingInstructionsRef.current && status.heartbeat_instructions != null
-                ? { heartbeat_instructions: status.heartbeat_instructions }
-                : {}),
-            };
-          });
+    setLiveLastRunAt(status.last_run_at ?? null);
+    setLiveLastError(status.last_error ?? null);
 
-          // If there's a new non-OK result we haven't seen yet, refresh the chat messages
-          const newResult = status.last_result;
-          if (newResult && newResult !== 'HEARTBEAT_OK' && newResult !== lastResultRef.current) {
-            lastResultRef.current = newResult;
-            loadChatRef.current(currentChatId);
-          }
+    setConfigRef.current(prev => {
+      const sameEnabled = prev.heartbeat_enabled === status.enabled;
+      const sameInterval = status.interval_minutes == null || prev.heartbeat_interval_minutes === status.interval_minutes;
+      const sameInstructions = isEditingInstructionsRef.current ||
+        status.heartbeat_instructions == null ||
+        prev.heartbeat_instructions === status.heartbeat_instructions;
+      if (sameEnabled && sameInterval && sameInstructions) return prev;
+      return {
+        ...prev,
+        heartbeat_enabled: status.enabled,
+        ...(status.interval_minutes != null ? { heartbeat_interval_minutes: status.interval_minutes } : {}),
+        ...(!isEditingInstructionsRef.current && status.heartbeat_instructions != null
+          ? { heartbeat_instructions: status.heartbeat_instructions }
+          : {}),
+      };
+    });
 
-          // If backend signals due heartbeat, start SSE stream from frontend for visible streaming.
-          if (status.heartbeat_due && !isStreamingRef.current && !heartbeatDispatchedRef.current) {
-            heartbeatDispatchedRef.current = true;
-            window.dispatchEvent(new CustomEvent('agui:send-message', {
-              detail: {
-                body: { message: '', chat_id: currentChatId, is_heartbeat: true },
-              },
-            }));
-          }
+    const newResult = status.last_result;
+    if (newResult && newResult !== 'HEARTBEAT_OK' && newResult !== lastResultRef.current) {
+      lastResultRef.current = newResult;
+      loadChatRef.current(currentChatId);
+    }
 
-          // Reset dispatch flag when heartbeat is no longer due.
-          if (!status.heartbeat_due) {
-            heartbeatDispatchedRef.current = false;
-          }
-        }
-      } catch {
-        // Silently ignore poll errors.
-      }
-    };
+    if (status.heartbeat_due && !isStreamingRef.current && !heartbeatDispatchedRef.current) {
+      heartbeatDispatchedRef.current = true;
+      window.dispatchEvent(new CustomEvent('agui:send-message', {
+        detail: { body: { message: '', chat_id: currentChatId, is_heartbeat: true } },
+      }));
+    }
 
-    poll();
-    const id = setInterval(poll, 10_000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [currentChatId, isActive]);
+    if (!status.heartbeat_due) {
+      heartbeatDispatchedRef.current = false;
+    }
+  }, [chatHeartbeatStatus, currentChatId]);
 
   useEffect(() => {
     fetchMcpServers().then(data => {
