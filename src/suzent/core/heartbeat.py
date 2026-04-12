@@ -16,11 +16,7 @@ from suzent.config import CONFIG
 from suzent.core.base_brain import BaseBrain, get_active
 from suzent.database import get_database
 from suzent.logger import get_logger
-from suzent.core.stream_registry import (
-    stream_controls,
-    register_background_stream,
-    unregister_background_stream,
-)
+from suzent.core.stream_registry import stream_controls
 from suzent.core.chat_processor import ChatProcessor
 
 logger = get_logger(__name__)
@@ -362,21 +358,17 @@ class HeartbeatRunner(BaseBrain):
 
         config_override = self._build_config_override(heartbeat_allowed_tools)
 
-        stream_queue = register_background_stream(chat_id)
         try:
-            return await processor.process_turn_text(
+            return await processor.process_background_turn(
                 chat_id=chat_id,
                 user_id=CONFIG.user_id,
                 message_content=prompt,
                 config_override=config_override,
                 is_heartbeat=True,
-                _stream_queue=stream_queue,
             )
         except RuntimeError as e:
             self._last_error = str(e)
             return ""
-        finally:
-            unregister_background_stream(chat_id)
 
     def _rollback_heartbeat_messages(self, chat_id: str, original_count: int, db):
         """Remove the heartbeat prompt and Ok response if no action was needed."""

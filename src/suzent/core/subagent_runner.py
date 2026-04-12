@@ -278,9 +278,6 @@ async def _run_subagent(
             },
         )
 
-        # Inject completion notification into parent chat history, then wake the
-        # parent LLM so it can react without waiting for the user to type.
-        _inject_parent_notification(task)
         if wakeup_parent:
             await _wakeup_parent(task)
 
@@ -303,34 +300,18 @@ async def _run_subagent(
         unregister_background_stream(task.chat_id)
 
 
-def _inject_parent_notification(task: SubAgentTask):
-    """Append a [System Notification] message to the parent chat's display messages."""
-    try:
-        db = get_database()
-        parent = db.get_chat(task.parent_chat_id)
-        if not parent:
-            return
-
-        notification = (
-            f"[System Notification] Sub-agent **{task.task_id}** completed.\n"
-            f"Task: {task.description}\n\n"
-            f"Result summary:\n{task.result_summary}"
-        )
-        messages = list(parent.messages or [])
-        messages.append({"role": "assistant", "content": notification})
-        db.update_chat(task.parent_chat_id, messages=messages)
-    except Exception as e:
-        logger.warning(f"Failed to inject parent notification for {task.task_id}: {e}")
-
-
 async def _wakeup_parent(task: SubAgentTask) -> None:
     """
     Trigger a new LLM turn in the parent chat so the parent agent automatically
     processes the sub-agent's completion result without waiting for the user to type.
 
+    Uses is_heartbeat=True so _persist_state skips rebuilding chat.messages from
+    the pydantic-ai history. This prevents the [System] trigger message from
+    appearing as a user bubble. After post-processing finishes we manually append
+    only the assistant response to the display log.
+
     Skipped if the parent chat is currently streaming (user is mid-conversation).
     """
-    # Don't interrupt an in-progress parent turn
     if get_active_stream_queue(task.parent_chat_id) is not None:
         logger.debug(
             f"Parent {task.parent_chat_id} is active; skipping wakeup for {task.task_id}"
@@ -340,7 +321,7 @@ async def _wakeup_parent(task: SubAgentTask) -> None:
     try:
         from suzent.core.chat_processor import ChatProcessor
         from suzent.agent_manager import build_agent_config
-        from suzent.config import CONFIG
+        from suzent.core.task_registry import wait_for_background_task_prefix
 
         wake_msg = (
             f"[System] Sub-agent `{task.task_id}` has finished.\n"
@@ -353,13 +334,36 @@ async def _wakeup_parent(task: SubAgentTask) -> None:
             require_social_tool=False,
         )
 
-        processor = ChatProcessor()
-        await processor.process_turn_text(
+        # is_heartbeat=True → _persist_state(skip_messages=True) → only agent_state
+        # is saved; chat.messages is left untouched by the rebuild step.
+        result_text = await ChatProcessor().process_background_turn(
             chat_id=task.parent_chat_id,
             user_id=CONFIG.user_id,
             message_content=wake_msg,
             config_override=config_override,
+            is_heartbeat=True,
         )
+
+        # Wait for the background post-processing task (agent_state save) to finish
+        # before we read and write chat.messages, to avoid a race condition.
+        try:
+            await wait_for_background_task_prefix(
+                f"post_process_{task.parent_chat_id}_", timeout=10.0
+            )
+        except Exception:
+            pass
+
+        # Append only the LLM response to the display log.
+        # The [System] trigger message is intentionally hidden — it's an internal
+        # implementation detail, not something the user typed.
+        if result_text:
+            db = get_database()
+            parent = db.get_chat(task.parent_chat_id)
+            if parent is not None:
+                messages = list(parent.messages or [])
+                messages.append({"role": "assistant", "content": result_text})
+                db.update_chat(task.parent_chat_id, messages=messages)
+
         logger.debug(f"Wakeup turn completed for parent {task.parent_chat_id}")
     except Exception as e:
         logger.warning(f"Failed to wakeup parent {task.parent_chat_id}: {e}")

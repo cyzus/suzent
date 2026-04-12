@@ -28,7 +28,11 @@ from suzent.database import get_database
 from suzent.tools.filesystem.path_resolver import PathResolver
 from suzent.routes.sandbox_routes import sanitize_filename
 from suzent.core.stream_parser import StreamParser, TextChunk, ErrorEvent
-from suzent.core.stream_registry import pop_pending_auto_approvals
+from suzent.core.stream_registry import (
+    pop_pending_auto_approvals,
+    register_background_stream,
+    unregister_background_stream,
+)
 
 
 logger = get_logger(__name__)
@@ -664,6 +668,33 @@ class ChatProcessor:
                 await _stream_queue.put(None)  # sentinel: stream finished (or errored)
 
         return full_response.strip()
+
+    async def process_background_turn(
+        self,
+        chat_id: str,
+        user_id: str,
+        message_content: str,
+        config_override: Dict = None,
+        is_heartbeat: bool = False,
+    ) -> str:
+        """Run a chat turn with an SSE background stream so the frontend can watch it.
+
+        Registers a background stream for the duration of the turn, then tears it
+        down on exit. Used by HeartbeatRunner and subagent wakeup — both need the
+        same "invisible background turn that the frontend can subscribe to" pattern.
+        """
+        stream_queue = register_background_stream(chat_id)
+        try:
+            return await self.process_turn_text(
+                chat_id=chat_id,
+                user_id=user_id,
+                message_content=message_content,
+                config_override=config_override,
+                is_heartbeat=is_heartbeat,
+                _stream_queue=stream_queue,
+            )
+        finally:
+            unregister_background_stream(chat_id)
 
     async def _process_upload_file(
         self, file_obj, host_path: Path, virtual_path_prefix: str
