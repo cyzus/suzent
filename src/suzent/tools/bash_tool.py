@@ -50,6 +50,7 @@ class BashTool(Tool):
         self.custom_volumes: Optional[list] = None
         self.sandbox_enabled: bool = True
         self.workspace_root: Optional[str] = None
+        self.cwd: Optional[str] = None
 
     @property
     def manager(self):
@@ -109,6 +110,7 @@ class BashTool(Tool):
         self.chat_id = ctx.deps.chat_id
         self.sandbox_enabled = ctx.deps.sandbox_enabled
         self.workspace_root = ctx.deps.workspace_root
+        self.cwd = ctx.deps.cwd
         if ctx.deps.custom_volumes and ctx.deps.custom_volumes != self.custom_volumes:
             self.set_custom_volumes(ctx.deps.custom_volumes)
 
@@ -266,9 +268,13 @@ class BashTool(Tool):
 
         from suzent.config import CONFIG
 
-        sandbox_data_path = Path(CONFIG.sandbox_data_path).resolve()
-        working_dir = sandbox_data_path / "sessions" / self.chat_id
-        working_dir.mkdir(parents=True, exist_ok=True)
+        if self.cwd:
+            working_dir = Path(self.cwd).resolve()
+            working_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            sandbox_data_path = Path(CONFIG.sandbox_data_path).resolve()
+            working_dir = sandbox_data_path / "sessions" / self.chat_id
+            working_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             result = subprocess.run(

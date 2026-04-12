@@ -371,7 +371,9 @@ async def shutdown():
     try:
         from suzent.tools.browsing_tool import BrowserSessionManager
 
-        await BrowserSessionManager.get_instance().close_session()
+        await _stop(
+            BrowserSessionManager.get_instance().close_session(), "BrowserSession"
+        )
     except Exception as e:
         logger.error(f"Error shutting down browser session: {e}")
 
@@ -650,7 +652,12 @@ if __name__ == "__main__":
         # _sock is closed in the finally block if uvicorn never takes ownership.
         bind_port = 0 if _sock else effective_port
         config = uvicorn.Config(
-            app, host=host, port=bind_port, log_level=log_level.lower(), ws="wsproto"
+            app,
+            host=host,
+            port=bind_port,
+            log_level=log_level.lower(),
+            ws="wsproto",
+            timeout_graceful_shutdown=5,  # force-close lingering SSE connections after 5s
         )
         server = uvicorn.Server(config)
         sockets = [_sock] if _sock else None

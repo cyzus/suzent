@@ -38,6 +38,7 @@ class AgentDeps:
     # --- Sandbox / filesystem ---
     sandbox_enabled: bool = False
     workspace_root: str = ""
+    cwd: Optional[str] = None  # Optional working directory override for subagents
     custom_volumes: list = field(default_factory=list)
     path_resolver: Any = None  # PathResolver instance
 

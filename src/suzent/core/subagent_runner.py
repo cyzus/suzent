@@ -40,6 +40,7 @@ class SubAgentTask:
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     chat_id: str = ""  # isolated chat created for this sub-agent
+    cwd: Optional[str] = None  # working directory override for bash execution
 
 
 # Global registry: task_id -> SubAgentTask
@@ -143,10 +144,18 @@ async def spawn_subagent(
     description: str,
     tools_allowed: list[str],
     model_override: Optional[str] = None,
+    run_in_background: bool = True,
+    cwd: Optional[str] = None,
 ) -> SubAgentTask:
     """
-    Create a SubAgentTask and launch it as a background asyncio task.
-    Returns the SubAgentTask immediately (status=queued).
+    Create a SubAgentTask and launch it.
+
+    If run_in_background=True (default): fires as asyncio.create_task and returns
+    immediately with status=queued (parent chat continues streaming).
+
+    If run_in_background=False: awaits completion before returning; the returned
+    task has status=completed/failed with result_summary populated, letting the
+    parent tool call return the actual result inline.
     """
     resolved, unrecognized = _resolve_tool_names(tools_allowed)
     if unrecognized:
@@ -164,17 +173,22 @@ async def spawn_subagent(
         description=description,
         tools_allowed=resolved,  # always store resolved canonical names
         chat_id=chat_id,
+        cwd=cwd,
     )
 
     async with _tasks_lock:
         _tasks[task_id] = task
     _broadcast_task_update(task)
 
-    # Fire-and-forget — parent chat keeps streaming
-    asyncio.create_task(
-        _run_subagent(task, model_override=model_override),
-        name=f"subagent_{task_id}",
-    )
+    if run_in_background:
+        # Fire-and-forget — parent chat keeps streaming
+        asyncio.create_task(
+            _run_subagent(task, model_override=model_override, wakeup_parent=True),
+            name=f"subagent_{task_id}",
+        )
+    else:
+        # Blocking — parent awaits the child's completion
+        await _run_subagent(task, model_override=model_override, wakeup_parent=False)
 
     return task
 
@@ -182,7 +196,11 @@ async def spawn_subagent(
 # ─── Execution ───────────────────────────────────────────────────────────────
 
 
-async def _run_subagent(task: SubAgentTask, model_override: Optional[str] = None):
+async def _run_subagent(
+    task: SubAgentTask,
+    model_override: Optional[str] = None,
+    wakeup_parent: bool = True,
+):
     """Execute the sub-agent in an isolated chat, then notify the parent."""
     task.status = "running"
     task.started_at = datetime.now()
@@ -233,6 +251,8 @@ async def _run_subagent(task: SubAgentTask, model_override: Optional[str] = None
             base_config["model"] = model_override
         if task.tools_allowed:
             base_config["tools"] = list(task.tools_allowed)
+        if task.cwd:
+            base_config["cwd"] = task.cwd
 
         config_override = build_agent_config(base_config, require_social_tool=False)
 
@@ -258,8 +278,11 @@ async def _run_subagent(task: SubAgentTask, model_override: Optional[str] = None
             },
         )
 
-        # Inject completion notification into parent chat history
+        # Inject completion notification into parent chat history, then wake the
+        # parent LLM so it can react without waiting for the user to type.
         _inject_parent_notification(task)
+        if wakeup_parent:
+            await _wakeup_parent(task)
 
     except Exception as e:
         logger.error(f"Sub-agent {task.task_id} failed: {e}")
@@ -298,6 +321,48 @@ def _inject_parent_notification(task: SubAgentTask):
         db.update_chat(task.parent_chat_id, messages=messages)
     except Exception as e:
         logger.warning(f"Failed to inject parent notification for {task.task_id}: {e}")
+
+
+async def _wakeup_parent(task: SubAgentTask) -> None:
+    """
+    Trigger a new LLM turn in the parent chat so the parent agent automatically
+    processes the sub-agent's completion result without waiting for the user to type.
+
+    Skipped if the parent chat is currently streaming (user is mid-conversation).
+    """
+    # Don't interrupt an in-progress parent turn
+    if get_active_stream_queue(task.parent_chat_id) is not None:
+        logger.debug(
+            f"Parent {task.parent_chat_id} is active; skipping wakeup for {task.task_id}"
+        )
+        return
+
+    try:
+        from suzent.core.chat_processor import ChatProcessor
+        from suzent.agent_manager import build_agent_config
+        from suzent.config import CONFIG
+
+        wake_msg = (
+            f"[System] Sub-agent `{task.task_id}` has finished.\n"
+            f"Task: {task.description[:300]}\n\n"
+            f"Result:\n{task.result_summary}"
+        )
+
+        config_override = build_agent_config(
+            {"platform": "subagent_wakeup", "memory_enabled": False},
+            require_social_tool=False,
+        )
+
+        processor = ChatProcessor()
+        await processor.process_turn_text(
+            chat_id=task.parent_chat_id,
+            user_id=CONFIG.user_id,
+            message_content=wake_msg,
+            config_override=config_override,
+        )
+        logger.debug(f"Wakeup turn completed for parent {task.parent_chat_id}")
+    except Exception as e:
+        logger.warning(f"Failed to wakeup parent {task.parent_chat_id}: {e}")
 
 
 async def _notify_parent(task: SubAgentTask, event_name: str, data: dict):

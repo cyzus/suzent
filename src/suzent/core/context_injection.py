@@ -50,6 +50,7 @@ def build_agent_deps(
         config, "sandbox_enabled", CONFIG.sandbox_enabled
     )
     workspace_root = _get_config_value(config, "workspace_root", CONFIG.workspace_root)
+    cwd = _get_config_value(config, "cwd", None)
     auto_approve_tools = _get_config_value(config, "auto_approve_tools", False)
     custom_volumes = get_effective_volumes(
         _get_config_value(config, "sandbox_volumes", None)
@@ -109,6 +110,7 @@ def build_agent_deps(
         user_id=user_id,
         sandbox_enabled=sandbox_enabled,
         workspace_root=workspace_root,
+        cwd=cwd,
         custom_volumes=custom_volumes,
         path_resolver=path_resolver,
         memory_manager=memory_manager,
