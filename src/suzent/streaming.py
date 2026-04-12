@@ -33,6 +33,8 @@ from suzent.core.stream_registry import (
     stop_stream,  # noqa: F401 — re-export for backwards compat
     merge_pending_auto_approvals,
     pop_pending_auto_approvals,
+    register_active_stream,
+    unregister_active_stream,
 )
 from suzent.plan import read_plan_from_database, plan_to_dict, auto_complete_current
 from loguru import logger
@@ -257,6 +259,8 @@ async def stream_agent_responses(
     partial_history = list(message_history) if message_history else []
 
     out_queue: asyncio.Queue = asyncio.Queue()
+    if chat_id:
+        register_active_stream(chat_id, out_queue)
 
     # --- Background agent runner (stateless resume) ---
     async def _agent_runner() -> None:
@@ -694,6 +698,7 @@ async def stream_agent_responses(
             existing = stream_controls.get(chat_id)
             if existing is control:
                 stream_controls.pop(chat_id, None)
+            unregister_active_stream(chat_id)
 
         # Signal that all cleanup (including post-processing trigger) is done
         control.completed_event.set()

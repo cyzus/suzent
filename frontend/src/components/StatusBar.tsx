@@ -3,6 +3,7 @@ import { useStatusStore, StatusType } from '../hooks/useStatusStore';
 import { useChatCoreStore } from '../hooks/useChatStore';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
+import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
 
 const getStatusStyles = (type: StatusType) => {
   switch (type) {
@@ -118,6 +119,20 @@ function HeartbeatWidget() {
   );
 }
 
+function SubAgentWidget() {
+  const { activeTasks } = useSubAgentStatus();
+  if (activeTasks.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-1 flex-shrink-0 ml-3" title={`${activeTasks.length} sub-agent(s) running`}>
+      <span className="text-xs animate-spin-slow">🤖</span>
+      <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">
+        {activeTasks.length} sub-agent{activeTasks.length > 1 ? 's' : ''} running
+      </span>
+    </div>
+  );
+}
+
 export const StatusBar: React.FC = () => {
   const { message, type } = useStatusStore();
 
@@ -137,7 +152,8 @@ export const StatusBar: React.FC = () => {
           {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
         </span>
       </div>
-      {/* Right: persistent heartbeat widget */}
+      {/* Right: sub-agent indicator + heartbeat */}
+      <SubAgentWidget />
       <HeartbeatWidget />
     </div>
   );

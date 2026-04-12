@@ -156,13 +156,14 @@ class SocialBrain(BaseBrain):
         from suzent.channels.utils import extract_target_id
 
         target_id = extract_target_id(message)
-        social_chat_id = f"social-{message.platform}-{target_id}"
+        default_chat_id = f"social-{message.platform}-{target_id}"
 
         # Unified slash command dispatch
         from suzent.core.commands import dispatch as dispatch_command, CommandContext
+        from suzent.core.commands.sess import get_active_chat_id
 
         ctx = CommandContext(
-            chat_id=social_chat_id,
+            chat_id=default_chat_id,
             user_id="default-user",
             platform=message.platform,
             sender_id=message.sender_id,
@@ -175,6 +176,9 @@ class SocialBrain(BaseBrain):
                     message.platform, message.sender_id, cmd_result
                 )
             return
+
+        # Resolve active chat (may have been switched via /sess)
+        social_chat_id = get_active_chat_id(message.sender_id, default_chat_id)
 
         state = self._get_run_state(social_chat_id)
 

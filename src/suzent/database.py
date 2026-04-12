@@ -63,6 +63,9 @@ class ChatModel(SQLModel, table=True):
     # Background execution tracking — written only by background executors
     last_result_at: Optional[datetime] = None
 
+    # Working directory binding (S2O Phase 1)
+    working_directory: Optional[str] = None
+
     plans: List["PlanModel"] = Relationship(
         back_populates="chat",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
@@ -281,6 +284,10 @@ class ChatDatabase:
                     conn.execute(
                         text("ALTER TABLE chats ADD COLUMN last_result_at DATETIME")
                     )
+                if "working_directory" not in columns:
+                    conn.execute(
+                        text("ALTER TABLE chats ADD COLUMN working_directory TEXT")
+                    )
                 conn.commit()
 
     def _session(self) -> Session:
@@ -298,6 +305,7 @@ class ChatDatabase:
         messages: List[Dict[str, Any]] = None,
         agent_state: bytes = None,
         chat_id: str = None,
+        working_directory: str = None,
     ) -> str:
         """Create a new chat and return its ID."""
         now = datetime.now()
@@ -310,6 +318,7 @@ class ChatDatabase:
             config=config,
             messages=messages or [],
             agent_state=agent_state,
+            working_directory=working_directory,
         )
 
         with self._session() as session:
@@ -330,6 +339,7 @@ class ChatDatabase:
         config: Dict[str, Any] = None,
         messages: List[Dict[str, Any]] = None,
         agent_state: bytes = None,
+        working_directory: str = None,
     ) -> bool:
         """Update an existing chat."""
         with self._session() as session:
@@ -353,6 +363,9 @@ class ChatDatabase:
             if agent_state is not None:
                 chat.agent_state = agent_state
                 should_update_timestamp = True
+
+            if working_directory is not None:
+                chat.working_directory = working_directory
 
             if should_update_timestamp:
                 chat.updated_at = datetime.now()

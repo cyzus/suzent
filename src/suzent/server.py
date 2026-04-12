@@ -109,6 +109,12 @@ from suzent.routes.heartbeat_routes import (
     save_heartbeat_global_config,
 )
 from suzent.routes.a2ui_routes import a2ui_action, a2ui_answer
+from suzent.routes.subagent_routes import (
+    list_active_subagents,
+    list_subagents,
+    get_subagent,
+    stop_subagent_route,
+)
 from suzent.channels.manager import ChannelManager
 from suzent.nodes.manager import NodeManager
 
@@ -480,6 +486,10 @@ app = Starlette(
         Route("/heartbeat/config", save_heartbeat_global_config, methods=["POST"]),
         Route("/canvas/{chat_id}/action", a2ui_action, methods=["POST"]),
         Route("/canvas/{chat_id}/answer", a2ui_answer, methods=["POST"]),
+        Route("/subagents/active", list_active_subagents, methods=["GET"]),
+        Route("/subagents", list_subagents, methods=["GET"]),
+        Route("/subagents/{task_id}", get_subagent, methods=["GET"]),
+        Route("/subagents/{task_id}/stop", stop_subagent_route, methods=["POST"]),
     ],
     middleware=[
         Middleware(

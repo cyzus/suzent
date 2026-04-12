@@ -56,6 +56,10 @@ export function generateBlockKey(block: ContentBlock, index: number, messageIdx:
 const IGNORED_TOOL_NAMES = ['final_answer', 'final answer'];
 
 /** Check if parsed blocks represent a tool-only message (no real prose/code content) */
+// Tool names that should NOT be collapsed into intermediate step pills —
+// they render as standalone interactive cards (e.g. SubAgentCallBlock).
+const PROMINENT_TOOL_NAMES = ['spawn_subagent'];
+
 export function isToolOnlyContent(content: string | undefined): boolean {
   if (!content?.trim()) return false;
   const blocks = splitAssistantContent(content);
@@ -65,6 +69,10 @@ export function isToolOnlyContent(content: string | undefined): boolean {
     return !IGNORED_TOOL_NAMES.includes((b.toolName || '').toLowerCase());
   });
   if (filtered.length === 0) return false;
+  // Prominent tools always render as standalone cards, never as step pills
+  if (filtered.some(b => b.type === 'toolCall' && PROMINENT_TOOL_NAMES.includes(b.toolName || ''))) {
+    return false;
+  }
   // Check if all remaining blocks are toolCall, or have no meaningful content
   const contentBlocks = filtered.filter(b => b.type !== 'toolCall');
   const hasContent = contentBlocks.some(b => b.type === 'a2ui' || b.content.trim().length > 0);

@@ -20,6 +20,15 @@ import { FileViewer } from './FileViewer';
 import { UserMessage, AssistantMessage, RightSidebar } from './chat';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
+import { SubAgentView } from './sidebar/SubAgentView';
+import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
+import { useStatusStore } from '../hooks/useStatusStore';
+import type { SubAgentStatus } from './chat/SubAgentCallBlock';
+import type {
+  SubAgentSpawnedPayload,
+  SubAgentCompletedPayload,
+  SubAgentFailedPayload,
+} from '../lib/streamEvents';
 
 
 // ── AGUIPart[] → Store Message conversion ────────────────────────────
@@ -156,7 +165,10 @@ const MessageList: React.FC<{
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
   onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
-}> = ({ messages, streamingForCurrentChat, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction }) => {
+  subAgentTasks?: Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>;
+  onOpenSubAgentSidebar?: (taskId: string) => void;
+  onStopSubAgent?: (taskId: string) => void;
+}> = ({ messages, streamingForCurrentChat, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent }) => {
   const { skipIndices, groupRenders, stepSummaryByMessageIndex } = useMemo(
     () => buildMessageRenderPlan(messages),
     [messages],
@@ -192,6 +204,9 @@ const MessageList: React.FC<{
                   toolApprovalPolicy={toolApprovalPolicy}
                   onRemoveApprovalPolicy={onRemoveApprovalPolicy}
                   onInlineAction={onInlineAction}
+                  subAgentTasks={subAgentTasks}
+                  onOpenSubAgentSidebar={onOpenSubAgentSidebar}
+                  onStopSubAgent={onStopSubAgent}
                 />
               </div>
             </div>
@@ -228,6 +243,9 @@ const MessageList: React.FC<{
                   toolApprovalPolicy={toolApprovalPolicy}
                   onRemoveApprovalPolicy={onRemoveApprovalPolicy}
                   onInlineAction={onInlineAction}
+                  subAgentTasks={subAgentTasks}
+                  onOpenSubAgentSidebar={onOpenSubAgentSidebar}
+                  onStopSubAgent={onStopSubAgent}
                 />
               )}
             </div>
@@ -303,6 +321,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [viewingFile, setViewingFile] = useState<{ path: string; name: string } | null>(null);
   const [sidebarFilePreview, setSidebarFilePreview] = useState<{ path: string; name: string } | null>(null);
   const [currentUsage, setCurrentUsage] = useState<any>(null);
+  const [subAgentTasks, setSubAgentTasks] = useState<Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>>({});
+  const [viewingSubAgentTaskId, setViewingSubAgentTaskId] = useState<string | null>(null);
+  const { onSpawned: onSubAgentSpawned, onCompleted: onSubAgentCompleted, onFailed: onSubAgentFailed } = useSubAgentStatus();
+  const { setStatus: setStatusBar } = useStatusStore();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const stopInFlightRef = useRef(false);
   // True while a steer is in flight — prevents the normal-send finally from hiding the bubble
@@ -439,6 +461,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       } else if (name === 'heartbeat_ok') {
         // Backend signals that this heartbeat run was OK and messages were rolled back.
         heartbeatOkRef.current = true;
+      } else if (name === 'subagent_spawned') {
+        const p = value as SubAgentSpawnedPayload;
+        onSubAgentSpawned(p);
+        setSubAgentTasks(prev => ({ ...prev, [p.task_id]: { status: 'running' } }));
+      } else if (name === 'subagent_completed') {
+        const p = value as SubAgentCompletedPayload;
+        onSubAgentCompleted(p);
+        setSubAgentTasks(prev => ({ ...prev, [p.task_id]: { status: 'completed', resultSummary: p.result_summary } }));
+        setStatusBar(`Sub-agent completed — ${p.task_id}`, 'success', 5000);
+      } else if (name === 'subagent_failed') {
+        const p = value as SubAgentFailedPayload;
+        onSubAgentFailed(p);
+        setSubAgentTasks(prev => ({ ...prev, [p.task_id]: { status: 'failed', error: p.error } }));
+        setStatusBar(`Sub-agent failed — ${p.task_id}`, 'error', 5000);
       } else if (name === 'a2ui.render') {
         const rawSurface = value as (A2UISurface & { chatId?: string }) | null;
         if (!rawSurface || typeof rawSurface !== 'object' || !('id' in rawSurface) || !('component' in rawSurface)) {
@@ -643,6 +679,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     streamingParts.some(p => p.type === 'tool' && p.state === 'approval-requested');
   const showTransientAssistant = streamingForCurrentChat || hasPendingTransientApprovals;
   const configReady = !!(safeBackendConfig && safeConfig.model && safeConfig.agent);
+
+  const handleOpenSubAgentSidebar = useCallback((taskId: string) => {
+    setViewingSubAgentTaskId(taskId);
+    onRightSidebarToggle(true);
+  }, [onRightSidebarToggle]);
+
+  const handleStopSubAgent = useCallback(async (taskId: string) => {
+    try {
+      await fetch(`${getApiBase()}/subagents/${taskId}/stop`, { method: 'POST' });
+    } catch { /* ignore */ }
+  }, []);
 
 
   // Auto-scroll
@@ -1051,6 +1098,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     toolApprovalPolicy={safeConfig.tool_approval_policy}
                     onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
                     onInlineAction={handleInlineAction}
+                    subAgentTasks={subAgentTasks}
+                    onOpenSubAgentSidebar={handleOpenSubAgentSidebar}
+                    onStopSubAgent={handleStopSubAgent}
                   />
                 )}
                 {/* Streaming/transient assistant message from AG-UI */}
@@ -1070,6 +1120,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                           toolApprovalPolicy={safeConfig.tool_approval_policy}
                           onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
                           onInlineAction={handleInlineAction}
+                          subAgentTasks={subAgentTasks}
+                          onOpenSubAgentSidebar={handleOpenSubAgentSidebar}
+                          onStopSubAgent={handleStopSubAgent}
                         />
                       </div>
                     </div>
@@ -1143,6 +1196,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onMaximizeFile={handleMaximizeFile}
         canvas={canvas}
         onCanvasDispatch={handleCanvasDispatch}
+        viewingSubAgentTaskId={viewingSubAgentTaskId}
+        onCloseSubAgent={() => setViewingSubAgentTaskId(null)}
       />
 
       <ImageViewer

@@ -45,6 +45,35 @@ export enum CustomEventName {
   TOOL_DISPLAY = 'tool_display',
   PLAN_REFRESH = 'plan_refresh',
   USAGE_UPDATE = 'usage_update',
+  // Sub-agent lifecycle events (S2O Phase 3)
+  SUBAGENT_SPAWNED = 'subagent_spawned',
+  SUBAGENT_PROGRESS = 'subagent_progress',
+  SUBAGENT_COMPLETED = 'subagent_completed',
+  SUBAGENT_FAILED = 'subagent_failed',
+}
+
+// ─── Sub-agent event payloads ──────────────────────────────────────────────
+
+export interface SubAgentSpawnedPayload {
+  task_id: string;
+  chat_id: string;
+  description: string;
+  tools_allowed: string[];
+}
+
+export interface SubAgentProgressPayload {
+  task_id: string;
+  step_summary: string;
+}
+
+export interface SubAgentCompletedPayload {
+  task_id: string;
+  result_summary: string;
+}
+
+export interface SubAgentFailedPayload {
+  task_id: string;
+  error: string;
 }
 
 /**

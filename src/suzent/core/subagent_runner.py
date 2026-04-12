@@ -1,0 +1,285 @@
+"""
+Sub-agent runner: spawns isolated background agent tasks with tool whitelisting
+and parent-session notification on completion.
+
+Architecture mirrors SchedulerBrain._execute_job but is triggered by the agent
+at runtime (via spawn_subagent tool) rather than a cron schedule.
+"""
+
+import asyncio
+import uuid
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Dict, Optional
+
+from suzent.config import CONFIG
+from suzent.database import get_database
+from suzent.logger import get_logger
+from suzent.core.stream_registry import (
+    register_background_stream,
+    unregister_background_stream,
+    background_queues,
+    get_active_stream_queue,
+)
+
+logger = get_logger(__name__)
+
+# ─── In-memory task registry ─────────────────────────────────────────────────
+
+
+@dataclass
+class SubAgentTask:
+    task_id: str
+    parent_chat_id: str
+    description: str
+    tools_allowed: list[str]
+    status: str = "queued"  # queued | running | completed | failed
+    result_summary: Optional[str] = None
+    error: Optional[str] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    chat_id: str = ""  # isolated chat created for this sub-agent
+
+
+# Global registry: task_id -> SubAgentTask
+_tasks: Dict[str, SubAgentTask] = {}
+_tasks_lock = asyncio.Lock()
+
+
+def get_task(task_id: str) -> Optional[SubAgentTask]:
+    return _tasks.get(task_id)
+
+
+def list_active_tasks() -> list[SubAgentTask]:
+    return [t for t in _tasks.values() if t.status in ("queued", "running")]
+
+
+def list_all_tasks(parent_chat_id: str = None) -> list[SubAgentTask]:
+    tasks = list(_tasks.values())
+    if parent_chat_id:
+        tasks = [t for t in tasks if t.parent_chat_id == parent_chat_id]
+    return sorted(tasks, key=lambda t: t.started_at or datetime.min, reverse=True)
+
+
+# ─── Tool name resolution ─────────────────────────────────────────────────────
+
+
+def _resolve_tool_names(tools_allowed: list[str]) -> tuple[list[str], list[str]]:
+    """
+    Accept both registry class-name keys (e.g. "BashTool") and pydantic-ai
+    tool_name aliases (e.g. "bash_execute"). Returns (resolved, unrecognized).
+    """
+    from suzent.tools.registry import _all_tool_classes
+
+    # Build dual-lookup: class name → class name, tool_name → class name
+    lookup: dict[str, str] = {}
+    for cls in _all_tool_classes():
+        lookup[cls.name] = cls.name
+        if cls.tool_name:
+            lookup[cls.tool_name] = cls.name
+
+    resolved = []
+    unrecognized = []
+    for name in tools_allowed:
+        canonical = lookup.get(name)
+        if canonical:
+            if canonical not in resolved:
+                resolved.append(canonical)
+        else:
+            unrecognized.append(name)
+    return resolved, unrecognized
+
+
+# ─── Public spawn API ─────────────────────────────────────────────────────────
+
+
+async def spawn_subagent(
+    parent_chat_id: str,
+    description: str,
+    tools_allowed: list[str],
+    model_override: Optional[str] = None,
+) -> SubAgentTask:
+    """
+    Create a SubAgentTask and launch it as a background asyncio task.
+    Returns the SubAgentTask immediately (status=queued).
+    """
+    resolved, unrecognized = _resolve_tool_names(tools_allowed)
+    if unrecognized:
+        logger.warning(
+            f"spawn_subagent: unrecognized tool names {unrecognized} — "
+            f"use class-name keys (e.g. 'BashTool'). Resolved: {resolved}"
+        )
+
+    task_id = f"sub_{uuid.uuid4().hex[:8]}"
+    chat_id = f"subagent-{task_id}"
+
+    task = SubAgentTask(
+        task_id=task_id,
+        parent_chat_id=parent_chat_id,
+        description=description,
+        tools_allowed=resolved,  # always store resolved canonical names
+        chat_id=chat_id,
+    )
+
+    async with _tasks_lock:
+        _tasks[task_id] = task
+
+    # Fire-and-forget — parent chat keeps streaming
+    asyncio.create_task(
+        _run_subagent(task, model_override=model_override),
+        name=f"subagent_{task_id}",
+    )
+
+    return task
+
+
+# ─── Execution ───────────────────────────────────────────────────────────────
+
+
+async def _run_subagent(task: SubAgentTask, model_override: Optional[str] = None):
+    """Execute the sub-agent in an isolated chat, then notify the parent."""
+    task.status = "running"
+    task.started_at = datetime.now()
+
+    db = get_database()
+
+    # Ensure isolated chat record exists
+    if not db.get_chat(task.chat_id):
+        db.create_chat(
+            title=f"Sub-agent: {task.description[:60]}",
+            config={
+                "platform": "subagent",
+                "parent_chat_id": task.parent_chat_id,
+                "subagent_task_id": task.task_id,
+                "auto_approve_tools": True,
+            },
+            chat_id=task.chat_id,
+        )
+
+    # Emit spawned event to parent chat
+    await _notify_parent(
+        task,
+        "subagent_spawned",
+        {
+            "task_id": task.task_id,
+            "chat_id": task.chat_id,
+            "description": task.description,
+            "tools_allowed": task.tools_allowed,
+        },
+    )
+
+    stream_queue = register_background_stream(task.chat_id)
+    try:
+        from suzent.core.chat_processor import ChatProcessor
+        from suzent.agent_manager import build_agent_config
+
+        processor = ChatProcessor()
+
+        # Build config: only pass whitelisted tools
+        base_config: dict = {
+            "auto_approve_tools": True,
+            "memory_enabled": False,
+            "platform": "subagent",
+        }
+        if model_override:
+            base_config["model"] = model_override
+        if task.tools_allowed:
+            base_config["tools"] = list(task.tools_allowed)
+
+        config_override = build_agent_config(base_config, require_social_tool=False)
+
+        result_text = await processor.process_turn_text(
+            chat_id=task.chat_id,
+            user_id=CONFIG.user_id,
+            message_content=task.description,
+            config_override=config_override,
+            _stream_queue=stream_queue,
+        )
+
+        task.status = "completed"
+        task.result_summary = result_text[:1000] if result_text else "(no output)"
+        task.finished_at = datetime.now()
+
+        await _notify_parent(
+            task,
+            "subagent_completed",
+            {
+                "task_id": task.task_id,
+                "result_summary": task.result_summary,
+            },
+        )
+
+        # Inject completion notification into parent chat history
+        _inject_parent_notification(task)
+
+    except Exception as e:
+        logger.error(f"Sub-agent {task.task_id} failed: {e}")
+        task.status = "failed"
+        task.error = str(e)
+        task.finished_at = datetime.now()
+
+        await _notify_parent(
+            task,
+            "subagent_failed",
+            {
+                "task_id": task.task_id,
+                "error": str(e),
+            },
+        )
+    finally:
+        unregister_background_stream(task.chat_id)
+
+
+def _inject_parent_notification(task: SubAgentTask):
+    """Append a [System Notification] message to the parent chat's display messages."""
+    try:
+        db = get_database()
+        parent = db.get_chat(task.parent_chat_id)
+        if not parent:
+            return
+
+        notification = (
+            f"[System Notification] Sub-agent **{task.task_id}** completed.\n"
+            f"Task: {task.description}\n\n"
+            f"Result summary:\n{task.result_summary}"
+        )
+        messages = list(parent.messages or [])
+        messages.append({"role": "assistant", "content": notification})
+        db.update_chat(task.parent_chat_id, messages=messages)
+    except Exception as e:
+        logger.warning(f"Failed to inject parent notification for {task.task_id}: {e}")
+
+
+async def _notify_parent(task: SubAgentTask, event_name: str, data: dict):
+    """
+    Push a custom SSE event to the parent chat's active stream queue if it
+    has one (normal /chat stream), falling back to background_queues (for
+    background tryConnect streams, e.g. social/heartbeat chats).
+    """
+    try:
+        from suzent.streaming import _encode_custom
+
+        chunk = _encode_custom(event_name, data)
+        # Prefer the active /chat stream queue (normal user interaction)
+        q = get_active_stream_queue(task.parent_chat_id)
+        if q is None:
+            # Fall back to background queue (social/cron background streams)
+            q = background_queues.get(task.parent_chat_id)
+        if q is not None:
+            try:
+                q.put_nowait(("chunk", chunk))
+            except asyncio.QueueFull:
+                pass
+    except Exception as e:
+        logger.debug(f"Could not push {event_name} to parent queue: {e}")
+
+
+async def stop_subagent(task_id: str) -> bool:
+    """Request cancellation of a running sub-agent."""
+    from suzent.core.stream_registry import stop_stream
+
+    task = _tasks.get(task_id)
+    if not task:
+        return False
+    stop_stream(task.chat_id, reason=f"Sub-agent {task_id} stopped by user")
+    return True

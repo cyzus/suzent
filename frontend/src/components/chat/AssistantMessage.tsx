@@ -7,6 +7,8 @@ import { ThinkingAnimation, AgentBadge } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { LogBlock } from './LogBlock';
 import { ToolCallBlock } from './ToolCallBlock';
+import { SubAgentCallBlock } from './SubAgentCallBlock';
+import type { SubAgentStatus } from './SubAgentCallBlock';
 import { CodeBlockComponent } from './CodeBlockComponent';
 import { CopyButton } from './CopyButton';
 import { RobotAvatar } from './RobotAvatar';
@@ -31,6 +33,12 @@ interface AssistantMessageProps {
   onRemoveApprovalPolicy?: (toolName: string) => void;
   /** Handler for inline A2UI button actions */
   onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
+  /** Sub-agent task state map: taskId -> status (driven by SSE events) */
+  subAgentTasks?: Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>;
+  /** Open the SubAgentView sidebar for the given task_id */
+  onOpenSubAgentSidebar?: (taskId: string) => void;
+  /** Stop a running sub-agent */
+  onStopSubAgent?: (taskId: string) => void;
 }
 
 // Names that should be filtered out from tool call display
@@ -297,6 +305,13 @@ const StreamingContent: React.FC<{
   );
 };
 
+/** Extract sub-agent task_id from spawn_subagent tool output text. */
+function parseSubAgentTaskId(output: string | undefined): string | undefined {
+  if (!output) return undefined;
+  const m = output.match(/ID:\s*`?(sub_[a-z0-9]+)`?/);
+  return m ? m[1] : undefined;
+}
+
 // Static content (non-streaming)
 const StaticContent: React.FC<{
   blocks: ContentBlock[];
@@ -306,7 +321,10 @@ const StaticContent: React.FC<{
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
   onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
-}> = ({ blocks, messageIndex, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction }) => {
+  subAgentTasks?: Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>;
+  onOpenSubAgentSidebar?: (taskId: string) => void;
+  onStopSubAgent?: (taskId: string) => void;
+}> = ({ blocks, messageIndex, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent }) => {
   return (
     <>
       {blocks.map((b, bi) => {
@@ -328,6 +346,27 @@ const StaticContent: React.FC<{
         } else if (b.type === 'toolCall') {
           const isPending = b.approvalState === 'pending';
           const isAutoApproved = toolApprovalPolicy?.[b.toolName || ''] === 'always_allow';
+
+          // Sub-agent special rendering
+          if (b.toolName === 'spawn_subagent') {
+            const taskId = parseSubAgentTaskId(b.content || undefined);
+            const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
+            const args = b.toolArgs ? (() => { try { return JSON.parse(b.toolArgs!); } catch { return {}; } })() : {};
+            return (
+              <SubAgentCallBlock
+                key={blockKey}
+                taskId={taskId}
+                description={args.description}
+                toolsAllowed={args.tools_allowed}
+                status={taskState?.status ?? 'running'}
+                resultSummary={taskState?.resultSummary}
+                error={taskState?.error}
+                onOpenSidebar={onOpenSubAgentSidebar}
+                onStop={onStopSubAgent}
+              />
+            );
+          }
+
           return (
             <ToolCallBlock
               key={blockKey}
@@ -389,7 +428,10 @@ const AGUIPartsContent: React.FC<{
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
   onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
-}> = ({ parts, messageIndex, isStreaming, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction }) => {
+  subAgentTasks?: Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>;
+  onOpenSubAgentSidebar?: (taskId: string) => void;
+  onStopSubAgent?: (taskId: string) => void;
+}> = ({ parts, messageIndex, isStreaming, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent }) => {
   // Normalize tool parts: when resume/recovery emits another tool part with the
   // same toolCallId later in the stream, merge it into the first occurrence so
   // output stays under the initial tool call instead of rendering a split block.
@@ -468,9 +510,33 @@ const AGUIPartsContent: React.FC<{
             };
           });
 
+          // Separate spawn_subagent calls from regular tool calls
+          const subAgentTools = tools.filter(t => t.toolName === 'spawn_subagent');
+          const regularTools = tools.filter(t => t.toolName !== 'spawn_subagent');
+
           return (
             <div key={ci} className="pl-1 min-w-0 overflow-x-hidden">
-              <ToolSequenceGroup tools={tools} isStreaming={isStreaming} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} />
+              {subAgentTools.map((t, i) => {
+                const taskId = parseSubAgentTaskId(t.output);
+                const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
+                const args = t.toolArgs ? (() => { try { return JSON.parse(t.toolArgs!); } catch { return {}; } })() : {};
+                return (
+                  <SubAgentCallBlock
+                    key={t.toolCallId || `sa-${i}`}
+                    taskId={taskId}
+                    description={args.description}
+                    toolsAllowed={args.tools_allowed}
+                    status={taskState?.status ?? (t.approvalState === 'pending' ? 'queued' : 'running')}
+                    resultSummary={taskState?.resultSummary}
+                    error={taskState?.error}
+                    onOpenSidebar={onOpenSubAgentSidebar}
+                    onStop={onStopSubAgent}
+                  />
+                );
+              })}
+              {regularTools.length > 0 && (
+                <ToolSequenceGroup tools={regularTools} isStreaming={isStreaming} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} />
+              )}
             </div>
           );
         }
@@ -553,6 +619,9 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   toolApprovalPolicy,
   onRemoveApprovalPolicy,
   onInlineAction,
+  subAgentTasks,
+  onOpenSubAgentSidebar,
+  onStopSubAgent,
 }) => {
   const isStreamingThis = isStreaming && isLastMessage;
   const hasParts = aguiParts && aguiParts.length > 0;
@@ -602,6 +671,9 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                 toolApprovalPolicy={toolApprovalPolicy}
                 onRemoveApprovalPolicy={onRemoveApprovalPolicy}
                 onInlineAction={onInlineAction}
+                subAgentTasks={subAgentTasks}
+                onOpenSubAgentSidebar={onOpenSubAgentSidebar}
+                onStopSubAgent={onStopSubAgent}
               />
             ) : null}
             <MetricsBadge usage={usage} />
@@ -630,8 +702,10 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     return null;
   }
 
-  // Detect tool-only messages
-  const toolOnly = !isStreamingThis && isToolOnlyMessage(blocks);
+  // Detect tool-only messages — but spawn_subagent always needs StaticContent
+  // because it renders SubAgentCallBlock, not a step pill.
+  const hasSubAgentCall = blocks.some(b => b.type === 'toolCall' && b.toolName === 'spawn_subagent');
+  const toolOnly = !isStreamingThis && isToolOnlyMessage(blocks) && !hasSubAgentCall;
 
   if (toolOnly) {
     return (
@@ -738,11 +812,20 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
             }
 
             if (chunk.type === 'toolCall') {
+              const subAgentBlocks = chunk.blocks.filter(b => b.toolName === 'spawn_subagent');
+              const regularBlocks = chunk.blocks.filter(b => b.toolName !== 'spawn_subagent');
               return (
                 <div key={idx} className="flex flex-col space-y-2">
-                  <div className="pl-1">
-                    <StepPills blocks={chunk.blocks} messageIndex={messageIndex} isStreaming={isStreamingThis} onToolApproval={onToolApproval} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} />
-                  </div>
+                  {subAgentBlocks.length > 0 && (
+                    <div className="pl-1">
+                      <StaticContent blocks={subAgentBlocks} messageIndex={messageIndex} onFileClick={onFileClick} onToolApproval={onToolApproval} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} onInlineAction={onInlineAction} subAgentTasks={subAgentTasks} onOpenSubAgentSidebar={onOpenSubAgentSidebar} onStopSubAgent={onStopSubAgent} />
+                    </div>
+                  )}
+                  {regularBlocks.length > 0 && (
+                    <div className="pl-1">
+                      <StepPills blocks={regularBlocks} messageIndex={messageIndex} isStreaming={isStreamingThis} onToolApproval={onToolApproval} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} />
+                    </div>
+                  )}
                 </div>
               );
             }
@@ -794,7 +877,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                   {isStreamingChunk ? (
                     <StreamingContent blocks={contentBlocks} messageIndex={messageIndex} showCursor={cursorReady} onFileClick={onFileClick} />
                   ) : (
-                    <StaticContent blocks={contentBlocks} messageIndex={messageIndex} onFileClick={onFileClick} onToolApproval={onToolApproval} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} onInlineAction={onInlineAction} />
+                    <StaticContent blocks={contentBlocks} messageIndex={messageIndex} onFileClick={onFileClick} onToolApproval={onToolApproval} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} onInlineAction={onInlineAction} subAgentTasks={subAgentTasks} onOpenSubAgentSidebar={onOpenSubAgentSidebar} onStopSubAgent={onStopSubAgent} />
                   )}
                 </div>
               </div>

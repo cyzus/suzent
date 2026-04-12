@@ -55,6 +55,32 @@ def pop_pending_auto_approvals(chat_id: str) -> Dict[str, bool]:
 
 
 # ---------------------------------------------------------------------------
+# Active stream queues
+# Maps chat_id → out_queue for the currently-active /chat stream, so that
+# background tasks (e.g. sub-agents) can inject custom SSE events into the
+# live stream that the user is watching.
+# ---------------------------------------------------------------------------
+
+active_stream_queues: Dict[str, asyncio.Queue] = {}
+
+
+def register_active_stream(chat_id: str, queue: asyncio.Queue) -> None:
+    """Register the active out_queue for a chat stream."""
+    if chat_id:
+        active_stream_queues[chat_id] = queue
+
+
+def unregister_active_stream(chat_id: str) -> None:
+    """Remove the active out_queue when the stream ends."""
+    active_stream_queues.pop(chat_id, None)
+
+
+def get_active_stream_queue(chat_id: str) -> Optional[asyncio.Queue]:
+    """Return the active out_queue for a chat, or None if not streaming."""
+    return active_stream_queues.get(chat_id)
+
+
+# ---------------------------------------------------------------------------
 # Background stream queues
 # Maps chat_id → asyncio.Queue of raw SSE chunks from background executors.
 # A None sentinel in the queue signals end-of-stream.

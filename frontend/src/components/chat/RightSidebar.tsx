@@ -4,6 +4,7 @@ import { PlanProgress } from '../PlanProgress';
 import { SandboxFiles } from '../sidebar/SandboxFiles';
 import { BrowserView } from '../sidebar/BrowserView';
 import { CanvasView } from '../sidebar/CanvasView';
+import { SubAgentView } from '../sidebar/SubAgentView';
 import type { Plan } from '../../types/api';
 import type { CanvasState } from '../../hooks/useCanvas';
 import {
@@ -26,6 +27,8 @@ interface RightSidebarProps {
   onMaximizeFile?: (filePath: string, fileName: string) => void;
   canvas?: CanvasState;
   onCanvasDispatch?: (action: string, context: Record<string, unknown>, surfaceId: string) => void;
+  viewingSubAgentTaskId?: string | null;
+  onCloseSubAgent?: () => void;
 }
 
 export const RightSidebar: React.FC<RightSidebarProps> = ({
@@ -42,9 +45,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onMaximizeFile,
   canvas,
   onCanvasDispatch,
+  viewingSubAgentTaskId,
+  onCloseSubAgent,
 }) => {
   const { t } = useI18n();
-  const [activeTab, setActiveTab] = useState<'files' | 'browser' | 'canvas'>('browser');
+  const [activeTab, setActiveTab] = useState<'files' | 'browser' | 'canvas' | 'agents'>('browser');
   const [isFileExpanded, setIsFileExpanded] = useState(false);
   const [isBrowserStreamActive, setIsBrowserStreamActive] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState<number | null>(null);
@@ -113,6 +118,13 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       setActiveTab('canvas');
     }
   }, [canvas?.hasSurfaces]);
+
+  // Auto-switch to agents tab when a sub-agent is opened
+  useEffect(() => {
+    if (viewingSubAgentTaskId) {
+      setActiveTab('agents');
+    }
+  }, [viewingSubAgentTaskId]);
 
   const isAutoExpanded = (activeTab === 'files' && isFileExpanded) || (activeTab === 'browser' && isBrowserStreamActive);
   const isCanvasActive = activeTab === 'canvas' && !!canvas?.hasSurfaces;
@@ -217,6 +229,18 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               <span className="absolute top-2 right-2 w-2 h-2 bg-brutal-yellow border border-brutal-black rounded-full" />
             )}
           </button>
+          <button
+            onClick={() => setActiveTab('agents')}
+            className={`flex-1 px-2 font-brutal font-bold text-sm tracking-wider uppercase h-full transition-colors relative ${activeTab === 'agents'
+              ? 'bg-brutal-black text-white'
+              : 'bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'
+              }`}
+          >
+            Agents
+            {viewingSubAgentTaskId && activeTab !== 'agents' && (
+              <span className="absolute top-2 right-2 w-2 h-2 bg-brutal-blue border border-brutal-black rounded-full animate-pulse" />
+            )}
+          </button>
         </div>
       </div>
 
@@ -240,6 +264,18 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               canvas={canvas}
               onDispatch={onCanvasDispatch ?? (() => {})}
             />
+          )}
+        </div>
+        <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'agents' ? 'flex' : 'hidden'}`}>
+          {viewingSubAgentTaskId ? (
+            <SubAgentView
+              taskId={viewingSubAgentTaskId}
+              onClose={onCloseSubAgent}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full text-[11px] text-neutral-400 font-mono">
+              No sub-agent selected
+            </div>
           )}
         </div>
       </div>
