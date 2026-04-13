@@ -6,8 +6,9 @@ Supports reading text files directly and converting various file formats
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 
+from pydantic import Field
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
@@ -48,9 +49,15 @@ class ReadFileTool(Tool):
     def forward(
         self,
         ctx: RunContext[AgentDeps],
-        file_path: str,
-        offset: Optional[int] = None,
-        limit: Optional[int] = None,
+        file_path: Annotated[str, Field(description="Path to the file to read.")],
+        offset: Annotated[
+            Optional[int],
+            Field(description="0-indexed line offset to start reading from.", ge=0),
+        ] = None,
+        limit: Annotated[
+            Optional[int],
+            Field(description="Maximum number of lines to read.", ge=0),
+        ] = None,
     ) -> ToolResult:
         """Read file content from the filesystem.
 

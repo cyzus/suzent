@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, List
+from typing import Annotated, Optional, List, Literal
 from playwright.async_api import (
     async_playwright,
     Playwright,
@@ -9,7 +9,8 @@ from playwright.async_api import (
     CDPSession,
 )
 from starlette.websockets import WebSocket
-from suzent.tools.base import Tool, ToolGroup
+from pydantic import Field
+from suzent.tools.base import Tool, ToolGroup, ToolErrorCode, ToolResult
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -236,7 +237,7 @@ class BrowserSessionManager:
     # --- Native Semantic Helpers ---
     _selector_map = {}
 
-    async def get_snapshot(self, interactive_only: bool = True):
+    async def get_snapshot(self, interactive_only: bool = True) -> ToolResult:
         """Generate a semantic snapshot and populate selector map."""
 
         async def _snap():
@@ -273,7 +274,10 @@ class BrowserSessionManager:
                 items = await self._page.evaluate(js_script)
             except Exception as e:
                 logger.error(f"Snapshot script failed: {e}")
-                return "Error generating snapshot."
+                return ToolResult.error_result(
+                    ToolErrorCode.EXECUTION_FAILED,
+                    "Error generating snapshot.",
+                )
 
             output_lines = []
             for item in items:
@@ -289,15 +293,22 @@ class BrowserSessionManager:
                 line += f"> {item['label']}"
                 output_lines.append(line)
 
-            return (
-                "\n".join(output_lines)
-                if output_lines
-                else "No interactive elements found."
+            if output_lines:
+                return ToolResult.success_result(
+                    "\n".join(output_lines),
+                    metadata={
+                        "interactive_only": interactive_only,
+                        "element_count": len(output_lines),
+                    },
+                )
+            return ToolResult.success_result(
+                "No interactive elements found.",
+                metadata={"interactive_only": interactive_only, "element_count": 0},
             )
 
         return await self._run_on_main_loop(_snap())
 
-    async def interact(self, action: str, ref: str, value: str = None):
+    async def interact(self, action: str, ref: str, value: str = None) -> ToolResult:
         """Interact with an element by ref or selector."""
 
         async def _act():
@@ -307,27 +318,50 @@ class BrowserSessionManager:
             try:
                 if action == "click":
                     await self._page.click(selector)
-                    return f"Clicked {ref}"
+                    return ToolResult.success_result(
+                        f"Clicked {ref}", metadata={"action": action, "ref": ref}
+                    )
                 elif action == "dblclick":
                     await self._page.dblclick(selector)
-                    return f"Double-clicked {ref}"
+                    return ToolResult.success_result(
+                        f"Double-clicked {ref}", metadata={"action": action, "ref": ref}
+                    )
                 elif action == "fill":
                     await self._page.fill(selector, value or "")
-                    return f"Filled {ref} with '{value}'"
+                    return ToolResult.success_result(
+                        f"Filled {ref} with '{value}'",
+                        metadata={"action": action, "ref": ref},
+                    )
                 elif action == "type":
                     await self._page.type(selector, value or "")
-                    return f"Typed '{value}' into {ref}"
+                    return ToolResult.success_result(
+                        f"Typed '{value}' into {ref}",
+                        metadata={"action": action, "ref": ref},
+                    )
                 elif action == "hover":
                     await self._page.hover(selector)
-                    return f"Hovered {ref}"
+                    return ToolResult.success_result(
+                        f"Hovered {ref}", metadata={"action": action, "ref": ref}
+                    )
                 elif action == "press":
                     # value is key name
                     await self._page.press(selector, value)
-                    return f"Pressed '{value}' on {ref}"
+                    return ToolResult.success_result(
+                        f"Pressed '{value}' on {ref}",
+                        metadata={"action": action, "ref": ref},
+                    )
                 else:
-                    return f"Unknown action {action}"
+                    return ToolResult.error_result(
+                        ToolErrorCode.INVALID_ARGUMENT,
+                        f"Unknown action {action}",
+                        metadata={"action": action, "ref": ref},
+                    )
             except Exception as e:
-                return f"Interaction failed: {e}"
+                return ToolResult.error_result(
+                    ToolErrorCode.EXECUTION_FAILED,
+                    f"Interaction failed: {e}",
+                    metadata={"action": action, "ref": ref},
+                )
 
         return await self._run_on_main_loop(_act())
 
@@ -529,32 +563,48 @@ class BrowsingTool(Tool):
                 # Use manager wrapper for thread safety
                 await self.session_mgr.goto(url)
             except Exception as e:
-                return f"Error opening {url} (partial load): {e}"
-            return f"Opened {url}"
+                return ToolResult.error_result(
+                    ToolErrorCode.EXECUTION_FAILED,
+                    f"Error opening {url} (partial load): {e}",
+                    metadata={"command": command, "url": url},
+                )
+            return ToolResult.success_result(
+                f"Opened {url}", metadata={"command": command, "url": url}
+            )
 
         elif command == "back":
             await self.session_mgr.back()
-            return "Navigated back."
+            return ToolResult.success_result(
+                "Navigated back.", metadata={"command": command}
+            )
 
         elif command == "forward":
             await self.session_mgr.forward()
-            return "Navigated forward."
+            return ToolResult.success_result(
+                "Navigated forward.", metadata={"command": command}
+            )
 
         elif command == "reload" or command == "refresh":
             await self.session_mgr.reload()
-            return "Reloaded page."
+            return ToolResult.success_result(
+                "Reloaded page.", metadata={"command": command}
+            )
 
         elif command == "click_coords":
             x, y = int(arguments[0]), int(arguments[1])
             # Use manager wrapper for thread safety
             await self.session_mgr.click(x, y)
-            return f"Clicked at {x}, {y}"
+            return ToolResult.success_result(
+                f"Clicked at {x}, {y}", metadata={"command": command, "x": x, "y": y}
+            )
 
         elif command == "scroll":
             # arguments: [dx, dy]
             # If simplistic usage: just scroll down
             await self.session_mgr.scroll(0, 500)
-            return "Scrolled down."
+            return ToolResult.success_result(
+                "Scrolled down.", metadata={"command": command}
+            )
 
         # --- PATH B: PYTHON NATIVE SEMANTIC LOGIC (Replacing Agent-Browser CLI) ---
         # The Agent uses 'snapshot' to "reason" about the page (e.g. use @e1 locators)
@@ -566,27 +616,71 @@ class BrowsingTool(Tool):
 
         elif command in ["click", "dblclick", "hover"]:
             if not arguments:
-                return f"Error: {command} requires a target ref (e.g. {command} @e1)"
+                return ToolResult.error_result(
+                    ToolErrorCode.MISSING_REQUIRED_PARAM,
+                    f"{command} requires a target ref (e.g. {command} @e1)",
+                    metadata={"command": command},
+                )
             ref = arguments[0]
             return await self.session_mgr.interact(command, ref)
 
         elif command in ["fill", "type"]:
             if not arguments:
-                return f"Error: {command} requires a target ref (e.g. {command} @e1 'text')"
+                return ToolResult.error_result(
+                    ToolErrorCode.MISSING_REQUIRED_PARAM,
+                    f"{command} requires a target ref (e.g. {command} @e1 'text')",
+                    metadata={"command": command},
+                )
             ref = arguments[0]
             val = arguments[1] if len(arguments) > 1 else ""
             return await self.session_mgr.interact(command, ref, val)
 
         elif command == "press":
             if not arguments:
-                return "Error: press requires ref and key (e.g. press @e1 Enter)"
+                return ToolResult.error_result(
+                    ToolErrorCode.MISSING_REQUIRED_PARAM,
+                    "press requires ref and key (e.g. press @e1 Enter)",
+                    metadata={"command": command},
+                )
             ref = arguments[0]
             key = arguments[1] if len(arguments) > 1 else "Enter"
             return await self.session_mgr.interact("press", ref, key)
 
-        return f"Unknown command {command}"
+        return ToolResult.error_result(
+            ToolErrorCode.INVALID_ARGUMENT,
+            f"Unknown command {command}",
+            metadata={"command": command},
+        )
 
-    async def forward(self, command: str, arguments: list = None) -> str:
+    async def forward(
+        self,
+        command: Annotated[
+            Literal[
+                "open",
+                "snapshot",
+                "click",
+                "dblclick",
+                "hover",
+                "fill",
+                "type",
+                "press",
+                "back",
+                "forward",
+                "reload",
+                "refresh",
+                "click_coords",
+                "scroll",
+            ],
+            Field(description="Browser command to execute."),
+        ],
+        arguments: Annotated[
+            Optional[list[str]],
+            Field(
+                default=None,
+                description="Optional command arguments such as a URL, ref, text, or coordinates.",
+            ),
+        ] = None,
+    ) -> ToolResult:
         """Control a browser session to navigate and interact with web pages.
 
         Optimal workflow: open <url>, then snapshot to get element refs, then click/fill using refs.

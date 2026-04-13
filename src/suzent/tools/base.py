@@ -13,7 +13,7 @@ messages, and optional metadata for advanced retry and recovery logic.
 from enum import Enum
 from typing import Any, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from suzent.logger import get_logger
 
@@ -80,13 +80,13 @@ class ToolResult(BaseModel):
     error_code: Optional[ToolErrorCode] = Field(default=None)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    def __init__(self, **data):
-        """Initialize ToolResult with validation."""
-        super().__init__(**data)
+    @model_validator(mode="after")
+    def _validate_error_code(self) -> "ToolResult":
         if self.success and self.error_code is not None:
             raise ValueError("error_code should be None when success=True")
         if not self.success and self.error_code is None:
-            self.error_code = ToolErrorCode.UNKNOWN_ERROR
+            raise ValueError("error_code is required when success=False")
+        return self
 
     def __str__(self) -> str:
         """Return the user-friendly message for LLM context."""

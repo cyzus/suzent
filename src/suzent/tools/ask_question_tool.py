@@ -8,12 +8,12 @@ of typing free-text replies. Prefer this over plain-text clarification questions
 import asyncio
 import json
 import re
-from typing import Any
+from typing import Any, Annotated
 
 from pydantic import BaseModel, Field
 from pydantic_ai import RunContext
 
-from suzent.tools.base import Tool, ToolGroup
+from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 from suzent.core.agent_deps import AgentDeps
 from suzent.a2ui import pending as pending_questions
 
@@ -53,11 +53,19 @@ class AskQuestionTool(Tool):
     async def forward(
         self,
         ctx: RunContext[AgentDeps],
-        questions: list[QuestionItem],
-        surface_id: str = Field(
-            default="", description="Surface id; auto-generated if omitted."
-        ),
-    ) -> str:
+        questions: Annotated[
+            list[QuestionItem],
+            Field(
+                description="One or more questions to present to the user in a single interactive surface."
+            ),
+        ],
+        surface_id: Annotated[
+            str,
+            Field(
+                default="", description="Stable surface id; auto-generated if omitted."
+            ),
+        ] = "",
+    ) -> ToolResult:
         """Ask the user one or more questions as an interactive inline surface.
 
         Always prefer this over plain-text clarification. Bundle related questions
@@ -69,7 +77,10 @@ class AskQuestionTool(Tool):
               single-select → string; multi_select → list[str]; free text → string
         """
         if not questions:
-            return "Error: 'questions' list is empty."
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "'questions' list is empty.",
+            )
 
         sid = surface_id or f"question_{_slug(questions[0].question)}"
         component = _build_component(questions)
@@ -87,14 +98,27 @@ class AskQuestionTool(Tool):
                 }
             )
             answer = await asyncio.shield(future)
-            return f"User answered: {json.dumps(answer, ensure_ascii=False)}"
+            return ToolResult.success_result(
+                f"User answered: {json.dumps(answer, ensure_ascii=False)}",
+                metadata={
+                    "surface_id": sid,
+                    "answer": answer,
+                    "questions": [q.model_dump() for q in questions],
+                },
+            )
 
         # Headless fallback
         lines = [
             f"- {q.question}" + (f" [{', '.join(q.options)}]" if q.options else "")
             for q in questions
         ]
-        return "[Questions]\n" + "\n".join(lines)
+        return ToolResult.success_result(
+            "[Questions]\n" + "\n".join(lines),
+            metadata={
+                "surface_id": sid,
+                "questions": [q.model_dump() for q in questions],
+            },
+        )
 
 
 # ---------------------------------------------------------------------------

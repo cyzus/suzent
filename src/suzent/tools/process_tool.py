@@ -23,11 +23,12 @@ Usage (agent perspective):
 from __future__ import annotations
 
 import re
-from typing import Optional
+from typing import Annotated, Literal, Optional
 
+from pydantic import Field
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool, ToolGroup
+from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -67,10 +68,26 @@ class ProcessTool(Tool):
     def forward(
         self,
         ctx: RunContext[AgentDeps],
-        process_id: str,
-        action: str,
-        offset: int = 0,
-    ) -> str:
+        process_id: Annotated[
+            str,
+            Field(
+                description="Background process ID returned by bash_execute when background=True."
+            ),
+        ],
+        action: Annotated[
+            Literal["poll", "status", "kill"],
+            Field(
+                description="Process management action. poll reads new output, status checks liveness, kill stops the process."
+            ),
+        ],
+        offset: Annotated[
+            int,
+            Field(
+                ge=0,
+                description="Byte offset for poll. Reuse the previous next_offset value to continue reading.",
+            ),
+        ] = 0,
+    ) -> ToolResult:
         """Manage a background process.
 
         Args:
@@ -82,10 +99,16 @@ class ProcessTool(Tool):
         self.chat_id = ctx.deps.chat_id
 
         if not self.chat_id:
-            return "Error: No chat context."
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "No chat context.",
+            )
 
         if not ctx.deps.sandbox_enabled:
-            return "Error: ProcessTool requires sandbox mode to be enabled."
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "ProcessTool requires sandbox mode to be enabled.",
+            )
 
         denied_reason = self.is_tool_denied(ctx.deps, self.tool_name)
         if denied_reason:
@@ -97,7 +120,10 @@ class ProcessTool(Tool):
                 action=action,
                 reason=denied_reason,
             )
-            return f"Error: {denied_reason}"
+            return ToolResult.error_result(
+                ToolErrorCode.PERMISSION_DENIED,
+                denied_reason,
+            )
 
         process_id = process_id.strip()
         if not re.fullmatch(r"[a-f0-9]{12}", process_id):
@@ -109,7 +135,10 @@ class ProcessTool(Tool):
                 action=action,
                 reason="invalid_process_id",
             )
-            return "Error: Invalid process_id format."
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "Invalid process_id format.",
+            )
 
         if offset < 0:
             self.audit_operation(
@@ -120,19 +149,12 @@ class ProcessTool(Tool):
                 action=action,
                 reason="negative_offset",
             )
-            return "Error: offset must be greater than or equal to 0."
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "offset must be greater than or equal to 0.",
+            )
 
         action = action.lower().strip()
-        if action not in self._VALID_ACTIONS:
-            self.audit_operation(
-                self.tool_name,
-                "manage",
-                "rejected",
-                process_id=process_id,
-                action=action,
-                reason="unsupported_action",
-            )
-            return f"Error: Unknown action '{action}'. Use 'poll', 'status', or 'kill'."
 
         if action == "poll":
             return self._poll(process_id, offset)
@@ -141,7 +163,20 @@ class ProcessTool(Tool):
         elif action == "kill":
             return self._kill(process_id)
 
-    def _poll(self, process_id: str, offset: int) -> str:
+        self.audit_operation(
+            self.tool_name,
+            "manage",
+            "rejected",
+            process_id=process_id,
+            action=action,
+            reason="unsupported_action",
+        )
+        return ToolResult.error_result(
+            ToolErrorCode.INVALID_ARGUMENT,
+            f"Unknown action '{action}'. Use 'poll', 'status', or 'kill'.",
+        )
+
+    def _poll(self, process_id: str, offset: int) -> ToolResult:
         try:
             result = self.manager.poll_process(self.chat_id, process_id, offset)
             output = result.get("output", "")
@@ -149,13 +184,12 @@ class ProcessTool(Tool):
             done = result.get("done", False)
             exit_code = result.get("exit_code")
 
-            lines = []
-            if output:
-                lines.append(output.rstrip())
-            lines.append(
+            lines = [output.rstrip()] if output else []
+            status_line = (
                 f"[next_offset={next_offset} | "
                 f"{'done, exit_code=' + str(exit_code) if done else 'still running'}]"
             )
+            lines.append(status_line)
             self.audit_operation(
                 self.tool_name,
                 "poll",
@@ -165,7 +199,16 @@ class ProcessTool(Tool):
                 next_offset=next_offset,
                 exit_code=exit_code,
             )
-            return "\n".join(lines)
+            return ToolResult.success_result(
+                "\n".join(lines),
+                metadata={
+                    "process_id": process_id,
+                    "offset": offset,
+                    "next_offset": next_offset,
+                    "done": done,
+                    "exit_code": exit_code,
+                },
+            )
         except Exception as e:
             logger.error(f"ProcessTool poll error: {e}")
             self.audit_operation(
@@ -176,9 +219,13 @@ class ProcessTool(Tool):
                 offset=offset,
                 error=str(e),
             )
-            return f"Error polling process {process_id}: {e}"
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Error polling process {process_id}: {e}",
+                metadata={"process_id": process_id, "offset": offset},
+            )
 
-    def _status(self, process_id: str) -> str:
+    def _status(self, process_id: str) -> ToolResult:
         try:
             result = self.manager.poll_process(self.chat_id, process_id, offset=0)
             done = result.get("done", False)
@@ -191,7 +238,14 @@ class ProcessTool(Tool):
                     process_id=process_id,
                     exit_code=exit_code,
                 )
-                return f"Process {process_id} finished with exit code {exit_code}."
+                return ToolResult.success_result(
+                    f"Process {process_id} finished with exit code {exit_code}.",
+                    metadata={
+                        "process_id": process_id,
+                        "done": True,
+                        "exit_code": exit_code,
+                    },
+                )
             self.audit_operation(
                 self.tool_name,
                 "status",
@@ -199,14 +253,25 @@ class ProcessTool(Tool):
                 process_id=process_id,
                 exit_code=exit_code,
             )
-            return f"Process {process_id} is still running."
+            return ToolResult.success_result(
+                f"Process {process_id} is still running.",
+                metadata={
+                    "process_id": process_id,
+                    "done": False,
+                    "exit_code": exit_code,
+                },
+            )
         except Exception as e:
             self.audit_operation(
                 self.tool_name, "status", "error", process_id=process_id, error=str(e)
             )
-            return f"Error getting status for {process_id}: {e}"
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Error getting status for {process_id}: {e}",
+                metadata={"process_id": process_id},
+            )
 
-    def _kill(self, process_id: str) -> str:
+    def _kill(self, process_id: str) -> ToolResult:
         try:
             ok = self.manager.kill_process(self.chat_id, process_id)
             self.audit_operation(
@@ -215,13 +280,22 @@ class ProcessTool(Tool):
                 "success" if ok else "not_found",
                 process_id=process_id,
             )
-            return (
-                f"Process {process_id} terminated."
-                if ok
-                else f"Could not kill {process_id} (already done or not found)."
+            if ok:
+                return ToolResult.success_result(
+                    f"Process {process_id} terminated.",
+                    metadata={"process_id": process_id, "killed": True},
+                )
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Could not kill {process_id} (already done or not found).",
+                metadata={"process_id": process_id, "killed": False},
             )
         except Exception as e:
             self.audit_operation(
                 self.tool_name, "kill", "error", process_id=process_id, error=str(e)
             )
-            return f"Error killing process {process_id}: {e}"
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Error killing process {process_id}: {e}",
+                metadata={"process_id": process_id},
+            )

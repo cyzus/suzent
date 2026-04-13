@@ -2,7 +2,10 @@
 Voice tool for speaking text.
 """
 
-from suzent.tools.base import Tool, ToolGroup
+from typing import Annotated, Optional
+
+from pydantic import Field
+from suzent.tools.base import Tool, ToolGroup, ToolErrorCode, ToolResult
 from suzent.logger import get_logger
 from suzent.voice.speech import SpeechOutput
 from suzent.voice.audio_io import SoundDeviceSink
@@ -19,7 +22,17 @@ class SpeakTool(Tool):
         self._sink = None
         self._speech = None
 
-    async def forward(self, text: str, prompt: str = "") -> str:
+    async def forward(
+        self,
+        text: Annotated[str, Field(description="Text to speak aloud.")],
+        prompt: Annotated[
+            Optional[str],
+            Field(
+                default="",
+                description="Optional tone or style guidance for the speech synthesis.",
+            ),
+        ] = "",
+    ) -> ToolResult:
         """Speak the given text aloud using text-to-speech.
 
         Args:
@@ -27,7 +40,10 @@ class SpeakTool(Tool):
             prompt: Describe the emotion and tone of the speech.
         """
         if not text:
-            return "No text to speak."
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "No text to speak.",
+            )
 
         try:
             # Lazy init to avoid capturing audio device until needed
@@ -52,8 +68,15 @@ class SpeakTool(Tool):
                 )
 
             await self._speech.speak(text, prompt=prompt)
-            return f"Spoke: {text}"
+            return ToolResult.success_result(
+                f"Spoke: {text}",
+                metadata={"text": text, "prompt": prompt},
+            )
 
         except Exception as e:
             logger.error(f"Failed to speak: {e}")
-            return f"Error speaking: {e}"
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Error speaking: {e}",
+                metadata={"text": text, "prompt": prompt},
+            )

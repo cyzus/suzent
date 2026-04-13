@@ -1,6 +1,9 @@
+from typing import Annotated
+
+from pydantic import Field
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool
+from suzent.tools.base import Tool, ToolErrorCode, ToolResult
 
 
 class SkillTool(Tool):
@@ -13,7 +16,16 @@ class SkillTool(Tool):
 
         self.skill_manager = get_skill_manager()
 
-    def forward(self, ctx: RunContext[AgentDeps], skill_name: str) -> str:
+    def forward(
+        self,
+        ctx: RunContext[AgentDeps],
+        skill_name: Annotated[
+            str,
+            Field(
+                description="Name of the skill to load. Must match an available skill exactly."
+            ),
+        ],
+    ) -> ToolResult:
         """Load a skill to gain specialized knowledge for a task.
 
         Use this tool IMMEDIATELY when the user's task matches a skill description,
@@ -33,5 +45,12 @@ class SkillTool(Tool):
             skill_name, sandbox_enabled=ctx.deps.sandbox_enabled
         )
         if content:
-            return content
-        return f"Error: Skill '{skill_name}' not found. Available skills: {sm.get_skill_descriptions()}"
+            return ToolResult.success_result(
+                content,
+                metadata={"skill_name": skill_name},
+            )
+        return ToolResult.error_result(
+            ToolErrorCode.INVALID_ARGUMENT,
+            f"Skill '{skill_name}' not found. Available skills: {sm.get_skill_descriptions()}",
+            metadata={"skill_name": skill_name},
+        )

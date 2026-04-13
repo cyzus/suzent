@@ -2,12 +2,13 @@
 GlobTool - Find files matching a pattern.
 """
 
-from typing import Optional
+from typing import Annotated, Optional
 
+from pydantic import Field
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool, ToolGroup
+from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 from suzent.logger import get_logger
 from suzent.tools.filesystem.path_resolver import PathResolver
@@ -29,8 +30,20 @@ class GlobTool(Tool):
         self._resolver: Optional[PathResolver] = None
 
     def forward(
-        self, ctx: RunContext[AgentDeps], pattern: str, path: Optional[str] = None
-    ) -> str:
+        self,
+        ctx: RunContext[AgentDeps],
+        pattern: Annotated[
+            str,
+            Field(description="Glob pattern to match. This is glob syntax, not regex."),
+        ],
+        path: Annotated[
+            Optional[str],
+            Field(
+                default=None,
+                description="Optional search root directory. Leave empty to search the current workspace root.",
+            ),
+        ] = None,
+    ) -> ToolResult:
         """Find files matching a glob pattern.
 
         Searches for files matching the given glob pattern in the specified directory
@@ -101,7 +114,10 @@ class GlobTool(Tool):
                 target_desc = path or "working directory"
                 if path == "/" or (path is None and pattern.startswith("/")):
                     target_desc = "all virtual roots"
-                return f"No files matching '{pattern}' found in {target_desc}"
+                return ToolResult.success_result(
+                    f"No files matching '{pattern}' found in {target_desc}",
+                    metadata={"match_count": 0, "pattern": pattern, "path": path},
+                )
 
             # Format output
             result_lines = [f"Found {len(results)} matches for '{pattern}':"]
@@ -112,10 +128,25 @@ class GlobTool(Tool):
             if len(results) > 100:
                 result_lines.append(f"  ... and {len(results) - 100} more")
 
-            return "\n".join(result_lines)
+            return ToolResult.success_result(
+                "\n".join(result_lines),
+                metadata={
+                    "match_count": len(results),
+                    "pattern": pattern,
+                    "path": path,
+                },
+            )
 
         except ValueError as e:
-            return f"Error: {str(e)}"
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                str(e),
+                metadata={"pattern": pattern, "path": path},
+            )
         except Exception as e:
             logger.error(f"Error in glob {pattern}: {e}")
-            return f"Error: {str(e)}"
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                str(e),
+                metadata={"pattern": pattern, "path": path},
+            )

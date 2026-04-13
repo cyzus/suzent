@@ -4,12 +4,13 @@ GrepTool - Search file contents with regex.
 
 import re
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Annotated, Optional, List, Tuple
 
+from pydantic import Field
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool, ToolGroup
+from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 from suzent.logger import get_logger
 from suzent.tools.filesystem.path_resolver import PathResolver
@@ -33,12 +34,42 @@ class GrepTool(Tool):
     def forward(
         self,
         ctx: RunContext[AgentDeps],
-        pattern: str,
-        path: Optional[str] = None,
-        include: Optional[str] = None,
-        case_insensitive: Optional[bool] = None,
-        context_lines: Optional[int] = None,
-    ) -> str:
+        pattern: Annotated[
+            str,
+            Field(
+                description="Regex pattern to search for. This must be valid regular expression syntax."
+            ),
+        ],
+        path: Annotated[
+            Optional[str],
+            Field(
+                default=None,
+                description="Optional file or directory search root. Leave empty to search the current workspace root.",
+            ),
+        ] = None,
+        include: Annotated[
+            Optional[str],
+            Field(
+                default=None,
+                description="Optional glob filter for files to include, such as '*.py' or '*.{js,ts}'.",
+            ),
+        ] = None,
+        case_insensitive: Annotated[
+            Optional[bool],
+            Field(
+                default=None,
+                description="Set to true for case-insensitive regex matching.",
+            ),
+        ] = None,
+        context_lines: Annotated[
+            Optional[int],
+            Field(
+                default=None,
+                ge=0,
+                description="Number of surrounding lines to include around each match.",
+            ),
+        ] = None,
+    ) -> ToolResult:
         """Search file contents using a regex pattern.
 
         Searches through files for lines matching the given regular expression. Supports
@@ -78,7 +109,11 @@ class GrepTool(Tool):
             try:
                 regex = re.compile(pattern, flags)
             except re.error as e:
-                return f"Error: Invalid regex pattern: {e}"
+                return ToolResult.error_result(
+                    ToolErrorCode.INVALID_ARGUMENT,
+                    f"Invalid regex pattern: {e}",
+                    metadata={"pattern": pattern, "path": path, "include": include},
+                )
 
             # Collect files to search
             glob_pattern = include or "**/*"
@@ -114,7 +149,17 @@ class GrepTool(Tool):
                     logger.debug(f"Could not search {file_path}: {e}")
 
             if not results:
-                return f"No matches for '{pattern}' in {path or 'working directory'}"
+                return ToolResult.success_result(
+                    f"No matches for '{pattern}' in {path or 'working directory'}",
+                    metadata={
+                        "match_count": 0,
+                        "file_count": 0,
+                        "pattern": pattern,
+                        "path": path,
+                        "include": include,
+                        "context_lines": ctx_lines,
+                    },
+                )
 
             # Format output
             output_lines = [
@@ -131,13 +176,31 @@ class GrepTool(Tool):
             if len(results) > 50:
                 output_lines.append(f"\n... and {len(results) - 50} more matches")
 
-            return "\n".join(output_lines)
+            return ToolResult.success_result(
+                "\n".join(output_lines),
+                metadata={
+                    "match_count": len(results),
+                    "file_count": files_with_matches,
+                    "pattern": pattern,
+                    "path": path,
+                    "include": include,
+                    "context_lines": ctx_lines,
+                },
+            )
 
         except ValueError as e:
-            return f"Error: {str(e)}"
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                str(e),
+                metadata={"pattern": pattern, "path": path, "include": include},
+            )
         except Exception as e:
             logger.error(f"Error in grep: {e}")
-            return f"Error: {str(e)}"
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                str(e),
+                metadata={"pattern": pattern, "path": path, "include": include},
+            )
 
     def _is_text_file(self, path: Path) -> bool:
         """Check if file is likely a text file."""

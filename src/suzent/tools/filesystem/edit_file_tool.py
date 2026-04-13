@@ -2,8 +2,9 @@
 EditFileTool - Make precise string replacements in files.
 """
 
-from typing import Optional
+from typing import Annotated, Optional
 
+from pydantic import Field
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
@@ -49,10 +50,15 @@ class EditFileTool(Tool):
     def forward(
         self,
         ctx: RunContext[AgentDeps],
-        file_path: str,
-        old_string: str,
-        new_string: str,
-        replace_all: Optional[bool] = None,
+        file_path: Annotated[str, Field(description="Path to the file to edit.")],
+        old_string: Annotated[
+            str, Field(description="Exact text to find and replace.")
+        ],
+        new_string: Annotated[str, Field(description="Replacement text.")],
+        replace_all: Annotated[
+            Optional[bool],
+            Field(description="Replace all matches instead of the first match."),
+        ] = None,
     ) -> ToolResult:
         """Make exact string replacements in a file.
 

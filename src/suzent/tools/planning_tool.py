@@ -5,11 +5,12 @@ The tool provides a single class to interact with the plan.
 It supports creating a plan, checking its status, and updating steps.
 """
 
-from typing import Optional
+from typing import Annotated, Optional, Literal
 
+from pydantic import Field
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool, ToolGroup
+from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 from suzent.logger import get_logger
 from suzent.plan import (
@@ -40,12 +41,38 @@ class PlanningTool(Tool):
     def forward(
         self,
         ctx: RunContext[AgentDeps],
-        action: str,
-        goal: Optional[str] = None,
-        phases: Optional[list[Phase]] = None,
-        current_phase_id: Optional[int] = None,
-        next_phase_id: Optional[int] = None,
-    ) -> str:
+        action: Annotated[
+            Literal["update", "advance"],
+            Field(description="Update an existing plan or advance to the next phase."),
+        ],
+        goal: Annotated[
+            Optional[str],
+            Field(default=None, description="High-level objective for the plan."),
+        ] = None,
+        phases: Annotated[
+            Optional[list[Phase]],
+            Field(
+                default=None,
+                description="Ordered plan phases used when action='update'.",
+            ),
+        ] = None,
+        current_phase_id: Annotated[
+            Optional[int],
+            Field(
+                default=None,
+                ge=0,
+                description="Current phase number when advancing the plan.",
+            ),
+        ] = None,
+        next_phase_id: Annotated[
+            Optional[int],
+            Field(
+                default=None,
+                ge=0,
+                description="Next phase number to activate when advancing the plan.",
+            ),
+        ] = None,
+    ) -> ToolResult:
         """Manage a project plan for complex tasks.
 
         Supports two actions:
@@ -85,6 +112,14 @@ class PlanningTool(Tool):
                     f"Failed migrating temporary plan to {self._current_chat_id}: {exc}"
                 )
 
+        # Resolve chat_id
+        chat_id = self._resolve_chat_id()
+        if not chat_id:
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "Ensure the agent is invoked with an active chat context",
+            )
+
         action_map = {
             "update": self._update_plan,
             "advance": self._advance_plan,
@@ -93,14 +128,6 @@ class PlanningTool(Tool):
         if action not in action_map:
             return self._format_error(
                 "Invalid action", f"Must be one of: {', '.join(action_map.keys())}"
-            )
-
-        # Resolve chat_id
-        chat_id = self._resolve_chat_id()
-        if not chat_id:
-            return self._format_error(
-                "Missing chat_id",
-                "Ensure the agent is invoked with an active chat context",
             )
 
         # Validate required arguments
@@ -133,26 +160,31 @@ class PlanningTool(Tool):
         phases: Optional[list[dict]],
         current_phase_id: Optional[int],
         next_phase_id: Optional[int],
-    ) -> Optional[str]:
+    ) -> Optional[ToolResult]:
         """Validate that required arguments are provided for the action."""
         if action == "update" and not phases:
-            return self._format_error("Missing arguments", "update requires 'phases'")
+            return ToolResult.error_result(
+                ToolErrorCode.MISSING_REQUIRED_PARAM,
+                "update requires 'phases'",
+            )
         if action == "advance" and (current_phase_id is None or next_phase_id is None):
-            return self._format_error(
-                "Missing arguments",
+            return ToolResult.error_result(
+                ToolErrorCode.MISSING_REQUIRED_PARAM,
                 "advance requires 'current_phase_id' and 'next_phase_id'",
             )
         return None
 
-    def _format_error(self, title: str, message: str) -> str:
+    def _format_error(self, title: str, message: str) -> ToolResult:
         """Format error messages in markdown."""
-        return f"**Error: {title}**\n\n{message}"
+        return ToolResult.error_result(
+            ToolErrorCode.INVALID_ARGUMENT, f"**Error: {title}**\n\n{message}"
+        )
 
-    def _format_success(self, title: str, details: Optional[str] = None) -> str:
+    def _format_success(self, title: str, details: Optional[str] = None) -> ToolResult:
         """Format success messages in markdown."""
         if details:
-            return f"✓ **{title}**\n\n{details}"
-        return f"✓ **{title}**"
+            return ToolResult.success_result(f"✓ **{title}**\n\n{details}")
+        return ToolResult.success_result(f"✓ **{title}**")
 
     def _get_plan(self, chat_id: str, plan_id: Optional[int]) -> Optional[Plan]:
         """Retrieve a plan by ID or most recent for chat_id."""
@@ -173,7 +205,7 @@ class PlanningTool(Tool):
 
     def _update_plan(
         self, chat_id: str, goal: Optional[str], phases: list[Phase]
-    ) -> str:
+    ) -> ToolResult:
         """Create or update a plan."""
         existing_plan = self._get_plan(chat_id, None)
         objective = (
@@ -199,12 +231,13 @@ class PlanningTool(Tool):
 
     def _advance_plan(
         self, chat_id: str, current_phase_id: int, next_phase_id: int
-    ) -> str:
+    ) -> ToolResult:
         """Advance the plan from current phase to next."""
         plan = self._get_plan(chat_id, None)
         if not plan:
-            return self._format_error(
-                "No plan exists", "Create a plan first using 'update'"
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "Create a plan first using 'update'",
             )
 
         # Find phases
@@ -213,16 +246,18 @@ class PlanningTool(Tool):
                 i for i, p in enumerate(plan.phases) if p.number == next_phase_id
             )
         except StopIteration:
-            return self._format_error(
-                "Invalid next_phase_id", f"Phase {next_phase_id} not found"
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                f"Phase {next_phase_id} not found",
             )
 
         current_phase = next(
             (p for p in plan.phases if p.number == current_phase_id), None
         )
         if not current_phase:
-            return self._format_error(
-                "Invalid current_phase_id", f"Phase {current_phase_id} not found"
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                f"Phase {current_phase_id} not found",
             )
 
         next_phase = plan.phases[next_phase_idx]
@@ -248,7 +283,7 @@ class PlanningTool(Tool):
         header: str,
         previous_phase: Optional[Phase] = None,
         next_phase: Optional[Phase] = None,
-    ) -> str:
+    ) -> ToolResult:
         """Format the plan output as requested."""
         phases_str = "; ".join([f"{p.number}: {p.description}" for p in plan.phases])
         # Truncate phases str if too long? "..." was in example.
@@ -268,4 +303,4 @@ class PlanningTool(Tool):
             output += f"Current phase: {current_str}\n"
 
         output += "</task_plan>"
-        return output
+        return ToolResult.success_result(output)

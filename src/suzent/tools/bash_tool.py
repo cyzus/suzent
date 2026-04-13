@@ -15,11 +15,12 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Literal, Optional
 
+from pydantic import Field
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool, ToolGroup
+from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 from suzent.logger import get_logger
 
@@ -71,14 +72,97 @@ class BashTool(Tool):
         # Clear cached manager so it recreates with new volumes
         self._manager = None
 
+    def _execution_metadata(
+        self,
+        mode: str,
+        language: str,
+        timeout: Optional[int],
+        background: bool,
+        **extra,
+    ) -> dict:
+        metadata = {
+            "mode": mode,
+            "language": language,
+            "timeout": timeout,
+            "background": background,
+        }
+        metadata.update(extra)
+        return metadata
+
+    def _success_result(
+        self,
+        message: str,
+        mode: str,
+        language: str,
+        timeout: Optional[int],
+        background: bool,
+        **extra,
+    ) -> ToolResult:
+        return ToolResult.success_result(
+            message,
+            metadata=self._execution_metadata(
+                mode, language, timeout, background, **extra
+            ),
+        )
+
+    def _error_result(
+        self,
+        error_code: ToolErrorCode,
+        message: str,
+        mode: str,
+        language: str,
+        timeout: Optional[int],
+        background: bool,
+        **extra,
+    ) -> ToolResult:
+        return ToolResult.error_result(
+            error_code,
+            message,
+            metadata=self._execution_metadata(
+                mode, language, timeout, background, **extra
+            ),
+        )
+
+    def _audit_execution(self, status: str, **kwargs):
+        self.audit_operation(self.tool_name, "execute", status, **kwargs)
+
     def forward(
         self,
         ctx: RunContext[AgentDeps],
-        content: str,
-        language: Optional[str] = None,
-        timeout: Optional[int] = None,
-        background: bool = False,
-    ) -> str:
+        content: Annotated[
+            str,
+            Field(
+                description=(
+                    "Code or command text to execute. This is a full replacement "
+                    "command, not a patch."
+                )
+            ),
+        ],
+        language: Annotated[
+            Literal["python", "nodejs", "command"],
+            Field(description="Execution mode for the content."),
+        ] = "command",
+        timeout: Annotated[
+            Optional[int],
+            Field(
+                default=None,
+                ge=0,
+                description=(
+                    "Optional execution timeout in seconds. Use background=True "
+                    "for long-running work."
+                ),
+            ),
+        ] = None,
+        background: Annotated[
+            bool,
+            Field(
+                description=(
+                    "Run the command in the background and return a process_id "
+                    "instead of waiting for completion."
+                )
+            ),
+        ] = False,
+    ) -> ToolResult:
         """Execute code or command in a secure environment (sandbox or host mode).
 
         Supported languages:
@@ -86,10 +170,10 @@ class BashTool(Tool):
         - nodejs: Execute Node.js code
         - command: Execute shell commands
 
-        Storage paths (works in both modes):
-        - /persistence: Private storage (persists across sessions, this chat only)
-        - /shared: Shared storage (accessible by all chats)
-        - Custom mounts: Per-chat volumes configured in settings
+        Storage paths:
+        - In sandbox mode, /persistence is the private per-chat mount and /shared is the shared mount.
+        - In host mode, the same locations are exposed through environment variables instead of container mounts.
+        - Custom mounts are still available in both modes through per-chat volume configuration.
 
         In host mode (non-sandbox), these environment variables are available:
         - WORKSPACE_ROOT: The workspace directory
@@ -103,19 +187,22 @@ class BashTool(Tool):
         Args:
             ctx: The pydantic-ai run context with agent dependencies.
             content: The code or shell command to execute.
-            language: Execution language: 'python', 'nodejs', or 'command'. Defaults to 'python'.
+            language: Execution language: 'python', 'nodejs', or 'command'. Defaults to 'command'.
             timeout: Execution timeout in seconds (optional). For long-running tasks, use background=True instead.
             background: If True, run in background and return a process_id. Use ProcessTool to poll/kill.
         """
         self.chat_id = ctx.deps.chat_id
         self.sandbox_enabled = ctx.deps.sandbox_enabled
         self.workspace_root = ctx.deps.workspace_root
-        self.cwd = ctx.deps.cwd
+        self.cwd = getattr(ctx.deps, "cwd", None)
         if ctx.deps.custom_volumes and ctx.deps.custom_volumes != self.custom_volumes:
             self.set_custom_volumes(ctx.deps.custom_volumes)
 
         if not self.chat_id:
-            return "Error: No chat context. Cannot determine execution session."
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "No chat context. Cannot determine execution session.",
+            )
 
         denied_reason = self.is_tool_denied(ctx.deps, self.tool_name)
         if denied_reason:
@@ -123,13 +210,20 @@ class BashTool(Tool):
                 self.tool_name,
                 "execute",
                 "denied",
-                language=language or "python",
+                language=language,
                 background=background,
                 reason=denied_reason,
             )
-            return f"Error: {denied_reason}"
+            return self._error_result(
+                ToolErrorCode.PERMISSION_DENIED,
+                denied_reason,
+                mode="unknown",
+                language=language,
+                timeout=timeout,
+                background=background,
+            )
 
-        lang = (language or "python").strip().lower()
+        lang = language.strip().lower()
         if lang not in self._SUPPORTED_LANGUAGES:
             self.audit_operation(
                 self.tool_name,
@@ -139,21 +233,35 @@ class BashTool(Tool):
                 background=background,
                 reason="unsupported_language",
             )
-            return (
-                f"Error: Unsupported language '{language}'. "
-                "Use 'python', 'nodejs', or 'command'."
+            return self._error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                (
+                    f"Unsupported language '{language}'. "
+                    "Use 'python', 'nodejs', or 'command'."
+                ),
+                mode="unknown",
+                language=lang,
+                timeout=timeout,
+                background=background,
             )
 
         if background:
             if not self.sandbox_enabled:
-                return "Error: background=True requires sandbox mode."
+                return self._error_result(
+                    ToolErrorCode.INVALID_ARGUMENT,
+                    "background=True requires sandbox mode.",
+                    mode="sandbox",
+                    language=lang,
+                    timeout=timeout,
+                    background=background,
+                )
             return self._execute_background(content, lang)
 
         if self.sandbox_enabled:
             return self._execute_in_sandbox(content, lang, timeout)
         return self._execute_on_host(content, lang, timeout)
 
-    def _execute_background(self, content: str, language: str) -> str:
+    def _execute_background(self, content: str, language: str) -> ToolResult:
         """Start a background process and return its process_id."""
         try:
             proc_id = self.manager.start_background(
@@ -161,34 +269,41 @@ class BashTool(Tool):
                 content=content,
                 language=language,
             )
-            self.audit_operation(
-                self.tool_name,
+            self._audit_execution(
                 "background",
-                "success",
                 language=language,
                 process_id=proc_id,
             )
-            return (
-                f"Background process started. process_id={proc_id}\n"
-                f"Use ProcessTool to poll output: process_manage(process_id={proc_id!r}, action='poll')"
+            return self._success_result(
+                "Background process started.",
+                mode="sandbox",
+                language=language,
+                timeout=None,
+                background=True,
+                process_id=proc_id,
             )
         except Exception as e:
             logger.error(f"Background execution error: {e}")
-            self.audit_operation(
-                self.tool_name,
+            self._audit_execution(
                 "background",
-                "error",
                 language=language,
                 error=str(e),
             )
-            return f"Error starting background process: {e}"
+            return self._error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Error starting background process: {e}",
+                mode="sandbox",
+                language=language,
+                timeout=None,
+                background=True,
+            )
 
     def _execute_in_sandbox(
         self,
         content: str,
         language: str,
         timeout: Optional[int] = None,
-    ) -> str:
+    ) -> ToolResult:
         """Execute code in isolated Docker sandbox."""
         try:
             # Manager is now synchronous - no async needed
@@ -204,21 +319,23 @@ class BashTool(Tool):
                 logger.info(
                     f"Sandbox execution successful [{language}] for chat {self.chat_id}"
                 )
-                self.audit_operation(
-                    self.tool_name,
-                    "execute",
+                self._audit_execution(
                     "success",
                     mode="sandbox",
                     language=language,
                     timeout=timeout,
                     background=False,
                 )
-                return output
+                return self._success_result(
+                    output,
+                    mode="sandbox",
+                    language=language,
+                    timeout=timeout,
+                    background=False,
+                )
             else:
                 logger.warning(f"Sandbox execution error: {result.error}")
-                self.audit_operation(
-                    self.tool_name,
-                    "execute",
+                self._audit_execution(
                     "error",
                     mode="sandbox",
                     language=language,
@@ -226,13 +343,18 @@ class BashTool(Tool):
                     background=False,
                     error=result.error,
                 )
-                return f"Execution Error: {result.error}"
+                return self._error_result(
+                    ToolErrorCode.EXECUTION_FAILED,
+                    f"Execution Error: {result.error}",
+                    mode="sandbox",
+                    language=language,
+                    timeout=timeout,
+                    background=False,
+                )
 
         except Exception as e:
             logger.error(f"Sandbox tool error: {e}")
-            self.audit_operation(
-                self.tool_name,
-                "execute",
+            self._audit_execution(
                 "error",
                 mode="sandbox",
                 language=language,
@@ -240,17 +362,31 @@ class BashTool(Tool):
                 background=False,
                 error=str(e),
             )
-            return f"Sandbox Error: {str(e)}"
+            return self._error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Sandbox Error: {str(e)}",
+                mode="sandbox",
+                language=language,
+                timeout=timeout,
+                background=False,
+            )
 
     def _execute_on_host(
         self,
         content: str,
         language: str,
         timeout: Optional[int] = None,
-    ) -> str:
+    ) -> ToolResult:
         """Execute code directly on host machine, restricted to workspace."""
         if not self.workspace_root:
-            return "[Error: workspace_root not configured for host execution]"
+            return self._error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "workspace_root not configured for host execution",
+                mode="host",
+                language=language,
+                timeout=timeout,
+                background=False,
+            )
 
         if language == "python":
             cmd = ["python", "-c", content]
@@ -297,9 +433,7 @@ class BashTool(Tool):
             logger.info(
                 f"Host execution successful [{language}] for chat {self.chat_id}"
             )
-            self.audit_operation(
-                self.tool_name,
-                "execute",
+            self._audit_execution(
                 "success",
                 mode="host",
                 language=language,
@@ -307,25 +441,36 @@ class BashTool(Tool):
                 background=False,
                 returncode=result.returncode,
             )
-            return output if output.strip() else "(no output)"
+            return self._success_result(
+                output if output.strip() else "(no output)",
+                mode="host",
+                language=language,
+                timeout=effective_timeout,
+                background=False,
+                returncode=result.returncode,
+                cwd=str(working_dir),
+            )
 
         except subprocess.TimeoutExpired:
             logger.warning(f"Host execution timed out after {effective_timeout}s")
-            self.audit_operation(
-                self.tool_name,
-                "execute",
+            self._audit_execution(
                 "timeout",
                 mode="host",
                 language=language,
                 timeout=effective_timeout,
                 background=False,
             )
-            return f"[Error: Command timed out after {effective_timeout} seconds]"
+            return self._error_result(
+                ToolErrorCode.TIMEOUT,
+                f"Command timed out after {effective_timeout} seconds",
+                mode="host",
+                language=language,
+                timeout=effective_timeout,
+                background=False,
+            )
         except FileNotFoundError as e:
             logger.error(f"Host execution command not found: {e}")
-            self.audit_operation(
-                self.tool_name,
-                "execute",
+            self._audit_execution(
                 "error",
                 mode="host",
                 language=language,
@@ -333,12 +478,17 @@ class BashTool(Tool):
                 background=False,
                 error=str(e),
             )
-            return f"[Error: Command not found - {e}]"
+            return self._error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Command not found - {e}",
+                mode="host",
+                language=language,
+                timeout=effective_timeout,
+                background=False,
+            )
         except Exception as e:
             logger.error(f"Host execution error: {e}")
-            self.audit_operation(
-                self.tool_name,
-                "execute",
+            self._audit_execution(
                 "error",
                 mode="host",
                 language=language,
@@ -346,7 +496,14 @@ class BashTool(Tool):
                 background=False,
                 error=str(e),
             )
-            return f"[Error: {str(e)}]"
+            return self._error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                str(e),
+                mode="host",
+                language=language,
+                timeout=effective_timeout,
+                background=False,
+            )
 
     def _get_host_env(self) -> dict:
         """Build environment variables for host execution."""

@@ -2,6 +2,9 @@
 WriteFileTool - Create or overwrite files.
 """
 
+from typing import Annotated
+
+from pydantic import Field
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
@@ -32,7 +35,10 @@ class WriteFileTool(Tool):
     requires_approval = True
 
     def forward(
-        self, ctx: RunContext[AgentDeps], file_path: str, content: str
+        self,
+        ctx: RunContext[AgentDeps],
+        file_path: Annotated[str, Field(description="Path to the file to write.")],
+        content: Annotated[str, Field(description="Content to write to the file.")],
     ) -> ToolResult:
         """Create or overwrite a file with the specified content.
 

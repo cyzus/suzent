@@ -2,12 +2,13 @@
 Memory tools exposed to agents.
 """
 
-from typing import Optional
+from typing import Annotated, Optional, Literal
 from datetime import datetime
 
+from pydantic import Field
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool
+from suzent.tools.base import Tool, ToolErrorCode, ToolResult
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -25,8 +26,24 @@ class MemorySearchTool(Tool):
         super().__init__()
 
     async def forward(
-        self, ctx: RunContext[AgentDeps], query: str, limit: int = 10
-    ) -> str:
+        self,
+        ctx: RunContext[AgentDeps],
+        query: Annotated[
+            str,
+            Field(
+                description="Natural-language query describing what to look for in memory."
+            ),
+        ],
+        limit: Annotated[
+            int,
+            Field(
+                default=10,
+                ge=1,
+                le=20,
+                description="Maximum number of memories to return.",
+            ),
+        ] = 10,
+    ) -> ToolResult:
         """Search long-term archival memory for relevant information.
 
         Uses semantic similarity to find relevant memories even if the exact words differ.
@@ -37,7 +54,10 @@ class MemorySearchTool(Tool):
         """
         mm = ctx.deps.memory_manager
         if not mm:
-            return "Memory system not available."
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                "Memory system not available.",
+            )
         user_id = ctx.deps.user_id
 
         try:
@@ -49,7 +69,10 @@ class MemorySearchTool(Tool):
             )
 
             if not memories:
-                return "No relevant memories found."
+                return ToolResult.success_result(
+                    "No relevant memories found.",
+                    metadata={"query": query, "match_count": 0, "limit": limit},
+                )
 
             # Format results for agent
             formatted = ["Found relevant memories:\n"]
@@ -85,11 +108,18 @@ class MemorySearchTool(Tool):
             logger.info(
                 f"Memory search returned {len(memories)} results for query: {query}"
             )
-            return result
+            return ToolResult.success_result(
+                result,
+                metadata={"query": query, "match_count": len(memories), "limit": limit},
+            )
 
         except Exception as e:
             logger.error(f"Memory search failed: {e}")
-            return f"Error searching memories: {str(e)}"
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Error searching memories: {str(e)}",
+                metadata={"query": query, "limit": limit},
+            )
 
 
 class MemoryBlockUpdateTool(Tool):
@@ -106,11 +136,32 @@ class MemoryBlockUpdateTool(Tool):
     async def forward(
         self,
         ctx: RunContext[AgentDeps],
-        block: str,
-        operation: str,
-        content: str,
-        search_pattern: Optional[str] = None,
-    ) -> str:
+        block: Annotated[
+            Literal["persona", "user", "facts", "context"],
+            Field(
+                description="Core memory block to update. 'context' is session-scoped; others are long-term."
+            ),
+        ],
+        operation: Annotated[
+            Literal["replace", "append", "search_replace"],
+            Field(
+                description="How to update the block. search_replace requires search_pattern to exist in the current content."
+            ),
+        ],
+        content: Annotated[
+            str,
+            Field(
+                description="Replacement or appended content for the selected memory block."
+            ),
+        ],
+        search_pattern: Annotated[
+            Optional[str],
+            Field(
+                default=None,
+                description="Required when operation='search_replace'; exact substring to replace.",
+            ),
+        ] = None,
+    ) -> ToolResult:
         """Update core memory blocks that are always visible in your context.
 
         Core memory blocks:
@@ -127,15 +178,27 @@ class MemoryBlockUpdateTool(Tool):
         """
         mm = ctx.deps.memory_manager
         if not mm:
-            return "Memory system not available."
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                "Memory system not available.",
+            )
         user_id = ctx.deps.user_id
         chat_id = ctx.deps.chat_id
 
         try:
-            # Validate block name
             valid_blocks = ["persona", "user", "facts", "context"]
             if block not in valid_blocks:
-                return f"Error: Invalid block '{block}'. Must be one of: {', '.join(valid_blocks)}"
+                return ToolResult.error_result(
+                    ToolErrorCode.INVALID_ARGUMENT,
+                    f"Invalid block '{block}'. Must be one of: {', '.join(valid_blocks)}",
+                )
+
+            valid_operations = ["replace", "append", "search_replace"]
+            if operation not in valid_operations:
+                return ToolResult.error_result(
+                    ToolErrorCode.INVALID_ARGUMENT,
+                    f"Unknown operation '{operation}'. Use 'replace', 'append', or 'search_replace'",
+                )
 
             # Decide scope: 'context' is chat-specific, others are user-level
             # This ensures persona/user/facts persist across all conversations
@@ -160,14 +223,17 @@ class MemoryBlockUpdateTool(Tool):
                 new_content = current_content + separator + content
             elif operation == "search_replace":
                 if not search_pattern:
-                    return (
-                        "Error: search_pattern is required for search_replace operation"
+                    return ToolResult.error_result(
+                        ToolErrorCode.MISSING_REQUIRED_PARAM,
+                        "search_pattern is required for search_replace operation",
                     )
                 if search_pattern not in current_content:
-                    return f"Error: Pattern '{search_pattern}' not found in block '{block}'"
+                    return ToolResult.error_result(
+                        ToolErrorCode.NO_MATCH,
+                        f"Pattern '{search_pattern}' not found in block '{block}'",
+                        metadata={"block": block, "operation": operation},
+                    )
                 new_content = current_content.replace(search_pattern, content)
-            else:
-                return f"Error: Unknown operation '{operation}'. Use 'replace', 'append', or 'search_replace'"
 
             # Update the block (write to user-level for persistence, except 'context')
             success = await mm.update_memory_block(
@@ -181,10 +247,20 @@ class MemoryBlockUpdateTool(Tool):
                 logger.info(
                     f"Updated memory block '{block}' with operation '{operation}'"
                 )
-                return f"✓ Core memory block '{block}' updated successfully"
-            else:
-                return f"✗ Failed to update block '{block}'"
+                return ToolResult.success_result(
+                    f"Core memory block '{block}' updated successfully",
+                    metadata={"block": block, "operation": operation},
+                )
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Failed to update block '{block}'",
+                metadata={"block": block, "operation": operation},
+            )
 
         except Exception as e:
             logger.error(f"Memory block update failed: {e}")
-            return f"Error updating memory block: {str(e)}"
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Error updating memory block: {str(e)}",
+                metadata={"block": block, "operation": operation},
+            )

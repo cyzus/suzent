@@ -25,7 +25,9 @@ def test_respects_explicit_deny_policy(tmp_path):
         action="status",
     )
 
-    assert result == "Error: Tool 'process_manage' is denied by policy"
+    assert not result.success
+    assert result.error_code.value == "permission_denied"
+    assert result.message == "Tool 'process_manage' is denied by policy"
 
 
 def test_rejects_invalid_process_id(tmp_path):
@@ -33,7 +35,9 @@ def test_rejects_invalid_process_id(tmp_path):
 
     result = tool.forward(_ctx(tmp_path), process_id="not-valid", action="poll")
 
-    assert result == "Error: Invalid process_id format."
+    assert not result.success
+    assert result.error_code.value == "invalid_argument"
+    assert result.message == "Invalid process_id format."
 
 
 def test_rejects_negative_offset(tmp_path):
@@ -46,7 +50,9 @@ def test_rejects_negative_offset(tmp_path):
         offset=-1,
     )
 
-    assert result == "Error: offset must be greater than or equal to 0."
+    assert not result.success
+    assert result.error_code.value == "invalid_argument"
+    assert result.message == "offset must be greater than or equal to 0."
 
 
 def test_rejects_unknown_action(tmp_path):
@@ -58,4 +64,6 @@ def test_rejects_unknown_action(tmp_path):
         action="delete",
     )
 
-    assert "Unknown action 'delete'" in result
+    assert not result.success
+    assert result.error_code.value == "invalid_argument"
+    assert "Unknown action 'delete'" in result.message

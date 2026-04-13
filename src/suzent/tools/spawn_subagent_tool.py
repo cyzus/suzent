@@ -12,11 +12,12 @@ The cwd parameter lets you pin the sub-agent's bash working directory to a
 specific path (e.g. a build folder or git worktree).
 """
 
-from typing import Optional
+from typing import Annotated, Optional
 
+from pydantic import Field
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool, ToolGroup
+from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 
 class SpawnSubagentTool(Tool):
@@ -29,12 +30,40 @@ class SpawnSubagentTool(Tool):
     async def forward(
         self,
         ctx: RunContext[AgentDeps],
-        description: str,
-        tools_allowed: list[str],
-        run_in_background: bool = True,
-        cwd: Optional[str] = None,
-        model_override: Optional[str] = None,
-    ) -> str:
+        description: Annotated[
+            str, Field(description="Detailed task prompt for the sub-agent to execute.")
+        ],
+        tools_allowed: Annotated[
+            list[str],
+            Field(
+                description=(
+                    "List of tool registry names the sub-agent may use. Prefer exact class-name keys like 'BashTool'."
+                )
+            ),
+        ],
+        run_in_background: Annotated[
+            bool,
+            Field(
+                description=(
+                    "If true, the sub-agent runs in the background and returns a task ID immediately."
+                )
+            ),
+        ] = True,
+        cwd: Annotated[
+            Optional[str],
+            Field(
+                default=None,
+                description="Optional absolute working directory for bash commands inside the sub-agent.",
+            ),
+        ] = None,
+        model_override: Annotated[
+            Optional[str],
+            Field(
+                default=None,
+                description="Optional model name to use for the sub-agent.",
+            ),
+        ] = None,
+    ) -> ToolResult:
         """
         Spawn an isolated sub-agent for a task.
 
@@ -57,17 +86,31 @@ class SpawnSubagentTool(Tool):
 
         parent_chat_id = ctx.deps.chat_id
 
+        if not parent_chat_id:
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "No chat context is available for sub-agent spawning.",
+            )
+
+        if not description.strip():
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "description is required.",
+            )
+
         # Validate tool names before spawning so errors surface immediately
         resolved, unrecognized = _resolve_tool_names(tools_allowed)
         if tools_allowed and not resolved:
             from suzent.tools.registry import list_available_tools
 
             available = ", ".join(list_available_tools())
-            return (
-                f"✗ Failed to spawn sub-agent: none of the provided tool names were recognized.\n"
-                f"Unrecognized: {unrecognized}\n"
-                f"Available tools: {available}\n"
-                f"Use class-name keys (e.g. 'BashTool', not 'bash_execute')."
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "None of the provided tool names were recognized.",
+                metadata={
+                    "unrecognized_tools": unrecognized,
+                    "available_tools": available,
+                },
             )
 
         task = await spawn_subagent(
@@ -80,36 +123,38 @@ class SpawnSubagentTool(Tool):
         )
 
         tool_list = ", ".join(resolved) if resolved else "(none)"
-        cwd_note = f"\nCWD: `{cwd}`" if cwd else ""
-        warning = (
-            f"\n⚠ Unrecognized tool names ignored: {unrecognized}. "
-            f"Use class-name or function-name format; call list_available_tools() to see valid names."
-            if unrecognized
-            else ""
-        )
+        metadata = {
+            "task_id": task.task_id,
+            "chat_id": task.chat_id,
+            "parent_chat_id": task.parent_chat_id,
+            "status": task.status,
+            "tools_allowed": task.tools_allowed,
+            "resolved_tools": resolved,
+            "unrecognized_tools": unrecognized,
+            "cwd": cwd,
+            "model_override": model_override,
+            "run_in_background": run_in_background,
+        }
 
         if not run_in_background:
             # Blocking mode: return the actual result so the parent LLM can act on it
             if task.status == "completed":
-                return (
-                    f"✓ Sub-agent `{task.task_id}` completed.{cwd_note}\n"
-                    f"Task: {description[:200]}\n"
-                    f"Tools: {tool_list}{warning}\n\n"
-                    f"Result:\n{task.result_summary}"
+                return ToolResult.success_result(
+                    f"Sub-agent {task.task_id} completed.\nTask: {description[:200]}\nTools: {tool_list}",
+                    metadata={**metadata, "result_summary": task.result_summary},
                 )
-            else:
-                return (
-                    f"✗ Sub-agent `{task.task_id}` failed.{cwd_note}\n"
-                    f"Task: {description[:200]}\n"
-                    f"Error: {task.error}"
-                )
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Sub-agent {task.task_id} failed.",
+                metadata={**metadata, "error": task.error},
+            )
 
         # Background mode: return spawn confirmation
-        return (
-            f"✓ Sub-agent spawned (ID: `{task.task_id}`){cwd_note}\n"
-            f"Task: {description[:200]}\n"
-            f"Tools: {tool_list}"
-            f"{warning}\n\n"
-            f"The sub-agent is running in the background. "
-            f"You will receive a [System Notification] and an automatic wakeup when it completes."
+        return ToolResult.success_result(
+            (
+                f"Sub-agent spawned (ID: {task.task_id}).\n"
+                f"Task: {description[:200]}\n"
+                f"Tools: {tool_list}"
+            ),
+            metadata=metadata,
         )

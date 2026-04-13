@@ -22,7 +22,9 @@ def test_respects_explicit_deny_policy(tmp_path):
 
     result = BashTool().forward(ctx, content="echo hi", language="command")
 
-    assert result == "Error: Tool 'bash_execute' is denied by policy"
+    assert not result.success
+    assert result.error_code.value == "permission_denied"
+    assert result.message == "Tool 'bash_execute' is denied by policy"
 
 
 def test_rejects_unsupported_language(tmp_path):
@@ -30,10 +32,12 @@ def test_rejects_unsupported_language(tmp_path):
 
     result = tool.forward(_ctx(tmp_path), content="print('hi')", language="ruby")
 
-    assert result.startswith("Error: Unsupported language")
-    assert "python" in result
-    assert "nodejs" in result
-    assert "command" in result
+    assert not result.success
+    assert result.error_code.value == "invalid_argument"
+    assert result.message.startswith("Unsupported language")
+    assert "python" in result.message
+    assert "nodejs" in result.message
+    assert "command" in result.message
 
 
 def test_accepts_command_language_on_host(monkeypatch, tmp_path):
@@ -55,7 +59,9 @@ def test_accepts_command_language_on_host(monkeypatch, tmp_path):
 
     result = tool.forward(_ctx(tmp_path), content="echo hi", language="command")
 
-    assert result == "ok"
+    assert result.success
+    assert result.message == "ok"
+    assert result.metadata["mode"] == "host"
     if os.name == "nt":
         assert captured["cmd"][0] == "powershell"
         assert captured["cmd"][1:] == [

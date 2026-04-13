@@ -1,7 +1,6 @@
-"""
-Tool registry module for pydantic-ai.
+"""Tool registry module for pydantic-ai.
 
-Auto-builds the tool registry from Tool subclasses.  Each Tool class's
+Auto-builds the tool registry from Tool subclasses. Each Tool class's
 ``forward()`` method is wrapped as a pydantic-ai compatible function.
 Tools with ``requires_approval = True`` are wrapped in ``pydantic_ai.Tool``
 with native deferred-tool approval.
@@ -68,10 +67,6 @@ _REGISTRY: Optional[Dict[str, Union[Callable, PydanticTool]]] = None
 
 def _all_tool_classes() -> list:
     """Import and return all tool classes in display order."""
-    from suzent.tools.websearch_tool import WebSearchTool
-    from suzent.tools.webpage_tool import WebpageTool
-    from suzent.tools.bash_tool import BashTool
-    from suzent.tools.process_tool import ProcessTool
     from suzent.tools.filesystem import (
         ReadFileTool,
         WriteFileTool,
@@ -79,6 +74,10 @@ def _all_tool_classes() -> list:
         GlobTool,
         GrepTool,
     )
+    from suzent.tools.bash_tool import BashTool
+    from suzent.tools.process_tool import ProcessTool
+    from suzent.tools.webpage_tool import WebpageTool
+    from suzent.tools.websearch_tool import WebSearchTool
     from suzent.tools.planning_tool import PlanningTool
     from suzent.tools.browsing_tool import BrowsingTool
     from suzent.tools.skill_tool import SkillTool
@@ -91,11 +90,11 @@ def _all_tool_classes() -> list:
     from suzent.tools.spawn_subagent_tool import SpawnSubagentTool
 
     return [
+        ReadFileTool,
+        WriteFileTool,
+        EditFileTool,
         GlobTool,
         GrepTool,
-        ReadFileTool,
-        EditFileTool,
-        WriteFileTool,
         BashTool,
         ProcessTool,
         BrowsingTool,

@@ -7,11 +7,13 @@ performs an upsert: calling again with the same id replaces the existing surface
 """
 
 import json
-from typing import Any
+from typing import Any, Annotated, Literal
+
+from pydantic import Field
 
 from pydantic_ai import RunContext
 
-from suzent.tools.base import Tool, ToolGroup
+from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 from suzent.core.agent_deps import AgentDeps
 
 
@@ -24,11 +26,28 @@ class RenderUITool(Tool):
     async def forward(
         self,
         ctx: RunContext[AgentDeps],
-        surface_id: str,
-        component: dict[str, Any],
-        title: str = "",
-        target: str = "canvas",
-    ) -> str:
+        surface_id: Annotated[
+            str,
+            Field(
+                description="Stable surface id. Reusing the same id replaces the existing surface."
+            ),
+        ],
+        component: Annotated[
+            dict[str, Any], Field(description="Structured UI component tree to render.")
+        ],
+        title: Annotated[
+            str,
+            Field(
+                default="", description="Optional panel title; defaults to surface_id."
+            ),
+        ] = "",
+        target: Annotated[
+            Literal["canvas", "inline"],
+            Field(
+                description="Where to render the surface: sidebar canvas or inline in chat."
+            ),
+        ] = "canvas",
+    ) -> ToolResult:
         """Render a structured UI surface in the canvas panel or inline in chat.
 
         For full component reference and examples, call: skill_execute("canvas")
@@ -52,6 +71,12 @@ class RenderUITool(Tool):
         to choose between options instead of plain text questions.
         For full reference and examples, call: skill_execute("canvas")
         """
+        if not surface_id.strip():
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "surface_id is required.",
+            )
+
         if ctx.deps.a2ui_queue is not None:
             await ctx.deps.a2ui_queue.put(
                 {
@@ -63,8 +88,22 @@ class RenderUITool(Tool):
                 }
             )
             location = "inline in chat" if target == "inline" else "canvas"
-            return f"Surface '{surface_id}' rendered {location}."
+            return ToolResult.success_result(
+                f"Surface '{surface_id}' rendered {location}.",
+                metadata={
+                    "surface_id": surface_id,
+                    "target": target,
+                    "title": title or surface_id,
+                },
+            )
 
         # Fallback: if no queue (e.g. CLI/headless), return JSON summary
         preview = json.dumps(component, indent=2)[:300]
-        return f"[Canvas not available] Surface '{surface_id}':\n{preview}"
+        return ToolResult.success_result(
+            f"[Canvas not available] Surface '{surface_id}':\n{preview}",
+            metadata={
+                "surface_id": surface_id,
+                "target": target,
+                "title": title or surface_id,
+            },
+        )

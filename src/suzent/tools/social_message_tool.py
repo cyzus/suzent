@@ -6,11 +6,13 @@ social platform (Telegram, Slack, Discord, Feishu) while working on a task.
 """
 
 import asyncio
-from typing import Optional
+from typing import Annotated, Optional
+
+from pydantic import Field
 
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool, ToolGroup
+from suzent.tools.base import Tool, ToolGroup, ToolErrorCode, ToolResult
 
 from suzent.logger import get_logger
 
@@ -110,11 +112,35 @@ class SocialMessageTool(Tool):
     def forward(
         self,
         ctx: RunContext[AgentDeps],
-        message: Optional[str] = None,
-        channel: Optional[str] = None,
-        recipient: Optional[str] = None,
-        list_contacts: Optional[bool] = None,
-    ) -> str:
+        message: Annotated[
+            Optional[str],
+            Field(
+                default=None,
+                description="Message body to send. Required unless list_contacts is true.",
+            ),
+        ] = None,
+        channel: Annotated[
+            Optional[str],
+            Field(
+                default=None,
+                description="Destination platform such as telegram, slack, discord, or feishu.",
+            ),
+        ] = None,
+        recipient: Annotated[
+            Optional[str],
+            Field(
+                default=None,
+                description="Recipient or chat identifier on the selected platform.",
+            ),
+        ] = None,
+        list_contacts: Annotated[
+            Optional[bool],
+            Field(
+                default=None,
+                description="Set to true to list available channels and known contacts instead of sending a message.",
+            ),
+        ] = None,
+    ) -> ToolResult:
         """Send a message to a social platform, or list known contacts.
 
         Call with list_contacts=true to discover available channels and
@@ -145,25 +171,43 @@ class SocialMessageTool(Tool):
                     self._event_loop = None
 
         if list_contacts:
-            return self._list_contacts(platform_filter=channel)
+            return ToolResult.success_result(
+                self._list_contacts(platform_filter=channel),
+                metadata={"mode": "list_contacts", "channel": channel},
+            )
 
         if not message:
-            return "Error: 'message' is required when not using list_contacts=true."
+            return ToolResult.error_result(
+                ToolErrorCode.MISSING_REQUIRED_PARAM,
+                "'message' is required when not using list_contacts=true.",
+            )
 
         platform = channel or self._default_platform
         target = recipient or self._default_target
 
         if not platform:
-            return "Error: No channel specified and no default set. Use list_contacts=true to see available options."
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "No channel specified and no default set. Use list_contacts=true to see available options.",
+            )
 
         if not target:
-            return "Error: No recipient specified and no default set. Use list_contacts=true to see known contacts."
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "No recipient specified and no default set. Use list_contacts=true to see known contacts.",
+            )
 
         if not self._channel_manager:
-            return "Error: Social messaging is not configured. No channel manager available."
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                "Social messaging is not configured. No channel manager available.",
+            )
 
         if not self._event_loop:
-            return "Error: Event loop not available for async message dispatch."
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                "Event loop not available for async message dispatch.",
+            )
 
         # Enforce platform character limit
         char_limit = PLATFORM_CHAR_LIMITS.get(platform, 4096)
@@ -180,13 +224,31 @@ class SocialMessageTool(Tool):
             success = future.result(timeout=30)
 
             if success:
-                return f"Message sent to {platform}:{target}"
-            else:
-                return f"Failed to send message to {platform}:{target}"
+                return ToolResult.success_result(
+                    f"Message sent to {platform}:{target}",
+                    metadata={
+                        "platform": platform,
+                        "recipient": target,
+                        "message": message,
+                    },
+                )
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Failed to send message to {platform}:{target}",
+                metadata={"platform": platform, "recipient": target},
+            )
 
         except TimeoutError:
             logger.error(f"Timeout sending message to {platform}:{target}")
-            return f"Error: Timeout sending message to {platform}:{target}"
+            return ToolResult.error_result(
+                ToolErrorCode.TIMEOUT,
+                f"Timeout sending message to {platform}:{target}",
+                metadata={"platform": platform, "recipient": target},
+            )
         except Exception as e:
             logger.error(f"Error sending social message: {e}")
-            return f"Error sending message: {e}"
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Error sending message: {e}",
+                metadata={"platform": platform, "recipient": target},
+            )

@@ -12,7 +12,9 @@ import os
 import json
 import httpx
 from urllib.parse import urlparse
-from typing import Optional, List, Dict, Any
+from typing import Annotated, Optional, List, Dict, Any, Literal
+
+from pydantic import Field
 
 from suzent.tools.base import Tool, ToolGroup, ToolResult, ToolErrorCode
 from suzent.logger import get_logger
@@ -85,11 +87,34 @@ class WebSearchTool(Tool):
 
     async def forward(
         self,
-        query: str,
-        categories: Optional[str] = None,
-        max_results: Optional[int] = 10,
-        time_range: Optional[str] = None,
-        page: Optional[int] = 1,
+        query: Annotated[
+            str, Field(description="Search query to send to the web search provider.")
+        ],
+        categories: Annotated[
+            Optional[Literal["general", "news", "images", "videos"]],
+            Field(default=None, description="Optional search category."),
+        ] = None,
+        max_results: Annotated[
+            int,
+            Field(
+                default=10,
+                ge=1,
+                le=20,
+                description="Maximum number of results to return.",
+            ),
+        ] = 10,
+        time_range: Annotated[
+            Optional[Literal["day", "week", "month", "year"]],
+            Field(default=None, description="Optional time filter for recent results."),
+        ] = None,
+        page: Annotated[
+            int,
+            Field(
+                default=1,
+                ge=1,
+                description="Page number for paginated search providers.",
+            ),
+        ] = 1,
     ) -> ToolResult:
         """Perform a web search using SearXNG or DuckDuckGo.
 
@@ -181,13 +206,25 @@ class WebSearchTool(Tool):
                 return ToolResult.success_result(
                     self._format_results(
                         [], source=source_label, query=query, category=category
-                    )
+                    ),
+                    metadata={
+                        "source": source_label,
+                        "query": query,
+                        "category": category,
+                        "result_count": 0,
+                    },
                 )
 
             return ToolResult.success_result(
                 self._format_results(
                     results, source=source_label, query=query, category=category
-                )
+                ),
+                metadata={
+                    "source": source_label,
+                    "query": query,
+                    "category": category,
+                    "result_count": len(results),
+                },
             )
 
         except Exception as e:
@@ -241,7 +278,13 @@ class WebSearchTool(Tool):
                         data.get("results", []),
                         source="SearXNG",
                         query=data.get("query", query),
-                    )
+                    ),
+                    metadata={
+                        "source": "SearXNG",
+                        "query": data.get("query", query),
+                        "category": categories,
+                        "result_count": len(data.get("results", [])),
+                    },
                 )
             except json.JSONDecodeError:
                 return ToolResult.error_result(
