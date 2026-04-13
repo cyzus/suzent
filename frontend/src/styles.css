@@ -208,6 +208,10 @@ code {
   @apply text-xs leading-none;
 }
 
+.tool-group-icon--mono {
+  filter: grayscale(1) saturate(0) brightness(0.8);
+}
+
 /* Improve prose text selection by reducing margin interference */
 .prose p,
 .prose li,

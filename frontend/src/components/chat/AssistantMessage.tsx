@@ -9,6 +9,7 @@ import { LogBlock } from './LogBlock';
 import { ToolCallBlock } from './ToolCallBlock';
 import { SubAgentCallBlock } from './SubAgentCallBlock';
 import type { SubAgentStatus } from './SubAgentCallBlock';
+import { ToolGroupIcon } from './toolGroupIcon';
 import { CodeBlockComponent } from './CodeBlockComponent';
 import { CopyButton } from './CopyButton';
 import { RobotAvatar } from './RobotAvatar';
@@ -130,12 +131,6 @@ const ToolSequenceGroup: React.FC<{
     );
   }
 
-  const icons = tools.map((t, i) => {
-    if (i > 3) return null;
-    const icon = t.approvalState === 'pending' ? '⏳' : t.approvalState === 'denied' ? '🚫' : '🔧';
-    return <span key={i} className="tool-group-icon">{icon}</span>;
-  });
-
   return (
     <div className="flex flex-col space-y-1">
       {/* Unified Header Toggle */}
@@ -149,8 +144,15 @@ const ToolSequenceGroup: React.FC<{
               <div className="tool-group-icons">
                 {tools.map((t, i) => {
                   if (i > 3) return null;
-                  const icon = t.approvalState === 'pending' ? '⏳' : t.approvalState === 'denied' ? '🚫' : '🔧';
-                  return <span key={i} className={`text-xs shrink-0 ${isStreaming && !t.output ? 'animate-spin-slow' : ''}`}>{icon}</span>;
+                  return (
+                    <ToolGroupIcon
+                      key={i}
+                      toolName={t.toolName}
+                      approvalState={t.approvalState}
+                      isStreaming={isStreaming && !t.output}
+                      hasOutput={Boolean(t.output)}
+                    />
+                  );
                 })}
                 {tools.length > 4 && (
                   <span className="text-[10px] font-mono font-bold text-neutral-500 dark:text-neutral-400 ml-1">+{tools.length - 4}</span>

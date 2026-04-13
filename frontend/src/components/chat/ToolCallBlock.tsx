@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useI18n } from '../../i18n';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { WebSearchRenderer } from './WebSearchRenderer';
+import { ToolGroupIcon } from './toolGroupIcon';
 
 export type ApprovalState = 'pending' | 'approved' | 'denied' | undefined;
 
@@ -53,17 +54,6 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const isDenied = approvalState === 'denied';
   const isWebTool = toolName === 'web_search' || toolName === 'webpage_fetch';
 
-  const getToolIcon = () => {
-    if (isPending) return '⏳';
-    if (isDenied) return '🚫';
-    if (toolName.includes('search') || toolName.includes('web')) return '🔍';
-    if (toolName.includes('file') || toolName.includes('dir') || toolName.includes('read') || toolName.includes('write')) return '📁';
-    if (toolName.includes('bash') || toolName.includes('shell') || toolName.includes('python') || toolName.includes('cmd')) return '💻';
-    if (toolName.includes('database') || toolName.includes('sql')) return '🗄️';
-    if (toolName.includes('plan')) return '📋';
-    return '🔧';
-  };
-
   return (
     <div className="my-1.5 min-w-0 w-full overflow-x-hidden">
       {/* Compact pill header */}
@@ -73,9 +63,12 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
           } ${expanded ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white' : 'bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white'}`}
       >
         {/* Icon */}
-        <span className={`text-xs shrink-0 ${isStreaming && !hasOutput ? 'animate-spin-slow' : ''}`}>
-          {getToolIcon()}
-        </span>
+        <ToolGroupIcon
+          toolName={toolName}
+          approvalState={approvalState}
+          isStreaming={isStreaming}
+          hasOutput={hasOutput}
+        />
 
         {/* Tool name */}
         <span className="truncate max-w-[280px]">{displayName}</span>
