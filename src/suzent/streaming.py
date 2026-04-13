@@ -523,9 +523,12 @@ async def stream_agent_responses(
                         try:
                             usage = payload.result.usage()
                             usage_data = {
-                                "input_tokens": usage.request_tokens,
-                                "output_tokens": usage.response_tokens,
+                                "input_tokens": usage.input_tokens,
+                                "output_tokens": usage.output_tokens,
                                 "total_tokens": usage.total_tokens,
+                                "cache_write_tokens": usage.cache_write_tokens,
+                                "cache_read_tokens": usage.cache_read_tokens,
+                                "requests": usage.requests,
                                 "details": usage.details,
                             }
                             await out_queue.put(

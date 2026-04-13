@@ -24,6 +24,7 @@ import { SubAgentView } from './sidebar/SubAgentView';
 import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
 import { useEventBus, isBusStreaming, subscribeToStreamEvents } from '../hooks/useEventBus';
 import { useStatusStore } from '../hooks/useStatusStore';
+import { useContextUsageStore } from '../hooks/useContextUsageStore';
 import type { SubAgentStatus } from './chat/SubAgentCallBlock';
 import type {
   SubAgentSpawnedPayload,
@@ -325,6 +326,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [viewingFile, setViewingFile] = useState<{ path: string; name: string } | null>(null);
   const [sidebarFilePreview, setSidebarFilePreview] = useState<{ path: string; name: string } | null>(null);
   const [currentUsage, setCurrentUsage] = useState<any>(null);
+  const { setUsage: setLastKnownUsage, clearUsage: clearLastKnownUsage } = useContextUsageStore();
   const [subAgentTasks, setSubAgentTasks] = useState<Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>>({});
   const [viewingSubAgentTaskId, setViewingSubAgentTaskId] = useState<string | null>(null);
   const [forcedWebContextId, setForcedWebContextId] = useState<string | null>(null);
@@ -337,7 +339,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Ref for async callback access to current chatId
   const activeChatIdRef = useRef<string | null>(currentChatId);
-  useEffect(() => { activeChatIdRef.current = currentChatId; }, [currentChatId]);
+  useEffect(() => {
+    activeChatIdRef.current = currentChatId;
+    clearLastKnownUsage();
+  }, [currentChatId]);
 
   // Ref to lock the chat ID for the current stream so switching chats doesn't misroute messages
   const streamingChatIdRef = useRef<string | null>(null);
@@ -463,6 +468,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         refreshPlan(chatId);
       } else if (name === 'usage_update') {
         setCurrentUsage(value);
+        setLastKnownUsage(value as any);
       } else if (name === 'heartbeat_ok') {
         // Backend signals that this heartbeat run was OK and messages were rolled back.
         heartbeatOkRef.current = true;
@@ -1028,20 +1034,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {/* Main Chat Column */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
-        <div className="absolute top-2 right-6 z-10 pointer-events-none flex flex-col items-end gap-1">
-          {currentUsage && safeBackendConfig?.maxContextTokens && (
-            <div className="flex items-center gap-1.5 text-[10px] text-neutral-500 dark:text-neutral-400 pointer-events-none">
-              <div className="w-16 h-1.5 rounded-full bg-neutral-200 dark:bg-zinc-700 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-neutral-500 dark:bg-neutral-400 transition-all"
-                  style={{ width: `${Math.min(100, ((currentUsage.total_tokens ?? currentUsage.total ?? 0) / safeBackendConfig.maxContextTokens) * 100)}%` }}
-                />
-              </div>
-              <span>{((currentUsage.total_tokens ?? currentUsage.total ?? 0) / 1000).toFixed(0)}k / {(safeBackendConfig.maxContextTokens / 1000).toFixed(0)}k</span>
-            </div>
-          )}
-        </div>
-
         <div className="relative flex-1 min-h-0">
           <div
             ref={scrollContainerRef}
