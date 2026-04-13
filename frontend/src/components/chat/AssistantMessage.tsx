@@ -136,9 +136,13 @@ const ToolSequenceGroup: React.FC<{
       {/* Unified Header Toggle */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className={`tool-group-summary group/tools ${hasPending ? 'active-approval' : ''} ${isAnyRunning ? 'flex flex-col items-start gap-1 py-1.5' : ''}`}
+        className={`tool-group-summary group/tools transition-all ${
+          hasPending ? 'active-approval' : ''
+        } ${
+          isAnyRunning ? 'brutal-running-mono border-2 !border-brutal-black dark:!border-white' : 'border-2 border-transparent'
+        }`}
       >
-        <div className="flex items-center gap-2 w-full">
+        <div className={`flex items-center gap-2 w-full ${isAnyRunning ? 'text-brutal-black dark:text-white' : 'text-neutral-500 dark:text-neutral-400 group-hover/tools:text-brutal-black dark:group-hover/tools:text-white transition-colors'}`}>
           {!expanded ? (
             <>
               <div className="tool-group-icons">
@@ -155,20 +159,20 @@ const ToolSequenceGroup: React.FC<{
                   );
                 })}
                 {tools.length > 4 && (
-                  <span className="text-[10px] font-mono font-bold text-neutral-500 dark:text-neutral-400 ml-1">+{tools.length - 4}</span>
+                  <span className="text-[10px] font-mono font-bold ml-1">+{tools.length - 4}</span>
                 )}
               </div>
-              <span className="text-[10px] font-mono font-bold text-neutral-500 uppercase tracking-tight group-hover/tools:text-brutal-black dark:group-hover/tools:text-white transition-colors">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-tight">
                 {isAnyRunning ? 'Running' : tools.length} Steps
               </span>
             </>
           ) : (
-            <span className="text-[10px] font-mono font-bold text-neutral-500 uppercase tracking-tight group-hover/tools:text-brutal-black dark:group-hover/tools:text-white transition-colors">
+            <span className="text-[10px] font-mono font-bold uppercase tracking-tight">
               {isAnyRunning ? 'Running' : 'Hide'} {tools.length} Steps
             </span>
           )}
           <svg
-            className={`w-3 h-3 text-neutral-500 transition-transform duration-200 ml-auto ${expanded ? 'rotate-180' : ''}`}
+            className={`w-3 h-3 transition-transform duration-200 ml-auto ${expanded ? 'rotate-180' : ''}`}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -177,11 +181,6 @@ const ToolSequenceGroup: React.FC<{
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
         </div>
-        {isAnyRunning && (
-          <div className="h-[2px] w-full max-w-[100px] bg-black/10 overflow-hidden rounded-full">
-            <div className="h-full bg-black/40 w-1/3 animate-neo-scan" />
-          </div>
-        )}
       </button>
 
       {/* Expanded Tools List */}
@@ -426,10 +425,11 @@ const MetricsBadge: React.FC<{ usage?: any; stepInfo?: string }> = ({ usage, ste
 
 
 // Helper to extract the first line of reasoning for the header
-const getReasoningHeader = (text: string) => {
-  const firstLine = text.trim().split('\n')[0].trim();
-  const summary = firstLine.length > 80 ? firstLine.substring(0, 77) + '...' : firstLine || 'Thinking';
-  return `Thought: ${summary}`;
+const getReasoningHeader = (text: string, isStreaming: boolean = false) => {
+  const firstLine = text.trim().split('\n')[0].replace(/^[#*>-\s]+/, '').replace(/\*\*/g, '').trim();
+  const summary = firstLine.length > 80 ? firstLine.substring(0, 77) + '...' : firstLine || 'Processing...';
+  const prefix = isStreaming ? 'Thinking' : 'Thought';
+  return `${prefix}: ${summary}`;
 };
 
 const AGUIPartsContent: React.FC<{
@@ -559,21 +559,24 @@ const AGUIPartsContent: React.FC<{
           const reasoningText = chunk.items.map(p => p.text || '').join('');
           if (!reasoningText.trim()) return null;
           const isChunkStreaming = isStreaming && ci === chunks.length - 1;
-          const header = getReasoningHeader(reasoningText);
+          const header = getReasoningHeader(reasoningText, !!isChunkStreaming);
 
           return (
-            <div key={ci} className="pl-4 pr-6 py-2 border-l-2 border-neutral-300">
+            <div key={ci} className="my-1.5 min-w-0 w-full pl-1">
               <details className="group">
-                <summary className="text-xs italic text-neutral-500 font-medium cursor-pointer select-none hover:text-neutral-700 flex flex-col gap-1">
-                  <span className="truncate">{header}</span>
-                  {isChunkStreaming && (
-                    <div className="h-[2px] w-12 bg-neutral-400 animate-neo-pulse" />
-                  )}
+                <summary className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold tracking-wide uppercase border-2 rounded-sm transition-all select-none cursor-pointer max-w-full ${
+                  isChunkStreaming 
+                    ? 'brutal-running-mono !text-brutal-black dark:!text-white border-brutal-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]' 
+                    : 'bg-transparent text-neutral-600 dark:text-neutral-400 border-neutral-400 dark:border-zinc-600 hover:border-brutal-black dark:hover:border-white hover:text-brutal-black dark:hover:text-white hover:shadow-[2px_2px_0px_#000] dark:hover:shadow-[2px_2px_0px_#fff]'
+                }`}>
+                  <span className="truncate flex items-center gap-1.5 flex-1 min-w-0 font-mono">
+                    {header}
+                  </span>
                 </summary>
-                <div className="mt-2 p-3 bg-neutral-50 dark:bg-zinc-900/50 rounded border border-neutral-200 dark:border-zinc-700">
-                  <pre className="text-xs italic text-neutral-600 dark:text-neutral-300 font-medium leading-snug whitespace-pre-wrap overflow-auto">
-                    {reasoningText}
-                  </pre>
+                <div className="mt-1.5 p-4 bg-neutral-50 dark:bg-zinc-900 border-2 rounded-sm border-brutal-black dark:border-white w-full overflow-x-hidden shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
+                  <div className="text-[13px] md:text-sm text-brutal-black/90 dark:text-neutral-300 leading-relaxed break-words opacity-90">
+                    <MarkdownRenderer content={reasoningText} onFileClick={onFileClick} streamingLite={isChunkStreaming} />
+                  </div>
                 </div>
               </details>
             </div>
@@ -808,18 +811,21 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               return (
                 <div key={idx} className="flex flex-col space-y-2">
                   {chunk.blocks.map((rb, ri) => (
-                    <div key={`rb-${idx}-${ri}`} className="pl-4 pr-6 py-2 border-l-2 border-neutral-300">
+                    <div key={`rb-${idx}-${ri}`} className="my-1.5 min-w-0 w-full pl-1">
                       <details className="group">
-                        <summary className="text-xs italic text-neutral-500 font-medium cursor-pointer select-none hover:text-neutral-700 flex flex-col gap-1">
-                          <span className="truncate">{getReasoningHeader(rb.content)}</span>
-                          {isChunkStreaming && (
-                            <div className="h-[2px] w-12 bg-neutral-400 animate-neo-pulse" />
-                          )}
+                        <summary className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold tracking-wide uppercase border-2 rounded-sm transition-all select-none cursor-pointer max-w-full ${
+                          isChunkStreaming 
+                            ? 'brutal-running-mono !text-brutal-black dark:!text-white border-brutal-black dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]' 
+                            : 'bg-transparent text-neutral-600 dark:text-neutral-400 border-neutral-400 dark:border-zinc-600 hover:border-brutal-black dark:hover:border-white hover:text-brutal-black dark:hover:text-white hover:shadow-[2px_2px_0px_#000] dark:hover:shadow-[2px_2px_0px_#fff]'
+                        }`}>
+                          <span className="truncate flex items-center gap-1.5 flex-1 min-w-0 font-mono">
+                            {getReasoningHeader(rb.content, !!isChunkStreaming)}
+                          </span>
                         </summary>
-                        <div className="mt-2 p-3 bg-neutral-50 dark:bg-zinc-900/50 rounded border border-neutral-200 dark:border-zinc-700">
-                          <pre className="text-xs italic text-neutral-600 dark:text-neutral-300 font-medium leading-snug whitespace-pre-wrap overflow-auto">
-                            {rb.content}
-                          </pre>
+                        <div className="mt-1.5 p-4 bg-neutral-50 dark:bg-zinc-900 border-2 rounded-sm border-brutal-black dark:border-white w-full overflow-x-hidden shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
+                          <div className="text-[13px] md:text-sm text-brutal-black/90 dark:text-neutral-300 leading-relaxed break-words opacity-90">
+                            <MarkdownRenderer content={rb.content} onFileClick={onFileClick} streamingLite={isChunkStreaming && ri === chunk.blocks.length - 1} />
+                          </div>
                         </div>
                       </details>
                     </div>

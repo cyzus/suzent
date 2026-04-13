@@ -60,7 +60,8 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
       <button
         onClick={() => hasDetails && setExpanded(!expanded)}
         className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm transition-colors select-none ${hasDetails ? 'cursor-pointer hover:bg-neutral-100 dark:hover:bg-zinc-700' : 'cursor-default'
-          } ${expanded ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white' : 'bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white'}`}
+          } ${expanded ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white' : 'bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white'
+          } ${isStreaming && !hasOutput ? 'brutal-running-mono !text-brutal-black dark:!text-white border-2 !border-brutal-black dark:!border-white' : 'border-2 border-transparent'}`}
       >
         {/* Icon */}
         <ToolGroupIcon

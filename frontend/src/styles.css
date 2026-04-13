@@ -189,7 +189,7 @@ code {
 
 /* Tool Sequence Grouping */
 .tool-group-summary {
-  @apply inline-flex items-center gap-2 px-3 py-1.5 bg-neutral-50/50 dark:bg-zinc-800/50 rounded-sm hover:bg-neutral-100 dark:hover:bg-zinc-700 transition-all cursor-pointer select-none mb-1 border border-transparent;
+  @apply inline-flex items-center gap-2 px-3 py-1.5 bg-transparent rounded-sm hover:bg-neutral-100 dark:hover:bg-zinc-700 transition-all cursor-pointer select-none mb-1 border border-transparent;
 }
 
 .tool-group-summary.active-approval {
@@ -714,4 +714,35 @@ code {
 
 .animate-neo-scan {
   animation: neo-scan 2.0s linear infinite;
+}
+.brutal-running-mono {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(0, 0, 0, 0.08),
+    rgba(0, 0, 0, 0.08) 8px,
+    transparent 8px,
+    transparent 16px
+  );
+  background-size: 22.62px 22.62px;
+  animation: brutal-stripes-move 1s linear infinite;
+  box-shadow: 2px 2px 0px #000;
+  position: relative;
+  overflow: hidden;
+}
+
+.dark .brutal-running-mono {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.08) 8px,
+    transparent 8px,
+    transparent 16px
+  );
+  box-shadow: 2px 2px 0px #fff;
+}
+
+@keyframes brutal-stripes-move {
+  100% {
+    background-position: 22.62px 0;
+  }
 }

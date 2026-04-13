@@ -104,11 +104,11 @@ export const SubAgentCallBlock: React.FC<SubAgentCallBlockProps> = ({
         className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm cursor-pointer transition-colors select-none
           ${expanded
             ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white'
-            : 'bg-transparent text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-zinc-700 hover:text-brutal-black dark:hover:text-white'
-          }`}
+            : 'bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white'
+          } ${isRunning ? 'brutal-running-mono !text-brutal-black dark:!text-white border-2 !border-brutal-black dark:!border-white' : 'border-2 border-transparent'}`}
       >
         {/* Icon */}
-        <span className={`text-xs shrink-0 ${isRunning ? 'animate-spin-slow' : ''}`}>
+        <span className="text-[14px] shrink-0 drop-shadow-sm flex items-center justify-center">
           {STATUS_ICON[status]}
         </span>
 

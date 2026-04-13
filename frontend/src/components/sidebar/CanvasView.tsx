@@ -47,28 +47,26 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
   }
 
   const surfaceNav = (
-    <div className="flex border-b-3 border-brutal-black shrink-0 bg-white dark:bg-zinc-800">
-      <div className="flex-1 overflow-x-auto flex">
-        {surfaces.length > 1 ? surfaces.map(s => (
-          <button
-            key={s.id}
-            onClick={() => setActiveSurface(s.id)}
-            className={`px-3 py-2 text-[10px] font-bold uppercase tracking-widest font-mono whitespace-nowrap border-r-2 border-brutal-black transition-colors
-              ${s.id === activeSurfaceId
-                ? 'bg-brutal-black text-white'
-                : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'
-              }`}
-          >
-            {s.title ?? s.id}
-          </button>
-        )) : (
-          <div className="px-3 py-2 bg-neutral-50 dark:bg-zinc-800">
-            <span className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400">
-              {activeSurface.title ?? activeSurface.id}
-            </span>
-          </div>
-        )}
-      </div>
+    <div className="flex-1 overflow-x-auto flex min-w-0">
+      {surfaces.length > 1 ? surfaces.map(s => (
+        <button
+          key={s.id}
+          onClick={() => setActiveSurface(s.id)}
+          className={`px-3 py-2 text-[10px] font-bold uppercase tracking-widest font-mono whitespace-nowrap border-r-2 border-brutal-black transition-colors shrink-0
+            ${s.id === activeSurfaceId
+              ? 'bg-brutal-black text-white'
+              : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'
+            }`}
+        >
+          {s.title ?? s.id}
+        </button>
+      )) : (
+        <div className="px-3 py-2 flex-1 min-w-0 flex items-center">
+          <span className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400 truncate w-full block">
+            {activeSurface.title ?? activeSurface.id}
+          </span>
+        </div>
+      )}
     </div>
   );
 
@@ -81,9 +79,9 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
   return (
     <>
       <div className="flex flex-col h-full min-h-0">
-        <div className="flex items-center border-b-3 border-brutal-black shrink-0 bg-white dark:bg-zinc-800">
+        <div className="flex items-stretch border-b-3 border-brutal-black shrink-0 bg-white dark:bg-zinc-800">
           <div className="flex-1 min-w-0">{surfaceNav}</div>
-          <div className="px-2 py-1 border-l-2 border-brutal-black">
+          <div className="px-2 py-1.5 flex items-center justify-center bg-white dark:bg-zinc-800 shrink-0">
             <BrutalButton
               variant="default"
               size="icon"
@@ -102,26 +100,18 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
         onClose={() => setIsFullscreen(false)}
         containerClassName="relative w-full max-w-[96vw] h-[94vh] bg-white dark:bg-zinc-900 border-4 border-brutal-black shadow-brutal-xl flex flex-col"
       >
-        <div className="flex items-center justify-between px-4 py-2 border-b-3 border-brutal-black bg-brutal-yellow dark:bg-zinc-800 shrink-0">
-          <span className="text-xs font-bold uppercase tracking-widest text-brutal-black dark:text-white">
+        <div className="flex items-center justify-between px-3 py-2 border-b-3 border-brutal-black bg-brutal-yellow dark:bg-zinc-800 shrink-0">
+          <span className="text-[10px] font-bold uppercase tracking-widest font-mono text-brutal-black dark:text-white">
             Canvas Fullscreen
           </span>
           <div className="flex items-center gap-2">
             <BrutalButton
               variant="primary"
-              size="icon"
+              className="px-2 py-0.5 text-[10px] h-full"
               onClick={() => setIsFullscreen(false)}
               title="Exit fullscreen"
             >
-              <ArrowsPointingInIcon className="w-5 h-5" />
-            </BrutalButton>
-            <BrutalButton
-              variant="danger"
-              size="icon"
-              onClick={() => setIsFullscreen(false)}
-              title="Close"
-            >
-              <XMarkIcon className="w-5 h-5" />
+              <ArrowsPointingInIcon className="w-4 h-4" />
             </BrutalButton>
           </div>
         </div>

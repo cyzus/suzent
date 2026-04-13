@@ -21,7 +21,7 @@ export function getToolIconClassName(isStreaming = false, hasOutput = false, mon
     'leading-none',
     'shrink-0',
     monochrome ? 'tool-group-icon--mono' : '',
-    isStreaming && !hasOutput ? 'animate-spin-slow' : '',
+    isStreaming && !hasOutput ? 'animate-pulse text-brutal-blue' : '',
   ]
     .filter(Boolean)
     .join(' ');

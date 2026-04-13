@@ -37,7 +37,7 @@ export function ToolGroupIcon({ toolName, approvalState, isStreaming = false, ha
 
   return (
     <span
-      className={`tool-group-icon inline-flex items-center justify-center shrink-0 ${isStreaming && !hasOutput ? 'animate-spin-slow' : ''}`}
+      className="tool-group-icon inline-flex items-center justify-center shrink-0 transition-opacity duration-300"
       aria-hidden="true"
     >
       <Icon className="w-3.5 h-3.5 stroke-[2.25]" />

@@ -146,30 +146,36 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
   const isRunning = task?.status === 'running' || task?.status === 'queued';
 
   return (
-    <div className="flex flex-col h-full min-h-0 font-mono">
+        <div className="flex flex-col h-full min-h-0 font-mono">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className={`text-sm ${isRunning ? 'animate-spin-slow' : ''}`}>
+      <div className="flex items-start justify-between px-3 py-2 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0 gap-2">
+        <div className="flex items-start gap-2 min-w-0 pt-0.5">
+          <span className="text-[14px] drop-shadow-sm leading-none shrink-0 mt-0.5">
             {task?.status === 'completed' ? '✅' : task?.status === 'failed' ? '❌' : '🤖'}
           </span>
           <div className="min-w-0">
-            <div className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400 truncate">
-              Sub-agent
+            <div className="text-[10px] font-bold uppercase tracking-widest font-mono truncate flex items-center gap-1.5 text-neutral-600 dark:text-neutral-300">
+              <span>Sub-agent</span>
+              <span className="opacity-70 normal-case tracking-normal truncate">{task?.task_id ?? taskId}</span>
+              {isRunning && (
+                <span className="text-[9px] leading-none px-1 py-[2px] border border-brutal-black bg-brutal-yellow text-brutal-black font-bold uppercase tracking-normal">
+                  Live
+                </span>
+              )}
             </div>
-            <div className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 truncate">
-              {task?.task_id ?? taskId}
+            <div className="text-[12px] font-bold text-brutal-black dark:text-white leading-snug mt-0.5 max-h-[2.5rem] overflow-hidden line-clamp-2">
+              {task?.description || 'Loading task...'}
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 self-start mt-0.5">
           {isRunning && elapsedTime && (
-            <span className="text-[10px] text-neutral-400">⏱ {elapsedTime}</span>
+            <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">⏱ {elapsedTime}</span>
           )}
           {isRunning && (
             <button
               onClick={stopAgent}
-              className="px-2 py-1 text-[10px] font-bold uppercase bg-red-50 text-red-700 border border-red-400 rounded-sm hover:bg-red-100 transition-colors"
+              className="px-2 py-1 text-[10px] leading-none font-bold uppercase bg-red-50 text-red-700 border-2 border-red-400 hover:bg-red-100 transition-colors"
             >
               Stop
             </button>
@@ -177,7 +183,7 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
           {onClose && (
             <button
               onClick={onClose}
-              className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
+              className="p-1 aspect-square flex items-center justify-center text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
               title="Close"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>

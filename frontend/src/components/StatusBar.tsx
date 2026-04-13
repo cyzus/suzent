@@ -232,9 +232,9 @@ function SubAgentWidget() {
   if (activeTasks.length === 0) return null;
 
   return (
-    <div className="flex items-center gap-1 flex-shrink-0 ml-3" title={`${activeTasks.length} sub-agent(s) running`}>
-      <span className="text-xs animate-spin-slow">🤖</span>
-      <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">
+    <div className="flex items-center gap-1.5 flex-shrink-0 ml-3 brutal-running-mono px-1.5 py-0.5 border-2 border-brutal-black dark:border-white text-brutal-black dark:text-white font-bold" title={`${activeTasks.length} sub-agent(s) running`}>
+      <span className="text-[10px] drop-shadow-sm">🤖</span>
+      <span className="hidden md:inline text-[9px] font-bold uppercase tracking-wider">
         {activeTasks.length} sub-agent{activeTasks.length > 1 ? 's' : ''} running
       </span>
     </div>

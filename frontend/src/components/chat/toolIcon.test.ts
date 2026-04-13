@@ -15,12 +15,12 @@ describe('tool icon helpers', () => {
 
   it('keeps the icon layout class consistent between collapsed and expanded states', () => {
     expect(getToolIconClassName(false, false)).toContain('tool-group-icon');
-    expect(getToolIconClassName(true, false)).toContain('animate-spin-slow');
-    expect(getToolIconClassName(true, true)).not.toContain('animate-spin-slow');
+    expect(getToolIconClassName(true, false)).toContain('animate-pulse');
+    expect(getToolIconClassName(true, true)).not.toContain('animate-pulse');
   });
 
   it('can force grouped icons into monochrome mode', () => {
     expect(getToolIconClassName(false, false, true)).toContain('tool-group-icon--mono');
-    expect(getToolIconClassName(false, false, true)).not.toContain('animate-spin-slow');
+    expect(getToolIconClassName(false, false, true)).not.toContain('animate-pulse');
   });
 });
