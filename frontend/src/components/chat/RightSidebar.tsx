@@ -103,6 +103,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const isOverlayMode = forceFullView || !isDesktop;
   
   const webHistory = useWebHistory(messages);
+  const hasValidPlan = Boolean(plan && plan.phases && plan.phases.length > 0);
 
   // ── Tab definitions ─────────────────────────────────────────────────
   const tabs: TabConfig[] = [
@@ -146,8 +147,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       icon: ClipboardDocumentListIcon,
       labelKey: 'sidebar.tabs.plan',
       fallbackLabel: 'Plan',
-      hasContent: !!plan,
-      hasActivity: !!plan,
+      hasContent: hasValidPlan,
+      hasActivity: hasValidPlan,
       activityClass: 'bg-brutal-yellow',
     },
   ];
@@ -166,8 +167,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   }, [viewingSubAgentTaskId]);
 
   useEffect(() => {
-    if (plan) setActiveTab('plan');
-  }, [!!plan]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (hasValidPlan) setActiveTab('plan');
+  }, [hasValidPlan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Open sidebar automatically when content arrives ─────────────────
   useEffect(() => {
@@ -183,8 +184,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   }, [viewingSubAgentTaskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (plan && !isOpen) onOpen();
-  }, [!!plan]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (hasValidPlan && !isOpen) onOpen();
+  }, [hasValidPlan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Icon strip click: toggle panel or switch tab ───────────────────
   const handleTabClick = useCallback((tabId: TabId) => {
