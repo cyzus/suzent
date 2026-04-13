@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 🚀 Added
+- **Sub-agent Runtime**: Add `spawn_subagent` tool with support for `run_in_background` (async vs blocking execution) and optional `cwd` override for per-task working directory control.
+- **Sub-agent Backend APIs**: Add sub-agent management endpoints:
+  - `GET /subagents/active`
+  - `GET /subagents/stream`
+  - `GET /subagents`
+  - `GET /subagents/{task_id}`
+  - `POST /subagents/{task_id}/stop`
+- **Background Event Bus**: Add `GET /events/stream` SSE multiplexer that streams all background events (heartbeat, scheduler, social, sub-agents) over one persistent connection.
+- **Sub-agent Frontend UI**: Add dedicated sub-agent components and hooks (`SubAgentCallBlock`, `SubAgentList`, `SubAgentView`, `useEventBus`, `useSubAgentStatus`) for real-time task status, detail view, and stop actions.
+- **Social Session Slash Commands**: Add `/sess` command group (`ls`, `switch`, `new`, `info`) for managing active social sessions.
+- **Web Search Rich Output Renderer**: Add `WebSearchRenderer` for structured web-search result cards in tool output.
+
+### ⚡ Changed
+- **Parent Wakeup Flow**: Background sub-agent completion can now trigger an automatic parent wakeup turn, so the parent agent can continue without waiting for new user input.
+- **Streaming Infrastructure**: Refactor stream registry to support active stream queue lookup and event-bus fan-out from background stream queues.
+- **Assistant Tool Output UX**: `spawn_subagent` tool calls now render as dedicated interactive blocks instead of generic tool pills, with stronger status propagation in chat and sidebar.
+- **Web Search Tool Contract**: `websearch` now returns structured `ToolResult` payloads (JSON envelope with normalized result items) instead of mixed plain-text-only responses.
+- **Bash Tool Execution Context**: `BashTool` now supports dependency-provided `cwd` overrides for sub-agent scoped execution.
+
+### 🐛 Fixed
+- **Web Search Rendering Compatibility**: Frontend parsing now handles both new `ToolResult` envelopes and legacy markdown output for search results.
+- **Parent Wakeup Persistence Race**: Add synchronization around wakeup post-processing to reduce message persistence races in parent chat updates.
+
 ## [v0.4.1]
 
 ### 🚀 Added
