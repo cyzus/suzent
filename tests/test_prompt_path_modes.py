@@ -2,7 +2,7 @@ from pathlib import Path
 
 from suzent.config import PROJECT_DIR
 from suzent.memory.memory_context import format_core_memory_section
-from suzent.prompts import format_instructions
+from suzent.prompts import build_execution_mode_section
 from suzent.skills.manager import SkillManager
 
 
@@ -57,12 +57,15 @@ def test_prompt_assembly_host_mode_has_no_virtual_notebook_paths():
     memory_context = format_core_memory_section(_sample_blocks(), sandbox_enabled=False)
     skills_context = "<available_skills><skill><location>${MOUNT_SKILLS}/notebook/SKILL.md</location></skill></available_skills>"
 
-    prompt = format_instructions(
-        base_instructions="",
-        memory_context=memory_context,
-        skills_context=skills_context,
-        sandbox_enabled=False,
-        workspace_root=str(Path(PROJECT_DIR)),
+    prompt = "\n\n".join(
+        [
+            build_execution_mode_section(
+                sandbox_enabled=False,
+                workspace_root=str(Path(PROJECT_DIR)),
+            ),
+            memory_context,
+            skills_context,
+        ]
     )
 
     assert "Do NOT use virtual `/mnt/...` paths." in prompt

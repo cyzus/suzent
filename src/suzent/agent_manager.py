@@ -21,9 +21,11 @@ from suzent.core.providers import get_enabled_models_from_db
 
 from suzent.config import CONFIG
 from suzent.logger import get_logger
-from suzent.prompts import format_instructions, build_social_context
+from suzent.prompts import (
+    STATIC_INSTRUCTIONS,
+    register_dynamic_instructions,
+)
 from suzent.skills import get_skill_manager
-from suzent.config import get_effective_volumes
 
 # Import memory lifecycle functions (for backward compatibility re-exports)
 from suzent.memory.lifecycle import (
@@ -144,9 +146,10 @@ def create_agent(
     tool_names = (config.get("tools") or CONFIG.default_tools).copy()
     memory_enabled = config.get("memory_enabled", CONFIG.memory_enabled)
 
-    from suzent.tools.registry import get_tool_function
+    from suzent.tools.registry import get_tool_function, get_tool_session_guidance
 
     tool_functions = []
+    enabled_tool_names = set(tool_names)
     _auto_equipped = {
         "MemorySearchTool",
         "MemoryBlockUpdateTool",
@@ -169,8 +172,10 @@ def create_agent(
         mem_update = get_tool_function("MemoryBlockUpdateTool")
         if mem_search:
             tool_functions.append(mem_search)
+            enabled_tool_names.add("MemorySearchTool")
         if mem_update:
             tool_functions.append(mem_update)
+            enabled_tool_names.add("MemoryBlockUpdateTool")
 
     # Auto-equip SkillTool if any skills are enabled
     skill_manager = get_skill_manager()
@@ -178,6 +183,7 @@ def create_agent(
         fn = get_tool_function("SkillTool")
         if fn and fn not in tool_functions:
             tool_functions.append(fn)
+            enabled_tool_names.add("SkillTool")
             logger.info(
                 f"SkillTool equipped ({len(skill_manager.enabled_skills)} skills enabled)"
             )
@@ -188,35 +194,14 @@ def create_agent(
         fn = get_tool_function("SocialMessageTool")
         if fn and fn not in tool_functions:
             tool_functions.append(fn)
+            enabled_tool_names.add("SocialMessageTool")
 
     # --- Build MCP servers ---
     mcp_servers = _build_mcp_servers(config)
 
     # --- Build instructions ---
-    sandbox_enabled = config.get("sandbox_enabled", CONFIG.sandbox_enabled)
-    workspace_root = config.get("workspace_root", CONFIG.workspace_root)
     base_instructions = config.get("instructions", CONFIG.instructions)
-    sandbox_volumes = config.get("sandbox_volumes")
-    custom_volumes = get_effective_volumes(sandbox_volumes)
-
-    # Build skills context for system prompt
-    skills_context = ""
-    if skill_manager.enabled_skills:
-        from suzent.prompts import SKILLS_CONTEXT_SECTION
-
-        skills_context = SKILLS_CONTEXT_SECTION.format(
-            skills_xml=skill_manager.get_skills_xml(sandbox_enabled=sandbox_enabled)
-        )
-
-    instructions = format_instructions(
-        base_instructions,
-        memory_context=memory_context,
-        custom_volumes=custom_volumes,
-        social_context=build_social_context(social_ctx) if social_ctx else "",
-        skills_context=skills_context,
-        sandbox_enabled=sandbox_enabled,
-        workspace_root=workspace_root,
-    )
+    session_guidance_items = get_tool_session_guidance(sorted(enabled_tool_names))
 
     # --- Create pydantic-ai Agent ---
     agent = Agent(
@@ -224,9 +209,16 @@ def create_agent(
         deps_type=AgentDeps,
         tools=tool_functions,
         toolsets=mcp_servers if mcp_servers else [],
-        instructions=instructions,
+        instructions=STATIC_INSTRUCTIONS,
         output_type=[str, DeferredToolRequests],
         output_retries=3,
+    )
+
+    register_dynamic_instructions(
+        agent,
+        base_instructions=base_instructions,
+        memory_context=memory_context,
+        session_guidance_items=session_guidance_items,
     )
 
     # Store metadata for later introspection

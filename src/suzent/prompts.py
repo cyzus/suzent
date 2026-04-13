@@ -6,8 +6,9 @@ Provides functions to format and enhance agent instructions with dynamic context
 
 from datetime import datetime
 import platform
+from typing import Any, Callable
 
-SUZENT_AGENT_INSTRUCTIONS = """# Role
+STATIC_INSTRUCTIONS = """# Role
 You are Suzent, a digital coworker.
 
 # Language Requirement
@@ -19,20 +20,16 @@ You should respond in the language of the user's query.
 - Information synthesis from several sources.
 - Breaking down an ambiguous goal into action items.
 
-# Date Context
-Today's date: {current_date}
+# Behavioral Guidelines
+- Bias toward action for clear requests; avoid unnecessary confirmation.
+- Do not add improvements beyond what the user asked.
+- Diagnose failures before retrying a different approach.
+- Verify important outcomes before claiming completion.
+- Report outcomes honestly. If checks fail, report the exact failure.
 
-{execution_mode_section}
-
-{custom_volumes_section}
-
-{base_instructions_section}
-
-{memory_context}
-
-{skills_context}
-
-{social_context}
+# Tool Usage Safety
+- Prefer dedicated tools for file operations over shell shortcuts.
+- Ask for confirmation before destructive or hard-to-reverse actions (e.g., deleting data, force push, reset --hard).
 """
 
 CUSTOM_VOLUMES_SECTION = """# Directory Mappings
@@ -96,63 +93,133 @@ PLATFORM_CHAR_LIMITS = {
     "feishu": 30000,
 }
 
+_PROMPT_SECTION_CACHE: dict[str, str] = {}
 
-def format_instructions(
-    base_instructions: str,
-    memory_context: str = "",
-    custom_volumes: list[str] = None,
-    social_context: str = "",
-    skills_context: str = "",
-    sandbox_enabled: bool = False,
-    workspace_root: str = "",
+
+def resolve_prompt_section(
+    name: str,
+    compute: Callable[[], str],
+    *,
+    cache_break: bool = False,
 ) -> str:
+    """Resolve a prompt section value with optional cache bypass.
+
+    This is a lightweight interface mirroring section-level cache-break
+    semantics so callers can opt in incrementally.
     """
-    Format agent instructions by adding current date, execution mode, and other context.
+    if not cache_break and name in _PROMPT_SECTION_CACHE:
+        return _PROMPT_SECTION_CACHE[name]
 
-    Args:
-        base_instructions: The base instruction text
-        memory_context: Context string from memory system
-        custom_volumes: List of custom volume mount strings
-        social_context: Pre-formatted social channel context string
-        sandbox_enabled: Whether sandbox mode is active
-        workspace_root: Root directory for host mode
+    value = compute()
+    _PROMPT_SECTION_CACHE[name] = value
+    return value
 
-    Returns:
-        Formatted instructions with date and volumes appended
-    """
-    current_date = datetime.now().strftime("%A, %B %d, %Y")
 
-    volumes_section = ""
-    if custom_volumes:
-        volumes_list = "\n".join(
-            [f"- {v} (Host Path:Virtual Name)" for v in custom_volumes]
-        )
-        volumes_section = CUSTOM_VOLUMES_SECTION.format(volumes_list=volumes_list)
+def clear_prompt_section_cache() -> None:
+    """Clear in-process prompt section cache."""
+    _PROMPT_SECTION_CACHE.clear()
 
-    execution_mode_section = ""
+
+def build_execution_mode_section(
+    sandbox_enabled: bool, workspace_root: str = ""
+) -> str:
+    """Build environment mode section for host or sandbox execution."""
     if sandbox_enabled:
-        execution_mode_section = EXECUTION_MODE_SECTION_SANDBOX
-    else:
-        execution_mode_section = EXECUTION_MODE_SECTION_HOST.format(
-            workspace_root=workspace_root.replace("\\", "/"), os_name=platform.system()
-        )
+        return EXECUTION_MODE_SECTION_SANDBOX
 
-    base_instructions_section = ""
-    if base_instructions:
-        base_instructions_section = BASE_INSTRUCTIONS_SECTION.format(
-            base_instructions=base_instructions
-        )
-
-    suzent_instructions = SUZENT_AGENT_INSTRUCTIONS.format(
-        current_date=current_date,
-        execution_mode_section=execution_mode_section,
-        custom_volumes_section=volumes_section,
-        base_instructions_section=base_instructions_section,
-        memory_context=memory_context,
-        skills_context=skills_context,
-        social_context=social_context,
+    return EXECUTION_MODE_SECTION_HOST.format(
+        workspace_root=workspace_root.replace("\\", "/"), os_name=platform.system()
     )
-    return suzent_instructions
+
+
+def build_custom_volumes_section(custom_volumes: list[str] | None = None) -> str:
+    """Build directory mapping section for configured custom volumes."""
+    if not custom_volumes:
+        return ""
+
+    volumes_list = "\n".join(
+        [f"- {v} (Host Path:Virtual Name)" for v in custom_volumes]
+    )
+    return CUSTOM_VOLUMES_SECTION.format(volumes_list=volumes_list)
+
+
+def build_base_instructions_section(base_instructions: str = "") -> str:
+    """Build optional user-configured instruction section."""
+    if not base_instructions:
+        return ""
+    return BASE_INSTRUCTIONS_SECTION.format(base_instructions=base_instructions)
+
+
+def build_session_guidance_section(session_guidance_items: list[str] | None) -> str:
+    """Build dynamic session guidance from tool-provided metadata."""
+    if not session_guidance_items:
+        return ""
+
+    bullet_items = "\n".join([f"- {item}" for item in session_guidance_items])
+    return f"# Session Guidance\n{bullet_items}"
+
+
+def register_dynamic_instructions(
+    agent: Any,
+    *,
+    base_instructions: str,
+    memory_context: str | None,
+    session_guidance_items: list[str] | None = None,
+) -> None:
+    """Register runtime dynamic instruction providers on the given agent."""
+
+    @agent.instructions
+    def inject_date_context(_: Any) -> str:
+        return (
+            f"# Date Context\nToday's date: {datetime.now().strftime('%A, %B %d, %Y')}"
+        )
+
+    @agent.instructions
+    def inject_environment_context(ctx: Any) -> str:
+        return build_execution_mode_section(
+            sandbox_enabled=ctx.deps.sandbox_enabled,
+            workspace_root=ctx.deps.workspace_root,
+        )
+
+    @agent.instructions
+    def inject_volumes_context(ctx: Any) -> str:
+        return build_custom_volumes_section(ctx.deps.custom_volumes)
+
+    @agent.instructions
+    def inject_base_instructions(_: Any) -> str:
+        return resolve_prompt_section(
+            "base_instructions",
+            lambda: build_base_instructions_section(base_instructions),
+        )
+
+    @agent.instructions
+    def inject_session_guidance(_: Any) -> str:
+        return resolve_prompt_section(
+            "session_guidance",
+            lambda: build_session_guidance_section(session_guidance_items),
+        )
+
+    @agent.instructions
+    def inject_memory_context(_: Any) -> str:
+        return memory_context or ""
+
+    @agent.instructions
+    def inject_skills_context(ctx: Any) -> str:
+        skill_mgr = ctx.deps.skill_manager
+        if not skill_mgr or not skill_mgr.enabled_skills:
+            return ""
+
+        return SKILLS_CONTEXT_SECTION.format(
+            skills_xml=skill_mgr.get_skills_xml(
+                sandbox_enabled=ctx.deps.sandbox_enabled
+            )
+        )
+
+    @agent.instructions
+    def inject_social_context(ctx: Any) -> str:
+        if not ctx.deps.social_context:
+            return ""
+        return build_social_context(ctx.deps.social_context)
 
 
 def build_social_context(social_ctx: dict) -> str:
