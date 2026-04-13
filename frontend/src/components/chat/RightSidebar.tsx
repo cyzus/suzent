@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useI18n } from '../../i18n';
 import { PlanProgress } from '../PlanProgress';
 import { SandboxFiles } from '../sidebar/SandboxFiles';
-import { BrowserView } from '../sidebar/BrowserView';
+import { WebActivitiesView } from '../sidebar/WebActivitiesView';
 import { CanvasView } from '../sidebar/CanvasView';
 import { SubAgentView } from '../sidebar/SubAgentView';
 import { SubAgentList } from '../sidebar/SubAgentList';
-import type { Plan } from '../../types/api';
+import type { Message, Plan } from '../../types/api';
 import type { CanvasState } from '../../hooks/useCanvas';
+import { useWebHistory } from '../../hooks/useWebHistory';
 import {
   DESKTOP_BREAKPOINT_PX,
   MIN_RIGHT_SIDEBAR_WIDTH_PX,
@@ -46,6 +47,9 @@ interface RightSidebarProps {
   onSelectSubAgent?: (taskId: string) => void;
   currentChatId?: string | null;
   hasSubAgents?: boolean;
+  messages?: Message[];
+  forcedWebContextId?: string | null;
+  onClearForcedWebContext?: () => void;
 }
 
 interface TabConfig {
@@ -78,6 +82,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onSelectSubAgent,
   currentChatId,
   hasSubAgents = false,
+  messages = [],
+  forcedWebContextId,
+  onClearForcedWebContext,
 }) => {
   useI18n();
   const [activeTab, setActiveTab] = useState<TabId>('browser');
@@ -94,6 +101,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const effectiveViewportWidth = viewportWidthPx ?? window.innerWidth;
   const isDesktop = effectiveViewportWidth >= DESKTOP_BREAKPOINT_PX;
   const isOverlayMode = forceFullView || !isDesktop;
+  
+  const webHistory = useWebHistory(messages);
 
   // ── Tab definitions ─────────────────────────────────────────────────
   const tabs: TabConfig[] = [
@@ -109,9 +118,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       id: 'browser',
       icon: GlobeAltIcon,
       labelKey: 'sidebar.tabs.browser',
-      fallbackLabel: 'Browser',
-      hasContent: isBrowserStreamActive,
-      hasActivity: isBrowserStreamActive,
+      fallbackLabel: 'Web',
+      hasContent: isBrowserStreamActive || webHistory.length > 0,
+      hasActivity: isBrowserStreamActive || webHistory.length > 0,
       activityClass: 'bg-brutal-green',
     },
     {
@@ -302,9 +311,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               onMaximize={onMaximizeFile}
             />
           </div>
-          {/* Always render BrowserView to keep WS connection alive */}
+          {/* Web Activities View (replaces old BrowserView) */}
           <div className={`flex-1 h-full flex flex-col ${activeTab === 'browser' ? 'flex' : 'hidden'}`}>
-            <BrowserView onStreamActive={setIsBrowserStreamActive} />
+            <WebActivitiesView 
+              messages={messages}
+              isBrowserStreamActive={isBrowserStreamActive}
+              onBrowserStreamActive={setIsBrowserStreamActive}
+              forcedContextId={forcedWebContextId}
+              onClearForcedContext={onClearForcedWebContext}
+            />
           </div>
           <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'canvas' ? 'flex' : 'hidden'}`}>
             {canvas && (

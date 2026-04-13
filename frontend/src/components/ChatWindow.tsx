@@ -169,7 +169,8 @@ const MessageList: React.FC<{
   subAgentTasks?: Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>;
   onOpenSubAgentSidebar?: (taskId: string) => void;
   onStopSubAgent?: (taskId: string) => void;
-}> = ({ messages, streamingForCurrentChat, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent }) => {
+  onForceWebContext?: (contextId: string) => void;
+}> = ({ messages, streamingForCurrentChat, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext }) => {
   const { skipIndices, groupRenders, stepSummaryByMessageIndex } = useMemo(
     () => buildMessageRenderPlan(messages),
     [messages],
@@ -208,6 +209,7 @@ const MessageList: React.FC<{
                   subAgentTasks={subAgentTasks}
                   onOpenSubAgentSidebar={onOpenSubAgentSidebar}
                   onStopSubAgent={onStopSubAgent}
+                  onForceWebContext={onForceWebContext}
                 />
               </div>
             </div>
@@ -247,6 +249,7 @@ const MessageList: React.FC<{
                   subAgentTasks={subAgentTasks}
                   onOpenSubAgentSidebar={onOpenSubAgentSidebar}
                   onStopSubAgent={onStopSubAgent}
+                  onForceWebContext={onForceWebContext}
                 />
               )}
             </div>
@@ -324,6 +327,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [currentUsage, setCurrentUsage] = useState<any>(null);
   const [subAgentTasks, setSubAgentTasks] = useState<Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>>({});
   const [viewingSubAgentTaskId, setViewingSubAgentTaskId] = useState<string | null>(null);
+  const [forcedWebContextId, setForcedWebContextId] = useState<string | null>(null);
   const { onSpawned: onSubAgentSpawned, onCompleted: onSubAgentCompleted, onFailed: onSubAgentFailed } = useSubAgentStatus();
   const { setStatus: setStatusBar } = useStatusStore();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -672,6 +676,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentChatId, canvas.deferredIds, addMessage, setIsStreaming, sendAGUI]);
+
+  const handleForceWebContext = useCallback((contextId: string) => {
+    setForcedWebContextId(contextId);
+    if (!isRightSidebarOpen) {
+      onRightSidebarToggle(true);
+    }
+  }, [isRightSidebarOpen, onRightSidebarToggle]);
 
 
   const safeBackendConfig = backendConfig || null;
@@ -1077,6 +1088,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     subAgentTasks={subAgentTasks}
                     onOpenSubAgentSidebar={handleOpenSubAgentSidebar}
                     onStopSubAgent={handleStopSubAgent}
+                    onForceWebContext={handleForceWebContext}
                   />
                 )}
                 {/* Streaming/transient assistant message from AG-UI */}
@@ -1099,6 +1111,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                           subAgentTasks={subAgentTasks}
                           onOpenSubAgentSidebar={handleOpenSubAgentSidebar}
                           onStopSubAgent={handleStopSubAgent}
+                          onForceWebContext={handleForceWebContext}
                         />
                       </div>
                     </div>
@@ -1178,6 +1191,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onSelectSubAgent={(taskId) => setViewingSubAgentTaskId(taskId)}
         currentChatId={currentChatId}
         hasSubAgents={Object.keys(subAgentTasks).length > 0}
+        messages={safeMessages}
+        forcedWebContextId={forcedWebContextId}
+        onClearForcedWebContext={() => setForcedWebContextId(null)}
       />
 
       <ImageViewer

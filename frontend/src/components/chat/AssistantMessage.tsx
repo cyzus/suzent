@@ -39,6 +39,8 @@ interface AssistantMessageProps {
   onOpenSubAgentSidebar?: (taskId: string) => void;
   /** Stop a running sub-agent */
   onStopSubAgent?: (taskId: string) => void;
+  /** Force web context to open right sidebar with specific context */
+  onForceWebContext?: (contextId: string) => void;
 }
 
 // Names that should be filtered out from tool call display
@@ -84,7 +86,8 @@ const ToolSequenceGroup: React.FC<{
   isStreaming?: boolean;
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
-}> = ({ tools, isStreaming, toolApprovalPolicy, onRemoveApprovalPolicy }) => {
+  onForceWebContext?: (contextId: string) => void;
+}> = ({ tools, isStreaming, toolApprovalPolicy, onRemoveApprovalPolicy, onForceWebContext }) => {
   const hasPending = tools.some(t => t.approvalState === 'pending');
   const isAnyRunning = isStreaming && tools.some(t => !t.output);
   // Use a ref to track if we've already auto-expanded for this set of tools
@@ -118,6 +121,8 @@ const ToolSequenceGroup: React.FC<{
               onDeny={t.onDeny}
               isAutoApproved={isAutoApproved}
               onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy ? () => onRemoveApprovalPolicy(t.toolName) : undefined}
+              onForceWebContext={onForceWebContext}
+              toolCallId={t.toolCallId}
             />
           );
         })}
@@ -198,6 +203,8 @@ const ToolSequenceGroup: React.FC<{
                 onDeny={t.onDeny}
                 isAutoApproved={isAutoApproved}
                 onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy ? () => onRemoveApprovalPolicy(t.toolName) : undefined}
+                onForceWebContext={onForceWebContext}
+                toolCallId={t.toolCallId}
               />
             );
           })}
@@ -215,7 +222,8 @@ const StepPills: React.FC<{
   onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
-}> = ({ blocks, messageIndex, isStreaming, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy }) => {
+  onForceWebContext?: (contextId: string) => void;
+}> = ({ blocks, messageIndex, isStreaming, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onForceWebContext }) => {
   const tools = blocks
     .filter(b => b.type === 'toolCall')
     .map((b, bi) => {
@@ -236,7 +244,7 @@ const StepPills: React.FC<{
     });
 
   if (tools.length === 0) return null;
-  return <ToolSequenceGroup tools={tools} isStreaming={isStreaming} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} />;
+  return <ToolSequenceGroup tools={tools} isStreaming={isStreaming} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} onForceWebContext={onForceWebContext} />;
 };
 
 const StreamingMarkdownBlock: React.FC<{
@@ -324,7 +332,8 @@ const StaticContent: React.FC<{
   subAgentTasks?: Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>;
   onOpenSubAgentSidebar?: (taskId: string) => void;
   onStopSubAgent?: (taskId: string) => void;
-}> = ({ blocks, messageIndex, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent }) => {
+  onForceWebContext?: (contextId: string) => void;
+}> = ({ blocks, messageIndex, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext }) => {
   return (
     <>
       {blocks.map((b, bi) => {
@@ -383,6 +392,8 @@ const StaticContent: React.FC<{
               defaultCollapsed={!isPending}
               isAutoApproved={isAutoApproved}
               onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy && b.toolName ? () => onRemoveApprovalPolicy(b.toolName!) : undefined}
+              onForceWebContext={onForceWebContext}
+              toolCallId={b.toolCallId}
             />
           );
         } else {
@@ -431,7 +442,8 @@ const AGUIPartsContent: React.FC<{
   subAgentTasks?: Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>;
   onOpenSubAgentSidebar?: (taskId: string) => void;
   onStopSubAgent?: (taskId: string) => void;
-}> = ({ parts, messageIndex, isStreaming, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent }) => {
+  onForceWebContext?: (contextId: string) => void;
+}> = ({ parts, messageIndex, isStreaming, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext }) => {
   // Normalize tool parts: when resume/recovery emits another tool part with the
   // same toolCallId later in the stream, merge it into the first occurrence so
   // output stays under the initial tool call instead of rendering a split block.
@@ -535,7 +547,7 @@ const AGUIPartsContent: React.FC<{
                 );
               })}
               {regularTools.length > 0 && (
-                <ToolSequenceGroup tools={regularTools} isStreaming={isStreaming} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} />
+                <ToolSequenceGroup tools={regularTools} isStreaming={isStreaming} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} onForceWebContext={onForceWebContext} />
               )}
             </div>
           );
@@ -622,6 +634,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   subAgentTasks,
   onOpenSubAgentSidebar,
   onStopSubAgent,
+  onForceWebContext,
 }) => {
   const isStreamingThis = isStreaming && isLastMessage;
   const hasParts = aguiParts && aguiParts.length > 0;
@@ -674,6 +687,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                 subAgentTasks={subAgentTasks}
                 onOpenSubAgentSidebar={onOpenSubAgentSidebar}
                 onStopSubAgent={onStopSubAgent}
+                onForceWebContext={onForceWebContext}
               />
             ) : null}
             <MetricsBadge usage={usage} />
@@ -721,6 +735,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
             onToolApproval={onToolApproval}
             toolApprovalPolicy={toolApprovalPolicy}
             onRemoveApprovalPolicy={onRemoveApprovalPolicy}
+            onForceWebContext={onForceWebContext}
           />
         </div>
       </div>
