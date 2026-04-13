@@ -6,8 +6,7 @@ cards, buttons) in the canvas panel alongside the chat. The same surface_id
 performs an upsert: calling again with the same id replaces the existing surface.
 """
 
-import json
-from typing import Any, Annotated, Literal
+from typing import Any, Annotated, Literal, TypedDict, NotRequired
 
 from pydantic import Field
 
@@ -15,6 +14,36 @@ from pydantic_ai import RunContext
 
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 from suzent.core.agent_deps import AgentDeps
+
+
+class UIComponent(TypedDict):
+    """Structured UI component tree."""
+
+    type: Literal[
+        "card",
+        "stack",
+        "columns",
+        "text",
+        "badge",
+        "button",
+        "table",
+        "form",
+        "list",
+        "progress",
+        "divider",
+    ]
+    children: NotRequired[list["UIComponent"]]
+    content: NotRequired[str]
+    label: NotRequired[str]
+    action: NotRequired[str]
+    variant: NotRequired[str]
+    color: NotRequired[str]
+    columns: NotRequired[list[dict[str, Any]]]
+    rows: NotRequired[list[dict[str, Any]]]
+    fields: NotRequired[list[dict[str, Any]]]
+    items: NotRequired[list[Any]]
+    value: NotRequired[Any]
+    props: NotRequired[dict[str, Any]]
 
 
 class RenderUITool(Tool):
@@ -33,7 +62,7 @@ class RenderUITool(Tool):
             ),
         ],
         component: Annotated[
-            dict[str, Any], Field(description="Structured UI component tree to render.")
+            UIComponent, Field(description="Structured UI component tree to render.")
         ],
         title: Annotated[
             str,
@@ -49,6 +78,10 @@ class RenderUITool(Tool):
         ] = "canvas",
     ) -> ToolResult:
         """Render a structured UI surface in the canvas panel or inline in chat.
+
+        Interactions are returned as: [canvas: <action>] "<button_label>"
+        Always set "action" on buttons/forms. Use inline buttons to ask the user
+        to choose between options instead of plain text questions.
 
         For full component reference and examples, call: skill_execute("canvas")
 
@@ -66,10 +99,6 @@ class RenderUITool(Tool):
             title:      Tab strip label (defaults to surface_id).
             target:     "canvas" (sidebar, default) or "inline" (inside chat message).
 
-        Interactions are returned as: [canvas: <action>] "<button_label>"
-        Always set "action" on buttons/forms. Use inline buttons to ask the user
-        to choose between options instead of plain text questions.
-        For full reference and examples, call: skill_execute("canvas")
         """
         if not surface_id.strip():
             return ToolResult.error_result(
@@ -97,10 +126,10 @@ class RenderUITool(Tool):
                 },
             )
 
-        # Fallback: if no queue (e.g. CLI/headless), return JSON summary
-        preview = json.dumps(component, indent=2)[:300]
-        return ToolResult.success_result(
-            f"[Canvas not available] Surface '{surface_id}':\n{preview}",
+        # Fallback: if no queue (e.g. CLI/headless), return an error
+        return ToolResult.error_result(
+            ToolErrorCode.EXECUTION_FAILED,
+            f"Cannot render UI: Canvas not available in this environment. Surface '{surface_id}' failed.",
             metadata={
                 "surface_id": surface_id,
                 "target": target,

@@ -7,7 +7,7 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { ArrowsPointingOutIcon, ArrowsPointingInIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ArrowsPointingOutIcon, ArrowsPointingInIcon } from '@heroicons/react/24/outline';
 import type { CanvasState } from '../../hooks/useCanvas';
 import { A2UIRenderer } from '../a2ui/A2UIRenderer';
 import { BrutalButton } from '../BrutalButton';
@@ -23,6 +23,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
   onDispatch,
 }) => {
   const { surfaces, activeSurfaceId, setActiveSurface } = canvas;
+  const hasMultipleSurfaces = surfaces.length > 1;
   const activeSurface = surfaces.find(s => s.id === activeSurfaceId) ?? surfaces[0] ?? null;
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -47,12 +48,12 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
   }
 
   const surfaceNav = (
-    <div className="flex-1 overflow-x-auto flex min-w-0">
-      {surfaces.length > 1 ? surfaces.map(s => (
+    <div className="flex-1 overflow-x-auto flex min-w-0 h-11 items-stretch">
+      {hasMultipleSurfaces ? surfaces.map(s => (
         <button
           key={s.id}
           onClick={() => setActiveSurface(s.id)}
-          className={`px-3 py-2 text-[10px] font-bold uppercase tracking-widest font-mono whitespace-nowrap border-r-2 border-brutal-black transition-colors shrink-0
+          className={`px-3 h-full flex items-center text-[10px] font-bold uppercase tracking-widest font-mono whitespace-nowrap border-r-2 border-brutal-black transition-colors shrink-0
             ${s.id === activeSurfaceId
               ? 'bg-brutal-black text-white'
               : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'
@@ -61,7 +62,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
           {s.title ?? s.id}
         </button>
       )) : (
-        <div className="px-3 py-2 flex-1 min-w-0 flex items-center">
+        <div className="px-3 h-full flex-1 min-w-0 flex items-center bg-white dark:bg-zinc-800">
           <span className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400 truncate w-full block">
             {activeSurface.title ?? activeSurface.id}
           </span>
@@ -79,9 +80,9 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
   return (
     <>
       <div className="flex flex-col h-full min-h-0">
-        <div className="flex items-stretch border-b-3 border-brutal-black shrink-0 bg-white dark:bg-zinc-800">
+        <div className={`flex items-stretch border-b-3 border-brutal-black shrink-0 ${hasMultipleSurfaces ? 'bg-neutral-100 dark:bg-zinc-900' : 'bg-white dark:bg-zinc-800'}`}>
           <div className="flex-1 min-w-0">{surfaceNav}</div>
-          <div className="px-2 py-1.5 flex items-center justify-center bg-white dark:bg-zinc-800 shrink-0">
+          <div className="px-2 h-11 flex items-center justify-center bg-white dark:bg-zinc-800 shrink-0">
             <BrutalButton
               variant="default"
               size="icon"
