@@ -42,6 +42,11 @@ class BashTool(Tool):
     tool_name = "bash_execute"
     group = ToolGroup.EXECUTION
     requires_approval = True
+    session_guidance = (
+        "Reserve BashTool for shell/system execution. Prefer dedicated file tools "
+        "for read/search/edit operations when available."
+    )
+    guidance_priority = 10
     _SUPPORTED_LANGUAGES = {"python", "nodejs", "command"}
 
     def __init__(self, *args, **kwargs):

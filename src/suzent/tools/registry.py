@@ -169,3 +169,39 @@ def list_available_tools() -> List[str]:
 def get_tool_registry() -> Dict[str, Union[Callable, PydanticTool]]:
     """Get a copy of the full tool function registry."""
     return _get_registry().copy()
+
+
+def get_tool_session_guidance_entries(tool_names: List[str]) -> List[Dict[str, object]]:
+    """Collect deduplicated session guidance entries from selected tools.
+
+    Each entry includes the tool name, priority, and guidance text. Entries are
+    sorted by each tool class's ``guidance_priority`` value.
+    """
+    classes_by_name = {cls.name: cls for cls in _all_tool_classes()}
+    collected: list[tuple[int, str, str]] = []
+    seen: set[str] = set()
+
+    for name in tool_names:
+        cls = classes_by_name.get(name)
+        if cls is None:
+            continue
+
+        guidance = getattr(cls, "session_guidance", None)
+        if not guidance or guidance in seen:
+            continue
+
+        seen.add(guidance)
+        collected.append((getattr(cls, "guidance_priority", 100), cls.name, guidance))
+
+    collected.sort(key=lambda item: (item[0], item[1]))
+    return [
+        {"priority": priority, "tool_name": tool_name, "guidance": guidance}
+        for priority, tool_name, guidance in collected
+    ]
+
+
+def get_tool_session_guidance(tool_names: List[str]) -> List[str]:
+    """Collect deduplicated session guidance text from selected tools."""
+    return [
+        entry["guidance"] for entry in get_tool_session_guidance_entries(tool_names)
+    ]

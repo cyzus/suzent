@@ -9,6 +9,11 @@ from suzent.tools.base import Tool, ToolErrorCode, ToolResult
 class SkillTool(Tool):
     name = "SkillTool"
     tool_name = "skill_execute"
+    session_guidance = (
+        "When the task matches a known skill, use SkillTool early instead of "
+        "reconstructing the workflow from scratch."
+    )
+    guidance_priority = 30
 
     def __init__(self):
         super().__init__()

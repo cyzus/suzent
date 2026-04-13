@@ -41,6 +41,10 @@ class ReadFileTool(Tool):
     name = "ReadFileTool"
     tool_name = "read_file"
     group = ToolGroup.FILESYSTEM
+    session_guidance = (
+        "Read files with ReadFileTool instead of shell commands like cat/head/tail."
+    )
+    guidance_priority = 20
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

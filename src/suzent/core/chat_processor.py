@@ -347,6 +347,40 @@ class ChatProcessor:
                 message_history, _budget
             )
 
+        # Debug-only: log complete system prompt (static + dynamic sections)
+        # as resolved by pydantic-ai instruction runners for this run context.
+        try:
+            if logger._core.min_level <= 10:  # DEBUG
+                tool_names = getattr(agent, "_tool_names", []) or []
+                try:
+                    from suzent.tools.registry import get_tool_session_guidance_entries
+                    from suzent.prompts import (
+                        resolve_full_system_prompt,
+                        format_session_guidance_debug,
+                    )
+
+                    guidance_entries = get_tool_session_guidance_entries(tool_names)
+                    logger.debug(format_session_guidance_debug(guidance_entries))
+                except Exception as guidance_error:
+                    logger.debug(
+                        f"[SessionGuidance] Failed to resolve tool guidance order: {guidance_error}"
+                    )
+
+                system_prompt = await resolve_full_system_prompt(
+                    agent,
+                    deps,
+                    user_prompt=full_prompt or None,
+                    message_history=message_history,
+                )
+                logger.debug(
+                    "[SystemPrompt] Resolved full prompt ({} chars) for chat {}:\n{}",
+                    len(system_prompt),
+                    chat_id,
+                    system_prompt,
+                )
+        except Exception as e:
+            logger.debug(f"[SystemPrompt] Failed to resolve debug prompt: {e}")
+
         # 8. Stream Response
         full_response = ""
 

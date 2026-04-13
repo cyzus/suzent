@@ -6,7 +6,11 @@ Provides functions to format and enhance agent instructions with dynamic context
 
 from datetime import datetime
 import platform
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
+
+from pydantic_ai import RunContext
+from pydantic_ai.messages import ModelMessage, UserContent
+from pydantic_ai.usage import RunUsage
 
 STATIC_INSTRUCTIONS = """# Role
 You are Suzent, a digital coworker.
@@ -120,6 +124,40 @@ def clear_prompt_section_cache() -> None:
     _PROMPT_SECTION_CACHE.clear()
 
 
+async def resolve_full_system_prompt(
+    agent: Any,
+    deps: Any,
+    *,
+    user_prompt: str | Sequence[UserContent] | None = None,
+    message_history: Sequence[ModelMessage] | None = None,
+) -> str:
+    """Resolve full system prompt text via pydantic-ai instruction runners.
+
+    Uses pydantic-ai's internal instruction resolution path so debug output
+    matches the model-visible instruction ordering (static first, then dynamic).
+    """
+    static_instructions, instruction_runners = agent._get_instructions(None)
+
+    run_context = RunContext(
+        deps=deps,
+        model=agent._get_model(None),
+        usage=RunUsage(),
+        prompt=user_prompt,
+        messages=list(message_history or []),
+    )
+
+    parts: list[str] = []
+    if static_instructions:
+        parts.append(static_instructions)
+
+    for runner in instruction_runners:
+        section = await runner.run(run_context)
+        if section:
+            parts.append(section)
+
+    return "\n\n".join(parts)
+
+
 def build_execution_mode_section(
     sandbox_enabled: bool, workspace_root: str = ""
 ) -> str:
@@ -157,6 +195,21 @@ def build_session_guidance_section(session_guidance_items: list[str] | None) -> 
 
     bullet_items = "\n".join([f"- {item}" for item in session_guidance_items])
     return f"# Session Guidance\n{bullet_items}"
+
+
+def format_session_guidance_debug(
+    guidance_entries: Sequence[dict[str, Any]] | None,
+) -> str:
+    """Format ordered guidance entries for debug logging."""
+    if not guidance_entries:
+        return "[SessionGuidance] no guidance entries"
+
+    lines = ["[SessionGuidance] ordered tool guidance:"]
+    for index, entry in enumerate(guidance_entries, start=1):
+        lines.append(
+            f"{index}. priority={entry.get('priority')} tool={entry.get('tool_name')} guidance={entry.get('guidance')}"
+        )
+    return "\n".join(lines)
 
 
 def register_dynamic_instructions(

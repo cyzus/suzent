@@ -49,6 +49,11 @@ class AskQuestionTool(Tool):
     tool_name = "ask_question"
     group = ToolGroup.AGENT
     requires_approval = False
+    session_guidance = (
+        "Use AskQuestionTool for clarification, or genuine blockers after investigation, not as "
+        "the first response to normal execution friction."
+    )
+    guidance_priority = 40
 
     async def forward(
         self,
