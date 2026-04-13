@@ -235,7 +235,7 @@ class SocialBrain(BaseBrain):
     ):
         """Process a message turn and then drain any queued messages."""
         try:
-            await self._handle_message(message)
+            await self._handle_message(message, social_chat_id=social_chat_id)
         except Exception as e:
             logger.error(f"Error handling social message in managed task: {e}")
         finally:
@@ -244,7 +244,9 @@ class SocialBrain(BaseBrain):
                     next_msg = state.queued_messages.pop(0)
                     state.active_sender = next_msg.sender_id
                     try:
-                        await self._handle_message(next_msg)
+                        await self._handle_message(
+                            next_msg, social_chat_id=social_chat_id
+                        )
                     except Exception as e:
                         logger.error(f"Error handling queued message: {e}")
                 state.active_task = None
@@ -317,7 +319,9 @@ class SocialBrain(BaseBrain):
 
         return False
 
-    async def _handle_message(self, message: UnifiedMessage):
+    async def _handle_message(
+        self, message: UnifiedMessage, social_chat_id: str | None = None
+    ):
         """
         Handle a single message using ChatProcessor.
         Auth and command dispatch are handled by _route_message before this is called.
@@ -327,7 +331,8 @@ class SocialBrain(BaseBrain):
             from suzent.channels.utils import extract_target_id
 
             target_id = extract_target_id(message)
-            social_chat_id = f"social-{message.platform}-{target_id}"
+            if social_chat_id is None:
+                social_chat_id = f"social-{message.platform}-{target_id}"
             self._ensure_chat_exists(social_chat_id, message, target_id)
 
             # Check if this is a steer (content may have been rewritten by /steer command)
