@@ -194,38 +194,32 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
             {/* Output section */}
             {output && (
               <div className="min-w-0 w-full overflow-hidden mt-2">
-                {isWebTool && onForceWebContext && toolCallId ? (
-                  <div className="flex flex-col gap-2">
-                     <span className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase">
-                       Output truncated for chat.
-                     </span>
+                <div className="text-[10px] flex items-center justify-between font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-2">
+                  <span>{t('toolCallBlock.output')}</span>
+                  {isWebTool && onForceWebContext && toolCallId && (
                      <button
                         onClick={(e) => {
                           e.stopPropagation();
                           onForceWebContext(toolCallId);
                         }}
-                        className="self-start inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide bg-brutal-yellow text-brutal-black border-2 border-brutal-black hover:bg-neutral-800 hover:text-white transition-colors"
+                        className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wide bg-brutal-yellow text-brutal-black border border-brutal-black hover:bg-neutral-800 hover:text-white transition-colors"
                      >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
                         </svg>
                         View in Sidebar
                      </button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-0.5">{t('toolCallBlock.output')}</div>
-                    <div className="max-h-[300px] overflow-y-auto scrollbar-thin w-full" style={{ overflowX: 'hidden' }}>
-                      {toolName.includes('search') || toolName.includes('web') ? (
-                        <WebSearchRenderer output={output} />
-                      ) : (
-                        <pre className="tool-call-pre text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed font-mono w-full">
-                          {output}
-                        </pre>
-                      )}
-                    </div>
-                  </>
-                )}
+                  )}
+                </div>
+                <div className="max-h-[300px] overflow-y-auto scrollbar-thin w-full" style={{ overflowX: 'hidden' }}>
+                  {toolName.includes('search') || toolName.includes('web') ? (
+                    <WebSearchRenderer output={output} />
+                  ) : (
+                    <pre className="tool-call-pre text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed font-mono w-full">
+                      {output}
+                    </pre>
+                  )}
+                </div>
               </div>
             )}
           </div>

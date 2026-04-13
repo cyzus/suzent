@@ -189,13 +189,19 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
   // ── Icon strip click: toggle panel or switch tab ───────────────────
   const handleTabClick = useCallback((tabId: TabId) => {
+    const targetTab = tabs.find(tab => tab.id === tabId);
+    if (!targetTab) return;
+    if (targetTab.id !== 'files' && !targetTab.hasContent) {
+      return;
+    }
+
     if (isOpen && activeTab === tabId) {
       onClose();
     } else {
       setActiveTab(tabId);
       if (!isOpen) onOpen();
     }
-  }, [isOpen, activeTab, onClose, onOpen]);
+  }, [tabs, isOpen, activeTab, onClose, onOpen]);
 
   // ── Resize ─────────────────────────────────────────────────────────
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -366,17 +372,22 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
           const Icon = tab.icon;
           const isActive = isOpen && activeTab === tab.id;
           const isIdle = !tab.hasContent;
+          const isDisabled = tab.id !== 'files' && !tab.hasContent;
 
           return (
             <button
               key={tab.id}
+              disabled={isDisabled}
               onClick={() => handleTabClick(tab.id)}
               title={tab.fallbackLabel}
+              aria-disabled={isDisabled}
               className={`
                 relative flex items-center justify-center w-9 h-9 rounded transition-colors
                 ${isActive
                   ? 'bg-brutal-black text-white'
-                  : isIdle
+                  : isDisabled
+                    ? 'text-neutral-300 dark:text-zinc-600 cursor-default'
+                    : isIdle
                     ? 'text-neutral-300 dark:text-zinc-600 hover:text-neutral-500 dark:hover:text-zinc-400 hover:bg-neutral-100 dark:hover:bg-zinc-700'
                     : 'text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'
                 }

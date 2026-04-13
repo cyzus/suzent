@@ -344,6 +344,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     clearLastKnownUsage();
   }, [currentChatId]);
 
+  // Keep sub-agent UI state scoped to the currently viewed chat.
+  // Without this reset, task state from the previous chat can leave the
+  // agents tab incorrectly enabled after switching chats.
+  useEffect(() => {
+    setSubAgentTasks({});
+    setViewingSubAgentTaskId(null);
+  }, [currentChatId]);
+
   // Ref to lock the chat ID for the current stream so switching chats doesn't misroute messages
   const streamingChatIdRef = useRef<string | null>(null);
 
