@@ -42,7 +42,7 @@ class ReadFileTool(Tool):
     tool_name = "read_file"
     group = ToolGroup.FILESYSTEM
     session_guidance = (
-        "Read files with ReadFileTool instead of shell commands like cat/head/tail."
+        "Always use read_file to read files. Never use bash cat/head/tail/sed for this."
     )
     guidance_priority = 20
 
@@ -56,27 +56,42 @@ class ReadFileTool(Tool):
         file_path: Annotated[str, Field(description="Path to the file to read.")],
         offset: Annotated[
             Optional[int],
-            Field(description="0-indexed line offset to start reading from.", ge=0),
+            Field(
+                description=(
+                    "1-based line number to start reading from. "
+                    "Provide with `limit` to read a specific line range, "
+                    "or alone when the file is too large to read at once."
+                ),
+                ge=1,
+            ),
         ] = None,
         limit: Annotated[
             Optional[int],
-            Field(description="Maximum number of lines to read.", ge=0),
+            Field(
+                description=(
+                    "Maximum number of lines to read. "
+                    "Omit to read the whole file (up to 2000 lines by default)."
+                ),
+                ge=1,
+            ),
         ] = None,
     ) -> ToolResult:
-        """Read file content from the filesystem.
+        """Read a file from the filesystem. You can access any file directly with this tool.
+        Assume this tool is able to read all files. If the user provides a path, assume it is valid.
 
-        Supports various file formats including text files (.txt, .py, .js, .json, .md, .csv, etc.),
-        documents (.pdf, .docx, .xlsx, .pptx converted to markdown), and images (.jpg, .png with
-        OCR text extraction). Use 'offset' and 'limit' for reading portions of large files.
+        Reads up to 2000 lines by default. Results include line numbers (cat -n format).
+        For large files use offset+limit to read in chunks.
+        Supports text files, documents (PDF, DOCX, XLSX → markdown), and images.
+        This tool reads files only; to list a directory use bash.
 
         Args:
             ctx: The run context with agent dependencies.
             file_path: Path to the file to read.
-            offset: Line number to start from (0-indexed).
-            limit: Number of lines to read (omit for all).
+            offset: 1-based line number to start from.
+            limit: Number of lines to read.
 
         Returns:
-            ToolResult with file content or error.
+            ToolResult with file content (with line numbers) or error.
         """
         resolver = get_or_create_path_resolver(ctx.deps)
 
@@ -181,39 +196,39 @@ class ReadFileTool(Tool):
 
             total_lines = len(lines)
 
-            # Apply offset
-            start = offset or 0
-            if start < 0:
-                start = 0
+            # offset is 1-based; default to line 1
+            start = max((offset or 1) - 1, 0)
             if start >= total_lines:
                 return ToolResult.success_result(
-                    f"(File has {total_lines} lines, offset {start} is beyond end)",
+                    f"(File has {total_lines} lines, offset {offset} is beyond end)",
                     metadata={"total_lines": total_lines},
                 )
 
-            # Apply limit
-            if limit is not None and limit > 0:
-                end = min(start + limit, total_lines)
-            else:
-                end = total_lines
+            # Apply limit; default to 2000 lines
+            effective_limit = limit if limit is not None else 2000
+            end = min(start + effective_limit, total_lines)
 
             selected_lines = lines[start:end]
-            content = "".join(selected_lines)
 
-            # Add info header if using offset/limit
-            if offset is not None or limit is not None:
-                header = f"[Lines {start + 1}-{end} of {total_lines}]\n"
-                return ToolResult.success_result(
-                    header + content,
-                    metadata={
-                        "total_lines": total_lines,
-                        "start_line": start + 1,
-                        "end_line": end,
-                    },
-                )
+            # Format with line numbers (cat -n style, 1-based)
+            numbered = "".join(
+                f"{start + i + 1}\t{line}" for i, line in enumerate(selected_lines)
+            )
+
+            truncated = end < total_lines
+            header = f"[Lines {start + 1}-{end} of {total_lines}]"
+            if truncated:
+                header += f" — use offset={end + 1} to read more"
+            header += "\n"
 
             return ToolResult.success_result(
-                content, metadata={"total_lines": total_lines}
+                header + numbered,
+                metadata={
+                    "total_lines": total_lines,
+                    "start_line": start + 1,
+                    "end_line": end,
+                    "truncated": truncated,
+                },
             )
 
         except UnicodeDecodeError:

@@ -26,6 +26,17 @@ from suzent.logger import get_logger
 
 logger = get_logger(__name__)
 
+_MAX_OUTPUT_CHARS = 30_000
+
+
+def _truncate_output(text: str) -> str:
+    """Truncate output to _MAX_OUTPUT_CHARS, appending a line-count summary."""
+    if not text or len(text) <= _MAX_OUTPUT_CHARS:
+        return text
+    truncated = text[:_MAX_OUTPUT_CHARS]
+    remaining_lines = text[_MAX_OUTPUT_CHARS:].count("\n") + 1
+    return truncated + f"\n... [{remaining_lines} lines truncated]"
+
 
 class BashTool(Tool):
     """
@@ -43,8 +54,9 @@ class BashTool(Tool):
     group = ToolGroup.EXECUTION
     requires_approval = True
     session_guidance = (
-        "Reserve BashTool for shell/system execution. Prefer dedicated file tools "
-        "for read/search/edit operations when available."
+        "BashTool is for shell/system commands ONLY. "
+        "NEVER use bash to read, search, or edit files (no cat, head, tail, grep, find, sed, awk). "
+        "Use read_file, grep_search, glob_search, edit_file, write_file instead."
     )
     guidance_priority = 10
     _SUPPORTED_LANGUAGES = {"python", "nodejs", "command"}
@@ -128,7 +140,11 @@ class BashTool(Tool):
             ),
         )
 
-    def _audit_execution(self, status: str, **kwargs):
+    def _audit_execution(
+        self, status: str, description: Optional[str] = None, **kwargs
+    ):
+        if description:
+            kwargs["description"] = description
         self.audit_operation(self.tool_name, "execute", status, **kwargs)
 
     def forward(
@@ -143,6 +159,17 @@ class BashTool(Tool):
                 )
             ),
         ],
+        description: Annotated[
+            Optional[str],
+            Field(
+                default=None,
+                description=(
+                    "Clear, concise description of what this command does in active voice "
+                    "(e.g. 'List Python files in src/', 'Run test suite'). "
+                    "Used for audit logging."
+                ),
+            ),
+        ] = None,
         language: Annotated[
             Literal["python", "nodejs", "command"],
             Field(description="Execution mode for the content."),
@@ -168,33 +195,27 @@ class BashTool(Tool):
             ),
         ] = False,
     ) -> ToolResult:
-        """Execute code or command in a secure environment (sandbox or host mode).
+        """Executes a shell command or code and returns its output.
+
+        The working directory persists between commands within a session.
 
         Supported languages:
+        - command: Shell commands (bash on Linux/Mac, PowerShell on Windows)
         - python: Execute Python code
         - nodejs: Execute Node.js code
-        - command: Execute shell commands
 
-        Storage paths:
-        - In sandbox mode, /persistence is the private per-chat mount and /shared is the shared mount.
-        - In host mode, the same locations are exposed through environment variables instead of container mounts.
-        - Custom mounts are still available in both modes through per-chat volume configuration.
+        Output is capped at 30,000 characters. stdout and stderr are returned separately.
 
-        In host mode (non-sandbox), these environment variables are available:
-        - WORKSPACE_ROOT: The workspace directory
-        - PERSISTENCE_PATH: The resolved persistence directory path
-        - SHARED_PATH: The resolved shared directory path
-        - CHAT_ID: The current chat/session identifier
-        - MOUNT_*: Custom volume paths (e.g., MOUNT_SKILLS for /mnt/skills)
-
-        Returns the execution output or error message.
+        Storage paths (host mode env vars):
+        - WORKSPACE_ROOT, PERSISTENCE_PATH, SHARED_PATH, CHAT_ID, MOUNT_* for custom volumes
 
         Args:
             ctx: The pydantic-ai run context with agent dependencies.
             content: The code or shell command to execute.
-            language: Execution language: 'python', 'nodejs', or 'command'. Defaults to 'command'.
-            timeout: Execution timeout in seconds (optional). For long-running tasks, use background=True instead.
-            background: If True, run in background and return a process_id. Use ProcessTool to poll/kill.
+            description: Short description of what the command does (for audit log).
+            language: Execution language. Defaults to 'command'.
+            timeout: Execution timeout in seconds. For long-running tasks use background=True.
+            background: If True, run in background and return a process_id.
         """
         self.chat_id = ctx.deps.chat_id
         self.sandbox_enabled = ctx.deps.sandbox_enabled
@@ -218,6 +239,7 @@ class BashTool(Tool):
                 language=language,
                 background=background,
                 reason=denied_reason,
+                description=description,
             )
             return self._error_result(
                 ToolErrorCode.PERMISSION_DENIED,
@@ -237,6 +259,7 @@ class BashTool(Tool):
                 language=lang,
                 background=background,
                 reason="unsupported_language",
+                description=description,
             )
             return self._error_result(
                 ToolErrorCode.INVALID_ARGUMENT,
@@ -260,13 +283,17 @@ class BashTool(Tool):
                     timeout=timeout,
                     background=background,
                 )
-            return self._execute_background(content, lang)
+            return self._execute_background(content, lang, description=description)
 
         if self.sandbox_enabled:
-            return self._execute_in_sandbox(content, lang, timeout)
-        return self._execute_on_host(content, lang, timeout)
+            return self._execute_in_sandbox(
+                content, lang, timeout, description=description
+            )
+        return self._execute_on_host(content, lang, timeout, description=description)
 
-    def _execute_background(self, content: str, language: str) -> ToolResult:
+    def _execute_background(
+        self, content: str, language: str, description: Optional[str] = None
+    ) -> ToolResult:
         """Start a background process and return its process_id."""
         try:
             proc_id = self.manager.start_background(
@@ -276,6 +303,7 @@ class BashTool(Tool):
             )
             self._audit_execution(
                 "background",
+                description=description,
                 language=language,
                 process_id=proc_id,
             )
@@ -291,6 +319,7 @@ class BashTool(Tool):
             logger.error(f"Background execution error: {e}")
             self._audit_execution(
                 "background",
+                description=description,
                 language=language,
                 error=str(e),
             )
@@ -308,6 +337,7 @@ class BashTool(Tool):
         content: str,
         language: str,
         timeout: Optional[int] = None,
+        description: Optional[str] = None,
     ) -> ToolResult:
         """Execute code in isolated Docker sandbox."""
         try:
@@ -320,12 +350,15 @@ class BashTool(Tool):
             )
 
             if result.success:
-                output = result.output or "(no output)"
+                output = (
+                    _truncate_output(result.output) if result.output else "(no output)"
+                )
                 logger.info(
                     f"Sandbox execution successful [{language}] for chat {self.chat_id}"
                 )
                 self._audit_execution(
                     "success",
+                    description=description,
                     mode="sandbox",
                     language=language,
                     timeout=timeout,
@@ -342,6 +375,7 @@ class BashTool(Tool):
                 logger.warning(f"Sandbox execution error: {result.error}")
                 self._audit_execution(
                     "error",
+                    description=description,
                     mode="sandbox",
                     language=language,
                     timeout=timeout,
@@ -381,6 +415,7 @@ class BashTool(Tool):
         content: str,
         language: str,
         timeout: Optional[int] = None,
+        description: Optional[str] = None,
     ) -> ToolResult:
         """Execute code directly on host machine, restricted to workspace."""
         if not self.workspace_root:
@@ -429,17 +464,26 @@ class BashTool(Tool):
                 env=self._get_host_env(),
             )
 
-            output = result.stdout
-            if result.stderr:
-                output += f"\n[stderr]: {result.stderr}"
+            stdout = _truncate_output(result.stdout)
+            stderr = _truncate_output(result.stderr)
+
+            parts = []
+            if stdout.strip():
+                parts.append(stdout)
+            if stderr.strip():
+                parts.append(f"[stderr]\n{stderr}")
             if result.returncode != 0:
-                output += f"\n[exit code: {result.returncode}]"
+                parts.append(f"[exit code: {result.returncode}]")
+
+            body = "\n".join(parts) if parts else "(no output)"
+            output = f"[cwd: {working_dir}]\n{body}"
 
             logger.info(
                 f"Host execution successful [{language}] for chat {self.chat_id}"
             )
             self._audit_execution(
                 "success",
+                description=description,
                 mode="host",
                 language=language,
                 timeout=effective_timeout,
@@ -447,7 +491,7 @@ class BashTool(Tool):
                 returncode=result.returncode,
             )
             return self._success_result(
-                output if output.strip() else "(no output)",
+                output,
                 mode="host",
                 language=language,
                 timeout=effective_timeout,

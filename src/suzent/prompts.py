@@ -32,7 +32,7 @@ You should respond in the language of the user's query.
 - Report outcomes honestly. If checks fail, report the exact failure.
 
 # Tool Usage Safety
-- Prefer dedicated tools for file operations over shell shortcuts.
+- **NEVER** use bash for file read/search/edit. Always use the dedicated file tools (read_file, write_file, edit_file, grep_search, glob_search).
 - Ask for confirmation before destructive or hard-to-reverse actions (e.g., deleting data, force push, reset --hard).
 """
 
