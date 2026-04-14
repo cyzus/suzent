@@ -84,15 +84,22 @@ class GlobTool(Tool):
             search_pattern = pattern
 
             if search_path:
-                # Normalize path
+                # Normalize path separators
                 search_path = search_path.replace("\\", "/").rstrip("/")
-                if not search_path.startswith("/"):
-                    search_path = "/" + search_path
 
-                # Combine
-                search_pattern = f"{search_path}/{search_pattern}"
-                # Reset search_path to None (or "/" to trigger root search in find_files)
-                search_path = None
+                # Detect absolute host paths (Windows drive letter like C:/ or Unix /)
+                is_windows_abs = len(search_path) > 1 and search_path[1] == ":"
+                is_unix_abs = search_path.startswith("/")
+
+                if is_windows_abs or is_unix_abs:
+                    # Pass absolute host path directly as search_path so resolve()
+                    # can validate it against workspace/custom-mount boundaries.
+                    # Do NOT merge into pattern — keep search_path as-is.
+                    pass
+                else:
+                    # Relative or virtual path: merge into pattern for root search
+                    search_pattern = f"/{search_path}/{search_pattern}"
+                    search_path = None
 
             found_files = self._resolver.find_files(search_pattern, search_path)
 

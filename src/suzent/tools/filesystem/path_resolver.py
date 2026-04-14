@@ -272,6 +272,14 @@ class PathResolver:
             base.mkdir(parents=True, exist_ok=True)
             return (base / rel_path).resolve() if rel_path else base.resolve()
 
+        if path.startswith("/mnt"):
+            # /mnt paths are only valid if registered as a custom mount.
+            # No match means the mount is not configured — raise clearly.
+            raise ValueError(
+                f"Path '{path}' is under /mnt but no matching custom mount is registered. "
+                "Register the volume via custom_volumes to allow access."
+            )
+
         if path.startswith("/"):
             # Absolute paths default to /persistence if no other match
             rel_path = path.lstrip("/")
@@ -476,7 +484,7 @@ class PathResolver:
             # Search all virtual roots
             search_roots = self.get_virtual_roots()
         else:
-            # Search specific path
+            # Search specific path — resolve() enforces workspace/custom-mount boundaries
             resolved = self.resolve(search_path or "/")
             if resolved.exists() and resolved.is_dir():
                 search_roots = [(None, resolved)]
