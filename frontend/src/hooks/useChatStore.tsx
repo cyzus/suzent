@@ -992,10 +992,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Prevent UI flicker: if local store has more messages (e.g. optimistic append right after stream),
           // don't let stale backend DB state overwrite it. Wait until DB catches up.
           const existing = prev[key] || [];
-          if (shouldKeepLocalAssistantContent(existing, mappedMessages)) {
+          if (existing.length > mappedMessages.length) {
             return prev;
           }
-          if (existing.length > mappedMessages.length) {
+          // Guard: keep optimistic local content when server is still mid-postprocess.
+          // Covers both equal-count and server-has-more cases: if local last assistant has
+          // real text and server last assistant is tool-only (intermediate), backend hasn't
+          // finished writing the final reply yet.
+          if (shouldKeepLocalAssistantContent(existing, mappedMessages)) {
             return prev;
           }
           // Guard against replacing locally-resolved content with a stale pending-approval
