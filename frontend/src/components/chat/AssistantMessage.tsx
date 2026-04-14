@@ -362,13 +362,18 @@ const StaticContent: React.FC<{
             const taskId = parseSubAgentTaskId(b.content || undefined);
             const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
             const args = b.toolArgs ? (() => { try { return JSON.parse(b.toolArgs!); } catch { return {}; } })() : {};
+            // If the tool already has output, the call returned a result — it's done.
+            // Default to 'completed' so linear (synchronous) subagents don't stay stuck
+            // on 'running' forever. Polling in SubAgentCallBlock will correct to the
+            // real backend status if needed (e.g. background agents still in-flight).
+            const defaultStatus = b.content ? 'completed' : 'running';
             return (
               <SubAgentCallBlock
                 key={blockKey}
                 taskId={taskId}
                 description={args.description}
                 toolsAllowed={args.tools_allowed}
-                status={taskState?.status ?? 'running'}
+                status={taskState?.status ?? defaultStatus}
                 resultSummary={taskState?.resultSummary}
                 error={taskState?.error}
                 onOpenSidebar={onOpenSubAgentSidebar}
@@ -534,13 +539,20 @@ const AGUIPartsContent: React.FC<{
                 const taskId = parseSubAgentTaskId(t.output);
                 const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
                 const args = t.toolArgs ? (() => { try { return JSON.parse(t.toolArgs!); } catch { return {}; } })() : {};
+                // If output exists, the tool call returned — default to 'completed'.
+                // This correctly handles linear (synchronous) subagents that run inline
+                // without emitting SSE events. Polling will correct if the backend
+                // reports a different status (e.g. background agent still in-flight).
+                const defaultStatus = t.approvalState === 'pending' ? 'queued'
+                  : t.output ? 'completed'
+                  : 'running';
                 return (
                   <SubAgentCallBlock
                     key={t.toolCallId || `sa-${i}`}
                     taskId={taskId}
                     description={args.description}
                     toolsAllowed={args.tools_allowed}
-                    status={taskState?.status ?? (t.approvalState === 'pending' ? 'queued' : 'running')}
+                    status={taskState?.status ?? defaultStatus}
                     resultSummary={taskState?.resultSummary}
                     error={taskState?.error}
                     onOpenSidebar={onOpenSubAgentSidebar}

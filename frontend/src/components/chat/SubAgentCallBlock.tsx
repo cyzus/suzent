@@ -49,16 +49,28 @@ export const SubAgentCallBlock: React.FC<SubAgentCallBlockProps> = ({
   const [polledResultSummary, setPolledResultSummary] = useState<string | undefined>(undefined);
   const [polledError, setPolledError] = useState<string | undefined>(undefined);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Use a ref so the poll callback always sees the latest resolved status without
+  // being captured in a stale closure — avoids polling when already done.
+  const resolvedStatusRef = useRef<SubAgentStatus>(externalStatus);
 
   const status = polledStatus ?? externalStatus;
   const resultSummary = polledResultSummary ?? externalResultSummary;
   const error = polledError ?? externalError;
 
+  // Keep ref in sync on every render
+  resolvedStatusRef.current = status;
+
   useEffect(() => {
     if (!taskId) return;
-    if (status === 'completed' || status === 'failed') return;
+    // Already terminal — no need to poll
+    if (resolvedStatusRef.current === 'completed' || resolvedStatusRef.current === 'failed') return;
 
     const poll = async () => {
+      // Stop polling if status was resolved externally while waiting
+      if (resolvedStatusRef.current === 'completed' || resolvedStatusRef.current === 'failed') {
+        if (timerRef.current) clearInterval(timerRef.current);
+        return;
+      }
       try {
         const res = await fetch(`${getApiBase()}/subagents/${taskId}`);
         if (!res.ok) return;
@@ -80,7 +92,7 @@ export const SubAgentCallBlock: React.FC<SubAgentCallBlockProps> = ({
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [taskId]);
 
-  // Stop polling when external status resolves (SSE arrived)
+  // Stop polling immediately when external status resolves (SSE arrived)
   useEffect(() => {
     if ((externalStatus === 'completed' || externalStatus === 'failed') && timerRef.current) {
       clearInterval(timerRef.current);
