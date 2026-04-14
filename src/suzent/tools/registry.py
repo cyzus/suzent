@@ -74,8 +74,8 @@ def _all_tool_classes() -> list:
         GlobTool,
         GrepTool,
     )
-    from suzent.tools.bash_tool import BashTool
-    from suzent.tools.process_tool import ProcessTool
+    from suzent.tools.shell.bash_tool import BashTool
+    from suzent.tools.shell.process_tool import ProcessTool
     from suzent.tools.webpage_tool import WebpageTool
     from suzent.tools.websearch_tool import WebSearchTool
     from suzent.tools.planning_tool import PlanningTool

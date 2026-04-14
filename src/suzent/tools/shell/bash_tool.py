@@ -274,16 +274,11 @@ class BashTool(Tool):
             )
 
         if background:
-            if not self.sandbox_enabled:
-                return self._error_result(
-                    ToolErrorCode.INVALID_ARGUMENT,
-                    "background=True requires sandbox mode.",
-                    mode="sandbox",
-                    language=lang,
-                    timeout=timeout,
-                    background=background,
-                )
-            return self._execute_background(content, lang, description=description)
+            if self.sandbox_enabled:
+                return self._execute_background(content, lang, description=description)
+            return self._execute_background_on_host(
+                content, lang, description=description
+            )
 
         if self.sandbox_enabled:
             return self._execute_in_sandbox(
@@ -410,6 +405,87 @@ class BashTool(Tool):
                 background=False,
             )
 
+    def _execute_background_on_host(
+        self,
+        content: str,
+        language: str,
+        description: Optional[str] = None,
+    ) -> ToolResult:
+        """Start a background process on the host and return its process_id."""
+        from suzent.tools.shell.host_process_registry import HostProcessRegistry
+
+        if not self.workspace_root:
+            return self._error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "workspace_root not configured for host execution",
+                mode="host",
+                language=language,
+                timeout=None,
+                background=True,
+            )
+
+        cmd = self._build_cmd(content, language)
+        working_dir = self._resolve_working_dir()
+        env = self._get_host_env()
+
+        try:
+            registry = HostProcessRegistry()
+            process_id = registry.start(
+                chat_id=self.chat_id,
+                cmd=cmd,
+                cwd=str(working_dir),
+                env=env,
+            )
+            self._audit_execution(
+                "background",
+                description=description,
+                mode="host",
+                language=language,
+                process_id=process_id,
+            )
+            return self._success_result(
+                "Background process started. Use process_manage to poll output.",
+                mode="host",
+                language=language,
+                timeout=None,
+                background=True,
+                process_id=process_id,
+            )
+        except Exception as e:
+            logger.error(f"Host background execution error: {e}")
+            return self._error_result(
+                ToolErrorCode.EXECUTION_FAILED,
+                f"Error starting background process: {e}",
+                mode="host",
+                language=language,
+                timeout=None,
+                background=True,
+            )
+
+    def _build_cmd(self, content: str, language: str) -> list[str]:
+        """Build the command list for the given language."""
+        if language == "python":
+            return ["python", "-c", content]
+        elif language == "nodejs":
+            return ["node", "-e", content]
+        elif language == "command" and os.name == "nt":
+            utf8_preamble = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
+            return ["powershell", "-NoProfile", "-Command", utf8_preamble + content]
+        else:
+            return ["bash", "-c", content]
+
+    def _resolve_working_dir(self) -> Path:
+        """Resolve and create the working directory for host execution."""
+        from suzent.config import CONFIG
+
+        if self.cwd:
+            working_dir = Path(self.cwd).resolve()
+        else:
+            sandbox_data_path = Path(CONFIG.sandbox_data_path).resolve()
+            working_dir = sandbox_data_path / "sessions" / self.chat_id
+        working_dir.mkdir(parents=True, exist_ok=True)
+        return working_dir
+
     def _execute_on_host(
         self,
         content: str,
@@ -428,34 +504,14 @@ class BashTool(Tool):
                 background=False,
             )
 
-        if language == "python":
-            cmd = ["python", "-c", content]
-        elif language == "nodejs":
-            cmd = ["node", "-e", content]
-        elif language == "command" and os.name == "nt":
-            # Force PowerShell to output UTF-8 so non-ASCII characters
-            # (e.g. localized adapter names) are captured correctly.
-            utf8_preamble = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
-            cmd = ["powershell", "-NoProfile", "-Command", utf8_preamble + content]
-        else:
-            cmd = ["bash", "-c", content]
-
+        cmd = self._build_cmd(content, language)
+        working_dir = self._resolve_working_dir()
         effective_timeout = timeout or 120
-
-        from suzent.config import CONFIG
-
-        if self.cwd:
-            working_dir = Path(self.cwd).resolve()
-            working_dir.mkdir(parents=True, exist_ok=True)
-        else:
-            sandbox_data_path = Path(CONFIG.sandbox_data_path).resolve()
-            working_dir = sandbox_data_path / "sessions" / self.chat_id
-            working_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             result = subprocess.run(
                 cmd,
-                cwd=str(working_dir),  # Working directory is /persistence equivalent
+                cwd=str(working_dir),
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

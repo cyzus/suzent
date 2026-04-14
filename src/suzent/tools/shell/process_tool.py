@@ -56,6 +56,7 @@ class ProcessTool(Tool):
         super().__init__(*args, **kwargs)
         self._manager = None
         self.chat_id: Optional[str] = None
+        self._host_mode: bool = False
 
     @property
     def manager(self):
@@ -104,11 +105,7 @@ class ProcessTool(Tool):
                 "No chat context.",
             )
 
-        if not ctx.deps.sandbox_enabled:
-            return ToolResult.error_result(
-                ToolErrorCode.INVALID_ARGUMENT,
-                "ProcessTool requires sandbox mode to be enabled.",
-            )
+        self._host_mode = not ctx.deps.sandbox_enabled
 
         denied_reason = self.is_tool_denied(ctx.deps, self.tool_name)
         if denied_reason:
@@ -157,11 +154,11 @@ class ProcessTool(Tool):
         action = action.lower().strip()
 
         if action == "poll":
-            return self._poll(process_id, offset)
+            return self._poll(process_id, offset, ctx.deps.chat_id)
         elif action == "status":
-            return self._status(process_id)
+            return self._status(process_id, ctx.deps.chat_id)
         elif action == "kill":
-            return self._kill(process_id)
+            return self._kill(process_id, ctx.deps.chat_id)
 
         self.audit_operation(
             self.tool_name,
@@ -176,9 +173,14 @@ class ProcessTool(Tool):
             f"Unknown action '{action}'. Use 'poll', 'status', or 'kill'.",
         )
 
-    def _poll(self, process_id: str, offset: int) -> ToolResult:
+    def _poll(self, process_id: str, offset: int, chat_id: str) -> ToolResult:
         try:
-            result = self.manager.poll_process(self.chat_id, process_id, offset)
+            if self._host_mode:
+                from suzent.tools.shell.host_process_registry import HostProcessRegistry
+
+                result = HostProcessRegistry().poll(chat_id, process_id, offset)
+            else:
+                result = self.manager.poll_process(self.chat_id, process_id, offset)
             output = result.get("output", "")
             next_offset = result.get("offset", offset)
             done = result.get("done", False)
@@ -225,9 +227,14 @@ class ProcessTool(Tool):
                 metadata={"process_id": process_id, "offset": offset},
             )
 
-    def _status(self, process_id: str) -> ToolResult:
+    def _status(self, process_id: str, chat_id: str) -> ToolResult:
         try:
-            result = self.manager.poll_process(self.chat_id, process_id, offset=0)
+            if self._host_mode:
+                from suzent.tools.shell.host_process_registry import HostProcessRegistry
+
+                result = HostProcessRegistry().poll(chat_id, process_id, offset=0)
+            else:
+                result = self.manager.poll_process(self.chat_id, process_id, offset=0)
             done = result.get("done", False)
             exit_code = result.get("exit_code")
             if done:
@@ -271,9 +278,14 @@ class ProcessTool(Tool):
                 metadata={"process_id": process_id},
             )
 
-    def _kill(self, process_id: str) -> ToolResult:
+    def _kill(self, process_id: str, chat_id: str) -> ToolResult:
         try:
-            ok = self.manager.kill_process(self.chat_id, process_id)
+            if self._host_mode:
+                from suzent.tools.shell.host_process_registry import HostProcessRegistry
+
+                ok = HostProcessRegistry().kill(chat_id, process_id)
+            else:
+                ok = self.manager.kill_process(self.chat_id, process_id)
             self.audit_operation(
                 self.tool_name,
                 "kill",
