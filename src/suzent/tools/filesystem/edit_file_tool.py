@@ -24,6 +24,80 @@ logger = get_logger(__name__)
 MAX_EDIT_FILE_SIZE = 50 * 1024 * 1024  # 50 MiB
 
 
+_CURLY_QUOTE_MAP = str.maketrans(
+    {
+        "\u2018": "'",
+        "\u2019": "'",  # left/right single curly quotes
+        "\u201c": '"',
+        "\u201d": '"',  # left/right double curly quotes
+    }
+)
+
+
+def _normalize_quotes(s: str) -> str:
+    return s.translate(_CURLY_QUOTE_MAP)
+
+
+def _strip_trailing_whitespace(s: str) -> str:
+    """Strip trailing whitespace from each line, preserving line endings."""
+    import re
+
+    return re.sub(r"[^\S\r\n]+(\r\n|\r|\n)", r"\1", s)
+
+
+def _find_actual_string(content: str, search: str) -> str | None:
+    """
+    Locate `search` in `content` using a normalization cascade.
+
+    Returns the verbatim slice from `content` that should be replaced,
+    or None if no match is found.
+
+    Normalization steps (each tried in order, stopping on first hit):
+      1. Exact match
+      2. Trailing-whitespace normalization on both sides
+      3. CRLF → LF normalization on both sides
+      4. Curly-quote normalization on both sides
+      5. All of the above combined
+    """
+    # Step 1: exact
+    if search in content:
+        return search
+
+    def _try(norm_content: str, norm_search: str) -> str | None:
+        idx = norm_content.find(norm_search)
+        if idx == -1:
+            return None
+        return content[idx : idx + len(norm_search)]
+
+    stripped_content = _strip_trailing_whitespace(content)
+    stripped_search = _strip_trailing_whitespace(search)
+
+    # Step 2: trailing whitespace
+    result = _try(stripped_content, stripped_search)
+    if result is not None:
+        return result
+
+    lf_content = content.replace("\r\n", "\n")
+    lf_search = search.replace("\r\n", "\n")
+
+    # Step 3: CRLF → LF
+    result = _try(lf_content, lf_search)
+    if result is not None:
+        return result
+
+    # Step 4: curly quotes
+    result = _try(_normalize_quotes(content), _normalize_quotes(search))
+    if result is not None:
+        return result
+
+    # Step 5: all combined
+    result = _try(
+        _normalize_quotes(_strip_trailing_whitespace(lf_content)),
+        _normalize_quotes(_strip_trailing_whitespace(lf_search)),
+    )
+    return result
+
+
 def _normalize_newlines_for_file(new_string: str, content: str) -> str:
     """Preserve dominant file newline style when inserted text contains line breaks."""
     has_crlf = "\r\n" in content
@@ -190,8 +264,9 @@ class EditFileTool(Tool):
                     ToolErrorCode.BINARY_FILE, "Cannot edit binary files"
                 )
 
-            # Check if old_string exists
-            if old_string not in content:
+            # Locate old_string with normalization fallback
+            actual_old_string = _find_actual_string(content, old_string)
+            if actual_old_string is None:
                 self.audit_operation(
                     self.tool_name,
                     "edit",
@@ -204,8 +279,8 @@ class EditFileTool(Tool):
                     f"String not found in file: {repr(old_string[:50])}...",
                 )
 
-            # Count occurrences
-            count = content.count(old_string)
+            # Count occurrences of the resolved string
+            count = content.count(actual_old_string)
 
             if count > 1 and not replace_all:
                 self.audit_operation(
@@ -225,12 +300,14 @@ class EditFileTool(Tool):
 
             normalized_new_string = _normalize_newlines_for_file(new_string, content)
 
-            # Perform replacement
+            # Perform replacement using the resolved actual string
             if replace_all:
-                new_content = content.replace(old_string, normalized_new_string)
+                new_content = content.replace(actual_old_string, normalized_new_string)
                 replaced = count
             else:
-                new_content = content.replace(old_string, normalized_new_string, 1)
+                new_content = content.replace(
+                    actual_old_string, normalized_new_string, 1
+                )
                 replaced = 1
 
             # Abort if file changed during read/compute window.
