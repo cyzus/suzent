@@ -56,6 +56,55 @@ def _strip_trailing_whitespace(s: str) -> str:
     return re.sub(r"[^\S\r\n]+(\r\n|\r|\n)", r"\1", s)
 
 
+def _build_norm_index_map(original: str, normalized: str) -> list[int]:
+    """
+    Build a mapping from each character position in `normalized` back to the
+    corresponding character position in `original`.
+
+    Works for any normalization that only deletes characters (never inserts),
+    which covers trailing-whitespace stripping and CRLF→LF conversion.
+
+    Returns a list `m` such that `m[i]` is the index in `original` that
+    produced `normalized[i]`.
+    """
+    mapping: list[int] = []
+    ni = 0  # cursor in normalized
+    for oi, ch in enumerate(original):
+        if ni < len(normalized) and normalized[ni] == ch:
+            mapping.append(oi)
+            ni += 1
+    return mapping
+
+
+def _find_via_norm(
+    content: str,
+    search: str,
+    norm_content: str,
+    norm_search: str,
+    index_map: list[int],
+) -> str | None:
+    """
+    Find `norm_search` inside `norm_content`, then use `index_map` to recover
+    the verbatim span from `content`.  Returns the original slice, or None.
+
+    Safe only when `norm_content` was produced by purely-deleting `content`
+    (i.e. `index_map` has exactly `len(norm_content)` entries).
+    """
+    idx = norm_content.find(norm_search)
+    if idx == -1:
+        return None
+    end_idx = idx + len(norm_search)
+    if end_idx > len(index_map):
+        return None
+    orig_start = index_map[idx]
+    # end is the original position *after* the last matched char
+    # index_map[end_idx - 1] is the last matched char; the char after it in
+    # original is at index_map[end_idx - 1] + 1 ... unless the match ends at
+    # the very last normalized char, in which case we scan forward.
+    orig_end = index_map[end_idx - 1] + 1
+    return content[orig_start:orig_end]
+
+
 def _find_actual_string(content: str, search: str) -> str | None:
     """
     Locate `search` in `content` using a normalization cascade.
@@ -67,46 +116,72 @@ def _find_actual_string(content: str, search: str) -> str | None:
       1. Exact match
       2. Trailing-whitespace normalization on both sides
       3. CRLF -> LF normalization on both sides
-      4. Curly-quote normalization on both sides
+      4. Curly-quote normalization on both sides (length-preserving, safe)
       5. All of the above combined
+
+    Steps 2, 3, 5 use an index map to recover the original span after
+    searching in the shorter normalized string, avoiding the off-by-N bug
+    that arises from using normalized offsets directly on the original.
     """
     # Step 1: exact
     if search in content:
         return search
 
-    def _try(norm_content: str, norm_search: str) -> str | None:
-        idx = norm_content.find(norm_search)
-        if idx == -1:
-            return None
-        return content[idx : idx + len(norm_search)]
-
+    # Step 2: trailing whitespace (deletes chars → need index map)
     stripped_content = _strip_trailing_whitespace(content)
     stripped_search = _strip_trailing_whitespace(search)
+    if stripped_search in stripped_content:
+        index_map = _build_norm_index_map(content, stripped_content)
+        result = _find_via_norm(
+            content, search, stripped_content, stripped_search, index_map
+        )
+        if result is not None:
+            return result
 
-    # Step 2: trailing whitespace
-    result = _try(stripped_content, stripped_search)
-    if result is not None:
-        return result
-
+    # Step 3: CRLF -> LF (deletes chars → need index map)
     lf_content = content.replace("\r\n", "\n")
     lf_search = search.replace("\r\n", "\n")
+    if lf_search in lf_content:
+        index_map = _build_norm_index_map(content, lf_content)
+        result = _find_via_norm(content, search, lf_content, lf_search, index_map)
+        if result is not None:
+            return result
 
-    # Step 3: CRLF -> LF
-    result = _try(lf_content, lf_search)
-    if result is not None:
-        return result
+    # Step 4: curly quotes only (length-preserving: each quote char → same-width
+    # ASCII char, so normalized idx == original idx; direct slice is safe)
+    norm_content4 = _normalize_quotes(content)
+    norm_search4 = _normalize_quotes(search)
+    idx4 = norm_content4.find(norm_search4)
+    if idx4 != -1:
+        return content[idx4 : idx4 + len(norm_search4)]
 
-    # Step 4: curly quotes
-    result = _try(_normalize_quotes(content), _normalize_quotes(search))
-    if result is not None:
-        return result
+    # Step 5: all combined (trailing-ws + CRLF + quotes; use index map for
+    # the length-changing parts, apply quote norm on top)
+    lf_stripped_content = _strip_trailing_whitespace(lf_content)
+    lf_stripped_search = _strip_trailing_whitespace(lf_search)
+    norm_content5 = _normalize_quotes(lf_stripped_content)
+    norm_search5 = _normalize_quotes(lf_stripped_search)
+    if norm_search5 in norm_content5:
+        # index_map5: lf_content → lf_stripped_content (deletion only)
+        # lf_map:     content   → lf_content             (deletion only)
+        # quote normalization is length-preserving, so idx in norm_content5
+        # equals idx in lf_stripped_content.
+        index_map5 = _build_norm_index_map(lf_content, lf_stripped_content)
+        lf_map = _build_norm_index_map(content, lf_content)
+        idx5 = norm_content5.find(norm_search5)
+        end5 = idx5 + len(norm_search5)
+        if end5 <= len(index_map5) and end5 > 0:
+            orig_start_lf = index_map5[idx5]
+            # index_map5[end5-1] is the lf_content position of the last matched
+            # char; +1 gives the exclusive end in lf_content.
+            last_lf_pos = index_map5[end5 - 1]
+            orig_end_lf = last_lf_pos + 1
+            if orig_start_lf < len(lf_map) and orig_end_lf - 1 < len(lf_map):
+                orig_start = lf_map[orig_start_lf]
+                orig_end = lf_map[orig_end_lf - 1] + 1
+                return content[orig_start:orig_end]
 
-    # Step 5: all combined
-    result = _try(
-        _normalize_quotes(_strip_trailing_whitespace(lf_content)),
-        _normalize_quotes(_strip_trailing_whitespace(lf_search)),
-    )
-    return result
+    return None
 
 
 def _normalize_newlines_for_file(new_string: str, content: str) -> str:
