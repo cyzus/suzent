@@ -32,15 +32,16 @@ def test_memory_context_sandbox_mode_keeps_virtual_paths():
     assert "/mnt/skills/notebook/ingest.md" in text
 
 
-def test_skills_xml_host_mode_uses_host_locations():
+def test_skills_listing_host_mode_uses_host_locations():
     manager = SkillManager(skills_dir=PROJECT_DIR / "skills")
     manager.enabled_skills = {"notebook"}
 
-    xml = manager.get_skills_xml(sandbox_enabled=False)
+    listing = manager.get_skills_listing(sandbox_enabled=False)
 
-    assert "/mnt/skills/notebook/SKILL.md" not in xml
-    assert "<location>" in xml
-    assert "SKILL.md" in xml
+    assert "/mnt/skills/notebook/SKILL.md" not in listing
+    assert "- notebook:" in listing
+    assert "Location:" in listing
+    assert "SKILL.md" in listing
 
 
 def test_skill_content_host_mode_rewrites_virtual_paths():
@@ -55,7 +56,9 @@ def test_skill_content_host_mode_rewrites_virtual_paths():
 
 def test_prompt_assembly_host_mode_has_no_virtual_notebook_paths():
     memory_context = format_core_memory_section(_sample_blocks(), sandbox_enabled=False)
-    skills_context = "<available_skills><skill><location>${MOUNT_SKILLS}/notebook/SKILL.md</location></skill></available_skills>"
+    skills_context = (
+        "- notebook: Notebook operations (Location: ${MOUNT_SKILLS}/notebook/SKILL.md)"
+    )
 
     prompt = "\n\n".join(
         [

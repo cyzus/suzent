@@ -73,7 +73,7 @@ BASE_INSTRUCTIONS_SECTION = """# Base Instructions
 SKILLS_CONTEXT_SECTION = """# Available Skills
 You have a SkillTool that loads specialized knowledge. Use it IMMEDIATELY when the user's task matches a skill.
 
-{skills_xml}
+{skills_listing}
 """
 
 SOCIAL_CONTEXT_SECTION = """# Social Channel Context
@@ -298,7 +298,7 @@ def register_dynamic_instructions(
             return ""
 
         return SKILLS_CONTEXT_SECTION.format(
-            skills_xml=skill_mgr.get_skills_xml(
+            skills_listing=skill_mgr.get_skills_listing(
                 sandbox_enabled=ctx.deps.sandbox_enabled
             )
         )

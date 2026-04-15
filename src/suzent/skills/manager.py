@@ -112,33 +112,31 @@ class SkillManager:
             if self.is_skill_enabled(skill.metadata.name)
         )
 
-    def get_skills_xml(self, sandbox_enabled: bool = True) -> str:
+    def get_skills_listing(self, sandbox_enabled: bool = True) -> str:
         """
-        Generate skills XML for context injection (Layer 1).
-        Adheres to agentskills.io standard.
+        Generate a markdown list of available skills for context injection.
         """
         skills = self.loader.list_skills()
         if not skills:
-            return "<available_skills></available_skills>"
+            return "(no skills available)"
 
-        xml_lines = ["<available_skills>"]
+        lines = []
         for skill in skills:
             if not self.is_skill_enabled(skill.metadata.name):
                 continue
-            xml_lines.append("  <skill>")
-            xml_lines.append(f"    <name>{skill.metadata.name}</name>")
-            xml_lines.append(
-                f"    <description>{skill.metadata.description}</description>"
-            )
-
             if sandbox_enabled:
                 location = PathResolver.get_skill_virtual_path(skill.metadata.name)
             else:
                 location = str(skill.path.resolve())
-            xml_lines.append(f"    <location>{location}</location>")
-            xml_lines.append("  </skill>")
-        xml_lines.append("</available_skills>")
-        return "\n".join(xml_lines)
+
+            lines.append(
+                f"- {skill.metadata.name}: {skill.metadata.description} (Location: {location})"
+            )
+
+        if not lines:
+            return "(no enabled skills available)"
+
+        return "\n".join(lines)
 
     def get_skill_content(
         self, name: str, sandbox_enabled: bool = True
