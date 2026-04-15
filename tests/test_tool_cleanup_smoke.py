@@ -4,6 +4,7 @@ import pytest
 
 from suzent.tools.ask_question_tool import AskQuestionTool, QuestionItem
 from suzent.tools.filesystem.glob_tool import GlobTool
+from suzent.tools.filesystem.grep_tool import GrepTool
 from suzent.tools.memory_tools import MemoryBlockUpdateTool, MemorySearchTool
 from suzent.tools.planning_tool import PlanningTool
 from suzent.tools.render_ui_tool import RenderUITool
@@ -38,6 +39,15 @@ class _DummyMemoryManager:
 
     async def update_memory_block(self, label, content, chat_id, user_id):
         return True
+
+
+class _DummyGrepResolver:
+    def __init__(self, files, sandbox_enabled=False):
+        self._files = files
+        self.sandbox_enabled = sandbox_enabled
+
+    def find_files(self, pattern, path):
+        return self._files
 
 
 @pytest.mark.asyncio
@@ -79,6 +89,57 @@ async def test_glob_tool_no_match_includes_recursive_hint(tmp_path):
     assert result.success
     assert "non-recursive" in result.message
     assert "**/*edit*.py" in result.message
+
+
+@pytest.mark.asyncio
+async def test_grep_tool_skips_large_files(tmp_path):
+    large_file = tmp_path / "huge.py"
+    large_file.write_bytes(b"a" * (2 * 1024 * 1024 + 10))
+
+    tool = GrepTool()
+    tool._resolver = _DummyGrepResolver([(large_file, str(large_file))])
+    ctx = SimpleNamespace(
+        deps=SimpleNamespace(
+            chat_id="chat-1",
+            sandbox_enabled=False,
+            custom_volumes=[],
+            workspace_root=str(tmp_path),
+            path_resolver=tool._resolver,
+        )
+    )
+
+    result = tool.forward(ctx, pattern="def edit_file", path=str(tmp_path))
+
+    assert result.success
+    assert result.metadata["scanned_files"] == 0
+    assert result.metadata["skipped_large_files"] == 1
+
+
+@pytest.mark.asyncio
+async def test_grep_tool_reports_capped_scan(tmp_path):
+    files = []
+    for i in range(5001):
+        p = tmp_path / f"f_{i}.py"
+        p.write_text("print('x')\n", encoding="utf-8")
+        files.append((p, str(p)))
+
+    tool = GrepTool()
+    tool._resolver = _DummyGrepResolver(files)
+    ctx = SimpleNamespace(
+        deps=SimpleNamespace(
+            chat_id="chat-1",
+            sandbox_enabled=False,
+            custom_volumes=[],
+            workspace_root=str(tmp_path),
+            path_resolver=tool._resolver,
+        )
+    )
+
+    result = tool.forward(ctx, pattern="def edit_file", path=str(tmp_path))
+
+    assert result.success
+    assert result.metadata["capped"] is True
+    assert "scan capped" in result.message
 
 
 @pytest.mark.asyncio

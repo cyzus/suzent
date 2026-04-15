@@ -17,6 +17,19 @@ from suzent.tools.filesystem.path_resolver import PathResolver
 
 logger = get_logger(__name__)
 
+MAX_GREP_FILE_SIZE = 2 * 1024 * 1024  # 2 MiB
+MAX_GREP_FILES_SCANNED = 5000
+DEFAULT_EXCLUDED_DIRS = {
+    ".git",
+    "node_modules",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "target",
+    "dist",
+    "build",
+}
+
 
 class GrepTool(Tool):
     """
@@ -125,13 +138,34 @@ class GrepTool(Tool):
             results: List[Tuple[str, int, str]] = []  # (file, line_num, content)
             files_with_matches = 0
             ctx_lines = context_lines or 0
+            scanned_files = 0
+            skipped_large_files = 0
+            skipped_excluded_files = 0
+            capped = False
 
             for file_path, v_path in found_files:
                 if len(results) >= 1000:  # Global safety limit
                     break
 
+                if scanned_files >= MAX_GREP_FILES_SCANNED:
+                    capped = True
+                    break
+
                 if not file_path.is_file() or not self._is_text_file(file_path):
                     continue
+
+                if any(part in DEFAULT_EXCLUDED_DIRS for part in file_path.parts):
+                    skipped_excluded_files += 1
+                    continue
+
+                try:
+                    if file_path.stat().st_size > MAX_GREP_FILE_SIZE:
+                        skipped_large_files += 1
+                        continue
+                except OSError:
+                    continue
+
+                scanned_files += 1
 
                 try:
                     matches = self._search_file(file_path, regex, ctx_lines)
@@ -149,11 +183,21 @@ class GrepTool(Tool):
                     logger.debug(f"Could not search {file_path}: {e}")
 
             if not results:
+                message = f"No matches for '{pattern}' in {path or 'working directory'}"
+                if capped:
+                    message += (
+                        f" (scan capped at {MAX_GREP_FILES_SCANNED} files; "
+                        "use 'include' or a narrower 'path' to speed up search)"
+                    )
                 return ToolResult.success_result(
-                    f"No matches for '{pattern}' in {path or 'working directory'}",
+                    message,
                     metadata={
                         "match_count": 0,
                         "file_count": 0,
+                        "scanned_files": scanned_files,
+                        "skipped_large_files": skipped_large_files,
+                        "skipped_excluded_files": skipped_excluded_files,
+                        "capped": capped,
                         "pattern": pattern,
                         "path": path,
                         "include": include,
@@ -181,6 +225,10 @@ class GrepTool(Tool):
                 metadata={
                     "match_count": len(results),
                     "file_count": files_with_matches,
+                    "scanned_files": scanned_files,
+                    "skipped_large_files": skipped_large_files,
+                    "skipped_excluded_files": skipped_excluded_files,
+                    "capped": capped,
                     "pattern": pattern,
                     "path": path,
                     "include": include,
@@ -246,6 +294,16 @@ class GrepTool(Tool):
     ) -> List[Tuple[int, str]]:
         """Search a file and return matching lines."""
         matches = []
+
+        if context_lines <= 0:
+            try:
+                with open(path, "r", encoding="utf-8", errors="replace") as f:
+                    for i, line in enumerate(f):
+                        if regex.search(line):
+                            matches.append((i + 1, line))
+            except Exception:
+                return []
+            return matches
 
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as f:
