@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Sub-agent Frontend UI**: Add dedicated sub-agent components and hooks (`SubAgentCallBlock`, `SubAgentList`, `SubAgentView`, `useEventBus`, `useSubAgentStatus`) for real-time task status, detail view, and stop actions.
 - **Social Session Slash Commands**: Add `/sess` command group (`ls`, `switch`, `new`, `info`) for managing active social sessions.
 - **Web Search Rich Output Renderer**: Add `WebSearchRenderer` for structured web-search result cards in tool output.
+- **Web Activity Sidebar**: Add web activity views and hooks (`WebActivitiesView`, `WebPageReaderView`, `WebSearchSidebarView`, `useWebHistory`) to surface browsing/search context in the right sidebar.
+- **Context Usage Tracking**: Add context usage store and status bar display to show prompt/context consumption in real time.
+- **Tool Icon System**: Add dynamic tool icon utilities/components (`toolIcon`, `toolGroupIcon`) with contract/smoke tests for UI rendering behavior.
+- **Shell Tool Package**: Add `tools/shell` package with shared host process registry for background process lifecycle management.
+- **Prompt Architecture Tests**: Add dedicated tests for prompt architecture and tool cleanup contracts.
 
 ### ⚡ Changed
 - **Parent Wakeup Flow**: Background sub-agent completion can now trigger an automatic parent wakeup turn, so the parent agent can continue without waiting for new user input.
@@ -26,10 +31,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Assistant Tool Output UX**: `spawn_subagent` tool calls now render as dedicated interactive blocks instead of generic tool pills, with stronger status propagation in chat and sidebar.
 - **Web Search Tool Contract**: `websearch` now returns structured `ToolResult` payloads (JSON envelope with normalized result items) instead of mixed plain-text-only responses.
 - **Bash Tool Execution Context**: `BashTool` now supports dependency-provided `cwd` overrides for sub-agent scoped execution.
+- **Tool Return Contract Cleanup**: Refactor tools toward structured `ToolResult` responses and improve tool metadata consistency across prompt/runtime pipelines.
+- **Prompt Resolution and Guidance**: Refine instruction handling, dynamic context registration, and tool/session guidance; improve shell-type detection and output efficiency hints in prompts.
+- **Filesystem Tool Reliability**: Improve `edit_file`, `glob`, `grep`, `path_resolver`, `read_file`, and `write_file` behaviors, including better no-match hints, large-file scan caps, path normalization, and stale-write handling.
+- **Shell Tool Organization**: Move shell execution tools into `tools/shell` and route process execution through a centralized host process registry.
+- **Chat and Sidebar UX**: Update chat/right-sidebar/canvas/sub-agent UI state handling and styles for clearer tool-call and sub-agent rendering.
 
 ### 🐛 Fixed
 - **Web Search Rendering Compatibility**: Frontend parsing now handles both new `ToolResult` envelopes and legacy markdown output for search results.
 - **Parent Wakeup Persistence Race**: Add synchronization around wakeup post-processing to reduce message persistence races in parent chat updates.
+- **Edit File Replace Robustness**: Improve string replacement matching in `EditFileTool` (line-number prefix handling, whitespace/quote normalization) to reduce false mismatches.
+- **Concurrent File Edit Conflicts**: Refine stale write detection and error messaging for concurrent edits to improve retry behavior and diagnostics.
+- **Sidebar Toggle Stability**: Fix right sidebar toggle behavior regression in chat UI.
 
 ## [v0.4.1]
 
