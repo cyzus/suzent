@@ -313,17 +313,8 @@ class EditFileTool(Tool):
             # Abort if file changed during read/compute window.
             latest_mtime_ns = resolved_path.stat().st_mtime_ns
 
-            # To support Parallel Tool Calling safely:
-            # Only trigger STALE_WRITE if the modification was done by something
-            # OTHER than this process, or if the size changed drastically.
-            # In a multi-threaded asyncio environment like Suzent, a parallel
-            # `edit_file` call could update the file just before this write.
-            # We relax the time-check margin to 1 second to accommodate
-            # fast concurrent edits on the same file by the same LLM turn.
-
             time_diff_ns = abs(latest_mtime_ns - file_stat.st_mtime_ns)
-            # 1 second = 1_000_000_000 ns
-            if time_diff_ns > 1_000_000_000:
+            if time_diff_ns > 0:
                 self.audit_operation(
                     self.tool_name,
                     "edit",
