@@ -175,16 +175,27 @@ class ProcessTool(Tool):
 
     def _poll(self, process_id: str, offset: int, chat_id: str) -> ToolResult:
         try:
+            host_registry = None
             if self._host_mode:
                 from suzent.tools.shell.host_process_registry import HostProcessRegistry
 
-                result = HostProcessRegistry().poll(chat_id, process_id, offset)
+                host_registry = HostProcessRegistry()
+                result = host_registry.poll(chat_id, process_id, offset)
             else:
                 result = self.manager.poll_process(self.chat_id, process_id, offset)
             output = result.get("output", "")
             next_offset = result.get("offset", offset)
             done = result.get("done", False)
             exit_code = result.get("exit_code")
+
+            # In host mode, evict completed processes once output has been fully drained.
+            if (
+                self._host_mode
+                and done
+                and host_registry is not None
+                and next_offset == offset
+            ):
+                host_registry.evict(chat_id, process_id)
 
             lines = [output.rstrip()] if output else []
             status_line = (
@@ -283,7 +294,10 @@ class ProcessTool(Tool):
             if self._host_mode:
                 from suzent.tools.shell.host_process_registry import HostProcessRegistry
 
-                ok = HostProcessRegistry().kill(chat_id, process_id)
+                registry = HostProcessRegistry()
+                ok = registry.kill(chat_id, process_id)
+                # Evict regardless of kill result to clean up finished entries/temp files.
+                registry.evict(chat_id, process_id)
             else:
                 ok = self.manager.kill_process(self.chat_id, process_id)
             self.audit_operation(

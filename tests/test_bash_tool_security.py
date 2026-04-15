@@ -1,7 +1,7 @@
 import os
 from types import SimpleNamespace
 
-from suzent.tools.bash_tool import BashTool
+from suzent.tools.shell.bash_tool import BashTool
 
 
 def _ctx(tmp_path, sandbox_enabled=False):
@@ -55,12 +55,13 @@ def test_accepts_command_language_on_host(monkeypatch, tmp_path):
         captured["kwargs"] = kwargs
         return _Result()
 
-    monkeypatch.setattr("suzent.tools.bash_tool.subprocess.run", fake_run)
+    monkeypatch.setattr("suzent.tools.shell.bash_tool.subprocess.run", fake_run)
 
     result = tool.forward(_ctx(tmp_path), content="echo hi", language="command")
 
     assert result.success
-    assert result.message == "ok"
+    assert "ok" in result.message
+    assert "[cwd:" in result.message
     assert result.metadata["mode"] == "host"
     if os.name == "nt":
         assert captured["cmd"][0] == "powershell"
