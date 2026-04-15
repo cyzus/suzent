@@ -2,6 +2,7 @@
 EditFileTool - Make precise string replacements in files.
 """
 
+import re
 from typing import Annotated, Optional
 
 from pydantic import Field
@@ -24,6 +25,18 @@ logger = get_logger(__name__)
 MAX_EDIT_FILE_SIZE = 50 * 1024 * 1024  # 50 MiB
 
 
+# Matches the line-number prefix that read_file prepends to every line:
+#   "<digits><tab>" at the very start of a line.
+# Models sometimes copy this prefix verbatim into old_string / new_string,
+# which breaks exact matching and corrupts indentation.
+_LINE_NUMBER_PREFIX_RE = re.compile(r"^[ \t]*\d+\t", re.MULTILINE)
+
+
+def _strip_line_number_prefixes(s: str) -> str:
+    """Remove read_file line-number prefixes (e.g. '42\\t') from every line."""
+    return _LINE_NUMBER_PREFIX_RE.sub("", s)
+
+
 _CURLY_QUOTE_MAP = str.maketrans(
     {
         "\u2018": "'",
@@ -40,8 +53,6 @@ def _normalize_quotes(s: str) -> str:
 
 def _strip_trailing_whitespace(s: str) -> str:
     """Strip trailing whitespace from each line, preserving line endings."""
-    import re
-
     return re.sub(r"[^\S\r\n]+(\r\n|\r|\n)", r"\1", s)
 
 
@@ -126,9 +137,25 @@ class EditFileTool(Tool):
         ctx: RunContext[AgentDeps],
         file_path: Annotated[str, Field(description="Path to the file to edit.")],
         old_string: Annotated[
-            str, Field(description="Exact text to find and replace.")
+            str,
+            Field(
+                description=(
+                    "Exact text to find and replace. "
+                    "Must NOT include the line-number prefix from read_file output "
+                    "(e.g. '42\\t'). Include only the actual file content after the tab."
+                )
+            ),
         ],
-        new_string: Annotated[str, Field(description="Replacement text.")],
+        new_string: Annotated[
+            str,
+            Field(
+                description=(
+                    "Replacement text. "
+                    "Must NOT include line-number prefixes. "
+                    "Preserve the same indentation style as the surrounding code."
+                )
+            ),
+        ],
         replace_all: Annotated[
             Optional[bool],
             Field(description="Replace all matches instead of the first match."),
@@ -139,11 +166,17 @@ class EditFileTool(Tool):
         Use this for precise edits. The old_string must match exactly (including whitespace
         and indentation). For complete file rewrites, use the write_file tool instead.
 
+        IMPORTANT — read_file output format: each line is prefixed with a line number and
+        a tab character (e.g. "42\tsome code here"). When constructing old_string or
+        new_string from read_file output, include ONLY the content after the tab — never
+        include the line number or the tab separator. Copying the prefix into old_string
+        will cause the match to fail or corrupt indentation.
+
         Args:
             ctx: The run context with agent dependencies.
             file_path: Path to the file to edit.
-            old_string: Exact text to find and replace (must match exactly).
-            new_string: Replacement text.
+            old_string: Exact text to find and replace (must match exactly, without line-number prefixes).
+            new_string: Replacement text (without line-number prefixes).
             replace_all: If True, replace all occurrences. Default is False (replaces first only).
 
         Returns:
@@ -165,6 +198,12 @@ class EditFileTool(Tool):
         resolver = get_or_create_path_resolver(ctx.deps)
 
         replace_all = replace_all or False
+
+        # Strip read_file line-number prefixes that the model may have copied
+        # verbatim (e.g. "42\tsome code"). Do this before any other check so
+        # that the identical-strings guard and all downstream logic see clean text.
+        old_string = _strip_line_number_prefixes(old_string)
+        new_string = _strip_line_number_prefixes(new_string)
 
         try:
             if old_string == new_string:
