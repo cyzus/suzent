@@ -57,7 +57,7 @@ export const WebActivitiesView: React.FC<WebActivitiesViewProps> = ({
     if (history.length > lastHistoryCount) {
       // New item added, switch to it ONLY if browser is not streaming right now
       if (!isBrowserStreamActive) {
-         setActiveViewId(history[0].id);
+         setActiveViewId(history[history.length - 1].id);
          setIsTimelineOpen(false);
       }
     }
