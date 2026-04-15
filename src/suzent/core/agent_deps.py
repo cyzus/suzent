@@ -57,9 +57,9 @@ class AgentDeps:
 
     tool_approval_policy: dict = field(
         default_factory=dict
-    )  # tool_name → "always_allow" | "always_deny"
+    )  # tool_name -> "always_allow" | "always_deny"
     auto_approve_tools: bool = False
-    cancel_event: Any = None  # asyncio.Event — set when stream is cancelled
+    cancel_event: Any = None  # asyncio.Event - set when stream is cancelled
     last_messages: Optional[list] = None  # To preserve session history correctly
 
     # --- A2UI canvas ---
@@ -67,3 +67,21 @@ class AgentDeps:
         None  # surface events queued by render_ui tool
     )
     inline_a2ui_surfaces: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    # --- Prompt Context Cache ---
+    section_cache: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def shell_type(self) -> str:
+        import os
+
+        shell = os.environ.get("SHELL", "")
+        if "bash" in shell:
+            return "bash"
+        if "zsh" in shell:
+            return "zsh"
+        if "pwsh" in shell or "powershell" in shell:
+            return "powershell"
+        if os.name == "nt":
+            return "powershell"
+        return "unknown"

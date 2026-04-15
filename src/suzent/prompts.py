@@ -31,9 +31,23 @@ You should respond in the language of the user's query.
 - Verify important outcomes before claiming completion.
 - Report outcomes honestly. If checks fail, report the exact failure.
 
+# Output Efficiency & Tone
+- Go straight to the point. Lead with the answer or action.
+- Skip filler words, unnecessary transitions, and narrating your thought process.
+- Focus text output ONLY on: (1) Decisions needing user input, (2) High-level milestones, (3) Blockers.
+- Do not repeat the user's prompt back to them.
+
+# Failure Handling SOP
+If a tool call or command fails:
+1. **STOP and Diagnose:** Read the exact error output. Use file read tools to verify current state.
+2. **Never blindly retry:** Do not repeat the identical tool call without changing your approach.
+3. **Check Assumptions:** Is the path correct? Did the environment change?
+
 # Tool Usage Safety
 - **NEVER** use bash for file read/search/edit. Always use the dedicated file tools (read_file, write_file, edit_file, grep_search, glob_search).
-- Ask for confirmation before destructive or hard-to-reverse actions (e.g., deleting data, force push, reset --hard).
+- **Action Authorization:** 
+  - You may proceed WITHOUT confirmation for routine local workflows (e.g., running tests, building, local commits, creating branches).
+  - MUST ask for confirmation before: (1) Destructive operations (`rm -rf` on non-temp dirs, dropping DBs), (2) Hard-to-reverse Git ops (`push --force`, `reset --hard`), (3) Actions modifying shared infrastructure or pushing to `main` branch.
 """
 
 CUSTOM_VOLUMES_SECTION = """# Directory Mappings
@@ -49,6 +63,7 @@ EXECUTION_MODE_SECTION_HOST = """# Environment: Host
 You are on the host machine ({os_name}). Use host paths (e.g., `{workspace_root}`).
 Do NOT use virtual `/mnt/...` paths.
 Env vars available: PERSISTENCE_PATH, SHARED_PATH, WORKSPACE_ROOT, and MOUNT_* for mapped volumes.
+Current Shell: {shell_type}
 """
 
 BASE_INSTRUCTIONS_SECTION = """# Base Instructions
@@ -76,17 +91,15 @@ You have the SocialMessageTool available for sending messages to social channels
 - Keep messages concise and chat-appropriate for the platform
 """
 
-
 HEARTBEAT_BASE_INSTRUCTIONS = (
     "Check in on this session. Are there any open tasks, pending questions, "
     "or things that need follow-up?"
 )
 
 HEARTBEAT_PROMPT_TEMPLATE = (
-    "Background Heartbeat Check. Read the following instructions and follow them strictly. "
-    "Do not infer or repeat old tasks from prior messages. "
-    "Reply EXACTLY with 'HEARTBEAT_OK' if nothing needs attention."
-    "Otherwise, report what needs attention or what tasks you have completed. \n\n"
+    "Background Heartbeat Check. Read the following instructions strictly. "
+    "Look for useful work to do autonomously. If you have nothing useful to do (no files to read, no checks to run), "
+    "reply EXACTLY with 'HEARTBEAT_OK'. Do not narrate that you are idle.\n\n"
     "---\n{instructions}\n---"
 )
 
@@ -97,31 +110,24 @@ PLATFORM_CHAR_LIMITS = {
     "feishu": 30000,
 }
 
-_PROMPT_SECTION_CACHE: dict[str, str] = {}
-
 
 def resolve_prompt_section(
+    deps: Any,
     name: str,
     compute: Callable[[], str],
     *,
     cache_break: bool = False,
 ) -> str:
-    """Resolve a prompt section value with optional cache bypass.
+    """Resolve a prompt section value with optional cache bypass."""
+    if not hasattr(deps, "section_cache"):
+        deps.section_cache = {}
 
-    This is a lightweight interface mirroring section-level cache-break
-    semantics so callers can opt in incrementally.
-    """
-    if not cache_break and name in _PROMPT_SECTION_CACHE:
-        return _PROMPT_SECTION_CACHE[name]
+    if not cache_break and name in deps.section_cache:
+        return deps.section_cache[name]
 
     value = compute()
-    _PROMPT_SECTION_CACHE[name] = value
+    deps.section_cache[name] = value
     return value
-
-
-def clear_prompt_section_cache() -> None:
-    """Clear in-process prompt section cache."""
-    _PROMPT_SECTION_CACHE.clear()
 
 
 async def resolve_full_system_prompt(
@@ -131,11 +137,6 @@ async def resolve_full_system_prompt(
     user_prompt: str | Sequence[UserContent] | None = None,
     message_history: Sequence[ModelMessage] | None = None,
 ) -> str:
-    """Resolve full system prompt text via pydantic-ai instruction runners.
-
-    Uses pydantic-ai's internal instruction resolution path so debug output
-    matches the model-visible instruction ordering (static first, then dynamic).
-    """
     static_instructions, instruction_runners = agent._get_instructions(None)
 
     run_context = RunContext(
@@ -159,37 +160,69 @@ async def resolve_full_system_prompt(
 
 
 def build_execution_mode_section(
-    sandbox_enabled: bool, workspace_root: str = ""
+    sandbox_enabled: bool,
+    workspace_root: str = "",
+    shell_type: str = "unknown",
 ) -> str:
     """Build environment mode section for host or sandbox execution."""
     if sandbox_enabled:
         return EXECUTION_MODE_SECTION_SANDBOX
 
     return EXECUTION_MODE_SECTION_HOST.format(
-        workspace_root=workspace_root.replace("\\", "/"), os_name=platform.system()
+        workspace_root=workspace_root.replace("\\", "/"),
+        os_name=platform.system(),
+        shell_type=shell_type,
     )
 
 
-def build_custom_volumes_section(custom_volumes: list[str] | None = None) -> str:
-    """Build directory mapping section for configured custom volumes."""
-    if not custom_volumes:
+def build_custom_volumes_section(deps: Any) -> str:
+    """Build directory mapping section for configured custom volumes, including Git status."""
+    if not deps.custom_volumes:
         return ""
 
-    volumes_list = "\n".join(
-        [f"- {v} (Host Path:Virtual Name)" for v in custom_volumes]
-    )
+    import os
+    import subprocess
+
+    volumes_info = []
+    for v in deps.custom_volumes:
+        # custom_volumes format is expected to be "host_path:mnt_name"
+        # Support Windows drive letters (e.g., D:\workspace:/mnt)
+        if v.count(":") > 1 or (
+            ":" in v
+            and not (len(v.split(":")[0]) == 1 and (v[1] == "\\" or v[1] == "/"))
+        ):
+            host_path = v.rsplit(":", 1)[0]
+        else:
+            host_path = v.split(":")[0] if ":" in v else v
+
+        is_git = "No"
+        try:
+            if os.path.exists(host_path):
+                result = subprocess.run(
+                    ["git", "rev-parse", "--is-inside-work-tree"],
+                    cwd=host_path,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if result.returncode == 0 and result.stdout.strip() == "true":
+                    is_git = "Yes"
+        except Exception:
+            is_git = "Unknown"
+
+        volumes_info.append(f"- {v} (Host Path:Virtual Name) [Git Repo: {is_git}]")
+
+    volumes_list = "\n".join(volumes_info)
     return CUSTOM_VOLUMES_SECTION.format(volumes_list=volumes_list)
 
 
 def build_base_instructions_section(base_instructions: str = "") -> str:
-    """Build optional user-configured instruction section."""
     if not base_instructions:
         return ""
     return BASE_INSTRUCTIONS_SECTION.format(base_instructions=base_instructions)
 
 
 def build_session_guidance_section(session_guidance_items: list[str] | None) -> str:
-    """Build dynamic session guidance from tool-provided metadata."""
     if not session_guidance_items:
         return ""
 
@@ -219,8 +252,6 @@ def register_dynamic_instructions(
     memory_context: str | None,
     session_guidance_items: list[str] | None = None,
 ) -> None:
-    """Register runtime dynamic instruction providers on the given agent."""
-
     @agent.instructions
     def inject_date_context(_: Any) -> str:
         return (
@@ -229,25 +260,29 @@ def register_dynamic_instructions(
 
     @agent.instructions
     def inject_environment_context(ctx: Any) -> str:
+        shell_type = getattr(ctx.deps, "shell_type", "unknown")
         return build_execution_mode_section(
             sandbox_enabled=ctx.deps.sandbox_enabled,
             workspace_root=ctx.deps.workspace_root,
+            shell_type=shell_type,
         )
 
     @agent.instructions
     def inject_volumes_context(ctx: Any) -> str:
-        return build_custom_volumes_section(ctx.deps.custom_volumes)
+        return build_custom_volumes_section(ctx.deps)
 
     @agent.instructions
-    def inject_base_instructions(_: Any) -> str:
+    def inject_base_instructions(ctx: Any) -> str:
         return resolve_prompt_section(
+            ctx.deps,
             "base_instructions",
             lambda: build_base_instructions_section(base_instructions),
         )
 
     @agent.instructions
-    def inject_session_guidance(_: Any) -> str:
+    def inject_session_guidance(ctx: Any) -> str:
         return resolve_prompt_section(
+            ctx.deps,
             "session_guidance",
             lambda: build_session_guidance_section(session_guidance_items),
         )
@@ -276,15 +311,6 @@ def register_dynamic_instructions(
 
 
 def build_social_context(social_ctx: dict) -> str:
-    """
-    Build the social context string from a social context dict.
-
-    Args:
-        social_ctx: Dict with keys: platform, sender_name, sender_id, target_id
-
-    Returns:
-        Formatted social context section string.
-    """
     platform = social_ctx.get("platform", "unknown")
     sender_name = social_ctx.get("sender_name", "User")
     char_limit = PLATFORM_CHAR_LIMITS.get(platform, 4096)
