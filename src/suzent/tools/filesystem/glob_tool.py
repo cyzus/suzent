@@ -121,8 +121,18 @@ class GlobTool(Tool):
                 target_desc = path or "working directory"
                 if path == "/" or (path is None and pattern.startswith("/")):
                     target_desc = "all virtual roots"
+
+                no_match_msg = f"No files matching '{pattern}' found in {target_desc}"
+                # Most users expect recursion when passing a directory path with a
+                # bare wildcard pattern like "*.py" or "*edit*.py".
+                if path and "/" not in pattern and "**" not in pattern:
+                    no_match_msg += (
+                        f". Hint: this pattern is non-recursive. "
+                        f"Use '**/{pattern}' to search subdirectories."
+                    )
+
                 return ToolResult.success_result(
-                    f"No files matching '{pattern}' found in {target_desc}",
+                    no_match_msg,
                     metadata={"match_count": 0, "pattern": pattern, "path": path},
                 )
 

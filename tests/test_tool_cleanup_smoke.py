@@ -61,6 +61,27 @@ async def test_glob_tool_returns_structured_result(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_glob_tool_no_match_includes_recursive_hint(tmp_path):
+    tool = GlobTool()
+    tool._resolver = _DummyResolver()
+    ctx = SimpleNamespace(
+        deps=SimpleNamespace(
+            chat_id="chat-1",
+            sandbox_enabled=False,
+            custom_volumes=[],
+            workspace_root=str(tmp_path),
+            path_resolver=None,
+        )
+    )
+
+    result = tool.forward(ctx, pattern="*edit*.py", path=str(tmp_path))
+
+    assert result.success
+    assert "non-recursive" in result.message
+    assert "**/*edit*.py" in result.message
+
+
+@pytest.mark.asyncio
 async def test_memory_tools_return_structured_results():
     manager = _DummyMemoryManager()
     ctx = SimpleNamespace(
