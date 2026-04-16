@@ -88,13 +88,13 @@ def test_append_inline_a2ui_surfaces_attaches_to_last_assistant_message():
     assert "data-a2ui=" in updated[1]["content"]
 
 
-def test_append_command_messages_adds_user_and_assistant_entries():
+def test_append_command_messages_adds_user_and_notice_entries():
     existing = [{"role": "assistant", "content": "old"}]
     updated = _append_command_messages(existing, "/compact", "Compaction done")
 
     assert len(updated) == 3
     assert updated[-2] == {"role": "user", "content": "/compact"}
-    assert updated[-1] == {"role": "assistant", "content": "Compaction done"}
+    assert updated[-1] == {"role": "notice", "content": "Compaction done"}
 
 
 def test_append_command_messages_skips_empty_assistant_payload():

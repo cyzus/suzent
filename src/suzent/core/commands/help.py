@@ -4,9 +4,7 @@ from suzent.core.commands.base import register_command, CommandContext
 
 _HELP_TEXT = (
     "🤖 **Suzent Commands**\n"
-    "  `/compact [focus]` — Compress conversation context\n"
-    "  `/y [id]` — Approve pending tool (aliases: `/yes`, `/allow`)\n"
-    "  `/n [id]` — Deny pending tool (aliases: `/no`, `/reject`)\n"
+    "  `/compact` — Compress conversation context\n"
     "  `/help` — Show this message"
 )
 

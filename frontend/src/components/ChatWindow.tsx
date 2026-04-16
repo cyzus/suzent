@@ -54,7 +54,7 @@ function formatUsage(usage: any): string {
  * Tool invocations are serialized as HTML <details> blocks with emoji conventions
  * so the existing historical message rendering pipeline can display them.
  */
-function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any): Message {
+function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any, role: Message['role'] = 'assistant'): Message {
   let content = '';
   for (const part of parts) {
     if (part.type === 'text') {
@@ -85,7 +85,7 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any): Message {
       content += `\n\n<div data-a2ui="${encoded}"></div>\n\n`;
     }
   }
-  return { role: 'assistant', content, timestamp: new Date().toISOString(), stepInfo: usage ? formatUsage(usage) : undefined };
+  return { role, content, timestamp: new Date().toISOString(), stepInfo: usage ? formatUsage(usage) : undefined };
 }
 
 function groupedBlocksToAssistantContent(blocks: ContentBlock[]): string {
@@ -156,6 +156,21 @@ const LoadingIndicator: React.FC = () => {
   );
 };
 
+const NoticeMessage: React.FC<{ message: Message }> = ({ message }) => {
+  if (!message.content?.trim()) {
+    return null;
+  }
+
+  return (
+    <div className="w-full max-w-3xl pl-2 md:pl-6">
+      <div className="border-2 border-dashed border-brutal-black bg-brutal-yellow/20 px-4 py-3 shadow-[3px_3px_0_0_#000]">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-brutal-black">Notice</div>
+        <div className="text-sm leading-relaxed text-brutal-black whitespace-pre-wrap break-words">{message.content}</div>
+      </div>
+    </div>
+  );
+};
+
 // Message list component (renders historical / store messages only)
 const MessageList: React.FC<{
   messages: Message[];
@@ -183,8 +198,9 @@ const MessageList: React.FC<{
         if (skipIndices.has(idx)) return null; // Part of a group, rendered by representative
 
         const isUser = m.role === 'user';
+        const isNotice = m.role === 'notice';
         const isLastMessage = idx === messages.length - 1;
-        const isAssistant = !isUser;
+        const isAssistant = m.role === 'assistant';
         const group = groupRenders.get(idx);
 
         // Intermediate step group representative: render merged pills (no badge here — shows after final answer)
@@ -227,6 +243,14 @@ const MessageList: React.FC<{
               <div className="border-2 border-dashed border-brutal-black px-4 py-2 text-sm font-mono text-neutral-500 dark:text-neutral-400 italic bg-white dark:bg-zinc-800">
                 {m.content}
               </div>
+            </div>
+          );
+        }
+
+        if (isNotice) {
+          return (
+            <div key={idx} className="chat-msg-row w-full flex justify-start">
+              <NoticeMessage message={m} />
             </div>
           );
         }
@@ -367,6 +391,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Captures the final AGUI parts from a live background stream so the cleanup path can
   // convert them to a persisted rich message (with tool-step HTML) after clearParts.
   const liveStreamPartsRef = useRef<AGUIPart[]>([]);
+  const [streamDisplayRole, setStreamDisplayRole] = useState<Message['role']>('assistant');
+  const streamDisplayRoleRef = useRef<Message['role']>('assistant');
+
+  const setCurrentStreamDisplayRole = useCallback((role: Message['role']) => {
+    streamDisplayRoleRef.current = role;
+    setStreamDisplayRole(role);
+  }, []);
 
   // ── AG-UI streaming hook ─────────────────────────────────────────────
   const {
@@ -398,6 +429,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         streamingChatIdRef.current = null;
         clearParts();
         setCurrentUsage(null);
+        setCurrentStreamDisplayRole('assistant');
         // Reload chat from DB to reflect rolled-back state.
         setTimeout(() => { try { loadChat(chatId!); } catch { } }, 300);
         return;
@@ -416,6 +448,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         if (isLiveStreamRef.current) {
           liveStreamPartsRef.current = parts;
         }
+        setCurrentStreamDisplayRole('assistant');
         return;
       }
 
@@ -428,6 +461,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         liveStreamPartsRef.current = parts;
         streamingChatIdRef.current = null;
         setCurrentUsage(null);
+        setCurrentStreamDisplayRole('assistant');
         return;
       }
 
@@ -444,7 +478,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       // Optimistic append: convert parts to HTML and store locally so the
       // message is visible immediately — no blank flash while loadChat fetches DB.
-      const storeMsg = aguiPartsToStoreMessage(parts, currentUsage);
+      const storeMsg = aguiPartsToStoreMessage(parts, currentUsage, streamDisplayRoleRef.current);
       if (storeMsg.content.trim()) {
         addMessage(storeMsg, chatId!);
         if (/context compacted/i.test(storeMsg.content)) {
@@ -453,6 +487,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
 
       setCurrentUsage(null);
+      setCurrentStreamDisplayRole('assistant');
       // Clear streaming state synchronously in the same React batch as addMessage so
       // the transient assistant bubble is replaced by the optimistic message in one
       // render. Previously these lived in .finally(), causing a window where the
@@ -473,6 +508,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       canvas.markDeferred(surfaceId);
     },
     onCustomEvent: (name, value) => {
+      if (name === 'stream_display_role') {
+        const role = (value as { role?: Message['role'] })?.role;
+        if (role === 'assistant' || role === 'notice') {
+          setCurrentStreamDisplayRole(role);
+        }
+        return;
+      }
       if (name === 'chat_title_updated') {
         const { chat_id: titleChatId, title } = value as { chat_id: string; title: string };
         if (titleChatId && title) updateChatTitleLocally(titleChatId, title);
@@ -541,10 +583,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         : (errorMessage || t('chatWindow.genericError'));
 
       if (!wasHeartbeat && !isLiveStreamRef.current && !isNetworkError) {
-        addMessage({ role: 'assistant', content: `\u26a0\ufe0f Error: ${displayMessage}` }, chatId);
+        addMessage({ role: 'notice', content: `\u26a0\ufe0f Error: ${displayMessage}` }, chatId);
       }
       isLiveStreamRef.current = false;
       liveStreamPartsRef.current = [];
+      setCurrentStreamDisplayRole('assistant');
     },
   });
 
@@ -1098,28 +1141,32 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     onForceWebContext={handleForceWebContext}
                   />
                 )}
-                {/* Streaming/transient assistant message from AG-UI */}
+                {/* Streaming/transient message from AG-UI */}
                 {showTransientAssistant && (
                   <div className="space-y-6 mt-6">
                     <div className="w-full flex flex-col group/message">
                       <div className="flex justify-start w-full">
-                        <AssistantMessage
-                          message={{ role: 'assistant', content: '' }}
-                          messageIndex={safeMessages.length}
-                          isStreaming={streamingForCurrentChat}
-                          isLastMessage={true}
-                          onFileClick={handleFileClick}
-                          aguiParts={streamingParts}
-                          onToolApproval={handleToolApproval}
-                          usage={currentUsage}
-                          toolApprovalPolicy={safeConfig.tool_approval_policy}
-                          onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
-                          onInlineAction={handleInlineAction}
-                          subAgentTasks={subAgentTasks}
-                          onOpenSubAgentSidebar={handleOpenSubAgentSidebar}
-                          onStopSubAgent={handleStopSubAgent}
-                          onForceWebContext={handleForceWebContext}
-                        />
+                        {streamDisplayRole === 'notice' ? (
+                          <NoticeMessage message={aguiPartsToStoreMessage(streamingParts, currentUsage, 'notice')} />
+                        ) : (
+                          <AssistantMessage
+                            message={{ role: 'assistant', content: '' }}
+                            messageIndex={safeMessages.length}
+                            isStreaming={streamingForCurrentChat}
+                            isLastMessage={true}
+                            onFileClick={handleFileClick}
+                            aguiParts={streamingParts}
+                            onToolApproval={handleToolApproval}
+                            usage={currentUsage}
+                            toolApprovalPolicy={safeConfig.tool_approval_policy}
+                            onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
+                            onInlineAction={handleInlineAction}
+                            subAgentTasks={subAgentTasks}
+                            onOpenSubAgentSidebar={handleOpenSubAgentSidebar}
+                            onStopSubAgent={handleStopSubAgent}
+                            onForceWebContext={handleForceWebContext}
+                          />
+                        )}
                       </div>
                     </div>
                   </div>

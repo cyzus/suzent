@@ -203,7 +203,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         <div
                             key={cmd.name}
                             className={`flex items-baseline gap-3 px-3 py-2 cursor-pointer text-sm ${i === selectedSuggestion ? 'bg-brutal-yellow dark:bg-yellow-600 text-brutal-black' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'}`}
-                            onMouseDown={(e) => { e.preventDefault(); setInput(cmd.usage + ' '); }}
+                            onMouseDown={(e) => { e.preventDefault(); setInput((cmd.aliases?.[0] || cmd.usage) + ' '); }}
                         >
                             <span className="font-bold font-mono shrink-0">{cmd.aliases[0]}</span>
                             <span className="text-neutral-500 dark:text-neutral-400 truncate">{cmd.description}</span>
@@ -225,7 +225,8 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedSuggestion(i => Math.min(suggestions.length - 1, i + 1)); return; }
                         if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
                             e.preventDefault();
-                            setInput(suggestions[selectedSuggestion].usage + ' ');
+                            const selected = suggestions[selectedSuggestion];
+                            setInput((selected.aliases?.[0] || selected.usage) + ' ');
                             return;
                         }
                         if (e.key === 'Escape') { setInput(''); return; }

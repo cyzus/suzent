@@ -53,12 +53,12 @@ def _resolve_target_path(host_path: Path, filename: str) -> Path:
 def _append_command_messages(
     existing_messages: list[dict[str, Any]], user_content: str, assistant_content: str
 ) -> list[dict[str, Any]]:
-    """Append a slash-command user/assistant pair to display messages."""
+    """Append a slash-command user/notice pair to display messages."""
     updated = list(existing_messages or [])
     if user_content and user_content.strip():
         updated.append({"role": "user", "content": user_content})
     if assistant_content and assistant_content.strip():
-        updated.append({"role": "assistant", "content": assistant_content})
+        updated.append({"role": "notice", "content": assistant_content})
     return updated
 
 
@@ -319,6 +319,7 @@ class ChatProcessor:
 
                 import uuid
                 from ag_ui.core import (
+                    CustomEvent,
                     RunStartedEvent,
                     RunFinishedEvent,
                     TextMessageStartEvent,
@@ -331,6 +332,9 @@ class ChatProcessor:
                 run_id = str(uuid.uuid4())
                 msg_id = str(uuid.uuid4())
                 yield _enc.encode(RunStartedEvent(run_id=run_id, thread_id=chat_id))
+                yield _enc.encode(
+                    CustomEvent(name="stream_display_role", value={"role": "notice"})
+                )
                 yield _enc.encode(
                     TextMessageStartEvent(message_id=msg_id, role="assistant")
                 )

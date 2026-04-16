@@ -9,7 +9,7 @@ logger = get_logger(__name__)
 @register_command(
     ["/compact"],
     description="Summarise and compress conversation context",
-    usage="/compact [focus text]",
+    usage="/compact",
 )
 async def handle_compact(ctx: CommandContext, cmd: str, args: list) -> str:
     """Summarise and compress the agent's message history. Always runs (manual override)."""
