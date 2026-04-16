@@ -412,23 +412,6 @@ const StaticContent: React.FC<{
 
 // ── AG-UI Parts-based rendering (for streaming messages) ────────────
 
-const MetricsBadge: React.FC<{ usage?: any; stepInfo?: string }> = ({ usage, stepInfo }) => {
-  const info = usage
-    ? `Input: ${usage.input_tokens.toLocaleString()} | Output: ${usage.output_tokens.toLocaleString()} | Total: ${usage.total_tokens.toLocaleString()}`
-    : stepInfo;
-
-  if (!info) return null;
-
-  return (
-    <div className="flex justify-start w-full mt-2 pl-1">
-      <div className="inline-flex items-center gap-2 text-[10px] text-brutal-black dark:text-neutral-300 font-mono font-bold px-3 py-1 bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-black dark:border-neutral-500 shadow-sm select-none">
-        <span>{info}</span>
-      </div>
-    </div>
-  );
-};
-
-
 // Helper to extract the first line of reasoning for the header
 const getReasoningHeader = (text: string, isStreaming: boolean = false) => {
   const firstLine = text.trim().split('\n')[0].replace(/^[#*>-\s]+/, '').replace(/\*\*/g, '').trim();
@@ -620,9 +603,6 @@ const AGUIPartsContent: React.FC<{
         if (!fullText.trim() && !isLastChunk) return null;
         return (
           <div key={ci} className="border-3 border-brutal-black shadow-brutal-lg bg-white dark:bg-zinc-800 px-6 py-5 relative">
-            {fullText.trim() && (
-              <CopyButton text={fullText.trim()} className="absolute top-2 right-2 z-10" />
-            )}
             <div className="space-y-4">
               <MarkdownRenderer content={fullText} onFileClick={onFileClick} streamingLite={Boolean(isStreaming && isLastChunk)} />
               {isLastChunk && (
@@ -672,6 +652,24 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     }
   }, [isStreamingThis, cursorReady]);
 
+  // ── Compute full message text for copying ──
+  const fullMessageText = useMemo(() => {
+    if (aguiParts) {
+      return aguiParts
+        .filter(p => p.type === 'text')
+        .map(p => p.text || '')
+        .join('')
+        .trim();
+    } else {
+      const parsedBlocks = filterBlocks(splitAssistantContent(message.content || ''));
+      return parsedBlocks
+        .filter(b => b.type !== 'log' && b.type !== 'reasoning' && b.type !== 'toolCall' && b.type !== 'a2ui')
+        .map(b => (b.type === 'code' ? '```' + (b.lang || '') + '\n' + b.content + '\n```' : b.content))
+        .join('\n\n')
+        .trim();
+    }
+  }, [aguiParts, message.content]);
+
   // ── AG-UI parts-based rendering path (for streaming messages) ──
   if (aguiParts !== undefined) {
     return (
@@ -707,12 +705,16 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                 onForceWebContext={onForceWebContext}
               />
             ) : null}
-            <MetricsBadge usage={usage} />
-            {message.timestamp && !isStreamingThis && (
-              <div className="text-[10px] text-neutral-400 pl-1 select-none">
-                {formatMessageTime(message.timestamp)}
-              </div>
-            )}
+            <div className="flex items-center gap-2 mt-2 pl-1">
+              {fullMessageText && !isThinking && (
+                <CopyButton text={fullMessageText} className="relative" />
+              )}
+              {message.timestamp && !isStreamingThis && (
+                <div className="text-[10px] text-neutral-400 select-none">
+                  {formatMessageTime(message.timestamp)}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -902,12 +904,6 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
 
             return (
               <div key={idx} className="border-3 border-brutal-black shadow-brutal-lg bg-white dark:bg-zinc-800 px-6 py-5 relative">
-                {showCopyButton && !isThinking && (
-                  <CopyButton
-                    text={cleanContent}
-                    className="absolute top-2 right-2 z-10"
-                  />
-                )}
                 <div className="space-y-4">
                   {isStreamingChunk ? (
                     <StreamingContent blocks={contentBlocks} messageIndex={messageIndex} showCursor={cursorReady} onFileClick={onFileClick} />
@@ -918,12 +914,16 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               </div>
             );
           })}
-          <MetricsBadge stepInfo={message.stepInfo} />
-          {message.timestamp && !isStreamingThis && (
-            <div className="text-[10px] text-neutral-400 pl-1 select-none">
-              {formatMessageTime(message.timestamp)}
-            </div>
-          )}
+          <div className="flex items-center gap-2 mt-2 pl-1">
+            {fullMessageText && !isThinking && (
+              <CopyButton text={fullMessageText} className="relative" />
+            )}
+            {message.timestamp && !isStreamingThis && (
+              <div className="text-[10px] text-neutral-400 select-none">
+                {formatMessageTime(message.timestamp)}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
