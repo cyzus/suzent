@@ -2,7 +2,7 @@ from pathlib import Path
 
 from suzent.permissions.loader import (
     load_permission_overrides,
-    persist_project_command_rule,
+    persist_global_command_rule,
 )
 
 
@@ -67,8 +67,8 @@ tools:
     assert loaded["permission_policies"]["bash_execute"]["mode"] == "accept_edits"
 
 
-def test_persist_project_command_rule_creates_permissions_file(tmp_path: Path):
-    changed = persist_project_command_rule(
+def test_persist_global_command_rule_creates_permissions_file(tmp_path: Path):
+    changed = persist_global_command_rule(
         tmp_path,
         _DummyLogger(),
         tool_name="bash_execute",
@@ -88,7 +88,7 @@ def test_persist_project_command_rule_creates_permissions_file(tmp_path: Path):
     assert rules[0]["action"] == "allow"
 
 
-def test_persist_project_command_rule_updates_existing_without_duplicates(
+def test_persist_global_command_rule_updates_existing_without_duplicates(
     tmp_path: Path,
 ):
     cfg_dir = tmp_path / "config"
@@ -109,7 +109,7 @@ PERMISSIONS:
         encoding="utf-8",
     )
 
-    changed = persist_project_command_rule(
+    changed = persist_global_command_rule(
         tmp_path,
         _DummyLogger(),
         tool_name="bash_execute",

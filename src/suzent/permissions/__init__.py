@@ -1,4 +1,4 @@
-from .loader import load_permission_overrides, persist_project_command_rule
+from .loader import load_permission_overrides, persist_global_command_rule
 from .models import (
     BashCommandPolicyRule,
     CommandClass,
@@ -13,7 +13,7 @@ from .models import (
 
 __all__ = [
     "load_permission_overrides",
-    "persist_project_command_rule",
+    "persist_global_command_rule",
     "BashCommandPolicyRule",
     "CommandClass",
     "CommandContext",

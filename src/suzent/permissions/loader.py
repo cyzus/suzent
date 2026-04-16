@@ -98,7 +98,7 @@ def _load_permissions_user_file(path: Path, logger) -> tuple[dict[str, Any], boo
     return raw, False
 
 
-def persist_project_command_rule(
+def persist_global_command_rule(
     project_dir: Path,
     logger,
     *,
@@ -107,7 +107,7 @@ def persist_project_command_rule(
     action: str,
     match_type: str = "exact",
 ) -> bool:
-    """Persist a command policy rule to config/permissions.yaml.
+    """Persist a global command policy rule to config/permissions.yaml.
 
     Returns True if the permissions file was changed.
     """
@@ -196,7 +196,7 @@ def persist_project_command_rule(
         import yaml  # type: ignore
     except Exception as exc:
         raise RuntimeError(
-            "PyYAML is required to persist project permission rules"
+            "PyYAML is required to persist global permission rules"
         ) from exc
 
     with user_path.open("w", encoding="utf-8") as fh:

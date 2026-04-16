@@ -1,13 +1,14 @@
 import { useCallback, useRef, type MutableRefObject } from 'react';
 import type { ChatConfig, Message } from '../../types/api';
-import type { AGUIPart } from '../useAGUI';
+import type { AGUIPart, ApprovalRememberScope } from '../useAGUI';
 
 interface ToolApprovalDecision {
   approvalId: string;
   toolCallId: string;
   approved: boolean;
-  remember?: 'session' | null;
+  remember?: ApprovalRememberScope;
   toolName?: string;
+  args?: Record<string, unknown> | null;
 }
 
 interface UseToolApprovalOptions {
@@ -28,8 +29,9 @@ interface UseToolApprovalOptions {
     approvalId: string,
     toolCallId: string,
     approved: boolean,
-    remember?: 'session' | null,
+    remember?: ApprovalRememberScope,
     toolName?: string,
+    args?: Record<string, unknown> | null,
   ) => boolean;
   consumeApprovalDecisions: () => ToolApprovalDecision[];
 }
@@ -39,9 +41,31 @@ interface UseToolApprovalReturn {
     approvalId: string,
     toolCallId: string,
     approved: boolean,
-    remember?: 'session' | null,
+    remember?: ApprovalRememberScope,
     toolName?: string,
   ) => Promise<void>;
+}
+
+function parseToolArgs(rawArgs: string | undefined): Record<string, unknown> | null {
+  if (!rawArgs) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(rawArgs);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeLegacyRememberScope(scope: ApprovalRememberScope | 'project' | undefined): ApprovalRememberScope {
+  if (scope === 'project') {
+    return 'global';
+  }
+  return scope ?? null;
 }
 
 export function useToolApproval(options: UseToolApprovalOptions): UseToolApprovalReturn {
@@ -73,7 +97,7 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
     approvalId: string,
     toolCallId: string,
     approved: boolean,
-    remember?: 'session' | null,
+    remember?: ApprovalRememberScope,
     toolName?: string,
   ) => {
     const targetChatId =
@@ -104,9 +128,23 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
     const newState = approved ? 'approved' : 'denied';
     updateApprovalStateInHistory(approvalId, newState);
 
-    let allDecided = addApprovalDecision(approvalId, toolCallId, approved, remember, toolName);
+    const matchingPart = streamingPartsRef.current.find(
+      p => p.type === 'tool' && p.toolCallId === toolCallId,
+    );
+    const toolArgs = parseToolArgs(matchingPart?.args);
 
-    if (remember === 'session' && toolName) {
+    const effectiveRemember = toolName === 'bash_execute' ? normalizeLegacyRememberScope(remember) : null;
+
+    let allDecided = addApprovalDecision(
+      approvalId,
+      toolCallId,
+      approved,
+      effectiveRemember,
+      toolName,
+      toolArgs,
+    );
+
+    if ((effectiveRemember === 'session' || effectiveRemember === 'global') && toolName) {
       const linkedPending = streamingPartsRef.current
         .filter(
           p =>
@@ -117,13 +155,17 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
             p.approvalId !== approvalId &&
             p.toolCallId,
         )
-        .map(p => ({ approvalId: p.approvalId as string, toolCallId: p.toolCallId as string }));
+        .map(p => ({
+          approvalId: p.approvalId as string,
+          toolCallId: p.toolCallId as string,
+          args: parseToolArgs(p.args),
+        }));
 
       for (const linked of linkedPending) {
         resolveApproval(linked.approvalId, approved);
         updateApprovalStateInHistory(linked.approvalId, newState);
         allDecided =
-          addApprovalDecision(linked.approvalId, linked.toolCallId, approved, null, toolName) ||
+          addApprovalDecision(linked.approvalId, linked.toolCallId, approved, null, toolName, linked.args) ||
           allDecided;
       }
     }
@@ -137,9 +179,52 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
     const policyUpdates: Record<string, string> = {};
 
     decisions.forEach(d => {
-      if (d.remember === 'session' && d.toolName) {
-        policyUpdates[d.toolName] = d.approved ? 'always_allow' : 'always_deny';
-        hasPolicyUpdate = true;
+    });
+
+    const mergedPermissionPolicies: Record<string, any> = {
+      ...(currentConfig.permission_policies || {}),
+    };
+    let hasPermissionPolicyUpdate = false;
+
+    decisions.forEach(d => {
+      if ((d.remember === 'session' || d.remember === 'global') && d.toolName === 'bash_execute') {
+        const command = typeof d.args?.command === 'string' ? d.args.command.trim() : '';
+        if (!command) {
+          return;
+        }
+
+        const existing = mergedPermissionPolicies.bash_execute || {};
+        const existingRules = Array.isArray(existing.command_rules)
+          ? existing.command_rules.filter((r: any) => r && typeof r === 'object')
+          : [];
+
+        const nextRule = {
+          pattern: command,
+          match_type: 'exact',
+          action: d.approved ? 'allow' : 'deny',
+        };
+
+        const sameIndex = existingRules.findIndex((r: any) => {
+          return (
+            String(r.pattern || '').trim() === nextRule.pattern &&
+            String(r.match_type || '').trim().toLowerCase() === nextRule.match_type
+          );
+        });
+
+        if (sameIndex >= 0) {
+          existingRules[sameIndex] = nextRule;
+        } else {
+          existingRules.push(nextRule);
+        }
+
+        mergedPermissionPolicies.bash_execute = {
+          enabled: true,
+          mode: existing.mode || 'accept_edits',
+          default_action: existing.default_action || 'ask',
+          ...existing,
+          command_rules: existingRules,
+        };
+        hasPermissionPolicyUpdate = true;
       }
     });
 
@@ -154,12 +239,21 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
       setConfig(currentConfig);
     }
 
+    if (hasPermissionPolicyUpdate) {
+      currentConfig = {
+        ...currentConfig,
+        permission_policies: mergedPermissionPolicies,
+      };
+      setConfig(currentConfig);
+    }
+
     const resumeApprovals = decisions.map(d => ({
       request_id: d.approvalId,
       tool_call_id: d.toolCallId,
       approved: d.approved,
       remember: d.remember,
       tool_name: d.toolName,
+      args: d.args,
     }));
 
     try {

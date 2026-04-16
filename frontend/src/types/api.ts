@@ -34,6 +34,7 @@ export interface ChatConfig {
   sandbox_enabled?: boolean;
   sandbox_volumes?: string[];
   tool_approval_policy?: Record<string, string>;
+  permission_policies?: Record<string, Record<string, unknown>>;
   heartbeat_enabled?: boolean;
   heartbeat_interval_minutes?: number;
   heartbeat_instructions?: string;

@@ -34,6 +34,7 @@ export interface AGUIPart {
 }
 
 export type AGUIStatus = 'idle' | 'submitted' | 'streaming' | 'error';
+export type ApprovalRememberScope = 'session' | 'global' | null;
 
 interface UseAGUIOptions {
   url: string;
@@ -61,9 +62,23 @@ interface UseAGUIReturn {
   /** Number of tool approvals still awaiting user decision */
   pendingApprovalCount: number;
   /** Record a user's approval decision; returns true when all pending approvals are decided */
-  addApprovalDecision: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => boolean;
+  addApprovalDecision: (
+    approvalId: string,
+    toolCallId: string,
+    approved: boolean,
+    remember?: ApprovalRememberScope,
+    toolName?: string,
+    args?: Record<string, unknown> | null,
+  ) => boolean;
   /** Get accumulated approval decisions and clear the buffer */
-  consumeApprovalDecisions: () => Array<{ approvalId: string; toolCallId: string; approved: boolean; remember?: 'session' | null; toolName?: string }>;
+  consumeApprovalDecisions: () => Array<{
+    approvalId: string;
+    toolCallId: string;
+    approved: boolean;
+    remember?: ApprovalRememberScope;
+    toolName?: string;
+    args?: Record<string, unknown> | null;
+  }>;
 }
 
 // ── SSE Parser ───────────────────────────────────────────────────────
@@ -404,7 +419,14 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   // Pending approval tracking
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
   const pendingApprovalCountRef = useRef(0);
-  const approvalDecisionsRef = useRef<Array<{ approvalId: string; toolCallId: string; approved: boolean; remember?: 'session' | null; toolName?: string }>>([]);
+  const approvalDecisionsRef = useRef<Array<{
+    approvalId: string;
+    toolCallId: string;
+    approved: boolean;
+    remember?: ApprovalRememberScope;
+    toolName?: string;
+    args?: Record<string, unknown> | null;
+  }>>([]);
 
   // Stable refs for callbacks to avoid re-creating sendMessage
   const optionsRef = useRef(options);
@@ -463,10 +485,11 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     approvalId: string,
     toolCallId: string,
     approved: boolean,
-    remember?: 'session' | null,
+    remember?: ApprovalRememberScope,
     toolName?: string,
+    args?: Record<string, unknown> | null,
   ): boolean => {
-    const nextDecision = { approvalId, toolCallId, approved, remember, toolName };
+    const nextDecision = { approvalId, toolCallId, approved, remember, toolName, args };
     const existingIdx = approvalDecisionsRef.current.findIndex(
       d => d.approvalId === approvalId
     );

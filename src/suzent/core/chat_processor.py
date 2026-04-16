@@ -17,7 +17,7 @@ from typing import AsyncGenerator, List, Dict, Any, Optional
 from suzent.logger import get_logger
 from suzent.config import CONFIG, PROJECT_DIR, get_effective_volumes
 from suzent.agent_manager import get_or_create_agent
-from suzent.permissions.loader import persist_project_command_rule
+from suzent.permissions.loader import persist_global_command_rule
 
 from suzent.core.context_injection import build_agent_deps
 from suzent.core.agent_serializer import serialize_state, deserialize_state
@@ -416,7 +416,7 @@ class ChatProcessor:
 
                             if remember_scope == "global":
                                 try:
-                                    persist_project_command_rule(
+                                    persist_global_command_rule(
                                         PROJECT_DIR,
                                         logger,
                                         tool_name=tool_name,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Message } from '../../types/api';
-import type { AGUIPart } from '../../hooks/useAGUI';
+import type { AGUIPart, ApprovalRememberScope } from '../../hooks/useAGUI';
 import { splitAssistantContent, generateBlockKey, ContentBlock, formatMessageTime } from '../../lib/chatUtils';
 import { useTypewriter } from '../../hooks/useTypewriter';
 import { ThinkingAnimation, AgentBadge } from './ThinkingAnimation';
@@ -27,7 +27,7 @@ interface AssistantMessageProps {
   /** When provided, renders from AG-UI streaming parts instead of legacy HTML parsing */
   aguiParts?: AGUIPart[];
   /** HITL approval handler: (approvalId, toolCallId, approved, remember?, toolName?) */
-  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
+  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string) => void;
   /** Tool approval policy for showing auto-approval badges */
   toolApprovalPolicy?: Record<string, string>;
   /** Callback to remove a tool from auto-approval */
@@ -81,7 +81,7 @@ const ToolSequenceGroup: React.FC<{
     toolArgs?: string;
     output?: string;
     approvalState?: 'pending' | 'denied' | undefined;
-    onApprove?: (remember: 'session' | null) => void;
+    onApprove?: (remember: ApprovalRememberScope) => void;
     onDeny?: () => void;
   }>;
   isStreaming?: boolean;
@@ -220,7 +220,7 @@ const StepPills: React.FC<{
   blocks: ContentBlock[];
   messageIndex: number;
   isStreaming?: boolean;
-  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
+  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string) => void;
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
   onForceWebContext?: (contextId: string) => void;
@@ -236,7 +236,7 @@ const StepPills: React.FC<{
         output: b.content || undefined,
         approvalState: (b.approvalState as 'pending' | 'denied' | undefined),
         onApprove: (isPending && b.approvalId && onToolApproval)
-          ? (remember: 'session' | null) => onToolApproval(b.approvalId!, b.toolCallId || '', true, remember, b.toolName)
+          ? (remember: ApprovalRememberScope) => onToolApproval(b.approvalId!, b.toolCallId || '', true, remember, b.toolName)
           : undefined,
         onDeny: (isPending && b.approvalId && onToolApproval)
           ? () => onToolApproval(b.approvalId!, b.toolCallId || '', false, null, b.toolName)
@@ -326,7 +326,7 @@ const StaticContent: React.FC<{
   blocks: ContentBlock[];
   messageIndex: number;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
+  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string) => void;
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
   onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
@@ -442,7 +442,7 @@ const AGUIPartsContent: React.FC<{
   messageIndex: number;
   isStreaming?: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: 'session' | null, toolName?: string) => void;
+  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string) => void;
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
   onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
@@ -521,7 +521,7 @@ const AGUIPartsContent: React.FC<{
               output: tp.output || undefined,
               approvalState,
               onApprove: (approvalState === 'pending' && tp.approvalId && onToolApproval)
-                ? (remember: 'session' | null) => onToolApproval(tp.approvalId!, tp.toolCallId || '', true, remember, tp.toolName)
+                ? (remember: ApprovalRememberScope) => onToolApproval(tp.approvalId!, tp.toolCallId || '', true, remember, tp.toolName)
                 : undefined,
               onDeny: (approvalState === 'pending' && tp.approvalId && onToolApproval)
                 ? () => onToolApproval(tp.approvalId!, tp.toolCallId || '', false, null, tp.toolName)

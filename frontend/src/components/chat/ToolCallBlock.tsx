@@ -3,6 +3,7 @@ import { useI18n } from '../../i18n';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { WebSearchRenderer } from './WebSearchRenderer';
 import { ToolGroupIcon } from './toolGroupIcon';
+import type { ApprovalRememberScope } from '../../hooks/useAGUI';
 
 export type ApprovalState = 'pending' | 'approved' | 'denied' | undefined;
 
@@ -13,7 +14,7 @@ interface ToolCallBlockProps {
   defaultCollapsed?: boolean;
   approvalState?: ApprovalState;
   isStreaming?: boolean;
-  onApprove?: (remember: 'session' | null) => void;
+  onApprove?: (remember: ApprovalRememberScope) => void;
   onDeny?: () => void;
   isAutoApproved?: boolean;
   onRemovePolicy?: () => void;
@@ -53,6 +54,26 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const isPending = approvalState === 'pending';
   const isDenied = approvalState === 'denied';
   const isWebTool = toolName === 'web_search' || toolName === 'webpage_fetch';
+  const isBashTool = toolName === 'bash_execute';
+
+  const previewRememberedCommand = (() => {
+    if (!isBashTool || !toolArgs) return '';
+
+    try {
+      const parsed = JSON.parse(toolArgs) as Record<string, unknown>;
+      const rawCommand = typeof parsed.content === 'string'
+        ? parsed.content
+        : typeof parsed.command === 'string'
+          ? parsed.command
+          : '';
+
+      const compact = rawCommand.trim().replace(/\s+/g, ' ');
+      if (!compact) return '';
+      return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact;
+    } catch {
+      return '';
+    }
+  })();
 
   return (
     <div className="my-1.5 min-w-0 w-full overflow-x-hidden">
@@ -159,36 +180,68 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
 
             {/* Approval buttons — shown when tool is waiting for user decision */}
             {isPending && onApprove && onDeny && (
-              <div className="flex items-center gap-2 py-2">
-                <button
-                  onClick={() => onApprove(null)}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-green-50 text-green-700 border-2 border-green-600 rounded-sm hover:bg-green-100 transition-colors"
-                >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                  Allow
-                </button>
-                <button
-                  onClick={() => onApprove('session')}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-blue-50 text-blue-700 border-2 border-blue-600 rounded-sm hover:bg-blue-100 transition-colors"
-                  title="Allow this tool for the rest of this session"
-                >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                  </svg>
-                  Always Allow
-                </button>
-                <button
-                  onClick={() => onDeny()}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-red-50 text-red-700 border-2 border-red-600 rounded-sm hover:bg-red-100 transition-colors"
-                >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                  Deny
-                </button>
-              </div>
+              <>
+                <div className="flex items-center gap-2 py-2">
+                  <button
+                    onClick={() => onApprove(null)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-green-50 text-green-700 border-2 border-green-600 rounded-sm hover:bg-green-100 transition-colors"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Allow
+                  </button>
+                  {isBashTool && (
+                    <>
+                      <button
+                        onClick={() => onApprove('session')}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-blue-50 text-blue-700 border-2 border-blue-600 rounded-sm hover:bg-blue-100 transition-colors"
+                        title={previewRememberedCommand ? `Remember this exact bash command for the rest of this session: ${previewRememberedCommand}` : 'Remember this exact bash command for the rest of this session'}
+                      >
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                        </svg>
+                        Remember This Command
+                      </button>
+                      <button
+                        onClick={() => onApprove('global')}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-violet-50 text-violet-700 border-2 border-violet-600 rounded-sm hover:bg-violet-100 transition-colors"
+                        title={previewRememberedCommand ? `Allow this exact bash command globally: ${previewRememberedCommand}` : 'Allow this exact bash command globally'}
+                      >
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 9.75L12 4l9 5.75M4.5 10.5v7.25L12 22l7.5-4.25V10.5" />
+                        </svg>
+                        Always Allow (Global)
+                      </button>
+                    </>
+                  )}
+                  <button
+                    onClick={() => onDeny()}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-red-50 text-red-700 border-2 border-red-600 rounded-sm hover:bg-red-100 transition-colors"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Deny
+                  </button>
+                </div>
+                {isBashTool && (
+                  <div className="space-y-1 text-[10px] text-neutral-500 leading-tight">
+                    {previewRememberedCommand ? (
+                      <div>
+                        Applies to: <span className="font-mono text-neutral-700 dark:text-neutral-300">{previewRememberedCommand}</span>
+                      </div>
+                    ) : (
+                      <div>
+                        These buttons remember the exact bash command, not the whole bash tool.
+                      </div>
+                    )}
+                    <div>
+                      Remember This Command applies only for the current session. Always Allow (Global) writes a reusable bash command rule.
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {/* Output section */}

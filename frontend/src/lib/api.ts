@@ -103,7 +103,7 @@ export async function approveTool(
   chatId: string,
   requestId: string,
   approved: boolean,
-  remember?: 'session' | null,
+  remember?: 'session' | 'global' | null,
 ): Promise<boolean> {
   try {
     const res = await fetch(`${getApiBase()}/chat/approve-tool`, {
