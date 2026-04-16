@@ -118,39 +118,76 @@ export const RobotIcon: React.FC<RobotIconProps> = ({
 interface AgentBadgeProps {
   isThinking: boolean;
   isStreaming: boolean;
+  currentToolName?: string;
+  hasError?: boolean;
+  isPendingApproval?: boolean;
   eyeClass?: string;
 }
 
 const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
   isThinking,
   isStreaming,
+  currentToolName,
+  hasError,
+  isPendingApproval,
 }) => {
   // Determine variant based on state
   const [baseVariant, setBaseVariant] = useState<RobotVariant>(() => selectWeightedVariant(BADGE_WEIGHTS));
 
   // Effect to handle snoozing
   useEffect(() => {
-    if (isStreaming) {
-      // If we start streaming, ensure we wake up if we were sleeping
+    if (isStreaming || isPendingApproval) {
+      // If we start streaming or waiting for approval, ensure we wake up if we were sleeping
       if (baseVariant === 'snoozer') {
         setBaseVariant('idle');
       }
       return;
     }
 
-    // Only auto-snooze if we are 'idle'
-    if (baseVariant === 'idle') {
+    // Only auto-snooze if we are 'idle' (and NOT waiting for approval)
+    if (baseVariant === 'idle' && !isPendingApproval) {
       const timeout = setTimeout(() => {
         setBaseVariant('snoozer');
       }, 10000); // 10s of idleness = snooze
       return () => clearTimeout(timeout);
     }
-  }, [isStreaming, baseVariant]);
+  }, [isStreaming, isPendingApproval, baseVariant]);
 
   let variant: RobotVariant = baseVariant;
 
-  if (isStreaming) {
-    variant = 'observer'; // Active/Working
+  if (hasError) {
+    variant = 'shaker'; // 报错时发抖
+  } else if (isPendingApproval) {
+    variant = 'skeptic'; // 等待审批时表现为疑问或等待
+  } else if (isStreaming || currentToolName) {
+    if (currentToolName) {
+      switch (currentToolName) {
+        case 'read_file':
+        case 'webpage_fetch':
+          variant = 'scanner'; // 扫描数据
+          break;
+        case 'glob_search':
+        case 'grep_search':
+        case 'web_search':
+          variant = 'peeker';  // 探头搜索
+          break;
+        case 'bash_execute':
+        case 'write_file':
+        case 'edit_file':
+          variant = 'workout'; // 撸铁改代码
+          break;
+        case 'spawn_subagent':
+          variant = 'portal';  // 召唤传送门
+          break;
+        case 'skill_execute':
+          variant = 'dj';      // 酷炫打碟
+          break;
+        default:
+          variant = 'observer';
+      }
+    } else {
+      variant = 'observer'; // 纯文本流式输出
+    }
   }
 
   return (
@@ -159,9 +196,22 @@ const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
       transition-opacity duration-500 delay-200
       ${isThinking ? 'opacity-0 pointer-events-none' : 'opacity-100'}
     `}>
-      <div className="w-8 h-8 shrink-0">
+      <div 
+        key={variant} 
+        className="w-8 h-8 shrink-0 relative"
+        style={{
+          animation: 'robot-drop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+        }}
+      >
         <RobotAvatar variant={variant} />
       </div>
+      <style>{`
+        @keyframes robot-drop-in {
+          0% { transform: translateY(15px) scale(0.5); opacity: 0; }
+          50% { transform: translateY(-3px) scale(1.05); opacity: 1; }
+          100% { transform: translateY(0) scale(1); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 };

@@ -3,7 +3,7 @@ import type { Message } from '../../types/api';
 import type { AGUIPart, ApprovalRememberScope } from '../../hooks/useAGUI';
 import { splitAssistantContent, generateBlockKey, ContentBlock, formatMessageTime } from '../../lib/chatUtils';
 import { useTypewriter } from '../../hooks/useTypewriter';
-import { ThinkingAnimation, AgentBadge } from './ThinkingAnimation';
+import { ThinkingAnimation, AgentBadge, RobotIcon } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { LogBlock } from './LogBlock';
 import { ToolCallBlock } from './ToolCallBlock';
@@ -670,22 +670,80 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     }
   }, [aguiParts, message.content]);
 
+  // 1. 抓取当前正在跑的 Tool 和 错误状态
+  let currentToolName: string | undefined = undefined;
+  let hasError: boolean = false;
+  let isPendingApproval: boolean = false;
+
+  if (aguiParts && aguiParts.length > 0) {
+    hasError = aguiParts.some(p => p.type === 'tool' && p.state === 'error');
+    isPendingApproval = aguiParts.some(p => p.type === 'tool' && p.state === 'approval-requested');
+
+    // 优先找正在 running 的 tool
+    const runningTool = aguiParts.find(p => p.type === 'tool' && !p.output);
+    if (runningTool) {
+      currentToolName = runningTool.toolName;
+    } else {
+      // 没有正在运行的，看最后一个 block 是不是 tool (做完了但没新东西)
+      const lastPart = aguiParts[aguiParts.length - 1];
+      if (lastPart && lastPart.type === 'tool') {
+        currentToolName = lastPart.toolName;
+      }
+    }
+  } else {
+    // For legacy blocks, check if there's a pending tool call
+    const blocks = splitAssistantContent(message.content || '');
+    isPendingApproval = blocks.some(b => b.type === 'toolCall' && b.approvalState === 'pending');
+  }
+
+  // 2. 核心动画容器 (丝滑形变 UI)
+  const isHistory = !isLastMessage && !isPendingApproval;
+  const badgeContainer = (
+    <div className={`
+      relative overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]
+      ml-0 mr-auto
+      ${isThinking
+        ? 'w-[400px] h-[80px] bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal-lg mb-3'
+        : isHistory
+          ? 'w-[75px] h-[24px] bg-transparent border-0 border-transparent shadow-none mb-1 mt-1' // 变成历史记录的样式
+          : 'w-[90px] h-[40px] bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal-lg mb-3'
+      }
+    `}>
+      {/* 活跃状态：动态机器人 */}
+      <div className={`
+        absolute inset-0 transition-all duration-500 
+        ${isHistory ? 'opacity-0 scale-75 pointer-events-none' : 'opacity-100 scale-100'}
+      `}>
+        <ThinkingAnimation isThinking={isThinking} />
+        <AgentBadge 
+          isThinking={isThinking} 
+          isStreaming={isStreamingThis} 
+          currentToolName={currentToolName}
+          hasError={hasError}
+          isPendingApproval={isPendingApproval}
+        />
+      </div>
+
+      {/* 历史状态：静态小图标 */}
+      <div className={`
+        absolute inset-0 flex items-center gap-1.5 text-neutral-400 dark:text-neutral-500
+        transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)]
+        ${isHistory ? 'opacity-100 scale-100 translate-x-0' : 'opacity-0 scale-50 -translate-x-4 pointer-events-none'}
+      `}>
+        <RobotIcon className={`w-4 h-4 transition-transform duration-700 ${isHistory ? 'rotate-0' : '-rotate-90'}`} />
+        <span className="text-[10px] font-mono font-bold uppercase tracking-wider">
+          Suzent
+        </span>
+      </div>
+    </div>
+  );
+
   // ── AG-UI parts-based rendering path (for streaming messages) ──
   if (aguiParts !== undefined) {
     return (
       <div className="group w-full max-w-4xl break-all overflow-x-hidden text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
         {/* Badge/Assembly Container */}
-        <div className={`
-          border-3 border-brutal-black shadow-brutal-lg overflow-hidden relative
-          transition-all duration-700 ease-out mb-3
-          ${isThinking
-            ? 'w-[400px] h-[80px] bg-white dark:bg-zinc-800 mx-auto'
-            : 'w-[90px] h-[40px] bg-white dark:bg-zinc-800 ml-0 mr-auto'
-          }
-        `}>
-          <ThinkingAnimation isThinking={isThinking} />
-          <AgentBadge isThinking={isThinking} isStreaming={isStreamingThis} />
-        </div>
+        {badgeContainer}
 
         <div className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
           <div className="overflow-hidden min-h-0 min-w-0 flex flex-col space-y-3 pr-2 pb-2">
@@ -743,10 +801,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   if (toolOnly) {
     return (
       <div className="group w-full max-w-4xl break-all overflow-x-hidden text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
-        <div className="border-3 border-brutal-black shadow-brutal-lg overflow-hidden relative w-[90px] h-[40px] bg-white dark:bg-zinc-800 ml-0 mr-auto mb-2">
-          <ThinkingAnimation isThinking={false} />
-          <AgentBadge isThinking={false} isStreaming={false} />
-        </div>
+        {badgeContainer}
         <div className="pl-1 pr-2 pb-1">
           <StepPills
             blocks={blocks}
@@ -802,20 +857,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   return (
     <div className="group w-full max-w-4xl break-all overflow-x-hidden text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
       {/* Badge/Assembly Container is rendered at the top of the entire message timeline */}
-      <div className={`
-        border-3 border-brutal-black shadow-brutal-lg overflow-hidden relative
-        transition-all duration-700 ease-out mb-3
-        ${isThinking
-          ? 'w-[400px] h-[80px] bg-white dark:bg-zinc-800 mx-auto'
-          : 'w-[90px] h-[40px] bg-white dark:bg-zinc-800 ml-0 mr-auto'
-        }
-      `}>
-        <ThinkingAnimation isThinking={isThinking} />
-        <AgentBadge
-          isThinking={isThinking}
-          isStreaming={isStreamingThis}
-        />
-      </div>
+      {badgeContainer}
 
       <div className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
         <div className="overflow-hidden min-h-0 flex flex-col space-y-3 pr-2 pb-2">
