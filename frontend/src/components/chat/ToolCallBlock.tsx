@@ -56,23 +56,37 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const isWebTool = toolName === 'web_search' || toolName === 'webpage_fetch';
   const isBashTool = toolName === 'bash_execute';
 
-  const previewRememberedCommand = (() => {
-    if (!isBashTool || !toolArgs) return '';
-
+  const parsedToolArgs = React.useMemo<Record<string, unknown> | null>(() => {
+    if (!toolArgs) return null;
     try {
-      const parsed = JSON.parse(toolArgs) as Record<string, unknown>;
-      const rawCommand = typeof parsed.content === 'string'
-        ? parsed.content
-        : typeof parsed.command === 'string'
-          ? parsed.command
-          : '';
-
-      const compact = rawCommand.trim().replace(/\s+/g, ' ');
-      if (!compact) return '';
-      return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact;
+      const parsed = JSON.parse(toolArgs);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return null;
+      }
+      return parsed as Record<string, unknown>;
     } catch {
-      return '';
+      return null;
     }
+  }, [toolArgs]);
+
+  const descriptionText = (() => {
+    const raw = parsedToolArgs?.description;
+    if (typeof raw !== 'string') return '';
+    return raw.trim().replace(/\s+/g, ' ');
+  })();
+
+  const previewRememberedCommand = (() => {
+    if (!isBashTool || !parsedToolArgs) return '';
+
+    const rawCommand = typeof parsedToolArgs.content === 'string'
+      ? parsedToolArgs.content
+      : typeof parsedToolArgs.command === 'string'
+        ? parsedToolArgs.command
+        : '';
+
+    const compact = rawCommand.trim().replace(/\s+/g, ' ');
+    if (!compact) return '';
+    return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact;
   })();
 
   return (
@@ -152,7 +166,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
         ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}
       `}>
         <div className="overflow-hidden min-h-0 min-w-0 w-full">
-          <div className="ml-2 pl-3 border-l-2 border-neutral-200 mt-1 mb-2 space-y-2 min-w-0 w-full overflow-x-hidden">
+          <div className="ml-2 pl-3 border-l-2 border-neutral-200 mt-1 mb-2 space-y-2 min-w-0 overflow-x-hidden">
             {/* Arguments or Running status */}
             {(toolArgs || (isStreaming && !output)) && (
               <div className="min-w-0 w-full overflow-hidden">
@@ -175,6 +189,17 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                     </pre>
                   </div>
                 )}
+              </div>
+            )}
+
+            {isPending && descriptionText && (
+              <div className="w-full min-w-0 rounded-sm border-2 border-solid border-amber-500 bg-amber-50 px-2.5 py-2 overflow-hidden">
+                <div className="text-[10px] font-mono font-bold uppercase tracking-wide text-amber-700">
+                  Requested Action
+                </div>
+                <div className="mt-1 text-[12px] leading-relaxed text-amber-900 break-words whitespace-pre-wrap">
+                  {descriptionText}
+                </div>
               </div>
             )}
 
@@ -226,17 +251,20 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                   </button>
                 </div>
                 {isBashTool && (
-                  <div className="space-y-1 text-[10px] text-neutral-500 leading-tight">
+                  <div className="space-y-1 text-[10px] text-neutral-500 leading-tight min-w-0 w-full overflow-hidden">
                     {previewRememberedCommand ? (
-                      <div>
-                        Applies to: <span className="font-mono text-neutral-700 dark:text-neutral-300">{previewRememberedCommand}</span>
+                      <div className="break-words">
+                        Applies to:{' '}
+                        <span className="font-mono text-neutral-700 dark:text-neutral-300 break-all whitespace-pre-wrap">
+                          {previewRememberedCommand}
+                        </span>
                       </div>
                     ) : (
-                      <div>
+                      <div className="break-words">
                         These buttons remember the exact bash command, not the whole bash tool.
                       </div>
                     )}
-                    <div>
+                    <div className="break-words">
                       Remember This Command applies only for the current session. Always Allow (Global) writes a reusable bash command rule.
                     </div>
                   </div>
