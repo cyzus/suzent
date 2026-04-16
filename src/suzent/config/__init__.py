@@ -5,27 +5,22 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ValidationError
 
-from .logger import get_logger
+from ..logger import get_logger
+from suzent.permissions.loader import load_permission_overrides
 
 
 def get_project_root() -> Path:
     """Get project root, handling dev, bundled, and installed CLI scenarios."""
 
-    # 1. Explicit override (e.g. set by Tauri backend)
-    # In bundled mode, Tauri always sets SUZENT_APP_DATA to the app data directory
     app_data = os.getenv("SUZENT_APP_DATA")
     if app_data:
         return Path(app_data)
 
-    # 2. Dev mode detection
-    # Check if we are running from source by looking for pyproject.toml
     current_file = Path(__file__).resolve()
-    dev_root = current_file.parents[2]
+    dev_root = current_file.parents[3]
     if (dev_root / "pyproject.toml").exists():
         return dev_root
 
-    # 3. Installed CLI / Headless mode
-    # Determine the standard user data directory for the platform
     import platform
 
     system = platform.system()
@@ -39,23 +34,18 @@ def get_project_root() -> Path:
     elif system == "Darwin":
         canonical_path = home / "Library/Application Support/com.suzent.app"
     else:
-        # Linux
         xdg = os.getenv("XDG_DATA_HOME")
         if xdg:
             canonical_path = Path(xdg) / "com.suzent.app"
         else:
             canonical_path = home / ".local/share/com.suzent.app"
 
-    # If the directory exists (created by GUI or previous run), use it
     if canonical_path and canonical_path.exists():
         return canonical_path
 
-    # 4. Fallback: Use the canonical path (will be created)
-    # This supports first-run headless usage
     if canonical_path:
         return canonical_path
 
-    # Last resort (shouldn't happen on standard OS)
     return dev_root
 
 
@@ -66,10 +56,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _normalize_keys(d: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize incoming keys to lowercase snake style the model expects.
-
-    Accepts SCREAMING_SNAKE_CASE (TITLE) or snake_case (title).
-    """
+    """Normalize incoming keys to lowercase snake style the model expects."""
     out: Dict[str, Any] = {}
     for k, v in d.items():
         if not isinstance(k, str):
@@ -87,30 +74,25 @@ def get_tool_options() -> List[str]:
 
 
 def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[str]:
-    """
-    Calculate effective sandbox volumes by merging global config and per-chat volumes.
-    Also auto-mounts the 'skills' directory if not already present.
-    """
+    """Calculate effective sandbox volumes by merging global and per-chat volumes."""
     global_volumes = CONFIG.sandbox_volumes or []
     per_chat_volumes = custom_volumes or []
 
     raw_volumes = list(set(global_volumes + per_chat_volumes))
     volumes = []
 
-    from .tools.filesystem.path_resolver import PathResolver
+    from suzent.tools.filesystem.path_resolver import PathResolver
 
     for vol in raw_volumes:
         parsed = PathResolver.parse_volume_string(vol)
         if parsed:
             host, container = parsed
-            # Resolve relative host paths against PROJECT_DIR
             if not Path(host).is_absolute():
                 host = str((PROJECT_DIR / host).resolve())
                 vol = f"{host}:{container}"
 
         volumes.append(vol)
 
-    # Auto-mount skills directory if not already mapped
     if not any(v.endswith(":/mnt/skills") for v in volumes):
         skills_resolved = str((PROJECT_DIR / "skills").resolve())
         volumes.append(f"{skills_resolved}:/mnt/skills")
@@ -121,10 +103,10 @@ def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[st
 class ConfigModel(BaseModel):
     title: str = "SUZENT"
     server_url: str = "http://localhost:25314/chat"
-    code_tag: str = "<code>"  # Deprecated: kept for config compat
+    code_tag: str = "<code>"
 
     model_options: List[str] = []
-    agent_options: List[str] = ["Agent"]  # pydantic-ai uses a single Agent class
+    agent_options: List[str] = ["Agent"]
 
     default_tools: List[str] = [
         "WebSearchTool",
@@ -146,30 +128,22 @@ class ConfigModel(BaseModel):
     instructions: str = ""
     additional_authorized_imports: List[str] = []
 
-    # Text-to-Speech
     tts_model: str = ""
     tts_voice: str = ""
 
-    # Embedding
     embedding_model: Optional[str] = None
     embedding_dimension: int = 0
 
-    # Image Generation
     image_generation_model: Optional[str] = None
 
-    # Memory
     memory_enabled: bool = False
     markdown_memory_enabled: bool = True
     extraction_model: Optional[str] = None
 
-    # Cron presets — declarative list of jobs to ensure on startup.
-    # Each entry: {name, cron_expr, prompt, delivery_mode?, model_override?, enabled?, requires?}
-    # `requires`: optional config field name that must be truthy for the job to be created.
     cron_presets: List[Dict[str, Any]] = []
     user_id: str = "default-user"
     lancedb_uri: str = str(DATA_DIR / "memory")
 
-    # Sandbox
     sandbox_enabled: bool = False
     sandbox_image: str = "python:3.11-slim"
     sandbox_network: str = "bridge"
@@ -179,20 +153,18 @@ class ConfigModel(BaseModel):
     sandbox_data_path: str = str(DATA_DIR / "sandbox")
     sandbox_volumes: List[str] = []
 
-    # Workspace (host mode execution root)
     workspace_root: str = str(DATA_DIR)
 
-    # Node system
-    nodes_enabled: bool = True
-    node_auth_mode: str = "open"  # "open" | "approve" | "token"
+    permission_policies: Dict[str, Dict[str, Any]] = {}
 
-    # Session lifecycle
+    nodes_enabled: bool = True
+    node_auth_mode: str = "open"
+
     session_daily_reset_hour: int = 0
     session_idle_timeout_minutes: int = 0
     jsonl_transcripts_enabled: bool = True
     transcript_indexing_enabled: bool = False
 
-    # Context management
     max_context_tokens: int = 800_000
     context_compaction_trigger: float = 0.80
     context_soft_trim_threshold: float = 0.60
@@ -201,18 +173,13 @@ class ConfigModel(BaseModel):
     compaction_chunk_size: int = 20
     compaction_timeout_seconds: int = 60
 
-    # Streaming configuration
-    plan_watcher_interval: float = 2.0  # Seconds between plan update checks
+    plan_watcher_interval: float = 2.0
 
     @classmethod
     def load_from_files(cls) -> "ConfigModel":
         logger = get_logger(__name__)
-        # Use the configured project root so config files are located at <project>/config
         cfg_dir = PROJECT_DIR / "config"
 
-        # Load example and default files separately and merge them so that
-        # keys from `default.yaml` override the values from
-        # `default.example.yaml` on a per-key basis.
         example_path = cfg_dir / "default.example.yaml"
         default_path = cfg_dir / "default.yaml"
 
@@ -249,6 +216,14 @@ class ConfigModel(BaseModel):
                 loaded_files.append(default_path)
 
         data = {**example_data, **default_data}
+
+        try:
+            permission_overrides = load_permission_overrides(PROJECT_DIR, logger)
+            if permission_overrides:
+                data.update(permission_overrides)
+        except Exception as exc:
+            logger.warning("Failed to load permissions config overlays: {}", exc)
+
         loaded_path = loaded_files[-1] if loaded_files else None
 
         try:

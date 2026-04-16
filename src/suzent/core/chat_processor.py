@@ -15,8 +15,9 @@ from pathlib import Path
 from typing import AsyncGenerator, List, Dict, Any, Optional
 
 from suzent.logger import get_logger
-from suzent.config import CONFIG, get_effective_volumes
+from suzent.config import CONFIG, PROJECT_DIR, get_effective_volumes
 from suzent.agent_manager import get_or_create_agent
+from suzent.permissions.loader import persist_project_command_rule
 
 from suzent.core.context_injection import build_agent_deps
 from suzent.core.agent_serializer import serialize_state, deserialize_state
@@ -58,6 +59,80 @@ def _append_command_messages(
     if assistant_content and assistant_content.strip():
         updated.append({"role": "assistant", "content": assistant_content})
     return updated
+
+
+def _coerce_approval_args(raw_args: Any) -> dict[str, Any]:
+    if isinstance(raw_args, dict):
+        return raw_args
+    if isinstance(raw_args, str):
+        try:
+            parsed = json.loads(raw_args)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _upsert_command_rule(
+    policies: dict[str, Any],
+    *,
+    tool_name: str,
+    command_pattern: str,
+    action: str,
+    match_type: str = "exact",
+) -> None:
+    if not isinstance(policies, dict):
+        return
+
+    cleaned_pattern = command_pattern.strip()
+    cleaned_action = action.strip().lower()
+    cleaned_match = match_type.strip().lower()
+    if not cleaned_pattern:
+        return
+
+    tool_policy_raw = policies.get(tool_name)
+    tool_policy = dict(tool_policy_raw) if isinstance(tool_policy_raw, dict) else {}
+    tool_policy["enabled"] = True
+    tool_policy.setdefault("mode", "accept_edits")
+    tool_policy.setdefault("default_action", "ask")
+
+    raw_rules = tool_policy.get("command_rules")
+    rules: list[dict[str, Any]] = []
+    if isinstance(raw_rules, list):
+        rules = [r for r in raw_rules if isinstance(r, dict)]
+
+    updated = False
+    for idx, rule in enumerate(rules):
+        if (
+            str(rule.get("pattern", "")).strip() == cleaned_pattern
+            and str(rule.get("match_type", "")).strip().lower() == cleaned_match
+        ):
+            rules[idx] = {
+                "pattern": cleaned_pattern,
+                "match_type": cleaned_match,
+                "action": cleaned_action,
+            }
+            updated = True
+            break
+
+    if not updated:
+        rules.append(
+            {
+                "pattern": cleaned_pattern,
+                "match_type": cleaned_match,
+                "action": cleaned_action,
+            }
+        )
+
+    tool_policy["command_rules"] = rules
+    policies[tool_name] = tool_policy
+
+
+def _normalize_remember_scope(scope: Any) -> str:
+    value = str(scope or "").strip().lower()
+    if value == "project":
+        return "global"
+    return value
 
 
 class ChatProcessor:
@@ -317,11 +392,53 @@ class ChatProcessor:
             if approvals_dict:
                 deferred_tool_results = DeferredToolResults(approvals=approvals_dict)
 
-                # Also handle 'remember: session' policy updates
+                # Also handle remembered policy updates from approval UI.
                 for app in resume_approvals:
-                    if app.get("remember") == "session" and app.get("tool_name"):
-                        tool_name = app["tool_name"]
-                        approved = bool(app.get("approved"))
+                    remember_scope = _normalize_remember_scope(app.get("remember"))
+                    tool_name = str(app.get("tool_name") or "").strip()
+                    approved = bool(app.get("approved"))
+                    if not tool_name or remember_scope not in {"session", "global"}:
+                        continue
+
+                    args = _coerce_approval_args(app.get("args"))
+
+                    # Bash approvals can be remembered per command.
+                    if tool_name == "bash_execute":
+                        command_pattern = str(args.get("command") or "").strip()
+                        if command_pattern:
+                            action = "allow" if approved else "deny"
+                            _upsert_command_rule(
+                                deps.tool_permission_policies,
+                                tool_name=tool_name,
+                                command_pattern=command_pattern,
+                                action=action,
+                            )
+
+                            if remember_scope == "global":
+                                try:
+                                    persist_project_command_rule(
+                                        PROJECT_DIR,
+                                        logger,
+                                        tool_name=tool_name,
+                                        command_pattern=command_pattern,
+                                        action=action,
+                                    )
+                                    _upsert_command_rule(
+                                        CONFIG.permission_policies,
+                                        tool_name=tool_name,
+                                        command_pattern=command_pattern,
+                                        action=action,
+                                    )
+                                except Exception as exc:
+                                    logger.warning(
+                                        "Failed to persist global approval rule for {}: {}",
+                                        tool_name,
+                                        exc,
+                                    )
+                            continue
+
+                    # Non-bash tools keep legacy per-tool remember semantics.
+                    if remember_scope == "session":
                         deps.tool_approval_policy[tool_name] = (
                             "always_allow" if approved else "always_deny"
                         )

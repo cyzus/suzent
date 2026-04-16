@@ -18,8 +18,10 @@ from pathlib import Path
 from typing import Annotated, Literal, Optional
 
 from pydantic import Field
-from pydantic_ai import RunContext
+from pydantic_ai import ApprovalRequired, RunContext
 from suzent.core.agent_deps import AgentDeps
+from suzent.tools.filesystem.file_tool_utils import get_or_create_path_resolver
+from suzent.tools.shell.permissions import CommandDecision, evaluate_command_policy
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 from suzent.logger import get_logger
@@ -52,7 +54,7 @@ class BashTool(Tool):
     name = "BashTool"
     tool_name = "bash_execute"
     group = ToolGroup.EXECUTION
-    requires_approval = True
+    requires_approval = False
     session_guidance = (
         "BashTool is for shell/system commands ONLY. "
         "NEVER use bash to read, search, or edit files (no cat, head, tail, grep, find, sed, awk). "
@@ -160,16 +162,15 @@ class BashTool(Tool):
             ),
         ],
         description: Annotated[
-            Optional[str],
+            str,
             Field(
-                default=None,
                 description=(
-                    "Clear, concise description of what this command does in active voice "
+                    "Required concise description of what this command does in active voice "
                     "(e.g. 'List Python files in src/', 'Run test suite'). "
-                    "Used for audit logging."
+                    "Used for approval UX and audit logging."
                 ),
             ),
-        ] = None,
+        ],
         language: Annotated[
             Literal["python", "nodejs", "command"],
             Field(description="Execution mode for the content."),
@@ -230,6 +231,18 @@ class BashTool(Tool):
                 "No chat context. Cannot determine execution session.",
             )
 
+        from suzent.config import CONFIG
+
+        policy_map = {}
+        if hasattr(CONFIG, "permission_policies"):
+            policy_map = dict(getattr(CONFIG, "permission_policies") or {})
+        if hasattr(ctx.deps, "tool_permission_policies"):
+            policy_map = dict(getattr(ctx.deps, "tool_permission_policies") or {})
+
+        tool_policy = policy_map.get(self.tool_name) or policy_map.get(self.name) or {}
+        if not isinstance(tool_policy, dict):
+            tool_policy = {}
+
         denied_reason = self.is_tool_denied(ctx.deps, self.tool_name)
         if denied_reason:
             self.audit_operation(
@@ -272,6 +285,124 @@ class BashTool(Tool):
                 timeout=timeout,
                 background=background,
             )
+
+        policy_enabled = bool(tool_policy.get("enabled", False))
+        mode_value = str(tool_policy.get("mode", "full_approval"))
+        default_action = str(tool_policy.get("default_action", "ask"))
+        raw_rules = tool_policy.get("command_rules", [])
+
+        if lang == "command":
+            resolver = get_or_create_path_resolver(ctx.deps)
+            baseline_eval = evaluate_command_policy(
+                command_text=content,
+                resolver=resolver,
+                mode_value="accept_edits",
+                raw_rules=[],
+                default_action="ask",
+            )
+
+            baseline_hard_reasons = (
+                "Command blocked by high-risk shell semantics",
+                "Path denied by policy",
+                "Dangerous delete target blocked",
+            )
+            if (
+                baseline_eval.decision == CommandDecision.DENY
+                and baseline_eval.reason.startswith(baseline_hard_reasons)
+            ):
+                self.audit_operation(
+                    self.tool_name,
+                    "policy",
+                    "deny",
+                    language=lang,
+                    mode="baseline",
+                    reason=baseline_eval.reason,
+                    description=description,
+                    command_class=baseline_eval.command_class.value,
+                )
+                return self._error_result(
+                    ToolErrorCode.PERMISSION_DENIED,
+                    f"Command blocked by baseline guardrails: {baseline_eval.reason}",
+                    mode="unknown",
+                    language=lang,
+                    timeout=timeout,
+                    background=background,
+                    policy_decision="deny",
+                    policy_reason=baseline_eval.reason,
+                    command_class=baseline_eval.command_class.value,
+                )
+
+            baseline_ask_reasons = (
+                "Command requires approval due to shell chaining semantics",
+                "Git commands require approval",
+            )
+            if (
+                baseline_eval.decision == CommandDecision.ASK
+                and baseline_eval.reason.startswith(baseline_ask_reasons)
+            ):
+                self.audit_operation(
+                    self.tool_name,
+                    "policy",
+                    "ask",
+                    language=lang,
+                    mode="baseline",
+                    reason=baseline_eval.reason,
+                    description=description,
+                    command_class=baseline_eval.command_class.value,
+                )
+                if not bool(getattr(ctx, "tool_call_approved", False)):
+                    raise ApprovalRequired(
+                        metadata={
+                            "reason": baseline_eval.reason,
+                            "mode": "baseline",
+                            "command_class": baseline_eval.command_class.value,
+                            "description": description,
+                        }
+                    )
+
+        if policy_enabled and lang == "command":
+            policy_eval = evaluate_command_policy(
+                command_text=content,
+                resolver=resolver,
+                mode_value=mode_value,
+                raw_rules=raw_rules,
+                default_action=default_action,
+            )
+
+            self.audit_operation(
+                self.tool_name,
+                "policy",
+                policy_eval.decision.value,
+                language=lang,
+                mode=mode_value,
+                reason=policy_eval.reason,
+                description=description,
+                command_class=policy_eval.command_class.value,
+            )
+
+            if policy_eval.decision == CommandDecision.DENY:
+                return self._error_result(
+                    ToolErrorCode.PERMISSION_DENIED,
+                    f"Command blocked by bash policy: {policy_eval.reason}",
+                    mode="unknown",
+                    language=lang,
+                    timeout=timeout,
+                    background=background,
+                    policy_decision=policy_eval.decision.value,
+                    policy_reason=policy_eval.reason,
+                    command_class=policy_eval.command_class.value,
+                )
+
+            if policy_eval.decision == CommandDecision.ASK:
+                if not bool(getattr(ctx, "tool_call_approved", False)):
+                    raise ApprovalRequired(
+                        metadata={
+                            "reason": policy_eval.reason,
+                            "mode": mode_value,
+                            "command_class": policy_eval.command_class.value,
+                            "description": description or "",
+                        }
+                    )
 
         if background:
             if self.sandbox_enabled:

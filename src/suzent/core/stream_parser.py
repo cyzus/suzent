@@ -85,7 +85,14 @@ class ApprovalRequest(StreamEvent):
             return f"{text}Arguments: None"
 
         text += "Arguments:\n"
-        for k, v in self.args.items():
+
+        # Show high-level intent first so approval UIs are easier to scan.
+        keys = list(self.args.keys())
+        if "description" in self.args:
+            keys = ["description"] + [k for k in keys if k != "description"]
+
+        for k in keys:
+            v = self.args.get(k)
             if isinstance(v, (dict, list)):
                 # Fallback to JSON for complex structures
                 val_str = json.dumps(v)

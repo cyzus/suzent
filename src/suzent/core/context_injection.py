@@ -52,6 +52,9 @@ def build_agent_deps(
     workspace_root = _get_config_value(config, "workspace_root", CONFIG.workspace_root)
     cwd = _get_config_value(config, "cwd", None)
     auto_approve_tools = _get_config_value(config, "auto_approve_tools", False)
+    tool_permission_policies = _get_config_value(
+        config, "permission_policies", CONFIG.permission_policies
+    )
     custom_volumes = get_effective_volumes(
         _get_config_value(config, "sandbox_volumes", None)
     )
@@ -119,6 +122,7 @@ def build_agent_deps(
         social_context=social_ctx,
         skill_manager=skill_manager,
         auto_approve_tools=auto_approve_tools,
+        tool_permission_policies=dict(tool_permission_policies or {}),
         tool_approval_policy=tool_approval_policy,
         a2ui_queue=asyncio.Queue(),
         inline_a2ui_surfaces={},

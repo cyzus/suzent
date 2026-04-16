@@ -1,0 +1,6 @@
+# Dedicated, tool-agnostic permission policies
+# Optional: create config/permissions.yaml to define tool-specific permissions.
+# This example file is intentionally non-overriding.
+
+PERMISSIONS:
+  tools: {}

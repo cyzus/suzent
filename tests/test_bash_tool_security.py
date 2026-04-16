@@ -10,6 +10,7 @@ def _ctx(tmp_path, sandbox_enabled=False):
         sandbox_enabled=sandbox_enabled,
         workspace_root=str(tmp_path),
         custom_volumes=[],
+        path_resolver=None,
         auto_approve_tools=False,
         tool_approval_policy={},
     )
@@ -20,7 +21,12 @@ def test_respects_explicit_deny_policy(tmp_path):
     ctx = _ctx(tmp_path)
     ctx.deps.tool_approval_policy["bash_execute"] = "always_deny"
 
-    result = BashTool().forward(ctx, content="echo hi", language="command")
+    result = BashTool().forward(
+        ctx,
+        content="echo hi",
+        language="command",
+        description="Echo a test line",
+    )
 
     assert not result.success
     assert result.error_code.value == "permission_denied"
@@ -30,7 +36,12 @@ def test_respects_explicit_deny_policy(tmp_path):
 def test_rejects_unsupported_language(tmp_path):
     tool = BashTool()
 
-    result = tool.forward(_ctx(tmp_path), content="print('hi')", language="ruby")
+    result = tool.forward(
+        _ctx(tmp_path),
+        content="print('hi')",
+        language="ruby",
+        description="Run a ruby snippet",
+    )
 
     assert not result.success
     assert result.error_code.value == "invalid_argument"
@@ -57,7 +68,12 @@ def test_accepts_command_language_on_host(monkeypatch, tmp_path):
 
     monkeypatch.setattr("suzent.tools.shell.bash_tool.subprocess.run", fake_run)
 
-    result = tool.forward(_ctx(tmp_path), content="echo hi", language="command")
+    result = tool.forward(
+        _ctx(tmp_path),
+        content="echo hi",
+        language="command",
+        description="Echo a test line",
+    )
 
     assert result.success
     assert "ok" in result.message
@@ -72,3 +88,16 @@ def test_accepts_command_language_on_host(monkeypatch, tmp_path):
         ]
     else:
         assert captured["cmd"] == ["bash", "-c", "echo hi"]
+
+
+def test_baseline_guardrails_block_dangerous_command(tmp_path):
+    result = BashTool().forward(
+        _ctx(tmp_path),
+        content="sudo ls",
+        language="command",
+        description="List files with elevated privileges",
+    )
+
+    assert not result.success
+    assert result.error_code.value == "permission_denied"
+    assert "baseline guardrails" in result.message

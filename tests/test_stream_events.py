@@ -50,6 +50,27 @@ def test_approval_request_formatting():
     assert "- limit: 5" in pt_text
 
 
+def test_approval_request_formats_description_first():
+    event = ApprovalRequest(
+        request_id="req123",
+        tool_call_id="call_abc",
+        tool_name="bash_execute",
+        args={
+            "content": "ls -la",
+            "description": "List files in current working directory",
+            "language": "command",
+        },
+    )
+
+    text = event.format_alert_text(markdown=False)
+    desc_index = text.find("- description: List files in current working directory")
+    content_index = text.find("- content: ls -la")
+
+    assert desc_index != -1
+    assert content_index != -1
+    assert desc_index < content_index
+
+
 def test_stream_parser_fragmented_and_multi():
     """Verify that StreamParser handles fragmented and multi-event chunks."""
     parser = StreamParser()
