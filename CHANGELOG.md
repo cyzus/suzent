@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Filesystem Tool Reliability**: Improve `edit_file`, `glob`, `grep`, `path_resolver`, `read_file`, and `write_file` behaviors, including better no-match hints, large-file scan caps, path normalization, and stale-write handling.
 - **Shell Tool Organization**: Move shell execution tools into `tools/shell` and route process execution through a centralized host process registry.
 - **Chat and Sidebar UX**: Update chat/right-sidebar/canvas/sub-agent UI state handling and styles for clearer tool-call and sub-agent rendering.
+- **Bash Tool Permission**: Optimize bash tool permission level.
 
 ### 🐛 Fixed
 - **Web Search Rendering Compatibility**: Frontend parsing now handles both new `ToolResult` envelopes and legacy markdown output for search results.

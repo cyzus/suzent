@@ -216,30 +216,40 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                     </svg>
                     Allow
                   </button>
-                  {isBashTool && (
-                    <>
-                      <button
-                        onClick={() => onApprove('session')}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-blue-50 text-blue-700 border-2 border-blue-600 rounded-sm hover:bg-blue-100 transition-colors"
-                        title={previewRememberedCommand ? `Remember this exact bash command for the rest of this session: ${previewRememberedCommand}` : 'Remember this exact bash command for the rest of this session'}
-                      >
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                        </svg>
-                        Remember This Command
-                      </button>
-                      <button
-                        onClick={() => onApprove('global')}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-violet-50 text-violet-700 border-2 border-violet-600 rounded-sm hover:bg-violet-100 transition-colors"
-                        title={previewRememberedCommand ? `Allow this exact bash command globally: ${previewRememberedCommand}` : 'Allow this exact bash command globally'}
-                      >
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 9.75L12 4l9 5.75M4.5 10.5v7.25L12 22l7.5-4.25V10.5" />
-                        </svg>
-                        Always Allow (Global)
-                      </button>
-                    </>
-                  )}
+                  <>
+                    <button
+                      onClick={() => onApprove('session')}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-blue-50 text-blue-700 border-2 border-blue-600 rounded-sm hover:bg-blue-100 transition-colors"
+                      title={
+                        isBashTool
+                          ? (previewRememberedCommand
+                            ? `Remember this exact bash command for the rest of this session: ${previewRememberedCommand}`
+                            : 'Remember this exact bash command for the rest of this session')
+                          : `Always allow ${displayName} for the rest of this session`
+                      }
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                      {isBashTool ? 'Remember This Command' : 'Always Allow (Session)'}
+                    </button>
+                    <button
+                      onClick={() => onApprove('global')}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-violet-50 text-violet-700 border-2 border-violet-600 rounded-sm hover:bg-violet-100 transition-colors"
+                      title={
+                        isBashTool
+                          ? (previewRememberedCommand
+                            ? `Allow this exact bash command globally: ${previewRememberedCommand}`
+                            : 'Allow this exact bash command globally')
+                          : `Always allow ${displayName} globally`
+                      }
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 9.75L12 4l9 5.75M4.5 10.5v7.25L12 22l7.5-4.25V10.5" />
+                      </svg>
+                      Always Allow (Global)
+                    </button>
+                  </>
                   <button
                     onClick={() => onDeny()}
                     className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-red-50 text-red-700 border-2 border-red-600 rounded-sm hover:bg-red-100 transition-colors"
@@ -250,25 +260,31 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                     Deny
                   </button>
                 </div>
-                {isBashTool && (
-                  <div className="space-y-1 text-[10px] text-neutral-500 leading-tight min-w-0 w-full overflow-hidden">
-                    {previewRememberedCommand ? (
+                <div className="space-y-1 text-[10px] text-neutral-500 leading-tight min-w-0 w-full overflow-hidden">
+                  {isBashTool ? (
+                    <>
+                      {previewRememberedCommand ? (
+                        <div className="break-words">
+                          Applies to:{' '}
+                          <span className="font-mono text-neutral-700 dark:text-neutral-300 break-all whitespace-pre-wrap">
+                            {previewRememberedCommand}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="break-words">
+                          These buttons remember the exact bash command, not the whole bash tool.
+                        </div>
+                      )}
                       <div className="break-words">
-                        Applies to:{' '}
-                        <span className="font-mono text-neutral-700 dark:text-neutral-300 break-all whitespace-pre-wrap">
-                          {previewRememberedCommand}
-                        </span>
+                        Remember This Command applies only for the current session. Always Allow (Global) writes a reusable bash command rule.
                       </div>
-                    ) : (
-                      <div className="break-words">
-                        These buttons remember the exact bash command, not the whole bash tool.
-                      </div>
-                    )}
+                    </>
+                  ) : (
                     <div className="break-words">
-                      Remember This Command applies only for the current session. Always Allow (Global) writes a reusable bash command rule.
+                      Always Allow (Session) applies only in this chat session. Always Allow (Global) applies to this tool by name in future approvals.
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </>
             )}
 

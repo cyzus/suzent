@@ -136,6 +136,39 @@ def _normalize_remember_scope(scope: Any) -> str:
     return value
 
 
+def _collect_unprocessed_tool_call_ids(messages: list[Any]) -> set[str]:
+    """Return tool_call_ids that still need a ToolReturnPart in history."""
+    from pydantic_ai.messages import (
+        ModelRequest,
+        ModelResponse,
+        ToolCallPart,
+        ToolReturnPart,
+    )
+
+    if not messages:
+        return set()
+
+    answered_ids: set[str] = set()
+    for msg in messages:
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, ToolReturnPart) and part.tool_call_id:
+                    answered_ids.add(part.tool_call_id)
+
+    pending_ids: set[str] = set()
+    for msg in messages:
+        if isinstance(msg, ModelResponse):
+            for part in msg.parts:
+                if (
+                    isinstance(part, ToolCallPart)
+                    and part.tool_call_id
+                    and part.tool_call_id not in answered_ids
+                ):
+                    pending_ids.add(part.tool_call_id)
+
+    return pending_ids
+
+
 class ChatProcessor:
     """Encapsulates the lifecycle of a single conversation turn."""
 
@@ -394,6 +427,20 @@ class ChatProcessor:
                 if tool_call_id:
                     approvals_dict[tool_call_id] = bool(app.get("approved"))
 
+            pending_tool_call_ids = _collect_unprocessed_tool_call_ids(message_history)
+            if approvals_dict and pending_tool_call_ids:
+                approvals_dict = {
+                    tcid: approved
+                    for tcid, approved in approvals_dict.items()
+                    if tcid in pending_tool_call_ids
+                }
+            elif approvals_dict and not pending_tool_call_ids:
+                logger.info(
+                    "Ignoring stale resume approvals for chat {}: no unprocessed tool calls remain",
+                    chat_id,
+                )
+                approvals_dict = {}
+
             if approvals_dict:
                 deferred_tool_results = DeferredToolResults(approvals=approvals_dict)
 
@@ -442,8 +489,8 @@ class ChatProcessor:
                                     )
                             continue
 
-                    # Non-bash tools keep legacy per-tool remember semantics.
-                    if remember_scope == "session":
+                    # Non-bash tools use legacy per-tool remember semantics.
+                    if remember_scope in {"session", "global"}:
                         deps.tool_approval_policy[tool_name] = (
                             "always_allow" if approved else "always_deny"
                         )

@@ -133,7 +133,7 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
     );
     const toolArgs = parseToolArgs(matchingPart?.args);
 
-    const effectiveRemember = toolName === 'bash_execute' ? normalizeLegacyRememberScope(remember) : null;
+    const effectiveRemember = normalizeLegacyRememberScope(remember);
 
     let allDecided = addApprovalDecision(
       approvalId,
@@ -179,6 +179,14 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
     const policyUpdates: Record<string, string> = {};
 
     decisions.forEach(d => {
+      if (!d.toolName) {
+        return;
+      }
+
+      if ((d.remember === 'session' || d.remember === 'global') && d.toolName !== 'bash_execute') {
+        policyUpdates[d.toolName] = d.approved ? 'always_allow' : 'always_deny';
+        hasPolicyUpdate = true;
+      }
     });
 
     const mergedPermissionPolicies: Record<string, any> = {
