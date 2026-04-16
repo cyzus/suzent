@@ -21,7 +21,7 @@ from suzent.permissions.loader import persist_global_command_rule
 
 from suzent.core.context_injection import build_agent_deps
 from suzent.core.agent_serializer import serialize_state, deserialize_state
-from suzent.core.context_compressor import ContextCompressor
+from suzent.core.context_compressor import ContextCompressor, estimate_tokens
 from suzent.memory.lifecycle import get_memory_manager
 from suzent.streaming import stream_agent_responses
 from suzent.memory import ConversationTurn, Message, AgentAction
@@ -33,6 +33,7 @@ from suzent.core.stream_registry import (
     pop_pending_auto_approvals,
     register_background_stream,
     unregister_background_stream,
+    emit_bus_event,
 )
 
 
@@ -582,9 +583,10 @@ class ChatProcessor:
                         )
 
                         # C. Context Compression
-                        compressor = ContextCompressor(chat_id=chat_id, user_id=user_id)
-                        compressed_messages = await compressor.compress_messages(
-                            last_messages
+                        compressed_messages = await self._compress_with_events(
+                            chat_id=chat_id,
+                            user_id=user_id,
+                            messages=last_messages,
                         )
                     else:
                         logger.debug(
@@ -923,6 +925,56 @@ class ChatProcessor:
             )
         except Exception as e:
             logger.error(f"Memory extraction failed for {chat_id}: {e}")
+
+    async def _compress_with_events(
+        self, chat_id: str, user_id: str, messages: list
+    ) -> list:
+        """Compress context and emit normalized auto-compaction lifecycle events."""
+        compressor = ContextCompressor(chat_id=chat_id, user_id=user_id)
+        compaction_plan = compressor.get_auto_compaction_plan(messages)
+        can_attempt = bool(compaction_plan.get("can_attempt"))
+
+        if can_attempt:
+            emit_bus_event(
+                compressor.build_auto_compaction_event(
+                    stage="start",
+                    chat_id=chat_id,
+                    messages_before=int(compaction_plan["messages_before"]),
+                    tokens_before=int(compaction_plan["tokens_before"]),
+                )
+            )
+
+        compressed_messages = await compressor.compress_messages(messages)
+
+        if len(compressed_messages) < len(messages):
+            try:
+                after_tokens = estimate_tokens(
+                    compressed_messages, CONFIG.max_context_tokens
+                ).estimated_tokens
+                emit_bus_event(
+                    compressor.build_auto_compaction_event(
+                        stage="complete",
+                        chat_id=chat_id,
+                        messages_before=len(messages),
+                        messages_after=len(compressed_messages),
+                        tokens_before=int(compaction_plan["tokens_before"]),
+                        tokens_after=after_tokens,
+                    )
+                )
+            except Exception as e:
+                logger.debug(f"Failed to emit auto_compaction event for {chat_id}: {e}")
+        elif can_attempt:
+            emit_bus_event(
+                compressor.build_auto_compaction_event(
+                    stage="skipped",
+                    chat_id=chat_id,
+                    messages_before=len(messages),
+                    messages_after=len(compressed_messages),
+                    tokens_before=int(compaction_plan["tokens_before"]),
+                )
+            )
+
+        return compressed_messages
 
     async def _write_transcript(
         self, chat_id: str, user_content: str, agent_content: str, messages: list

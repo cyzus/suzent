@@ -21,6 +21,9 @@ let _activeStreams: Set<string> = new Set();
 const _listeners: Set<() => void> = new Set();
 let _es: EventSource | null = null;
 
+type BusPayloadHandler = (payload: any) => void;
+const _busPayloadHandlers: Set<BusPayloadHandler> = new Set();
+
 // Per-chat chunk handlers: chat_id → set of handlers
 type ChunkHandler = (rawData: string) => void;
 const _chunkHandlers: Map<string, Set<ChunkHandler>> = new Map();
@@ -41,6 +44,7 @@ function notify() {
 function _handleMessage(evt: MessageEvent) {
   try {
     const msg = JSON.parse(evt.data);
+    _busPayloadHandlers.forEach((fn) => fn(msg));
     if (msg.event === 'snapshot') {
       _activeStreams = new Set(msg.streams ?? []);
       notify();
@@ -70,7 +74,7 @@ function _handleMessage(evt: MessageEvent) {
 }
 
 function _hasSubscribers(): boolean {
-  return _listeners.size > 0 || _chunkHandlers.size > 0 || _streamEventListeners.size > 0;
+  return _listeners.size > 0 || _chunkHandlers.size > 0 || _streamEventListeners.size > 0 || _busPayloadHandlers.size > 0;
 }
 
 function _openEventSource() {
@@ -147,6 +151,18 @@ export function subscribeToBusChunks(chatId: string, handler: ChunkHandler): () 
       set.delete(handler);
       if (set.size === 0) _chunkHandlers.delete(chatId);
     }
+    if (!_hasSubscribers()) _closeEventSource();
+  };
+}
+
+/**
+ * Subscribe to raw /events/stream payloads (stream lifecycle + custom bus events).
+ */
+export function subscribeToBusPayloads(handler: BusPayloadHandler): () => void {
+  _busPayloadHandlers.add(handler);
+  _openEventSource();
+  return () => {
+    _busPayloadHandlers.delete(handler);
     if (!_hasSubscribers()) _closeEventSource();
   };
 }

@@ -326,7 +326,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [viewingFile, setViewingFile] = useState<{ path: string; name: string } | null>(null);
   const [sidebarFilePreview, setSidebarFilePreview] = useState<{ path: string; name: string } | null>(null);
   const [currentUsage, setCurrentUsage] = useState<any>(null);
-  const { setUsage: setLastKnownUsage, clearUsage: clearLastKnownUsage } = useContextUsageStore();
+  const {
+    setUsage: setLastKnownUsage,
+    clearUsage: clearLastKnownUsage,
+    setCompactNotice,
+  } = useContextUsageStore();
   const [subAgentTasks, setSubAgentTasks] = useState<Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>>({});
   const [viewingSubAgentTaskId, setViewingSubAgentTaskId] = useState<string | null>(null);
   const [forcedWebContextId, setForcedWebContextId] = useState<string | null>(null);
@@ -443,6 +447,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       const storeMsg = aguiPartsToStoreMessage(parts, currentUsage);
       if (storeMsg.content.trim()) {
         addMessage(storeMsg, chatId!);
+        if (/context compacted/i.test(storeMsg.content)) {
+          setCompactNotice('Context compacted');
+        }
       }
 
       setCurrentUsage(null);

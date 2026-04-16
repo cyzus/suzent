@@ -9,7 +9,7 @@ important facts and persist them to the memory system.
 import asyncio
 import dataclasses
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Any
 
 from pydantic_ai.messages import (
     ModelRequest,
@@ -208,6 +208,41 @@ class ContextCompressor:
         except Exception as e:
             logger.error(f"Context compression failed: {e}")
             return messages
+
+    def get_auto_compaction_plan(self, messages: list) -> dict[str, Any]:
+        """Compute whether an automatic compaction attempt should be made."""
+        budget = estimate_tokens(messages, CONFIG.max_context_tokens)
+        keep_recent = CONFIG.compaction_keep_recent_turns * 2
+        can_attempt = budget.over_trigger and len(messages) > keep_recent + 1
+        return {
+            "can_attempt": can_attempt,
+            "messages_before": len(messages),
+            "tokens_before": budget.estimated_tokens,
+        }
+
+    def build_auto_compaction_event(
+        self,
+        *,
+        stage: str,
+        chat_id: str,
+        messages_before: int,
+        tokens_before: int,
+        messages_after: Optional[int] = None,
+        tokens_after: Optional[int] = None,
+    ) -> dict[str, Any]:
+        """Build a normalized event-bus payload for auto compaction lifecycle updates."""
+        payload: dict[str, Any] = {
+            "event": "auto_compaction",
+            "stage": stage,
+            "chat_id": chat_id,
+            "messages_before": messages_before,
+            "tokens_before": tokens_before,
+        }
+        if messages_after is not None:
+            payload["messages_after"] = messages_after
+        if tokens_after is not None:
+            payload["tokens_after"] = tokens_after
+        return payload
 
     async def _perform_compression(
         self, messages: list, focus: Optional[str] = None

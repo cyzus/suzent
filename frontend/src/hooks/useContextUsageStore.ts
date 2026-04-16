@@ -12,12 +12,18 @@ export interface ContextUsage {
 
 interface ContextUsageState {
   usage: ContextUsage | null;
+  compactNotice: string | null;
   setUsage: (usage: ContextUsage) => void;
   clearUsage: () => void;
+  setCompactNotice: (notice: string | null) => void;
+  clearCompactNotice: () => void;
 }
 
 export const useContextUsageStore = create<ContextUsageState>((set) => ({
   usage: null,
+  compactNotice: null,
   setUsage: (usage) => set({ usage }),
   clearUsage: () => set({ usage: null }),
+  setCompactNotice: (compactNotice) => set({ compactNotice }),
+  clearCompactNotice: () => set({ compactNotice: null }),
 }));

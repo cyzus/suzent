@@ -124,6 +124,13 @@ def _emit_to_bus(payload: dict) -> None:
     _bus_subscribers.difference_update(dead)
 
 
+def emit_bus_event(payload: dict) -> None:
+    """Public helper to broadcast an event-bus payload to all subscribers."""
+    if not isinstance(payload, dict):
+        return
+    _emit_to_bus(payload)
+
+
 def _fan_chunk_to_bus(chat_id: str, item) -> None:
     """Forward one queue item to the event bus."""
     if item is None:

@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useStatusStore, StatusType } from '../hooks/useStatusStore';
-import { useChatCoreStore } from '../hooks/useChatStore';
+import { useChatCoreStore, useChatStore } from '../hooks/useChatStore';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
-import { useContextUsageStore } from '../hooks/useContextUsageStore';
+import { useContextUsageStore, type ContextUsage } from '../hooks/useContextUsageStore';
+import { useCompact } from '../hooks/useCompact';
+import { subscribeToBusPayloads } from '../hooks/useEventBus';
 
 const getStatusStyles = (type: StatusType) => {
   switch (type) {
@@ -123,12 +125,24 @@ function HeartbeatWidget() {
 function ContextWidget() {
   const { usage } = useContextUsageStore();
   const { backendConfig } = useChatCoreStore();
-  const [hovered, setHovered] = useState(false);
 
   if (!usage || !backendConfig?.maxContextTokens) return null;
 
+  return (
+    <ContextWidgetBody usage={usage} limit={backendConfig.maxContextTokens} />
+  );
+}
+
+function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: number; }) {
+  const { compactNotice, setCompactNotice, clearCompactNotice } = useContextUsageStore();
+  const { currentChatId, isStreaming } = useChatStore();
+  const { setStatus } = useStatusStore();
+  const { compact, progress } = useCompact();
+  const [hovered, setHovered] = useState(false);
+  const hintTimerRef = useRef<number | null>(null);
+  const hoverCloseTimerRef = useRef<number | null>(null);
+
   const total = usage.total_tokens ?? 0;
-  const limit = backendConfig.maxContextTokens;
   const pct = Math.min(100, (total / limit) * 100);
   const barColor = pct >= 80 ? 'bg-brutal-red' : pct >= 60 ? 'bg-brutal-yellow' : 'bg-neutral-400 dark:bg-neutral-500';
 
@@ -137,15 +151,119 @@ function ContextWidget() {
   const cacheRead = usage.cache_read_tokens ?? 0;
   const cacheWrite = usage.cache_write_tokens ?? 0;
   const details = usage.details ?? {};
-  const extraDetails = Object.entries(details).filter(([, v]) => v > 0);
+  const extraDetails = Object.entries(details).filter(([, v]) => Number(v) > 0) as Array<[string, number]>;
+  const compactRecommended = pct >= 80;
+  const compacting = ['loading', 'analyzing', 'summarizing', 'saving'].includes(progress.stage);
 
   const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
+  const clearHintTimer = () => {
+    if (hintTimerRef.current != null) {
+      window.clearTimeout(hintTimerRef.current);
+      hintTimerRef.current = null;
+    }
+  };
+  const clearHoverCloseTimer = () => {
+    if (hoverCloseTimerRef.current != null) {
+      window.clearTimeout(hoverCloseTimerRef.current);
+      hoverCloseTimerRef.current = null;
+    }
+  };
+  const openHover = () => {
+    clearHoverCloseTimer();
+    setHovered(true);
+  };
+  const closeHoverWithDelay = () => {
+    clearHoverCloseTimer();
+    hoverCloseTimerRef.current = window.setTimeout(() => {
+      setHovered(false);
+      hoverCloseTimerRef.current = null;
+    }, 150);
+  };
+  const pushCompactHint = (msg: string) => {
+    setCompactNotice(msg);
+  };
+  useEffect(() => {
+    return () => clearHintTimer();
+  }, []);
+  useEffect(() => {
+    return () => clearHoverCloseTimer();
+  }, []);
+  useEffect(() => {
+    if (!compactNotice) return;
+    clearHintTimer();
+    hintTimerRef.current = window.setTimeout(() => {
+      clearCompactNotice();
+      hintTimerRef.current = null;
+    }, 10_000);
+  }, [compactNotice, clearCompactNotice]);
+  useEffect(() => {
+    if (!currentChatId) return;
+
+    const unsub = subscribeToBusPayloads((payload) => {
+      if (!payload || payload.event !== 'auto_compaction') return;
+      if (payload.chat_id !== currentChatId) return;
+
+      if (payload.stage === 'start') {
+        setCompactNotice('Auto compacting...');
+        return;
+      }
+
+      if (payload.stage === 'skipped') {
+        setCompactNotice('Auto compaction skipped');
+        return;
+      }
+
+      const before = Number(payload.tokens_before ?? 0);
+      const after = Number(payload.tokens_after ?? 0);
+      const fmtCompact = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
+      const label = before > 0 && after >= 0
+        ? `Auto compacted ${fmtCompact(before)} -> ${fmtCompact(after)}`
+        : 'Auto compacted context';
+
+      setCompactNotice(label);
+    });
+
+    return unsub;
+  }, [currentChatId, setCompactNotice]);
+
+  const compactStageLabel: Record<string, string> = {
+    loading: 'Compacting...',
+    analyzing: 'Compaction analyzing...',
+    summarizing: 'Compaction summarizing...',
+    saving: 'Compaction saving...',
+  };
+
+  const handleManualCompact = async () => {
+    if (!currentChatId || isStreaming || compacting) return;
+
+    setCompactNotice('Compacting...');
+    setStatus('Compacting context...', 'info', 5000);
+
+    const result = await compact(currentChatId);
+    if (result.error) {
+      pushCompactHint('Compaction failed');
+      setStatus(`Compaction failed: ${result.error}`, 'error', 6000);
+      return;
+    }
+
+    if (result.skipped) {
+      pushCompactHint('Compaction skipped');
+      setStatus(result.reason || 'Compaction skipped', 'warning', 5000);
+      return;
+    }
+
+    pushCompactHint('Context compacted');
+    setStatus('Context compacted', 'success', 5000);
+  };
+
+  const canManualCompact = !!currentChatId && !isStreaming && !compacting;
+  const compactLabel = compacting ? (compactStageLabel[progress.stage] || 'Compacting...') : compactNotice;
 
   return (
     <div
       className="relative flex items-center gap-1.5 flex-shrink-0 ml-3 cursor-default"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={openHover}
+      onMouseLeave={closeHoverWithDelay}
     >
       <div className="w-12 h-1.5 rounded-full bg-neutral-300 dark:bg-zinc-600 overflow-hidden">
         <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
@@ -153,10 +271,35 @@ function ContextWidget() {
       <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">
         {fmt(total)}
       </span>
+      {compactRecommended && !compacting && (
+        <span className="hidden md:inline text-[9px] font-bold uppercase tracking-wider text-brutal-red" title="Context usage is high, consider compacting.">
+          Compact?
+        </span>
+      )}
 
       {hovered && (
-        <div className="absolute top-6 right-0 w-56 rounded border-2 border-brutal-black dark:border-neutral-500 bg-white dark:bg-zinc-900 shadow-lg font-mono text-[11px] text-neutral-700 dark:text-neutral-300 p-2.5 space-y-1.5 z-50 normal-case tracking-normal font-normal">
-          <div className="font-bold text-neutral-900 dark:text-neutral-100 mb-1 uppercase tracking-wider text-[10px]">Context Window</div>
+        <div
+          className="absolute top-6 right-0 w-56 rounded border-2 border-brutal-black dark:border-neutral-500 bg-white dark:bg-zinc-900 shadow-lg font-mono text-[11px] text-neutral-700 dark:text-neutral-300 p-2.5 space-y-1.5 z-50 normal-case tracking-normal font-normal"
+          onMouseEnter={openHover}
+          onMouseLeave={closeHoverWithDelay}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <div className="font-bold text-neutral-900 dark:text-neutral-100 uppercase tracking-wider text-[10px]">Context Window</div>
+            <button
+              type="button"
+              onClick={handleManualCompact}
+              disabled={!canManualCompact}
+              className="px-1.5 py-0.5 border border-brutal-black dark:border-neutral-400 text-[9px] font-bold uppercase tracking-wider bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              title={canManualCompact ? 'Compact context now' : 'Compaction unavailable while streaming'}
+            >
+              {compacting ? '...' : 'Compact'}
+            </button>
+          </div>
+          {compactLabel && (
+            <div className={`px-1.5 py-1 border rounded text-[10px] font-bold ${progress.stage === 'error' ? 'border-brutal-red text-brutal-red' : 'border-neutral-300 dark:border-zinc-700 text-neutral-600 dark:text-neutral-300'}`}>
+              {compactLabel}
+            </div>
+          )}
 
           {/* Total bar */}
           <div className="space-y-0.5">
@@ -207,7 +350,7 @@ function ContextWidget() {
               {extraDetails.map(([key, val]) => (
                 <div key={key} className="flex justify-between">
                   <span className="text-neutral-500 dark:text-neutral-400 truncate mr-2">{key.replace(/_/g, ' ')}</span>
-                  <span className="flex-shrink-0">{fmt(val)}</span>
+                  <span className="flex-shrink-0">{fmt(Number(val))}</span>
                 </div>
               ))}
             </div>
