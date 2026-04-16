@@ -490,7 +490,11 @@ class ChatProcessor:
                             continue
 
                     # Non-bash tools use legacy per-tool remember semantics.
-                    if remember_scope in {"session", "global"}:
+                    # Bash is handled as command-level rules above, so skip it here.
+                    if tool_name != "bash_execute" and remember_scope in {
+                        "session",
+                        "global",
+                    }:
                         deps.tool_approval_policy[tool_name] = (
                             "always_allow" if approved else "always_deny"
                         )
