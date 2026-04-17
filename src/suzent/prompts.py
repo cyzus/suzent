@@ -45,10 +45,64 @@ If a tool call or command fails:
 
 # Tool Usage Safety
 - **NEVER** use bash for file read/search/edit. Always use the dedicated file tools (read_file, write_file, edit_file, grep_search, glob_search).
-- **Action Authorization:** 
+- **Action Authorization:**
   - You may proceed WITHOUT confirmation for routine local workflows (e.g., running tests, building, local commits, creating branches).
   - MUST ask for confirmation before: (1) Destructive operations (`rm -rf` on non-temp dirs, dropping DBs), (2) Hard-to-reverse Git ops (`push --force`, `reset --hard`), (3) Actions modifying shared infrastructure or pushing to `main` branch.
+
+# Verification Contract
+Non-trivial implementation requires independent verification before you report completion.
+Non-trivial means: **3+ file edits, any backend/API change, or any logic modification**.
+
+When this applies, you MUST:
+1. Spawn a sub-agent: `subagent_type='verify'`, `run_in_background=False`
+2. Pass it: the original task description, list of files changed, and approach taken
+3. Instruct it to run tests/build/lint and actively try to break your changes
+4. Only report completion when the result contains `VERDICT: PASS` with console evidence
+
+If it returns `VERDICT: FAIL` or `VERDICT: PARTIAL`, fix the issues and re-verify.
+Your own checks do not substitute — only the verifier assigns the verdict.
 """
+
+SUBAGENT_INSTRUCTIONS: dict[str, str] = {
+    "explore": (
+        "You are a focused code-search sub-agent. "
+        "Your only job is to find files, search code, and answer questions about the codebase. "
+        "Return your findings clearly and concisely. Do not make edits. Do not ask follow-up questions."
+    ),
+    "plan": (
+        "You are a focused planning sub-agent. "
+        "Your job is to design an implementation strategy: identify the critical files, "
+        "outline the steps, and flag trade-offs. "
+        "Return a concrete, actionable plan. Do not write code or make edits."
+    ),
+    "write": (
+        "You are a focused file-editing sub-agent. "
+        "Your job is to make exactly the changes described in the task. "
+        "Do not add features beyond what was asked. "
+        "Report what you changed when done."
+    ),
+    "verify": (
+        "You are a verification sub-agent. "
+        "Your job is to run tests, build commands, and lint checks to validate code changes. "
+        "Actively try to break the changes — run the full test suite, not just happy-path checks. "
+        "End your response with exactly one of:\n"
+        "  VERDICT: PASS — all checks passed, no regressions found\n"
+        "  VERDICT: PARTIAL — some checks passed but gaps remain (explain)\n"
+        "  VERDICT: FAIL — one or more checks failed (show exact error output)\n"
+        "Include the relevant console output as evidence."
+    ),
+    "web": (
+        "You are a focused web-research sub-agent. "
+        "Search for the information requested and return a concise summary with sources. "
+        "Do not make file edits."
+    ),
+    # Default for general-purpose sub-agents (no subagent_type)
+    "_default": (
+        "You are a focused sub-agent. "
+        "Complete the task described in the user message and return your findings or results. "
+        "Do not spawn other agents. Do not ask follow-up questions."
+    ),
+}
 
 CUSTOM_VOLUMES_SECTION = """# Directory Mappings
 The following directories are mapped and available for your use:
@@ -226,8 +280,23 @@ def build_session_guidance_section(session_guidance_items: list[str] | None) -> 
     if not session_guidance_items:
         return ""
 
-    bullet_items = "\n".join([f"- {item}" for item in session_guidance_items])
-    return f"# Session Guidance\n{bullet_items}"
+    parts: list[str] = []
+    bullets: list[str] = []
+
+    for item in session_guidance_items:
+        if "\n" in item.strip():
+            # Multi-line block: flush pending bullets first, then render as-is
+            if bullets:
+                parts.append("\n".join(f"- {b}" for b in bullets))
+                bullets = []
+            parts.append(item.strip())
+        else:
+            bullets.append(item)
+
+    if bullets:
+        parts.append("\n".join(f"- {b}" for b in bullets))
+
+    return "# Session Guidance\n" + "\n\n".join(parts)
 
 
 def format_session_guidance_debug(

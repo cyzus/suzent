@@ -16,6 +16,11 @@ interface SubAgentTask {
   error: string | null;
   started_at: string | null;
   finished_at: string | null;
+  // Phase 2/3 fields
+  inherit_context?: boolean;
+  isolation?: string;
+  worktree_path?: string | null;
+  worktree_branch?: string | null;
 }
 
 interface ToolLogEntry {
@@ -29,13 +34,18 @@ interface SubAgentViewProps {
   onClose?: () => void;
 }
 
-function elapsed(startedAt: string | null): string {
+function formatDuration(startedAt: string | null, finishedAt: string | null): string {
   if (!startedAt) return '';
-  const ms = Date.now() - new Date(startedAt).getTime();
+  const end = finishedAt ? new Date(finishedAt).getTime() : Date.now();
+  const ms = end - new Date(startedAt).getTime();
   if (ms < 0) return '';
   const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s`;
   return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+function elapsed(startedAt: string | null): string {
+  return formatDuration(startedAt, null);
 }
 
 /** Parse tool call log from /chats/{chatId} messages */
@@ -61,6 +71,13 @@ function extractToolLog(messages: any[]): ToolLogEntry[] {
   }
   return entries;
 }
+
+const STATUS_COLOR: Record<string, string> = {
+  running:   'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+  queued:    'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300',
+  completed: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+  failed:    'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+};
 
 export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) => {
   const [task, setTask] = useState<SubAgentTask | null>(null);
@@ -88,10 +105,7 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
       const t: SubAgentTask = data.task;
       setTask(t);
       taskRef.current = t;
-      // Always fetch the tool log — shows live progress while running and final result when done
-      if (t.chat_id) {
-        fetchChatLog(t.chat_id);
-      }
+      if (t.chat_id) fetchChatLog(t.chat_id);
     } catch { /* ignore */ }
   }, [taskId, fetchChatLog]);
 
@@ -121,7 +135,7 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
 
     elapsedRef.current = setInterval(() => {
       const current = taskRef.current;
-      if (current?.started_at) {
+      if (current?.started_at && (current.status === 'running' || current.status === 'queued')) {
         setElapsedTime(elapsed(current.started_at));
       }
     }, 1000);
@@ -132,7 +146,6 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
     };
   }, [taskId]);
 
-  // Stop polling when task finishes
   useEffect(() => {
     if ((task?.status === 'completed' || task?.status === 'failed') && intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -144,9 +157,10 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
   }, [task?.status]);
 
   const isRunning = task?.status === 'running' || task?.status === 'queued';
+  const duration = task ? formatDuration(task.started_at, task.finished_at) : '';
 
   return (
-        <div className="flex flex-col h-full min-h-0 font-mono">
+    <div className="flex flex-col h-full min-h-0 font-mono">
       {/* Header */}
       <div className="flex items-start justify-between px-3 py-2 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0 gap-2">
         <div className="flex items-start gap-2 min-w-0 pt-0.5">
@@ -154,11 +168,11 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
             {task?.status === 'completed' ? '✅' : task?.status === 'failed' ? '❌' : '🤖'}
           </span>
           <div className="min-w-0">
-            <div className="text-[10px] font-bold uppercase tracking-widest font-mono truncate flex items-center gap-1.5 text-neutral-600 dark:text-neutral-300">
+            <div className="text-[10px] font-bold uppercase tracking-widest font-mono truncate flex items-center gap-1.5 text-neutral-500 dark:text-neutral-400">
               <span>Sub-agent</span>
-              <span className="opacity-70 normal-case tracking-normal truncate">{task?.task_id ?? taskId}</span>
+              <span className="opacity-70 normal-case tracking-normal truncate font-normal">{task?.task_id ?? taskId}</span>
               {isRunning && (
-                <span className="text-[9px] leading-none px-1 py-[2px] border border-brutal-black bg-brutal-yellow text-brutal-black font-bold uppercase tracking-normal">
+                <span className="text-[9px] leading-none px-1 py-[2px] border border-brutal-black bg-brutal-yellow text-brutal-black font-bold uppercase tracking-normal shrink-0">
                   Live
                 </span>
               )}
@@ -202,6 +216,23 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
 
         {task && (
           <>
+            {/* Status + timing row */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-sm ${STATUS_COLOR[task.status] ?? ''}`}>
+                {task.status}
+                {isRunning && <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />}
+              </span>
+              {task.started_at && (
+                <span className="text-[10px] text-neutral-400 dark:text-neutral-500">
+                  {new Date(task.started_at).toLocaleTimeString()}
+                  {task.finished_at && ` → ${new Date(task.finished_at).toLocaleTimeString()}`}
+                </span>
+              )}
+              {duration && !isRunning && (
+                <span className="text-[10px] text-neutral-400 dark:text-neutral-500">⏱ {duration}</span>
+              )}
+            </div>
+
             {/* Task description */}
             <div>
               <div className="text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500 mb-0.5">Task</div>
@@ -213,7 +244,9 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
             {/* Tools */}
             {task.tools_allowed.length > 0 && (
               <div>
-                <div className="text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500 mb-1">Tools</div>
+                <div className="text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500 mb-1">
+                  Tools ({task.tools_allowed.length})
+                </div>
                 <div className="flex flex-wrap gap-1">
                   {task.tools_allowed.map((t) => (
                     <span key={t} className="text-[10px] px-1.5 py-0.5 bg-neutral-100 dark:bg-zinc-700 rounded-sm border border-neutral-200 dark:border-zinc-600 text-neutral-600 dark:text-neutral-300">
@@ -224,27 +257,50 @@ export const SubAgentView: React.FC<SubAgentViewProps> = ({ taskId, onClose }) =
               </div>
             )}
 
-            {/* Status */}
-            <div>
-              <div className="text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500 mb-0.5">Status</div>
-              <div className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-sm
-                ${task.status === 'running' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
-                  task.status === 'queued' ? 'bg-amber-100 text-amber-700' :
-                  task.status === 'completed' ? 'bg-green-100 text-green-700' :
-                  'bg-red-100 text-red-700'}`
-              }>
-                {task.status}
-                {isRunning && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+            {/* Context / Isolation badges */}
+            {(task.inherit_context || (task.isolation && task.isolation !== 'none')) && (
+              <div className="flex flex-wrap gap-1.5">
+                {task.inherit_context && (
+                  <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 rounded-sm font-bold uppercase tracking-wide">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Context forked
+                  </span>
+                )}
+                {task.isolation === 'worktree' && (
+                  <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300 rounded-sm font-bold uppercase tracking-wide">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M5 12l4-4m-4 4l4 4" />
+                    </svg>
+                    Worktree isolated
+                  </span>
                 )}
               </div>
-              {task.started_at && (
-                <div className="mt-1 text-[10px] text-neutral-400">
-                  Started: {new Date(task.started_at).toLocaleTimeString()}
-                  {task.finished_at && ` → ${new Date(task.finished_at).toLocaleTimeString()}`}
+            )}
+
+            {/* Worktree details */}
+            {task.isolation === 'worktree' && task.worktree_branch && (
+              <div>
+                <div className="text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500 mb-1">Worktree</div>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    <span className="text-neutral-400 shrink-0">Branch</span>
+                    <code className="text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-950 px-1 py-px rounded-sm border border-orange-200 dark:border-orange-900 truncate">
+                      {task.worktree_branch}
+                    </code>
+                  </div>
+                  {task.worktree_path && (
+                    <div className="flex items-start gap-1.5 text-[10px]">
+                      <span className="text-neutral-400 shrink-0">Path</span>
+                      <code className="text-neutral-600 dark:text-neutral-400 break-all leading-relaxed">
+                        {task.worktree_path}
+                      </code>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Tool call log */}
             {toolLog.length > 0 && (
