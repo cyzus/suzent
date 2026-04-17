@@ -99,6 +99,7 @@ class SubAgentTask:
     finished_at: Optional[datetime] = None
     chat_id: str = ""  # isolated chat created for this sub-agent
     cwd: Optional[str] = None  # working directory override for bash execution
+    subagent_type: Optional[str] = None  # profile name, used to select system prompt
     # Phase 2: context forking
     inherit_context: bool = False
     # Phase 3: git worktree isolation
@@ -218,6 +219,7 @@ async def spawn_subagent(
     inherit_context: bool = False,
     isolation: str = "none",
     isolation_target_path: Optional[str] = None,
+    subagent_type: Optional[str] = None,
 ) -> SubAgentTask:
     """
     Create a SubAgentTask and launch it.
@@ -252,6 +254,7 @@ async def spawn_subagent(
         inherit_context=inherit_context,
         isolation=isolation,
         isolation_target_path=isolation_target_path,
+        subagent_type=subagent_type,
     )
 
     async with _tasks_lock:
@@ -339,10 +342,17 @@ async def _run_subagent(
         processor = ChatProcessor()
 
         # Build config: only pass whitelisted tools
+        from suzent.prompts import SUBAGENT_INSTRUCTIONS
+
+        subagent_prompt = SUBAGENT_INSTRUCTIONS.get(
+            task.subagent_type or "", SUBAGENT_INSTRUCTIONS["_default"]
+        )
+
         base_config: dict = {
             "auto_approve_tools": True,
             "memory_enabled": False,
             "platform": "subagent",
+            "static_instructions": subagent_prompt,
         }
         if model_override:
             base_config["model"] = model_override

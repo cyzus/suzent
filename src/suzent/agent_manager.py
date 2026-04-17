@@ -202,6 +202,7 @@ def create_agent(
     # --- Build instructions ---
     base_instructions = config.get("instructions", CONFIG.instructions)
     session_guidance_items = get_tool_session_guidance(sorted(enabled_tool_names))
+    static_instructions = config.get("static_instructions", STATIC_INSTRUCTIONS)
 
     # --- Create pydantic-ai Agent ---
     agent = Agent(
@@ -209,7 +210,7 @@ def create_agent(
         deps_type=AgentDeps,
         tools=tool_functions,
         toolsets=mcp_servers if mcp_servers else [],
-        instructions=STATIC_INSTRUCTIONS,
+        instructions=static_instructions,
         output_type=[str, DeferredToolRequests],
         output_retries=3,
     )

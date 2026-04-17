@@ -297,6 +297,7 @@ class SpawnSubagentTool(Tool):
             inherit_context=inherit_context,
             isolation=isolation,
             isolation_target_path=isolation_target_path,
+            subagent_type=subagent_type,
         )
 
         tool_list = ", ".join(resolved) if resolved else "(none)"
