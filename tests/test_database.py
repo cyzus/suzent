@@ -67,6 +67,48 @@ class TestChatOperations:
         count = db.get_chat_count()
         assert count == 2
 
+    def test_snapshot_revision_and_guarded_finalize(self, db):
+        chat_id = db.create_chat("Revision Chat", {})
+
+        rev1 = db.commit_snapshot_state(chat_id, b"state-1")
+        assert rev1 == 1
+
+        chat = db.get_chat(chat_id)
+        assert chat is not None
+        assert chat.state_revision == 1
+        assert chat.state_stage == "snapshot"
+
+        ok = db.finalize_state_if_revision_matches(
+            chat_id=chat_id,
+            expected_revision=1,
+            agent_state=b"state-final-1",
+            messages=[{"role": "assistant", "content": "done"}],
+        )
+        assert ok is True
+
+        chat = db.get_chat(chat_id)
+        assert chat is not None
+        assert chat.finalized_revision == 1
+        assert chat.state_stage == "finalized"
+        assert chat.messages[-1]["content"] == "done"
+
+        rev2 = db.commit_snapshot_state(chat_id, b"state-2")
+        assert rev2 == 2
+
+        stale = db.finalize_state_if_revision_matches(
+            chat_id=chat_id,
+            expected_revision=1,
+            agent_state=b"state-stale",
+            messages=[{"role": "assistant", "content": "stale"}],
+        )
+        assert stale is False
+
+        chat = db.get_chat(chat_id)
+        assert chat is not None
+        assert chat.state_revision == 2
+        assert chat.finalized_revision == 1
+        assert chat.agent_state == b"state-2"
+
 
 class TestPlanOperations:
     """Tests for plan and task CRUD operations."""

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### 🚀 Added
+- **Two-Phase Chat Persistence**: State is now saved in two stages — a quick snapshot immediately after streaming ends (so fast-follow turns always have full history), followed by a background job that handles transcript writing, memory extraction, context compression, and final persistence. Each step is tracked individually, and failed jobs are automatically retried up to 3 times.
 - **Sub-agent Runtime**: Add `spawn_subagent` tool with support for `run_in_background` (async vs blocking execution) and optional `cwd` override for per-task working directory control.
 - **Sub-agent Backend APIs**: Add sub-agent management endpoints:
   - `GET /subagents/active`

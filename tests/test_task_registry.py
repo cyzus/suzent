@@ -71,6 +71,27 @@ class TestBackgroundTaskRegistry:
         except asyncio.CancelledError:
             pass
 
+    async def test_register_allows_overflow_when_explicit(self):
+        """Test that explicit overflow registration bypasses max_concurrent."""
+        from suzent.core.task_registry import BackgroundTaskRegistry
+
+        registry = BackgroundTaskRegistry(max_concurrent=1)
+        release = asyncio.Event()
+
+        async def blocked_task():
+            await release.wait()
+
+        task1 = await registry.register(blocked_task(), description="primary")
+
+        task2 = await registry.register(
+            blocked_task(), description="overflow", allow_overflow=True
+        )
+
+        assert registry.active_count == 2
+
+        release.set()
+        await asyncio.gather(task1, task2)
+
     async def test_cleanup_completed_tasks(self):
         """Test that completed tasks are cleaned up."""
         from suzent.core.task_registry import BackgroundTaskRegistry

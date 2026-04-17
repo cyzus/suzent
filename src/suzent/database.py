@@ -4,9 +4,10 @@ Database layer for chat persistence using SQLModel.
 Provides a clean, type-safe interface for all database operations.
 """
 
+import json
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
@@ -59,6 +60,12 @@ class ChatModel(SQLModel, table=True):
     # Session lifecycle fields
     last_active_at: Optional[datetime] = None
     turn_count: int = Field(default=0)
+
+    # Two-phase post-process state tracking
+    state_revision: int = Field(default=0)
+    finalized_revision: int = Field(default=0)
+    state_stage: Optional[str] = None  # snapshot | finalized
+    state_updated_at: Optional[datetime] = None
 
     # Background execution tracking — written only by background executors
     last_result_at: Optional[datetime] = None
@@ -196,6 +203,108 @@ class CronRunModel(SQLModel, table=True):
     error: Optional[str] = None
 
 
+class PostprocessJobModel(SQLModel, table=True):
+    """Postprocess job tracking for chat turn completion.
+
+    Tracks the full lifecycle of a postprocess job from snapshot through finalize,
+    including per-step status (B1..B7) and retry attempts.
+    """
+
+    __tablename__ = "postprocess_jobs"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    job_id: str = Field(index=True, unique=True)  # UUID-based unique ID
+    chat_id: str = Field(foreign_key="chats.id", index=True)
+    assigned_revision: int  # Revision from A phase snapshot
+    current_revision: Optional[int] = None  # Latest revision (for guard check)
+    status: str = Field(
+        default="pending"
+    )  # pending | running | success | failed | skipped_stale
+    outcome: Optional[str] = None  # success | failed | skipped_stale
+    attempt: int = Field(default=1)
+    max_attempts: int = Field(default=3)
+
+    # Step status tracking (B1..B7)
+    step_status_json: Optional[str] = (
+        None  # JSON dict of {step: {status, error, duration_ms}}
+    )
+
+    # Timing
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    duration_ms: Optional[int] = None
+
+    # Error tracking
+    error_class: Optional[str] = None
+    error_message: Optional[str] = None
+
+    # Metadata
+    created_at: datetime = Field(default_factory=lambda: datetime.now())
+    updated_at: datetime = Field(default_factory=lambda: datetime.now())
+
+
+# PostProcess Step Constants
+class PostProcessStep:
+    """Constant definitions for postprocess steps B1..B7."""
+
+    TRANSCRIPT = "B1_transcript"
+    MEMORY = "B2_memory"
+    COMPRESS = "B3_compress"
+    DISPLAY = "B4_display"
+    PERSIST = "B5_persist"
+    LIFECYCLE = "B6_lifecycle"
+    MIRROR = "B7_mirror"
+
+    ALL = [TRANSCRIPT, MEMORY, COMPRESS, DISPLAY, PERSIST, LIFECYCLE, MIRROR]
+
+
+# Post Process Status Constants
+class PostProcessStatus:
+    """Constant definitions for postprocess job statuses."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCESS = "success"
+    FAILED = "failed"
+    SKIPPED_STALE = "skipped_stale"
+
+
+class PostProcessOutcome:
+    """Constant definitions for postprocess job outcomes."""
+
+    SUCCESS = "success"
+    FAILED = "failed"
+    SKIPPED_STALE = "skipped_stale"
+
+
+# Step Status Constants per Step
+class StepStatus:
+    """Constant definitions for individual step status."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCESS = "success"
+    FAILED = "failed"
+
+
+# Metrics counters (in-memory for now, can be persisted later)
+class PostProcessMetrics:
+    """Container for postprocess metrics."""
+
+    def __init__(self):
+        self.snapshot_committed = 0
+        self.snapshot_failed = 0
+        self.job_started = 0
+        self.job_success = 0
+        self.job_failed = 0
+        self.job_skipped_stale = 0
+        self.total_duration_ms = 0
+
+
+# Global metrics instance
+_postprocess_metrics = PostProcessMetrics()
+
+
 # -----------------------------------------------------------------------------
 # Database Management
 # -----------------------------------------------------------------------------
@@ -288,6 +397,69 @@ class ChatDatabase:
                     conn.execute(
                         text("ALTER TABLE chats ADD COLUMN working_directory TEXT")
                     )
+                if "state_revision" not in columns:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE chats ADD COLUMN state_revision INTEGER DEFAULT 0"
+                        )
+                    )
+                if "finalized_revision" not in columns:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE chats ADD COLUMN finalized_revision INTEGER DEFAULT 0"
+                        )
+                    )
+                if "state_stage" not in columns:
+                    conn.execute(text("ALTER TABLE chats ADD COLUMN state_stage TEXT"))
+                if "state_updated_at" not in columns:
+                    conn.execute(
+                        text("ALTER TABLE chats ADD COLUMN state_updated_at DATETIME")
+                    )
+                conn.commit()
+
+        # Migration: Ensure postprocess_jobs table exists (auto-created by SQLModel)
+        # Verify it exists after create_all() runs
+        if "postprocess_jobs" not in inspector.get_table_names():
+            # This should not happen as SQLModel.metadata.create_all() already ran
+            # but adding for safety
+            with self.engine.connect() as conn:
+                conn.execute(
+                    text(
+                        """
+                        CREATE TABLE IF NOT EXISTS postprocess_jobs (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            job_id TEXT NOT NULL UNIQUE,
+                            chat_id TEXT NOT NULL,
+                            assigned_revision INTEGER NOT NULL,
+                            current_revision INTEGER,
+                            status TEXT DEFAULT 'pending',
+                            outcome TEXT,
+                            attempt INTEGER DEFAULT 1,
+                            max_attempts INTEGER DEFAULT 3,
+                            step_status_json TEXT,
+                            started_at DATETIME,
+                            finished_at DATETIME,
+                            duration_ms INTEGER,
+                            error_class TEXT,
+                            error_message TEXT,
+                            created_at DATETIME,
+                            updated_at DATETIME,
+                            FOREIGN KEY(chat_id) REFERENCES chats(id)
+                        )
+                        """
+                    )
+                )
+                # Create indexes for query performance
+                conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS idx_postprocess_jobs_chat_id ON postprocess_jobs(chat_id)"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS idx_postprocess_jobs_status ON postprocess_jobs(status)"
+                    )
+                )
                 conn.commit()
 
     def _session(self) -> Session:
@@ -369,6 +541,71 @@ class ChatDatabase:
 
             if should_update_timestamp:
                 chat.updated_at = datetime.now()
+
+            session.add(chat)
+            session.commit()
+            return True
+
+    def commit_snapshot_state(self, chat_id: str, agent_state: bytes) -> Optional[int]:
+        """Commit fast snapshot state and increment revision atomically.
+
+        Returns:
+            The new state revision if the chat exists, otherwise None.
+        """
+        now = datetime.now()
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if not chat:
+                _postprocess_metrics.snapshot_failed += 1
+                return None
+
+            next_revision = (chat.state_revision or 0) + 1
+            chat.agent_state = agent_state
+            chat.state_revision = next_revision
+            chat.state_stage = "snapshot"
+            chat.state_updated_at = now
+            chat.updated_at = now
+
+            session.add(chat)
+            session.commit()
+
+        _postprocess_metrics.snapshot_committed += 1
+        return next_revision
+
+    def finalize_state_if_revision_matches(
+        self,
+        chat_id: str,
+        expected_revision: int,
+        agent_state: bytes,
+        messages: Optional[List[Dict[str, Any]]] = None,
+        update_lifecycle: bool = True,
+    ) -> bool:
+        """Finalize chat state only when revision matches expected value.
+
+        Returns:
+            True when finalized commit succeeds, False when stale/not found.
+        """
+        now = datetime.now()
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if not chat:
+                return False
+
+            current_revision = chat.state_revision or 0
+            if current_revision != expected_revision:
+                return False
+
+            chat.agent_state = agent_state
+            if messages is not None:
+                chat.messages = messages
+            chat.finalized_revision = expected_revision
+            chat.state_stage = "finalized"
+            chat.state_updated_at = now
+            chat.updated_at = now
+
+            if update_lifecycle:
+                chat.last_active_at = now
+                chat.turn_count = (chat.turn_count or 0) + 1
 
             session.add(chat)
             session.commit()
@@ -506,6 +743,286 @@ class ChatDatabase:
             statement = select(ChatModel)
             chats = session.exec(statement).all()
             return [c for c in chats if c.config.get("heartbeat_enabled") is True]
+
+    # -------------------------------------------------------------------------
+    # PostProcess Job Operations
+    # -------------------------------------------------------------------------
+
+    def create_postprocess_job(
+        self,
+        job_id: str,
+        chat_id: str,
+        assigned_revision: int,
+        max_attempts: int = 3,
+    ) -> Optional[Dict[str, Any]]:
+        """Create a new postprocess job record.
+
+        Args:
+            job_id: UUID-based unique job identifier
+            chat_id: Chat ID for this job
+            assigned_revision: Revision from Phase A snapshot
+            max_attempts: Max retry attempts (default: 3)
+
+        Returns:
+            Dict with job data if successful, None otherwise.
+        """
+        now = datetime.now()
+        with self._session() as session:
+            # Verify chat exists
+            chat = session.get(ChatModel, chat_id)
+            if not chat:
+                return None
+
+            job = PostprocessJobModel(
+                job_id=job_id,
+                chat_id=chat_id,
+                assigned_revision=assigned_revision,
+                status=PostProcessStatus.PENDING,
+                attempt=1,
+                max_attempts=max_attempts,
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(job)
+            session.commit()
+
+            # Increment metrics
+            _postprocess_metrics.job_started += 1
+
+            # Return dict representation while still in session context
+            return {
+                "id": job.id,
+                "job_id": job.job_id,
+                "chat_id": job.chat_id,
+                "assigned_revision": job.assigned_revision,
+                "status": job.status,
+                "attempt": job.attempt,
+                "max_attempts": job.max_attempts,
+            }
+
+    def start_postprocess_job(self, job_id: str) -> bool:
+        """Mark a postprocess job as running."""
+        now = datetime.now()
+        with self._session() as session:
+            statement = select(PostprocessJobModel).where(
+                PostprocessJobModel.job_id == job_id
+            )
+            job = session.exec(statement).first()
+            if not job:
+                return False
+
+            job.status = PostProcessStatus.RUNNING
+            job.started_at = now
+            job.updated_at = now
+            session.add(job)
+            session.commit()
+            return True
+
+    def update_job_step_status(
+        self,
+        job_id: str,
+        step: str,
+        status: str,
+        error: str = None,
+        duration_ms: int = None,
+    ) -> bool:
+        """Update status of a specific step within a postprocess job.
+
+        Args:
+            job_id: Job identifier
+            step: Step name (B1_transcript, B2_memory, etc.)
+            status: Step status (pending, running, success, failed)
+            error: Error message if failed
+            duration_ms: Duration of the step in milliseconds
+
+        Returns:
+            True if updated successfully, False if job not found.
+        """
+        now = datetime.now()
+        with self._session() as session:
+            statement = select(PostprocessJobModel).where(
+                PostprocessJobModel.job_id == job_id
+            )
+            job = session.exec(statement).first()
+            if not job:
+                return False
+
+            # Parse or initialize step_status_json
+            try:
+                step_status = json.loads(job.step_status_json or "{}")
+            except (json.JSONDecodeError, TypeError):
+                step_status = {}
+
+            # Update step status
+            step_status[step] = {
+                "status": status,
+                "error": error,
+                "duration_ms": duration_ms,
+                "updated_at": now.isoformat(),
+            }
+
+            job.step_status_json = json.dumps(step_status)
+            job.updated_at = now
+            session.add(job)
+            session.commit()
+            return True
+
+    def finalize_postprocess_job(
+        self,
+        job_id: str,
+        outcome: str,
+        error_class: str = None,
+        error_message: str = None,
+    ) -> bool:
+        """Mark a postprocess job as complete.
+
+        Args:
+            job_id: Job identifier
+            outcome: Outcome code (success, failed, skipped_stale)
+            error_class: Exception class name if failed
+            error_message: Error details if failed
+
+        Returns:
+            True if finalized successfully, False if job not found.
+        """
+        now = datetime.now()
+        with self._session() as session:
+            statement = select(PostprocessJobModel).where(
+                PostprocessJobModel.job_id == job_id
+            )
+            job = session.exec(statement).first()
+            if not job:
+                return False
+
+            job.status = (
+                PostProcessStatus.SUCCESS
+                if outcome == PostProcessOutcome.SUCCESS
+                else PostProcessStatus.FAILED
+            )
+            job.outcome = outcome
+            job.finished_at = now
+            job.error_class = error_class
+            job.error_message = error_message
+
+            if job.started_at:
+                job.duration_ms = int((now - job.started_at).total_seconds() * 1000)
+
+            job.updated_at = now
+            session.add(job)
+            session.commit()
+
+            # Update metrics
+            if outcome == PostProcessOutcome.SUCCESS:
+                _postprocess_metrics.job_success += 1
+                _postprocess_metrics.total_duration_ms += job.duration_ms or 0
+            elif outcome == PostProcessOutcome.SKIPPED_STALE:
+                _postprocess_metrics.job_skipped_stale += 1
+            else:
+                _postprocess_metrics.job_failed += 1
+
+            return True
+
+    def get_postprocess_job(self, job_id: str) -> Optional[PostprocessJobModel]:
+        """Retrieve a postprocess job by ID."""
+        with self._session() as session:
+            statement = select(PostprocessJobModel).where(
+                PostprocessJobModel.job_id == job_id
+            )
+            return session.exec(statement).first()
+
+    def list_postprocess_jobs(
+        self, chat_id: str, limit: int = 50
+    ) -> List[PostprocessJobModel]:
+        """List postprocess jobs for a specific chat."""
+        with self._session() as session:
+            statement = (
+                select(PostprocessJobModel)
+                .where(PostprocessJobModel.chat_id == chat_id)
+                .order_by(PostprocessJobModel.created_at.desc())
+                .limit(limit)
+            )
+            return session.exec(statement).all()
+
+    def get_postprocess_metrics(self) -> Dict[str, Any]:
+        """Get current postprocess metrics."""
+        return {
+            "snapshot_committed": _postprocess_metrics.snapshot_committed,
+            "snapshot_failed": _postprocess_metrics.snapshot_failed,
+            "job_started": _postprocess_metrics.job_started,
+            "job_success": _postprocess_metrics.job_success,
+            "job_failed": _postprocess_metrics.job_failed,
+            "job_skipped_stale": _postprocess_metrics.job_skipped_stale,
+            "total_duration_ms": _postprocess_metrics.total_duration_ms,
+        }
+
+    def get_retriable_postprocess_jobs(
+        self, max_age_seconds: int = 3600
+    ) -> List[PostprocessJobModel]:
+        """Get postprocess jobs eligible for retry.
+
+        Criteria:
+        - Status is 'failed' (not 'skipped_stale')
+        - attempt < max_attempts
+        - Not recently attempted (to avoid retry storms)
+
+        Args:
+            max_age_seconds: Only retry jobs older than this (default: 1 hour)
+
+        Returns:
+            List of PostprocessJobModel objects eligible for retry.
+        """
+        cutoff = datetime.now() - timedelta(seconds=max_age_seconds)
+
+        with self._session() as session:
+            statement = (
+                select(PostprocessJobModel)
+                .where(PostprocessJobModel.outcome == PostProcessOutcome.FAILED)
+                .where(PostprocessJobModel.attempt < PostprocessJobModel.max_attempts)
+                .where(PostprocessJobModel.updated_at < cutoff)
+                .order_by(PostprocessJobModel.updated_at.asc())
+                .limit(10)
+            )
+            return session.exec(statement).all()
+
+    def prepare_job_for_retry(self, job_id: str) -> bool:
+        """Prepare a job for retry by incrementing attempt count and resetting status.
+
+        Args:
+            job_id: Job identifier
+
+        Returns:
+            True if prepared successfully, False if job not found or not eligible.
+        """
+        now = datetime.now()
+        with self._session() as session:
+            statement = select(PostprocessJobModel).where(
+                PostprocessJobModel.job_id == job_id
+            )
+            job = session.exec(statement).first()
+            if not job:
+                return False
+
+            # Only reset if currently failed or needs retry
+            if job.outcome != PostProcessOutcome.FAILED:
+                return False
+
+            if job.attempt >= job.max_attempts:
+                return False
+
+            job.attempt += 1
+            job.status = PostProcessStatus.PENDING
+            job.outcome = None
+            job.started_at = None
+            job.finished_at = None
+            job.duration_ms = None
+            job.error_class = None
+            job.error_message = None
+            job.step_status_json = None
+            job.updated_at = now
+
+            session.add(job)
+            session.commit()
+            return True
 
     # -------------------------------------------------------------------------
     # Plan Operations

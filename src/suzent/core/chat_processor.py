@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import time
+import uuid
 from pathlib import Path
 from typing import AsyncGenerator, List, Dict, Any, Optional
 
@@ -25,7 +26,12 @@ from suzent.core.context_compressor import ContextCompressor, estimate_tokens
 from suzent.memory.lifecycle import get_memory_manager
 from suzent.streaming import stream_agent_responses
 from suzent.memory import ConversationTurn, Message, AgentAction
-from suzent.database import get_database
+from suzent.database import (
+    get_database,
+    PostProcessStep,
+    PostProcessOutcome,
+    StepStatus,
+)
 from suzent.tools.filesystem.path_resolver import PathResolver
 from suzent.routes.sandbox_routes import sanitize_filename
 from suzent.core.stream_parser import StreamParser, TextChunk, ErrorEvent
@@ -350,7 +356,6 @@ class ChatProcessor:
                         f"Failed to persist slash command result for {chat_id}: {e}"
                     )
 
-                import uuid
                 from ag_ui.core import (
                     CustomEvent,
                     RunStartedEvent,
@@ -582,18 +587,53 @@ class ChatProcessor:
 
                 yield chunk
         finally:
+            # Persist a lightweight state snapshot immediately so a fast-following
+            # turn can restore recent history even before heavy post-processing ends.
+            snapshot_revision: Optional[int] = None
+            try:
+                snapshot_messages = getattr(deps, "last_messages", None)
+                if snapshot_messages is None:
+                    snapshot_messages = getattr(agent, "_last_messages", None)
+                if snapshot_messages is None:
+                    snapshot_messages = message_history
+
+                snapshot_revision = await self._persist_agent_state_snapshot(
+                    chat_id=chat_id,
+                    messages=snapshot_messages or [],
+                    model_id=getattr(agent, "_model_id", None),
+                    tool_names=getattr(agent, "_tool_names", []),
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to persist pre-postprocess state snapshot for {chat_id}: {e}"
+                )
+
             # 9. Post-Processing (Background)
             # We use a background task so the SSE stream can close immediately
             # while heavy extraction/persistence runs.
             import asyncio
             from suzent.core.task_registry import register_background_task
 
+            postprocess_job_id = uuid.uuid4().hex
+
             async def _run_post_processing() -> None:
+                db = get_database()
+                job_id = postprocess_job_id
+
                 try:
-                    # Get the messages from the agent or deps for persistence
-                    last_messages = getattr(deps, "last_messages", None)
-                    if last_messages is None:
-                        last_messages = getattr(agent, "_last_messages", [])
+                    job_data = db.create_postprocess_job(
+                        job_id=job_id,
+                        chat_id=chat_id,
+                        assigned_revision=snapshot_revision or 0,
+                        max_attempts=3,
+                    )
+                    if job_data:
+                        db.start_postprocess_job(job_id)
+                except Exception as e:
+                    logger.warning(f"Failed to create postprocess job {job_id}: {e}")
+
+                try:
+                    last_messages = snapshot_messages or []
 
                     # If the stream was interrupted, pydantic-ai does not emit the final ModelResponse.
                     # We manually append the text generated so far so the agent remembers its interrupted thought.
@@ -620,66 +660,150 @@ class ChatProcessor:
                         f"History length: {msg_count}"
                     )
 
-                    # A. Write JSONL transcript
-                    await self._write_transcript(
-                        chat_id, message_content, full_response, last_messages
-                    )
+                    # B1: Write JSONL transcript
+                    try:
+                        await self._write_transcript(
+                            chat_id, message_content, full_response, last_messages
+                        )
+                        db.update_job_step_status(
+                            job_id, PostProcessStep.TRANSCRIPT, StepStatus.SUCCESS
+                        )
+                    except Exception as e:
+                        logger.error(f"Transcript writing failed: {e}")
+                        db.update_job_step_status(
+                            job_id,
+                            PostProcessStep.TRANSCRIPT,
+                            StepStatus.FAILED,
+                            error=str(e),
+                        )
 
                     is_suspended = getattr(deps, "is_suspended", False)
 
                     if not is_suspended:
-                        # B. Memory Extraction
-                        await self._extract_memories(
-                            chat_id=chat_id,
-                            user_id=user_id,
-                            user_content=message_content,
-                            agent_content=full_response,
-                            messages=last_messages,
-                        )
+                        # B2: Memory Extraction
+                        try:
+                            await self._extract_memories(
+                                chat_id=chat_id,
+                                user_id=user_id,
+                                user_content=message_content,
+                                agent_content=full_response,
+                                messages=last_messages,
+                            )
+                            db.update_job_step_status(
+                                job_id, PostProcessStep.MEMORY, StepStatus.SUCCESS
+                            )
+                        except Exception as e:
+                            logger.warning(f"Memory extraction failed: {e}")
+                            db.update_job_step_status(
+                                job_id,
+                                PostProcessStep.MEMORY,
+                                StepStatus.FAILED,
+                                error=str(e),
+                            )
 
-                        # C. Context Compression
-                        compressed_messages = await self._compress_with_events(
-                            chat_id=chat_id,
-                            user_id=user_id,
-                            messages=last_messages,
-                        )
+                        # B3: Context Compression
+                        compressed_messages = last_messages
+                        try:
+                            compressed_messages = await self._compress_with_events(
+                                chat_id=chat_id,
+                                user_id=user_id,
+                                messages=last_messages,
+                            )
+                            db.update_job_step_status(
+                                job_id, PostProcessStep.COMPRESS, StepStatus.SUCCESS
+                            )
+                        except Exception as e:
+                            logger.error(f"Compression failed: {e}")
+                            db.update_job_step_status(
+                                job_id,
+                                PostProcessStep.COMPRESS,
+                                StepStatus.FAILED,
+                                error=str(e),
+                            )
+                            compressed_messages = last_messages
                     else:
                         logger.debug(
                             f"[ChatProcessor] Skipping memory extraction and compression for suspended run {chat_id}."
                         )
                         compressed_messages = last_messages
 
-                    # D. State Persistence
-                    await self._persist_state(
-                        chat_id=chat_id,
-                        messages=compressed_messages,
-                        model_id=getattr(agent, "_model_id", None),
-                        tool_names=getattr(agent, "_tool_names", []),
-                        user_content=message_content,
-                        agent_content=full_response,
-                        skip_messages=is_heartbeat,
-                        inline_a2ui_surfaces=getattr(
-                            deps, "inline_a2ui_surfaces", None
-                        ),
-                    )
+                    # B4+B5: Display Rebuild + State Persistence (display is integrated in _persist_state)
+                    try:
+                        await self._persist_state(
+                            chat_id=chat_id,
+                            messages=compressed_messages,
+                            model_id=getattr(agent, "_model_id", None),
+                            tool_names=getattr(agent, "_tool_names", []),
+                            user_content=message_content,
+                            agent_content=full_response,
+                            skip_messages=is_heartbeat,
+                            expected_revision=snapshot_revision,
+                            postprocess_job_id=postprocess_job_id,
+                            inline_a2ui_surfaces=getattr(
+                                deps, "inline_a2ui_surfaces", None
+                            ),
+                        )
+                        db.update_job_step_status(
+                            job_id, PostProcessStep.PERSIST, StepStatus.SUCCESS
+                        )
+                        db.update_job_step_status(
+                            job_id, PostProcessStep.DISPLAY, StepStatus.SUCCESS
+                        )
+                    except Exception as e:
+                        logger.error(f"State persistence failed: {e}")
+                        db.update_job_step_status(
+                            job_id,
+                            PostProcessStep.PERSIST,
+                            StepStatus.FAILED,
+                            error=str(e),
+                        )
+                        db.update_job_step_status(
+                            job_id,
+                            PostProcessStep.DISPLAY,
+                            StepStatus.FAILED,
+                            error=str(e),
+                        )
 
                     logger.info(
                         f"[ChatProcessor] Background post-processing complete for {chat_id}"
                     )
+                    db.finalize_postprocess_job(job_id, PostProcessOutcome.SUCCESS)
                 except Exception as e:
                     logger.error(f"Post-processing background task failed: {e}")
+                    db.finalize_postprocess_job(
+                        job_id,
+                        PostProcessOutcome.FAILED,
+                        error_class=type(e).__name__,
+                        error_message=str(e),
+                    )
 
-            # Register the background task with the global registry
+            task_id = f"post_process_{chat_id}_{postprocess_job_id}"
             try:
                 await register_background_task(
                     _run_post_processing(),
-                    task_id=f"post_process_{chat_id}_{int(time.time())}",
+                    task_id=task_id,
                     description=f"Post-processing for chat {chat_id}",
                 )
             except RuntimeError as e:
-                logger.warning(f"Failed to register background task: {e}")
-                # Fallback to fire-and-forget if registry is full
-                asyncio.create_task(_run_post_processing())
+                logger.warning(
+                    f"Primary post-process registration failed for {chat_id} ({task_id}): {e}. "
+                    "Retrying with overflow tracking."
+                )
+                try:
+                    await register_background_task(
+                        _run_post_processing(),
+                        task_id=f"{task_id}_overflow",
+                        description=f"Post-processing overflow for chat {chat_id}",
+                        allow_overflow=True,
+                    )
+                except Exception as overflow_error:
+                    logger.warning(
+                        f"Overflow registration failed for {chat_id} ({task_id}): {overflow_error}. "
+                        "Falling back to untracked task."
+                    )
+                    # Last-resort fallback. This path should be rare because overflow
+                    # registration bypasses max_concurrent but still respects shutdown.
+                    asyncio.create_task(_run_post_processing())
 
     async def process_steer(
         self,
@@ -1061,12 +1185,12 @@ class ChatProcessor:
         user_content: str,
         agent_content: str,
         skip_messages: bool = False,
+        expected_revision: Optional[int] = None,
+        postprocess_job_id: Optional[str] = None,
         inline_a2ui_surfaces: Optional[dict] = None,
     ) -> None:
         """Persist conversation state to database."""
         try:
-            from datetime import datetime
-
             db = get_database()
             agent_state = serialize_state(
                 messages, model_id=model_id, tool_names=tool_names
@@ -1074,11 +1198,10 @@ class ChatProcessor:
 
             current_chat = db.get_chat(chat_id)
             chat_messages = current_chat.messages if current_chat else []
-            prev_turn_count = getattr(current_chat, "turn_count", 0) or 0
 
             if skip_messages:
                 # Heartbeat: rollback already owns message state; only save agent_state.
-                db.update_chat(chat_id, agent_state=agent_state)
+                target_messages = None
             else:
                 # 100% Backend Authored: rebuild the complete display log from the full agent history
                 # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
@@ -1100,29 +1223,31 @@ class ChatProcessor:
                             m.get("role") == "user" and m.get("content") == user_content
                         )
                     ]
+                target_messages = rebuilt or chat_messages
 
-                db.update_chat(
-                    chat_id, agent_state=agent_state, messages=rebuilt or chat_messages
+            if expected_revision is not None:
+                finalized = db.finalize_state_if_revision_matches(
+                    chat_id=chat_id,
+                    expected_revision=expected_revision,
+                    agent_state=agent_state,
+                    messages=target_messages,
+                    update_lifecycle=True,
                 )
-
-            # Update session lifecycle fields
-            try:
-                from sqlalchemy import text as sql_text
-
-                with db._session() as session:
-                    session.exec(
-                        sql_text(
-                            "UPDATE chats SET last_active_at = :ts, turn_count = :tc WHERE id = :cid"
-                        ),
-                        params={
-                            "ts": datetime.now().isoformat(),
-                            "tc": prev_turn_count + 1,
-                            "cid": chat_id,
-                        },
+                if not finalized:
+                    logger.info(
+                        "Skipping stale post-process finalize for chat {} (job_id={}, expected_revision={})",
+                        chat_id,
+                        postprocess_job_id or "n/a",
+                        expected_revision,
                     )
-                    session.commit()
-            except Exception as lc_err:
-                logger.debug(f"Lifecycle field update failed: {lc_err}")
+                    return
+            else:
+                if target_messages is None:
+                    db.update_chat(chat_id, agent_state=agent_state)
+                else:
+                    db.update_chat(
+                        chat_id, agent_state=agent_state, messages=target_messages
+                    )
 
             # Mirror state to inspectable JSON file
             if agent_state:
@@ -1137,6 +1262,39 @@ class ChatProcessor:
 
         except Exception as e:
             logger.error(f"Failed to persist state for {chat_id}: {e}")
+
+    async def _persist_agent_state_snapshot(
+        self,
+        chat_id: str,
+        messages: list,
+        model_id: Optional[str],
+        tool_names: List[str],
+    ) -> Optional[int]:
+        """Persist only agent_state for fast-follow turn recovery.
+
+        This intentionally avoids display-log rebuilding, memory extraction,
+        compression, and lifecycle field updates.
+        """
+        try:
+            db = get_database()
+            agent_state = serialize_state(
+                messages, model_id=model_id, tool_names=tool_names
+            )
+            revision = db.commit_snapshot_state(chat_id, agent_state)
+            if revision is None:
+                db.update_chat(chat_id, agent_state=agent_state)
+                logger.debug(
+                    f"Persisted fast agent_state snapshot for chat {chat_id} without revision"
+                )
+                return None
+
+            logger.debug(
+                f"Persisted fast agent_state snapshot for chat {chat_id} (revision={revision})"
+            )
+            return revision
+        except Exception as e:
+            logger.error(f"Failed to persist fast state snapshot for {chat_id}: {e}")
+            return None
 
 
 # ─── Utility ───────────────────────────────────────────────────────────

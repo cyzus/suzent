@@ -61,7 +61,11 @@ class BackgroundTaskRegistry:
         return len(self._tasks)
 
     async def register(
-        self, coro, task_id: Optional[str] = None, description: str = ""
+        self,
+        coro,
+        task_id: Optional[str] = None,
+        description: str = "",
+        allow_overflow: bool = False,
     ) -> asyncio.Task:
         """
         Register and start a background task.
@@ -84,8 +88,9 @@ class BackgroundTaskRegistry:
             # Clean up completed tasks first
             await self._cleanup_completed()
 
-            # Enforce concurrent limit
-            if self.active_count >= self.max_concurrent:
+            # Enforce concurrent limit unless explicitly allowed for
+            # best-effort fallback registrations.
+            if not allow_overflow and self.active_count >= self.max_concurrent:
                 raise RuntimeError(
                     f"Max concurrent tasks limit reached ({self.max_concurrent}). "
                     f"Active: {self.active_count}, Total: {self.total_count}"
@@ -310,7 +315,10 @@ def get_task_registry() -> BackgroundTaskRegistry:
 
 
 async def register_background_task(
-    coro, task_id: Optional[str] = None, description: str = ""
+    coro,
+    task_id: Optional[str] = None,
+    description: str = "",
+    allow_overflow: bool = False,
 ) -> asyncio.Task:
     """
     Convenience function to register a background task.
@@ -324,7 +332,7 @@ async def register_background_task(
         The created asyncio.Task
     """
     registry = get_task_registry()
-    return await registry.register(coro, task_id, description)
+    return await registry.register(coro, task_id, description, allow_overflow)
 
 
 async def wait_for_background_task_prefix(prefix: str, timeout: Optional[float] = None):
