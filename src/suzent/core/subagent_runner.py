@@ -8,9 +8,11 @@ at runtime (via spawn_subagent tool) rather than a cron schedule.
 
 import asyncio
 import json
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Optional
 
 from suzent.config import CONFIG
@@ -24,6 +26,10 @@ from suzent.core.stream_registry import (
 )
 
 logger = get_logger(__name__)
+
+# Tools that sub-agents can never have, regardless of what the caller requests.
+# Prevents recursive sub-agent spawning.
+_ALWAYS_DENIED: frozenset[str] = frozenset({"SpawnSubagentTool"})
 
 # ─── In-memory task registry ─────────────────────────────────────────────────
 
@@ -41,6 +47,13 @@ class SubAgentTask:
     finished_at: Optional[datetime] = None
     chat_id: str = ""  # isolated chat created for this sub-agent
     cwd: Optional[str] = None  # working directory override for bash execution
+    # Phase 2: context forking
+    inherit_context: bool = False
+    # Phase 3: git worktree isolation
+    isolation: str = "none"  # "none" | "worktree"
+    isolation_target_path: Optional[str] = None  # caller-supplied git repo root
+    worktree_path: Optional[str] = None  # created worktree path (output)
+    worktree_branch: Optional[str] = None  # created branch name (output)
 
 
 # Global registry: task_id -> SubAgentTask
@@ -92,6 +105,10 @@ def _task_to_sse_dict(task: SubAgentTask) -> dict:
         "finished_at": task.finished_at.isoformat() if task.finished_at else None,
         "result_summary": task.result_summary,
         "error": task.error,
+        "inherit_context": task.inherit_context,
+        "isolation": task.isolation,
+        "worktree_path": task.worktree_path,
+        "worktree_branch": task.worktree_branch,
     }
 
 
@@ -146,6 +163,9 @@ async def spawn_subagent(
     model_override: Optional[str] = None,
     run_in_background: bool = True,
     cwd: Optional[str] = None,
+    inherit_context: bool = False,
+    isolation: str = "none",
+    isolation_target_path: Optional[str] = None,
 ) -> SubAgentTask:
     """
     Create a SubAgentTask and launch it.
@@ -164,6 +184,9 @@ async def spawn_subagent(
             f"use class-name keys (e.g. 'BashTool'). Resolved: {resolved}"
         )
 
+    # Strip always-denied tools regardless of how the list was built
+    resolved = [t for t in resolved if t not in _ALWAYS_DENIED]
+
     task_id = f"sub_{uuid.uuid4().hex[:8]}"
     chat_id = f"subagent-{task_id}"
 
@@ -174,6 +197,9 @@ async def spawn_subagent(
         tools_allowed=resolved,  # always store resolved canonical names
         chat_id=chat_id,
         cwd=cwd,
+        inherit_context=inherit_context,
+        isolation=isolation,
+        isolation_target_path=isolation_target_path,
     )
 
     async with _tasks_lock:
@@ -220,6 +246,25 @@ async def _run_subagent(
             },
             chat_id=task.chat_id,
         )
+
+    # Phase 2: inject parent conversation history into child chat
+    if task.inherit_context:
+        await _fork_context(task, db)
+
+    # Phase 3: create git worktree before streaming starts
+    if task.isolation == "worktree":
+        error = await _setup_worktree(task)
+        if error:
+            task.status = "failed"
+            task.error = error
+            task.finished_at = datetime.now()
+            _broadcast_task_update(task)
+            await _notify_parent(
+                task,
+                "subagent_failed",
+                {"task_id": task.task_id, "error": error},
+            )
+            return
 
     # Emit spawned event to parent chat
     await _notify_parent(
@@ -298,6 +343,175 @@ async def _run_subagent(
         )
     finally:
         unregister_background_stream(task.chat_id)
+        # Phase 3: always tear down the worktree, even on failure
+        if task.isolation == "worktree" and task.worktree_path:
+            await _teardown_worktree(task)
+
+
+# ─── Phase 2: Context forking ─────────────────────────────────────────────────
+
+
+async def _fork_context(task: SubAgentTask, db) -> None:
+    """
+    Copy the parent chat's serialized message history into the child chat so the
+    sub-agent starts with full conversation context. The parent and child diverge
+    after this snapshot — neither side sees the other's future messages.
+    """
+    parent_chat = db.get_chat(task.parent_chat_id)
+    if not parent_chat or not parent_chat.agent_state:
+        logger.debug(
+            f"Context fork skipped for {task.task_id}: parent has no agent_state yet"
+        )
+        return
+
+    from suzent.core.agent_serializer import deserialize_state, serialize_state
+
+    parent_state = deserialize_state(parent_chat.agent_state)
+    if not parent_state or not parent_state.get("message_history"):
+        logger.debug(
+            f"Context fork skipped for {task.task_id}: parent agent_state has no message_history"
+        )
+        return
+
+    child_state = serialize_state(
+        parent_state["message_history"],
+        model_id=parent_state.get("model_id"),
+        tool_names=parent_state.get("tool_names", []),
+    )
+    if child_state:
+        db.update_chat(task.chat_id, agent_state=child_state)
+        logger.debug(
+            f"Forked {len(parent_state['message_history'])} parent messages "
+            f"into child chat {task.chat_id}"
+        )
+
+
+# ─── Phase 3: Git worktree lifecycle ─────────────────────────────────────────
+
+
+async def _setup_worktree(task: SubAgentTask) -> Optional[str]:
+    """
+    Create a git worktree for the sub-agent. Returns an error string on failure,
+    None on success. Mutates task.worktree_path, task.worktree_branch, task.cwd.
+    """
+    target_path = task.isolation_target_path
+    if not target_path:
+        return "isolation_target_path is required for worktree isolation"
+
+    # 1. Validate it is a git repo and get the canonical root
+    proc = await asyncio.create_subprocess_exec(
+        "git",
+        "rev-parse",
+        "--show-toplevel",
+        cwd=target_path,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        return (
+            f"isolation_target_path is not a git repository: {stderr.decode().strip()}"
+        )
+
+    git_root = stdout.decode().strip()
+
+    # 2. Verify repo has at least one commit (git worktree add fails on empty repos)
+    proc = await asyncio.create_subprocess_exec(
+        "git",
+        "rev-parse",
+        "HEAD",
+        cwd=git_root,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    await proc.communicate()
+    if proc.returncode != 0:
+        return "Repository has no commits — cannot create worktree"
+
+    # 3. Build slug-safe branch name and worktree path
+    slug = re.sub(r"[^a-zA-Z0-9_-]", "-", task.task_id)[:64]
+    branch_name = f"subagent-{slug}"
+    worktree_dir = str(Path(git_root) / ".git" / "worktrees-tmp" / slug)
+
+    # 4. Create worktree on a new branch
+    proc = await asyncio.create_subprocess_exec(
+        "git",
+        "worktree",
+        "add",
+        "-b",
+        branch_name,
+        worktree_dir,
+        cwd=git_root,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        return f"git worktree add failed: {stderr.decode().strip()}"
+
+    task.worktree_path = worktree_dir
+    task.worktree_branch = branch_name
+    task.cwd = worktree_dir  # override any caller-supplied cwd
+
+    logger.info(
+        f"Created worktree {worktree_dir} on branch {branch_name} "
+        f"for sub-agent {task.task_id}"
+    )
+    return None
+
+
+async def _teardown_worktree(task: SubAgentTask) -> None:
+    """
+    Remove the worktree and delete the branch. Always called in the finally: block
+    of _run_subagent. Mirrors test-claude's cleanupWorktree() in utils/worktree.ts:
+    - git worktree remove --force with cwd=git_root (never the worktree itself)
+    - 100ms sleep for git to release file locks
+    - git branch -D to avoid accumulating stale branches
+    """
+    worktree_path = task.worktree_path
+    if not worktree_path:
+        return
+
+    # Derive git_root from path convention: <repo>/.git/worktrees-tmp/<slug>
+    # MUST NOT use worktree_path as cwd — git rejects removing the current directory.
+    git_root = str(Path(worktree_path).parents[2])
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            "worktree",
+            "remove",
+            "--force",
+            worktree_path,
+            cwd=git_root,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+        logger.info(f"Removed worktree {worktree_path}")
+    except Exception as e:
+        logger.warning(f"Failed to remove worktree {worktree_path}: {e}")
+
+    if task.worktree_branch:
+        # Brief pause so git releases file locks before branch deletion
+        await asyncio.sleep(0.1)
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "git",
+                "branch",
+                "-D",
+                task.worktree_branch,
+                cwd=git_root,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await proc.communicate()
+            logger.info(f"Deleted branch {task.worktree_branch}")
+        except Exception as e:
+            logger.warning(f"Failed to delete branch {task.worktree_branch}: {e}")
+
+
+# ─── Parent wakeup & notification ────────────────────────────────────────────
 
 
 async def _wakeup_parent(task: SubAgentTask) -> None:

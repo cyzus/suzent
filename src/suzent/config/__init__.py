@@ -118,6 +118,7 @@ class ConfigModel(BaseModel):
         "GrepTool",
         "BashTool",
         "ImageGenerationTool",
+        "SpawnSubagentTool",
     ]
     tool_options: Optional[List[str]] = None
 

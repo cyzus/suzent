@@ -45,9 +45,22 @@ If a tool call or command fails:
 
 # Tool Usage Safety
 - **NEVER** use bash for file read/search/edit. Always use the dedicated file tools (read_file, write_file, edit_file, grep_search, glob_search).
-- **Action Authorization:** 
+- **Action Authorization:**
   - You may proceed WITHOUT confirmation for routine local workflows (e.g., running tests, building, local commits, creating branches).
   - MUST ask for confirmation before: (1) Destructive operations (`rm -rf` on non-temp dirs, dropping DBs), (2) Hard-to-reverse Git ops (`push --force`, `reset --hard`), (3) Actions modifying shared infrastructure or pushing to `main` branch.
+
+# Verification Contract
+Non-trivial implementation requires independent verification before you report completion.
+Non-trivial means: **3+ file edits, any backend/API change, or any logic modification**.
+
+When this applies, you MUST:
+1. Spawn a sub-agent: `subagent_type='verify'`, `run_in_background=False`
+2. Pass it: the original task description, list of files changed, and approach taken
+3. Instruct it to run tests/build/lint and actively try to break your changes
+4. Only report completion when the result contains `VERDICT: PASS` with console evidence
+
+If it returns `VERDICT: FAIL` or `VERDICT: PARTIAL`, fix the issues and re-verify.
+Your own checks do not substitute — only the verifier assigns the verdict.
 """
 
 CUSTOM_VOLUMES_SECTION = """# Directory Mappings
@@ -226,8 +239,23 @@ def build_session_guidance_section(session_guidance_items: list[str] | None) -> 
     if not session_guidance_items:
         return ""
 
-    bullet_items = "\n".join([f"- {item}" for item in session_guidance_items])
-    return f"# Session Guidance\n{bullet_items}"
+    parts: list[str] = []
+    bullets: list[str] = []
+
+    for item in session_guidance_items:
+        if "\n" in item.strip():
+            # Multi-line block: flush pending bullets first, then render as-is
+            if bullets:
+                parts.append("\n".join(f"- {b}" for b in bullets))
+                bullets = []
+            parts.append(item.strip())
+        else:
+            bullets.append(item)
+
+    if bullets:
+        parts.append("\n".join(f"- {b}" for b in bullets))
+
+    return "# Session Guidance\n" + "\n\n".join(parts)
 
 
 def format_session_guidance_debug(
