@@ -6,7 +6,8 @@ Provides functions to format and enhance agent instructions with dynamic context
 
 from datetime import datetime
 import platform
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Sequence, Optional
+from suzent.core.system_reminder import register_global_hook
 
 from pydantic_ai import RunContext
 from pydantic_ai.messages import ModelMessage, UserContent
@@ -61,6 +62,15 @@ When this applies, you MUST:
 
 If it returns `VERDICT: FAIL` or `VERDICT: PARTIAL`, fix the issues and re-verify.
 Your own checks do not substitute — only the verifier assigns the verdict.
+
+# System Reminders
+Tool results and user messages may occasionally contain `<system-reminder>` blocks.
+These blocks carry out-of-band operational context injected by the system — they are
+NOT part of the user's actual message.
+Rules:
+- Use the information in `<system-reminder>` blocks to inform your actions.
+- NEVER acknowledge, quote, or reference `<system-reminder>` blocks in your reply.
+- NEVER tell the user that you received a system reminder.
 """
 
 SUBAGENT_INSTRUCTIONS: dict[str, str] = {
@@ -145,17 +155,36 @@ You have the SocialMessageTool available for sending messages to social channels
 - Keep messages concise and chat-appropriate for the platform
 """
 
-HEARTBEAT_BASE_INSTRUCTIONS = (
-    "Check in on this session. Are there any open tasks, pending questions, "
-    "or things that need follow-up?"
-)
+HEARTBEAT_BASE_INSTRUCTIONS = """
+Check in on this session. Are there any open tasks, pending questions, 
+or things that need follow-up?
+"""
 
-HEARTBEAT_PROMPT_TEMPLATE = (
-    "Background Heartbeat Check. Read the following instructions strictly. "
-    "Look for useful work to do autonomously. If you have nothing useful to do (no files to read, no checks to run), "
-    "reply EXACTLY with 'HEARTBEAT_OK'. Do not narrate that you are idle.\n\n"
-    "---\n{instructions}\n---"
-)
+HEARTBEAT_PROMPT_TEMPLATE = """
+**Background Heartbeat Check**
+
+{base_instructions}
+
+Look for useful work to do autonomously. If you have nothing useful to do, 
+reply EXACTLY with 'HEARTBEAT_OK'. Do not narrate that you are idle.{extra_instructions}
+"""
+
+SUBAGENT_WAKEUP_SINGLE = """
+Sub-agent `{task_id}` has finished.
+Task: {description}
+
+Result:
+{result_summary}
+"""
+
+SUBAGENT_WAKEUP_BATCH_HEADER = "{count} sub-agents finished simultaneously:"
+
+SUBAGENT_WAKEUP_BATCH_ITEM = """
+--- [{index}] `{task_id}` ---
+Task: {description}
+Result:
+{result_summary}
+"""
 
 PLATFORM_CHAR_LIMITS = {
     "telegram": 4096,
@@ -360,17 +389,7 @@ def register_dynamic_instructions(
     def inject_memory_context(_: Any) -> str:
         return memory_context or ""
 
-    @agent.instructions
-    def inject_skills_context(ctx: Any) -> str:
-        skill_mgr = ctx.deps.skill_manager
-        if not skill_mgr or not skill_mgr.enabled_skills:
-            return ""
-
-        return SKILLS_CONTEXT_SECTION.format(
-            skills_listing=skill_mgr.get_skills_listing(
-                sandbox_enabled=ctx.deps.sandbox_enabled
-            )
-        )
+    # Skills injection is now handled via SkillsReminderProvider out-of-band.
 
     @agent.instructions
     def inject_social_context(ctx: Any) -> str:
@@ -390,3 +409,23 @@ def build_social_context(social_ctx: dict) -> str:
         platform_title=platform.title(),
         char_limit=char_limit,
     )
+
+
+async def get_skills_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
+    """Injects enabled skills listing as a system reminder, replacing old inject_skills_context."""
+    skill_mgr = getattr(deps, "skill_manager", None)
+    if not skill_mgr or not skill_mgr.enabled_skills:
+        return None
+    listing = skill_mgr.get_skills_listing(
+        sandbox_enabled=getattr(deps, "sandbox_enabled", True)
+    )
+    if not listing or "no enabled skills" in listing:
+        return None
+    return (
+        "You have a SkillTool that loads specialized knowledge. "
+        "Use it IMMEDIATELY when the user's task matches a skill.\n\n"
+        f"{listing}"
+    )
+
+
+register_global_hook(get_skills_reminder_hook)

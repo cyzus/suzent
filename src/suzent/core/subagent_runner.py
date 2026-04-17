@@ -606,28 +606,35 @@ async def _wakeup_parent_batch(parent_chat_id: str, batch: List[SubAgentTask]) -
         from suzent.core.chat_processor import ChatProcessor
         from suzent.agent_manager import build_agent_config
         from suzent.core.task_registry import wait_for_background_task_prefix
+        from suzent.prompts import (
+            SUBAGENT_WAKEUP_SINGLE,
+            SUBAGENT_WAKEUP_BATCH_HEADER,
+            SUBAGENT_WAKEUP_BATCH_ITEM,
+        )
 
         if len(batch) == 1:
-            task = batch[0]
-            wake_msg = (
-                f"[System] Sub-agent `{task.task_id}` has finished.\n"
-                f"Task: {task.description[:300]}\n\n"
-                f"Result:\n{task.result_summary}"
+            t = batch[0]
+            wake_msg = SUBAGENT_WAKEUP_SINGLE.format(
+                task_id=t.task_id,
+                description=t.description[:300],
+                result_summary=t.result_summary,
             )
         else:
-            # Multiple completions — deliver all results in one message so the
-            # parent LLM can synthesise them in a single turn.
-            parts = [f"[System] {len(batch)} sub-agents finished simultaneously:\n"]
-            for i, task in enumerate(batch, 1):
+            parts = [SUBAGENT_WAKEUP_BATCH_HEADER.format(count=len(batch))]
+            for j, t in enumerate(batch, 1):
                 parts.append(
-                    f"--- [{i}] `{task.task_id}` ---\n"
-                    f"Task: {task.description[:200]}\n"
-                    f"Result:\n{task.result_summary or '(no output)'}"
+                    SUBAGENT_WAKEUP_BATCH_ITEM.format(
+                        index=j,
+                        task_id=t.task_id,
+                        description=t.description[:200],
+                        result_summary=t.result_summary or "(no output)",
+                    )
                 )
             wake_msg = "\n\n".join(parts)
-            logger.debug(
-                f"Batched wakeup for {parent_chat_id}: {[t.task_id for t in batch]}"
-            )
+
+        logger.debug(
+            f"Batched wakeup for {parent_chat_id}: {[t.task_id for t in batch]}"
+        )
 
         config_override = build_agent_config(
             {"platform": "subagent_wakeup", "memory_enabled": False},
@@ -639,9 +646,10 @@ async def _wakeup_parent_batch(parent_chat_id: str, batch: List[SubAgentTask]) -
         result_text = await ChatProcessor().process_background_turn(
             chat_id=parent_chat_id,
             user_id=CONFIG.user_id,
-            message_content=wake_msg,
+            message_content="",
             config_override=config_override,
             is_heartbeat=True,
+            system_reminders=[wake_msg],
         )
 
         # Wait for the background post-processing task to finish before writing

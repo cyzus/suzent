@@ -264,13 +264,6 @@ class HeartbeatRunner(BaseBrain):
             asyncio.create_task(self._run_chat_heartbeat(chat_id, instructions, db))
 
     async def _run_chat_heartbeat(self, chat_id: str, instructions: str, db):
-        from suzent.prompts import HEARTBEAT_BASE_INSTRUCTIONS
-
-        if instructions.strip():
-            instructions = HEARTBEAT_BASE_INSTRUCTIONS + "\n\n" + instructions.strip()
-        else:
-            instructions = HEARTBEAT_BASE_INSTRUCTIONS
-
         if chat_id in stream_controls:
             logger.debug(f"Heartbeat skipped for {chat_id}: stream already active")
             return
@@ -339,10 +332,6 @@ class HeartbeatRunner(BaseBrain):
             self._last_error = str(e)
 
     async def _run_chat_turn(self, chat_id: str, instructions: str) -> str:
-        from suzent.prompts import HEARTBEAT_PROMPT_TEMPLATE
-
-        prompt = HEARTBEAT_PROMPT_TEMPLATE.format(instructions=instructions)
-
         processor = ChatProcessor()
 
         # Read global heartbeat_allowed_tools to determine approval policy.
@@ -358,13 +347,24 @@ class HeartbeatRunner(BaseBrain):
 
         config_override = self._build_config_override(heartbeat_allowed_tools)
 
+        from suzent.prompts import (
+            HEARTBEAT_BASE_INSTRUCTIONS,
+            HEARTBEAT_PROMPT_TEMPLATE,
+        )
+
+        extra_inst = f"\n\n{instructions.strip()}" if instructions.strip() else ""
+        heartbeat_msg = HEARTBEAT_PROMPT_TEMPLATE.format(
+            base_instructions=HEARTBEAT_BASE_INSTRUCTIONS, extra_instructions=extra_inst
+        )
+
         try:
             return await processor.process_background_turn(
                 chat_id=chat_id,
                 user_id=CONFIG.user_id,
-                message_content=prompt,
+                message_content="",
                 config_override=config_override,
                 is_heartbeat=True,
+                system_reminders=[heartbeat_msg],
             )
         except RuntimeError as e:
             self._last_error = str(e)

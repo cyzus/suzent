@@ -276,6 +276,8 @@ class SchedulerBrain(BaseBrain):
         """Run a ChatProcessor turn for a cron job and return the response."""
         from suzent.core.chat_processor import ChatProcessor
 
+        cron_msg = f"**Scheduled Task: {job.name}**\n\n{job.prompt}"
+
         processor = ChatProcessor()
         config_override = self._build_config_override(
             db, model_override=job.model_override
@@ -286,9 +288,10 @@ class SchedulerBrain(BaseBrain):
             return await processor.process_turn_text(
                 chat_id=chat_id,
                 user_id=CONFIG.user_id,
-                message_content=job.prompt,
+                message_content="",
                 config_override=config_override,
                 _stream_queue=stream_queue,
+                system_reminders=[cron_msg],
             )
         except RuntimeError as e:
             logger.error(f"Cron job {job_id} error: {e}")

@@ -189,6 +189,7 @@ class ChatProcessor:
         resume_approvals: List[Dict] = None,
         is_heartbeat: bool = False,
         _message_history_override: list = None,
+        system_reminders: list[str] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Process a user message turn:
@@ -383,6 +384,18 @@ class ChatProcessor:
                 yield _enc.encode(RunFinishedEvent(run_id=run_id, thread_id=chat_id))
                 yield "data: [DONE]\n\n"
                 return
+
+        # --- System Reminder Injection ---
+        from suzent.core.system_reminder import build_combined_reminder
+
+        reminder = await build_combined_reminder(
+            chat_id, deps, adhoc_reminders=system_reminders
+        )
+        if reminder:
+            if message_content and message_content.strip():
+                message_content = f"{message_content}\n\n{reminder}"
+            else:
+                message_content = reminder
 
         # Only append a new user message if there's actual content or attachments
         # (For stateless resume, we might just be submitting tool results)
@@ -959,6 +972,7 @@ class ChatProcessor:
         is_social: bool = False,
         is_heartbeat: bool = False,
         _stream_queue=None,
+        system_reminders: list[str] = None,
     ) -> str:
         """Run a conversation turn and return only the final response text.
 
@@ -982,6 +996,7 @@ class ChatProcessor:
                 resume_approvals=resume_approvals,
                 is_social=is_social,
                 is_heartbeat=is_heartbeat,
+                system_reminders=system_reminders,
             ):
                 if _stream_queue is not None:
                     await _stream_queue.put(chunk)
@@ -1008,6 +1023,7 @@ class ChatProcessor:
         message_content: str,
         config_override: Dict = None,
         is_heartbeat: bool = False,
+        system_reminders: list[str] = None,
     ) -> str:
         """Run a chat turn with an SSE background stream so the frontend can watch it.
 
@@ -1024,6 +1040,7 @@ class ChatProcessor:
                 config_override=config_override,
                 is_heartbeat=is_heartbeat,
                 _stream_queue=stream_queue,
+                system_reminders=system_reminders,
             )
         finally:
             unregister_background_stream(chat_id)
@@ -1379,6 +1396,7 @@ def _rebuild_display_messages(messages: list) -> list:
         ToolReturnPart,
     )
     import json
+    from suzent.core.system_reminder import strip_system_reminders
 
     def render_reasoning_block(text: str) -> str:
         text = text.strip()
@@ -1409,7 +1427,9 @@ def _rebuild_display_messages(messages: list) -> list:
                         raw_text = str(part.content)
 
                     files = _extract_attachment_files(raw_text)
-                    clean_text = _strip_attachment_annotations(raw_text)
+                    clean_text = strip_system_reminders(
+                        _strip_attachment_annotations(raw_text)
+                    )
 
                     ts = (
                         part.timestamp.isoformat()
@@ -1432,7 +1452,7 @@ def _rebuild_display_messages(messages: list) -> list:
                         "role": "tool",
                         "tool_call_id": part.tool_call_id,
                         "name": part.tool_name,
-                        "content": str(part.content),
+                        "content": strip_system_reminders(str(part.content)),
                     }
                     if ts:
                         entry["timestamp"] = ts
