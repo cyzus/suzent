@@ -24,8 +24,8 @@ def mock_db():
         yield db
 
 
-@patch("suzent.core.chat_processor.ChatProcessor.process_request")
-async def test_chat_route_uses_user_prefs(mock_process_request, mock_db):
+@patch("suzent.core.chat_processor.ChatProcessor.process_turn")
+async def test_chat_route_uses_user_prefs(mock_process_turn, mock_db):
     """Test that /chat endpoint falls back to user preferences when config is empty."""
     from starlette.requests import Request
 
@@ -34,22 +34,23 @@ async def test_chat_route_uses_user_prefs(mock_process_request, mock_db):
     request.headers = {"content-type": "application/json"}
     request.json = AsyncMock(return_value={"message": "hello", "config": {}})
 
-    # Mock generator to avoid actual processing
+    # Mock async generator — process_turn is an async generator function
     async def mock_gen(*args, **kwargs):
         yield 'data: {"type": "final_answer", "data": "response"}\n\n'
 
-    mock_process_request.side_effect = mock_gen
+    mock_process_turn.side_effect = mock_gen
 
     response = await chat(request)
 
-    # Consume the streaming response to trigger the generator
+    # StreamingResponse is lazy; consume the body to trigger the generator so
+    # process_turn (called either directly by the route or via process_request)
+    # is actually invoked before we inspect call_args.
     async for _ in response.body_iterator:
         pass
 
-    # Verify process_request was called once
-    assert mock_process_request.call_count == 1
-    req_arg = mock_process_request.call_args[0][0]  # positional TurnRequest
-    config = req_arg.config_override
+    assert mock_process_turn.call_count == 1
+    # config_override is passed as a keyword argument to process_turn
+    config = mock_process_turn.call_args[1]["config_override"]
 
     assert config["model"] == "test-provider/test-model"
     assert config["agent"] == "TestAgent"
