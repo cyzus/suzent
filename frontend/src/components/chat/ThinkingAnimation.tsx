@@ -156,37 +156,39 @@ const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
   let variant: RobotVariant = baseVariant;
 
   if (hasError) {
-    variant = 'shaker'; // 报错时发抖
+    variant = 'shaker'; // shaking when there's an error
   } else if (isPendingApproval) {
-    variant = 'skeptic'; // 等待审批时表现为疑问或等待
+    variant = 'skeptic'; // skeptical when waiting for user approval
   } else if (isStreaming || currentToolName) {
     if (currentToolName) {
       switch (currentToolName) {
         case 'read_file':
         case 'webpage_fetch':
-          variant = 'scanner'; // 扫描数据
+          variant = 'eater'; // eating data
           break;
         case 'glob_search':
         case 'grep_search':
+          variant = 'scanner'; // scanning data
+          break;
         case 'web_search':
-          variant = 'peeker';  // 探头搜索
+          variant = 'peeker';  // peeking search
           break;
         case 'bash_execute':
         case 'write_file':
         case 'edit_file':
-          variant = 'workout'; // 撸铁改代码
+          variant = 'workout'; // working out (writing/editing code)
           break;
         case 'spawn_subagent':
-          variant = 'portal';  // 召唤传送门
+          variant = 'portal';  // spawning portal
           break;
         case 'skill_execute':
-          variant = 'dj';      // 酷炫打碟
+          variant = 'dj';
           break;
         default:
           variant = 'observer';
       }
     } else {
-      variant = 'observer'; // 纯文本流式输出
+      variant = 'observer'; // pure text streaming output
     }
   }
 

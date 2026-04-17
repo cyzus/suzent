@@ -67,8 +67,22 @@ function HeaderTitle({ text, onUnlock }: HeaderTitleProps): React.ReactElement {
     }
   }, [clicks, onUnlock]);
 
+  function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>): void {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      handleClick();
+    }
+  }
+
   return (
-    <div className="flex items-center gap-3 cursor-pointer select-none" onClick={handleClick}>
+    <div
+      className="flex items-center gap-3 cursor-pointer select-none"
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      role="button"
+      tabIndex={0}
+      aria-label={text || backendConfig?.title || 'SUZENT'}
+    >
       <div className="w-3 h-3 bg-brutal-black dark:bg-brutal-yellow"></div>
       <h1 className="font-brutal text-3xl text-brutal-black dark:text-white tracking-tighter uppercase leading-none">
         {text || backendConfig?.title || 'SUZENT'}
