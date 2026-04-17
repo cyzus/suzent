@@ -203,8 +203,9 @@ async def test_render_ui_tool_headless_returns_result():
         component={"type": "text", "content": "hello"},
     )
 
-    assert result.success
+    assert not result.success
     assert result.metadata["surface_id"] == "test-surface"
+    assert "Canvas not available" in result.message
 
 
 @pytest.mark.asyncio

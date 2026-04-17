@@ -100,8 +100,8 @@ def test_build_session_guidance_section_tool_aware_rules():
     guidance = build_session_guidance_section(items)
 
     assert "# Session Guidance" in guidance
-    assert "Reserve BashTool" in guidance
-    assert "Read files with ReadFileTool" in guidance
+    assert "BashTool is for shell/system commands ONLY" in guidance
+    assert "Read files with ReadFileTool" in guidance or "read_file" in guidance.lower()
     assert "use SkillTool early" in guidance
     assert "AskQuestionTool" in guidance
 

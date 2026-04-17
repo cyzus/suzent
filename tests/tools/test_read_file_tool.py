@@ -61,7 +61,7 @@ def test_reads_line_slice_with_offset_and_limit(tmp_path):
     file_path = tmp_path / "sample.txt"
     file_path.write_text("a\nb\nc\nd\n", encoding="utf-8")
 
-    result = ReadFileTool().forward(_ctx(tmp_path), str(file_path), offset=1, limit=2)
+    result = ReadFileTool().forward(_ctx(tmp_path), str(file_path), offset=2, limit=2)
 
     assert result.success
     assert "[Lines 2-3 of 4]" in result.message

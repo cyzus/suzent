@@ -18,7 +18,8 @@ async def test_forward_awaits_speech():
     result = await tool.forward("hello", prompt="cheerful")
 
     mock_speech.speak.assert_awaited_once_with("hello", prompt="cheerful")
-    assert result == "Spoke: hello"
+    assert result.success
+    assert result.message == "Spoke: hello"
 
 
 @pytest.mark.asyncio
@@ -27,4 +28,5 @@ async def test_forward_returns_error_for_empty_text():
 
     result = await tool.forward("")
 
-    assert result == "No text to speak."
+    assert not result.success
+    assert result.message == "No text to speak."

@@ -49,7 +49,7 @@ async def test_ddgs_search_usage(clean_env):
         tool = WebSearchTool()
         result = await tool.forward(query="test", max_results=5)
 
-        assert "Test" in result
+        assert "Test" in result.message
 
         # Verify context manager usage
         MockDDGS.assert_called_once()
@@ -120,6 +120,6 @@ async def test_searxng_fallback_to_ddgs(clean_env):
             tool = WebSearchTool()
             result = await tool.forward(query="test", max_results=5)
 
-            assert "Fallback" in result
+            assert "Fallback" in result.message
             # Verify DDGS called with forwarded params
             mock_instance.text.assert_called_with("test", timelimit=None, max_results=5)

@@ -32,7 +32,8 @@ async def test_forward_returns_markdown(monkeypatch):
 
     result = await WebpageTool().forward("https://example.com")
 
-    assert result == "# title"
+    assert result.success
+    assert result.message == "# title"
     assert dummy.arun_calls == ["https://example.com"]
 
 
@@ -44,4 +45,5 @@ async def test_forward_handles_empty_result(monkeypatch):
 
     result = await WebpageTool().forward("https://example.com")
 
-    assert result == "Error: Unable to retrieve content from the specified URL."
+    assert not result.success
+    assert result.message == "Unable to retrieve content from the specified URL."

@@ -99,6 +99,7 @@ async def test_social_message_uses_threadsafe_dispatch(monkeypatch):
 
     result = tool.forward(ctx, message="hello")
 
-    assert result == "Message sent to telegram:user-1"
+    assert result.success
+    assert result.message == "Message sent to telegram:user-1"
     assert dispatched["loop"] is event_loop
     assert channel_manager.send_message_called is False
