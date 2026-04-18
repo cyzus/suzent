@@ -348,12 +348,21 @@ async def _run_subagent(
             task.subagent_type or "", SUBAGENT_INSTRUCTIONS["_default"]
         )
 
+        # Inherit parent chat's custom sandbox volumes so the subagent sees the
+        # same custom mounts that were configured for the parent session.
+        parent_chat = db.get_chat(task.parent_chat_id)
+        parent_sandbox_volumes = (
+            (parent_chat.config or {}).get("sandbox_volumes") if parent_chat else None
+        )
+
         base_config: dict = {
             "auto_approve_tools": True,
             "memory_enabled": False,
             "platform": "subagent",
             "static_instructions": subagent_prompt,
         }
+        if parent_sandbox_volumes:
+            base_config["sandbox_volumes"] = parent_sandbox_volumes
         if model_override:
             base_config["model"] = model_override
         if task.tools_allowed:
