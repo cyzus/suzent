@@ -33,7 +33,7 @@ def test_register_dynamic_instructions_registers_all_sections():
         memory_context="",
     )
 
-    assert len(agent.functions) == 8
+    assert len(agent.functions) == 7
 
 
 def test_register_dynamic_instructions_environment_uses_host_paths():
