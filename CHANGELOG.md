@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Bash Tool Permission**: Optimize bash tool permission level.
 
 ### 🐛 Fixed
+- **File-Level Retry Snapshots**: Replace full directory `copytree` with per-file backups for retry checkpoints. `edit_file` and `write_file` now back up each file before the first write per turn (`{sha256(path)[:16]}@v1` under `sandbox/file-history/{chat_id}/`); a snapshot is finalised after each turn and stored in the DB checkpoint. On `/retry` only the actually-modified files are restored (or deleted if newly created), instead of re-copying entire session and volume directories. Turns with no file edits produce zero disk I/O.
+- **npm Install on Start**: `suzent start` now re-runs `npm install` in `frontend/` and `src-tauri/` when `package.json` is newer than `node_modules/`, fixing "failed to resolve import" errors for users who run `suzent upgrade` and then `suzent start` after a release that adds new npm dependencies.
 - **Web Search Rendering Compatibility**: Frontend parsing now handles both new `ToolResult` envelopes and legacy markdown output for search results.
 - **Parent Wakeup Persistence Race**: Add synchronization around wakeup post-processing to reduce message persistence races in parent chat updates.
 - **Edit File Replace Robustness**: Improve string replacement matching in `EditFileTool` (line-number prefix handling, whitespace/quote normalization) to reduce false mismatches.
