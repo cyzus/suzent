@@ -359,13 +359,18 @@ def register_commands(app: typer.Typer):
         frontend_app_dir = root / "frontend"
         src_tauri_dir = root / "src-tauri"
 
-        if not (frontend_app_dir / "node_modules").exists():
-            typer.echo("    Installing frontend app dependencies...")
-            run_command(["npm", "install"], cwd=frontend_app_dir, shell_on_windows=True)
-
-        if not (src_tauri_dir / "node_modules").exists():
-            typer.echo("    Installing tauri dependencies...")
-            run_command(["npm", "install"], cwd=src_tauri_dir, shell_on_windows=True)
+        for npm_dir, label in [
+            (frontend_app_dir, "frontend"),
+            (src_tauri_dir, "tauri"),
+        ]:
+            nm = npm_dir / "node_modules"
+            pkg = npm_dir / "package.json"
+            needs_install = not nm.exists() or (
+                pkg.exists() and pkg.stat().st_mtime > nm.stat().st_mtime
+            )
+            if needs_install:
+                typer.echo(f"    Installing {label} dependencies...")
+                run_command(["npm", "install"], cwd=npm_dir, shell_on_windows=True)
 
         try:
             run_command(["npm", "run", "dev"], cwd=src_tauri_dir, shell_on_windows=True)
