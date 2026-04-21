@@ -7,13 +7,15 @@ import { FilePreview } from './FilePreview';
 import { isBinaryServedFile, isImageFile, isMarkdownFile, isCodeFile } from '../../lib/fileUtils';
 import {
     FolderIcon,
+    FolderOpenIcon,
     DocumentIcon,
     ChevronLeftIcon,
+    ChevronRightIcon,
+    ChevronDownIcon,
     ArrowPathIcon,
     DocumentTextIcon,
     CodeBracketIcon,
     PhotoIcon,
-    ArrowUturnLeftIcon,
     ArrowUpTrayIcon,
     ArrowsPointingOutIcon,
     ArrowTopRightOnSquareIcon
@@ -39,6 +41,116 @@ interface SandboxFilesProps {
     onMaximize?: (filePath: string, fileName: string) => void;
 }
 
+const ROOT_PATH = '/';
+
+interface FileTreeNodeProps {
+    path: string;
+    name: string;
+    isDir: boolean;
+    depth: number;
+    size: number;
+    expandedDirs: Set<string>;
+    dirContents: Map<string, FileItem[]>;
+    loadingDirs: Set<string>;
+    selectedFile: string | null;
+    onToggleDir: (path: string) => void;
+    onSelectFile: (path: string, name: string) => void;
+    formatSize: (bytes: number) => string;
+}
+
+const FileTreeNode: React.FC<FileTreeNodeProps> = ({
+    path, name, isDir, depth, size,
+    expandedDirs, dirContents, loadingDirs, selectedFile,
+    onToggleDir, onSelectFile, formatSize,
+}) => {
+    const isExpanded = isDir && expandedDirs.has(path);
+    const isLoading = isDir && loadingDirs.has(path);
+    const isSelected = !isDir && selectedFile === path;
+    const children = dirContents.get(path) || [];
+
+    const getIcon = () => {
+        const cls = "w-3.5 h-3.5 shrink-0 stroke-2";
+        if (isDir) {
+            return isExpanded
+                ? <FolderOpenIcon className={`${cls} text-brutal-yellow`} />
+                : <FolderIcon className={`${cls} dark:text-zinc-300`} />;
+        }
+        if (isImageFile(name)) return <PhotoIcon className={`${cls} text-brutal-blue`} />;
+        if (isMarkdownFile(name) || name.endsWith('.txt') || name.endsWith('.log'))
+            return <DocumentTextIcon className={`${cls} text-brutal-green`} />;
+        if (isCodeFile(name)) return <CodeBracketIcon className={`${cls} text-brutal-blue`} />;
+        return <DocumentIcon className={`${cls} text-neutral-400 dark:text-zinc-500`} />;
+    };
+
+    return (
+        <div>
+            <button
+                onClick={() => isDir ? onToggleDir(path) : onSelectFile(path, name)}
+                title={path}
+                className={`
+                    w-full flex items-center gap-1.5 py-[3px] pr-2 text-left
+                    font-mono text-xs transition-colors duration-75
+                    ${isSelected
+                        ? 'bg-brutal-yellow text-brutal-black border-l-2 border-brutal-black'
+                        : 'border-l-2 border-transparent hover:bg-neutral-100 dark:hover:bg-zinc-700/60 dark:text-zinc-200'
+                    }
+                `}
+                style={{ paddingLeft: `${depth * 10 + 4}px` }}
+            >
+                <span className="w-3 h-3 flex items-center justify-center shrink-0">
+                    {isDir && (
+                        isLoading
+                            ? <span className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin block" />
+                            : isExpanded
+                                ? <ChevronDownIcon className="w-2.5 h-2.5 stroke-[3]" />
+                                : <ChevronRightIcon className="w-2.5 h-2.5 stroke-[3]" />
+                    )}
+                </span>
+
+                {getIcon()}
+
+                <span className={`flex-1 truncate ml-0.5 ${isDir ? 'font-bold' : ''}`}>
+                    {name}{isDir ? '/' : ''}
+                </span>
+
+                {!isDir && size > 0 && (
+                    <span className="text-[9px] text-neutral-400 dark:text-zinc-500 shrink-0 tabular-nums">
+                        {formatSize(size)}
+                    </span>
+                )}
+            </button>
+
+            {isDir && isExpanded && (
+                <div>
+                    {children.length === 0 && !isLoading ? (
+                        <div className="text-[9px] font-mono text-neutral-400 dark:text-zinc-600 py-0.5 pl-3 italic">
+                            empty
+                        </div>
+                    ) : (
+                        children.map((child, idx) => (
+                            <FileTreeNode
+                                key={idx}
+                                path={`${path}/${child.name}`}
+                                name={child.name}
+                                isDir={child.is_dir}
+                                depth={depth + 1}
+                                size={child.size}
+                                expandedDirs={expandedDirs}
+                                dirContents={dirContents}
+                                loadingDirs={loadingDirs}
+                                selectedFile={selectedFile}
+                                onToggleDir={onToggleDir}
+                                onSelectFile={onSelectFile}
+                                formatSize={formatSize}
+                            />
+                        ))
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
 export const SandboxFiles: React.FC<SandboxFilesProps> = ({
     onViewModeChange,
     externalFilePath,
@@ -47,49 +159,63 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
 }) => {
     const { t } = useI18n();
     const { currentChatId, config } = useChatStore();
-    const [currentPath, setCurrentPath] = useState<string>('/persistence');
-    const [items, setItems] = useState<FileItem[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+
+    const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set([ROOT_PATH]));
+    const [dirContents, setDirContents] = useState<Map<string, FileItem[]>>(new Map());
+    const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
+
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
     const [fileContent, setFileContent] = useState<string | null>(null);
     const [loadingFile, setLoadingFile] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    const fetchFiles = useCallback(async (path: string) => {
+    const fetchDirContents = useCallback(async (path: string) => {
         if (!currentChatId) return;
 
-        setLoading(true);
-        setError(null);
+        setLoadingDirs(prev => { const s = new Set(prev); s.add(path); return s; });
         try {
             const base = getApiBase();
             const volumesParam = JSON.stringify(config.sandbox_volumes || []);
             const res = await fetch(`${base}/sandbox/files?chat_id=${currentChatId}&path=${encodeURIComponent(path)}&volumes=${encodeURIComponent(volumesParam)}`);
-            if (!res.ok) {
-                setError(`Server error: ${res.status}`);
-                setItems([]);
-                return;
-            }
+            if (!res.ok) return;
             const data: FileListResponse = await res.json();
-
-            if (data.error) {
-                setError(data.error);
-                setItems([]);
-            } else {
-                setItems(data.items || []);
-                setCurrentPath(data.path);
+            if (!data.error) {
+                setDirContents(prev => new Map(prev).set(path, data.items || []));
             }
-        } catch (err) {
-            setError(String(err));
+        } catch {
+            // silent - tree just won't expand
         } finally {
-            setLoading(false);
+            setLoadingDirs(prev => { const s = new Set(prev); s.delete(path); return s; });
         }
     }, [currentChatId, config.sandbox_volumes]);
 
     useEffect(() => {
         if (currentChatId) {
-            fetchFiles(currentPath);
+            setExpandedDirs(new Set([ROOT_PATH]));
+            setDirContents(new Map());
+            setSelectedFile(null);
+            setFileContent(null);
+            setError(null);
+            fetchDirContents(ROOT_PATH);
         }
-    }, [currentChatId, currentPath, fetchFiles, config]);
+    }, [currentChatId]);
+
+    const handleToggleDir = useCallback((path: string) => {
+        if (expandedDirs.has(path)) {
+            setExpandedDirs(prev => { const s = new Set(prev); s.delete(path); return s; });
+        } else {
+            setExpandedDirs(prev => new Set(prev).add(path));
+            if (!dirContents.has(path)) {
+                fetchDirContents(path);
+            }
+        }
+    }, [expandedDirs, dirContents, fetchDirContents]);
+
+    const handleRefresh = useCallback(() => {
+        setDirContents(new Map());
+        setExpandedDirs(new Set([ROOT_PATH]));
+        fetchDirContents(ROOT_PATH);
+    }, [fetchDirContents]);
 
     const fetchFileContent = useCallback(async (path: string) => {
         if (!currentChatId) return;
@@ -105,52 +231,56 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                 return;
             }
             const data = await response.json();
-            if (data.error) {
-                setError(data.error);
-            } else {
-                setFileContent(data.content);
-            }
-        } catch (err) {
+            if (data.error) setError(data.error);
+            else setFileContent(data.content);
+        } catch {
             setError("Failed to fetch file content");
         } finally {
             setLoadingFile(false);
         }
     }, [currentChatId, config.sandbox_volumes]);
 
-    const openCurrentInExplorer = async () => {
-        if (!currentChatId) return;
-
-        try {
-            await fetch(`${getApiBase()}/system/open_explorer`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    path: currentPath,
-                    chat_id: currentChatId
-                })
-            });
-        } catch (e) {
-            console.error("Failed to open explorer", e);
+    const handleSelectFile = useCallback((path: string, name: string) => {
+        setSelectedFile(path);
+        setError(null);
+        setFileContent(null);
+        if (!isBinaryServedFile(name)) {
+            fetchFileContent(path);
         }
+        onViewModeChange?.(true);
+    }, [fetchFileContent, onViewModeChange]);
+
+    const handleBack = () => {
+        setSelectedFile(null);
+        setFileContent(null);
+        setError(null);
+        onViewModeChange?.(false);
     };
 
-    // Handle external file opening from chat messages
-
-    // Handle external file opening from chat messages
     useEffect(() => {
         if (externalFilePath && externalFileName) {
             setSelectedFile(externalFilePath);
             setError(null);
             setFileContent(null);
-
-            // Skip content fetching for binary/served files
             if (!isBinaryServedFile(externalFileName)) {
                 fetchFileContent(externalFilePath);
             }
-
             onViewModeChange?.(true);
         }
     }, [externalFilePath, externalFileName, fetchFileContent, onViewModeChange]);
+
+    const openRootInExplorer = async () => {
+        if (!currentChatId) return;
+        try {
+            await fetch(`${getApiBase()}/system/open_explorer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: '/persistence', chat_id: currentChatId })
+            });
+        } catch (e) {
+            console.error("Failed to open explorer", e);
+        }
+    };
 
     const handleUploadClick = () => {
         document.getElementById('sandbox-file-upload')?.click();
@@ -160,80 +290,31 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
         const files = event.target.files;
         if (!files || files.length === 0 || !currentChatId) return;
 
-        setLoading(true);
         setError(null);
-
         try {
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
                 const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-                // Construct target path (handle root vs subdir)
-                const targetPath = currentPath === '/'
-                    ? `/${cleanName}`
-                    : `${currentPath}/${cleanName}`;
-
-                // Read file as text
+                const targetPath = `/persistence/${cleanName}`;
                 const text = await file.text();
-
-                // Upload
                 const base = getApiBase();
                 const volumesParam = JSON.stringify(config.sandbox_volumes || []);
                 const res = await fetch(`${base}/sandbox/file?chat_id=${currentChatId}&volumes=${encodeURIComponent(volumesParam)}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        path: targetPath,
-                        content: text
-                    })
+                    body: JSON.stringify({ path: targetPath, content: text })
                 });
-
                 if (!res.ok) {
                     const data = await res.json();
                     throw new Error(data.error || `Failed to upload ${file.name}`);
                 }
             }
-            // Refresh list
-            fetchFiles(currentPath);
+            fetchDirContents(ROOT_PATH);
         } catch (err) {
             setError(String(err));
-            setLoading(false); // Only set false if error, otherwise fetchFiles handles it
         } finally {
-            // Reset input
             event.target.value = '';
         }
-    };
-
-    const handleItemClick = (item: FileItem) => {
-        const newPath = currentPath === '/' ? `/${item.name}` : `${currentPath}/${item.name}`;
-        if (item.is_dir) {
-            setCurrentPath(newPath);
-        } else {
-            setSelectedFile(newPath);
-            setError(null);
-            setFileContent(null);
-
-            // Skip content fetching for binary/served files
-            if (!isBinaryServedFile(item.name)) {
-                fetchFileContent(newPath);
-            }
-
-            onViewModeChange?.(true);
-        }
-    };
-
-    const handleBack = () => {
-        setSelectedFile(null);
-        setFileContent(null);
-        setError(null);
-        onViewModeChange?.(false);
-    };
-
-    const handleUp = () => {
-        if (currentPath === '/' || currentPath === '') return;
-        const parts = currentPath.split('/').filter(Boolean);
-        parts.pop();
-        const newPath = '/' + parts.join('/');
-        setCurrentPath(newPath || '/');
     };
 
     const formatSize = (bytes: number) => {
@@ -244,44 +325,18 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     };
 
-    const formatDate = (timestamp: number) => {
-        if (!timestamp || timestamp === 0) return '-';
-        const date = new Date(timestamp * (timestamp < 10000000000 ? 1000 : 1));
-        if (date.getFullYear() === 1970) return '-';
-        return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    };
-
-    const getFileIcon = (name: string, isDir: boolean) => {
-        const className = "w-5 h-5 stroke-2";
-        if (isDir) return <FolderIcon className={`${className} text-brutal-black`} />;
-        if (isImageFile(name)) return <PhotoIcon className={className} />;
-        if (isMarkdownFile(name) || name.endsWith('.txt') || name.endsWith('.log')) return <DocumentTextIcon className={className} />;
-        if (isCodeFile(name)) return <CodeBracketIcon className={className} />;
-        return <DocumentIcon className={className} />;
-    };
-
     if (!currentChatId) {
         return <div className="text-xs font-mono p-4 text-center border-2 border-brutal-black m-2 bg-brutal-yellow">{t('sandbox.selectChat')}</div>;
     }
 
-    // if (!config.sandbox_enabled) {
-    //     return <div className="text-xs font-mono p-4 text-center border-2 border-brutal-black m-2 bg-neutral-200">SANDBOX DISABLED</div>;
-    // }
-
     // File Content View
     if (selectedFile) {
-        const isMarkdown = selectedFile.toLowerCase().endsWith('.md');
         const filename = selectedFile.split('/').pop() || selectedFile;
 
         return (
             <div className="flex flex-col h-full bg-white dark:bg-zinc-900">
-                {/* Header */}
                 <div className="flex items-center gap-3 p-3 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 shrink-0 sticky top-0 z-20 shadow-[0_2px_0_0_rgba(0,0,0,1)]">
-                    <BrutalButton
-                        onClick={handleBack}
-                        title={t('sandbox.back')}
-                        size="icon"
-                    >
+                    <BrutalButton onClick={handleBack} title={t('sandbox.back')} size="icon">
                         <ChevronLeftIcon className="w-5 h-5 stroke-2" />
                     </BrutalButton>
                     <div className="bg-white dark:bg-zinc-700 border-2 border-brutal-black px-3 py-1.5 flex-1 min-w-0 shadow-[2px_2px_0_0_#000]">
@@ -289,6 +344,18 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                             {filename}
                         </span>
                     </div>
+                    <BrutalButton
+                        size="icon"
+                        onClick={() => {
+                            setFileContent(null);
+                            setError(null);
+                            if (!isBinaryServedFile(filename)) fetchFileContent(selectedFile);
+                        }}
+                        title={t('sandbox.refresh')}
+                        className={loadingFile ? 'animate-spin' : ''}
+                    >
+                        <ArrowPathIcon className="w-4 h-4 stroke-2" />
+                    </BrutalButton>
                     {onMaximize && (
                         <BrutalButton
                             variant="warning"
@@ -301,7 +368,6 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                     )}
                 </div>
 
-                {/* Content Area */}
                 <div className="flex-1 overflow-auto p-4 relative bg-white dark:bg-zinc-900">
                     {loadingFile ? (
                         <div className="flex items-center justify-center h-full">
@@ -326,31 +392,26 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
         );
     }
 
-    // File List View
+    // Tree View
+    const isRootLoading = loadingDirs.has(ROOT_PATH);
+    const totalItems = Array.from(dirContents.values()).reduce((acc, items) => acc + items.length, 0);
+
     return (
-        <div className="flex flex-col h-full bg-white dark:bg-zinc-900 relative">
-            {/* Path Header */}
-            <div className="bg-white dark:bg-zinc-800 p-3 border-b-3 border-brutal-black flex items-center gap-3 shrink-0">
+        <div className="flex flex-col h-full bg-white dark:bg-zinc-900">
+            {/* Toolbar */}
+            <div className="bg-white dark:bg-zinc-800 p-2 border-b-3 border-brutal-black flex items-center gap-2 shrink-0">
                 <BrutalButton
-                    onClick={() => fetchFiles(currentPath)}
-                    className={loading ? 'animate-spin' : ''}
+                    onClick={handleRefresh}
+                    className={isRootLoading ? 'animate-spin' : ''}
                     title={t('sandbox.refresh')}
                     size="icon"
                 >
                     <ArrowPathIcon className="w-4 h-4 stroke-2" />
                 </BrutalButton>
-                <BrutalButton
-                    onClick={openCurrentInExplorer}
-                    title={t('sandbox.openInExplorer')}
-                    size="icon"
-                >
+                <BrutalButton onClick={openRootInExplorer} title={t('sandbox.openInExplorer')} size="icon">
                     <ArrowTopRightOnSquareIcon className="w-4 h-4 stroke-2" />
                 </BrutalButton>
-                <BrutalButton
-                    onClick={handleUploadClick}
-                    title={t('sandbox.uploadFile')}
-                    size="icon"
-                >
+                <BrutalButton onClick={handleUploadClick} title={t('sandbox.uploadFile')} size="icon">
                     <ArrowUpTrayIcon className="w-4 h-4 stroke-2" />
                 </BrutalButton>
                 <input
@@ -361,74 +422,50 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                     multiple
                 />
                 <div className="flex-1 overflow-hidden">
-                    <div className="text-xs font-mono font-bold truncate py-1.5 px-2 bg-neutral-100 dark:bg-zinc-700 border-2 border-brutal-black text-brutal-black dark:text-white shadow-[2px_2px_0_0_#000]" title={currentPath}>
-                        {currentPath === '/' ? 'ROOT://' : currentPath}
+                    <div className="text-[10px] font-mono font-bold truncate px-2 py-1 bg-neutral-100 dark:bg-zinc-700 border-2 border-brutal-black dark:text-white shadow-[2px_2px_0_0_#000] uppercase tracking-wider">
+                        Sandbox
                     </div>
                 </div>
             </div>
 
-            {/* List */}
-            <div className="flex-1 overflow-y-auto bg-neutral-50 dark:bg-zinc-900 p-2 scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black">
-                {loading && items.length === 0 ? (
+            {/* Tree */}
+            <div className="flex-1 overflow-y-auto bg-white dark:bg-zinc-900 py-1 scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black">
+                {isRootLoading && !dirContents.has(ROOT_PATH) ? (
                     <div className="flex flex-col items-center justify-center h-full opacity-50 space-y-4">
                         <div className="animate-spin w-8 h-8 border-4 border-brutal-black border-t-neutral-400 rounded-full"></div>
                         <span className="font-bold text-xs font-mono">{t('sandbox.scanning')}</span>
                     </div>
                 ) : error ? (
-                    <div className="p-3 bg-red-100 border-2 border-brutal-black text-red-600 text-xs font-mono shadow-[4px_4px_0_0_#000]">
+                    <div className="p-3 bg-red-100 border-2 border-brutal-black text-red-600 text-xs font-mono m-2 shadow-[4px_4px_0_0_#000]">
                         {error}
                     </div>
                 ) : (
-                    <div className="flex flex-col gap-2">
-                        {currentPath !== '/' && (
-                            <button
-                                onClick={handleUp}
-                                className="flex items-center gap-3 p-3 bg-white dark:bg-zinc-800 dark:text-white border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-700 brutal-btn transition-all group text-left w-full"
-                            >
-                                <ArrowUturnLeftIcon className="w-5 h-5 stroke-2" />
-                                <span className="font-bold text-xs font-mono uppercase">{t('sandbox.up')}</span>
-                            </button>
-                        )}
-
-                        {items.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-12 text-neutral-400 space-y-2 border-2 border-dashed border-neutral-300 m-2">
-                                <FolderIcon className="w-12 h-12 opacity-20" />
-                                <span className="text-xs font-mono font-bold">{t('sandbox.emptyDirectory')}</span>
-                            </div>
-                        ) : (
-                            items.map((item, idx) => (
-                                <button
-                                    key={idx}
-                                    onClick={() => handleItemClick(item)}
-                                    className={`
-                                        flex items-center gap-3 p-2 bg-white dark:bg-zinc-800 border-2 border-brutal-black
-                                        hover:bg-neutral-50 dark:hover:bg-zinc-700 brutal-btn
-                                        transition-all group text-left
-                                    `}
-                                >
-                                    <div className={`p-1 border-2 border-black ${item.is_dir ? 'bg-neutral-100 dark:bg-zinc-700' : 'bg-white dark:bg-zinc-800'}`}>
-                                        {getFileIcon(item.name, item.is_dir)}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="font-bold text-sm truncate font-mono text-brutal-black dark:text-white">{item.name}</div>
-                                        <div className="flex justify-between items-center mt-1 text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
-                                            <span>{formatDate(item.mtime)}</span>
-                                            {!item.is_dir && <span className="bg-neutral-100 dark:bg-zinc-700 px-1 border border-neutral-300 dark:border-zinc-600 text-black dark:text-neutral-300">{formatSize(item.size)}</span>}
-                                        </div>
-                                    </div>
-                                </button>
-                            ))
-                        )}
-                    </div>
+                    (dirContents.get(ROOT_PATH) || []).map((item, idx) => (
+                        <FileTreeNode
+                            key={idx}
+                            path={`/${item.name}`}
+                            name={item.name}
+                            isDir={item.is_dir}
+                            depth={0}
+                            size={item.size}
+                            expandedDirs={expandedDirs}
+                            dirContents={dirContents}
+                            loadingDirs={loadingDirs}
+                            selectedFile={selectedFile}
+                            onToggleDir={handleToggleDir}
+                            onSelectFile={handleSelectFile}
+                            formatSize={formatSize}
+                        />
+                    ))
                 )}
             </div>
 
             {/* Status Footer */}
             <div className="bg-white dark:bg-zinc-800 text-brutal-black dark:text-white p-2 flex justify-between items-center text-[10px] font-mono border-t-3 border-brutal-black select-none">
-                <span className="font-bold tracking-wider">{t('sandbox.itemsCount', { count: String(items.length) })}</span>
+                <span className="font-bold tracking-wider">{t('sandbox.itemsCount', { count: String(totalItems) })}</span>
                 <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-none border border-black ${loading ? 'bg-neutral-400 animate-pulse' : 'bg-brutal-green'}`}></div>
-                    <span className="uppercase">{loading ? t('sandbox.status.syncing') : t('sandbox.status.ready')}</span>
+                    <div className={`w-2 h-2 rounded-none border border-black ${loadingDirs.size > 0 ? 'bg-neutral-400 animate-pulse' : 'bg-brutal-green'}`}></div>
+                    <span className="uppercase">{loadingDirs.size > 0 ? t('sandbox.status.syncing') : t('sandbox.status.ready')}</span>
                 </div>
             </div>
         </div>
