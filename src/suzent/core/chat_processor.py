@@ -235,19 +235,109 @@ class ChatProcessor:
 
         # 4. Restore message history from DB (or use override for steer)
         message_history = _message_history_override
+        _agent_state_before: Optional[bytes] = None
+        _messages_before: list = []
         if message_history is None:
             try:
                 db = get_database()
                 chat = db.get_chat(chat_id)
-                if chat and chat.agent_state:
-                    state = deserialize_state(chat.agent_state)
-                    if state and state.get("message_history"):
-                        message_history = state["message_history"]
-                        logger.debug(
-                            f"Restored {len(message_history)} messages for chat {chat_id}"
-                        )
+                if chat:
+                    _agent_state_before = chat.agent_state
+                    _messages_before = list(chat.messages or [])
+                    if chat.agent_state:
+                        state = deserialize_state(chat.agent_state)
+                        if state and state.get("message_history"):
+                            message_history = state["message_history"]
+                            logger.debug(
+                                f"Restored {len(message_history)} messages for chat {chat_id}"
+                            )
             except Exception as e:
                 logger.error(f"Error restoring message history: {e}")
+
+        # Handle /retry before anything else so it can restore state and replay
+        if (
+            message_content
+            and message_content.strip().lower() == "/retry"
+            and not resume_approvals
+            and not is_heartbeat
+        ):
+            from suzent.core.retry import apply_retry_checkpoint
+            from ag_ui.core import (
+                CustomEvent,
+                RunStartedEvent,
+                RunFinishedEvent,
+                TextMessageStartEvent,
+                TextMessageContentEvent,
+                TextMessageEndEvent,
+            )
+            from ag_ui.encoder import EventEncoder as _RetryEnc
+
+            checkpoint_data = apply_retry_checkpoint(chat_id)
+            if checkpoint_data is None:
+                _enc = _RetryEnc()
+                run_id = str(uuid.uuid4())
+                msg_id = str(uuid.uuid4())
+                err_msg = "No retry checkpoint found. Send a message first."
+                yield _enc.encode(RunStartedEvent(run_id=run_id, thread_id=chat_id))
+                yield _enc.encode(
+                    CustomEvent(name="stream_display_role", value={"role": "notice"})
+                )
+                yield _enc.encode(
+                    TextMessageStartEvent(message_id=msg_id, role="assistant")
+                )
+                yield _enc.encode(
+                    TextMessageContentEvent(message_id=msg_id, delta=err_msg)
+                )
+                yield _enc.encode(TextMessageEndEvent(message_id=msg_id))
+                yield _enc.encode(RunFinishedEvent(run_id=run_id, thread_id=chat_id))
+                yield "data: [DONE]\n\n"
+                return
+
+            # Replay the original turn with restored state.
+            retry_message = checkpoint_data["user_message"]
+            retry_files = checkpoint_data["user_files"] or []
+            retry_config = checkpoint_data.get("config_snapshot") or {}
+            merged_config = {
+                **config,
+                **retry_config,
+                "_user_id": user_id,
+                "_chat_id": chat_id,
+            }
+            async for chunk in self.process_turn(
+                chat_id=chat_id,
+                user_id=user_id,
+                message_content=retry_message,
+                files=retry_files if retry_files else None,
+                config_override=merged_config,
+                is_social=is_social,
+            ):
+                yield chunk
+            return
+
+        # Save retry checkpoint now that we have the pre-turn state.
+        # Skip for resume/heartbeat/steer flows.
+        if (
+            not resume_approvals
+            and not is_heartbeat
+            and message_content
+            and _message_history_override is None
+        ):
+            try:
+                from suzent.core.retry import save_retry_checkpoint
+
+                serializable_files = [f for f in (files or []) if isinstance(f, dict)]
+                save_retry_checkpoint(
+                    chat_id=chat_id,
+                    agent_state_before=_agent_state_before,
+                    messages_before=_messages_before,
+                    user_message=message_content,
+                    user_files=serializable_files,
+                    config_snapshot={
+                        k: v for k, v in config.items() if not k.startswith("_")
+                    },
+                )
+            except Exception as _ckpt_err:
+                logger.debug(f"[retry] checkpoint save skipped: {_ckpt_err}")
 
         # 5. Attachment Handling
         agent_images = []

@@ -206,6 +206,69 @@ async def chat(request: Request) -> StreamingResponse:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
+async def retry_chat(request: Request) -> StreamingResponse:
+    """
+    Restore the last retry checkpoint for a chat and re-run the original user message.
+
+    POST /chat/retry  body: {"chat_id": "..."}
+    Returns text/event-stream SSE (same format as /chat).
+    """
+    try:
+        data = await request.json()
+    except json.JSONDecodeError:
+        return StreamingResponse(
+            iter(['data: {"type": "error", "data": "Invalid JSON."}\n\n']),
+            media_type="text/event-stream",
+            status_code=400,
+        )
+
+    chat_id = data.get("chat_id")
+    if not chat_id:
+        return StreamingResponse(
+            iter(['data: {"type": "error", "data": "chat_id is required"}\n\n']),
+            media_type="text/event-stream",
+            status_code=400,
+        )
+
+    from suzent.core.retry import apply_retry_checkpoint
+    from suzent.core.chat_processor import ChatProcessor
+    from suzent.agent_manager import build_agent_config
+
+    checkpoint_data = apply_retry_checkpoint(chat_id)
+    if checkpoint_data is None:
+        return StreamingResponse(
+            iter(['data: {"type": "error", "data": "No retry checkpoint found."}\n\n']),
+            media_type="text/event-stream",
+            status_code=404,
+        )
+
+    user_message = checkpoint_data["user_message"]
+    user_files = checkpoint_data["user_files"] or []
+    config_snapshot = checkpoint_data.get("config_snapshot") or {}
+
+    processor = ChatProcessor()
+    config_override = build_agent_config(config_snapshot, require_social_tool=False)
+
+    generator = processor.process_turn(
+        chat_id=chat_id,
+        user_id=CONFIG.user_id,
+        message_content=user_message,
+        files=user_files if user_files else None,
+        config_override=config_override,
+    )
+
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 async def stop_chat(request: Request) -> JSONResponse:
     """Stop an active streaming session for the given chat."""
     try:

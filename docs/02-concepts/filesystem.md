@@ -18,7 +18,7 @@ Toggle sandbox in the chat settings panel when creating a conversation.
 | Virtual Path | Maps To | Purpose |
 |-------------|---------|---------|
 | `/persistence` | `.suzent/sandbox/sessions/{chat_id}/` | Per-chat storage |
-| `/shared` | `.suzent/sandbox/shared/` | Shared across all chats |
+| `/shared` | `.suzent/sandbox/shared/` | Shared across all chats (not rolled back on retry) |
 | `/uploads` | `.suzent/sandbox/sessions/{chat_id}/uploads/` | Uploaded files |
 | `/mnt/*` | Custom volumes | Host directories |
 

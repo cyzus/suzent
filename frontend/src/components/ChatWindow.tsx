@@ -186,11 +186,20 @@ const MessageList: React.FC<{
   onOpenSubAgentSidebar?: (taskId: string) => void;
   onStopSubAgent?: (taskId: string) => void;
   onForceWebContext?: (contextId: string) => void;
-}> = ({ messages, streamingForCurrentChat, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext }) => {
+  onRetry?: () => void;
+}> = ({ messages, streamingForCurrentChat, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext, onRetry }) => {
   const { skipIndices, groupRenders, stepSummaryByMessageIndex } = useMemo(
     () => buildMessageRenderPlan(messages),
     [messages],
   );
+
+  // Index of the last non-skipped assistant message — only it shows the retry button.
+  const lastAssistantIdx = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant' && !skipIndices.has(i)) return i;
+    }
+    return -1;
+  }, [messages, skipIndices]);
 
   return (
     <div className="space-y-6">
@@ -275,6 +284,7 @@ const MessageList: React.FC<{
                   onOpenSubAgentSidebar={onOpenSubAgentSidebar}
                   onStopSubAgent={onStopSubAgent}
                   onForceWebContext={onForceWebContext}
+                  onRetry={idx === lastAssistantIdx && !streamingForCurrentChat ? onRetry : undefined}
                 />
               )}
             </div>
@@ -326,6 +336,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     consumeResetFlag,
     forceSaveNow,
     updateMessage,
+    truncateMessagesFrom,
     setIsStreaming,
     currentChatId,
     createNewChat,
@@ -1009,6 +1020,45 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   };
 
+  // Retry handler — restores last checkpoint and re-runs the original message
+  const handleRetry = useCallback(async () => {
+    if (!currentChatId || isStreaming) return;
+
+    // Strip all messages from the last user message onwards so the UI is clean
+    // before the new assistant response streams in.
+    const safeMessages = messages ?? [];
+    let lastUserIdx = -1;
+    for (let i = safeMessages.length - 1; i >= 0; i--) {
+      if (safeMessages[i].role === 'user') {
+        lastUserIdx = i;
+        break;
+      }
+    }
+    if (lastUserIdx >= 0) {
+      truncateMessagesFrom(lastUserIdx + 1, currentChatId);
+    }
+
+    const chatIdForRetry = currentChatId;
+    setIsStreaming(true, chatIdForRetry);
+    streamingChatIdRef.current = chatIdForRetry;
+    activeChatIdRef.current = chatIdForRetry;
+    stopInFlightRef.current = false;
+
+    try {
+      await sendAGUI({ message: '/retry', chat_id: chatIdForRetry, config: safeConfig });
+    } catch (error) {
+      console.error('Error during retry:', error);
+    } finally {
+      if (!steeringRef.current) {
+        setIsStreaming(false, chatIdForRetry);
+      }
+      stopInFlightRef.current = false;
+      setTimeout(async () => {
+        try { await forceSaveNow(chatIdForRetry); } catch { }
+      }, 600);
+    }
+  }, [currentChatId, isStreaming, messages, truncateMessagesFrom, setIsStreaming, sendAGUI, safeConfig, forceSaveNow]);
+
   // Stop streaming handler
   const stopStreaming = async () => {
     if (!isStreaming || stopInFlightRef.current) return;
@@ -1139,6 +1189,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     onOpenSubAgentSidebar={handleOpenSubAgentSidebar}
                     onStopSubAgent={handleStopSubAgent}
                     onForceWebContext={handleForceWebContext}
+                    onRetry={!isStreaming ? handleRetry : undefined}
                   />
                 )}
                 {/* Streaming/transient message from AG-UI */}

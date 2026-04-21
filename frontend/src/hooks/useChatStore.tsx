@@ -45,6 +45,7 @@ interface ChatCoreContextValue {
   refreshChatListSilently: (searchQuery?: string) => Promise<void>;
   updateChatTitleLocally: (chatId: string, title: string) => void;
   updateMessage: (index: number, update: Partial<Message>, chatId?: string | null) => void;
+  truncateMessagesFrom: (fromIndex: number, chatId?: string | null) => void;
   setViewSwitcher?: (switcher: (view: 'chat' | 'memory') => void) => void;
   switchToView?: (view: 'chat' | 'memory') => void;
   hideToolCalls: boolean;
@@ -772,6 +773,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     scheduleSave(chatId, 800);
   }, [currentChatId, scheduleSave, setMessagesForChat]);
 
+  // Remove all messages at or after `fromIndex`. Used by retry to strip the
+  // last assistant response before re-streaming.
+  const truncateMessagesFrom = useCallback((fromIndex: number, chatId: string | null = currentChatId) => {
+    setMessagesForChat(chatId, prev => {
+      if (fromIndex <= 0) return [];
+      return prev.slice(0, fromIndex);
+    });
+  }, [currentChatId, setMessagesForChat]);
+
   const setStreamingState = useCallback((streaming: boolean, chatId?: string | null) => {
     setIsStreamingState(streaming);
     const targetChatId = chatId ?? currentChatId;
@@ -1158,6 +1168,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       refreshChatListSilently,
       updateChatTitleLocally,
       updateMessage,
+      truncateMessagesFrom,
       setViewSwitcher,
       switchToView,
       hideToolCalls,
@@ -1194,6 +1205,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshChatListSilently,
     updateChatTitleLocally,
     updateMessage,
+    truncateMessagesFrom,
     setViewSwitcher,
     switchToView,
     hideToolCalls,

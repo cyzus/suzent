@@ -42,6 +42,8 @@ interface AssistantMessageProps {
   onStopSubAgent?: (taskId: string) => void;
   /** Force web context to open right sidebar with specific context */
   onForceWebContext?: (contextId: string) => void;
+  /** Retry handler — re-runs the last user message from this point */
+  onRetry?: () => void;
 }
 
 // Names that should be filtered out from tool call display
@@ -616,6 +618,39 @@ const AGUIPartsContent: React.FC<{
   );
 };
 
+const RetryButton: React.FC<{ onClick: () => void; className?: string }> = ({ onClick, className }) => {
+  const [retrying, setRetrying] = useState(false);
+
+  const handleClick = async () => {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await onClick();
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={retrying}
+      title="Retry"
+      className={`group/retry w-6 h-6 flex items-center justify-center bg-transparent text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${className ?? ''}`}
+    >
+      <svg
+        className={`w-3.5 h-3.5 transition-transform duration-300 ${retrying ? 'animate-spin' : 'group-hover/retry:-rotate-180'}`}
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={2.5}
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0115-3M20 15a9 9 0 01-15 3" />
+      </svg>
+    </button>
+  );
+};
+
 export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   message,
   messageIndex,
@@ -632,6 +667,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   onOpenSubAgentSidebar,
   onStopSubAgent,
   onForceWebContext,
+  onRetry,
 }) => {
   const isStreamingThis = isStreaming && isLastMessage;
   const hasParts = aguiParts && aguiParts.length > 0;
@@ -766,6 +802,9 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
             <div className="flex items-center gap-2 mt-2 pl-1">
               {fullMessageText && !isThinking && (
                 <CopyButton text={fullMessageText} className="relative" />
+              )}
+              {onRetry && !isStreamingThis && !isThinking && (
+                <RetryButton onClick={onRetry} />
               )}
               {message.timestamp && !isStreamingThis && (
                 <div className="text-[10px] text-neutral-400 select-none">
@@ -959,6 +998,9 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
           <div className="flex items-center gap-2 mt-2 pl-1">
             {fullMessageText && !isThinking && (
               <CopyButton text={fullMessageText} className="relative" />
+            )}
+            {onRetry && !isStreamingThis && !isThinking && (
+              <RetryButton onClick={onRetry} />
             )}
             {message.timestamp && !isStreamingThis && (
               <div className="text-[10px] text-neutral-400 select-none">

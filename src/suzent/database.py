@@ -79,6 +79,21 @@ class ChatModel(SQLModel, table=True):
     )
 
 
+class RetryCheckpointModel(SQLModel, table=True):
+    """Stores the last retry checkpoint for a chat session (one row per chat)."""
+
+    __tablename__ = "retry_checkpoints"
+
+    chat_id: str = Field(primary_key=True)
+    agent_state_before: Optional[bytes] = None
+    messages_before: list = Field(default_factory=list, sa_column=Column(JSON))
+    user_message: str = Field(default="")
+    user_files: list = Field(default_factory=list, sa_column=Column(JSON))
+    config_snapshot: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    has_file_snapshot: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class PlanModel(SQLModel, table=True):
     """Execution plan associated with a chat session."""
 
