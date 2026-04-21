@@ -279,6 +279,10 @@ async def save_api_keys(request: Request) -> JSONResponse:
         db = get_database()
         count = 0
 
+        # Track which provider field keys are being set/cleared
+        newly_set_keys: set[str] = set()
+        cleared_keys: set[str] = set()
+
         for key, value in keys.items():
             if not isinstance(key, str) or not isinstance(value, str):
                 continue
@@ -287,14 +291,53 @@ async def save_api_keys(request: Request) -> JSONResponse:
             if "..." in value and "(env)" in value:
                 continue
 
+            if key == "_PROVIDER_CONFIG_":
+                # Handled below after processing all plain keys
+                continue
+
             if not value:
                 db.delete_api_key(key)
                 if key in os.environ:
                     del os.environ[key]
+                cleared_keys.add(key)
             else:
                 db.save_api_key(key, value)
                 os.environ[key] = value
+                newly_set_keys.add(key)
                 count += 1
+
+        # Process _PROVIDER_CONFIG_ with auto-population of default_models
+        provider_config_blob = keys.get("_PROVIDER_CONFIG_")
+        if isinstance(provider_config_blob, str) and provider_config_blob:
+            try:
+                custom_config: dict[str, Any] = json.loads(provider_config_blob)
+            except json.JSONDecodeError:
+                custom_config = {}
+
+            # Build a map of provider field keys → provider id
+            key_to_provider: dict[str, str] = {}
+            provider_defaults: dict[str, list[str]] = {}
+            for p in PROVIDER_CONFIG:
+                pid = p["id"]
+                provider_defaults[pid] = [m["id"] for m in p.get("default_models", [])]
+                for field in p.get("fields", []):
+                    key_to_provider[field["key"]] = pid
+
+            # For each provider whose key was newly set and has no enabled_models,
+            # auto-populate with default_models so the UI shows options immediately.
+            for env_key in newly_set_keys:
+                pid = key_to_provider.get(env_key)
+                if pid and not custom_config.get(pid, {}).get("enabled_models"):
+                    defaults = provider_defaults.get(pid, [])
+                    if defaults:
+                        if pid not in custom_config:
+                            custom_config[pid] = {}
+                        custom_config[pid]["enabled_models"] = defaults
+
+            updated_blob = json.dumps(custom_config)
+            db.save_api_key("_PROVIDER_CONFIG_", updated_blob)
+            os.environ["_PROVIDER_CONFIG_"] = updated_blob
+            count += 1
 
         return JSONResponse({"success": True, "updated": count})
     except Exception as e:
