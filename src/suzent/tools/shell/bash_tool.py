@@ -22,13 +22,7 @@ from pydantic_ai import ApprovalRequired, RunContext
 from suzent.core.agent_deps import AgentDeps
 from suzent.tools.filesystem.file_tool_utils import get_or_create_path_resolver
 from suzent.tools.shell.permissions import CommandDecision, evaluate_command_policy
-from suzent.tools.base import (
-    Tool,
-    ToolErrorCode,
-    ToolGroup,
-    ToolResult,
-    truncate_tool_output as _truncate_output,
-)
+from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 from suzent.logger import get_logger
 
@@ -471,9 +465,7 @@ class BashTool(Tool):
             )
 
             if result.success:
-                output = (
-                    _truncate_output(result.output) if result.output else "(no output)"
-                )
+                output = result.output if result.output else "(no output)"
                 logger.info(
                     f"Sandbox execution successful [{language}] for chat {self.chat_id}"
                 )
@@ -646,8 +638,8 @@ class BashTool(Tool):
                 env=self._get_host_env(),
             )
 
-            stdout = _truncate_output(result.stdout)
-            stderr = _truncate_output(result.stderr)
+            stdout = result.stdout
+            stderr = result.stderr
 
             parts = []
             if stdout.strip():
