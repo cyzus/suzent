@@ -108,6 +108,10 @@ def build_agent_deps(
     assert isinstance(tool_approval_policy, dict), "tool_approval_policy must be a dict"
     tool_approval_policy = dict(tool_approval_policy)
 
+    from suzent.core.file_tracker import FileTracker
+
+    file_tracker = FileTracker(chat_id)
+
     return AgentDeps(
         chat_id=chat_id,
         user_id=user_id,
@@ -126,4 +130,5 @@ def build_agent_deps(
         tool_approval_policy=tool_approval_policy,
         a2ui_queue=asyncio.Queue(),
         inline_a2ui_surfaces={},
+        file_tracker=file_tracker,
     )

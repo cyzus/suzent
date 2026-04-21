@@ -703,6 +703,35 @@ class ChatProcessor:
 
                 yield chunk
         finally:
+            # Finalise file-level change tracking and persist into the existing
+            # checkpoint so the next /retry can restore this turn's file edits.
+            try:
+                ft = getattr(deps, "file_tracker", None)
+                if ft is not None:
+                    snap = ft.make_snapshot()
+                    if snap:
+                        from suzent.core.file_tracker import FileTracker as _FT
+                        from suzent.database import (
+                            RetryCheckpointModel,
+                            get_database as _get_db,
+                        )
+                        from sqlmodel import Session
+                        from sqlalchemy.orm.attributes import flag_modified
+
+                        snap_json = _FT.snapshot_to_json(snap)
+                        _db = _get_db()
+                        with Session(_db.engine) as _sess:
+                            _ckpt = _sess.get(RetryCheckpointModel, chat_id)
+                            if _ckpt:
+                                _ckpt.file_snapshot = snap_json
+                                _ckpt.has_file_snapshot = True
+                                flag_modified(_ckpt, "file_snapshot")
+                                _sess.commit()
+            except Exception as _ft_fin_err:
+                logger.debug(
+                    f"[FileTracker] make_snapshot on turn end skipped: {_ft_fin_err}"
+                )
+
             # Persist a lightweight state snapshot immediately so a fast-following
             # turn can restore recent history even before heavy post-processing ends.
             snapshot_revision: Optional[int] = None
