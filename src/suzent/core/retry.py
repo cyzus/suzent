@@ -5,15 +5,18 @@ Before each agent turn we snapshot:
   - agent_state (bytes) — message history before the user's message
   - chat.messages     — display messages before the user's message
   - the user message text + file metadata
-  - /persistence session directory  (chat-private sandbox files)
-  - all custom-volume host directories  (user-mounted project dirs, etc.)
+  - per-file backups for every file touched during the turn (via FileTracker)
 
-Checkpoint layout on disk:
-  sandbox/checkpoints/{chat_id}/
-    session/            ← copy of sandbox/sessions/{chat_id}/
-    volumes/0/          ← copy of first custom-volume host dir
-    volumes/1/          ← copy of second custom-volume host dir
-    volume_map.json     ← [{host_path, container_path}, ...]
+File-level snapshot strategy (mirrors Claude Code's fileHistory.ts)
+-------------------------------------------------------------------
+Instead of copytree-ing entire directories, we track only files that were
+actually written by edit_file / write_file tools.  FileTracker.track_edit()
+backs up each file *before* the first write; make_snapshot() returns a dict
+mapping absolute path → FileBackup.  On retry we restore only those files.
+
+Legacy directory snapshot (session dir + custom volumes) is kept as a
+fallback for checkpoints that pre-date FileTracker, but is no longer
+produced for new checkpoints.
 
 Deliberately NOT snapshotted
 -----------------------------
@@ -23,16 +26,15 @@ Deliberately NOT snapshotted
                 would corrupt the memory system (which lives in
                 /shared/memory/).  If the agent modifies files in /shared
                 those changes are intentionally left in place after retry.
-
-On retry we restore all of the above, then re-run process_turn()
-with the original user message.
 """
+
+from __future__ import annotations
 
 import json
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 from suzent.logger import get_logger
 
@@ -43,7 +45,7 @@ _SKIP_CONTAINER_PATHS = {"/mnt/skills"}
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Helpers (legacy directory snapshot — kept for apply fallback only)
 # ---------------------------------------------------------------------------
 
 
@@ -59,40 +61,18 @@ def _checkpoint_dir(chat_id: str) -> Path:
     return Path(CONFIG.sandbox_data_path) / "checkpoints" / chat_id
 
 
-def _parse_volumes(config_snapshot: dict) -> List[dict]:
-    """
-    Return a list of {host_path, container_path} dicts for all effective volumes
-    that are worth snapshotting (skips read-only shared mounts).
-    """
-    from suzent.config import get_effective_volumes
-    from suzent.tools.filesystem.path_resolver import PathResolver
+def _rmtree_safe(path: Path) -> None:
+    def _on_error(func, fpath, exc_info):
+        logger.debug(f"[retry] rmtree skip {fpath}: {exc_info[1]}")
 
-    per_chat = config_snapshot.get("sandbox_volumes") or []
-    effective = get_effective_volumes(per_chat)
-
-    result = []
-    for vol in effective:
-        parsed = PathResolver.parse_volume_string(vol)
-        if not parsed:
-            continue
-        host_path, container_path = parsed
-        if container_path in _SKIP_CONTAINER_PATHS:
-            continue
-        result.append({"host_path": host_path, "container_path": container_path})
-    return result
+    shutil.rmtree(path, onerror=_on_error)
 
 
-def _snapshot_dir(src: Path, dst: Path) -> bool:
-    """Copy *src* to *dst*, removing *dst* first. Returns True on success."""
+def _copy2_skip_errors(src, dst, **kwargs):
     try:
-        if dst.exists():
-            shutil.rmtree(dst)
-        if src.exists():
-            shutil.copytree(src, dst)
-        return True
-    except Exception as e:
-        logger.warning(f"[retry] snapshot {src} → {dst} failed: {e}")
-        return False
+        shutil.copy2(src, dst, **kwargs)
+    except OSError as e:
+        logger.debug(f"[retry] copy skip {src}: {e}")
 
 
 def _restore_dir(src: Path, dst: Path) -> bool:
@@ -101,8 +81,10 @@ def _restore_dir(src: Path, dst: Path) -> bool:
         return False
     try:
         if dst.exists():
-            shutil.rmtree(dst)
-        shutil.copytree(src, dst)
+            _rmtree_safe(dst)
+        shutil.copytree(
+            src, dst, copy_function=_copy2_skip_errors, ignore_dangling_symlinks=True
+        )
         return True
     except Exception as e:
         logger.warning(f"[retry] restore {src} → {dst} failed: {e}")
@@ -121,9 +103,13 @@ def save_retry_checkpoint(
     user_message: str,
     user_files: list,
     config_snapshot: dict,
+    file_snapshot: Optional[list] = None,
 ) -> None:
     """
     Persist a retry checkpoint for *chat_id*.
+
+    ``file_snapshot`` is the serialised output of FileTracker.make_snapshot()
+    (a list of dicts).  When provided, no directory copies are made.
 
     Called at the very start of process_turn(), before any state is mutated.
     Replaces any previously stored checkpoint for this chat.
@@ -131,39 +117,6 @@ def save_retry_checkpoint(
     try:
         from suzent.database import RetryCheckpointModel, get_database
         from sqlmodel import Session
-
-        ckpt_root = _checkpoint_dir(chat_id)
-        ckpt_root.parent.mkdir(parents=True, exist_ok=True)
-
-        # Remove previous checkpoint entirely before writing a new one.
-        if ckpt_root.exists():
-            shutil.rmtree(ckpt_root)
-        ckpt_root.mkdir(parents=True, exist_ok=True)
-
-        has_file_snapshot = False
-
-        # 1. Snapshot /persistence session directory.
-        session_dir = _session_dir(chat_id)
-        if _snapshot_dir(session_dir, ckpt_root / "session"):
-            has_file_snapshot = True
-
-        # 2. Snapshot each custom-volume host directory.
-        volumes = _parse_volumes(config_snapshot)
-        snapshotted_volumes = []
-        for idx, vol in enumerate(volumes):
-            host_path = Path(vol["host_path"])
-            vol_dst = ckpt_root / "volumes" / str(idx)
-            if _snapshot_dir(host_path, vol_dst):
-                snapshotted_volumes.append(vol)
-                has_file_snapshot = True
-            else:
-                # Keep the entry so indices stay aligned; mark as failed.
-                snapshotted_volumes.append({**vol, "snapshot_failed": True})
-
-        if snapshotted_volumes:
-            (ckpt_root / "volume_map.json").write_text(
-                json.dumps(snapshotted_volumes, ensure_ascii=False), encoding="utf-8"
-            )
 
         db = get_database()
         checkpoint = RetryCheckpointModel(
@@ -173,7 +126,8 @@ def save_retry_checkpoint(
             user_message=user_message,
             user_files=list(user_files),
             config_snapshot=dict(config_snapshot),
-            has_file_snapshot=has_file_snapshot,
+            has_file_snapshot=bool(file_snapshot is not None),
+            file_snapshot=file_snapshot or [],
             created_at=datetime.now(timezone.utc),
         )
         with Session(db.engine) as session:
@@ -186,8 +140,7 @@ def save_retry_checkpoint(
 
         logger.debug(
             f"[retry] checkpoint saved for {chat_id}: "
-            f"session={'yes' if session_dir.exists() else 'no'}, "
-            f"volumes={len([v for v in snapshotted_volumes if not v.get('snapshot_failed')])}"
+            f"file_snapshot_entries={len(file_snapshot) if file_snapshot else 0}"
         )
 
     except Exception as e:
@@ -237,13 +190,24 @@ def apply_retry_checkpoint(chat_id: str) -> Optional[dict]:
                 flag_modified(chat, "messages")
                 session.commit()
 
-        if checkpoint.has_file_snapshot:
-            ckpt_root = _checkpoint_dir(chat_id)
+        # Restore files using the lightweight file-level snapshot when available.
+        file_snapshot_data = getattr(checkpoint, "file_snapshot", None)
+        if file_snapshot_data:
+            try:
+                from suzent.core.file_tracker import FileTracker
 
-            # Restore /persistence session directory.
+                snapshot = FileTracker.snapshot_from_json(file_snapshot_data)
+                changed = FileTracker.apply_snapshot(chat_id, snapshot)
+                logger.debug(
+                    f"[retry] file snapshot applied for {chat_id}: {len(changed)} file(s) restored"
+                )
+            except Exception as e:
+                logger.warning(f"[retry] file snapshot apply failed for {chat_id}: {e}")
+        elif checkpoint.has_file_snapshot:
+            # Legacy: restore from directory copies (pre-FileTracker checkpoints).
+            ckpt_root = _checkpoint_dir(chat_id)
             _restore_dir(ckpt_root / "session", _session_dir(chat_id))
 
-            # Restore custom-volume host directories.
             vol_map_path = ckpt_root / "volume_map.json"
             if vol_map_path.exists():
                 try:
@@ -256,7 +220,9 @@ def apply_retry_checkpoint(chat_id: str) -> Optional[dict]:
                             Path(vol["host_path"]),
                         )
                 except Exception as e:
-                    logger.warning(f"[retry] Volume restore failed for {chat_id}: {e}")
+                    logger.warning(
+                        f"[retry] legacy volume restore failed for {chat_id}: {e}"
+                    )
 
         return {
             "user_message": checkpoint.user_message,

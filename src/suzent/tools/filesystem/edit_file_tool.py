@@ -424,6 +424,14 @@ class EditFileTool(Tool):
                 )
                 replaced = 1
 
+            # Back up the original file before mutating (idempotent).
+            try:
+                ft = getattr(ctx.deps, "file_tracker", None)
+                if ft is not None:
+                    ft.track_edit(str(resolved_path))
+            except Exception as _ft_err:
+                logger.debug(f"[FileTracker] track_edit skipped: {_ft_err}")
+
             # Abort if file changed during read/compute window.
             latest_mtime_ns = resolved_path.stat().st_mtime_ns
 

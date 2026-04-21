@@ -91,6 +91,8 @@ class RetryCheckpointModel(SQLModel, table=True):
     user_files: list = Field(default_factory=list, sa_column=Column(JSON))
     config_snapshot: dict = Field(default_factory=dict, sa_column=Column(JSON))
     has_file_snapshot: bool = Field(default=False)
+    # Serialised FileTracker snapshot: list of {path, backup_name, version, backup_time}
+    file_snapshot: list = Field(default_factory=list, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
