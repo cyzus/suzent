@@ -158,15 +158,19 @@ export const MemoryView: React.FC = () => {
               {showCoreMemory && (
                 <div className="space-y-4">
                   {coreMemory &&
-                    (Object.keys(coreMemory) as CoreMemoryLabel[]).map((label) => (
-                      <div key={label}>
-                        <CoreMemoryBlock
-                          label={label}
-                          content={coreMemory[label]}
-                          onUpdate={updateCoreMemoryBlock}
-                        />
-                      </div>
-                    ))}
+                    // Filter out session-scoped 'context' from the global view —
+                    // it only makes sense inside an active chat session.
+                    (Object.keys(coreMemory) as CoreMemoryLabel[])
+                      .filter((label) => label !== 'context')
+                      .map((label) => (
+                        <div key={label}>
+                          <CoreMemoryBlock
+                            label={label}
+                            content={coreMemory[label]}
+                            onUpdate={updateCoreMemoryBlock}
+                          />
+                        </div>
+                      ))}
                 </div>
               )}
             </div>

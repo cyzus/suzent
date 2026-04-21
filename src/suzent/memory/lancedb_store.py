@@ -502,6 +502,17 @@ class LanceDBMemoryStore:
             logger.warning(f"FTS failed (index might be missing): {e}")
             return []
 
+    async def fts_search(
+        self,
+        query_text: str,
+        user_id: str,
+        chat_id: Optional[str] = None,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """Public FTS-only search (no embedding API call, purely local)."""
+        where = self._build_user_chat_filter(user_id, chat_id)
+        return await self._perform_fts_search(query_text, where, limit)
+
     @staticmethod
     def _normalize_fts_scores(fts_results: List[Dict[str, Any]]) -> float:
         """Get max FTS score for normalization."""
@@ -684,6 +695,33 @@ class LanceDBMemoryStore:
             return True
         except Exception as e:
             logger.error(f"Delete all memories failed: {e}")
+            return False
+
+    async def delete_memories_by_source_file(
+        self, source_file: str, user_id: str
+    ) -> bool:
+        """Delete all archival memories that originated from a specific core memory file.
+
+        Used by CoreMemoryFileIndexer to clear stale chunks before re-indexing.
+        Matches on the JSON metadata field using a LIKE pattern.
+
+        Args:
+            source_file: File name (e.g., 'persona.md', 'user.md', 'MEMORY.md')
+            user_id: User scope
+        """
+        try:
+            safe_user = _escape_sql(user_id)
+            # Escape double-quotes for SQL LIKE pattern (they appear in JSON)
+            safe_file = source_file.replace("'", "").replace('"', '\\"')
+            clause = (
+                f"user_id = '{safe_user}'"
+                f' AND metadata LIKE \'%"source_file": "{safe_file}"%\''
+            )
+            await self.archival_table.delete(clause)
+            logger.debug(f"Deleted archival memories for source_file={source_file}")
+            return True
+        except Exception as e:
+            logger.error(f"delete_memories_by_source_file failed: {e}")
             return False
 
     async def delete_all_memory_blocks(

@@ -152,7 +152,6 @@ def create_agent(
     enabled_tool_names = set(tool_names)
     _auto_equipped = {
         "MemorySearchTool",
-        "MemoryBlockUpdateTool",
         "SkillTool",
         "SocialMessageTool",
     }
@@ -166,16 +165,12 @@ def create_agent(
         else:
             logger.warning(f"Tool function not found for: {tool_name}")
 
-    # Equip memory tools if enabled
+    # Equip memory search tool if enabled
     if memory_enabled and CONFIG.memory_enabled:
         mem_search = get_tool_function("MemorySearchTool")
-        mem_update = get_tool_function("MemoryBlockUpdateTool")
         if mem_search:
             tool_functions.append(mem_search)
             enabled_tool_names.add("MemorySearchTool")
-        if mem_update:
-            tool_functions.append(mem_update)
-            enabled_tool_names.add("MemoryBlockUpdateTool")
 
     # Auto-equip SkillTool if any skills are enabled
     skill_manager = get_skill_manager()
@@ -309,10 +304,21 @@ async def get_or_create_agent(config: Dict[str, Any], reset: bool = False) -> Ag
                 user_id = config.get("_user_id", "default-user")
                 sandbox_enabled = config.get("sandbox_enabled", CONFIG.sandbox_enabled)
                 try:
+                    from suzent.tools.filesystem.path_resolver import PathResolver
+                    from suzent.config import get_effective_volumes
+
+                    _path_resolver = PathResolver(
+                        chat_id=chat_id or "default",
+                        sandbox_enabled=sandbox_enabled,
+                        custom_volumes=get_effective_volumes(
+                            config.get("sandbox_volumes")
+                        ),
+                    )
                     memory_context = await mem_manager.format_core_memory_for_context(
                         chat_id=chat_id,
                         user_id=user_id,
                         sandbox_enabled=sandbox_enabled,
+                        path_resolver=_path_resolver,
                     )
                     if memory_context:
                         logger.debug(f"Fetched core memory context for user={user_id}")

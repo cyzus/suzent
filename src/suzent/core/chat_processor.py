@@ -475,11 +475,24 @@ class ChatProcessor:
                 yield "data: [DONE]\n\n"
                 return
 
-        # --- System Reminder Injection ---
+        # --- System Reminder Injection (includes per-turn RAG hook when memory enabled) ---
         from suzent.core.system_reminder import build_combined_reminder
 
+        # Pass the raw user message so per-turn hooks (e.g. dynamic RAG retrieval)
+        # are invoked. Heartbeats and pure tool-resume turns pass None so those
+        # hooks are skipped automatically.
+        _turn_message = (
+            message_content
+            if (
+                message_content
+                and message_content.strip()
+                and not is_heartbeat
+                and not resume_approvals
+            )
+            else None
+        )
         reminder = await build_combined_reminder(
-            chat_id, deps, adhoc_reminders=system_reminders
+            chat_id, deps, adhoc_reminders=system_reminders, user_message=_turn_message
         )
         if reminder:
             if message_content and message_content.strip():

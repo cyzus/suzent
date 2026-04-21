@@ -5,8 +5,10 @@ Rebuilds the LanceDB search index from markdown memory files.
 This ensures that if LanceDB data is lost or corrupted, the markdown
 source of truth can fully restore the search index.
 
-Also provides TranscriptIndexer for chunking and embedding JSONL
-transcripts into LanceDB for cross-session search.
+Also provides:
+- TranscriptIndexer: chunks JSONL session transcripts into LanceDB
+- CoreMemoryFileIndexer: watches persona.md / user.md / MEMORY.md for
+  changes and keeps their embeddings in LanceDB up to date (Phase 2)
 """
 
 import json
@@ -362,3 +364,179 @@ class TranscriptIndexer:
         if match:
             return int(match.group(1))
         return 0
+
+
+# ---------------------------------------------------------------------------
+# Core Memory File Indexer (Phase 2)
+# ---------------------------------------------------------------------------
+
+# Max chars per chunk for paragraph-based splitting of core memory files.
+# Core files are small, so we set a generous limit to keep context coherent.
+CORE_FILE_MAX_CHUNK_CHARS = 1200
+
+
+class CoreMemoryFileIndexer:
+    """Watches persona.md, user.md, and MEMORY.md for changes and keeps their
+    embeddings current in the LanceDB archival_memories table.
+
+    Change detection uses mtime (last-modified timestamp) so unchanged files
+    cost nothing.  On a detected change the old chunks for that file are deleted
+    and new ones are embedded and inserted.
+
+    Designed to run as a background asyncio loop (see lifecycle.py).
+    """
+
+    # Map from block label → filename as stored in LanceDB metadata
+    CORE_FILES: dict = {
+        "persona": "persona.md",
+        "user": "user.md",
+        "facts": "MEMORY.md",
+    }
+
+    def __init__(self) -> None:
+        # path_str → last known mtime (float)
+        self._mtimes: dict = {}
+
+    async def check_and_update(
+        self,
+        markdown_store,
+        lancedb_store,
+        embedding_gen,
+        user_id: str,
+    ) -> dict:
+        """Check all core memory files for changes and re-index those that changed.
+
+        Args:
+            markdown_store: MarkdownMemoryStore instance
+            lancedb_store: LanceDBMemoryStore instance
+            embedding_gen: EmbeddingGenerator instance
+            user_id: User scope for the archival memories
+
+        Returns:
+            Dict with stats: files_checked, files_updated, chunks_indexed, errors
+        """
+        stats = {
+            "files_checked": 0,
+            "files_updated": 0,
+            "chunks_indexed": 0,
+            "errors": 0,
+        }
+
+        for label, filename in self.CORE_FILES.items():
+            stats["files_checked"] += 1
+
+            # Resolve physical path
+            if label == "facts":
+                path = markdown_store.memory_file_path
+            else:
+                path = markdown_store._block_path(label)
+
+            if not path.exists():
+                continue
+
+            mtime = path.stat().st_mtime
+            path_key = str(path)
+
+            if self._mtimes.get(path_key) == mtime:
+                continue  # File unchanged — nothing to do
+
+            try:
+                content = path.read_text(encoding="utf-8").strip()
+                if not content:
+                    self._mtimes[path_key] = mtime
+                    continue
+
+                n = await self._reindex_file(
+                    label=label,
+                    filename=filename,
+                    content=content,
+                    lancedb_store=lancedb_store,
+                    embedding_gen=embedding_gen,
+                    user_id=user_id,
+                )
+                self._mtimes[path_key] = mtime
+                stats["files_updated"] += 1
+                stats["chunks_indexed"] += n
+                logger.info(f"Re-indexed {filename}: {n} chunks")
+
+            except Exception as e:
+                stats["errors"] += 1
+                logger.error(f"Failed to re-index {filename}: {e}")
+
+        return stats
+
+    async def _reindex_file(
+        self,
+        label: str,
+        filename: str,
+        content: str,
+        lancedb_store,
+        embedding_gen,
+        user_id: str,
+    ) -> int:
+        """Delete stale chunks and re-embed the full content of one file.
+
+        Returns the number of chunks indexed.
+        """
+        # 1. Remove existing entries for this file
+        await lancedb_store.delete_memories_by_source_file(filename, user_id)
+
+        # 2. Chunk the file content
+        chunks = self._chunk_by_paragraphs(content)
+
+        # 3. Embed and store each chunk
+        indexed = 0
+        for i, chunk in enumerate(chunks):
+            if not chunk.strip():
+                continue
+            try:
+                embedding = await embedding_gen.generate(chunk)
+                await lancedb_store.add_memory(
+                    content=chunk,
+                    embedding=embedding,
+                    user_id=user_id,
+                    chat_id=None,
+                    metadata={
+                        "source_type": "core_file",
+                        "source_file": filename,
+                        "chunk_index": i,
+                        "label": label,
+                        "category": "core",
+                        "tags": ["core_memory", label, filename],
+                    },
+                    importance=0.75,  # Core memory files are high-importance context
+                )
+                indexed += 1
+            except Exception as e:
+                logger.warning(f"Failed to embed chunk {i} of {filename}: {e}")
+
+        return indexed
+
+    @staticmethod
+    def _chunk_by_paragraphs(
+        content: str,
+        max_chars: int = CORE_FILE_MAX_CHUNK_CHARS,
+    ) -> List[str]:
+        """Split *content* on double-newlines; merge short paragraphs up to *max_chars*.
+
+        This keeps semantically related lines together while preventing any
+        single chunk from becoming too large to embed efficiently.
+        """
+        paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
+
+        chunks: List[str] = []
+        current_parts: List[str] = []
+        current_len = 0
+
+        for para in paragraphs:
+            if current_len + len(para) > max_chars and current_parts:
+                chunks.append("\n\n".join(current_parts))
+                current_parts = []
+                current_len = 0
+            current_parts.append(para)
+            current_len += len(para) + 2  # +2 for "\n\n"
+
+        if current_parts:
+            chunks.append("\n\n".join(current_parts))
+
+        return chunks if chunks else [content]

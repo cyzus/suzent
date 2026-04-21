@@ -143,9 +143,9 @@ async def get_memory_daily_log(request: Request) -> JSONResponse:
                 status_code=400,
             )
 
-        # Read from shared memory directory
+        # Read from archive subdirectory
         shared_memory_dir = Path(CONFIG.sandbox_data_path) / "shared" / "memory"
-        log_path = shared_memory_dir / f"{date_str}.md"
+        log_path = shared_memory_dir / "archive" / f"{date_str}.md"
 
         if not log_path.exists():
             return JSONResponse(
@@ -176,13 +176,13 @@ async def list_memory_daily_logs(request: Request) -> JSONResponse:
         JSONResponse with list of dates that have daily logs
     """
     try:
-        shared_memory_dir = Path(CONFIG.sandbox_data_path) / "shared" / "memory"
+        archive_dir = Path(CONFIG.sandbox_data_path) / "shared" / "memory" / "archive"
 
-        if not shared_memory_dir.exists():
+        if not archive_dir.exists():
             return JSONResponse({"dates": [], "count": 0})
 
         dates = sorted(
-            [p.stem for p in shared_memory_dir.glob("????-??-??.md") if p.is_file()],
+            [p.stem for p in archive_dir.glob("????-??-??.md") if p.is_file()],
             reverse=True,
         )
 

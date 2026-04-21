@@ -80,25 +80,54 @@ class MemoryManager:
             f"markdown: {'enabled' if markdown_store else 'disabled'}"
         )
 
-    # ===== Core Memory Blocks (Always visible to agent) =====
+    # ===== Core Memory Blocks (File-based SSoT) =====
+
+    # Default content when a block file does not yet exist
+    _BLOCK_DEFAULTS: Dict[str, str] = {
+        "persona": "You are Suzent, a helpful AI assistant with long-term memory.",
+        "user": "No user information yet.",
+        "facts": "No facts stored yet.",
+        "context": "No current context.",
+    }
 
     async def get_core_memory(
         self, chat_id: Optional[str] = None, user_id: Optional[str] = None
     ) -> Dict[str, str]:
-        """Get all core memory blocks with defaults."""
-        blocks = await self.store.get_all_memory_blocks(
-            chat_id=chat_id, user_id=user_id
-        )
+        """Get core memory blocks from markdown files (file-based SSoT).
 
-        # Ensure default blocks exist
-        default_blocks = {
-            "persona": "You are Suzent, a helpful AI assistant with long-term memory.",
-            "user": "No user information yet.",
-            "facts": "No facts stored yet.",
-            "context": "No current context.",
-        }
+        Reads:
+          - persona.md  → 'persona' block
+          - user.md     → 'user' block
+          - MEMORY.md   → 'facts' block
+          - sessions/{chat_id}/context.md → 'context' block (only when chat_id given)
+        """
+        blocks: Dict[str, str] = {}
 
-        for label, default_content in default_blocks.items():
+        if self.markdown_store:
+            # Global blocks — files in shared memory directory
+            for label in ("persona", "user"):
+                content = await self.markdown_store.read_block(label)
+                if content is not None:
+                    blocks[label] = content
+
+            # Facts ← MEMORY.md
+            memory_file = await self.markdown_store.read_memory_file()
+            if memory_file is not None:
+                blocks["facts"] = memory_file
+
+            # Context ← session-scoped (only when chat_id available)
+            if chat_id:
+                ctx = await self.markdown_store.read_session_context(chat_id)
+                if ctx is not None:
+                    blocks["context"] = ctx
+        else:
+            # Fallback: read from LanceDB memory_blocks table (legacy path)
+            blocks = await self.store.get_all_memory_blocks(
+                chat_id=chat_id, user_id=user_id
+            )
+
+        # Apply defaults for any missing blocks
+        for label, default_content in self._BLOCK_DEFAULTS.items():
             if label not in blocks:
                 blocks[label] = default_content
 
@@ -111,11 +140,28 @@ class MemoryManager:
         chat_id: Optional[str] = None,
         user_id: Optional[str] = None,
     ) -> bool:
-        """Update a specific core memory block."""
+        """Update a core memory block by writing its corresponding markdown file."""
         try:
-            await self.store.set_memory_block(
-                label=label, content=content, chat_id=chat_id, user_id=user_id
-            )
+            if self.markdown_store:
+                if label == "context":
+                    if chat_id:
+                        await self.markdown_store.write_session_context(
+                            chat_id, content
+                        )
+                    else:
+                        # No chat_id — skip silently (context is always session-scoped)
+                        logger.debug("Skipping context write: no chat_id provided")
+                elif label == "facts":
+                    # MEMORY.md — write raw (no auto-header here; agent owns the file)
+                    await self.markdown_store.write_block("MEMORY", content)
+                else:
+                    await self.markdown_store.write_block(label, content)
+            else:
+                # Fallback: persist to LanceDB memory_blocks table
+                await self.store.set_memory_block(
+                    label=label, content=content, chat_id=chat_id, user_id=user_id
+                )
+
             logger.info(
                 f"Updated core memory block '{label}' for user={user_id}, chat={chat_id}"
             )
@@ -167,17 +213,11 @@ class MemoryManager:
                     max_tokens=1000,
                 )
 
-                # 3. Update Core Memory Block
+                # 3. Write summary to MEMORY.md (file-based SSoT)
                 if summary:
                     stats = await self.get_memory_stats(user_id)
-                    # Append stats to show freshness
                     final_content = f"{summary.strip()}\n\n(Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | Total Memories: {stats['total_memories']})"
 
-                    await self.update_memory_block(
-                        label="facts", content=final_content, user_id=user_id
-                    )
-
-                    # Also write to MEMORY.md (human-readable long-term memory)
                     if self.markdown_store:
                         try:
                             await self.markdown_store.write_memory_file(final_content)
@@ -196,6 +236,7 @@ class MemoryManager:
         chat_id: Optional[str] = None,
         user_id: Optional[str] = None,
         sandbox_enabled: bool = True,
+        path_resolver=None,
     ) -> str:
         """Format core memory as text for prompt injection."""
         try:
@@ -204,8 +245,33 @@ class MemoryManager:
             logger.error(f"Error getting core memory blocks: {e}")
             return ""
 
+        shared_path = None
+        mount_skills = None
+        mount_notebook = None
+        if not sandbox_enabled and path_resolver is not None:
+            shared_path = str(path_resolver.sandbox_data_path / "shared").replace(
+                "\\", "/"
+            )
+            mount_skills = (
+                str(path_resolver.custom_mounts.get("/mnt/skills", "")).replace(
+                    "\\", "/"
+                )
+                or None
+            )
+            mount_notebook = (
+                str(path_resolver.custom_mounts.get("/mnt/notebook", "")).replace(
+                    "\\", "/"
+                )
+                or None
+            )
+
         return memory_context.format_core_memory_section(
-            blocks, sandbox_enabled=sandbox_enabled
+            blocks,
+            sandbox_enabled=sandbox_enabled,
+            chat_id=chat_id,
+            shared_path=shared_path,
+            mount_skills=mount_skills,
+            mount_notebook=mount_notebook,
         )
 
     async def retrieve_relevant_memories(
@@ -214,6 +280,7 @@ class MemoryManager:
         chat_id: Optional[str] = None,
         user_id: Optional[str] = None,
         limit: int = DEFAULT_MEMORY_RETRIEVAL_LIMIT,
+        use_embedding: bool = True,
     ) -> str:
         """
         Automatically retrieve and format relevant memories for a query.
@@ -224,14 +291,28 @@ class MemoryManager:
             chat_id: Optional chat context
             user_id: User identifier
             limit: Maximum number of memories to retrieve
+            use_embedding: When True (default), use hybrid embedding+FTS search.
+                When False, use FTS-only (local, no API call) — suitable for
+                per-turn auto-injection where latency matters most.
 
         Returns:
             Formatted string with relevant memories, or empty string if none found
         """
         try:
-            memories = await self.search_memories(
-                query=query, limit=limit, chat_id=chat_id, user_id=user_id
-            )
+            # Fast exit: if the archival store has no memories at all, skip
+            # entirely — no point searching with nothing in the index.
+            count = await self.store.get_memory_count(user_id=user_id)
+            if count == 0:
+                return ""
+
+            if use_embedding:
+                memories = await self.search_memories(
+                    query=query, limit=limit, chat_id=chat_id, user_id=user_id
+                )
+            else:
+                memories = await self.store.fts_search(
+                    query_text=query, user_id=user_id or "", chat_id=None, limit=limit
+                )
 
             if not memories:
                 return ""

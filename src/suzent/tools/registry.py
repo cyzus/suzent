@@ -93,7 +93,7 @@ def _all_tool_classes() -> list:
     from suzent.tools.social_message_tool import SocialMessageTool
     from suzent.tools.voice_tool import SpeakTool
     from suzent.tools.image_generation_tool import ImageGenerationTool
-    from suzent.tools.memory_tools import MemorySearchTool, MemoryBlockUpdateTool
+    from suzent.tools.memory_tools import MemorySearchTool
     from suzent.tools.render_ui_tool import RenderUITool
     from suzent.tools.ask_question_tool import AskQuestionTool
     from suzent.tools.spawn_subagent_tool import SpawnSubagentTool
@@ -117,7 +117,6 @@ def _all_tool_classes() -> list:
         SocialMessageTool,
         SkillTool,
         MemorySearchTool,
-        MemoryBlockUpdateTool,
         SpawnSubagentTool,
     ]
 

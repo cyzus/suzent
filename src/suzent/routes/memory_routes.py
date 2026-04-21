@@ -78,7 +78,8 @@ async def update_core_memory_block(request: Request) -> JSONResponse:
                 {"error": "Missing required field: content"}, status_code=400
             )
 
-        # Validate label
+        # Validate label — core blocks only (context is session-scoped; updating
+        # it without a chat_id is a no-op handled gracefully by the manager)
         valid_labels = ["persona", "user", "facts", "context"]
         if label not in valid_labels:
             return JSONResponse(

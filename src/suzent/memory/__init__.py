@@ -1,10 +1,11 @@
 """
-Memory system for Suzent - provides long-term memory with automatic extraction.
+Memory system for Suzent - file-centric eventual consistency architecture.
 
-Three storage layers:
-- Markdown files (/shared/memory/): Human-readable source of truth
-- LanceDB: Vector search index over memory content
-- Core memory blocks: Always-visible working memory injected into agent context
+Storage layers:
+- Markdown files (/shared/memory/): Single Source of Truth — persona.md, user.md,
+  MEMORY.md, sessions/{chat_id}/context.md, YYYY-MM-DD.md daily logs
+- LanceDB: Vector search index built asynchronously from markdown files
+- Context injection: static (core files) + dynamic RAG (relevant memories)
 """
 
 from .manager import MemoryManager
@@ -12,7 +13,7 @@ from .wiki_manager import WikiManager
 from .lancedb_store import LanceDBMemoryStore
 from .markdown_store import MarkdownMemoryStore
 from .indexer import MarkdownIndexer, TranscriptIndexer
-from suzent.tools.memory_tools import MemorySearchTool, MemoryBlockUpdateTool
+from suzent.tools.memory_tools import MemorySearchTool
 from . import memory_context
 from .models import (
     Message,
@@ -40,7 +41,6 @@ __all__ = [
     "MarkdownIndexer",
     "TranscriptIndexer",
     "MemorySearchTool",
-    "MemoryBlockUpdateTool",
     "memory_context",
     # Lifecycle management
     "init_memory_system",

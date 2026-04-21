@@ -4,14 +4,19 @@ Memory system prompt templates and context formatting.
 Centralizes all prompt engineering for the memory system.
 """
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 
 # ===== Core Memory Context Prompts =====
 
 
 def format_core_memory_section(
-    blocks: Dict[str, str], sandbox_enabled: bool = True
+    blocks: Dict[str, str],
+    sandbox_enabled: bool = True,
+    chat_id: Optional[str] = None,
+    shared_path: Optional[str] = None,
+    mount_skills: Optional[str] = None,
+    mount_notebook: Optional[str] = None,
 ) -> str:
     """
     Format core memory blocks for agent context injection.
@@ -19,6 +24,10 @@ def format_core_memory_section(
     Args:
         blocks: Dictionary of memory block labels to content
         sandbox_enabled: Whether sandbox mode is active
+        chat_id: Current chat session ID (used to show the real context.md path)
+        shared_path: Host path for /shared (non-sandbox mode only)
+        mount_skills: Host path for /mnt/skills (non-sandbox mode only)
+        mount_notebook: Host path for /mnt/notebook (non-sandbox mode only)
 
     Returns:
         Formatted string for prompt injection
@@ -31,47 +40,68 @@ def format_core_memory_section(
     else:
         core_blocks_text = "\nNo core memory blocks configured.\n"
 
+    # Build the real context.md path using the actual chat_id when available
+    _ctx_segment = chat_id[:32] if chat_id else "{chat_id}"
+
     if sandbox_enabled:
-        memory_workspace_title = "### Memory Workspace (/shared/memory/)"
+        memory_workspace_title = "## Memory Workspace (/shared/memory/)"
         memory_files = (
-            "- `/shared/memory/MEMORY.md` - Curated long-term memory (auto-updated from important facts)\n"
-            "- `/shared/memory/YYYY-MM-DD.md` - Daily logs with timestamped facts from conversations"
+            "- `/shared/memory/persona.md` — your identity, role, and workflow principles\n"
+            "- `/shared/memory/user.md` — user preferences, tech stack, communication habits\n"
+            "- `/shared/memory/MEMORY.md` — condensed long-term context and key decisions\n"
+            f"- `/shared/memory/sessions/{_ctx_segment}/context.md` — **this session's** scratchpad and task state\n"
+            "- `/shared/memory/archive/YYYY-MM-DD.md` — daily knowledge logs (auto-written, append-only)"
         )
-        notebook_title = "### Notebook (/mnt/notebook/)"
+        notebook_title = "## Notebook (/mnt/notebook/)"
         notebook_runbook = (
             "To run ingest: follow `/mnt/skills/notebook/ingest.md`\n"
             "To run lint: follow `/mnt/skills/notebook/lint.md`"
         )
-        curated_memory_hint = "- You can read `/shared/memory/MEMORY.md` for a curated summary of everything you know about the user"
+        curated_memory_hint = "- Read `/shared/memory/MEMORY.md` for a curated summary of everything you know about the user"
     else:
-        memory_workspace_title = "### Memory Workspace (Host Paths)"
+        _shared = shared_path or "${SHARED_PATH}"
+        _skills = mount_skills or "${MOUNT_SKILLS}"
+        _notebook = mount_notebook
+        memory_workspace_title = "## Memory Workspace (Host Paths)"
         memory_files = (
-            "- `${SHARED_PATH}/memory/MEMORY.md` - Curated long-term memory (auto-updated from important facts)\n"
-            "- `${SHARED_PATH}/memory/YYYY-MM-DD.md` - Daily logs with timestamped facts from conversations"
+            f"- `{_shared}/memory/persona.md` — your identity, role, and workflow principles\n"
+            f"- `{_shared}/memory/user.md` — user preferences, tech stack, communication habits\n"
+            f"- `{_shared}/memory/MEMORY.md` — condensed long-term context and key decisions\n"
+            f"- `{_shared}/memory/sessions/{_ctx_segment}/context.md` — **this session's** scratchpad and task state\n"
+            f"- `{_shared}/memory/archive/YYYY-MM-DD.md` — daily knowledge logs (auto-written, append-only)"
         )
-        notebook_title = "### Notebook (Host-Mounted Paths)"
-        notebook_runbook = (
-            "To run ingest: follow `${MOUNT_SKILLS}/notebook/ingest.md`\n"
-            "To run lint: follow `${MOUNT_SKILLS}/notebook/lint.md`\n"
-            "If `${MOUNT_NOTEBOOK}` is not configured in this session, skip notebook operations."
-        )
-        curated_memory_hint = "- You can read `${SHARED_PATH}/memory/MEMORY.md` for a curated summary of everything you know about the user"
+        notebook_title = "## Notebook (Host-Mounted Paths)"
+        if _notebook:
+            notebook_runbook = (
+                f"To run ingest: follow `{_skills}/notebook/ingest.md`\n"
+                f"To run lint: follow `{_skills}/notebook/lint.md`"
+            )
+        else:
+            notebook_runbook = (
+                f"To run ingest: follow `{_skills}/notebook/ingest.md`\n"
+                f"To run lint: follow `{_skills}/notebook/lint.md`\n"
+                "If notebook is not configured in this session, skip notebook operations."
+            )
+        curated_memory_hint = f"- Read `{_shared}/memory/MEMORY.md` for a curated summary of everything you know about the user"
 
-    return f"""## Memory System
+    return f"""# Memory System
 
-You have access to a multi-tier memory system:
+You operate under a **file-centric memory architecture** — markdown files are the single source of truth.
 
-### Core Memory (Always Visible)
-This is your active working memory. You can edit these blocks using the `memory_block_update` tool.
+## Core Memory (Always Visible)
+These files are loaded into your context at the start of every conversation:
 {core_blocks_text}
-### Archival Memory (Search When Needed)
-You have unlimited long-term memory storage that is automatically managed. Use `memory_search` to find relevant past information when needed.
+## Archival Memory (Search When Needed)
+A semantic vector index is built automatically from your memory files. Use `memory_search` to surface relevant past knowledge — especially useful for long-tail preferences and conversation history beyond the current session.
 
 {memory_workspace_title}
-Your memories are also persisted as plain markdown files that you can directly read and write:
+Your memory lives in plain markdown files you can read and write directly:
 {memory_files}
 
-You can read these files to review your memory history, or write to them to manually persist notes and observations.
+**How to update your memory:**
+- To update persona, user profile, or long-term context: use `edit_file` or `write_file` on the corresponding `.md` file
+- To update session scratchpad / task state: write to `context.md` in the sessions directory
+- Do **not** append duplicate or ephemeral information; keep files concise and scannable
 
 {notebook_title}
 Your notebook IS the wiki. Pages live directly in the vault alongside your other notes —
@@ -99,12 +129,10 @@ When filing a durable output:
 {notebook_runbook}
 
 **Memory Guidelines:**
-- Update your core memory blocks when you learn important new information
-- Search your archival memory before asking the user for information they may have already provided
-- Core memory blocks are structured sections you can update; archival memory is automatically stored as you interact
-- Use core memory for information you need to reference frequently; use archival memory for detailed historical context
+- Search archival memory before asking the user for information they may have already shared
+- Write important new facts, decisions, and preferences to the appropriate memory file for durability
+- Keep `context.md` as a live scratchpad: task breakdown, current goal, key constraints
 {curated_memory_hint}
-- Important decisions, preferences, and lasting facts should be written to memory for durability
 """
 
 
@@ -151,9 +179,11 @@ def format_retrieved_memories_section(
 
     memories_text = "\n".join(lines)
 
-    return f"""<memory>
+    return f"""<relevant_memories>
+Here are relavant memories retrieved based on the user's query. 
+Use these to inform your response, but do not feel obligated to include everything — prioritize relevance and importance.
 {memories_text}
-</memory>
+</relevant_memories>
 """
 
 
