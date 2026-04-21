@@ -15,6 +15,7 @@ from typing import Callable, Dict, List, Optional, Union
 from pydantic_ai import Tool as PydanticTool
 
 from suzent.logger import get_logger
+from suzent.tools.base import ToolResult, truncate_tool_output
 
 logger = get_logger(__name__)
 
@@ -38,17 +39,25 @@ def _make_tool(tool_cls) -> Union[Callable, PydanticTool]:
     template = tool_cls()
     original = template.forward
 
+    limit = tool_cls.output_char_limit
+
     if asyncio.iscoroutinefunction(original):
 
         @functools.wraps(original)
         async def wrapper(*args, **kwargs):
-            return await tool_cls().forward(*args, **kwargs)
+            result = await tool_cls().forward(*args, **kwargs)
+            if isinstance(result, ToolResult):
+                result.message = truncate_tool_output(result.message, limit)
+            return result
 
     else:
 
         @functools.wraps(original)
         def wrapper(*args, **kwargs):
-            return tool_cls().forward(*args, **kwargs)
+            result = tool_cls().forward(*args, **kwargs)
+            if isinstance(result, ToolResult):
+                result.message = truncate_tool_output(result.message, limit)
+            return result
 
     wrapper.__name__ = tool_cls.tool_name
 

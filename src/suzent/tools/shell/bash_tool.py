@@ -22,22 +22,17 @@ from pydantic_ai import ApprovalRequired, RunContext
 from suzent.core.agent_deps import AgentDeps
 from suzent.tools.filesystem.file_tool_utils import get_or_create_path_resolver
 from suzent.tools.shell.permissions import CommandDecision, evaluate_command_policy
-from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
+from suzent.tools.base import (
+    Tool,
+    ToolErrorCode,
+    ToolGroup,
+    ToolResult,
+    truncate_tool_output as _truncate_output,
+)
 
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
-
-_MAX_OUTPUT_CHARS = 30_000
-
-
-def _truncate_output(text: str) -> str:
-    """Truncate output to _MAX_OUTPUT_CHARS, appending a line-count summary."""
-    if not text or len(text) <= _MAX_OUTPUT_CHARS:
-        return text
-    truncated = text[:_MAX_OUTPUT_CHARS]
-    remaining_lines = text[_MAX_OUTPUT_CHARS:].count("\n") + 1
-    return truncated + f"\n... [{remaining_lines} lines truncated]"
 
 
 class BashTool(Tool):

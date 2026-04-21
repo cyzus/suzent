@@ -19,6 +19,17 @@ from suzent.logger import get_logger
 
 logger = get_logger(__name__)
 
+OUTPUT_CHAR_LIMIT = 30_000
+
+
+def truncate_tool_output(text: str, limit: int = OUTPUT_CHAR_LIMIT) -> str:
+    """Truncate output to *limit* chars, appending a line-count note."""
+    if not text or len(text) <= limit:
+        return text
+    truncated = text[:limit]
+    remaining_lines = text[limit:].count("\n") + 1
+    return truncated + f"\n... [{remaining_lines} lines truncated]"
+
 
 class ToolGroup(str, Enum):
     """UI display group for a tool. Extending str means values serialise as plain strings."""
@@ -129,6 +140,7 @@ class Tool:
     requires_approval: bool = False
     session_guidance: Optional[str] = None
     guidance_priority: int = 100
+    output_char_limit: int = OUTPUT_CHAR_LIMIT
 
     def __init__(self, *args, **kwargs):
         pass
