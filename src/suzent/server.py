@@ -571,7 +571,9 @@ if __name__ == "__main__":
     # File logging in bundled mode (stdout must stay clean for Tauri port detection)
     if os.getenv("SUZENT_APP_DATA"):
         try:
-            debug_log = Path.home() / "suzent_startup.log"
+            log_dir = Path(os.environ["SUZENT_APP_DATA"]) / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            debug_log = log_dir / "suzent_startup.log"
             from loguru import logger as _debug_logger
 
             _debug_logger.add(
@@ -636,7 +638,15 @@ if __name__ == "__main__":
     try:
         _sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
         _sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
-        _sock.bind((host, port))
+        try:
+            _sock.bind((host, port))
+        except OSError as e:
+            if port != 0 and os.getenv("SUZENT_APP_DATA"):
+                logger.warning(f"Port {port} in use, falling back to dynamic port: {e}")
+                port = 0
+                _sock.bind((host, port))
+            else:
+                raise e
         _sock.listen()
         _sock.set_inheritable(True)
         effective_port = _sock.getsockname()[1]
