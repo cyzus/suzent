@@ -48,6 +48,36 @@ def strip_system_reminders(text: str) -> str:
 
 _global_hooks: List[Callable[[str, Any], Awaitable[Optional[str]]]] = []
 
+_INJECTED_SKILLS_CONFIG_KEY = "injected_skills"
+
+
+def get_injected_skills(chat_id: str) -> frozenset[str]:
+    try:
+        from suzent.database import get_database
+
+        chat = get_database().get_chat(chat_id)
+        if chat and chat.config:
+            stored = chat.config.get(_INJECTED_SKILLS_CONFIG_KEY)
+            if stored:
+                return frozenset(stored)
+    except Exception:
+        pass
+    return frozenset()
+
+
+def set_injected_skills(chat_id: str, skills: frozenset[str]) -> None:
+    try:
+        from suzent.database import get_database
+
+        db = get_database()
+        chat = db.get_chat(chat_id)
+        if chat is not None:
+            config = dict(chat.config or {})
+            config[_INJECTED_SKILLS_CONFIG_KEY] = sorted(skills)
+            db.update_chat(chat_id, config=config)
+    except Exception:
+        pass
+
 
 def register_global_hook(hook: Callable[[str, Any], Awaitable[Optional[str]]]) -> None:
     """Register a global async callback to provide system reminder strings.
@@ -154,6 +184,9 @@ async def build_combined_reminder(
                 parts.append(r.strip())
 
     if not parts:
+        logger.debug(f"[system-reminder] chat={chat_id} — no content, skipping")
         return None
 
-    return wrap_in_system_reminder("\n\n---\n\n".join(parts))
+    result = wrap_in_system_reminder("\n\n---\n\n".join(parts))
+    logger.debug(f"[system-reminder] chat={chat_id} ({len(parts)} part(s)):\n{result}")
+    return result

@@ -413,14 +413,23 @@ def build_social_context(social_ctx: dict) -> str:
 
 async def get_skills_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
     """Injects enabled skills listing as a system reminder, replacing old inject_skills_context."""
+    from suzent.core.system_reminder import get_injected_skills, set_injected_skills
+
     skill_mgr = getattr(deps, "skill_manager", None)
     if not skill_mgr or not skill_mgr.enabled_skills:
         return None
+
+    current_skills = frozenset(skill_mgr.enabled_skills)
+    if get_injected_skills(chat_id) == current_skills:
+        return None
+
     listing = skill_mgr.get_skills_listing(
         sandbox_enabled=getattr(deps, "sandbox_enabled", True)
     )
     if not listing or "no enabled skills" in listing:
         return None
+
+    set_injected_skills(chat_id, current_skills)
     return (
         "You have a SkillTool that loads specialized knowledge. "
         "Use it IMMEDIATELY when the user's task matches a skill.\n\n"

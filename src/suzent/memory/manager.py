@@ -299,9 +299,15 @@ class MemoryManager:
             Formatted string with relevant memories, or empty string if none found
         """
         try:
+            import time
+
             # Fast exit: if the archival store has no memories at all, skip
             # entirely — no point searching with nothing in the index.
+            t0 = time.monotonic()
             count = await self.store.get_memory_count(user_id=user_id)
+            logger.debug(
+                f"[retrieve_relevant_memories] get_memory_count={count} elapsed={time.monotonic() - t0:.3f}s"
+            )
             if count == 0:
                 return ""
 
@@ -310,8 +316,12 @@ class MemoryManager:
                     query=query, limit=limit, chat_id=chat_id, user_id=user_id
                 )
             else:
+                t1 = time.monotonic()
                 memories = await self.store.fts_search(
                     query_text=query, user_id=user_id or "", chat_id=None, limit=limit
+                )
+                logger.debug(
+                    f"[retrieve_relevant_memories] fts_search elapsed={time.monotonic() - t1:.3f}s results={len(memories)}"
                 )
 
             if not memories:

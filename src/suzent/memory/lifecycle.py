@@ -90,16 +90,24 @@ async def _memory_rag_hook(chat_id: str, deps: Any, user_message: str) -> str | 
 
     Registered via ``register_per_turn_hook`` after the memory system starts.
     """
+    import time
+
     mm = deps.memory_manager if deps else None
     if not mm:
         return None
     try:
-        return await mm.retrieve_relevant_memories(
+        t0 = time.monotonic()
+        result = await mm.retrieve_relevant_memories(
             query=user_message,
             chat_id=chat_id,
             user_id=getattr(deps, "user_id", None),
             use_embedding=False,
         )
+        elapsed = time.monotonic() - t0
+        logger.debug(
+            f"[memory-rag-hook] chat={chat_id} elapsed={elapsed:.3f}s result={'yes' if result else 'empty'}"
+        )
+        return result
     except Exception as e:
         logger.debug(f"RAG hook failed: {e}")
         return None
