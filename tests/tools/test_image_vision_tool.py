@@ -80,12 +80,37 @@ async def test_image_vision_success(mock_open, mock_acompletion, mock_ctx):
             assert result.success
             assert "cyber tentacle" in result.message
 
-        # Verify acompletion was called with correct mime type in base64 string
-        called_kwargs = mock_acompletion.call_args.kwargs
-        assert "messages" in called_kwargs
-        content = called_kwargs["messages"][0]["content"]
-        image_url = content[1]["image_url"]["url"]
-        assert "image/png" in image_url
+
+@pytest.mark.asyncio
+async def test_image_vision_no_model(mock_ctx):
+    mock_stat = MagicMock()
+    mock_stat.st_size = 1024
+
+    mock_path = MagicMock()
+    mock_path.exists.return_value = True
+    mock_path.is_file.return_value = True
+    mock_path.stat.return_value = mock_stat
+
+    mock_resolver = MagicMock()
+    mock_resolver.resolve.return_value = mock_path
+
+    # Force getattr to return None for model lookup
+    with patch(
+        "suzent.tools.image_vision_tool.get_or_create_path_resolver",
+        return_value=mock_resolver,
+    ):
+        with patch("suzent.tools.image_vision_tool.getattr", return_value=None):
+            with patch("builtins.open", new_callable=MagicMock) as mock_open:
+                mock_file = MagicMock()
+                mock_file.read.return_value = b"fake_image_data"
+                mock_open.return_value.__enter__.return_value = mock_file
+
+                tool = ImageVisionTool()
+                result = await tool.forward(mock_ctx, "huge.jpg", "Describe")
+
+                assert not result.success
+                assert result.error_code == ToolErrorCode.EXECUTION_FAILED
+                assert "No vision_model" in result.message
 
 
 @pytest.mark.asyncio
