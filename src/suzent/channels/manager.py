@@ -133,6 +133,32 @@ class ChannelManager:
             platform, "send message", "send_message", target_id, content, **kwargs
         )
 
+    async def send_stream(
+        self, platform: str, target_id: str, stream, **kwargs
+    ) -> bool:
+        """Route a streaming response to the correct driver (if supported)."""
+        if platform and ":" in target_id and target_id.startswith(f"{platform}:"):
+            _, target_id = target_id.split(":", 1)
+
+        channel = self.channels.get(platform)
+        if not channel:
+            logger.error(f"Cannot stream: Platform '{platform}' not configured.")
+            return False
+
+        send_stream = getattr(channel, "send_stream", None)
+        if send_stream is None:
+            # Fallback: collect full content then send
+            chunks = []
+            async for chunk in stream:
+                chunks.append(chunk)
+            return await channel.send_message(target_id, "".join(chunks))
+
+        try:
+            return await send_stream(target_id, stream, **kwargs)
+        except Exception as e:
+            logger.error(f"Error streaming on {platform}: {e}")
+            return False
+
     async def send_file(
         self,
         platform: str,

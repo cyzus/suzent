@@ -22,6 +22,7 @@ from suzent.cli.main import (
 from suzent.cli.cron import cron_app
 from suzent.cli.heartbeat import heartbeat_app
 from suzent.cli.nodes import nodes_app
+from suzent.cli.pair import pair_app
 
 app = typer.Typer(help="Suzent CLI - Your Digital Co-worker Manager")
 
@@ -49,6 +50,7 @@ app.add_typer(agent_app, name="agent")
 app.add_typer(config_app, name="config")
 app.add_typer(cron_app, name="cron")
 app.add_typer(heartbeat_app, name="heartbeat")
+app.add_typer(pair_app, name="pair")
 
 if __name__ == "__main__":
     app()

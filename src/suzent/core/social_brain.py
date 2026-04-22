@@ -34,6 +34,10 @@ class SocialBrain(BaseBrain):
 
     _brain_name = "SocialBrain"
 
+    # Handshake states per sender key ("platform:sender_id")
+    _HANDSHAKE_WAITING = "waiting"  # bot sent the greeting, awaiting user reply
+    _HANDSHAKE_PENDING = "pending"  # user replied with intro; awaiting admin approval
+
     def __init__(
         self,
         channel_manager: ChannelManager,
@@ -43,6 +47,8 @@ class SocialBrain(BaseBrain):
         memory_enabled: bool = True,
         tools: list = None,
         mcp_enabled: dict = None,
+        handshake_enabled: bool = False,
+        handshake_greeting: str = None,
     ):
         super().__init__()
         self.channel_manager = channel_manager
@@ -62,6 +68,16 @@ class SocialBrain(BaseBrain):
         ] = {}  # chat_id -> {tool -> policy}
         self._run_states: Dict[str, ChatRunState] = {}  # per social_chat_id
         self._cleanup_task: Optional[asyncio.Task] = None
+
+        # Handshake protocol config
+        self.handshake_enabled = handshake_enabled
+        self.handshake_greeting = handshake_greeting or (
+            "👋 Hi! I'm Suzent. To get access, please introduce yourself — "
+            "who are you and what brings you here?"
+        )
+        # sender_key → {state, sender_id, sender_name, platform, intro, requested_at}
+        # This dict is the canonical pairing registry; exposed via REST + CLI.
+        self._pending_pairings: Dict[str, dict] = {}
 
     def update_model(self, model: str):
         """Update the model used for social interactions."""
@@ -139,8 +155,16 @@ class SocialBrain(BaseBrain):
                 logger.error(f"Error in SocialBrain loop: {e}")
                 await asyncio.sleep(1)
 
+    def _sender_key(self, message: UnifiedMessage) -> str:
+        return f"{message.platform}:{message.sender_id}"
+
     async def _route_message(self, message: UnifiedMessage):
         """Route a message through the run state manager: steer, queue, or process."""
+        # Handshake protocol: intercept unauthorized users before the hard deny
+        if self.handshake_enabled and not self._is_authorized(message):
+            await self._handle_handshake(message)
+            return
+
         # Auth and command dispatch happen before run state management
         if not self._is_authorized(message):
             logger.warning(
@@ -301,6 +325,150 @@ class SocialBrain(BaseBrain):
             except Exception as e:
                 logger.error(f"Error in cleanup loop: {e}")
 
+    # ------------------------------------------------------------------ #
+    # Pairing / handshake protocol                                        #
+    # ------------------------------------------------------------------ #
+
+    async def _handle_handshake(self, message: UnifiedMessage):
+        """
+        Two-step pairing flow for unknown users:
+          1. First contact → send greeting, record state=waiting
+          2. User replies with intro → state=pending; admin approves via UI or CLI
+        """
+        import time
+
+        key = self._sender_key(message)
+        entry = self._pending_pairings.get(key)
+        content = message.content.strip()
+
+        if entry is None:
+            # First contact — send greeting and park in "waiting"
+            self._pending_pairings[key] = {
+                "state": self._HANDSHAKE_WAITING,
+                "sender_id": message.sender_id,
+                "sender_name": message.sender_name,
+                "platform": message.platform,
+                "intro": "",
+                "requested_at": time.time(),
+            }
+            await self.channel_manager.send_message(
+                message.platform, message.sender_id, self.handshake_greeting
+            )
+            return
+
+        if entry["state"] == self._HANDSHAKE_WAITING:
+            # User replied with their intro → promote to pending (awaiting admin)
+            entry["state"] = self._HANDSHAKE_PENDING
+            entry["intro"] = content
+            await self.channel_manager.send_message(
+                message.platform,
+                message.sender_id,
+                "✅ Thanks! Your request has been sent for review. Please wait.",
+            )
+            return
+
+        # Already pending
+        await self.channel_manager.send_message(
+            message.platform,
+            message.sender_id,
+            "⏳ Your access request is still pending admin approval.",
+        )
+
+    # -- Public API (called by REST routes and CLI) -- #
+
+    def list_pairings(self) -> list[dict]:
+        """Return all pending pairing requests as a list of dicts."""
+        return [
+            {
+                "key": key,
+                "sender_id": e["sender_id"],
+                "sender_name": e["sender_name"],
+                "platform": e["platform"],
+                "intro": e["intro"],
+                "state": e["state"],
+                "requested_at": e["requested_at"],
+            }
+            for key, e in self._pending_pairings.items()
+        ]
+
+    async def approve_pairing(self, sender_id: str) -> bool:
+        """Approve a pending pairing request by sender_id."""
+        matched_key = next(
+            (
+                k
+                for k, e in self._pending_pairings.items()
+                if e["sender_id"] == sender_id
+            ),
+            None,
+        )
+        if not matched_key:
+            return False
+
+        entry = self._pending_pairings.pop(matched_key)
+        self.allowed_users.add(entry["sender_id"])
+        self.allowed_users.add(entry["sender_name"])
+        await self._persist_approved_user(entry["sender_id"])
+
+        try:
+            await self.channel_manager.send_message(
+                entry["platform"],
+                entry["sender_id"],
+                "✅ Your access has been approved! You can now send messages.",
+            )
+        except Exception:
+            pass
+        logger.info(
+            f"Pairing approved: {entry['sender_id']} ({entry['sender_name']}) on {entry['platform']}"
+        )
+        return True
+
+    async def deny_pairing(self, sender_id: str) -> bool:
+        """Deny a pending pairing request by sender_id."""
+        matched_key = next(
+            (
+                k
+                for k, e in self._pending_pairings.items()
+                if e["sender_id"] == sender_id
+            ),
+            None,
+        )
+        if not matched_key:
+            return False
+
+        entry = self._pending_pairings.pop(matched_key)
+        try:
+            await self.channel_manager.send_message(
+                entry["platform"],
+                entry["sender_id"],
+                "❌ Your access request was not approved.",
+            )
+        except Exception:
+            pass
+        logger.info(
+            f"Pairing denied: {entry['sender_id']} ({entry['sender_name']}) on {entry['platform']}"
+        )
+        return True
+
+    async def _persist_approved_user(self, sender_id: str):
+        """Persist an approved sender_id to social.json so it survives restarts."""
+        try:
+            import json as _json
+            from suzent.config import PROJECT_DIR
+
+            config_path = PROJECT_DIR / "config" / "social.json"
+            if not config_path.exists():
+                return
+            with open(config_path) as f:
+                cfg = _json.load(f)
+            users = cfg.get("allowed_users", [])
+            if sender_id not in users:
+                users.append(sender_id)
+            cfg["allowed_users"] = users
+            with open(config_path, "w") as f:
+                _json.dump(cfg, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Pairing: could not persist approval: {e}")
+
     def _is_authorized(self, message: UnifiedMessage) -> bool:
         """Check if a message sender is authorized."""
         # No restrictions if both lists are empty
@@ -419,18 +587,34 @@ class SocialBrain(BaseBrain):
                     collected_approvals.append(event)
 
             stream_queue = register_background_stream(social_chat_id)
-            try:
-                if is_steer:
-                    full_response = await processor.process_steer_text(
-                        chat_id=social_chat_id,
-                        user_id=CONFIG.user_id,
-                        steer_message=enriched_content,
-                        config_override=config_override,
-                        on_event=on_event,
-                        _stream_queue=stream_queue,
-                    )
-                else:
-                    full_response = await processor.process_turn_text(
+
+            # Check if this channel supports streaming
+            channel = self.channel_manager.channels.get(message.platform)
+            supports_streaming = hasattr(channel, "send_stream")
+
+            if supports_streaming and not is_steer:
+                # Run the LLM turn concurrently while piping text deltas to the channel
+                import json as _json
+
+                async def _text_delta_stream():
+                    """Yield text deltas from the background stream queue."""
+                    while True:
+                        chunk = await stream_queue.get()
+                        if chunk is None:  # sentinel
+                            break
+                        try:
+                            if chunk.startswith("data: "):
+                                data = _json.loads(chunk[6:].strip())
+                                if data.get("type") == "TEXT_MESSAGE_CONTENT":
+                                    delta = data.get("delta", "")
+                                    if delta:
+                                        yield delta
+                        except Exception:
+                            pass
+
+                # Start the LLM turn as a background task
+                process_task = asyncio.create_task(
+                    processor.process_turn_text(
                         chat_id=social_chat_id,
                         user_id=CONFIG.user_id,
                         message_content=enriched_content,
@@ -439,8 +623,41 @@ class SocialBrain(BaseBrain):
                         on_event=on_event,
                         _stream_queue=stream_queue,
                     )
-            finally:
-                unregister_background_stream(social_chat_id)
+                )
+
+                try:
+                    await self.channel_manager.send_stream(
+                        message.platform, target_id, _text_delta_stream()
+                    )
+                    full_response = await process_task
+                except Exception:
+                    process_task.cancel()
+                    raise
+                finally:
+                    unregister_background_stream(social_chat_id)
+            else:
+                try:
+                    if is_steer:
+                        full_response = await processor.process_steer_text(
+                            chat_id=social_chat_id,
+                            user_id=CONFIG.user_id,
+                            steer_message=enriched_content,
+                            config_override=config_override,
+                            on_event=on_event,
+                            _stream_queue=stream_queue,
+                        )
+                    else:
+                        full_response = await processor.process_turn_text(
+                            chat_id=social_chat_id,
+                            user_id=CONFIG.user_id,
+                            message_content=enriched_content,
+                            files=message.attachments,
+                            config_override=config_override,
+                            on_event=on_event,
+                            _stream_queue=stream_queue,
+                        )
+                finally:
+                    unregister_background_stream(social_chat_id)
 
             try:
                 get_database().set_last_result_at(social_chat_id)
@@ -459,8 +676,12 @@ class SocialBrain(BaseBrain):
                 self._sessions[social_chat_id] = session
                 await self._prompt_next_approval(session)
 
-            # Send Final Response
-            if full_response.strip():
+            # Send Final Response (non-streaming path, or steer)
+            if not supports_streaming and full_response.strip():
+                await self.channel_manager.send_message(
+                    message.platform, target_id, full_response
+                )
+            elif is_steer and full_response.strip():
                 await self.channel_manager.send_message(
                     message.platform, target_id, full_response
                 )
