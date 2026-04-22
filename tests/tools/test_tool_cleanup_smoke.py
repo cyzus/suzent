@@ -5,7 +5,7 @@ import pytest
 from suzent.tools.ask_question_tool import AskQuestionTool, QuestionItem
 from suzent.tools.filesystem.glob_tool import GlobTool
 from suzent.tools.filesystem.grep_tool import GrepTool
-from suzent.tools.memory_tools import MemoryBlockUpdateTool, MemorySearchTool
+from suzent.tools.memory_tools import MemorySearchTool
 from suzent.tools.planning_tool import PlanningTool
 from suzent.tools.render_ui_tool import RenderUITool
 from suzent.tools.webpage_tool import WebpageTool
@@ -36,9 +36,6 @@ class _DummyMemoryManager:
 
     async def get_core_memory(self, chat_id, user_id):
         return {"persona": "old", "user": "", "facts": "", "context": ""}
-
-    async def update_memory_block(self, label, content, chat_id, user_id):
-        return True
 
 
 class _DummyGrepResolver:
@@ -156,15 +153,6 @@ async def test_memory_tools_return_structured_results():
     search_result = await MemorySearchTool().forward(ctx, query="test", limit=5)
     assert search_result.success
     assert search_result.metadata["match_count"] == 1
-
-    update_result = await MemoryBlockUpdateTool().forward(
-        ctx,
-        block="persona",
-        operation="append",
-        content="new fact",
-    )
-    assert update_result.success
-    assert update_result.metadata["block"] == "persona"
 
 
 @pytest.mark.asyncio
