@@ -58,8 +58,8 @@ async def test_chat_route_uses_user_prefs(mock_process_turn, mock_db):
 
 
 @patch("suzent.database.get_database")
-@patch("suzent.core.chat_processor.ChatProcessor.process_turn")
-async def test_social_brain_uses_user_prefs(mock_process_turn, mock_get_db):
+@patch("suzent.core.chat_processor.ChatProcessor.process_turn_text")
+async def test_social_brain_uses_user_prefs(mock_process_turn_text, mock_get_db):
     """Test that SocialBrain falls back to user preferences if no model configured."""
     # Setup mock DB
     db = MagicMock()
@@ -68,8 +68,12 @@ async def test_social_brain_uses_user_prefs(mock_process_turn, mock_get_db):
     prefs.model = "social-prefer-model"
     db.get_user_preferences.return_value = prefs
 
-    # Mock channel manager and message
+    # Mock channel manager — send_message must be awaitable
     channel_manager = MagicMock()
+    # Ensure the channel does NOT report streaming support so we hit the simple path
+    channel_manager.channels.get.return_value = MagicMock(spec=[])
+    channel_manager.send_message = AsyncMock()
+
     message = MagicMock()
     message.platform = "telegram"
     message.sender_id = "user123"
@@ -78,11 +82,7 @@ async def test_social_brain_uses_user_prefs(mock_process_turn, mock_get_db):
     message.attachments = []
     message.get_chat_id.return_value = "telegram:123"
 
-    # Mock generator
-    async def mock_gen(*args, **kwargs):
-        yield 'data: {"type": "final_answer", "data": "response"}\n\n'
-
-    mock_process_turn.side_effect = mock_gen
+    mock_process_turn_text.return_value = "response"
 
     # Initialize SocialBrain with NO model
     brain = SocialBrain(
@@ -96,7 +96,7 @@ async def test_social_brain_uses_user_prefs(mock_process_turn, mock_get_db):
     await brain._handle_message(message)
 
     # Verify config passed to processor has user pref model
-    call_args = mock_process_turn.call_args[1]
+    call_args = mock_process_turn_text.call_args[1]
     config = call_args["config_override"]
 
     assert config["model"] == "social-prefer-model"
