@@ -614,10 +614,10 @@ async function isBackendReachable(): Promise<boolean> {
     try {
       const injected = (window as any).__SUZENT_BACKEND_PORT__;
       if (typeof injected === 'number' && Number.isFinite(injected)) {
-        return `http://localhost:${injected}`;
+        return `http://127.0.0.1:${injected}`;
       }
       const persisted = sessionStorage.getItem('SUZENT_PORT') || localStorage.getItem('SUZENT_PORT');
-      if (persisted) return `http://localhost:${persisted}`;
+      if (persisted) return `http://127.0.0.1:${persisted}`;
     } catch {
       // ignore
     }

@@ -14,7 +14,7 @@ export function getApiBase(): string {
   if (window.__TAURI__) {
     const injectedPort = (window as any).__SUZENT_BACKEND_PORT__;
     if (typeof injectedPort === 'number' && Number.isFinite(injectedPort)) {
-      return `http://localhost:${injectedPort}`;
+      return `http://127.0.0.1:${injectedPort}`;
     }
 
     let port: string | null = null;
@@ -30,7 +30,7 @@ export function getApiBase(): string {
         port = null;
       }
     }
-    if (port) return `http://localhost:${port}`;
+    if (port) return `http://127.0.0.1:${port}`;
     // If port is missing in Tauri, we return empty string.
     // App.tsx should handle this by showing a loading screen.
     return '';
@@ -38,7 +38,7 @@ export function getApiBase(): string {
 
   // Fallback for standard dev port if injection missing (e.g. during early init or HMR)
   // or running in browser mode
-  return 'http://localhost:8000';
+  return 'http://127.0.0.1:8000';
 }
 
 // Legacy constant for backward compatibility - but callers should prefer getApiBase()
