@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 from sqlalchemy.orm import selectinload
 from sqlalchemy import text, inspect
+from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import (
     Column,
     Field,
@@ -544,6 +545,7 @@ class ChatDatabase:
 
             if config is not None:
                 chat.config = config
+                flag_modified(chat, "config")
 
             if messages is not None:
                 chat.messages = messages

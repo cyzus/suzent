@@ -249,6 +249,7 @@ class ChatProcessor:
                         state = deserialize_state(chat.agent_state)
                         if state and state.get("message_history"):
                             message_history = state["message_history"]
+                            deps.last_messages = message_history
                             logger.debug(
                                 f"Restored {len(message_history)} messages for chat {chat_id}"
                             )
