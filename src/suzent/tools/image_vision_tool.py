@@ -36,7 +36,7 @@ class ImageVisionTool(Tool):
                 default="Describe this image in detail.",
                 description="What to ask the vision model about the image.",
             ),
-        ],
+        ] = "Describe this image in detail.",
     ) -> ToolResult:
         try:
             resolver = get_or_create_path_resolver(ctx.deps)
