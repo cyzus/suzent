@@ -14,7 +14,7 @@ Also provides:
 import json
 import re
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from suzent.logger import get_logger
 
@@ -376,15 +376,20 @@ CORE_FILE_MAX_CHUNK_CHARS = 1200
 
 
 class CoreMemoryFileIndexer:
-    """Watches persona.md, user.md, and MEMORY.md for changes and keeps their
-    embeddings current in the LanceDB archival_memories table.
+    """Watches persona.md, user.md, MEMORY.md, and archive/*.md for changes
+    and keeps their embeddings current in the LanceDB archival_memories table.
 
     Change detection uses mtime (last-modified timestamp) so unchanged files
     cost nothing.  On a detected change the old chunks for that file are deleted
     and new ones are embedded and inserted.
 
+    mtime state is persisted to .index_state.json inside the memory directory
+    so that restarts do not trigger unnecessary re-indexing.
+
     Designed to run as a background asyncio loop (see lifecycle.py).
     """
+
+    INDEX_STATE_FILENAME = ".index_state.json"
 
     # Map from block label → filename as stored in LanceDB metadata
     CORE_FILES: dict = {
@@ -396,6 +401,53 @@ class CoreMemoryFileIndexer:
     def __init__(self) -> None:
         # path_str → last known mtime (float)
         self._mtimes: dict = {}
+        self._state_path: Optional[Path] = None
+
+    def _load_state(self, markdown_store) -> None:
+        """Load persisted mtime state from disk (called once on first check).
+
+        If the state file does not exist, pre-populate mtimes from all existing
+        files so that the first run after this change skips re-indexing entirely.
+        """
+        import json as _json
+
+        self._state_path = markdown_store.base_dir / self.INDEX_STATE_FILENAME
+        if self._state_path.exists():
+            try:
+                self._mtimes = _json.loads(self._state_path.read_text(encoding="utf-8"))
+                logger.debug(f"Loaded index state: {len(self._mtimes)} entries")
+            except Exception as e:
+                logger.warning(f"Failed to load index state, starting fresh: {e}")
+                self._mtimes = {}
+        else:
+            # First run — snapshot current mtimes without indexing anything.
+            for label, filename in self.CORE_FILES.items():
+                path = (
+                    markdown_store.memory_file_path
+                    if label == "facts"
+                    else markdown_store._block_path(label)
+                )
+                if path.exists():
+                    self._mtimes[str(path)] = path.stat().st_mtime
+            for archive_path in markdown_store.archive_dir.glob("????-??-??.md"):
+                self._mtimes[str(archive_path)] = archive_path.stat().st_mtime
+            self._save_state()
+            logger.info(
+                f"Initialized index state with {len(self._mtimes)} existing files (no reindex)"
+            )
+
+    def _save_state(self) -> None:
+        """Persist mtime state to disk."""
+        if self._state_path is None:
+            return
+        try:
+            import json as _json
+
+            self._state_path.write_text(
+                _json.dumps(self._mtimes, indent=2), encoding="utf-8"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to save index state: {e}")
 
     async def check_and_update(
         self,
@@ -404,7 +456,7 @@ class CoreMemoryFileIndexer:
         embedding_gen,
         user_id: str,
     ) -> dict:
-        """Check all core memory files for changes and re-index those that changed.
+        """Check all core memory files and archive logs for changes and re-index those that changed.
 
         Args:
             markdown_store: MarkdownMemoryStore instance
@@ -415,6 +467,10 @@ class CoreMemoryFileIndexer:
         Returns:
             Dict with stats: files_checked, files_updated, chunks_indexed, errors
         """
+        # Load persisted state on first call
+        if self._state_path is None:
+            self._load_state(markdown_store)
+
         stats = {
             "files_checked": 0,
             "files_updated": 0,
@@ -422,14 +478,24 @@ class CoreMemoryFileIndexer:
             "errors": 0,
         }
 
-        for label, filename in self.CORE_FILES.items():
-            stats["files_checked"] += 1
+        # Build list of (path, label, filename) for all files to check
+        entries: list[tuple[Path, str, str]] = []
 
-            # Resolve physical path
+        for label, filename in self.CORE_FILES.items():
             if label == "facts":
                 path = markdown_store.memory_file_path
             else:
                 path = markdown_store._block_path(label)
+            entries.append((path, label, filename))
+
+        # Archive daily logs
+        for archive_path in sorted(markdown_store.archive_dir.glob("????-??-??.md")):
+            entries.append((archive_path, "archive", archive_path.name))
+
+        state_dirty = False
+
+        for path, label, filename in entries:
+            stats["files_checked"] += 1
 
             if not path.exists():
                 continue
@@ -444,6 +510,7 @@ class CoreMemoryFileIndexer:
                 content = path.read_text(encoding="utf-8").strip()
                 if not content:
                     self._mtimes[path_key] = mtime
+                    state_dirty = True
                     continue
 
                 n = await self._reindex_file(
@@ -455,6 +522,7 @@ class CoreMemoryFileIndexer:
                     user_id=user_id,
                 )
                 self._mtimes[path_key] = mtime
+                state_dirty = True
                 stats["files_updated"] += 1
                 stats["chunks_indexed"] += n
                 logger.info(f"Re-indexed {filename}: {n} chunks")
@@ -462,6 +530,9 @@ class CoreMemoryFileIndexer:
             except Exception as e:
                 stats["errors"] += 1
                 logger.error(f"Failed to re-index {filename}: {e}")
+
+        if state_dirty:
+            self._save_state()
 
         return stats
 
@@ -478,11 +549,22 @@ class CoreMemoryFileIndexer:
 
         Returns the number of chunks indexed.
         """
-        # 1. Remove existing entries for this file
-        await lancedb_store.delete_memories_by_source_file(filename, user_id)
+        # 1. Remove existing entries for this file.
+        # Archive logs may have been written with source_date (no source_file) by the
+        # legacy MarkdownIndexer, so use the broader date-based delete to avoid duplicates.
+        if label == "archive":
+            date = filename.removesuffix(".md")
+            await lancedb_store.delete_memories_by_source_date(date, user_id)
+        else:
+            await lancedb_store.delete_memories_by_source_file(filename, user_id)
 
         # 2. Chunk the file content
         chunks = self._chunk_by_paragraphs(content)
+
+        is_archive = label == "archive"
+        source_type = "archive_log" if is_archive else "core_file"
+        importance = 0.3 if is_archive else 0.75
+        tags = ["archive", filename] if is_archive else ["core_memory", label, filename]
 
         # 3. Embed and store each chunk
         indexed = 0
@@ -497,14 +579,14 @@ class CoreMemoryFileIndexer:
                     user_id=user_id,
                     chat_id=None,
                     metadata={
-                        "source_type": "core_file",
+                        "source_type": source_type,
                         "source_file": filename,
                         "chunk_index": i,
                         "label": label,
-                        "category": "core",
-                        "tags": ["core_memory", label, filename],
+                        "category": source_type,
+                        "tags": tags,
                     },
-                    importance=0.75,  # Core memory files are high-importance context
+                    importance=importance,
                 )
                 indexed += 1
             except Exception as e:

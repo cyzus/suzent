@@ -724,6 +724,33 @@ class LanceDBMemoryStore:
             logger.error(f"delete_memories_by_source_file failed: {e}")
             return False
 
+    async def delete_memories_by_source_date(self, date: str, user_id: str) -> bool:
+        """Delete archival memories for a given archive date (YYYY-MM-DD).
+
+        Covers both old entries (source_date field, no source_file) and new
+        entries (source_file = YYYY-MM-DD.md) so re-indexing archive files
+        does not produce duplicates regardless of how they were first written.
+
+        Args:
+            date: Date string in YYYY-MM-DD format
+            user_id: User scope
+        """
+        try:
+            safe_user = _escape_sql(user_id)
+            safe_date = date.replace("'", "")
+            safe_file = f"{safe_date}.md".replace('"', '\\"')
+            clause = (
+                f"user_id = '{safe_user}'"
+                f' AND (metadata LIKE \'%"source_date": "{safe_date}"%\''
+                f'   OR metadata LIKE \'%"source_file": "{safe_file}"%\')'
+            )
+            await self.archival_table.delete(clause)
+            logger.debug(f"Deleted archival memories for source_date={date}")
+            return True
+        except Exception as e:
+            logger.error(f"delete_memories_by_source_date failed: {e}")
+            return False
+
     async def delete_all_memory_blocks(
         self, user_id: str, chat_id: Optional[str] = None
     ) -> bool:

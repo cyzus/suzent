@@ -113,7 +113,7 @@ async def _memory_rag_hook(chat_id: str, deps: Any, user_message: str) -> str | 
         return None
 
 
-async def _core_file_watch_loop(mgr, user_id: str, interval: int = 60) -> None:
+async def _core_file_watch_loop(mgr, user_id: str, interval: int = 300) -> None:
     """Background loop: watch core memory files for changes and update LanceDB index.
 
     Polls every `interval` seconds. Uses mtime comparison so only changed files
