@@ -4,6 +4,10 @@
     "memory_enabled": true,
     "tools": null,
     "mcp_enabled": null,
+    "handshake": {
+        "enabled": false,
+        "greeting": "👋 Hi! I'm Suzent. To get access, please introduce yourself — who are you and what brings you here?"
+    },
     "telegram": {
         "enabled": true,
         "token": "",

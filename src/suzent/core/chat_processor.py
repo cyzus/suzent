@@ -5,6 +5,7 @@ Uses pydantic-ai Agent with async streaming, dependency injection via
 AgentDeps, and message-history-based state persistence.
 """
 
+import asyncio
 import json
 import mimetypes
 import os
@@ -645,20 +646,7 @@ class ChatProcessor:
         # as resolved by pydantic-ai instruction runners for this run context.
         try:
             if logger._core.min_level <= 10:  # DEBUG
-                tool_names = getattr(agent, "_tool_names", []) or []
-                try:
-                    from suzent.tools.registry import get_tool_session_guidance_entries
-                    from suzent.prompts import (
-                        resolve_full_system_prompt,
-                        format_session_guidance_debug,
-                    )
-
-                    guidance_entries = get_tool_session_guidance_entries(tool_names)
-                    logger.debug(format_session_guidance_debug(guidance_entries))
-                except Exception as guidance_error:
-                    logger.debug(
-                        f"[SessionGuidance] Failed to resolve tool guidance order: {guidance_error}"
-                    )
+                from suzent.prompts import resolve_full_system_prompt
 
                 system_prompt = await resolve_full_system_prompt(
                     agent,
@@ -719,14 +707,18 @@ class ChatProcessor:
                         from sqlalchemy.orm.attributes import flag_modified
 
                         snap_json = _FT.snapshot_to_json(snap)
-                        _db = _get_db()
-                        with Session(_db.engine) as _sess:
-                            _ckpt = _sess.get(RetryCheckpointModel, chat_id)
-                            if _ckpt:
-                                _ckpt.file_snapshot = snap_json
-                                _ckpt.has_file_snapshot = True
-                                flag_modified(_ckpt, "file_snapshot")
-                                _sess.commit()
+
+                        def _commit_file_snapshot():
+                            _db = _get_db()
+                            with Session(_db.engine) as _sess:
+                                _ckpt = _sess.get(RetryCheckpointModel, chat_id)
+                                if _ckpt:
+                                    _ckpt.file_snapshot = snap_json
+                                    _ckpt.has_file_snapshot = True
+                                    flag_modified(_ckpt, "file_snapshot")
+                                    _sess.commit()
+
+                        await asyncio.to_thread(_commit_file_snapshot)
             except Exception as _ft_fin_err:
                 logger.debug(
                     f"[FileTracker] make_snapshot on turn end skipped: {_ft_fin_err}"
@@ -756,7 +748,6 @@ class ChatProcessor:
             # 9. Post-Processing (Background)
             # We use a background task so the SSE stream can close immediately
             # while heavy extraction/persistence runs.
-            import asyncio
             from suzent.core.task_registry import register_background_task
 
             postprocess_job_id = uuid.uuid4().hex
@@ -1424,7 +1415,8 @@ class ChatProcessor:
         This intentionally avoids display-log rebuilding, memory extraction,
         compression, and lifecycle field updates.
         """
-        try:
+
+        def _sync() -> Optional[int]:
             db = get_database()
             agent_state = serialize_state(
                 messages, model_id=model_id, tool_names=tool_names
@@ -1432,13 +1424,18 @@ class ChatProcessor:
             revision = db.commit_snapshot_state(chat_id, agent_state)
             if revision is None:
                 db.update_chat(chat_id, agent_state=agent_state)
-                logger.debug(
-                    f"Persisted fast agent_state snapshot for chat {chat_id} without revision"
-                )
                 return None
+            return revision
 
+        try:
+            revision = await asyncio.to_thread(_sync)
             logger.debug(
-                f"Persisted fast agent_state snapshot for chat {chat_id} (revision={revision})"
+                f"Persisted fast agent_state snapshot for chat {chat_id}"
+                + (
+                    f" (revision={revision})"
+                    if revision is not None
+                    else " without revision"
+                )
             )
             return revision
         except Exception as e:

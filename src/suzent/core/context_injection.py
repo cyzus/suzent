@@ -70,10 +70,11 @@ def build_agent_deps(
         workspace_root=workspace_root,
     )
 
-    # Memory manager
+    # Memory manager — skip if explicitly disabled in config
     from suzent.memory.lifecycle import get_memory_manager
 
-    memory_manager = get_memory_manager()
+    memory_enabled = _get_config_value(config, "memory_enabled", True)
+    memory_manager = get_memory_manager() if memory_enabled else None
 
     # Social context
     runtime = _get_config_value(config, "_runtime", {})

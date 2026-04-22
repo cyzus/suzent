@@ -320,6 +320,45 @@ export interface SocialConfig {
   [key: string]: any;
 }
 
+export interface PairingRequest {
+  key: string;
+  sender_id: string;
+  sender_name: string;
+  platform: string;
+  intro: string;
+  state: string;
+  requested_at: number;
+}
+
+export async function fetchPairings(): Promise<PairingRequest[]> {
+  try {
+    const res = await fetch(`${getApiBase()}/social/pairing`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.pairings || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function approvePairing(senderId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${getApiBase()}/social/pairing/${encodeURIComponent(senderId)}/approve`, { method: 'POST' });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function denyPairing(senderId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${getApiBase()}/social/pairing/${encodeURIComponent(senderId)}/deny`, { method: 'POST' });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchSocialConfig(): Promise<SocialConfig> {
   try {
     const res = await fetch(`${getApiBase()}/config/social`);

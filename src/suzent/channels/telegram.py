@@ -2,15 +2,17 @@
 Telegram channel implementation.
 """
 
+import asyncio
 import os
-from typing import Any, Optional
+from typing import Any
 from suzent.logger import get_logger
 from suzent.channels.base import SocialChannel, UnifiedMessage
 
 try:
     from telegram import Update
+    from telegram.constants import ParseMode
+    from telegram.error import TelegramError
     from telegram.ext import (
-        Application,
         ApplicationBuilder,
         ContextTypes,
         MessageHandler,
@@ -19,9 +21,101 @@ try:
 except ImportError:
     # Handle optional dependency
     Update = Any
-    Application = Any
 
 logger = get_logger(__name__)
+
+
+def _to_html(text: str) -> str:
+    """Convert Markdown to Telegram-compatible HTML via markdown + BeautifulSoup."""
+    import markdown
+    from bs4 import BeautifulSoup, NavigableString, Tag
+
+    html = markdown.markdown(text, extensions=["tables", "fenced_code"])
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Tags Telegram HTML supports directly
+    ALLOWED = {"b", "strong", "i", "em", "u", "s", "code", "pre", "a", "blockquote"}
+
+    def convert(node) -> str:
+        if isinstance(node, NavigableString):
+            return str(node)
+
+        assert isinstance(node, Tag)
+        tag = node.name
+        inner = "".join(convert(c) for c in node.children)
+
+        if tag in ALLOWED:
+            if tag == "a":
+                href = node.get("href", "")
+                return f'<a href="{href}">{inner}</a>'
+            return f"<{tag}>{inner}</{tag}>"
+
+        if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
+            return f"\n<b>{inner}</b>\n"
+
+        if tag == "table":
+            # Extract all rows via BeautifulSoup — no manual parsing needed
+            rows = [
+                [cell.get_text() for cell in row.find_all(["th", "td"])]
+                for row in node.find_all("tr")
+            ]
+            if not rows:
+                return inner
+            import unicodedata
+
+            def dw(s: str) -> int:
+                return sum(
+                    2 if unicodedata.east_asian_width(c) in ("W", "F") else 1 for c in s
+                )
+
+            def ljust_dw(s: str, w: int) -> str:
+                return s + " " * max(w - dw(s), 0)
+
+            cols = max(len(r) for r in rows)
+            for r in rows:
+                while len(r) < cols:
+                    r.append("")
+            widths = [max(dw(r[c]) for r in rows) for c in range(cols)]
+            sep = "+" + "+".join("-" * (w + 2) for w in widths) + "+"
+            lines = [sep]
+            for i, row in enumerate(rows):
+                lines.append(
+                    "| "
+                    + " | ".join(ljust_dw(row[c], widths[c]) for c in range(cols))
+                    + " |"
+                )
+                if i == 0:
+                    lines.append(sep)
+            lines.append(sep)
+            return "<pre>" + "\n".join(lines) + "</pre>"
+
+        if tag in ("ul", "ol"):
+            return "\n" + inner + "\n"
+
+        if tag == "li":
+            return "• " + inner + "\n"
+
+        if tag == "p":
+            return inner + "\n"
+
+        if tag == "br":
+            return "\n"
+
+        # Everything else: just keep the text content
+        return inner
+
+    return "".join(convert(c) for c in soup.children).strip()
+
+
+def _split_chunks(text: str, limit: int) -> list[str]:
+    """Split text into chunks no larger than `limit` characters."""
+    if len(text) <= limit:
+        return [text]
+    chunks = []
+    while text:
+        chunks.append(text[:limit])
+        text = text[limit:]
+    return chunks
 
 
 class TelegramChannel(SocialChannel):
@@ -32,7 +126,7 @@ class TelegramChannel(SocialChannel):
     def __init__(self, config: dict[str, Any]):
         super().__init__("telegram", config)
         self.token = config.get("token")
-        self.app: Optional[Application] = None
+        self.app = None  # telegram.ext.Application or None
         self._running = False
 
     async def connect(self):
@@ -95,28 +189,141 @@ class TelegramChannel(SocialChannel):
             self._running = False
             logger.info("Telegram disconnected.")
 
+    def _parse_chat_id(self, target_id: str):
+        try:
+            return int(target_id)
+        except ValueError:
+            return target_id
+
     async def send_message(self, target_id: str, content: str, **kwargs) -> bool:
-        """Send a message to a chat ID."""
+        """Send a message to a chat ID, with MarkdownV2 and plain-text fallback."""
         logger.info(f"Telegram sending message to {target_id}: {content[:20]}...")
         if not self.app:
             logger.error("Telegram app not initialized.")
             return False
 
-        try:
-            # target_id in UnifiedMessage context is the user_id or chat_id
-            # Telegram IDs are integers (often negative for groups)
-            # Try to convert to int if possible, otherwise keep as str (for @usernames)
-            try:
-                chat_id_val = int(target_id)
-            except ValueError:
-                chat_id_val = target_id
+        chat_id_val = self._parse_chat_id(target_id)
 
-            await self.app.bot.send_message(chat_id=chat_id_val, text=content, **kwargs)
-            logger.info("Telegram message sent successfully.")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send Telegram message to {target_id}: {e}")
+        # Split into ≤4096-char chunks (Telegram limit)
+        chunks = _split_chunks(content, 4096)
+        for chunk in chunks:
+            try:
+                await self.app.bot.send_message(
+                    chat_id=chat_id_val,
+                    text=_to_html(chunk),
+                    parse_mode=ParseMode.HTML,
+                    **kwargs,
+                )
+            except TelegramError:
+                # Fallback to plain text if Markdown parse fails
+                try:
+                    await self.app.bot.send_message(
+                        chat_id=chat_id_val, text=chunk, **kwargs
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to send Telegram message to {target_id}: {e}")
+                    return False
+        logger.info("Telegram message sent successfully.")
+        return True
+
+    async def send_stream(
+        self, target_id: str, stream, min_interval: float = 1.5
+    ) -> bool:
+        """
+        Stream content to Telegram using edit_message_text (typewriter effect).
+        `stream` is an async iterable of str chunks.
+        Edits the same message every `min_interval` seconds to avoid rate limits.
+        """
+        if not self.app:
             return False
+
+        chat_id_val = self._parse_chat_id(target_id)
+        accumulated = ""
+        sent_msg = None
+        last_edit = 0.0
+
+        async def _keep_typing():
+            """Send typing action every 4 s until cancelled (Telegram clears it after 5 s)."""
+            try:
+                while True:
+                    try:
+                        await self.app.bot.send_chat_action(
+                            chat_id=chat_id_val, action="typing"
+                        )
+                    except Exception:
+                        pass
+                    await asyncio.sleep(4)
+            except asyncio.CancelledError:
+                pass
+
+        typing_task = asyncio.create_task(_keep_typing())
+        try:
+            async for chunk in stream:
+                accumulated += chunk
+                now = asyncio.get_event_loop().time()
+
+                if sent_msg is None:
+                    # First chunk — send the initial message and stop typing indicator
+                    typing_task.cancel()
+                    try:
+                        sent_msg = await self.app.bot.send_message(
+                            chat_id=chat_id_val,
+                            text=_to_html(accumulated) or "…",
+                            parse_mode=ParseMode.HTML,
+                        )
+                    except TelegramError:
+                        sent_msg = await self.app.bot.send_message(
+                            chat_id=chat_id_val,
+                            text=accumulated or "…",
+                        )
+                    last_edit = now
+                elif now - last_edit >= min_interval:
+                    display = _to_html(accumulated)
+                    try:
+                        await self.app.bot.edit_message_text(
+                            chat_id=chat_id_val,
+                            message_id=sent_msg.message_id,
+                            text=display,
+                            parse_mode=ParseMode.HTML,
+                        )
+                    except TelegramError:
+                        try:
+                            await self.app.bot.edit_message_text(
+                                chat_id=chat_id_val,
+                                message_id=sent_msg.message_id,
+                                text=accumulated,
+                            )
+                        except Exception:
+                            pass
+                    last_edit = now
+
+            # Final edit with complete content
+            if sent_msg and accumulated:
+                try:
+                    await self.app.bot.edit_message_text(
+                        chat_id=chat_id_val,
+                        message_id=sent_msg.message_id,
+                        text=_to_html(accumulated),
+                        parse_mode=ParseMode.HTML,
+                    )
+                except TelegramError:
+                    try:
+                        await self.app.bot.edit_message_text(
+                            chat_id=chat_id_val,
+                            message_id=sent_msg.message_id,
+                            text=accumulated,
+                        )
+                    except Exception:
+                        pass
+            elif not sent_msg and accumulated:
+                await self.send_message(target_id, accumulated)
+
+        except Exception as e:
+            logger.error(f"Telegram stream error for {target_id}: {e}")
+            return False
+        finally:
+            typing_task.cancel()
+        return True
 
     async def send_file(
         self, target_id: str, file_path: str, caption: str = None, **kwargs

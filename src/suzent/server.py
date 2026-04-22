@@ -18,6 +18,8 @@ from dotenv import load_dotenv
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 
 from suzent.logger import get_logger, setup_logging
@@ -154,6 +156,47 @@ scheduler_brain: SchedulerBrain = None
 heartbeat_runner: HeartbeatRunner = None
 
 
+# ---------------------------------------------------------------------------
+# Pairing / handshake REST handlers
+# ---------------------------------------------------------------------------
+
+
+async def list_pairings(request: Request) -> JSONResponse:
+    """GET /social/pairing — list pending pairing requests."""
+    brain: SocialBrain = getattr(request.app.state, "social_brain", None)
+    if brain is None:
+        return JSONResponse({"pairings": []})
+    return JSONResponse({"pairings": brain.list_pairings()})
+
+
+async def approve_pairing(request: Request) -> JSONResponse:
+    """POST /social/pairing/{sender_id}/approve"""
+    brain: SocialBrain = getattr(request.app.state, "social_brain", None)
+    if brain is None:
+        return JSONResponse({"error": "Social brain not running"}, status_code=503)
+    sender_id = request.path_params["sender_id"]
+    ok = await brain.approve_pairing(sender_id)
+    if not ok:
+        return JSONResponse(
+            {"error": f"No pending pairing for {sender_id}"}, status_code=404
+        )
+    return JSONResponse({"success": True})
+
+
+async def deny_pairing(request: Request) -> JSONResponse:
+    """POST /social/pairing/{sender_id}/deny"""
+    brain: SocialBrain = getattr(request.app.state, "social_brain", None)
+    if brain is None:
+        return JSONResponse({"error": "Social brain not running"}, status_code=503)
+    sender_id = request.path_params["sender_id"]
+    ok = await brain.deny_pairing(sender_id)
+    if not ok:
+        return JSONResponse(
+            {"error": f"No pending pairing for {sender_id}"}, status_code=404
+        )
+    return JSONResponse({"success": True})
+
+
 async def startup():
     """Initialize services on application startup."""
     from suzent.memory.lifecycle import init_memory_system
@@ -271,6 +314,7 @@ async def startup():
             if isinstance(settings, dict) and "allowed_users" in settings:
                 platform_allowlists[platform] = settings.get("allowed_users", [])
 
+        handshake_cfg = social_config.get("handshake", {})
         social_brain = SocialBrain(
             channel_manager,
             allowed_users=list(allowed_users),
@@ -279,6 +323,8 @@ async def startup():
             memory_enabled=social_config.get("memory_enabled", True),
             tools=social_config.get("tools"),
             mcp_enabled=social_config.get("mcp_enabled"),
+            handshake_enabled=handshake_cfg.get("enabled", False),
+            handshake_greeting=handshake_cfg.get("greeting"),
         )
 
         app.state.social_brain = social_brain
@@ -426,6 +472,9 @@ app = Starlette(
         Route("/config/embedding-models", get_embedding_models, methods=["GET"]),
         Route("/config/social", get_social_config, methods=["GET"]),
         Route("/config/social", save_social_config, methods=["POST"]),
+        Route("/social/pairing", list_pairings, methods=["GET"]),
+        Route("/social/pairing/{sender_id}/approve", approve_pairing, methods=["POST"]),
+        Route("/social/pairing/{sender_id}/deny", deny_pairing, methods=["POST"]),
         Route("/mcp_servers", list_mcp_servers, methods=["GET"]),
         Route("/mcp_servers", add_mcp_server, methods=["POST"]),
         Route("/mcp_servers/remove", remove_mcp_server, methods=["POST"]),
