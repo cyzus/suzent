@@ -199,10 +199,15 @@ async def deny_pairing(request: Request) -> JSONResponse:
 
 async def startup():
     """Initialize services on application startup."""
-    from suzent.memory.lifecycle import init_memory_system
+    from suzent.memory.lifecycle import init_memory_system, _memory_rag_hook
+    from suzent.core.system_reminder import register_global_hook, register_per_turn_hook
+    from suzent.skills.hooks import skills_reminder_hook
     from suzent.database import get_database
 
     logger.info("Application startup - initializing services")
+
+    register_global_hook(skills_reminder_hook)
+    register_per_turn_hook(_memory_rag_hook)
 
     import asyncio
     from suzent.tools.browsing_tool import BrowserSessionManager

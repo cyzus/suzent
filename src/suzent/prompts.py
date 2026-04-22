@@ -6,8 +6,7 @@ Provides functions to format and enhance agent instructions with dynamic context
 
 from datetime import datetime
 import platform
-from typing import Any, Callable, Sequence, Optional
-from suzent.core.system_reminder import register_global_hook
+from typing import Any, Callable, Sequence
 
 from pydantic_ai import RunContext
 from pydantic_ai.messages import ModelMessage, UserContent
@@ -328,21 +327,6 @@ def build_session_guidance_section(session_guidance_items: list[str] | None) -> 
     return "# Session Guidance\n" + "\n\n".join(parts)
 
 
-def format_session_guidance_debug(
-    guidance_entries: Sequence[dict[str, Any]] | None,
-) -> str:
-    """Format ordered guidance entries for debug logging."""
-    if not guidance_entries:
-        return "[SessionGuidance] no guidance entries"
-
-    lines = ["[SessionGuidance] ordered tool guidance:"]
-    for index, entry in enumerate(guidance_entries, start=1):
-        lines.append(
-            f"{index}. priority={entry.get('priority')} tool={entry.get('tool_name')} guidance={entry.get('guidance')}"
-        )
-    return "\n".join(lines)
-
-
 def register_dynamic_instructions(
     agent: Any,
     *,
@@ -409,56 +393,3 @@ def build_social_context(social_ctx: dict) -> str:
         platform_title=platform.title(),
         char_limit=char_limit,
     )
-
-
-def _get_history_text(deps: Any) -> str:
-    """Concatenate all UserPromptPart text from message history."""
-    from pydantic_ai.messages import ModelRequest, UserPromptPart
-
-    parts = []
-    for msg in getattr(deps, "last_messages", None) or []:
-        if not isinstance(msg, ModelRequest):
-            continue
-        for part in msg.parts:
-            if isinstance(part, UserPromptPart):
-                content = part.content if isinstance(part.content, str) else ""
-                if content:
-                    parts.append(content)
-    return "\n".join(parts)
-
-
-async def get_skills_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
-    """Injects only skills not yet seen in message history."""
-    skill_mgr = getattr(deps, "skill_manager", None)
-    if not skill_mgr or not skill_mgr.enabled_skills:
-        return None
-
-    sandbox_enabled = getattr(deps, "sandbox_enabled", True)
-    history_text = _get_history_text(deps)
-
-    new_lines = []
-    for skill in skill_mgr.loader.list_skills():
-        name = skill.metadata.name
-        if not skill_mgr.is_skill_enabled(name):
-            continue
-        if sandbox_enabled:
-            from suzent.tools.filesystem.path_resolver import PathResolver
-
-            location = PathResolver.get_skill_virtual_path(name)
-        else:
-            location = str(skill.path.resolve())
-        line = f"- {name}: {skill.metadata.description} (Location: {location})"
-        if line not in history_text:
-            new_lines.append(line)
-
-    if not new_lines:
-        return None
-
-    return (
-        "You have a SkillTool that loads specialized knowledge. "
-        "Use it IMMEDIATELY when the user's task matches a skill.\n\n"
-        + "\n".join(new_lines)
-    )
-
-
-register_global_hook(get_skills_reminder_hook)

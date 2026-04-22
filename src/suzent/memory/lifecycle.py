@@ -234,12 +234,6 @@ async def init_memory_system() -> bool:
                 name="core_memory_file_watcher",
             )
 
-        # Register dynamic RAG as a per-turn system-reminder hook (Phase 3)
-        from suzent.core.system_reminder import register_per_turn_hook
-
-        register_per_turn_hook(_memory_rag_hook)
-        logger.info("Registered memory RAG as per-turn system reminder hook")
-
         return True
 
     except Exception as e:
