@@ -75,10 +75,13 @@ class ImageVisionTool(Tool):
 
             # model access fix
             model = getattr(
-                CONFIG, "vision_model", getattr(CONFIG, "default_model", "gpt-4o")
+                CONFIG, "vision_model", getattr(CONFIG, "default_model", None)
             )
             if not model:
-                model = "gpt-4o"
+                return ToolResult.error_result(
+                    ToolErrorCode.EXECUTION_FAILED,
+                    "No vision_model or default_model configured in system CONFIG.",
+                )
 
             messages = [
                 {
