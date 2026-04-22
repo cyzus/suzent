@@ -22,8 +22,8 @@ impl BackendProcess {
         }
     }
 
-    /// Start the Python backend by launching the bundled Python interpreter.
-    /// Only called in release builds - in debug mode the backend runs separately.
+    /// Start the Python backend using the prebuilt bundled python-env.
+    /// Only called in release builds — in debug mode the backend runs separately.
     #[allow(dead_code)]
     pub fn start(&mut self, app_handle: &tauri::AppHandle) -> Result<u16, String> {
         let app_data_dir = app_handle.path()
@@ -37,47 +37,26 @@ impl BackendProcess {
             .resource_dir()
             .map_err(|e| format!("Failed to get resource dir: {}", e))?;
 
-        // First-run setup: create/update venv from bundled wheel
-        let app_handle_for_progress = app_handle.clone();
-        let window_for_progress = app_handle.get_webview_window("main");
-        ensure_backend_setup(&resource_dir, &app_data_dir, &|msg: &str| {
-            println!("SETUP: {}", msg);
-            // Emit event for listeners that are already registered
-            let _ = app_handle_for_progress.emit("setup-progress", msg);
-            // Also write to a JS global so the frontend can poll it immediately
-            // without depending on async listener registration timing
-            if let Some(w) = &window_for_progress {
-                let escaped = msg.replace('\\', "\\\\").replace('"', "\\\"");
-                let _ = w.eval(&format!("window.__SUZENT_SETUP_STEP__ = \"{}\";", escaped));
-            }
-        })?;
-
-        // Copy config and skills to app data dir if needed
-        sync_app_data(&resource_dir, &app_data_dir)?;
-
-        // Resolve python executable inside the venv
-        let venv_dir = app_data_dir.join("backend-venv");
-        let python_exe = get_venv_python(&venv_dir);
+        let python_exe = find_bundled_python(&resource_dir)?;
 
         if !python_exe.exists() {
-            return Err(format!("Python not found at {:?}", python_exe));
+            return Err(format!("Bundled Python not found at {:?}", python_exe));
         }
 
-        // Generate CLI shim
+        // Sync config and skills to app data dir on first install / upgrade
+        let window = app_handle.get_webview_window("main");
+        emit_progress(&app_handle, &window, "Initializing app data...");
+        sync_app_data(&resource_dir, &app_data_dir)?;
+
+        // Generate CLI shim pointing at the bundled Python
         ensure_cli_shim(&app_data_dir, &python_exe)?;
 
-        // Emit a progress message for the normal (non-setup) launch path
-        if let Some(w) = &window_for_progress {
-            let _ = w.eval("window.__SUZENT_SETUP_STEP__ = \"Starting backend server...\";");
-        }
+        emit_progress(&app_handle, &window, "Starting backend server...");
 
-        // Attempt to reuse the last known port for a stable address across restarts.
         let port_to_use = read_last_stable_port(&app_data_dir).unwrap_or(0);
 
-        // Launch: python -m suzent.server
         let mut command = Command::new(&python_exe);
         command.args(["-m", "suzent.server"])
-            .env("VIRTUAL_ENV", &venv_dir)
             .env("SUZENT_PORT", port_to_use.to_string())
             .env("SUZENT_HOST", "127.0.0.1")
             .env("SUZENT_APP_DATA", &app_data_dir)
@@ -91,22 +70,17 @@ impl BackendProcess {
 
         #[cfg(windows)]
         {
-            // CREATE_NO_WINDOW
             command.creation_flags(0x08000000);
         }
 
         let mut child = command.spawn()
             .map_err(|e| format!("Failed to start Python backend: {}", e))?;
 
-        // Read stdout in a thread to extract the port
-        let stdout = child.stdout.take()
-            .ok_or("Failed to capture stdout")?;
-        let stderr = child.stderr.take()
-            .ok_or("Failed to capture stderr")?;
+        let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
+        let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
 
         let (tx, rx_port) = std::sync::mpsc::channel();
 
-        // Stdout reader thread — extracts SERVER_PORT and prints output
         thread::spawn(move || {
             let reader = BufReader::new(stdout);
             let mut port_found = false;
@@ -131,7 +105,6 @@ impl BackendProcess {
             }
         });
 
-        // Stderr reader thread
         thread::spawn(move || {
             let reader = BufReader::new(stderr);
             for line in reader.lines().flatten() {
@@ -141,8 +114,7 @@ impl BackendProcess {
 
         self.child = Some(child);
 
-        // Wait for the port (timeout 60s — first-run may be slow)
-        match rx_port.recv_timeout(Duration::from_secs(60)) {
+        match rx_port.recv_timeout(Duration::from_secs(30)) {
             Ok(port) => {
                 self.port = port;
                 println!("Backend reported port: {}", port);
@@ -156,7 +128,6 @@ impl BackendProcess {
         }
     }
 
-    /// Poll the backend health endpoint until it responds or timeout.
     fn wait_for_backend(&self) -> Result<(), String> {
         let url = format!("http://127.0.0.1:{}/config", self.port);
         let client = reqwest::blocking::Client::builder()
@@ -164,10 +135,8 @@ impl BackendProcess {
             .build()
             .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-        // 30 attempts * 500ms = 15 seconds timeout
         for attempt in 1..=30 {
             thread::sleep(Duration::from_millis(500));
-
             if let Ok(resp) = client.get(&url).send() {
                 if resp.status().is_success() || resp.status().as_u16() == 404 {
                     println!("Backend ready after {} attempts", attempt);
@@ -179,7 +148,6 @@ impl BackendProcess {
         Err("Backend failed to respond to health check within 15 seconds".to_string())
     }
 
-    /// Stop the backend process gracefully.
     pub fn stop(&mut self) {
         if let Some(mut child) = self.child.take() {
             let _ = child.kill();
@@ -194,269 +162,32 @@ impl Drop for BackendProcess {
     }
 }
 
-// --- First-run setup helpers ---
+// --- Helpers ---
 
-/// Get the path to the Python executable inside a venv.
-fn get_venv_python(venv_dir: &Path) -> PathBuf {
-    if cfg!(windows) {
-        venv_dir.join("Scripts").join("python.exe")
-    } else {
-        venv_dir.join("bin").join("python")
+fn emit_progress(app_handle: &tauri::AppHandle, window: &Option<tauri::WebviewWindow>, msg: &str) {
+    println!("SETUP: {}", msg);
+    let _ = app_handle.emit("setup-progress", msg);
+    if let Some(w) = window {
+        let escaped = msg.replace('\\', "\\\\").replace('"', "\\\"");
+        let _ = w.eval(&format!("window.__SUZENT_SETUP_STEP__ = \"{}\";", escaped));
     }
 }
 
-/// Ensure the backend venv exists and is up-to-date.
-/// On first run (or version change), creates a venv and installs the suzent wheel.
-/// `on_progress` is called with a short status message at each setup step.
-pub fn ensure_backend_setup(
-    resource_dir: &Path,
-    app_data_dir: &Path,
-    on_progress: &dyn Fn(&str),
-) -> Result<(), String> {
-    let venv_dir = app_data_dir.join("backend-venv");
-    let marker = venv_dir.join(".suzent-version");
-
-    let current_version = env!("CARGO_PKG_VERSION");
-
-    let needs_setup = if marker.exists() {
-        let stored = std::fs::read_to_string(&marker).unwrap_or_default();
-        if stored.trim() != current_version {
-            true
-        } else {
-            // Version matches, but let's verify integrity (specifically CLI entry point)
-            let python = get_venv_python(&venv_dir);
-            if !python.exists() {
-                true
-            } else {
-                // Check if we can import suzent.cli.__main__
-                // This handles cases where upgrade failed or files are missing
-                let mut cmd = Command::new(&python);
-                cmd.args(["-c", "import suzent.cli.__main__"])
-                   .stdout(Stdio::null())
-                   .stderr(Stdio::null())
-                   .stdin(Stdio::null());
-                   
-                #[cfg(windows)]
-                cmd.creation_flags(0x08000000);
-                
-                let status = cmd.status();
-                
-                match status {
-                    Ok(s) if s.success() => false,
-                    _ => {
-                        println!("Backend integrity check failed, forcing setup...");
-                        true
-                    }
-                }
-            }
-        }
-    } else {
-        true
-    };
-
-    if !needs_setup {
-        // concise startup: silent on success
-        return Ok(());
-    }
-
-    println!("Setting up backend venv (v{})...", current_version);
-    on_progress("Setting up Python environment...");
-
-    // Locate uv binary
-    let uv_exe = find_uv(resource_dir)?;
-    // Locate bundled Python
-    let bundled_python = find_bundled_python(resource_dir)?;
-
-    // Check if python is locked before trying to recreate venv to avoid corruption
-    let venv_python = get_venv_python(&venv_dir);
-    if venv_python.exists() {
-        if let Err(e) = std::fs::OpenOptions::new().append(true).open(&venv_python) {
-            if e.kind() == std::io::ErrorKind::PermissionDenied {
-                println!("  WARNING: Backend environment is in use by another instance. Skipping update to avoid corruption.");
-                return Ok(());
-            }
-        }
-    }
-
-    // Clear existing venv to prevent uv from failing if Pyvenv.cfg is missing
-    if venv_dir.exists() {
-        println!("  Removing existing venv at {:?}...", venv_dir);
-        let _ = std::fs::remove_dir_all(&venv_dir);
-    }
-
-    // Step 1: Create venv
-    println!("  Creating venv at {:?}...", venv_dir);
-    on_progress("Creating Python virtual environment...");
-    let mut cmd = Command::new(&uv_exe);
-    cmd.args(["venv", &venv_dir.to_string_lossy(), "--python", &bundled_python.to_string_lossy()])
-       .stdin(Stdio::null())
-       .stdout(Stdio::null())
-       .stderr(Stdio::null());
-    
-    #[cfg(windows)]
-    cmd.creation_flags(0x08000000);
-
-    let status = cmd.status()
-        .map_err(|e| format!("Failed to run uv venv: {}", e))?;
-
-    if !status.success() {
-        return Err("uv venv creation failed".to_string());
-    }
-
-    // Step 2: Find the wheel
-    let wheel_path = find_wheel_in_resources(resource_dir)?;
-
-    // Step 3: Install the wheel into the venv (stream output for live progress)
-    let venv_python = get_venv_python(&venv_dir);
-    println!("  Installing suzent wheel...");
-    on_progress("Installing packages...");
-    let mut cmd = Command::new(&uv_exe);
-    cmd.args([
-            "pip", "install",
-            &wheel_path.to_string_lossy(),
-            "--python", &venv_python.to_string_lossy(),
-            "--force-reinstall",
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    #[cfg(windows)]
-    cmd.creation_flags(0x08000000);
-
-    let mut child = cmd.spawn()
-        .map_err(|e| format!("Failed to run uv pip install: {}", e))?;
-
-    let stdout = child.stdout.take().ok_or("Failed to capture uv stdout")?;
-    let stderr = child.stderr.take().ok_or("Failed to capture uv stderr")?;
-
-    // uv writes package lines to both stdout and stderr depending on version/mode.
-    // Merge both into a single channel.
-    let (tx, rx) = std::sync::mpsc::channel::<String>();
-    let tx2 = tx.clone();
-    thread::spawn(move || {
-        for line in BufReader::new(stdout).lines().flatten() { let _ = tx.send(line); }
-    });
-    thread::spawn(move || {
-        for line in BufReader::new(stderr).lines().flatten() { let _ = tx2.send(line); }
-    });
-
-    // Poll child completion while forwarding package lines as progress
-    loop {
-        // Drain available lines
-        while let Ok(line) = rx.try_recv() {
-            let t = line.trim();
-            println!("uv: {}", t);
-            // uv emits "+ package==version" for each installed package
-            if let Some(pkg) = t.strip_prefix("+ ") {
-                on_progress(&format!("Installing {}", pkg));
-            } else if t.starts_with("Resolved ")
-                || t.starts_with("Prepared ")
-                || t.starts_with("Installed ")
-                || t.starts_with("Downloading ")
-            {
-                on_progress(t);
-            }
-        }
-        match child.try_wait().map_err(|e| format!("Failed to wait for uv: {}", e))? {
-            Some(status) => {
-                if !status.success() {
-                    return Err("uv pip install failed".to_string());
-                }
-                break;
-            }
-            None => thread::sleep(Duration::from_millis(100)),
-        }
-    }
-
-    // Step 4: Install Playwright Chromium browser
-    println!("  Installing Playwright Chromium (this may take a few minutes)...");
-    on_progress("Installing Playwright Chromium browser (this may take a few minutes)...");
-    let mut cmd = Command::new(&venv_python);
-    cmd.args(["-m", "playwright", "install", "chromium"])
-       .stdin(Stdio::null())
-       .stdout(Stdio::null())
-       .stderr(Stdio::null());
-
-    #[cfg(windows)]
-    cmd.creation_flags(0x08000000);
-
-    match cmd.status() {
-        Ok(status) if status.success() => {
-            println!("  Playwright Chromium installed successfully.");
-        }
-        Ok(status) => {
-            println!("  WARNING: Playwright install exited with code {:?} (will retry on first use)", status.code());
-        }
-        Err(e) => {
-            println!("  WARNING: Failed to run playwright install: {} (will retry on first use)", e);
-        }
-    }
-
-    on_progress("Finalizing setup...");
-    // Write version marker
-    std::fs::write(&marker, current_version)
-        .map_err(|e| format!("Failed to write version marker: {}", e))?;
-
-    println!("  Backend setup complete!");
-    on_progress("Starting backend...");
-    Ok(())
-}
-
-/// Read the last used port from the port file written by Python on startup.
-/// Returns Some(port) only if the port is still free (i.e. we can reuse it safely).
-fn read_last_stable_port(app_data_dir: &Path) -> Option<u16> {
-    let port_file = app_data_dir.join("server.port");
-    let content = std::fs::read_to_string(&port_file).ok()?;
-    let port: u16 = content.trim().parse().ok()?;
-    if port == 0 {
-        return None;
-    }
-    // Check if the port is free by attempting to bind it
-    if TcpListener::bind(("127.0.0.1", port)).is_ok() {
-        println!("Reusing last known backend port: {}", port);
-        Some(port)
-    } else {
-        println!("Last known port {} is in use, using dynamic port assignment", port);
-        None
-    }
-}
-
-/// Resolve the actual resources base directory, handling Tauri's resource nesting.
-///
-/// Tauri places bundled resources at `{resource_dir}/resources/` when using the
-/// map format `{"resources/": "resources/"}` in tauri.conf.prod.json.
-/// The nested path is canonical; the flat path is a fallback for edge cases.
+/// Resolve the resources base dir (Tauri nests bundled resources under resources/).
 fn resolve_resources_base(resource_dir: &Path) -> PathBuf {
     let nested = resource_dir.join("resources");
-    if nested.exists() {
-        nested
-    } else {
-        resource_dir.to_path_buf()
-    }
+    if nested.exists() { nested } else { resource_dir.to_path_buf() }
 }
 
-/// Find the uv binary inside the resource directory.
-fn find_uv(resource_dir: &Path) -> Result<PathBuf, String> {
-    let exe_name = if cfg!(windows) { "uv.exe" } else { "uv" };
-    let base = resolve_resources_base(resource_dir);
-    let path = base.join(exe_name);
-    if path.exists() {
-        Ok(path)
-    } else {
-        Err(format!("uv binary not found at {:?}", path))
-    }
-}
-
-/// Find the bundled Python executable.
+/// Find the prebuilt Python executable inside python-env/.
 fn find_bundled_python(resource_dir: &Path) -> Result<PathBuf, String> {
     let base = resolve_resources_base(resource_dir);
     let candidates = if cfg!(windows) {
-        vec![base.join("python").join("python.exe")]
+        vec![base.join("python-env").join("python.exe")]
     } else {
         vec![
-            base.join("python").join("bin").join("python3"),
-            base.join("python").join("bin").join("python"),
+            base.join("python-env").join("bin").join("python3"),
+            base.join("python-env").join("bin").join("python"),
         ]
     };
 
@@ -466,25 +197,23 @@ fn find_bundled_python(resource_dir: &Path) -> Result<PathBuf, String> {
         }
     }
 
-    Err(format!("Bundled Python not found under {:?}", base.join("python")))
+    Err(format!("Bundled Python not found under {:?}", base.join("python-env")))
 }
 
-/// Find a .whl file in the wheel directory.
-fn find_wheel_in_resources(resource_dir: &Path) -> Result<PathBuf, String> {
-    let base = resolve_resources_base(resource_dir);
-    let wheel_dir = base.join("wheel");
-    if !wheel_dir.exists() {
-        return Err(format!("Wheel directory not found: {:?}", wheel_dir));
+fn read_last_stable_port(app_data_dir: &Path) -> Option<u16> {
+    let port_file = app_data_dir.join("server.port");
+    let content = std::fs::read_to_string(&port_file).ok()?;
+    let port: u16 = content.trim().parse().ok()?;
+    if port == 0 {
+        return None;
     }
-    for entry in std::fs::read_dir(&wheel_dir).map_err(|e| format!("Failed to read dir: {}", e))? {
-        if let Ok(entry) = entry {
-            let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "whl") {
-                return Ok(path);
-            }
-        }
+    if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+        println!("Reusing last known backend port: {}", port);
+        Some(port)
+    } else {
+        println!("Last known port {} is in use, using dynamic port assignment", port);
+        None
     }
-    Err(format!("No .whl file found in {:?}", wheel_dir))
 }
 
 /// Sync config and skills from bundled resources to app data dir.
@@ -495,20 +224,16 @@ pub fn sync_app_data(resource_dir: &Path, app_data_dir: &Path) -> Result<(), Str
         let dest_dir = app_data_dir.join(dir_name);
         let src_dir = base.join(dir_name);
 
-        let src_dir = if src_dir.exists() {
-            src_dir
-        } else {
+        if !src_dir.exists() {
             println!("  WARNING: Bundled {} directory not found, skipping", dir_name);
             continue;
-        };
+        }
 
         if !dest_dir.exists() {
-            // First install: copy everything, renaming .example. files
             println!("  Initializing {} directory...", dir_name);
             copy_dir_recursive(&src_dir, &dest_dir, true)
                 .map_err(|e| format!("Failed to copy {}: {}", dir_name, e))?;
         } else {
-            // Subsequent runs: only copy missing files
             copy_missing_files(&src_dir, &dest_dir)
                 .map_err(|e| format!("Failed to sync {}: {}", dir_name, e))?;
         }
@@ -517,7 +242,6 @@ pub fn sync_app_data(resource_dir: &Path, app_data_dir: &Path) -> Result<(), Str
     Ok(())
 }
 
-/// Recursively copy a directory, optionally copying .example. files to their non-example names too.
 fn copy_dir_recursive(src: &Path, dest: &Path, rename_examples: bool) -> std::io::Result<()> {
     std::fs::create_dir_all(dest)?;
 
@@ -529,10 +253,7 @@ fn copy_dir_recursive(src: &Path, dest: &Path, rename_examples: bool) -> std::io
         if src_path.is_dir() {
             copy_dir_recursive(&src_path, &dest.join(&file_name), rename_examples)?;
         } else {
-            // ALWAYS copy the file with its original name
             std::fs::copy(&src_path, dest.join(&file_name))?;
-
-            // If it's an example file and we should deploy base configs, create the non-example version
             if rename_examples && file_name.contains(".example.") {
                 let dest_name = file_name.replace(".example.", ".");
                 let dest_path = dest.join(&dest_name);
@@ -546,7 +267,6 @@ fn copy_dir_recursive(src: &Path, dest: &Path, rename_examples: bool) -> std::io
     Ok(())
 }
 
-/// Copy only files that don't exist in the destination, while ensuring .example. files are updated.
 fn copy_missing_files(src: &Path, dest: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dest)?;
 
@@ -557,31 +277,20 @@ fn copy_missing_files(src: &Path, dest: &Path) -> std::io::Result<()> {
 
         if src_path.is_dir() {
             copy_missing_files(&src_path, &dest.join(&file_name))?;
+        } else if file_name.contains(".example.") {
+            let example_dest = dest.join(&file_name);
+            std::fs::copy(&src_path, &example_dest)?;
+
+            let user_dest_path = dest.join(file_name.replace(".example.", "."));
+            if !user_dest_path.exists() {
+                std::fs::copy(&src_path, &user_dest_path)?;
+                println!("  Created default configuration: {:?}", user_dest_path);
+            }
         } else {
-            // Provide a graceful fallback: For example files, we always want to overwrite the
-            // destination example file to ensure the application has the latest defaults.
-            // We never overwrite the user's custom (non-example) file.
-
-            if file_name.contains(".example.") {
-                // Always overwrite the .example. file to give the backend the latest fallback values
-                let example_dest = dest.join(&file_name);
-                std::fs::copy(&src_path, &example_dest)?;
-                // println!("  Updated example fallback: {:?}", example_dest);
-
-                // Check if the user is missing the non-example configuration file entirely
-                let user_dest_name = file_name.replace(".example.", ".");
-                let user_dest_path = dest.join(&user_dest_name);
-                if !user_dest_path.exists() {
-                    std::fs::copy(&src_path, &user_dest_path)?;
-                    println!("  Created default configuration: {:?}", user_dest_path);
-                }
-            } else {
-                // For non-example utility files, only copy if they don't exist
-                let dest_path = dest.join(&file_name);
-                if !dest_path.exists() {
-                    std::fs::copy(&src_path, &dest_path)?;
-                    println!("  Restored missing file: {:?}", dest_path);
-                }
+            let dest_path = dest.join(&file_name);
+            if !dest_path.exists() {
+                std::fs::copy(&src_path, &dest_path)?;
+                println!("  Restored missing file: {:?}", dest_path);
             }
         }
     }
@@ -589,7 +298,7 @@ fn copy_missing_files(src: &Path, dest: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Generate a CLI shim script in app_data_dir/bin.
+/// Generate a CLI shim in app_data_dir/bin pointing at the bundled Python.
 fn ensure_cli_shim(app_data_dir: &Path, python_exe: &Path) -> Result<(), String> {
     let bin_dir = app_data_dir.join("bin");
     std::fs::create_dir_all(&bin_dir)
@@ -604,7 +313,6 @@ fn ensure_cli_shim(app_data_dir: &Path, python_exe: &Path) -> Result<(), String>
         std::fs::write(&shim_path, content)
             .map_err(|e| format!("Failed to write shim: {}", e))?;
     } else {
-        // macOS/Linux
         let shim_path = bin_dir.join("suzent");
         let content = format!(
             "#!/bin/sh\nexec \"{}\" -m suzent.cli \"$@\"",
@@ -612,8 +320,7 @@ fn ensure_cli_shim(app_data_dir: &Path, python_exe: &Path) -> Result<(), String>
         );
         std::fs::write(&shim_path, content)
             .map_err(|e| format!("Failed to write shim: {}", e))?;
-        
-        // Make executable using std::os::unix::fs::PermissionsExt (only on unix)
+
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-Bundle Python runtime + uv + suzent wheel into src-tauri/resources/ for Tauri packaging.
+Bundle a prebuilt Python environment into src-tauri/resources/ for Tauri packaging.
 
-Instead of compiling Python with PyInstaller/Nuitka, we bundle:
-  - A standalone/embeddable Python distribution
-  - The uv package manager binary
-  - A pre-built wheel of the suzent package
-  - Config examples and skills directories
+Instead of bundling a bare Python + uv and installing at first-launch, we:
+  1. Download a standalone Python distribution
+  2. Install the suzent wheel + all dependencies into that Python directly
+  3. Copy config examples and skills directories
+  4. Generate CLI shims
 
-At first launch, the Rust side uses uv to create a venv and install the wheel.
+At launch, Rust simply runs resources/python-env/python.exe -m suzent.server —
+no venv creation, no network access, no first-run delay.
 """
 
 import os
@@ -18,17 +19,12 @@ import subprocess
 import sys
 import tarfile
 import urllib.request
-import zipfile
 from pathlib import Path
 
 # --- Configuration ---
 
 PYTHON_VERSION = "3.12.8"
-# python-build-standalone release tag for cross-platform standalone builds
 PYTHON_STANDALONE_TAG = "20241219"
-
-# uv version to bundle
-UV_VERSION = "0.5.14"
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RESOURCES_DIR = PROJECT_ROOT / "src-tauri" / "resources"
@@ -58,7 +54,6 @@ def get_platform_info() -> tuple[str, str, str]:
 
 
 def download_file(url: str, dest: Path, description: str = "") -> None:
-    """Download a file with progress indication."""
     label = description or url.split("/")[-1]
     print(f"  Downloading {label}...")
     urllib.request.urlretrieve(url, str(dest))
@@ -67,17 +62,13 @@ def download_file(url: str, dest: Path, description: str = "") -> None:
 
 
 def download_python(target_dir: Path) -> Path:
-    """Download python-build-standalone Python and extract to target_dir.
+    """Download python-build-standalone and extract to target_dir.
 
-    Uses python-build-standalone for all platforms (Windows, macOS, Linux)
-    for a consistent, complete Python distribution with full stdlib support.
-
-    Returns the path to the python executable inside target_dir.
+    Returns the path to the python executable.
     """
     os_name, arch, exe_ext = get_platform_info()
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build the triple for python-build-standalone
     if os_name == "windows":
         triple = f"{arch}-pc-windows-msvc"
     elif os_name == "macos":
@@ -96,127 +87,77 @@ def download_python(target_dir: Path) -> Path:
         tf.extractall(target_dir)
     tarball_path.unlink()
 
-    # python-build-standalone extracts to a 'python' subdirectory
+    # python-build-standalone extracts to a 'python' subdirectory — flatten it
     python_inner = target_dir / "python"
     if python_inner.exists():
-        # Move contents up one level
         for item in python_inner.iterdir():
             shutil.move(str(item), str(target_dir / item.name))
         python_inner.rmdir()
 
-    # Locate the Python executable
     if os_name == "windows":
-        python_exe = target_dir / "python.exe"
+        return target_dir / "python.exe"
     else:
         python_exe = target_dir / "bin" / "python3"
         if not python_exe.exists():
             python_exe = target_dir / "bin" / "python"
-
-    return python_exe
-
-
-def download_uv(target_dir: Path) -> Path:
-    """Download the uv binary for the current platform.
-
-    Returns path to the uv executable.
-    """
-    os_name, arch, exe_ext = get_platform_info()
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    if os_name == "windows":
-        archive_name = f"uv-{arch}-pc-windows-msvc.zip"
-    elif os_name == "macos":
-        archive_name = f"uv-{arch}-apple-darwin.tar.gz"
-    else:
-        archive_name = f"uv-{arch}-unknown-linux-gnu.tar.gz"
-
-    url = (
-        f"https://github.com/astral-sh/uv/releases/download/{UV_VERSION}/{archive_name}"
-    )
-    archive_path = target_dir / archive_name
-
-    download_file(url, archive_path, f"uv {UV_VERSION}")
-
-    print("  Extracting uv...")
-    if archive_name.endswith(".zip"):
-        with zipfile.ZipFile(archive_path, "r") as zf:
-            zf.extractall(target_dir)
-    else:
-        with tarfile.open(archive_path, "r:gz") as tf:
-            tf.extractall(target_dir)
-    archive_path.unlink()
-
-    # uv archives extract into a subdirectory like uv-x86_64-pc-windows-msvc/
-    # Find and move the uv binary to the target_dir root
-    uv_exe_name = f"uv{exe_ext}"
-    uv_binary = next(target_dir.rglob(uv_exe_name), None)
-
-    if not uv_binary:
-        raise RuntimeError(f"Could not find uv binary after extraction in {target_dir}")
-
-    if uv_binary.parent != target_dir:
-        dest = target_dir / uv_exe_name
-        shutil.move(str(uv_binary), str(dest))
-        # Clean up extracted subdirectory
-        for d in target_dir.iterdir():
-            if d.is_dir() and d.name.startswith("uv-"):
-                shutil.rmtree(d)
-        uv_binary = dest
-
-    # Ensure executable on Unix
-    if os_name != "windows":
-        uv_binary.chmod(0o755)
-
-    return uv_binary
+        return python_exe
 
 
-def build_wheel(output_dir: Path) -> Path:
-    """Build a wheel for the suzent package.
-
-    Returns the path to the .whl file.
-    """
-    output_dir.mkdir(parents=True, exist_ok=True)
+def build_and_install_wheel(python_exe: Path) -> None:
+    """Build the suzent wheel and install it (with all deps) into the given Python."""
+    wheel_dir = RESOURCES_DIR / "_wheel_tmp"
+    wheel_dir.mkdir(parents=True, exist_ok=True)
 
     print("  Building suzent wheel...")
     result = subprocess.run(
-        [sys.executable, "-m", "build", "--wheel", "--outdir", str(output_dir)],
+        [sys.executable, "-m", "build", "--wheel", "--outdir", str(wheel_dir)],
         cwd=str(PROJECT_ROOT),
         capture_output=True,
         text=True,
     )
-
     if result.returncode != 0:
         print(f"  STDOUT: {result.stdout}")
         print(f"  STDERR: {result.stderr}")
         raise RuntimeError("Failed to build suzent wheel")
 
-    wheels = list(output_dir.glob("suzent-*.whl"))
+    wheels = list(wheel_dir.glob("suzent-*.whl"))
     if not wheels:
-        raise RuntimeError(f"No wheel found in {output_dir}")
-
+        raise RuntimeError(f"No wheel found in {wheel_dir}")
     wheel_path = wheels[0]
     print(f"  Built wheel: {wheel_path.name}")
-    return wheel_path
+
+    print(
+        "  Installing suzent + all dependencies into python-env (this will take a while)..."
+    )
+    result = subprocess.run(
+        [
+            str(python_exe),
+            "-m",
+            "pip",
+            "install",
+            str(wheel_path),
+            "--no-warn-script-location",
+        ],
+        capture_output=False,  # show live pip output
+    )
+    if result.returncode != 0:
+        raise RuntimeError("pip install failed")
+
+    print("  All dependencies installed.")
+    shutil.rmtree(wheel_dir)
 
 
 def copy_config_and_skills(target_dir: Path) -> None:
-    """Copy example config files and skills to resources."""
-    # Config: only copy example files (no secrets)
     config_dest = target_dir / "config"
     config_dest.mkdir(parents=True, exist_ok=True)
-
-    config_src = PROJECT_ROOT / "config"
-    for example_file in config_src.glob("*.example.*"):
+    for example_file in (PROJECT_ROOT / "config").glob("*.example.*"):
         shutil.copy2(str(example_file), str(config_dest / example_file.name))
         print(f"  Copied config: {example_file.name}")
 
-    # Skills: copy entire directory
     skills_src = PROJECT_ROOT / "skills"
     skills_dest = target_dir / "skills"
-
     if skills_dest.exists():
         shutil.rmtree(skills_dest)
-
     if skills_src.exists():
         shutil.copytree(str(skills_src), str(skills_dest))
         print("  Copied skills directory")
@@ -224,74 +165,58 @@ def copy_config_and_skills(target_dir: Path) -> None:
         print("  WARNING: No skills directory found")
 
 
-def generate_shims(target_dir: Path) -> None:
-    """Generate CLI shims (suzent.cmd and suzent) in the target directory.
-
-    These shims are moved to the installation root by NSIS hooks (Windows)
-    or expected to be in the PATH (Linux/macOS).
-    """
+def generate_shims(python_exe: Path, target_dir: Path) -> None:
+    """Generate CLI shims pointing directly at the bundled python-env."""
     # Windows CMD shim
     cmd_shim = target_dir / "suzent.cmd"
-    # %~dp0 returns the drive and path to the batch script.
-    # We call SUZENT.exe which should be in the same directory after installation moves.
-    cmd_content = '@echo off\r\n"%~dp0SUZENT.exe" %*'
-    cmd_shim.write_text(cmd_content, encoding="utf-8")
+    cmd_shim.write_text(
+        f'@echo off\r\n"{python_exe.as_posix()}" -m suzent.cli %*',
+        encoding="utf-8",
+    )
     print(f"  Generated Windows shim: {cmd_shim.name}")
 
-    # Unix Shell shim
+    # Unix shell shim
     sh_shim = target_dir / "suzent"
-    # $0 is the script path. dirname $0 gets the directory.
-    # We assume the binary is named 'suzent' on Linux/macOS
-    sh_content = '#!/bin/sh\nexec "$(dirname "$0")/suzent" "$@"'
-    sh_shim.write_text(sh_content, encoding="utf-8")
-    # Make executable
+    sh_shim.write_text(
+        f'#!/bin/sh\nexec "{python_exe}" -m suzent.cli "$@"',
+        encoding="utf-8",
+    )
     if hasattr(os, "chmod"):
-        current_mode = sh_shim.stat().st_mode
-        sh_shim.chmod(current_mode | 0o111)
+        sh_shim.chmod(sh_shim.stat().st_mode | 0o111)
     print(f"  Generated Unix shim: {sh_shim.name}")
 
 
 def bundle_python() -> None:
-    """Main bundling function. Creates src-tauri/resources/ with everything needed."""
     print("=" * 50)
-    print("  SUZENT Python Backend Bundler")
+    print("  SUZENT Python Backend Bundler (Prebuilt Env)")
     print("=" * 50)
 
-    os_name, arch, exe_ext = get_platform_info()
+    os_name, arch, _ = get_platform_info()
     print(f"\nPlatform: {os_name}/{arch}")
 
-    # Clean previous resources
     if RESOURCES_DIR.exists():
         print("\nCleaning previous resources...")
         shutil.rmtree(RESOURCES_DIR)
-
     RESOURCES_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Step 1: Download Python
+    # Step 1: Download Python into python-env/
     print("\n[1/4] Downloading Python runtime...")
-    python_dir = RESOURCES_DIR / "python"
-    python_exe = download_python(python_dir)
+    python_env_dir = RESOURCES_DIR / "python-env"
+    python_exe = download_python(python_env_dir)
     print(f"  Python executable: {python_exe}")
 
-    # Step 2: Download uv
-    print("\n[2/4] Downloading uv package manager...")
-    uv_exe = download_uv(RESOURCES_DIR)
-    print(f"  uv binary: {uv_exe}")
+    # Step 2: Install suzent + all deps into that Python
+    print("\n[2/4] Installing suzent and all dependencies...")
+    build_and_install_wheel(python_exe)
 
-    # Step 3: Build wheel
-    print("\n[3/4] Building suzent wheel...")
-    wheel_dir = RESOURCES_DIR / "wheel"
-    build_wheel(wheel_dir)
-
-    # Step 4: Copy config and skills
-    print("\n[4/4] Copying config and skills...")
+    # Step 3: Copy config and skills
+    print("\n[3/4] Copying config and skills...")
     copy_config_and_skills(RESOURCES_DIR)
 
-    # Step 5: Generate CLI shims
-    print("\n[5/5] Generating CLI shims...")
-    generate_shims(RESOURCES_DIR)
+    # Step 4: Generate CLI shims
+    print("\n[4/4] Generating CLI shims...")
+    generate_shims(python_exe, RESOURCES_DIR)
 
-    # Summary
     total_size = sum(f.stat().st_size for f in RESOURCES_DIR.rglob("*") if f.is_file())
     total_mb = total_size / (1024 * 1024)
 
@@ -300,7 +225,6 @@ def bundle_python() -> None:
     print(f"  Output: {RESOURCES_DIR}")
     print("=" * 50)
 
-    # List top-level contents
     print("\nContents:")
     for item in sorted(RESOURCES_DIR.iterdir()):
         if item.is_dir():

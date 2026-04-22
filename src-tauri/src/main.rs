@@ -57,62 +57,54 @@ fn main() {
         // No need to AttachConsole.
 
 
-        // Try to locate the backend venv in AppData (Roaming)
-        // backend.rs uses app.path().app_data_dir() which maps to Roaming/com.suzent.app on Windows
-        if let Some(app_data) = std::env::var_os("APPDATA") {
-            let app_data_root = std::path::PathBuf::from(app_data);
-            // Default bundle identifier
-            let suzent_app_data = app_data_root.join("com.suzent.app");
-            let python_exe = suzent_app_data.join("backend-venv").join("Scripts").join("python.exe");
+        // Locate the bundled python-env next to the executable.
+        // The exe is installed at <install_dir>/SUZENT.exe; python-env is a sibling directory.
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                let python_exe = if cfg!(windows) {
+                    exe_dir.join("python-env").join("python.exe")
+                } else {
+                    exe_dir.join("python-env").join("bin").join("python3")
+                };
 
-            // Always attempt to validate/setup the environment first
-            // This ensures integrity checks (like missing entry points) are run
-            if let Ok(exe_path) = std::env::current_exe() {
-                 if let Some(exe_dir) = exe_path.parent() {
-                    // suzent_app_data is already defined above as Local/com.suzent.app
-                    
-                    // We use the exe directory as the resource directory
-                    if let Err(e) = backend::ensure_backend_setup(exe_dir, &suzent_app_data, &|msg| eprintln!("Setup: {}", msg)) {
-                        eprintln!("Warning: Environment setup failed: {}", e);
-                    }
-                    
-                    if let Err(e) = backend::sync_app_data(exe_dir, &suzent_app_data) {
-                         eprintln!("Warning: Failed to sync app data: {}", e);
-                    }
-                 }
-            }
+                // Determine app data dir for suzent (same location as the GUI would use)
+                let suzent_app_data = if let Some(app_data) = std::env::var_os("APPDATA") {
+                    std::path::PathBuf::from(app_data).join("com.suzent.app")
+                } else {
+                    exe_dir.join("data")
+                };
 
-            if python_exe.exists() {
-                // Pass all arguments to python -m suzent.cli
-                // Skip the first argument (executable name)
-                let cli_args = &args[1..];
-                
-                let status = std::process::Command::new(python_exe)
-                    .args(["-m", "suzent.cli"])
-                    .env("SUZENT_APP_DATA", &suzent_app_data)
-                    .stdin(std::process::Stdio::null())
-                    .args(cli_args)
-                    .status();
-
-                match status {
-                    Ok(exit_status) => {
-                        std::process::exit(exit_status.code().unwrap_or(1));
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to execute CLI: {}", e);
-                        std::process::exit(1);
-                    }
+                // Sync config/skills on first install or upgrade
+                if let Err(e) = backend::sync_app_data(exe_dir, &suzent_app_data) {
+                    eprintln!("Warning: Failed to sync app data: {}", e);
                 }
-            } else {
-                eprintln!("Error: Suzent environment not initialized and setup failed.");
-                eprintln!("Please run the application from the Start Menu once to ensure environment is set up.");
-                std::process::exit(1);
+
+                if python_exe.exists() {
+                    let cli_args = &args[1..];
+                    let status = std::process::Command::new(&python_exe)
+                        .args(["-m", "suzent.cli"])
+                        .env("SUZENT_APP_DATA", &suzent_app_data)
+                        .args(cli_args)
+                        .status();
+
+                    match status {
+                        Ok(exit_status) => {
+                            std::process::exit(exit_status.code().unwrap_or(1));
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to execute CLI: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                } else {
+                    eprintln!("Error: Bundled Python not found at {:?}", python_exe);
+                    eprintln!("Please reinstall the application.");
+                    std::process::exit(1);
+                }
             }
         } else {
-             // Non-Windows or weird environment, fall through to GUI? 
-             // Or just print error. For now, let's assume if args > 1 we WANT cli.
-             eprintln!("Error: Could not determine APPDATA location.");
-             std::process::exit(1);
+            eprintln!("Error: Could not determine executable path.");
+            std::process::exit(1);
         }
     }
 

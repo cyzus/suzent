@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.5.0] - 2026-04-22
+
+### ⚡ Changed
+- **Desktop Build**: Switch to prebuilt Python environment — all dependencies are now installed at build time instead of first launch. The app starts instantly with no network access or venv creation on the user's machine.
+
 ### 🚀 Added
 - **Retry**: Re-run the last user message from scratch. Click the retry icon next to the copy button on any assistant response, or send `/retry` in any social channel. Before each turn the agent state, display messages, sandbox `/persistence` directory, and all custom-volume host directories are snapshotted; on retry everything is restored and the original message is replayed. `/shared` is intentionally excluded from rollback because it is shared across all chats.
 - **Two-Phase Chat Persistence**: State is now saved in two stages — a quick snapshot immediately after streaming ends (so fast-follow turns always have full history), followed by a background job that handles transcript writing, memory extraction, context compression, and final persistence. Each step is tracked individually, and failed jobs are automatically retried up to 3 times.
