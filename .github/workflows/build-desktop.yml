@@ -127,7 +127,7 @@ jobs:
       - name: Build Tauri app
         run: |
           cd src-tauri
-          cargo tauri build --config tauri.conf.prod.json --target ${{ matrix.target }}
+          cargo tauri build --config tauri.conf.prod.json --target ${{ matrix.target }} ${{ runner.os == 'Linux' && '--bundles deb' || '' }}
 
       # Upload build artifacts for the release job
       - name: Upload build artifacts
