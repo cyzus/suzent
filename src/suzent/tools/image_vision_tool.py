@@ -1,6 +1,4 @@
 import base64
-import os
-from pathlib import Path
 from typing import Annotated
 
 from pydantic import Field
@@ -9,9 +7,13 @@ import litellm
 
 from suzent.core.agent_deps import AgentDeps
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
+from suzent.tools.filesystem.file_tool_utils import get_or_create_path_resolver
+from suzent.config import CONFIG
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
+
+MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20MB limit
 
 
 class ImageVisionTool(Tool):
@@ -37,13 +39,24 @@ class ImageVisionTool(Tool):
         ],
     ) -> ToolResult:
         try:
-            path = Path(image_path)
-            if not path.is_absolute():
-                path = Path(os.getcwd()) / path
+            resolver = get_or_create_path_resolver(ctx.deps)
+            path = resolver.resolve(image_path)
 
             if not path.exists():
-                return ToolResult.error(
-                    f"Image file not found: {path}", code=ToolErrorCode.FILE_NOT_FOUND
+                return ToolResult.error_result(
+                    ToolErrorCode.FILE_NOT_FOUND, f"Image file not found: {path}"
+                )
+
+            if not path.is_file():
+                return ToolResult.error_result(
+                    ToolErrorCode.FILE_REQUIRED, f"Path is not a file: {path}"
+                )
+
+            file_stat = path.stat()
+            if file_stat.st_size > MAX_IMAGE_SIZE:
+                return ToolResult.error_result(
+                    ToolErrorCode.FILE_TOO_LARGE,
+                    f"Image file too large ({file_stat.st_size} bytes). Max size is {MAX_IMAGE_SIZE} bytes.",
                 )
 
             # Read and base64 encode
@@ -60,9 +73,8 @@ class ImageVisionTool(Tool):
             elif ext == ".gif":
                 mime_type = "image/gif"
 
-            model = getattr(
-                ctx.deps.config, "vision_model", ctx.deps.config.default_model
-            )
+            # model access fix
+            model = getattr(CONFIG, "vision_model", CONFIG.default_model)
             if not model:
                 model = "gpt-4o"
 
@@ -89,10 +101,10 @@ class ImageVisionTool(Tool):
             )
 
             result_text = response.choices[0].message.content
-            return ToolResult.success(result_text)
+            return ToolResult.success_result(result_text)
 
         except Exception as e:
             logger.error(f"Image vision failed: {e}")
-            return ToolResult.error(
-                f"Failed to analyze image: {str(e)}", code=ToolErrorCode.EXECUTION_ERROR
+            return ToolResult.error_result(
+                ToolErrorCode.EXECUTION_FAILED, f"Failed to analyze image: {str(e)}"
             )
