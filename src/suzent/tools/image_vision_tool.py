@@ -74,7 +74,9 @@ class ImageVisionTool(Tool):
                 mime_type = "image/gif"
 
             # model access fix
-            model = getattr(CONFIG, "vision_model", CONFIG.default_model)
+            model = getattr(
+                CONFIG, "vision_model", getattr(CONFIG, "default_model", "gpt-4o")
+            )
             if not model:
                 model = "gpt-4o"
 

@@ -24,23 +24,38 @@ def mock_ctx():
 
 @pytest.mark.asyncio
 async def test_image_vision_file_not_found(mock_ctx):
-    tool = ImageVisionTool()
-    result = await tool.forward(mock_ctx, "does_not_exist.jpg", "What is this?")
-    assert not result.success
-    assert result.error_code == ToolErrorCode.FILE_NOT_FOUND
+    mock_path = MagicMock()
+    mock_path.exists.return_value = False
+
+    mock_resolver = MagicMock()
+    mock_resolver.resolve.return_value = mock_path
+
+    with patch(
+        "suzent.tools.image_vision_tool.get_or_create_path_resolver",
+        return_value=mock_resolver,
+    ):
+        tool = ImageVisionTool()
+        result = await tool.forward(mock_ctx, "does_not_exist.jpg", "What is this?")
+        assert not result.success
+        assert result.error_code == ToolErrorCode.FILE_NOT_FOUND
 
 
 @pytest.mark.asyncio
 @patch("suzent.tools.image_vision_tool.litellm.acompletion", new_callable=AsyncMock)
-@patch("suzent.tools.image_vision_tool.Path.exists", return_value=True)
-@patch("suzent.tools.image_vision_tool.Path.is_file", return_value=True)
-@patch("suzent.tools.image_vision_tool.Path.stat")
 @patch("builtins.open", new_callable=MagicMock)
-async def test_image_vision_success(
-    mock_open, mock_stat, mock_is_file, mock_exists, mock_acompletion, mock_ctx
-):
-    # Mock file stat to pass size check
-    mock_stat.return_value.st_size = 1024
+async def test_image_vision_success(mock_open, mock_acompletion, mock_ctx):
+    mock_stat = MagicMock()
+    mock_stat.st_size = 1024
+
+    mock_path = MagicMock()
+    mock_path.exists.return_value = True
+    mock_path.is_file.return_value = True
+    mock_path.stat.return_value = mock_stat
+    mock_path.suffix = ".png"
+    mock_path.name = "test.png"
+
+    mock_resolver = MagicMock()
+    mock_resolver.resolve.return_value = mock_path
 
     # Mock open and read
     mock_file = MagicMock()
@@ -53,29 +68,45 @@ async def test_image_vision_success(
     mock_response.choices[0].message.content = "A beautiful cyber tentacle."
     mock_acompletion.return_value = mock_response
 
-    tool = ImageVisionTool()
-    result = await tool.forward(mock_ctx, "test.png", "Describe")
+    with patch(
+        "suzent.tools.image_vision_tool.get_or_create_path_resolver",
+        return_value=mock_resolver,
+    ):
+        # Mock CONFIG.default_model issue by setting model directly
+        with patch("suzent.tools.image_vision_tool.getattr", return_value="gpt-4o"):
+            tool = ImageVisionTool()
+            result = await tool.forward(mock_ctx, "test.png", "Describe")
 
-    assert result.success
-    assert "cyber tentacle" in result.message
+            assert result.success
+            assert "cyber tentacle" in result.message
 
-    # Verify acompletion was called with correct mime type in base64 string
-    called_kwargs = mock_acompletion.call_args.kwargs
-    assert "messages" in called_kwargs
-    content = called_kwargs["messages"][0]["content"]
-    image_url = content[1]["image_url"]["url"]
-    assert "image/png" in image_url
+        # Verify acompletion was called with correct mime type in base64 string
+        called_kwargs = mock_acompletion.call_args.kwargs
+        assert "messages" in called_kwargs
+        content = called_kwargs["messages"][0]["content"]
+        image_url = content[1]["image_url"]["url"]
+        assert "image/png" in image_url
 
 
 @pytest.mark.asyncio
-@patch("suzent.tools.image_vision_tool.Path.exists", return_value=True)
-@patch("suzent.tools.image_vision_tool.Path.is_file", return_value=True)
-@patch("suzent.tools.image_vision_tool.Path.stat")
-async def test_image_vision_too_large(mock_stat, mock_is_file, mock_exists, mock_ctx):
-    mock_stat.return_value.st_size = 50 * 1024 * 1024  # 50MB
+async def test_image_vision_too_large(mock_ctx):
+    mock_stat = MagicMock()
+    mock_stat.st_size = 50 * 1024 * 1024  # 50MB
 
-    tool = ImageVisionTool()
-    result = await tool.forward(mock_ctx, "huge.jpg", "Describe")
+    mock_path = MagicMock()
+    mock_path.exists.return_value = True
+    mock_path.is_file.return_value = True
+    mock_path.stat.return_value = mock_stat
 
-    assert not result.success
-    assert result.error_code == ToolErrorCode.FILE_TOO_LARGE
+    mock_resolver = MagicMock()
+    mock_resolver.resolve.return_value = mock_path
+
+    with patch(
+        "suzent.tools.image_vision_tool.get_or_create_path_resolver",
+        return_value=mock_resolver,
+    ):
+        tool = ImageVisionTool()
+        result = await tool.forward(mock_ctx, "huge.jpg", "Describe")
+
+        assert not result.success
+        assert result.error_code == ToolErrorCode.FILE_TOO_LARGE
