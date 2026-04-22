@@ -292,9 +292,7 @@ class PlanningTool(Tool):
         current = plan.first_in_progress()
         current_str = f"{current.number}. {current.description}" if current else "None"
 
-        output = (
-            f"{header}:\n<task_plan>\nGoal: {plan.objective}\nPhases: {phases_str}\n"
-        )
+        output = f"{header}:\nGoal: {plan.objective}\nPhases: {phases_str}\n"
 
         if previous_phase and next_phase:
             output += f"Previous phase: {previous_phase.number}. {previous_phase.description}\n"
@@ -302,5 +300,4 @@ class PlanningTool(Tool):
         else:
             output += f"Current phase: {current_str}\n"
 
-        output += "</task_plan>"
         return ToolResult.success_result(output)
