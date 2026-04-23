@@ -29,19 +29,6 @@ Nodes are companion devices (phones, desktops, headless servers) that connect to
                                           └───────────────────┘
 ```
 
-## Using Nodes in Sandbox (REST API)
-
-In sandbox mode, `suzent` CLI is not installed. Use `SUZENT_BASE_URL` and call the REST API directly.
-
-### Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/nodes` | List all connected nodes |
-| GET | `/nodes/{node_id_or_name}` | Describe a specific node |
-| POST | `/nodes/{node_id_or_name}/invoke` | Invoke a command on a node |
-| WS | `/ws/node` | WebSocket endpoint for node connections |
-
 ### Sandbox Python Example
 
 ```python
@@ -75,50 +62,50 @@ print(resp.json())
 
 ## Using Nodes via CLI (Host Mode)
 
-Nodes are controlled through the `suzent nodes` CLI subcommands. The agent uses these same commands via `BashTool`.
+Nodes are controlled through the `suzent node` CLI subcommands. The agent uses these same commands via `BashTool`.
 
 ### List Connected Nodes
 
 ```bash
-suzent nodes list
+suzent node list
 ```
 
 ### Check Connectivity
 
 ```bash
-suzent nodes status
+suzent node status
 ```
 
 ### Describe a Node's Capabilities
 
 ```bash
-suzent nodes describe <node_id_or_name>
+suzent node describe <node_id_or_name>
 ```
 
 ### Invoke a Command
 
 ```bash
 # Option 1: Key-Value Pairs (Simpler)
-suzent nodes invoke <node> <command> key=value [key2=value2 ...]
+suzent node invoke <node> <command> key=value [key2=value2 ...]
 
 # Option 2: JSON Params (Legacy/Complex)
-suzent nodes invoke <node> <command> --params '{"key": "value"}'
+suzent node invoke <node> <command> --params '{"key": "value"}'
 ```
 
 **Examples:**
 
 ```bash
 # Take a photo (simple)
-suzent nodes invoke MyPhone camera.snap format=png
+suzent node invoke MyPhone camera.snap format=png
 
 # Speak with arguments (inferred types)
-suzent nodes invoke "Local PC" speaker.speak text="Hello world" prompt=cheerful
+suzent node invoke "Local PC" speaker.speak text="Hello world" prompt=cheerful
 
 # Mixed types (int, boolean)
-suzent nodes invoke MyNode some.command count=5 verbose=true
+suzent node invoke MyNode some.command count=5 verbose=true
 
 # JSON fallback for complex objects
-suzent nodes invoke MyNode config.update data='{"nested": true}'
+suzent node invoke MyNode config.update data='{"nested": true}'
 ```
 
 ## WebSocket Protocol

@@ -16,8 +16,9 @@ from datetime import datetime
 from typing import Optional
 
 import typer
-
-from suzent.cli._http import _http_delete, _http_get, _http_post, _http_put
+import asyncio
+from suzent.client import get_client
+from suzent.client.base import ClientError
 
 cron_app = typer.Typer(help="Manage scheduled cron jobs.")
 
@@ -27,39 +28,48 @@ def list_jobs(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full details"),
 ):
     """List all scheduled cron jobs."""
-    data = _http_get("/cron/jobs")
-    jobs = data.get("jobs", [])
 
-    if not jobs:
-        typer.echo("No cron jobs configured.")
-        return
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.cron.list_jobs()
+            jobs = data.get("jobs", [])
 
-    for job in jobs:
-        status = "ON" if job["active"] else "OFF"
-        typer.echo(
-            f"  #{job['id']:>3}  [{status}]  {job['name']:<20}  {job['cron_expr']:<15}"
-        )
+            if not jobs:
+                typer.echo("No cron jobs configured.")
+                return
 
-        if verbose:
-            prompt = job["prompt"]
+            for job in jobs:
+                status = "ON" if job["active"] else "OFF"
+                typer.echo(
+                    f"  #{job['id']:>3}  [{status}]  {job['name']:<20}  {job['cron_expr']:<15}"
+                )
+
+                if verbose:
+                    prompt = job["prompt"]
+                    typer.echo(
+                        f"        Prompt:   {prompt[:80]}{'...' if len(prompt) > 80 else ''}"
+                    )
+                    typer.echo(f"        Delivery: {job['delivery_mode']}")
+                    if job.get("model_override"):
+                        typer.echo(f"        Model:    {job['model_override']}")
+                    typer.echo(f"        Last run: {job['last_run_at'] or '-'}")
+                    typer.echo(f"        Next run: {job['next_run_at'] or '-'}")
+                    if job.get("last_result"):
+                        result = job["last_result"][:100]
+                        typer.echo(f"        Result:   {result}")
+                    if job.get("last_error"):
+                        typer.echo(f"        Error:    {job['last_error']}")
+                    typer.echo()
+
             typer.echo(
-                f"        Prompt:   {prompt[:80]}{'...' if len(prompt) > 80 else ''}"
+                f"\n  {len(jobs)} job(s) total, {sum(1 for j in jobs if j['active'])} active"
             )
-            typer.echo(f"        Delivery: {job['delivery_mode']}")
-            if job.get("model_override"):
-                typer.echo(f"        Model:    {job['model_override']}")
-            typer.echo(f"        Last run: {job['last_run_at'] or '-'}")
-            typer.echo(f"        Next run: {job['next_run_at'] or '-'}")
-            if job.get("last_result"):
-                result = job["last_result"][:100]
-                typer.echo(f"        Result:   {result}")
-            if job.get("last_error"):
-                typer.echo(f"        Error:    {job['last_error']}")
-            typer.echo()
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
 
-    typer.echo(
-        f"\n  {len(jobs)} job(s) total, {sum(1 for j in jobs if j['active'])} active"
-    )
+    asyncio.run(_run())
 
 
 @cron_app.command("add")
@@ -76,20 +86,29 @@ def add_job(
     inactive: bool = typer.Option(False, "--inactive", help="Create in disabled state"),
 ):
     """Create a new cron job — runs a prompt on schedule in an isolated session."""
-    payload = {
-        "name": name,
-        "cron_expr": cron,
-        "prompt": prompt,
-        "delivery_mode": delivery,
-        "model_override": model,
-        "active": not inactive,
-    }
 
-    data = _http_post("/cron/jobs", payload)
-    job = data.get("job", {})
-    typer.echo(f"Created cron job #{job.get('id')}: {name}")
-    typer.echo(f"  Schedule: {cron}")
-    typer.echo(f"  Next run: {job.get('next_run_at', '-')}")
+    async def _run():
+        payload = {
+            "name": name,
+            "cron_expr": cron,
+            "prompt": prompt,
+            "delivery_mode": delivery,
+            "model_override": model,
+            "active": not inactive,
+        }
+
+        try:
+            client = get_client()
+            data = await client.cron.create_job(payload)
+            job = data.get("job", {})
+            typer.echo(f"Created cron job #{job.get('id')}: {name}")
+            typer.echo(f"  Schedule: {cron}")
+            typer.echo(f"  Next run: {job.get('next_run_at', '-')}")
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
 
 
 @cron_app.command("remove")
@@ -97,8 +116,17 @@ def remove_job(
     job_id: int = typer.Argument(..., help="Job ID to delete"),
 ):
     """Delete a cron job."""
-    _http_delete(f"/cron/jobs/{job_id}")
-    typer.echo(f"Deleted job #{job_id}")
+
+    async def _run():
+        try:
+            client = get_client()
+            await client.cron.delete_job(job_id)
+            typer.echo(f"Deleted job #{job_id}")
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
 
 
 @cron_app.command("trigger")
@@ -106,8 +134,17 @@ def trigger_job(
     job_id: int = typer.Argument(..., help="Job ID to trigger immediately"),
 ):
     """Trigger immediate execution of a cron job."""
-    _http_post(f"/cron/jobs/{job_id}/trigger")
-    typer.echo(f"Triggered job #{job_id}")
+
+    async def _run():
+        try:
+            client = get_client()
+            await client.cron.trigger_job(job_id)
+            typer.echo(f"Triggered job #{job_id}")
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
 
 
 @cron_app.command("toggle")
@@ -115,19 +152,27 @@ def toggle_job(
     job_id: int = typer.Argument(..., help="Job ID to toggle"),
 ):
     """Toggle a cron job active/inactive."""
-    # First get current state
-    jobs_data = _http_get("/cron/jobs")
-    jobs = jobs_data.get("jobs", [])
-    job = next((j for j in jobs if j["id"] == job_id), None)
 
-    if not job:
-        typer.echo(f"Job #{job_id} not found.")
-        raise typer.Exit(code=1)
+    async def _run():
+        try:
+            client = get_client()
+            jobs_data = await client.cron.list_jobs()
+            jobs = jobs_data.get("jobs", [])
+            job = next((j for j in jobs if j["id"] == job_id), None)
 
-    new_state = not job["active"]
-    _http_put(f"/cron/jobs/{job_id}", {"active": new_state})
-    state_str = "activated" if new_state else "deactivated"
-    typer.echo(f"Job #{job_id} ({job['name']}) {state_str}")
+            if not job:
+                typer.echo(f"Job #{job_id} not found.")
+                raise typer.Exit(code=1)
+
+            new_state = not job["active"]
+            await client.cron.update_job(job_id, {"active": new_state})
+            state_str = "activated" if new_state else "deactivated"
+            typer.echo(f"Job #{job_id} ({job['name']}) {state_str}")
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
 
 
 @cron_app.command("edit")
@@ -146,29 +191,38 @@ def edit_job(
     ),
 ):
     """Edit an existing cron job's fields."""
-    updates = {}
-    if name is not None:
-        updates["name"] = name
-    if cron is not None:
-        updates["cron_expr"] = cron
-    if prompt is not None:
-        updates["prompt"] = prompt
-    if delivery is not None:
-        updates["delivery_mode"] = delivery
-    if model is not None:
-        updates["model_override"] = None if model.lower() == "none" else model
 
-    if not updates:
-        typer.echo(
-            "No fields to update. Use --name, --cron, --prompt, --delivery, or --model."
-        )
-        raise typer.Exit(code=1)
+    async def _run():
+        updates = {}
+        if name is not None:
+            updates["name"] = name
+        if cron is not None:
+            updates["cron_expr"] = cron
+        if prompt is not None:
+            updates["prompt"] = prompt
+        if delivery is not None:
+            updates["delivery_mode"] = delivery
+        if model is not None:
+            updates["model_override"] = None if model.lower() == "none" else model
 
-    data = _http_put(f"/cron/jobs/{job_id}", updates)
-    job = data.get("job", {})
-    typer.echo(f"Updated job #{job_id}: {job.get('name', '?')}")
-    if cron is not None:
-        typer.echo(f"  Next run: {job.get('next_run_at', '-')}")
+        if not updates:
+            typer.echo(
+                "No fields to update. Use --name, --cron, --prompt, --delivery, or --model."
+            )
+            raise typer.Exit(code=1)
+
+        try:
+            client = get_client()
+            data = await client.cron.update_job(job_id, updates)
+            job = data.get("job", {})
+            typer.echo(f"Updated job #{job_id}: {job.get('name', '?')}")
+            if cron is not None:
+                typer.echo(f"  Next run: {job.get('next_run_at', '-')}")
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
 
 
 @cron_app.command("history")
@@ -177,45 +231,63 @@ def job_history(
     limit: int = typer.Option(10, "--limit", "-l", help="Number of recent runs"),
 ):
     """Show run history for a cron job."""
-    data = _http_get(f"/cron/jobs/{job_id}/runs?limit={limit}")
-    runs = data.get("runs", [])
 
-    if not runs:
-        typer.echo(f"No run history for job #{job_id}.")
-        return
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.cron.job_history(job_id, limit)
+            runs = data.get("runs", [])
 
-    status_icons = {"success": "+", "error": "x", "running": "~"}
+            if not runs:
+                typer.echo(f"No run history for job #{job_id}.")
+                return
 
-    for run in runs:
-        icon = status_icons.get(run["status"], "?")
-        started = run["started_at"][:19].replace("T", " ")
-        duration = ""
-        if finished := run.get("finished_at"):
-            try:
-                s = datetime.fromisoformat(run["started_at"])
-                f = datetime.fromisoformat(finished)
-                duration = f" ({int((f - s).total_seconds())}s)"
-            except ValueError:
-                pass
+            status_icons = {"success": "+", "error": "x", "running": "~"}
 
-        typer.echo(f"  [{icon}] {started}{duration}")
-        if run.get("result"):
-            typer.echo(f"      {run['result'][:100]}")
-        if run.get("error"):
-            typer.echo(f"      ERROR: {run['error'][:100]}")
+            for run in runs:
+                icon = status_icons.get(run["status"], "?")
+                started = run["started_at"][:19].replace("T", " ")
+                duration = ""
+                if finished := run.get("finished_at"):
+                    try:
+                        s = datetime.fromisoformat(run["started_at"])
+                        f = datetime.fromisoformat(finished)
+                        duration = f" ({int((f - s).total_seconds())}s)"
+                    except ValueError:
+                        pass
+
+                typer.echo(f"  [{icon}] {started}{duration}")
+                if run.get("result"):
+                    typer.echo(f"      {run['result'][:100]}")
+                if run.get("error"):
+                    typer.echo(f"      ERROR: {run['error'][:100]}")
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
 
 
 @cron_app.command("status")
 def scheduler_status():
     """Show scheduler status and job counts."""
-    data = _http_get("/cron/status")
-    running = data.get("scheduler_running", False)
-    total = data.get("total_jobs", 0)
-    active = data.get("active_jobs", 0)
 
-    status = "RUNNING" if running else "STOPPED"
-    typer.echo(f"  Scheduler: {status}")
-    typer.echo(f"  Jobs:      {active} active / {total} total")
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.cron.status()
+            running = data.get("scheduler_running", False)
+            total = data.get("total_jobs", 0)
+            active = data.get("active_jobs", 0)
+
+            status = "RUNNING" if running else "STOPPED"
+            typer.echo(f"  Scheduler: {status}")
+            typer.echo(f"  Jobs:      {active} active / {total} total")
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
 
 
 @cron_app.command("install-presets")
@@ -227,19 +299,27 @@ def install_presets(
     ),
 ):
     """Install or update builtin cron presets for wiki ingest/lint."""
-    payload = {"activate_existing": activate_existing}
-    data = _http_post("/cron/presets/install", payload)
 
-    if not data.get("success"):
-        reason = data.get("reason", "unknown")
-        typer.echo(f"Preset installation skipped: {reason}")
-        return
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.cron.install_presets(activate_existing)
 
-    created = data.get("created", [])
-    updated = data.get("updated", [])
-    unchanged = data.get("unchanged", [])
+            if not data.get("success"):
+                reason = data.get("reason", "unknown")
+                typer.echo(f"Preset installation skipped: {reason}")
+                return
 
-    typer.echo("Cron presets processed")
-    typer.echo(f"  Created:   {len(created)}")
-    typer.echo(f"  Updated:   {len(updated)}")
-    typer.echo(f"  Unchanged: {len(unchanged)}")
+            created = data.get("created", [])
+            updated = data.get("updated", [])
+            unchanged = data.get("unchanged", [])
+
+            typer.echo("Cron presets processed")
+            typer.echo(f"  Created:   {len(created)}")
+            typer.echo(f"  Updated:   {len(updated)}")
+            typer.echo(f"  Unchanged: {len(unchanged)}")
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())

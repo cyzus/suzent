@@ -67,6 +67,9 @@ class NodeManager:
 
         # Fallback: search by display_name (case-insensitive)
         lower = node_id_or_name.lower()
+        if lower == "host":
+            lower = "local pc"
+
         for node in self.nodes.values():
             if node.display_name.lower() == lower:
                 return node

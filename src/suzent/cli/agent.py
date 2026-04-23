@@ -7,7 +7,9 @@ Usage:
 """
 
 import typer
-from suzent.cli._http import _http_get, _http_post, _http_post_stream
+import asyncio
+from suzent.client import get_client
+from suzent.client.base import ClientError
 from suzent.core.stream_parser import (
     StreamParser,
     TextChunk,
@@ -24,17 +26,19 @@ agent_app = typer.Typer(help="Interact with the Suzent agent")
 
 def _resolve_approval(request_id: str, approved: bool) -> None:
     """Send an approval resolution to the server and display the result."""
-    result = _http_post(
-        "/chat/approve", data={"request_id": request_id, "approved": approved}
-    )
-    if "error" in result:
-        typer.secho(f"❌ {result['error']}", fg=typer.colors.RED)
-        return
 
-    if approved:
-        typer.secho(f"✅ Approved tool call {request_id}", fg=typer.colors.GREEN)
-    else:
-        typer.secho(f"⛔ Denied tool call {request_id}", fg=typer.colors.YELLOW)
+    async def _resolve():
+        client = get_client()
+        return await client.chat.approve_tool_call(request_id, approved)
+
+    try:
+        asyncio.run(_resolve())
+        if approved:
+            typer.secho(f"✅ Approved tool call {request_id}", fg=typer.colors.GREEN)
+        else:
+            typer.secho(f"⛔ Denied tool call {request_id}", fg=typer.colors.YELLOW)
+    except ClientError as e:
+        typer.secho(f"❌ {e}", fg=typer.colors.RED)
 
 
 @agent_app.command("approve")
@@ -63,16 +67,17 @@ def agent_current():
         typer.echo("No active CLI chat session.")
         return
 
+    async def _get_chat():
+        client = get_client()
+        return await client.chat.get_chat(chat_id)
+
     try:
-        res = _http_get(f"/chats/{chat_id}")
-        if "error" in res:
-            typer.secho(
-                f"Session {chat_id} not found on server.", fg=typer.colors.YELLOW
-            )
-        else:
-            title = res.get("title", "Unknown")
-            typer.echo(f"Active Session: {chat_id}")
-            typer.echo(f"Title: {title}")
+        res = asyncio.run(_get_chat())
+        title = res.get("title", "Unknown")
+        typer.echo(f"Active Session: {chat_id}")
+        typer.echo(f"Title: {title}")
+    except ClientError:
+        typer.secho(f"Session {chat_id} not found on server.", fg=typer.colors.YELLOW)
     except Exception:
         typer.echo(f"Active Session: {chat_id} (Server unreachable)")
 
@@ -107,16 +112,14 @@ def agent_chat(
                 else (message or "CLI Session")
             )
             title = f"[CLI] {init_title}"
-            res = _http_post(
-                "/chats", data={"title": title, "messages": [], "config": {}}
-            )
-            if "error" in res:
-                typer.secho(
-                    f"❌ Failed to create chat: {res['error']}",
-                    fg=typer.colors.RED,
-                    err=True,
+
+            async def _create_chat():
+                client = get_client()
+                return await client.chat.create_chat(
+                    {"title": title, "messages": [], "config": {}}
                 )
-                return
+
+            res = asyncio.run(_create_chat())
             chat_id = res.get("id")
             set_current_chat_id(chat_id)
         except Exception as e:
@@ -127,12 +130,18 @@ def agent_chat(
     typer.echo("Type /help for commands. Use 'exit' to quit.\n")
 
     # Fetch commands for the completer
-    cmd_words = []
     cmd_meta = {}
+    cmd_words = []
     try:
-        cmds_res = _http_get("/commands?surface=cli")
-        if isinstance(cmds_res, list):
-            for cmd in cmds_res:
+
+        async def _get_cmds():
+            client = get_client()
+            return await client.chat.commands(surface="cli")
+
+        cmds_res = asyncio.run(_get_cmds())
+        cmds = cmds_res.get("commands", [])
+        for cmd in cmds:
+            if "name" in cmd:
                 cmd_meta[cmd["name"]] = cmd["description"]
                 cmd_words.extend(cmd.get("aliases", []))
     except Exception:
@@ -169,10 +178,13 @@ def agent_chat(
                 if resume_approvals:
                     payload["resume_approvals"] = resume_approvals
 
-                stream = _http_post_stream("/chat", data=payload)
-                pending_approvals: list[ApprovalRequest] = []
+                async def _stream():
+                    client = get_client()
+                    async for event in client.chat.stream_message(payload):
+                        yield event
 
-                for event in parser.parse(stream):
+                pending_approvals = []
+                for event in parser.parse(_stream()):
                     if isinstance(event, TextChunk):
                         color = typer.colors.GREEN if event.is_code else None
                         typer.secho(event.content, nl=False, fg=color)
@@ -259,17 +271,23 @@ def agent_chat(
 @agent_app.command("status")
 def agent_status():
     """Show the agent/server status."""
+
+    async def _get_status():
+        client = get_client()
+        config = await client.config.get()
+        nodes = await client.nodes.list()
+        return config, nodes
+
     try:
-        data = _http_get("/config")
+        data, node_data = asyncio.run(_get_status())
         typer.echo("🟢 Suzent server is running")
         typer.echo(f"   Title: {data.get('title', 'N/A')}")
         typer.echo(f"   Model options: {', '.join(data.get('model_options', []))}")
         typer.echo(f"   Tools: {len(data.get('tool_options', []))} available")
 
         # Also show node status
-        node_data = _http_get("/nodes")
         nodes = node_data.get("nodes", [])
         connected = sum(1 for n in nodes if n.get("status") == "connected")
         typer.echo(f"   Nodes: {connected} connected")
-    except typer.Exit:
+    except Exception:
         typer.echo("🔴 Suzent server is not running")

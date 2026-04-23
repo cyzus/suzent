@@ -251,7 +251,16 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                                 const textToInsert = activeCmd.isOption && activeCmd.parentCmd 
                                     ? `${activeCmd.parentCmd} ${activeCmd.aliases[0]} ` 
                                     : `${activeCmd.aliases?.[0] || activeCmd.usage} `;
-                                setInput(textToInsert);
+
+                                // If the user completely typed out the command (e.g. "/node list")
+                                // pressing Enter should send it rather than just expanding the trailing space.
+                                if (e.key === 'Enter' && input.trim() === textToInsert.trim()) {
+                                    if (configReady && input.trim()) {
+                                        send();
+                                    }
+                                } else {
+                                    setInput(textToInsert);
+                                }
                             }
                             return;
                         }

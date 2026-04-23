@@ -8,19 +8,28 @@ Usage:
 """
 
 import json
-
 import typer
-
-from suzent.cli._http import _http_get, _http_post
+import asyncio
+from suzent.client import get_client
+from suzent.client.base import ClientError
 
 config_app = typer.Typer(help="View and manage Suzent configuration")
 
 
 @config_app.command("show")
 def config_show():
-    """Dump the current configuration."""
-    data = _http_get("/config")
-    typer.echo(json.dumps(data, indent=2))
+    """Show raw system configuration fields."""
+
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.config.get()
+            typer.echo(json.dumps(data, indent=2))
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
 
 
 @config_app.command("get")
@@ -28,28 +37,65 @@ def config_get(
     key: str = typer.Argument(help="Configuration key to read"),
 ):
     """Read a specific configuration value."""
-    data = _http_get("/config")
-    value = data.get(key)
-    if value is None:
-        typer.echo(f"❌ Key '{key}' not found in config")
-        raise typer.Exit(code=1)
 
-    if isinstance(value, (dict, list)):
-        typer.echo(json.dumps(value, indent=2))
-    else:
-        typer.echo(str(value))
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.config.get()
+            value = data.get(key)
+            if value is None:
+                typer.echo(f"❌ Key '{key}' not found in config")
+                raise typer.Exit(code=1)
+
+            if isinstance(value, (dict, list)):
+                typer.echo(json.dumps(value, indent=2))
+            else:
+                typer.echo(str(value))
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
 
 
 @config_app.command("set")
 def config_set(
-    key: str = typer.Argument(help="Configuration key to set"),
-    value: str = typer.Argument(help="Value to set"),
+    key: str = typer.Argument(help="The preference key (e.g. general.theme)"),
+    value: str = typer.Argument(
+        help="The flat scalar value or valid JSON string (e.g. dark, true, 42)"
+    ),
 ):
-    """Set a configuration value (persisted to config/default.yaml)."""
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError:
-        parsed = value
+    """Update a specific user preference."""
 
-    _http_post("/preferences", data={key: parsed})
-    typer.echo(f"✅ Set {key} = {value}")
+    async def _run():
+        try:
+            lower = value.lower()
+            if lower == "true":
+                parsed = True
+            elif lower == "false":
+                parsed = False
+            elif lower in ("null", "none"):
+                parsed = None
+            else:
+                try:
+                    parsed = int(value)
+                except ValueError:
+                    try:
+                        parsed = float(value)
+                    except ValueError:
+                        if value.startswith(("{", "[")):
+                            try:
+                                parsed = json.loads(value)
+                            except json.JSONDecodeError:
+                                parsed = value
+                        else:
+                            parsed = value
+
+            client = get_client()
+            await client.config.update_preferences({key: parsed})
+            typer.echo(f"✅ Preference '{key}' updated successfully.")
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())

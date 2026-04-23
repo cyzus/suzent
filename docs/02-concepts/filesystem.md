@@ -99,9 +99,9 @@ Then set `sandbox_image: suzent-sandbox` in `config/default.yaml`.
 | `suzent cron add ...` | `POST $SUZENT_BASE_URL/cron/jobs` |
 | `suzent cron trigger {id}` | `POST $SUZENT_BASE_URL/cron/jobs/{id}/trigger` |
 | `suzent cron remove {id}` | `DELETE $SUZENT_BASE_URL/cron/jobs/{id}` |
-| `suzent nodes list` | `GET  $SUZENT_BASE_URL/nodes` |
-| `suzent nodes describe {node_id_or_name}` | `GET  $SUZENT_BASE_URL/nodes/{node_id_or_name}` |
-| `suzent nodes invoke {node_id_or_name} ...` | `POST $SUZENT_BASE_URL/nodes/{node_id_or_name}/invoke` |
+| `suzent node list` | `GET  $SUZENT_BASE_URL/nodes` |
+| `suzent node describe {node_id_or_name}` | `GET  $SUZENT_BASE_URL/nodes/{node_id_or_name}` |
+| `suzent node invoke {node_id_or_name} ...` | `POST $SUZENT_BASE_URL/nodes/{node_id_or_name}/invoke` |
 | `suzent agent chat "msg"` | `POST $SUZENT_BASE_URL/chat` (streaming) |
 | List chats | `GET  $SUZENT_BASE_URL/chats` |
 | Memory search | `GET  $SUZENT_BASE_URL/memory/archival?query=...` |
