@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.0] - 2026-04-23
+
+### ⚡ Changed
+- **Distribution**: Remove Tauri installer packaging entirely. SUZENT is now distributed as a source checkout — users install via a one-line setup script (`setup.sh` / `setup.ps1`) that clones the repo, installs uv + Node, syncs dependencies, and writes a `suzent` CLI shim. No compiled binaries, no `.msi`/`.dmg`/`.AppImage`, no bundled Python environment.
+- **Setup Scripts**: Rewrite `setup.sh` and `setup.ps1` with full install + update flows: OS detection, auto-install of uv (and Node via nvm/winget), git stash-before-pull on update, `SUZENT_DIR` / `SUZENT_BRANCH` env overrides, and `SUZENT_SKIP_PLAYWRIGHT=1` escape hatch.
+- **CLI**: Add `suzent ui` command to launch only the Tauri frontend (assumes backend already running, accepts `--port`). `suzent start` now starts backend + frontend together and cleanly stops the backend when the frontend exits. `suzent serve` remains the headless backend-only mode.
+- **Configuration**: Centralize default port/host as `DEFAULT_PORT` / `DEFAULT_HOST` constants in `suzent.config`, driven by `SUZENT_PORT` / `SUZENT_HOST` env vars. Removes all hardcoded `25314` occurrences across CLI, client, server, and node host.
+- **CI**: Replace 90-minute 4-platform Tauri build matrix with a lightweight CI that runs lint + tests on every push and creates a GitHub Release (with install instructions) on version tags.
+- **Tauri Dev Mode**: `npm run dev` / `suzent ui` no longer launches the Python backend — connect to a separately-running `suzent serve` instance. Port is auto-discovered from `data/server.port` written at startup.
+
+### 🐛 Fixed
+- **Starlette 1.0 Compatibility**: Replace deprecated `on_startup`/`on_shutdown` kwargs with the standard `lifespan` async context manager.
+- **Telegram Duplicate Polling**: Add `_running` guard in `TelegramChannel.connect()` and `drop_pending_updates=True` on `start_polling()` to prevent `Conflict: terminated by other getUpdates request` on server restart.
+- **Startup Re-entrance**: Guard `startup()` social-brain initialization against double-invocation.
+
 ## [v0.5.0] - 2026-04-22
 
 ### ⚡ Changed
