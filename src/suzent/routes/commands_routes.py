@@ -19,6 +19,8 @@ async def get_commands(request: Request) -> JSONResponse:
                 "description": m.description,
                 "usage": m.usage,
                 "surfaces": m.surfaces,
+                "category": m.category,
+                "options": m.options,
             }
             for m in commands
         ]

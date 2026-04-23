@@ -8,6 +8,7 @@ Commands:
   /sess info        — show current active chat info
 """
 
+import typer
 from suzent.core.commands.base import register_command, CommandContext
 from suzent.database import get_database
 
@@ -37,26 +38,41 @@ def clear_active_chat_id(sender_id: str) -> None:
     description="Manage sessions: ls, switch <id>, new [title], info",
     usage="/sess <ls|switch|new|info> [args]",
     surfaces=["social"],
+    category="session",
+    options={
+        "ls": "List recent sessions",
+        "switch": "Switch to an existing session",
+        "new": "Create a new session",
+        "info": "Show current session info",
+    },
 )
-async def sess_command(ctx: CommandContext, cmd: str, args: list) -> str | None:
-    sub = args[0].lower() if args else "info"
+def sess_command(
+    ctx: typer.Context,
+    sub: str = typer.Argument("info", help="Subcommand: ls, switch, new, info"),
+    args: list[str] = typer.Argument(None, help="Arguments for the subcommand"),
+):
+    async def _impl():
+        cmd_ctx: CommandContext = ctx.obj
+        sub_lower = sub.lower()
 
-    if sub == "ls":
-        return await _cmd_ls(ctx)
-    elif sub == "switch":
-        return await _cmd_switch(ctx, args[1:])
-    elif sub == "new":
-        return await _cmd_new(ctx, args[1:])
-    elif sub == "info":
-        return await _cmd_info(ctx)
-    else:
-        return (
-            "Unknown subcommand. Usage:\n"
-            "  /sess ls — list sessions\n"
-            "  /sess switch <id> — switch session\n"
-            "  /sess new [title] — create new session\n"
-            "  /sess info — current session info"
-        )
+        if sub_lower == "ls":
+            return await _cmd_ls(cmd_ctx)
+        elif sub_lower == "switch":
+            return await _cmd_switch(cmd_ctx, args)
+        elif sub_lower == "new":
+            return await _cmd_new(cmd_ctx, args)
+        elif sub_lower == "info":
+            return await _cmd_info(cmd_ctx)
+        else:
+            return (
+                "Unknown subcommand. Usage:\n"
+                "  /sess ls — list sessions\n"
+                "  /sess switch <id> — switch session\n"
+                "  /sess new [title] — create new session\n"
+                "  /sess info — current session info"
+            )
+
+    return _impl
 
 
 async def _cmd_ls(ctx: CommandContext) -> str:

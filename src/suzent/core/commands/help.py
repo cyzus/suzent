@@ -1,22 +1,31 @@
-"""Help command (/help, /h, /?)."""
-
+import typer
 from suzent.core.commands.base import register_command, CommandContext
-
-_HELP_TEXT = (
-    "🤖 **Suzent Commands**\n"
-    "  `/compact` — Compress conversation context\n"
-    "  `/help` — Show this message"
-)
 
 
 @register_command(
     ["/help", "/h", "/?"],
     description="Show available commands",
     usage="/help",
+    category="system",
 )
-async def handle_help(ctx: CommandContext, cmd: str, args: list) -> str:
+def handle_help(ctx: typer.Context):
     """Show available commands."""
-    if ctx.channel_manager and ctx.platform and ctx.sender_id:
-        await ctx.channel_manager.send_message(ctx.platform, ctx.sender_id, _HELP_TEXT)
-        return ""  # already sent directly
-    return _HELP_TEXT
+
+    async def _impl():
+        cmd_ctx: CommandContext = ctx.obj
+        from suzent.core.commands.base import list_commands
+
+        cmds = list_commands(surface=cmd_ctx.surface)
+        lines = ["🤖 **Suzent Commands**"]
+        for c in cmds:
+            lines.append(f"  `{c.usage}` — {c.description}")
+        help_text = "\n".join(lines)
+
+        if cmd_ctx.channel_manager and cmd_ctx.platform and cmd_ctx.sender_id:
+            await cmd_ctx.channel_manager.send_message(
+                cmd_ctx.platform, cmd_ctx.sender_id, help_text
+            )
+            return ""  # already sent directly
+        return help_text
+
+    return _impl

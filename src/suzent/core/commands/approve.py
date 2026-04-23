@@ -1,5 +1,4 @@
-"""Tool approval commands — social surfaces only (/y, /n, /approve, /deny)."""
-
+import typer
 from suzent.core.commands.base import register_command, CommandContext
 
 _APPROVE = {"/approve", "/y", "/yes", "/allow", "/ya"}
@@ -8,14 +7,42 @@ _REMEMBER = {"/ya", "/na"}
 
 
 @register_command(
-    ["/y", "/yes", "/allow", "/ya", "/approve", "/n", "/no", "/deny", "/reject", "/na"],
-    description="Approve or deny a pending tool action",
-    usage="/y [id]  or  /n [id]",
+    ["/approve", "/y", "/yes", "/allow", "/ya"],
+    description="Approve a pending tool action",
+    usage="/approve [id]",
     surfaces=["social"],
+    category="tools",
+    hidden=True,
 )
-async def handle_approval(ctx: CommandContext, cmd: str, args: list) -> str | None:
-    """Resolve a pending tool approval. Only meaningful on social surfaces."""
-    if not ctx.platform or not ctx.channel_manager:
+def handle_approve(ctx: typer.Context, req_id: str = typer.Argument(None)):
+    """Approve a pending tool action."""
+
+    async def _impl():
+        return await _resolve_approval(ctx, True, req_id)
+
+    return _impl
+
+
+@register_command(
+    ["/deny", "/n", "/no", "/reject", "/na"],
+    description="Deny a pending tool action",
+    usage="/deny [id]",
+    surfaces=["social"],
+    category="tools",
+    hidden=True,
+)
+def handle_deny(ctx: typer.Context, req_id: str = typer.Argument(None)):
+    """Deny a pending tool action."""
+
+    async def _impl():
+        return await _resolve_approval(ctx, False, req_id)
+
+    return _impl
+
+
+async def _resolve_approval(ctx: typer.Context, approved: bool, req_id: str):
+    cmd_ctx: CommandContext = ctx.obj
+    if not cmd_ctx.platform or not cmd_ctx.channel_manager:
         return None  # not applicable on frontend — fall through
 
     from suzent.core.social_brain import get_active_social_brain
@@ -24,21 +51,19 @@ async def handle_approval(ctx: CommandContext, cmd: str, args: list) -> str | No
     if not brain:
         return None
 
-    approved = cmd in _APPROVE
-    remember = cmd in _REMEMBER
+    cmd_name = "/" + ctx.info_name
+    remember = cmd_name in _REMEMBER
 
-    # Resolve social target/thread id from chat context (social-{platform}-{target_id}).
-    # Using sender_id here breaks session lookup in group chats.
-    target_id = ctx.sender_id or ""
-    prefix = f"social-{ctx.platform}-"
-    if ctx.chat_id.startswith(prefix):
-        target_id = ctx.chat_id[len(prefix) :]
+    target_id = cmd_ctx.sender_id or ""
+    prefix = f"social-{cmd_ctx.platform}-"
+    if cmd_ctx.chat_id.startswith(prefix):
+        target_id = cmd_ctx.chat_id[len(prefix) :]
 
     await brain.handle_approval_response(
-        ctx.platform,
+        cmd_ctx.platform,
         target_id,
         approved,
-        sender_id=ctx.sender_id,
+        sender_id=cmd_ctx.sender_id,
         remember=remember,
     )
-    return ""  # handled, no reply text needed (brain sends its own response)
+    return ""

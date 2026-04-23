@@ -431,8 +431,14 @@ class ChatProcessor:
                 CommandContext as _CmdCtx,
             )
 
+            # Determine surface origin
+            origin_surface = "cli" if config.get("surface") == "cli" else "frontend"
+            if is_social:
+                origin_surface = "social"
+
             cmd_result = await _dispatch_command(
-                _CmdCtx(chat_id=chat_id, user_id=user_id), message_content
+                _CmdCtx(chat_id=chat_id, user_id=user_id, surface=origin_surface),
+                message_content,
             )
             if cmd_result is not None:
                 try:

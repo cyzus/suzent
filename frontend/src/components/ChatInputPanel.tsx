@@ -199,17 +199,34 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             {/* Slash command suggestions */}
             {suggestions.length > 0 && (
                 <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal-sm mb-1 overflow-hidden">
-                    {suggestions.map((cmd, i) => (
-                        <div
-                            key={cmd.name}
-                            className={`flex items-baseline gap-3 px-3 py-2 cursor-pointer text-sm ${i === selectedSuggestion ? 'bg-brutal-yellow dark:bg-yellow-600 text-brutal-black' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'}`}
-                            onMouseDown={(e) => { e.preventDefault(); setInput((cmd.aliases?.[0] || cmd.usage) + ' '); }}
-                        >
-                            <span className="font-bold font-mono shrink-0">{cmd.aliases[0]}</span>
-                            <span className="text-neutral-500 dark:text-neutral-400 truncate">{cmd.description}</span>
-                            <span className="ml-auto font-mono text-xs text-neutral-400 dark:text-neutral-500 shrink-0">{cmd.usage}</span>
-                        </div>
-                    ))}
+                    {suggestions.map((cmd, i) => {
+                        const showHeader = i === 0 || suggestions[i - 1].category !== cmd.category;
+                        return (
+                            <React.Fragment key={cmd.name}>
+                                {showHeader && (
+                                    <div className="px-3 py-1 bg-neutral-200 dark:bg-zinc-900 border-y border-neutral-300 dark:border-zinc-700 text-xs font-bold text-neutral-500 uppercase tracking-wider first:border-t-0">
+                                        {cmd.category || 'Commands'}
+                                    </div>
+                                )}
+                                <div
+                                    className={`flex items-baseline gap-3 px-3 py-2 text-sm ${(!input.includes(' ') || cmd.isOption) ? 'cursor-pointer ' : ''}${i === selectedSuggestion && (!input.includes(' ') || cmd.isOption) ? 'bg-brutal-yellow dark:bg-yellow-600 text-brutal-black' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700 text-brutal-black dark:text-white'}`}
+                                    onMouseDown={(e) => { 
+                                        e.preventDefault(); 
+                                        if (!input.includes(' ') || cmd.isOption) {
+                                            const textToInsert = cmd.isOption && cmd.parentCmd 
+                                                ? `${cmd.parentCmd} ${cmd.aliases[0]} ` 
+                                                : `${cmd.aliases?.[0] || cmd.usage} `;
+                                            setInput(textToInsert); 
+                                        }
+                                    }}
+                                >
+                                    <span className="font-bold font-mono shrink-0">{cmd.aliases[0]}</span>
+                                    <span className="text-neutral-500 dark:text-neutral-400 truncate">{cmd.description}</span>
+                                    <span className="ml-auto font-mono text-xs text-neutral-400 dark:text-neutral-500 shrink-0">{cmd.usage}</span>
+                                </div>
+                            </React.Fragment>
+                        );
+                    })}
                 </div>
             )}
 
@@ -220,17 +237,30 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
-                    if (suggestions.length > 0) {
+                    const hasSpace = input.includes(' ');
+                    const activeCmd = suggestions[selectedSuggestion];
+                    const isOptionMode = hasSpace && activeCmd?.isOption;
+                    
+                    if (suggestions.length > 0 && (!hasSpace || isOptionMode)) {
+                        // Intercept navigation and autocomplete ONLY if typing the command word OR navigating mapped options
                         if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedSuggestion(i => Math.max(0, i - 1)); return; }
                         if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedSuggestion(i => Math.min(suggestions.length - 1, i + 1)); return; }
                         if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
                             e.preventDefault();
-                            const selected = suggestions[selectedSuggestion];
-                            setInput((selected.aliases?.[0] || selected.usage) + ' ');
+                            if (activeCmd) {
+                                const textToInsert = activeCmd.isOption && activeCmd.parentCmd 
+                                    ? `${activeCmd.parentCmd} ${activeCmd.aliases[0]} ` 
+                                    : `${activeCmd.aliases?.[0] || activeCmd.usage} `;
+                                setInput(textToInsert);
+                            }
                             return;
                         }
                         if (e.key === 'Escape') { setInput(''); return; }
+                    } else if (suggestions.length > 0 && hasSpace && !isOptionMode) {
+                        // Passive hint mode: Escape clears, but Enter/Tab/Arrows act normally
+                        if (e.key === 'Escape') { setInput(''); return; }
                     }
+                    
                     if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
                         if (configReady && input.trim()) {

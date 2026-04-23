@@ -88,20 +88,25 @@ def agent_clear():
 
 @agent_app.command("chat")
 def agent_chat(
-    message: str = typer.Argument(help="Message to send to the agent"),
+    message: str = typer.Argument(None, help="Initial message to send (optional)"),
     new: bool = typer.Option(False, "--new", help="Start a new chat session"),
 ):
-    """Send a message to the agent and print the response."""
+    """Start an interactive chat REPL with the agent."""
     from suzent.cli.state import get_current_chat_id, set_current_chat_id
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.completion import Completer, Completion
 
     chat_id = None if new else get_current_chat_id()
 
     if not chat_id:
         typer.echo("Creating new chat session...", err=True)
         try:
-            title = (
-                f"[CLI] {message[:30]}..." if len(message) > 30 else f"[CLI] {message}"
+            init_title = (
+                message[:30] + "..."
+                if message and len(message) > 30
+                else (message or "CLI Session")
             )
+            title = f"[CLI] {init_title}"
             res = _http_post(
                 "/chats", data={"title": title, "messages": [], "config": {}}
             )
@@ -118,89 +123,137 @@ def agent_chat(
             typer.secho(f"❌ Failed to create chat: {e}", fg=typer.colors.RED, err=True)
             return
 
-    typer.echo(f"💬 Session: {chat_id}")
-    typer.echo(f"💬 Sending: {message}\n")
+    typer.echo(f"💬 Active Session: {chat_id}")
+    typer.echo("Type /help for commands. Use 'exit' to quit.\n")
 
-    # Use streaming for better UX
+    # Fetch commands for the completer
+    cmd_words = []
+    cmd_meta = {}
     try:
-        resume_approvals = []
-        while True:
-            parser = StreamParser()
-            payload = {
-                "message": message if not resume_approvals else "",
-                "chat_id": chat_id,
-                "stream": True,
-            }
-            if resume_approvals:
-                payload["resume_approvals"] = resume_approvals
+        cmds_res = _http_get("/commands?surface=cli")
+        if isinstance(cmds_res, list):
+            for cmd in cmds_res:
+                cmd_meta[cmd["name"]] = cmd["description"]
+                cmd_words.extend(cmd.get("aliases", []))
+    except Exception:
+        pass  # ignore if server is unreachable
 
-            stream = _http_post_stream("/chat", data=payload)
-            pending_approvals: list[ApprovalRequest] = []
+    class SlashCompleter(Completer):
+        def get_completions(self, document, complete_event):
+            text = document.text_before_cursor
+            if text.startswith("/"):
+                # Only offer completions if typing the first word
+                if " " not in text:
+                    for wrd in cmd_words:
+                        if wrd.startswith(text):
+                            desc = next(
+                                (cmd_meta[k] for k in cmd_meta if wrd in ["/" + k]), ""
+                            )
+                            yield Completion(
+                                wrd, start_position=-len(text), display_meta=desc
+                            )
 
-            for event in parser.parse(stream):
-                if isinstance(event, TextChunk):
-                    # Colorize code blocks if detected
-                    color = typer.colors.GREEN if event.is_code else None
-                    typer.secho(event.content, nl=False, fg=color)
+    session = PromptSession(completer=SlashCompleter())
 
-                elif isinstance(event, ToolCall):
-                    typer.echo(f"\n[Tool Call: {event.tool_name}]", err=True)
+    def _turn(user_msg: str):
+        try:
+            resume_approvals = []
+            while True:
+                parser = StreamParser()
+                payload = {
+                    "message": user_msg if not resume_approvals else "",
+                    "chat_id": chat_id,
+                    "stream": True,
+                    "config_override": {"surface": "cli"},
+                }
+                if resume_approvals:
+                    payload["resume_approvals"] = resume_approvals
 
-                elif isinstance(event, ToolOutput):
-                    typer.secho(
-                        f"\n[Tool Output: {event.tool_name}]",
-                        fg=typer.colors.YELLOW,
-                        err=True,
-                    )
-                    typer.echo(f"{event.output[:200]}...", err=True)
+                stream = _http_post_stream("/chat", data=payload)
+                pending_approvals: list[ApprovalRequest] = []
 
-                elif isinstance(event, ErrorEvent):
-                    typer.secho(
-                        f"\n❌ Error: {event.message}", fg=typer.colors.RED, err=True
-                    )
+                for event in parser.parse(stream):
+                    if isinstance(event, TextChunk):
+                        color = typer.colors.GREEN if event.is_code else None
+                        typer.secho(event.content, nl=False, fg=color)
 
-                elif isinstance(event, FinalAnswer):
-                    typer.echo("")
-                    typer.secho(f"🤖 {event.content}", fg=typer.colors.CYAN, bold=True)
-                    return  # Exit loop on final answer
+                    elif isinstance(event, ToolCall):
+                        typer.echo(f"\n[Tool Call: {event.tool_name}]", err=True)
 
-                elif isinstance(event, ApprovalRequest):
-                    render_approval_request(
-                        tool_name=event.tool_name,
-                        request_id=event.request_id,
-                        tool_call_id=event.tool_call_id,
-                        args=event.args,
-                    )
-                    pending_approvals.append(event)
+                    elif isinstance(event, ToolOutput):
+                        typer.secho(
+                            f"\n[Tool Output: {event.tool_name}]",
+                            fg=typer.colors.YELLOW,
+                            err=True,
+                        )
+                        typer.echo(f"{event.output[:200]}...", err=True)
 
-            if pending_approvals:
-                # Prompt user for each pending approval and batch all decisions
-                resume_approvals = []
-                for i, approval in enumerate(pending_approvals, 1):
-                    label = (
-                        f"[{i}/{len(pending_approvals)}] "
-                        if len(pending_approvals) > 1
-                        else ""
-                    )
-                    approved = typer.confirm(
-                        f"\n{label}Allow {approval.tool_name}?", default=True
-                    )
-                    resume_approvals.append(
-                        {
-                            "request_id": approval.request_id,
-                            "tool_call_id": approval.tool_call_id,
-                            "approved": approved,
-                        }
-                    )
-                # Continue while loop to resume stream with all decisions
-                typer.echo("🔄 Resuming stream with your decision...")
+                    elif isinstance(event, ErrorEvent):
+                        typer.secho(
+                            f"\n❌ Error: {event.message}",
+                            fg=typer.colors.RED,
+                            err=True,
+                        )
+
+                    elif isinstance(event, FinalAnswer):
+                        typer.echo("")
+                        typer.secho(
+                            f"🤖 {event.content}", fg=typer.colors.CYAN, bold=True
+                        )
+                        return
+
+                    elif isinstance(event, ApprovalRequest):
+                        render_approval_request(
+                            tool_name=event.tool_name,
+                            request_id=event.request_id,
+                            tool_call_id=event.tool_call_id,
+                            args=event.args,
+                        )
+                        pending_approvals.append(event)
+
+                if pending_approvals:
+                    resume_approvals = []
+                    for i, approval in enumerate(pending_approvals, 1):
+                        label = (
+                            f"[{i}/{len(pending_approvals)}] "
+                            if len(pending_approvals) > 1
+                            else ""
+                        )
+                        approved = typer.confirm(
+                            f"\n{label}Allow {approval.tool_name}?", default=True
+                        )
+                        resume_approvals.append(
+                            {
+                                "request_id": approval.request_id,
+                                "tool_call_id": approval.tool_call_id,
+                                "approved": approved,
+                            }
+                        )
+                    typer.echo("🔄 Resuming stream with your decision...")
+                    continue
+                else:
+                    break
+
+        except Exception as e:
+            typer.echo(f"\n❌ Streaming failed: {e}")
+
+    # Process initial message if provided
+    if message:
+        typer.echo(f"💬 Sending: {message}\n")
+        _turn(message)
+
+    # Enter REPL loop
+    while True:
+        try:
+            line = session.prompt("> ")
+            if not line.strip():
                 continue
-            else:
-                # No more approvals and no final answer? Probably finished or error.
+            if line.strip().lower() in ["exit", "quit", "/exit"]:
                 break
 
-    except Exception as e:
-        typer.echo(f"\n❌ Streaming failed: {e}")
+            _turn(line)
+        except (KeyboardInterrupt, EOFError):
+            break
 
 
 @agent_app.command("status")
