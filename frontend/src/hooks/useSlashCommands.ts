@@ -27,7 +27,9 @@ export function useSlashCommands(input: string) {
   const [commands, setCommands] = useState<SlashCommand[]>([]);
 
   useEffect(() => {
-    fetchCommands().then(setCommands).catch(() => {});
+    fetchCommands()
+      .then(cmds => setCommands([...cmds].sort((a, b) => (a.category || 'tools').localeCompare(b.category || 'tools'))))
+      .catch(() => {});
   }, []);
 
   const suggestions = useMemo(() => {
@@ -77,7 +79,7 @@ export function useSlashCommands(input: string) {
       filtered = exactCmd ? [exactCmd] : [];
     }
     
-    return filtered.sort((a, b) => (a.category || 'tools').localeCompare(b.category || 'tools'));
+    return filtered;
   }, [input, commands]);
 
   return suggestions;

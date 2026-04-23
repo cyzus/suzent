@@ -12,6 +12,7 @@ import typer
 import asyncio
 from suzent.client import get_client
 from suzent.client.base import ClientError
+from suzent.cli.utils import infer_type
 
 config_app = typer.Typer(help="View and manage Suzent configuration")
 
@@ -69,28 +70,7 @@ def config_set(
 
     async def _run():
         try:
-            lower = value.lower()
-            if lower == "true":
-                parsed = True
-            elif lower == "false":
-                parsed = False
-            elif lower in ("null", "none"):
-                parsed = None
-            else:
-                try:
-                    parsed = int(value)
-                except ValueError:
-                    try:
-                        parsed = float(value)
-                    except ValueError:
-                        if value.startswith(("{", "[")):
-                            try:
-                                parsed = json.loads(value)
-                            except json.JSONDecodeError:
-                                parsed = value
-                        else:
-                            parsed = value
-
+            parsed = infer_type(value)
             client = get_client()
             await client.config.update_preferences({key: parsed})
             typer.echo(f"✅ Preference '{key}' updated successfully.")

@@ -37,7 +37,7 @@ def heartbeat_status():
     async def _run():
         try:
             client = get_client()
-            res = await client.get("/heartbeat/status")
+            res = await client.heartbeat.status()
 
             enabled = res.get("enabled", False)
             interval = res.get("interval_minutes", 10)
@@ -87,7 +87,7 @@ def heartbeat_disable():
     async def _run():
         try:
             client = get_client()
-            data = await client.post("/heartbeat/disable")
+            data = await client.heartbeat.disable()
             if data.get("success"):
                 typer.echo("✅ Heartbeat tracking disabled.")
             else:

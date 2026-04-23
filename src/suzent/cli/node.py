@@ -10,39 +10,15 @@ Usage:
 """
 
 import json
+import asyncio
 from typing import Optional
 
 import typer
 from suzent.client import get_client
-import asyncio
 from suzent.client.base import ClientError
+from suzent.cli.utils import infer_type
 
 node_app = typer.Typer(help="Manage connected nodes (companion devices)")
-
-
-def _infer_type(value_str: str):
-    """Infer a Python type from a CLI string value."""
-    lower = value_str.lower()
-    if lower == "true":
-        return True
-    if lower == "false":
-        return False
-    if lower in ("null", "none"):
-        return None
-
-    for converter in (int, float):
-        try:
-            return converter(value_str)
-        except ValueError:
-            pass
-
-    if value_str.startswith(("{", "[")):
-        try:
-            return json.loads(value_str)
-        except json.JSONDecodeError:
-            pass
-
-    return value_str
 
 
 @node_app.command("list")
@@ -179,7 +155,7 @@ def node_invoke(
                     continue
 
                 key, value_str = arg.split("=", 1)
-                parsed_params[key] = _infer_type(value_str)
+                parsed_params[key] = infer_type(value_str)
 
         typer.echo(f"⚡ Invoking '{command}' on node '{node}'...")
         try:
@@ -200,7 +176,7 @@ def node_invoke(
 
 
 @node_app.command("host")
-def nodes_host(
+def node_host(
     name: str = typer.Option(
         "Local PC", "--name", "-n", help="Display name for this node"
     ),
@@ -215,8 +191,6 @@ def nodes_host(
     ),
 ):
     """Start a local node host (speaker, camera) in the foreground."""
-    import asyncio
-
     from suzent.nodes.node_host import NodeHost
 
     caps = capabilities.split(",") if capabilities else None

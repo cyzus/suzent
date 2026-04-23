@@ -57,9 +57,15 @@ class HeartbeatAPI:
     def __init__(self, client: AsyncBaseClient):
         self.client = client
 
+    async def status(self) -> dict:
+        return await self.client.get("/heartbeat/status")
+
     async def enable(self, chat_id: str | None = None) -> dict:
         payload = {"chat_id": chat_id} if chat_id else {}
         return await self.client.post("/heartbeat/enable", json=payload)
+
+    async def disable(self) -> dict:
+        return await self.client.post("/heartbeat/disable")
 
     async def trigger(self, manual: bool = False, chat_id: str | None = None) -> dict:
         payload = {"manual": manual}

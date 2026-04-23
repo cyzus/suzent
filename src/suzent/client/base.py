@@ -135,15 +135,12 @@ class AsyncBaseClient:
     async def stream_post(self, path: str, json: dict | None = None, **kwargs):
         """Yields chunks of the stream response."""
         try:
-            async with httpx.AsyncClient(
-                base_url=self.base_url, timeout=60.0
-            ) as client:
-                async with client.stream(
-                    "POST", path, json=json or {}, **kwargs
-                ) as resp:
-                    resp.raise_for_status()
-                    async for chunk in resp.aiter_bytes():
-                        yield chunk
+            async with self._client.stream(
+                "POST", path, json=json or {}, timeout=60.0, **kwargs
+            ) as resp:
+                resp.raise_for_status()
+                async for chunk in resp.aiter_bytes():
+                    yield chunk
         except httpx.ConnectError:
             raise ClientError("Cannot connect to Suzent server. Is it running?")
         except httpx.HTTPStatusError as e:

@@ -16,9 +16,13 @@ from suzent.core.commands.base import register_command
     },
 )
 def handle_node(
-    ctx: str,
-    action: str = typer.Argument(..., help="Subcommand: list, invoke"),
-    node_id: str = typer.Argument(None, help="Node ID info"),
+    ctx: typer.Context,
+    action: str = typer.Argument(
+        ..., help="Subcommand: list, status, describe, invoke"
+    ),
+    args: list[str] = typer.Argument(
+        None, help="Additional arguments (node ID, command, etc.)"
+    ),
 ):
     async def _impl():
         from suzent.client import get_client
@@ -64,9 +68,9 @@ def handle_node(
                 return f"❌ {e}"
 
         elif action_lower == "describe":
-            if not ctx:
+            if not args:
                 return "Usage error: Missing node_id. Example: /node describe my-phone"
-            node_id_arg = ctx.split(" ", 1)[0]
+            node_id_arg = args[0]
             try:
                 client = get_client()
                 data = await client.nodes.describe(node_id_arg)
@@ -90,24 +94,18 @@ def handle_node(
                 return f"❌ {e}"
 
         elif action_lower == "invoke":
-            parts = ctx.split(" ", 1)
-            if not parts or not parts[0]:
+            if not args:
                 return "Usage error: Missing node_id. Example: /node invoke my-phone system.wake"
-            node_id_arg = parts[0]
-
-            command_arg = "system.wake"
+            node_id_arg = args[0]
+            command_arg = args[1] if len(args) > 1 else "system.wake"
             params_dict = {}
-            if len(parts) > 1:
-                cmd_parts = parts[1].split(" ", 1)
-                command_arg = cmd_parts[0]
-                if len(cmd_parts) > 1:
-                    # simplistic pass-through of rest as string or dict
-                    import json
+            if len(args) > 2:
+                import json
 
-                    try:
-                        params_dict = json.loads(cmd_parts[1])
-                    except Exception:
-                        params_dict = {"raw": cmd_parts[1]}
+                try:
+                    params_dict = json.loads(args[2])
+                except Exception:
+                    params_dict = {"raw": " ".join(args[2:])}
 
             try:
                 client = get_client()
