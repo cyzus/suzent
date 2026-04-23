@@ -535,6 +535,19 @@ async def delete_chat(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+async def mark_chat_read(request: Request) -> JSONResponse:
+    """POST /chats/{chat_id}/mark-read — persist read state for a chat."""
+    try:
+        chat_id = request.path_params["chat_id"]
+        data = await request.json()
+        read_count = int(data.get("readCount", 0))
+        db = get_database()
+        db.mark_chat_read(chat_id, read_count)
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 async def steer_chat(request: Request) -> StreamingResponse:
     """
     Interrupt the current agent run and redirect with a new message.

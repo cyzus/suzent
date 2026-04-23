@@ -61,6 +61,8 @@ export interface ChatSummary {
   heartbeatEnabled?: boolean;
   lastResultAt?: string;
   isRunning?: boolean;
+  readCount?: number;
+  readAt?: string;
 }
 
 export type PlanPhaseStatus = 'pending' | 'in_progress' | 'completed';

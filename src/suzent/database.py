@@ -43,6 +43,8 @@ class ChatSummaryModel(BaseModel):
     platform: Optional[str] = None
     heartbeatEnabled: bool = False
     lastResultAt: Optional[str] = None
+    readCount: int = 0
+    readAt: Optional[str] = None
 
 
 class ChatModel(SQLModel, table=True):
@@ -650,6 +652,18 @@ class ChatDatabase:
                 session.add(chat)
                 session.commit()
 
+    def mark_chat_read(self, chat_id: str, read_count: int) -> None:
+        """Persist the read state for a chat (called when user views it)."""
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if chat:
+                config = dict(chat.config or {})
+                config["read_count"] = read_count
+                config["read_at"] = datetime.now(timezone.utc).isoformat()
+                chat.config = config
+                session.add(chat)
+                session.commit()
+
     def list_chats(
         self,
         limit: int = 50,
@@ -725,6 +739,8 @@ class ChatDatabase:
                         lastResultAt=chat.last_result_at.isoformat()
                         if chat.last_result_at
                         else None,
+                        readCount=config.get("read_count", 0),
+                        readAt=config.get("read_at"),
                     )
                 )
 

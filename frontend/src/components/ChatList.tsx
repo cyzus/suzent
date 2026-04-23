@@ -5,6 +5,7 @@ import { RobotAvatar } from './chat/RobotAvatar';
 import { BrutalDeleteButton } from './BrutalDeleteButton';
 import { BrutalDeleteOverlay } from './BrutalDeleteOverlay';
 import { useI18n } from '../i18n';
+import { markChatRead } from '../lib/api';
 
 export const ChatList: React.FC = () => {
   const {
@@ -26,18 +27,6 @@ export const ChatList: React.FC = () => {
   const [showRefreshIndicator, setShowRefreshIndicator] = useState(false);
   const [localSearchQuery, setLocalSearchQuery] = useState<string>('');
   const [viewMode, setViewMode] = useState<'personal' | 'social'>('personal');
-  const [lastViewed, setLastViewed] = useState<Record<string, { at: string; count: number }>>(() => {
-    try {
-      const raw = JSON.parse(localStorage.getItem('chat_last_viewed') || '{}');
-      // Migrate old format (plain string timestamps) to new { at, count } format
-      const result: Record<string, { at: string; count: number }> = {};
-      for (const [id, val] of Object.entries(raw)) {
-        if (typeof val === 'string') result[id] = { at: val, count: 0 };
-        else if (val && typeof val === 'object' && 'at' in val) result[id] = val as { at: string; count: number };
-      }
-      return result;
-    } catch { return {}; }
-  });
   const { t } = useI18n();
 
   // Keep a ref so markRead always reads the latest chats without going stale.
@@ -45,34 +34,38 @@ export const ChatList: React.FC = () => {
   useEffect(() => { chatsRef.current = chats; }, [chats]);
 
   const markRead = useCallback((chatId: string) => {
-    const count = chatsRef.current.find(c => c.id === chatId)?.messageCount ?? 0;
-    setLastViewed(prev => {
-      const next = { ...prev, [chatId]: { at: new Date().toISOString(), count } };
-      try { localStorage.setItem('chat_last_viewed', JSON.stringify(next)); } catch { }
-      return next;
-    });
+    const chat = chatsRef.current.find(c => c.id === chatId);
+    if (!chat) return;
+    markChatRead(chatId, chat.messageCount);
+    // Optimistically patch the local chat list so the badge disappears immediately
+    // without waiting for the next list refresh.
+    chat.readCount = chat.messageCount;
+    chat.readAt = new Date().toISOString();
   }, []);
 
   const isUnread = (chat: ChatSummary) => {
-    const viewed = lastViewed[chat.id];
-    if (!viewed) return true;
-    
-    if (chat.lastResultAt && new Date(chat.lastResultAt) > new Date(viewed.at)) {
+    // Never show a badge for the chat the user is currently looking at.
+    if (chat.id === currentChatId) return false;
+
+    const readAt = chat.readAt;
+    const readCount = chat.readCount ?? 0;
+
+    // New messages since the user last read this chat.
+    if (chat.messageCount > readCount) return true;
+
+    // A background job produced a result after the user last read this chat.
+    if (chat.lastResultAt && readAt && new Date(chat.lastResultAt) > new Date(readAt)) {
       return true;
     }
-    
-    if (chat.messageCount > viewed.count) {
-      return true;
-    }
-    
+    // Never-read chat that already has messages or a result.
+    if (!readAt && (chat.messageCount > 0 || chat.lastResultAt)) return true;
+
     return false;
   };
 
   const unreadMessages = (chat: ChatSummary) => {
     if (!isUnread(chat)) return 0;
-    // Use at least 1 so stale localStorage counts (saved under the old raw-message
-    // counting scheme) never suppress the badge when isUnread is already true.
-    return Math.max(1, chat.messageCount - (lastViewed[chat.id]?.count ?? 0));
+    return Math.max(1, chat.messageCount - (chat.readCount ?? 0));
   };
 
   // Mark current chat read when it becomes active, and re-mark whenever the
