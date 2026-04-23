@@ -527,7 +527,42 @@ class SocialBrain(BaseBrain):
                 f"Processing social message for {social_chat_id}: {message.content}"
             )
 
-            # 2. Envelope header — prepend platform metadata to message
+            # 2. Slash command dispatch — runs on the raw content before envelope wrapping
+            # so that dispatch() can detect the leading "/" and surface check works.
+            if not is_steer and message.content.strip().startswith("/"):
+                from suzent.core.commands import (
+                    dispatch as _dispatch_command,
+                    CommandContext as _CmdCtx,
+                )
+                from suzent.core.chat_processor import _append_command_messages
+
+                cmd_result = await _dispatch_command(
+                    _CmdCtx(
+                        chat_id=social_chat_id, user_id=CONFIG.user_id, surface="social"
+                    ),
+                    message.content.strip(),
+                )
+                if cmd_result is not None:
+                    try:
+                        from suzent.database import get_database as _get_db
+
+                        _db = _get_db()
+                        _chat = _db.get_chat(social_chat_id)
+                        if _chat is not None:
+                            updated = _append_command_messages(
+                                list(_chat.messages or []),
+                                message.content.strip(),
+                                cmd_result,
+                            )
+                            _db.update_chat(social_chat_id, messages=updated)
+                    except Exception:
+                        pass
+                    await self.channel_manager.send_message(
+                        message.platform, target_id, cmd_result
+                    )
+                    return
+
+            # 3. Envelope header — prepend platform metadata to message
             envelope = f"[{message.platform.title()} {message.sender_name} id:{message.sender_id}]"
             enriched_content = (
                 f"{envelope}\n{steer_text if is_steer else message.content}"
@@ -564,8 +599,6 @@ class SocialBrain(BaseBrain):
             else:
                 # "All Tools" mode: pass the full registry list so build_agent_config
                 # doesn't fall back to the narrower default_tools subset.
-                from suzent.config import CONFIG
-
                 if CONFIG.tool_options:
                     base_config["tools"] = list(CONFIG.tool_options)
 
