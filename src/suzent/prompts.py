@@ -327,6 +327,13 @@ def build_session_guidance_section(session_guidance_items: list[str] | None) -> 
     return "# Session Guidance\n" + "\n\n".join(parts)
 
 
+def format_session_guidance_debug(entries: list[dict]) -> str:
+    lines = ["[SessionGuidance] ordered tool guidance:"]
+    for i, entry in enumerate(entries, 1):
+        lines.append(f"{i}. priority={entry['priority']} tool={entry['tool_name']}")
+    return "\n".join(lines)
+
+
 def register_dynamic_instructions(
     agent: Any,
     *,

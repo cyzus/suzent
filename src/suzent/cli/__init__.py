@@ -44,7 +44,7 @@ def main(
 register_commands(app)
 
 # Attach subcommand groups
-app.add_typer(node_app, name="node")
+app.add_typer(node_app, name="nodes")
 app.add_typer(agent_app, name="agent")
 app.add_typer(config_app, name="config")
 app.add_typer(cron_app, name="cron")

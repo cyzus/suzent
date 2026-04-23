@@ -36,6 +36,7 @@ dependencies = [
     "opencv-python>=4.8.0",
     "croniter>=2.0.0",
     "docker>=7.0",
+    "prompt_toolkit>=3.0.0",
 ]
 
 [project.scripts]
