@@ -12,7 +12,7 @@ dependencies = [
     "crawl4ai>=0.7.3",
     "pydantic-ai-slim[openai,anthropic,google,groq,mcp,ag-ui]>=0.2.0",
     "litellm",
-    "starlette",
+    "starlette>=1.0.0,<2.0.0",
     "uvicorn",
     "python-dotenv",
     "loguru>=0.7.0",

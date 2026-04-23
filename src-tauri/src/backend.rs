@@ -1,13 +1,17 @@
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::Duration;
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-use std::thread;
-use std::io::{BufRead, BufReader};
-use std::net::TcpListener;
+use std::path::PathBuf;
 
-use tauri::{Manager, Emitter};
+#[cfg(not(debug_assertions))]
+use std::path::Path;
+#[cfg(not(debug_assertions))]
+use std::process::{Command, Stdio};
+#[cfg(not(debug_assertions))]
+use std::time::Duration;
+#[cfg(all(not(debug_assertions), windows))]
+use std::os::windows::process::CommandExt;
+#[cfg(not(debug_assertions))]
+use std::thread;
+#[cfg(not(debug_assertions))]
+use std::io::{BufRead, BufReader};
 
 pub struct BackendProcess {
     child: Option<std::process::Child>,
@@ -16,91 +20,58 @@ pub struct BackendProcess {
 
 impl BackendProcess {
     pub fn new() -> Self {
-        BackendProcess {
-            child: None,
-            port: 0,
-        }
+        BackendProcess { child: None, port: 0 }
     }
 
-    /// Start the Python backend using the prebuilt bundled python-env.
-    /// Only called in release builds — in debug mode the backend runs separately.
-    #[allow(dead_code)]
-    pub fn start(&mut self, app_handle: &tauri::AppHandle) -> Result<u16, String> {
-        let app_data_dir = app_handle.path()
-            .app_data_dir()
-            .map_err(|e| format!("Failed to get app data dir: {}", e))?;
-
-        std::fs::create_dir_all(&app_data_dir)
-            .map_err(|e| format!("Failed to create app data dir: {}", e))?;
-
-        let resource_dir = app_handle.path()
-            .resource_dir()
-            .map_err(|e| format!("Failed to get resource dir: {}", e))?;
-
-        let python_exe = find_bundled_python(&resource_dir)?;
-
-        if !python_exe.exists() {
-            return Err(format!("Bundled Python not found at {:?}", python_exe));
+    pub fn stop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
         }
+    }
+}
 
-        // Sync config and skills to app data dir on first install / upgrade
-        let window = app_handle.get_webview_window("main");
-        emit_progress(&app_handle, &window, "Initializing app data...");
-        sync_app_data(&resource_dir, &app_data_dir)?;
-
-        // Generate CLI shim pointing at the bundled Python
-        ensure_cli_shim(&app_data_dir, &python_exe)?;
-
-        emit_progress(&app_handle, &window, "Starting backend server...");
-
-        let port_to_use = read_last_stable_port(&app_data_dir).unwrap_or(0);
-
-        let mut command = Command::new(&python_exe);
-        command.args(["-m", "suzent.server"])
-            .env("SUZENT_PORT", port_to_use.to_string())
+// Release-only: launch and health-check the backend process.
+#[cfg(not(debug_assertions))]
+impl BackendProcess {
+    /// Start backend using `uv run python -m suzent.server` in the repo directory.
+    pub fn start_with_uv(&mut self, uv_exe: &Path, repo_dir: &Path, hint_port: u16) -> Result<u16, String> {
+        let mut command = Command::new(uv_exe);
+        command
+            .args(["run", "python", "-m", "suzent.server"])
+            .env("SUZENT_PORT", hint_port.to_string())
             .env("SUZENT_HOST", "127.0.0.1")
-            .env("SUZENT_APP_DATA", &app_data_dir)
-            .env("CHATS_DB_PATH", app_data_dir.join("chats.db"))
-            .env("LANCEDB_URI", app_data_dir.join("memory"))
-            .env("SANDBOX_DATA_PATH", app_data_dir.join("sandbox-data"))
-            .env("SKILLS_DIR", app_data_dir.join("skills"))
+            .current_dir(repo_dir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .stdin(Stdio::piped());
+            .stdin(Stdio::null());
 
         #[cfg(windows)]
-        {
-            command.creation_flags(0x08000000);
-        }
+        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
 
         let mut child = command.spawn()
-            .map_err(|e| format!("Failed to start Python backend: {}", e))?;
+            .map_err(|e| format!("Failed to start backend: {}", e))?;
 
         let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
         let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
 
-        let (tx, rx_port) = std::sync::mpsc::channel();
+        let (tx, rx) = std::sync::mpsc::channel::<u16>();
 
         thread::spawn(move || {
             let reader = BufReader::new(stdout);
-            let mut port_found = false;
-            for line in reader.lines() {
-                match line {
-                    Ok(line_str) => {
-                        println!("BE: {}", line_str);
-                        if !port_found {
-                            if let Some(idx) = line_str.find("SERVER_PORT:") {
-                                let after = &line_str[idx + "SERVER_PORT:".len()..];
-                                if let Some(token) = after.split_whitespace().next() {
-                                    if let Ok(port) = token.parse::<u16>() {
-                                        let _ = tx.send(port);
-                                        port_found = true;
-                                    }
-                                }
+            let mut sent = false;
+            for line in reader.lines().flatten() {
+                println!("BE: {}", line);
+                if !sent {
+                    if let Some(idx) = line.find("SERVER_PORT:") {
+                        let after = &line[idx + "SERVER_PORT:".len()..];
+                        if let Some(token) = after.split_whitespace().next() {
+                            if let Ok(port) = token.parse::<u16>() {
+                                let _ = tx.send(port);
+                                sent = true;
                             }
                         }
                     }
-                    Err(_) => break,
                 }
             }
         });
@@ -108,13 +79,13 @@ impl BackendProcess {
         thread::spawn(move || {
             let reader = BufReader::new(stderr);
             for line in reader.lines().flatten() {
-                println!("BE ERR: {}", line);
+                eprintln!("BE ERR: {}", line);
             }
         });
 
         self.child = Some(child);
 
-        match rx_port.recv_timeout(Duration::from_secs(30)) {
+        match rx.recv_timeout(Duration::from_secs(30)) {
             Ok(port) => {
                 self.port = port;
                 println!("Backend reported port: {}", port);
@@ -123,7 +94,7 @@ impl BackendProcess {
             }
             Err(_) => {
                 self.stop();
-                Err("Timed out waiting for backend to report port".to_string())
+                Err("Timed out waiting for backend to start".to_string())
             }
         }
     }
@@ -144,15 +115,7 @@ impl BackendProcess {
                 }
             }
         }
-
-        Err("Backend failed to respond to health check within 15 seconds".to_string())
-    }
-
-    pub fn stop(&mut self) {
-        if let Some(mut child) = self.child.take() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
+        Err("Backend failed health check within 15 seconds".to_string())
     }
 }
 
@@ -162,176 +125,77 @@ impl Drop for BackendProcess {
     }
 }
 
-// --- Helpers ---
+// ── Path resolution helpers ──────────────────────────────────────────────────
 
-fn emit_progress(app_handle: &tauri::AppHandle, window: &Option<tauri::WebviewWindow>, msg: &str) {
-    println!("SETUP: {}", msg);
-    let _ = app_handle.emit("setup-progress", msg);
-    if let Some(w) = window {
-        let escaped = msg.replace('\\', "\\\\").replace('"', "\\\"");
-        let _ = w.eval(&format!("window.__SUZENT_SETUP_STEP__ = \"{}\";", escaped));
+/// Find the repo root directory.
+/// In dev the exe lives under target/; walk up until we find pyproject.toml.
+/// Fall back to the exe's directory.
+pub fn find_repo_dir() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        let mut dir = exe.parent().map(PathBuf::from).unwrap_or_default();
+        for _ in 0..6 {
+            if dir.join("pyproject.toml").exists() {
+                return dir;
+            }
+            if let Some(parent) = dir.parent() {
+                dir = parent.to_path_buf();
+            } else {
+                break;
+            }
+        }
+        // Fall back to exe directory
+        if let Some(parent) = exe.parent() {
+            return parent.to_path_buf();
+        }
     }
+    std::env::current_dir().unwrap_or_default()
 }
 
-/// Resolve the resources base dir (Tauri nests bundled resources under resources/).
-fn resolve_resources_base(resource_dir: &Path) -> PathBuf {
-    let nested = resource_dir.join("resources");
-    if nested.exists() { nested } else { resource_dir.to_path_buf() }
-}
+/// Locate the `uv` executable (PATH, ~/.cargo/bin, ~/.local/bin).
+pub fn find_uv() -> PathBuf {
+    // Try PATH first
+    if let Ok(path) = which_uv() {
+        return path;
+    }
 
-/// Find the prebuilt Python executable inside python-env/.
-fn find_bundled_python(resource_dir: &Path) -> Result<PathBuf, String> {
-    let base = resolve_resources_base(resource_dir);
-    let candidates = if cfg!(windows) {
-        vec![base.join("python-env").join("python.exe")]
+    // Common install locations
+    let candidates: Vec<PathBuf> = if cfg!(windows) {
+        vec![
+            dirs_home().join(".cargo").join("bin").join("uv.exe"),
+            dirs_home().join(".local").join("bin").join("uv.exe"),
+        ]
     } else {
         vec![
-            base.join("python-env").join("bin").join("python3"),
-            base.join("python-env").join("bin").join("python"),
+            dirs_home().join(".cargo").join("bin").join("uv"),
+            dirs_home().join(".local").join("bin").join("uv"),
         ]
     };
 
-    for p in &candidates {
-        if p.exists() {
-            return Ok(p.clone());
+    for c in candidates {
+        if c.exists() {
+            return c;
         }
     }
 
-    Err(format!("Bundled Python not found under {:?}", base.join("python-env")))
+    // Give up — let the OS resolve it and show a clear error on spawn
+    PathBuf::from("uv")
 }
 
-fn read_last_stable_port(app_data_dir: &Path) -> Option<u16> {
-    let port_file = app_data_dir.join("server.port");
-    let content = std::fs::read_to_string(&port_file).ok()?;
-    let port: u16 = content.trim().parse().ok()?;
-    if port == 0 {
-        return None;
+fn which_uv() -> Result<PathBuf, ()> {
+    let name = if cfg!(windows) { "uv.exe" } else { "uv" };
+    let path_var = std::env::var("PATH").unwrap_or_default();
+    for dir in std::env::split_paths(&path_var) {
+        let candidate = dir.join(name);
+        if candidate.exists() {
+            return Ok(candidate);
+        }
     }
-    if TcpListener::bind(("127.0.0.1", port)).is_ok() {
-        println!("Reusing last known backend port: {}", port);
-        Some(port)
-    } else {
-        println!("Last known port {} is in use, using dynamic port assignment", port);
-        None
-    }
+    Err(())
 }
 
-/// Sync config and skills from bundled resources to app data dir.
-pub fn sync_app_data(resource_dir: &Path, app_data_dir: &Path) -> Result<(), String> {
-    let base = resolve_resources_base(resource_dir);
-
-    for dir_name in &["config", "skills"] {
-        let dest_dir = app_data_dir.join(dir_name);
-        let src_dir = base.join(dir_name);
-
-        if !src_dir.exists() {
-            println!("  WARNING: Bundled {} directory not found, skipping", dir_name);
-            continue;
-        }
-
-        if !dest_dir.exists() {
-            println!("  Initializing {} directory...", dir_name);
-            copy_dir_recursive(&src_dir, &dest_dir, true)
-                .map_err(|e| format!("Failed to copy {}: {}", dir_name, e))?;
-        } else {
-            copy_missing_files(&src_dir, &dest_dir)
-                .map_err(|e| format!("Failed to sync {}: {}", dir_name, e))?;
-        }
-    }
-
-    Ok(())
-}
-
-fn copy_dir_recursive(src: &Path, dest: &Path, rename_examples: bool) -> std::io::Result<()> {
-    std::fs::create_dir_all(dest)?;
-
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let src_path = entry.path();
-        let file_name = entry.file_name().to_string_lossy().to_string();
-
-        if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dest.join(&file_name), rename_examples)?;
-        } else {
-            std::fs::copy(&src_path, dest.join(&file_name))?;
-            if rename_examples && file_name.contains(".example.") {
-                let dest_name = file_name.replace(".example.", ".");
-                let dest_path = dest.join(&dest_name);
-                if !dest_path.exists() {
-                    std::fs::copy(&src_path, &dest_path)?;
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn copy_missing_files(src: &Path, dest: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(dest)?;
-
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let src_path = entry.path();
-        let file_name = entry.file_name().to_string_lossy().to_string();
-
-        if src_path.is_dir() {
-            copy_missing_files(&src_path, &dest.join(&file_name))?;
-        } else if file_name.contains(".example.") {
-            let example_dest = dest.join(&file_name);
-            std::fs::copy(&src_path, &example_dest)?;
-
-            let user_dest_path = dest.join(file_name.replace(".example.", "."));
-            if !user_dest_path.exists() {
-                std::fs::copy(&src_path, &user_dest_path)?;
-                println!("  Created default configuration: {:?}", user_dest_path);
-            }
-        } else {
-            let dest_path = dest.join(&file_name);
-            if !dest_path.exists() {
-                std::fs::copy(&src_path, &dest_path)?;
-                println!("  Restored missing file: {:?}", dest_path);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// Generate a CLI shim in app_data_dir/bin pointing at the bundled Python.
-fn ensure_cli_shim(app_data_dir: &Path, python_exe: &Path) -> Result<(), String> {
-    let bin_dir = app_data_dir.join("bin");
-    std::fs::create_dir_all(&bin_dir)
-        .map_err(|e| format!("Failed to create bin dir: {}", e))?;
-
-    if cfg!(windows) {
-        let shim_path = bin_dir.join("suzent.cmd");
-        let content = format!(
-            "@echo off\r\n\"{}\" -m suzent.cli %*",
-            python_exe.to_string_lossy()
-        );
-        std::fs::write(&shim_path, content)
-            .map_err(|e| format!("Failed to write shim: {}", e))?;
-    } else {
-        let shim_path = bin_dir.join("suzent");
-        let content = format!(
-            "#!/bin/sh\nexec \"{}\" -m suzent.cli \"$@\"",
-            python_exe.to_string_lossy()
-        );
-        std::fs::write(&shim_path, content)
-            .map_err(|e| format!("Failed to write shim: {}", e))?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = std::fs::metadata(&shim_path)
-                .map_err(|e| format!("Failed to get shim metadata: {}", e))?
-                .permissions();
-            perms.set_mode(0o755);
-            std::fs::set_permissions(&shim_path, perms)
-                .map_err(|e| format!("Failed to set shim permissions: {}", e))?;
-        }
-    }
-
-    Ok(())
+fn dirs_home() -> PathBuf {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_default()
 }

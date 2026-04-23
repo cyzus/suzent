@@ -8,6 +8,9 @@ from pydantic import BaseModel, ValidationError
 from ..logger import get_logger
 from suzent.permissions.loader import load_permission_overrides
 
+DEFAULT_PORT: int = int(os.getenv("SUZENT_PORT", "25314"))
+DEFAULT_HOST: str = os.getenv("SUZENT_HOST", "localhost")
+
 
 def get_project_root() -> Path:
     """Get project root, handling dev, bundled, and installed CLI scenarios."""
@@ -102,7 +105,7 @@ def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[st
 
 class ConfigModel(BaseModel):
     title: str = "SUZENT"
-    server_url: str = "http://localhost:25314/chat"
+    server_url: str = f"http://{DEFAULT_HOST}:{DEFAULT_PORT}/chat"
     code_tag: str = "<code>"
 
     model_options: List[str] = []

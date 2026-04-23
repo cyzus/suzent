@@ -14,6 +14,7 @@ The application uses modular routing with separated concerns for maintainability
 
 import os
 import sys
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -287,6 +288,9 @@ async def startup():
     logger.info("Node system initialized")
 
     global social_brain, channel_manager
+    if social_brain is not None:
+        logger.warning("Social brain already initialized, skipping duplicate startup.")
+        return
     try:
         import json
         from suzent.config import PROJECT_DIR
@@ -450,8 +454,16 @@ async def shutdown():
         pass
 
 
+@asynccontextmanager
+async def lifespan(app):
+    await startup()
+    yield
+    await shutdown()
+
+
 app = Starlette(
     debug=True,
+    lifespan=lifespan,
     routes=[
         Route("/chat", chat, methods=["POST"]),
         Route("/chat/live", live_stream, methods=["POST"]),
@@ -563,8 +575,6 @@ app = Starlette(
             allow_headers=["*"],
         )
     ],
-    on_startup=[startup],
-    on_shutdown=[shutdown],
 )
 
 
@@ -594,8 +604,10 @@ if __name__ == "__main__":
 
     ensure_app_data()
 
+    from suzent.config import DEFAULT_PORT
+
     _port_str = os.getenv("SUZENT_PORT", "").strip()
-    port = int(_port_str) if _port_str else 25314
+    port = int(_port_str) if _port_str else DEFAULT_PORT
     host = os.getenv("SUZENT_HOST", "0.0.0.0")
 
     def write_port_file(effective_port: int) -> None:

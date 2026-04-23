@@ -89,23 +89,33 @@ Both systems run with full memory enabled, so the agent retains context across s
 
 ## **QUICK START**
 
-### **NATIVE SETUP (RECOMMENDED)**
- 
- The fastest path to getting started. Requires **Git** and **Node.js 20+**.
- 
- ```bash
- # WINDOWS (PowerShell)
- powershell -c "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
- 
- # MAC / LINUX
- curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | bash
- ```
- 
- Then simply run:
- ```bash
- suzent start
- ```
- 
+### **INSTALL**
+
+One command installs SUZENT, its Python backend, and the `suzent` CLI. Git is the only prerequisite (everything else is auto-installed).
+
+**macOS / Linux**
+```bash
+curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | bash
+```
+
+**Windows** (PowerShell)
+```powershell
+powershell -c "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
+```
+
+Then edit `~/suzent/.env` with your API keys and run:
+```bash
+suzent start
+```
+
+### **UPDATE**
+
+```bash
+suzent update
+```
+
+Or re-run the install command above — it detects an existing installation and pulls the latest changes.
+
 ---
 
 ## **TECH STACK**

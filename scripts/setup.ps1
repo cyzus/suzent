@@ -1,250 +1,250 @@
-# Suzent Setup Script for Windows
+# SUZENT Setup & Update Script for Windows
+# Usage:
+#   Fresh install:  powershell -c "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
+#   Update:         suzent update   (or re-run this script inside the repo)
+# Flags (env vars): $env:SUZENT_DIR, $env:SUZENT_BRANCH, $env:SUZENT_SKIP_PLAYWRIGHT
 
-Write-Host "🤖 Waking up SUZENT..." -ForegroundColor Cyan
+param(
+    [string]$Dir    = "",
+    [string]$Branch = "",
+    [switch]$SkipPlaywright,
+    [switch]$Update
+)
 
-# 1. Check Prerequisites
-function Check-Command($cmd, $name) {
-    if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
-        Write-Error "$name is not installed. Please install it and try again."
-        exit 1
-    }
-}
+$ErrorActionPreference = "Stop"
 
-# Helper: refresh PATH from system/user environment so newly-installed tools are visible
+# ── Resolve config ────────────────────────────────────────────────────────────
+$SuzentDir    = if ($Dir)    { $Dir }    elseif ($env:SUZENT_DIR)    { $env:SUZENT_DIR }    else { Join-Path $env:USERPROFILE "suzent" }
+$SuzentBranch = if ($Branch) { $Branch } elseif ($env:SUZENT_BRANCH) { $env:SUZENT_BRANCH } else { "main" }
+$SkipPW       = $SkipPlaywright -or ($env:SUZENT_SKIP_PLAYWRIGHT -eq "1")
+$RepoUrl      = "https://github.com/cyzus/suzent.git"
+$MinNodeMajor = 20
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+function Write-Ok   { param($m) Write-Host "[OK] $m" -ForegroundColor Green }
+function Write-Info { param($m) Write-Host " [*] $m" -ForegroundColor Cyan }
+function Write-Warn { param($m) Write-Host " [!] $m" -ForegroundColor Yellow }
+function Write-Fail { param($m) Write-Host "[ERR] $m" -ForegroundColor Red; exit 1 }
+
 function Refresh-Path {
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" +
+                [System.Environment]::GetEnvironmentVariable("Path","User")
 }
 
-Check-Command "git" "Git"
-Check-Command "node" "Node.js"
-
-# 1.1. Check Node.js version (20+ required)
-$nodeVersion = (node --version) -replace '^v', ''
-$nodeMajor = [int]($nodeVersion.Split('.')[0])
-if ($nodeMajor -lt 20) {
-    Write-Host "⚠️  Node.js version $nodeVersion detected. Version 20+ is required." -ForegroundColor Red
-    Write-Host "   Please upgrade Node.js from https://nodejs.org/" -ForegroundColor Cyan
-    exit 1
+function Add-ToUserPath {
+    param([string]$NewDir)
+    $current = [Environment]::GetEnvironmentVariable("Path", "User")
+    if (($current -split ";" | Where-Object { $_ -ieq $NewDir })) { return }
+    [Environment]::SetEnvironmentVariable("Path", "$current;$NewDir", "User")
+    $env:Path = "$env:Path;$NewDir"
+    Write-Warn "Added $NewDir to user PATH (restart terminal if command not found)"
 }
-Write-Host "✅ Node.js v$nodeVersion" -ForegroundColor Green
 
-# 1.5. Check/Install Rust
-if (-not (Get-Command "cargo" -ErrorAction SilentlyContinue)) {
-    Write-Host "⚠️  Rust (cargo) not found!" -ForegroundColor Yellow
-    Write-Host "   Installing Rust via rustup-init..." -ForegroundColor Cyan
-    
-    $exe = "$env:TEMP\rustup-init.exe"
-    try {
-        Invoke-WebRequest "https://win.rustup.rs/x86_64" -OutFile $exe
-        Start-Process -FilePath $exe -ArgumentList "-y" -Wait
-        
-        # Add to PATH for current session
-        $cargo_bin = "$env:USERPROFILE\.cargo\bin"
-        if (Test-Path $cargo_bin) {
-            $env:Path = "$cargo_bin;$env:Path"
-            Write-Host "✅ Rust installed and added to PATH." -ForegroundColor Green
-        }
+# ── Banner ────────────────────────────────────────────────────────────────────
+Write-Host ""
+Write-Host "  ███████╗██╗   ██╗███████╗███████╗███╗   ██╗████████╗" -ForegroundColor Cyan
+Write-Host "  ██╔════╝██║   ██║╚══███╔╝██╔════╝████╗  ██║╚══██╔══╝" -ForegroundColor Cyan
+Write-Host "  ███████╗██║   ██║  ███╔╝ █████╗  ██╔██╗ ██║   ██║   " -ForegroundColor Cyan
+Write-Host "  ╚════██║██║   ██║ ███╔╝  ██╔══╝  ██║╚██╗██║   ██║   " -ForegroundColor Cyan
+Write-Host "  ███████║╚██████╔╝███████╗███████╗██║ ╚████║   ██║   " -ForegroundColor Cyan
+Write-Host "  ╚══════╝ ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   " -ForegroundColor Cyan
+Write-Host ""
+
+# ── Detect update vs fresh install ───────────────────────────────────────────
+$IsUpdate = (Test-Path (Join-Path $SuzentDir ".git"))
+
+Write-Ok "Windows detected"
+
+# ── Check/install: git ────────────────────────────────────────────────────────
+function Ensure-Git {
+    if (Get-Command git -ErrorAction SilentlyContinue) { return }
+
+    Write-Info "git not found — attempting install via winget..."
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        winget install --id Git.Git --source winget --accept-package-agreements --accept-source-agreements --silent
         Refresh-Path
-    } catch {
-        Write-Error "Failed to install Rust automatically. Please install it manually from https://rustup.rs/"
+        if (Get-Command git -ErrorAction SilentlyContinue) {
+            Write-Ok "git installed via winget"
+            return
+        }
+    }
+    Write-Fail "git is required. Install from https://git-scm.com/download/win and re-run."
+}
+
+Ensure-Git
+Write-Ok "git $(git --version)"
+
+# ── Check/install: Node.js ────────────────────────────────────────────────────
+function Get-NodeMajor {
+    try {
+        $v = (node --version 2>$null) -replace '^v', ''
+        return [int]($v.Split('.')[0])
+    } catch { return 0 }
+}
+
+function Ensure-Node {
+    $major = Get-NodeMajor
+    if ($major -ge $MinNodeMajor) {
+        Write-Ok "Node.js v$(node --version) found"
+        return
+    }
+    if ($major -gt 0) {
+        Write-Warn "Node.js v$(node --version) is below required v$MinNodeMajor"
+    } else {
+        Write-Info "Node.js not found — installing..."
+    }
+
+    # Try winget
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        winget install OpenJS.NodeJS.LTS --source winget --accept-package-agreements --accept-source-agreements --silent
+        Refresh-Path
+        if ((Get-NodeMajor) -ge $MinNodeMajor) {
+            Write-Ok "Node.js installed via winget"
+            return
+        }
+        Write-Warn "winget install completed, but Node.js is still unavailable in this shell"
+        Write-Warn "Close and reopen PowerShell, then re-run this script."
         exit 1
     }
+
+    # Try Chocolatey
+    if (Get-Command choco -ErrorAction SilentlyContinue) {
+        choco install nodejs-lts -y
+        Refresh-Path
+        if ((Get-NodeMajor) -ge $MinNodeMajor) { Write-Ok "Node.js installed via Chocolatey"; return }
+    }
+
+    # Try Scoop
+    if (Get-Command scoop -ErrorAction SilentlyContinue) {
+        scoop install nodejs-lts
+        Refresh-Path
+        if ((Get-NodeMajor) -ge $MinNodeMajor) { Write-Ok "Node.js installed via Scoop"; return }
+    }
+
+    Write-Host ""
+    Write-Fail "Could not auto-install Node.js. Please install v${MinNodeMajor}+ from https://nodejs.org/ and re-run."
 }
 
-# 2. Install uv if missing
-if (-not (Get-Command "uv" -ErrorAction SilentlyContinue)) {
-    Write-Host "Installing uv..." -ForegroundColor Yellow
+Ensure-Node
+
+# ── Check/install: uv ────────────────────────────────────────────────────────
+function Ensure-Uv {
+    if (Get-Command uv -ErrorAction SilentlyContinue) { return }
+    Write-Info "Installing uv..."
     powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
     Refresh-Path
-}
-
-# 3. Clone Repo (if needed)
-$repoUrl = "https://github.com/cyzus/suzent.git"
-$dirName = "suzent"
-
-if (-not (Test-Path ".git")) {
-    if (-not (Test-Path $dirName)) {
-        Write-Host "Cloning Suzent..." -ForegroundColor Yellow
-        git clone $repoUrl
+    if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+        Write-Fail "uv installation failed. See https://docs.astral.sh/uv/"
     }
-    Set-Location $dirName
+    Write-Ok "uv installed"
 }
 
-# 4. Setup .env
+Ensure-Uv
+Write-Ok "uv $(uv --version)"
+
+# ── Clone or update repo ──────────────────────────────────────────────────────
+if ($IsUpdate) {
+    Write-Info "Updating SUZENT in $SuzentDir..."
+    Set-Location $SuzentDir
+
+    # Stash local changes
+    $status = git status --porcelain 2>$null
+    if ($status) {
+        $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+        Write-Warn "Stashing local changes (suzent-update-$stamp)..."
+        git stash push -m "suzent-update-$stamp"
+    }
+
+    git fetch origin
+    git checkout $SuzentBranch 2>$null
+    git pull origin $SuzentBranch
+    $sha = git rev-parse --short HEAD
+    Write-Ok "Repository updated to $sha"
+} else {
+    if (Test-Path $SuzentDir) {
+        Write-Fail "$SuzentDir already exists but is not a git repo. Remove it or set `$env:SUZENT_DIR to a different path."
+    }
+    Write-Info "Cloning SUZENT into $SuzentDir..."
+    git clone --branch $SuzentBranch $RepoUrl $SuzentDir
+    Write-Ok "Repository cloned"
+    Set-Location $SuzentDir
+}
+
+Set-Location $SuzentDir
+
+# ── Setup .env ────────────────────────────────────────────────────────────────
 if (-not (Test-Path ".env")) {
-    Write-Host "Creating .env from template..." -ForegroundColor Yellow
-    Copy-Item ".env.example" ".env"
-    Write-Host "IMPORTANT: Please edit .env with your API keys!" -ForegroundColor Red
-}
-
-# 5. Check for C++ Build Tools (Linker) — must happen BEFORE Rust compilation
-function Find-VCToolsPath {
-    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-    if (Test-Path $vswhere) {
-        $installPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-        if ($installPath) {
-            return $installPath
-        }
-    }
-    return $null
-}
-
-function Add-VCToolsToPath($vsPath) {
-    # Find the latest VC tools version directory and add to PATH for this session
-    $vcToolsDir = Join-Path $vsPath "VC\Tools\MSVC"
-    if (Test-Path $vcToolsDir) {
-        $latest = Get-ChildItem $vcToolsDir -Directory | Sort-Object Name -Descending | Select-Object -First 1
-        if ($latest) {
-            $binDir = Join-Path $latest.FullName "bin\Hostx64\x64"
-            if (Test-Path $binDir) {
-                $env:Path = "$binDir;$env:Path"
-                Write-Host "   ✅ Added MSVC linker to PATH for this session." -ForegroundColor Green
-                return $true
-            }
-        }
-    }
-    return $false
-}
-
-$needRestart = $false
-# Detect MSVC linker via vswhere first, fall back to PATH check
-$vsPath = Find-VCToolsPath
-$hasMSVCLinker = $false
-if ($vsPath) {
-    $vcToolsDir = Join-Path $vsPath "VC\Tools\MSVC"
-    if (Test-Path $vcToolsDir) {
-        $latest = Get-ChildItem $vcToolsDir -Directory | Sort-Object Name -Descending | Select-Object -First 1
-        if ($latest) {
-            $binDir = Join-Path $latest.FullName "bin\Hostx64\x64"
-            if (Test-Path (Join-Path $binDir "link.exe")) {
-                $hasMSVCLinker = $true
-            }
-        }
-    }
-}
-
-if (-not $hasMSVCLinker) {
-    if ($vsPath) {
-        Write-Host "⚠️  C++ Build Tools detected at: $vsPath" -ForegroundColor Yellow
-        Write-Host "   However, 'link.exe' is not in your PATH."
-        $added = Add-VCToolsToPath $vsPath
-        if (-not $added) {
-            Write-Host "   ⚠️  Could not auto-add linker to PATH. Rust builds might fail" -ForegroundColor Yellow
-            Write-Host "      unless you run from a Developer Command Prompt." -ForegroundColor Yellow
-            $needRestart = $true
-        }
-    } else {
-        Write-Host "⚠️  MSVC C++ Build Tools not found!" -ForegroundColor Yellow
-        Write-Host "   This is REQUIRED for compiling Rust/Tauri dependencies." -ForegroundColor Red
-        Write-Host "   Installing Visual Studio Build Tools via winget..." -ForegroundColor Cyan
-
-        try {
-            $wingetCheck = Get-Command "winget" -ErrorAction SilentlyContinue
-            if (-not $wingetCheck) {
-                Write-Host "   ❌ 'winget' not found. Please install Build Tools manually:" -ForegroundColor Red
-                Write-Host "      https://visualstudio.microsoft.com/visual-cpp-build-tools/" -ForegroundColor Cyan
-                Write-Host "      Select 'Desktop development with C++' workload." -ForegroundColor Cyan
-                exit 1
-            }
-            winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
-            if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189) {
-                # -1978335189 = already installed
-                $vsPath = Find-VCToolsPath
-                if ($vsPath) {
-                    Add-VCToolsToPath $vsPath | Out-Null
-                }
-                Write-Host "   ✅ Build Tools installed." -ForegroundColor Green
-            } else {
-                Write-Host "   ⚠️  Build Tools installation returned code $LASTEXITCODE" -ForegroundColor Yellow
-                Write-Host "      You may need to run the installer as Administrator." -ForegroundColor Yellow
-            }
-        } catch {
-            Write-Host "   ❌ Failed to install Build Tools: $_" -ForegroundColor Red
-            Write-Host "      Please install manually from https://visualstudio.microsoft.com/visual-cpp-build-tools/" -ForegroundColor Cyan
-            exit 1
-        }
-        $needRestart = $true
+    if (Test-Path ".env.example") {
+        Copy-Item ".env.example" ".env"
+        Write-Warn "Created .env from template — edit it with your API keys before starting."
     }
 } else {
-    Write-Host "✅ MSVC C++ Build Tools found." -ForegroundColor Green
+    Write-Ok ".env already exists"
 }
 
-# 6. Install Backend Dependencies
-Write-Host "Installing backend dependencies..." -ForegroundColor Yellow
+# ── Python dependencies ───────────────────────────────────────────────────────
+Write-Info "Syncing Python dependencies (uv sync)..."
 uv sync
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Backend dependency installation failed (uv sync). Please check errors above."
-    exit 1
-}
+if ($LASTEXITCODE -ne 0) { Write-Fail "uv sync failed — check errors above." }
+Write-Ok "Python dependencies ready"
 
-# 6.5. Install Playwright Chromium browser (needed by browsing tool)
-Write-Host "Installing Playwright Chromium browser..." -ForegroundColor Yellow
-uv run playwright install chromium
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "⚠️  Playwright browser install failed (non-fatal, will retry on first use)." -ForegroundColor Yellow
-}
-
-# 7. Install Frontend Dependencies
-Write-Host "Installing frontend dependencies..." -ForegroundColor Yellow
-Set-Location "frontend"
+# ── Frontend dependencies ─────────────────────────────────────────────────────
+Write-Info "Installing frontend dependencies (npm install)..."
+Push-Location "frontend"
 npm install
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Frontend dependency installation failed (npm install). Please check errors above."
-    Set-Location ..
-    exit 1
-}
-Set-Location ..
+if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Fail "npm install failed in frontend/." }
+Pop-Location
+Write-Ok "Frontend dependencies ready"
 
-# 7.5. Install Src-Tauri Dependencies
-Write-Host "Installing src-tauri dependencies..." -ForegroundColor Yellow
-Set-Location "src-tauri"
+# ── src-tauri JS dependencies ─────────────────────────────────────────────────
+Write-Info "Installing src-tauri dependencies (npm install)..."
+Push-Location "src-tauri"
 npm install
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Src-tauri dependency installation failed (npm install). Please check errors above."
-    Set-Location ..
-    exit 1
-}
-Set-Location ..
+if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Fail "npm install failed in src-tauri/." }
+Pop-Location
+Write-Ok "Tauri JS dependencies ready"
 
-# 7.6. Ensure Tauri resource placeholders exist
-# These files are tracked in git but may be missing if:
-#   - User cloned before the files were committed (stale .gitignore)
-#   - bundle_python.py wiped the resources/ directory
-#   - .gitignore negation patterns weren't applied on pull
-Write-Host "Ensuring Tauri resource files exist..." -ForegroundColor Yellow
-git checkout HEAD -- src-tauri/resources/suzent.cmd src-tauri/resources/suzent 2>$null
-if ($LASTEXITCODE -ne 0) {
-    # Files not in git (e.g. older branch) — create placeholders
-    $resourceDir = Join-Path (Get-Location) "src-tauri\resources"
-    if (-not (Test-Path $resourceDir)) {
-        New-Item -ItemType Directory -Path $resourceDir -Force | Out-Null
-    }
-    $cmdShim = Join-Path $resourceDir "suzent.cmd"
-    if (-not (Test-Path $cmdShim)) {
-        Set-Content -Path $cmdShim -Value "@echo off`r`nREM Placeholder — actual shim is generated at runtime.`r`n" -NoNewline
-    }
-    $shShim = Join-Path $resourceDir "suzent"
-    if (-not (Test-Path $shShim)) {
-        Set-Content -Path $shShim -Value "#!/bin/sh`n# Placeholder — actual shim is generated at runtime.`n" -NoNewline
+# ── Playwright Chromium ───────────────────────────────────────────────────────
+if (-not $SkipPW) {
+    Write-Info "Installing Playwright Chromium (for web browsing tool)..."
+    uv run playwright install chromium
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn "Playwright install failed — web browsing may not work (non-fatal)."
     }
 }
 
-# 8. Add to PATH (Global CLI)
-$scriptsDir = Join-Path (Get-Location) "scripts"
-$currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
+# ── Global CLI shim ───────────────────────────────────────────────────────────
+$BinDir = Join-Path $env:USERPROFILE ".local\bin"
+if (-not (Test-Path $BinDir)) { New-Item -ItemType Directory -Force -Path $BinDir | Out-Null }
 
-if ($currentPath -notlike "*$scriptsDir*") {
-    Write-Host "Adding $scriptsDir to PATH..." -ForegroundColor Yellow
-    [Environment]::SetEnvironmentVariable("Path", "$currentPath;$scriptsDir", "User")
-    $env:Path += ";$scriptsDir"
-    Write-Host "✅ Added 'suzent' command to PATH" -ForegroundColor Green
-}
+$ShimPath = Join-Path $BinDir "suzent.cmd"
+$ShimContent = "@echo off`r`ncd /d `"$SuzentDir`"`r`nuv run suzent %*`r`n"
+Set-Content -Path $ShimPath -Value $ShimContent -NoNewline -Encoding ASCII
+Write-Ok "CLI shim written to $ShimPath"
 
-if ($needRestart) {
+Add-ToUserPath $BinDir
+
+# Also add scripts/ dir (legacy, for suzent.ps1 wrapper)
+$ScriptsDir = Join-Path $SuzentDir "scripts"
+Add-ToUserPath $ScriptsDir
+
+# ── Done ──────────────────────────────────────────────────────────────────────
+Write-Host ""
+if ($IsUpdate) {
+    Write-Ok "SUZENT updated successfully!"
     Write-Host ""
-    Write-Host "⚠️  Please RESTART your terminal to ensure the MSVC linker is in PATH." -ForegroundColor Yellow
+    Write-Host "  Run " -NoNewline
+    Write-Host "suzent start" -ForegroundColor Cyan -NoNewline
+    Write-Host " to launch."
+} else {
+    Write-Ok "SUZENT installed successfully!"
+    Write-Host ""
+    Write-Host "  Next: edit " -NoNewline
+    Write-Host "$SuzentDir\.env" -ForegroundColor Cyan -NoNewline
+    Write-Host " with your API keys, then run:"
+    Write-Host "  " -NoNewline
+    Write-Host "suzent start" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  If 'suzent' is not found, restart your terminal." -ForegroundColor Yellow
 }
-
-Write-Host "✅ Setup Complete!" -ForegroundColor Green
-Write-Host "To start Suzent, run:"
-Write-Host "  suzent start" -ForegroundColor Cyan
+Write-Host ""

@@ -135,6 +135,10 @@ class TelegramChannel(SocialChannel):
             logger.warning("No Telegram token provided. Channel disabled.")
             return
 
+        if self._running:
+            logger.warning("Telegram channel already running, skipping connect.")
+            return
+
         try:
             self.app = ApplicationBuilder().token(self.token).build()
 
@@ -172,7 +176,7 @@ class TelegramChannel(SocialChannel):
             except Exception as e:
                 logger.warning(f"Failed to register Telegram commands: {e}")
 
-            await self.app.updater.start_polling()
+            await self.app.updater.start_polling(drop_pending_updates=True)
             self._running = True
             logger.info("Telegram polling started.")
 

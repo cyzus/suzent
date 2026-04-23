@@ -180,8 +180,10 @@ def node_host(
     name: str = typer.Option(
         "Local PC", "--name", "-n", help="Display name for this node"
     ),
-    url: str = typer.Option(
-        "ws://localhost:25314/ws/node", "--url", help="Gateway WebSocket URL"
+    url: Optional[str] = typer.Option(
+        None,
+        "--url",
+        help="Gateway WebSocket URL (default uses SUZENT_PORT env or 25314)",
     ),
     capabilities: Optional[str] = typer.Option(
         None,
@@ -191,10 +193,11 @@ def node_host(
     ),
 ):
     """Start a local node host (speaker, camera) in the foreground."""
-    from suzent.nodes.node_host import NodeHost
+    from suzent.nodes.node_host import NodeHost, DEFAULT_GATEWAY_URL
 
+    gateway_url = url or DEFAULT_GATEWAY_URL
     caps = capabilities.split(",") if capabilities else None
-    host = NodeHost(gateway_url=url, display_name=name, capabilities=caps)
+    host = NodeHost(gateway_url=gateway_url, display_name=name, capabilities=caps)
 
     typer.echo(f"🖥️  Starting node host '{name}'...")
     typer.echo(f"   Gateway: {url}")

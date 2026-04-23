@@ -19,5 +19,4 @@ serde_json = "1"
 reqwest = { version = "0.12", features = ["blocking"] }
 tauri-plugin-fs = "2.0"
 windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }
-chrono = "0.4.43"
 

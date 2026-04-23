@@ -15,7 +15,7 @@ struct AppState {
 fn get_backend_port(state: State<AppState>) -> Result<u16, String> {
     let backend_guard = state.backend.lock()
         .map_err(|e| format!("Lock error: {}", e))?;
-    
+
     if let Some(backend) = &*backend_guard {
         Ok(backend.port)
     } else {
@@ -23,26 +23,10 @@ fn get_backend_port(state: State<AppState>) -> Result<u16, String> {
     }
 }
 
-// Minimal logging helper for debugging CLI hangs
-
-
-
-
 fn main() {
-    // Force the working directory to the executable's directory.
-    // This fixes issues where NSIS installers launch the app with an invalid CWD (like System32 or %TEMP%).
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(exe_dir) = exe_path.parent() {
-            let _ = std::env::set_current_dir(exe_dir);
-        }
-    }
-
-    // Check for CLI arguments
     let args: Vec<String> = std::env::args().collect();
 
-    // If we have no arguments, we are likely running as a GUI.
-    // Since we are now a Console app (to support blocking CLI), we must hide the console window
-    // that Windows automatically created for us.
+    // GUI mode: hide the console window Windows creates for console-subsystem apps.
     if args.len() == 1 {
         #[cfg(windows)]
         unsafe {
@@ -51,60 +35,25 @@ fn main() {
         }
     }
 
+    // CLI mode: delegate to `uv run suzent <args>` in the repo directory.
     if args.len() > 1 {
-        // We have arguments, run as CLI.
-        // Since we are a Console subsystem app, we are ALREADY attached to the console.
-        // No need to AttachConsole.
+        let repo_dir = backend::find_repo_dir();
+        let uv_exe   = backend::find_uv();
 
+        let status = std::process::Command::new(&uv_exe)
+            .arg("run")
+            .arg("suzent")
+            .args(&args[1..])
+            .current_dir(&repo_dir)
+            .status();
 
-        // Locate the bundled python-env next to the executable.
-        // The exe is installed at <install_dir>/SUZENT.exe; python-env is a sibling directory.
-        if let Ok(exe_path) = std::env::current_exe() {
-            if let Some(exe_dir) = exe_path.parent() {
-                let python_exe = if cfg!(windows) {
-                    exe_dir.join("python-env").join("python.exe")
-                } else {
-                    exe_dir.join("python-env").join("bin").join("python3")
-                };
-
-                // Determine app data dir for suzent (same location as the GUI would use)
-                let suzent_app_data = if let Some(app_data) = std::env::var_os("APPDATA") {
-                    std::path::PathBuf::from(app_data).join("com.suzent.app")
-                } else {
-                    exe_dir.join("data")
-                };
-
-                // Sync config/skills on first install or upgrade
-                if let Err(e) = backend::sync_app_data(exe_dir, &suzent_app_data) {
-                    eprintln!("Warning: Failed to sync app data: {}", e);
-                }
-
-                if python_exe.exists() {
-                    let cli_args = &args[1..];
-                    let status = std::process::Command::new(&python_exe)
-                        .args(["-m", "suzent.cli"])
-                        .env("SUZENT_APP_DATA", &suzent_app_data)
-                        .args(cli_args)
-                        .status();
-
-                    match status {
-                        Ok(exit_status) => {
-                            std::process::exit(exit_status.code().unwrap_or(1));
-                        }
-                        Err(e) => {
-                            eprintln!("Failed to execute CLI: {}", e);
-                            std::process::exit(1);
-                        }
-                    }
-                } else {
-                    eprintln!("Error: Bundled Python not found at {:?}", python_exe);
-                    eprintln!("Please reinstall the application.");
-                    std::process::exit(1);
-                }
+        match status {
+            Ok(s) => std::process::exit(s.code().unwrap_or(1)),
+            Err(e) => {
+                eprintln!("Failed to run 'uv run suzent': {}", e);
+                eprintln!("Make sure uv is installed and SUZENT is set up correctly.");
+                std::process::exit(1);
             }
-        } else {
-            eprintln!("Error: Could not determine executable path.");
-            std::process::exit(1);
         }
     }
 
@@ -120,31 +69,23 @@ fn main() {
             let window = app.get_webview_window("main")
                 .ok_or("Failed to get main window")?;
 
-            // Initialize AppState with no backend yet
             app.manage(AppState {
                 backend: Mutex::new(None),
             });
 
-            // Clone handle for the thread
             let app_handle = app.handle().clone();
 
-            // Start backend in a separate thread so we don't block the UI
             std::thread::spawn(move || {
-                // Determine port and backend process based on build mode
-                // This might block for up to 45 seconds (in release mode)
                 match get_backend_config(&app_handle) {
                     Ok((port, backend)) => {
                         println!("Backend configured on port {}", port);
-                        
-                        // Update state
+
                         if let Some(state) = app_handle.try_state::<AppState>() {
                             if let Ok(mut guard) = state.backend.lock() {
                                 *guard = Some(backend);
                             }
                         }
 
-
-                        // Inject port for frontend runtime (prefer window variable; storage best-effort)
                         let js = format!(
                             r#"
 window.__SUZENT_BACKEND_PORT__ = {port};
@@ -156,13 +97,11 @@ try {{ localStorage.setItem('SUZENT_PORT', '{port}'); }} catch (e) {{}}
                             eprintln!("Failed to inject backend port: {}", e);
                             let _ = window.emit("backend-error", format!("Failed to inject backend port: {}", e));
                         } else {
-                            // Signal the frontend that the backend is ready with the confirmed port
                             let _ = app_handle.emit("backend-ready", port);
                         }
                     }
                     Err(e) => {
                         eprintln!("Failed to start backend: {}", e);
-                        // Maybe show error in UI?
                         let _ = window.emit("backend-error", e);
                     }
                 }
@@ -178,25 +117,42 @@ try {{ localStorage.setItem('SUZENT_PORT', '{port}'); }} catch (e) {{}}
         .expect("error while running tauri application");
 }
 
-/// Returns (port, BackendProcess) based on build configuration.
-/// - Release: Starts bundled backend and returns its dynamically allocated port
-/// - Debug: Returns default port 25314 (expects manually-run backend)
-#[cfg(not(debug_assertions))]
-fn get_backend_config(app: &tauri::AppHandle) -> Result<(u16, BackendProcess), String> {
-    let mut backend = BackendProcess::new();
-    let port = backend.start(app)?;
-    Ok((port, backend))
+/// Read the port written by the Python backend to DATA_DIR/server.port.
+fn read_port_file() -> Option<u16> {
+    let data_dir = backend::find_repo_dir().join("data");
+    let port_file = data_dir.join("server.port");
+    let text = std::fs::read_to_string(&port_file).ok()?;
+    text.trim().parse::<u16>().ok()
 }
 
+/// Dev mode: expect a manually-started backend; just read the port from SUZENT_PORT.
 #[cfg(debug_assertions)]
-fn get_backend_config(_app: &tauri::AppHandle) -> Result<(u16, BackendProcess), String> {
+fn get_backend_config(_app_handle: &tauri::AppHandle) -> Result<(u16, BackendProcess), String> {
     let port = std::env::var("SUZENT_PORT")
-        .unwrap_or_else(|_| "25314".to_string())
+        .unwrap_or_else(|_| "0".to_string())
         .parse::<u16>()
-        .unwrap_or(25314);
+        .unwrap_or(0);
 
-    println!("Development mode: Please start backend manually with:");
-    println!("  set SUZENT_PORT={} && python src/suzent/server.py", port);
-    println!("Expected backend URL: http://localhost:{}", port);
-    Ok((port, BackendProcess::new()))
+    // 0 means "read from server.port file written by the backend at startup"
+    let resolved = if port == 0 { read_port_file().unwrap_or(25314) } else { port };
+    println!("Dev mode: connecting to backend on port {}", resolved);
+    println!("If nothing shows up, start the backend first with: suzent serve");
+    Ok((resolved, BackendProcess::new()))
+}
+
+/// Release mode: launch the backend via `uv run python -m suzent.server`.
+#[cfg(not(debug_assertions))]
+fn get_backend_config(app_handle: &tauri::AppHandle) -> Result<(u16, BackendProcess), String> {
+    let _ = app_handle;
+    let repo_dir = backend::find_repo_dir();
+    let uv_exe   = backend::find_uv();
+
+    let port = std::env::var("SUZENT_PORT")
+        .unwrap_or_else(|_| "0".to_string())
+        .parse::<u16>()
+        .unwrap_or(0);
+
+    let mut bp = BackendProcess::new();
+    let actual_port = bp.start_with_uv(&uv_exe, &repo_dir, port)?;
+    Ok((actual_port, bp))
 }

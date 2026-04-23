@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import typer
+from suzent.config import DEFAULT_PORT
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -301,6 +302,22 @@ def _terminate_process_gracefully(process: subprocess.Popen, timeout: float = 5.
             pass
 
 
+def _ensure_npm_deps(root: Path):
+    """Install npm deps in frontend/ and src-tauri/ if node_modules is stale."""
+    for npm_dir, label in [
+        (root / "frontend", "frontend"),
+        (root / "src-tauri", "tauri"),
+    ]:
+        nm = npm_dir / "node_modules"
+        pkg = npm_dir / "package.json"
+        needs_install = not nm.exists() or (
+            pkg.exists() and pkg.stat().st_mtime > nm.stat().st_mtime
+        )
+        if needs_install:
+            typer.echo(f"    Installing {label} dependencies...")
+            run_command(["npm", "install"], cwd=npm_dir, shell_on_windows=True)
+
+
 def register_commands(app: typer.Typer):
     """Register top-level commands onto the app."""
 
@@ -324,7 +341,7 @@ def register_commands(app: typer.Typer):
         # Pre-flight: ensure MSVC linker is available on Windows
         ensure_msvc_linker()
 
-        for port, name in [(25314, "Backend"), (18080, "Frontend")]:
+        for port, name in [(DEFAULT_PORT, "Backend"), (18080, "Frontend")]:
             pid = get_pid_on_port(port)
             if pid:
                 typer.echo(f"\n⚠️  {name} Port {port} is already in use by PID {pid}.")
@@ -344,98 +361,33 @@ def register_commands(app: typer.Typer):
         if debug:
             backend_cmd.append("--debug")
 
-        typer.echo("  • Starting Backend...")
-        if IS_WINDOWS:
-            subprocess.Popen(
-                ["start", "powershell", "-NoExit", "-Command"]
-                + [" ".join(backend_cmd)],
-                shell=True,
-                cwd=root,
-            )
-        else:
-            subprocess.Popen(backend_cmd, cwd=root)
+        backend_env = os.environ.copy()
+        backend_env["SUZENT_PORT"] = str(DEFAULT_PORT)
 
-        typer.echo("  • Starting Frontend...")
-        frontend_app_dir = root / "frontend"
-        src_tauri_dir = root / "src-tauri"
+        typer.echo("  • Starting backend...")
+        backend_proc = subprocess.Popen(
+            [sys.executable, "-m", "suzent.server"],
+            cwd=root,
+            env=backend_env,
+        )
 
-        for npm_dir, label in [
-            (frontend_app_dir, "frontend"),
-            (src_tauri_dir, "tauri"),
-        ]:
-            nm = npm_dir / "node_modules"
-            pkg = npm_dir / "package.json"
-            needs_install = not nm.exists() or (
-                pkg.exists() and pkg.stat().st_mtime > nm.stat().st_mtime
-            )
-            if needs_install:
-                typer.echo(f"    Installing {label} dependencies...")
-                run_command(["npm", "install"], cwd=npm_dir, shell_on_windows=True)
+        typer.echo("  • Starting frontend (Tauri dev)...")
+        _ensure_npm_deps(root)
 
         try:
-            run_command(["npm", "run", "dev"], cwd=src_tauri_dir, shell_on_windows=True)
-        except subprocess.CalledProcessError:
-            typer.echo("\n⚠️  Dev server failed to start.")
-
-            # Check for common non-dependency errors before blindly retrying
-            # Read recent cargo build output to detect specific failures
-            known_fixes = []
-
-            # Check for missing linker (should have been caught by pre-flight)
-            if IS_WINDOWS and not shutil.which("link.exe"):
-                known_fixes.append(
-                    "MSVC linker (link.exe) not found. "
-                    "Run 'suzent setup-build-tools' and restart your terminal."
-                )
-
-            # Check for missing resource files
-            for res_name in ["suzent.cmd", "suzent"]:
-                res_path = src_tauri_dir / "resources" / res_name
-                if not res_path.exists():
-                    known_fixes.append(
-                        f"Missing resource file: resources/{res_name}. "
-                        f"Creating placeholder..."
-                    )
-                    res_path.parent.mkdir(parents=True, exist_ok=True)
-                    if res_name.endswith(".cmd"):
-                        res_path.write_text(
-                            "@echo off\nREM Placeholder — real shim generated at runtime.\n"
-                        )
-                    else:
-                        res_path.write_text(
-                            "#!/bin/sh\n# Placeholder — real shim generated at runtime.\n"
-                        )
-
-            if known_fixes:
-                typer.echo("    Diagnosed the following issues:")
-                for fix in known_fixes:
-                    typer.echo(f"    • {fix}")
-                typer.echo("    Retrying dev server...")
-                run_command(
-                    ["npm", "run", "dev"], cwd=src_tauri_dir, shell_on_windows=True
-                )
-            else:
-                typer.echo(
-                    "    Attempting to fix by performing a CLEAN install of dependencies..."
-                )
-                for d in [frontend_app_dir, src_tauri_dir]:
-                    nm = d / "node_modules"
-                    if nm.exists():
-                        typer.echo(f"    🗑️  Removing {nm}...")
-                        shutil.rmtree(nm, ignore_errors=True)
-
-                    typer.echo(f"    📥 Installing dependencies in {d.name}...")
-                    run_command(["npm", "install"], cwd=d, shell_on_windows=True)
-
-                typer.echo("    Retrying dev server...")
-                run_command(
-                    ["npm", "run", "dev"], cwd=src_tauri_dir, shell_on_windows=True
-                )
+            run_command(
+                ["npm", "run", "dev"], cwd=root / "src-tauri", shell_on_windows=True
+            )
+        except (subprocess.CalledProcessError, KeyboardInterrupt):
+            pass
+        finally:
+            typer.echo("\n🛑 Stopping backend...")
+            _terminate_process_gracefully(backend_proc)
 
     @app.command()
     def serve(
         host: str = typer.Option("127.0.0.1", help="Host to bind to"),
-        port: int = typer.Option(25314, help="Port to bind to"),
+        port: int = typer.Option(DEFAULT_PORT, help="Port to bind to"),
         debug: bool = typer.Option(False, "--debug", help="Run in debug mode"),
     ):
         """Start the Suzent backend server (headless/standalone mode)."""
@@ -472,6 +424,30 @@ def register_commands(app: typer.Typer):
         except Exception as e:
             typer.echo(f"❌ Server failed: {e}")
             raise typer.Exit(code=1)
+
+    @app.command()
+    def ui(
+        port: int = typer.Option(
+            DEFAULT_PORT, "--port", "-p", help="Backend port to connect to"
+        ),
+    ):
+        """Start only the Tauri frontend (assumes backend is already running)."""
+        root = get_project_root()
+        ensure_cargo_in_path()
+        ensure_msvc_linker()
+
+        typer.echo(f"🖥️  Starting SUZENT UI (connecting to backend on port {port})...")
+        _ensure_npm_deps(root)
+
+        env = os.environ.copy()
+        env["SUZENT_PORT"] = str(port)
+
+        try:
+            run_command(
+                ["npm", "run", "dev"], cwd=root / "src-tauri", shell_on_windows=True
+            )
+        except (subprocess.CalledProcessError, KeyboardInterrupt):
+            pass
 
     @app.command()
     def doctor():
