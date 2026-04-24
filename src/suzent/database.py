@@ -717,14 +717,16 @@ class ChatDatabase:
                         last_message += "..."
 
                 config = chat.config or {}
-                # Count only assistant messages for unread badge purposes.
-                # User messages are already known to the sender; tool-result
-                # messages (role="tool") are collapsed into the preceding
-                # assistant bubble in the UI.
+                # Count only assistant messages that carry visible text.
+                # Pure tool-call turns have role="assistant" but no text content,
+                # so we exclude them to avoid inflating the unread badge.
                 visible_count = sum(
                     1
                     for m in messages
-                    if isinstance(m, dict) and m.get("role") == "assistant"
+                    if isinstance(m, dict)
+                    and m.get("role") == "assistant"
+                    and isinstance(m.get("content"), str)
+                    and m["content"].strip()
                 )
                 results.append(
                     ChatSummaryModel(
