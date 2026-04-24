@@ -212,7 +212,7 @@ const MessageList: React.FC<{
         const isAssistant = m.role === 'assistant';
         const group = groupRenders.get(idx);
 
-        // Intermediate step group representative: render merged pills (no badge here — shows after final answer)
+        // Intermediate step group representative: badge shown here (top of the turn), tool pills below.
         if (group) {
           const groupedMessage: Message = {
             role: 'assistant',
@@ -251,6 +251,23 @@ const MessageList: React.FC<{
             <div key={idx} className="chat-msg-row w-full flex justify-start pl-2">
               <div className="border-2 border-dashed border-brutal-black px-4 py-2 text-sm font-mono text-neutral-500 dark:text-neutral-400 italic bg-white dark:bg-zinc-800">
                 {m.content}
+              </div>
+            </div>
+          );
+        }
+
+        // Cron/heartbeat trigger — compact card showing what kicked off this turn.
+        // Legacy rows (from before the trigger role existed) have no content; show
+        // a neutral placeholder so they still act as a visible turn separator.
+        if (m.role === 'trigger') {
+          const body = (m.content || '').trim();
+          return (
+            <div key={idx} className="chat-msg-row w-full flex justify-start">
+              <div className="inline-flex items-start gap-2 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2 text-xs font-mono shadow-brutal-sm max-w-3xl">
+                <span className="text-brutal-blue mt-[1px]">⏱</span>
+                <span className="whitespace-pre-wrap text-brutal-black dark:text-neutral-200">
+                  {body || <span className="italic text-neutral-500">Scheduled run</span>}
+                </span>
               </div>
             </div>
           );

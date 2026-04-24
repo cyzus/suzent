@@ -1532,7 +1532,10 @@ def _rebuild_display_messages(messages: list) -> list:
         ToolReturnPart,
     )
     import json
-    from suzent.core.system_reminder import strip_system_reminders
+    from suzent.core.system_reminder import (
+        strip_system_reminders,
+        extract_system_reminder_content,
+    )
 
     def render_reasoning_block(text: str) -> str:
         text = text.strip()
@@ -1563,16 +1566,32 @@ def _rebuild_display_messages(messages: list) -> list:
                         raw_text = str(part.content)
 
                     files = _extract_attachment_files(raw_text)
-                    clean_text = strip_system_reminders(
-                        _strip_attachment_annotations(raw_text)
-                    )
+                    stripped_attachments = _strip_attachment_annotations(raw_text)
+                    clean_text = strip_system_reminders(stripped_attachments)
 
                     ts = (
                         part.timestamp.isoformat()
                         if getattr(part, "timestamp", None)
                         else None
                     )
-                    entry: dict = {"role": "user", "content": clean_text}
+                    # When the visible user text is empty but the prompt carried a
+                    # <system-reminder> (cron/heartbeat trigger), persist it as a
+                    # distinct 'trigger' row so the UI can show what fired.
+                    if not clean_text and not files:
+                        reminder_body = extract_system_reminder_content(
+                            stripped_attachments
+                        )
+                        if reminder_body:
+                            entry: dict = {
+                                "role": "trigger",
+                                "content": reminder_body,
+                            }
+                            if ts:
+                                entry["timestamp"] = ts
+                            result.append(entry)
+                            continue
+
+                    entry = {"role": "user", "content": clean_text}
                     if files:
                         entry["files"] = files
                     if ts:

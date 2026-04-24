@@ -28,6 +28,10 @@ _STRIP_RE = re.compile(
     r"<system-reminder>.*?</system-reminder>",
     re.DOTALL | re.IGNORECASE,
 )
+_EXTRACT_RE = re.compile(
+    r"<system-reminder>(.*?)</system-reminder>",
+    re.DOTALL | re.IGNORECASE,
+)
 
 
 def wrap_in_system_reminder(content: str) -> str:
@@ -40,6 +44,14 @@ def strip_system_reminders(text: str) -> str:
     if not text:
         return text
     return _STRIP_RE.sub("", text).strip()
+
+
+def extract_system_reminder_content(text: str) -> str:
+    """Return the concatenated inner text of all <system-reminder> blocks."""
+    if not text:
+        return ""
+    parts = [m.strip() for m in _EXTRACT_RE.findall(text) if m.strip()]
+    return "\n\n".join(parts)
 
 
 # ---------------------------------------------------------------------------

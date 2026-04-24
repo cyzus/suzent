@@ -36,36 +36,19 @@ export const ChatList: React.FC = () => {
   const markRead = useCallback((chatId: string) => {
     const chat = chatsRef.current.find(c => c.id === chatId);
     if (!chat) return;
-    markChatRead(chatId, chat.messageCount);
-    // Optimistically patch the local chat list so the badge disappears immediately
-    // without waiting for the next list refresh.
-    chat.readCount = chat.messageCount;
-    chat.readAt = new Date().toISOString();
+    markChatRead(chatId);
+    // Optimistically clear the badge without waiting for next list refresh.
+    chat.unreadCount = 0;
   }, []);
 
   const isUnread = (chat: ChatSummary) => {
-    // Never show a badge for the chat the user is currently looking at.
     if (chat.id === currentChatId) return false;
-
-    const readAt = chat.readAt;
-    const readCount = chat.readCount ?? 0;
-
-    // New messages since the user last read this chat.
-    if (chat.messageCount > readCount) return true;
-
-    // A background job produced a result after the user last read this chat.
-    if (chat.lastResultAt && readAt && new Date(chat.lastResultAt) > new Date(readAt)) {
-      return true;
-    }
-    // Never-read chat that already has messages or a result.
-    if (!readAt && (chat.messageCount > 0 || chat.lastResultAt)) return true;
-
-    return false;
+    return (chat.unreadCount ?? 0) > 0;
   };
 
   const unreadMessages = (chat: ChatSummary) => {
     if (!isUnread(chat)) return 0;
-    return Math.max(1, chat.messageCount - (chat.readCount ?? 0));
+    return chat.unreadCount ?? 0;
   };
 
   // Mark current chat read when it becomes active, and re-mark whenever the

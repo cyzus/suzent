@@ -43,8 +43,7 @@ class ChatSummaryModel(BaseModel):
     platform: Optional[str] = None
     heartbeatEnabled: bool = False
     lastResultAt: Optional[str] = None
-    readCount: int = 0
-    readAt: Optional[str] = None
+    unreadCount: int = 0
 
 
 class ChatModel(SQLModel, table=True):
@@ -627,6 +626,10 @@ class ChatDatabase:
             if update_lifecycle:
                 chat.last_active_at = now
                 chat.turn_count = (chat.turn_count or 0) + 1
+                config = dict(chat.config or {})
+                config["unread_count"] = config.get("unread_count", 0) + 1
+                chat.config = config
+                flag_modified(chat, "config")
 
             session.add(chat)
             session.commit()
@@ -652,15 +655,15 @@ class ChatDatabase:
                 session.add(chat)
                 session.commit()
 
-    def mark_chat_read(self, chat_id: str, read_count: int) -> None:
-        """Persist the read state for a chat (called when user views it)."""
+    def mark_chat_read(self, chat_id: str) -> None:
+        """Reset unread count to zero when the user views a chat."""
         with self._session() as session:
             chat = session.get(ChatModel, chat_id)
             if chat:
                 config = dict(chat.config or {})
-                config["read_count"] = read_count
-                config["read_at"] = datetime.now(timezone.utc).isoformat()
+                config["unread_count"] = 0
                 chat.config = config
+                flag_modified(chat, "config")
                 session.add(chat)
                 session.commit()
 
@@ -741,8 +744,7 @@ class ChatDatabase:
                         lastResultAt=chat.last_result_at.isoformat()
                         if chat.last_result_at
                         else None,
-                        readCount=config.get("read_count", 0),
-                        readAt=config.get("read_at"),
+                        unreadCount=config.get("unread_count", 0),
                     )
                 )
 

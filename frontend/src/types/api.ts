@@ -17,7 +17,7 @@ export interface FileAttachment {
 }
 
 export interface Message {
-  role: 'user' | 'assistant' | 'notice' | 'canvas_action';
+  role: 'user' | 'assistant' | 'notice' | 'canvas_action' | 'trigger';
   content: string;
   timestamp?: string;         // ISO 8601 timestamp when the message was created
   stepInfo?: string; // Step metadata like "Step: 1 | Input tokens: 100 | Output tokens: 50"
@@ -61,8 +61,7 @@ export interface ChatSummary {
   heartbeatEnabled?: boolean;
   lastResultAt?: string;
   isRunning?: boolean;
-  readCount?: number;
-  readAt?: string;
+  unreadCount?: number;
 }
 
 export type PlanPhaseStatus = 'pending' | 'in_progress' | 'completed';

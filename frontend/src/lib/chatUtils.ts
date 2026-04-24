@@ -73,8 +73,8 @@ export function isToolOnlyContent(content: string | undefined): boolean {
   if (filtered.some(b => b.type === 'toolCall' && PROMINENT_TOOL_NAMES.includes(b.toolName || ''))) {
     return false;
   }
-  // Check if all remaining blocks are toolCall, or have no meaningful content
-  const contentBlocks = filtered.filter(b => b.type !== 'toolCall');
+  // Reasoning blocks (Thought:...) are not final user-facing content; treat like tool calls.
+  const contentBlocks = filtered.filter(b => b.type !== 'toolCall' && b.type !== 'reasoning');
   const hasContent = contentBlocks.some(b => b.type === 'a2ui' || b.content.trim().length > 0);
   return !hasContent;
 }

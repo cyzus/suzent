@@ -969,6 +969,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
           for (const msg of serverMessages) {
             if (msg.role === 'user') {
+              // Legacy cron/heartbeat chats persisted pure-reminder prompts as
+              // empty user rows before the 'trigger' role existed. Promote them
+              // to trigger rows (with no body) so each one acts as a proper
+              // turn boundary in the renderer.
+              if (!(msg.content || '').trim() && !(msg.images?.length) && !(msg.files?.length)) {
+                if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
+                mappedMessages.push({ role: 'trigger', content: '', timestamp: msg.timestamp });
+                continue;
+              }
+              if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
+              mappedMessages.push(msg);
+            } else if (msg.role === 'trigger') {
               if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
               mappedMessages.push(msg);
             } else if (msg.role === 'assistant') {

@@ -536,13 +536,11 @@ async def delete_chat(request: Request) -> JSONResponse:
 
 
 async def mark_chat_read(request: Request) -> JSONResponse:
-    """POST /chats/{chat_id}/mark-read — persist read state for a chat."""
+    """POST /chats/{chat_id}/mark-read — reset unread counter for a chat."""
     try:
         chat_id = request.path_params["chat_id"]
-        data = await request.json()
-        read_count = int(data.get("readCount", 0))
         db = get_database()
-        db.mark_chat_read(chat_id, read_count)
+        db.mark_chat_read(chat_id)
         return JSONResponse({"ok": True})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

@@ -461,12 +461,12 @@ export async function fetchCronStatus(): Promise<{
   return res.json();
 }
 
-export async function markChatRead(chatId: string, readCount: number): Promise<void> {
+export async function markChatRead(chatId: string): Promise<void> {
   try {
     await fetch(`${getApiBase()}/chats/${chatId}/mark-read`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ readCount }),
+      body: '{}',
     });
   } catch { }
 }
