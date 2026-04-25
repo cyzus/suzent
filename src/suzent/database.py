@@ -471,6 +471,26 @@ class ChatDatabase:
                     )
                 conn.commit()
 
+        # Migration: Add file_snapshot columns to retry_checkpoints
+        if "retry_checkpoints" in inspector.get_table_names():
+            columns = [
+                col["name"] for col in inspector.get_columns("retry_checkpoints")
+            ]
+            with self.engine.connect() as conn:
+                if "has_file_snapshot" not in columns:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE retry_checkpoints ADD COLUMN has_file_snapshot BOOLEAN DEFAULT 0"
+                        )
+                    )
+                if "file_snapshot" not in columns:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE retry_checkpoints ADD COLUMN file_snapshot TEXT"
+                        )
+                    )
+                conn.commit()
+
         # Migration: Ensure postprocess_jobs table exists (auto-created by SQLModel)
         # Verify it exists after create_all() runs
         if "postprocess_jobs" not in inspector.get_table_names():
