@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 import { useI18n } from '../../i18n';
-import { ApiProvider, CustomProviderPayload, syncCapabilities, UserConfig } from '../../lib/api';
+import { ApiField, ApiProvider, CustomProviderPayload, syncCapabilities, UserConfig } from '../../lib/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 
 // Brand colors keyed by provider id (hex without #). Kept in the frontend only.
@@ -43,6 +43,20 @@ interface ProvidersTabProps {
     onVerify: (provider: ApiProvider) => void;
     onAddProvider: (payload: CustomProviderPayload) => Promise<void>;
     onDeleteProvider: (providerId: string) => Promise<void>;
+}
+
+// ─── KeyStatusBadge ──────────────────────────────────────────────────────────
+
+function KeyStatusBadge({ fields }: { fields: ApiField[] }) {
+    const secretFields = fields.filter(f => f.type === 'secret');
+    if (secretFields.length === 0) return null;
+    const hasKey = secretFields.some(f => f.isSet);
+
+    return (
+        <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 border-2 ${hasKey ? 'border-brutal-black bg-brutal-black text-white dark:bg-white dark:text-brutal-black' : 'border-brutal-black text-brutal-black dark:border-white dark:text-white bg-transparent'}`}>
+            {hasKey ? 'key set' : 'no key'}
+        </span>
+    );
 }
 
 // ─── ProviderIcon ────────────────────────────────────────────────────────────
@@ -252,6 +266,18 @@ export function ProvidersTab({
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [syncing, setSyncing] = useState(false);
     const [syncResult, setSyncResult] = useState<string | null>(null);
+    // Tracks which secret field keys are currently in edit mode (user clicked "Change")
+    const [editingFields, setEditingFields] = useState<Set<string>>(new Set());
+
+    const startEditing = (fieldKey: string) => {
+        setEditingFields(prev => new Set(prev).add(fieldKey));
+        onKeyChange(fieldKey, '');
+    };
+
+    const cancelEditing = (field: ApiField) => {
+        setEditingFields(prev => { const s = new Set(prev); s.delete(field.key); return s; });
+        onKeyChange(field.key, field.value);
+    };
 
     const handleSaveProvider = async (payload: CustomProviderPayload) => {
         await onAddProvider(payload);
@@ -355,11 +381,12 @@ export function ProvidersTab({
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2 flex-shrink-0">
+                                    <KeyStatusBadge fields={provider.fields} />
                                     {provider.user_defined && (
                                         <button
                                             onClick={() => handleDelete(provider.id)}
                                             disabled={deletingId === provider.id}
-                                            className="text-[10px] font-black uppercase px-2 py-1 border-2 border-red-500 text-red-500 hover:bg-red-50 dark:hover:bg-red-950 disabled:opacity-40"
+                                            className="text-[10px] font-black uppercase px-2 py-1 border-2 border-brutal-black text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-40"
                                             title={t('settings.providers.deleteProvider')}
                                         >
                                             {deletingId === provider.id ? '…' : '✕'}
@@ -389,34 +416,73 @@ export function ProvidersTab({
                                 {activeTab === 'credentials' && (
                                     <div className="space-y-4">
                                         {provider.fields.map(field => {
-                                            const val = apiKeys[field.key] || '';
-                                            const isMasked = val === '********' || (val.includes('...') && val.includes('(env)'));
-                                            const inputType = field.type === 'secret' ? (showKey[field.key] ? "text" : "password") : "text";
+                                            const val = apiKeys[field.key] ?? '';
+                                            const isConfigured = field.isSet && !editingFields.has(field.key);
+                                            const isEnvKey = field.source === 'env'; // display-only hint
+
                                             return (
                                                 <div key={field.key} className="space-y-1">
-                                                    <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">{field.label}</label>
-                                                    <div className="flex gap-0">
-                                                        <div className="relative flex-1">
-                                                            <input
-                                                                type={inputType}
-                                                                value={val}
-                                                                onChange={(e) => onKeyChange(field.key, e.target.value)}
-                                                                placeholder={field.placeholder}
-                                                                className={`w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black border-r-0 px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 transition-all dark:text-white ${isMasked ? 'text-neutral-500 italic' : ''}`}
-                                                            />
-                                                        </div>
-                                                        {field.type === 'secret' && (
-                                                            <button
-                                                                onClick={() => onToggleShowKey(field.key)}
-                                                                className="w-10 flex items-center justify-center bg-white dark:bg-zinc-900 border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-800 font-bold text-[10px] dark:text-white"
-                                                            >
-                                                                {showKey[field.key] ? 'H' : 'S'}
-                                                            </button>
-                                                        )}
-                                                        {field.type !== 'secret' && (
-                                                            <div className="w-10 border-2 border-brutal-black border-l-0 bg-neutral-100 dark:bg-zinc-800"></div>
+                                                    <div className="flex items-center justify-between">
+                                                        <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">{field.label}</label>
+                                                        {isConfigured && (
+                                                            <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                                                                {isEnvKey ? 'env' : 'saved'}
+                                                            </span>
                                                         )}
                                                     </div>
+
+                                                    {isConfigured ? (
+                                                        /* Locked/display state */
+                                                        <div className="flex gap-0">
+                                                            <div className="flex-1 flex items-center bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-black px-3 py-2">
+                                                                <span className="font-mono text-xs text-neutral-500 dark:text-neutral-400 truncate">{val || '••••••••'}</span>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => startEditing(field.key)}
+                                                                className="px-3 text-[10px] font-black uppercase border-2 border-l-0 border-brutal-black text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700 bg-white dark:bg-zinc-900 whitespace-nowrap"
+                                                            >
+                                                                {t('settings.providers.changeKey')}
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        /* Edit state */
+                                                        (() => {
+                                                            const showToggle = field.type === 'secret' && val.length > 0;
+                                                            const showCancel = field.isSet && editingFields.has(field.key);
+                                                            const hasRight = showToggle || showCancel;
+                                                            return (
+                                                                <div className="flex gap-0">
+                                                                    <div className="relative flex-1">
+                                                                        <input
+                                                                            type={field.type === 'secret' ? (showKey[field.key] ? 'text' : 'password') : 'text'}
+                                                                            value={val}
+                                                                            onChange={(e) => onKeyChange(field.key, e.target.value)}
+                                                                            placeholder={field.placeholder}
+                                                                            autoFocus={editingFields.has(field.key)}
+                                                                            className={`w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 transition-all dark:text-white ${hasRight ? 'border-r-0' : ''}`}
+                                                                        />
+                                                                    </div>
+                                                                    {showToggle && (
+                                                                        <button
+                                                                            onClick={() => onToggleShowKey(field.key)}
+                                                                            className={`w-9 flex items-center justify-center bg-white dark:bg-zinc-900 border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-800 font-mono text-xs dark:text-white select-none ${showCancel ? 'border-r-0' : ''}`}
+                                                                            title={showKey[field.key] ? t('settings.providers.hideKey') : t('settings.providers.showKey')}
+                                                                        >
+                                                                            {showKey[field.key] ? '○' : '●'}
+                                                                        </button>
+                                                                    )}
+                                                                    {showCancel && (
+                                                                        <button
+                                                                            onClick={() => cancelEditing(field)}
+                                                                            className="px-3 text-[10px] font-black uppercase border-2 border-brutal-black text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-zinc-700 bg-white dark:bg-zinc-900 whitespace-nowrap"
+                                                                        >
+                                                                            {t('common.cancel')}
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })()
+                                                    )}
                                                 </div>
                                             );
                                         })}

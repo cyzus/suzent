@@ -43,6 +43,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
   const { t, locale, setLocale } = useI18n();
   const [providers, setProviders] = useState<ApiProvider[]>([]);
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
+  // Tracks the original display values returned by the backend so save/verify can skip unchanged keys
+  const [originalDisplayValues, setOriginalDisplayValues] = useState<Record<string, string>>({});
   const [userConfigs, setUserConfigs] = useState<Record<string, UserConfig>>({});
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
   const [activeTabs, setActiveTabs] = useState<Record<string, ProviderTab>>({});
@@ -95,6 +97,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
       }
 
       setApiKeys(initialKeys);
+      setOriginalDisplayValues({ ...initialKeys });
       setUserConfigs(initialConfigs);
       setActiveTabs(initialTabs);
       setLoading(false);
@@ -177,7 +180,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
     const configForProvider: Record<string, string> = {};
     for (const field of provider.fields) {
       const val = apiKeys[field.key];
-      if (val && val !== '********' && !val.includes('(env)')) {
+      if (val && val !== originalDisplayValues[field.key]) {
         configForProvider[field.key] = val;
       }
     }
@@ -200,8 +203,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
 
     const keysToSave: Record<string, string> = {};
     for (const [key, value] of Object.entries(apiKeys)) {
-      if (value === '********') continue;
-      if (value.includes('...') && value.includes('(env)')) continue;
+      if (value === originalDisplayValues[key]) continue; // unchanged from backend display
       keysToSave[key] = value;
     }
 

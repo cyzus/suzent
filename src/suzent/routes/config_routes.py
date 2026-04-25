@@ -244,7 +244,9 @@ async def get_api_keys_status(request: Request) -> JSONResponse:
                                 else f"{val[:4]}...{val[-4:]} (env)"
                             )
                         else:
-                            display_val = "********"
+                            display_val = (
+                                f"{val[:4]}...{val[-4:]}" if len(val) >= 8 else "••••"
+                            )
                     else:
                         display_val = val
 

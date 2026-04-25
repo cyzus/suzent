@@ -56,6 +56,7 @@ export interface ApiField {
   type: 'secret' | 'text';
   value: string;
   isSet: boolean;
+  source?: 'env' | 'db' | null;
 }
 
 export interface Model {
