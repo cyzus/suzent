@@ -1,8 +1,30 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 import { useI18n } from '../../i18n';
-import { ApiProvider, UserConfig } from '../../lib/api';
+import { ApiProvider, CustomProviderPayload, syncCapabilities, UserConfig } from '../../lib/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
+
+// Brand colors keyed by provider id (hex without #). Kept in the frontend only.
+const PROVIDER_COLORS: Record<string, string> = {
+    openai:       '000000',
+    anthropic:    'D97757',
+    gemini:       '4285F4',
+    xai:          '1D1D1D',
+    deepseek:     '4D6BFE',
+    minimax:      '1F1E33',
+    moonshot:     '1C1C1E',
+    zhipuai:      '2B60D6',
+    openrouter:   '6467F2',
+    litellm_proxy:'7C3AED',
+    ollama:       '000000',
+    perplexity:   '20808D',
+    together:     'FF5733',
+    fireworks:    '9B59B6',
+    sambanova:    'E34A34',
+    bedrock:      'FF9900',
+};
+
+const API_TYPES = ['openai', 'anthropic', 'google', 'xai', 'openrouter', 'ollama', 'litellm_proxy', 'bedrock'] as const;
 
 type ProviderTab = 'credentials' | 'models';
 
@@ -19,7 +41,195 @@ interface ProvidersTabProps {
     onConfigChange: (providerId: string, config: UserConfig) => void;
     onAddCustomModel: (providerId: string, modelId: string) => void;
     onVerify: (provider: ApiProvider) => void;
+    onAddProvider: (payload: CustomProviderPayload) => Promise<void>;
+    onDeleteProvider: (providerId: string) => Promise<void>;
 }
+
+// ─── ProviderIcon ────────────────────────────────────────────────────────────
+
+function ProviderIcon({ provider }: { provider: ApiProvider }) {
+    const [imgFailed, setImgFailed] = useState(false);
+    const color = PROVIDER_COLORS[provider.id] ?? (provider.user_defined ? '6B7280' : 'e5e5e5');
+    const initials = provider.label.slice(0, 2).toUpperCase();
+
+    return (
+        <div
+            className="w-9 h-9 border-2 border-brutal-black flex items-center justify-center flex-shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+            style={{ backgroundColor: `#${color}` }}
+        >
+            {provider.logo_url && !imgFailed ? (
+                <img
+                    src={`${provider.logo_url}/ffffff`}
+                    alt={provider.label}
+                    className="w-5 h-5 object-contain"
+                    onError={() => setImgFailed(true)}
+                />
+            ) : (
+                <span className="text-[10px] font-black text-white select-none">{initials}</span>
+            )}
+        </div>
+    );
+}
+
+// ─── AddProviderForm ─────────────────────────────────────────────────────────
+
+interface AddProviderFormProps {
+    onSave: (payload: CustomProviderPayload) => Promise<void>;
+    onCancel: () => void;
+}
+
+function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
+    const { t } = useI18n();
+    const [saving, setSaving] = useState(false);
+    const [form, setForm] = useState({
+        id: '',
+        label: '',
+        api_type: 'openai' as string,
+        base_url: '',
+        key_env: '',
+        key_label: 'API Key',
+        key_placeholder: '',
+    });
+    const [error, setError] = useState('');
+
+    const set = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
+
+    const handleSave = async () => {
+        if (!form.id.trim() || !form.label.trim()) {
+            setError(t('settings.providers.addForm.requiredFields'));
+            return;
+        }
+        setSaving(true);
+        setError('');
+        const payload: CustomProviderPayload = {
+            id: form.id.trim(),
+            label: form.label.trim(),
+            api_type: form.api_type,
+            ...(form.base_url.trim() && { base_url: form.base_url.trim() }),
+            ...(form.key_env.trim() && {
+                env_keys: [form.key_env.trim()],
+                fields: [{
+                    key: form.key_env.trim(),
+                    label: form.key_label.trim() || 'API Key',
+                    placeholder: form.key_placeholder.trim() || '...',
+                    type: 'secret',
+                }],
+            }),
+            default_models: [],
+        };
+        try {
+            await onSave(payload);
+        } catch (e: any) {
+            setError(e.message || 'Failed to save provider');
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="bg-white dark:bg-zinc-800 border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 space-y-4">
+            <h3 className="font-black uppercase text-lg tracking-wide dark:text-white">{t('settings.providers.addForm.title')}</h3>
+
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">{t('settings.providers.addForm.id')} *</label>
+                    <input
+                        type="text"
+                        value={form.id}
+                        onChange={e => set('id', e.target.value.replace(/\s/g, '_').toLowerCase())}
+                        placeholder="my_provider"
+                        className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white"
+                    />
+                </div>
+                <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">{t('settings.providers.addForm.label')} *</label>
+                    <input
+                        type="text"
+                        value={form.label}
+                        onChange={e => set('label', e.target.value)}
+                        placeholder="My Provider"
+                        className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white"
+                    />
+                </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">{t('settings.providers.addForm.apiType')}</label>
+                    <select
+                        value={form.api_type}
+                        onChange={e => set('api_type', e.target.value)}
+                        className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white"
+                    >
+                        {API_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                </div>
+                <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">{t('settings.providers.addForm.baseUrl')}</label>
+                    <input
+                        type="text"
+                        value={form.base_url}
+                        onChange={e => set('base_url', e.target.value)}
+                        placeholder="https://api.example.com/v1"
+                        className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white"
+                    />
+                </div>
+            </div>
+
+            <div className="border-t-2 border-neutral-200 dark:border-zinc-700 pt-4 space-y-3">
+                <p className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">{t('settings.providers.addForm.apiKeySection')}</p>
+                <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase text-neutral-400 tracking-wider">{t('settings.providers.addForm.envVar')}</label>
+                        <input
+                            type="text"
+                            value={form.key_env}
+                            onChange={e => set('key_env', e.target.value.toUpperCase().replace(/\s/g, '_'))}
+                            placeholder="MY_PROVIDER_API_KEY"
+                            className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase text-neutral-400 tracking-wider">{t('settings.providers.addForm.fieldLabel')}</label>
+                        <input
+                            type="text"
+                            value={form.key_label}
+                            onChange={e => set('key_label', e.target.value)}
+                            placeholder="API Key"
+                            className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase text-neutral-400 tracking-wider">{t('settings.providers.addForm.placeholder')}</label>
+                        <input
+                            type="text"
+                            value={form.key_placeholder}
+                            onChange={e => set('key_placeholder', e.target.value)}
+                            placeholder="sk-..."
+                            className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            {error && <p className="text-red-600 text-xs font-bold">{error}</p>}
+
+            <div className="flex gap-3 justify-end pt-2">
+                <button onClick={onCancel} className="px-4 py-2 text-xs font-black uppercase border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-700 dark:text-white">
+                    {t('common.cancel')}
+                </button>
+                <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="px-4 py-2 text-xs font-black uppercase bg-brutal-black text-white border-2 border-brutal-black hover:bg-zinc-800 disabled:opacity-50 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)] active:shadow-none"
+                >
+                    {saving ? t('common.saving') : t('settings.providers.addForm.save')}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// ─── ProvidersTab ─────────────────────────────────────────────────────────────
 
 export function ProvidersTab({
     providers,
@@ -34,14 +244,76 @@ export function ProvidersTab({
     onConfigChange,
     onAddCustomModel,
     onVerify,
+    onAddProvider,
+    onDeleteProvider,
 }: ProvidersTabProps): React.ReactElement {
     const { t } = useI18n();
+    const [showAddForm, setShowAddForm] = useState(false);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [syncing, setSyncing] = useState(false);
+    const [syncResult, setSyncResult] = useState<string | null>(null);
+
+    const handleSaveProvider = async (payload: CustomProviderPayload) => {
+        await onAddProvider(payload);
+        setShowAddForm(false);
+    };
+
+    const handleDelete = async (providerId: string) => {
+        setDeletingId(providerId);
+        try {
+            await onDeleteProvider(providerId);
+        } finally {
+            setDeletingId(null);
+        }
+    };
+
+    const handleSync = async () => {
+        setSyncing(true);
+        setSyncResult(null);
+        try {
+            const result = await syncCapabilities();
+            if (result.success) {
+                setSyncResult(t('settings.providers.syncDone', { providers: String(result.providers ?? 0), models: String(result.models ?? 0) }));
+            } else {
+                setSyncResult(result.error || t('settings.providers.syncFailed'));
+            }
+        } finally {
+            setSyncing(false);
+            setTimeout(() => setSyncResult(null), 5000);
+        }
+    };
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 gap-3">
                 <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black dark:text-white">{t('settings.providers.title')}</h2>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                    {syncResult && (
+                        <span className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 max-w-[200px] truncate">{syncResult}</span>
+                    )}
+                    <button
+                        onClick={handleSync}
+                        disabled={syncing}
+                        title={t('settings.providers.syncTooltip')}
+                        className="px-3 py-2 text-xs font-black uppercase border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-700 dark:text-white disabled:opacity-40 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.2)] active:shadow-none"
+                    >
+                        {syncing ? t('settings.providers.syncing') : t('settings.providers.sync')}
+                    </button>
+                    <button
+                        onClick={() => setShowAddForm(v => !v)}
+                        className="px-3 py-2 text-xs font-black uppercase bg-brutal-black text-white border-2 border-brutal-black hover:bg-zinc-800 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)] active:shadow-none"
+                    >
+                        {showAddForm ? '✕' : t('settings.providers.addProvider')}
+                    </button>
+                </div>
             </div>
+
+            {showAddForm && (
+                <AddProviderForm
+                    onSave={handleSaveProvider}
+                    onCancel={() => setShowAddForm(false)}
+                />
+            )}
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
                 {providers.map((provider) => {
@@ -72,9 +344,29 @@ export function ProvidersTab({
                     return (
                         <div key={provider.id} className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col h-full">
                             {/* Provider Header */}
-                            <div className="p-4 bg-neutral-50 dark:bg-zinc-900 flex justify-between items-center border-b-4 border-brutal-black">
-                                <span className="font-black uppercase text-xl tracking-wide">{provider.label}</span>
-                                <div className={`w-4 h-4 rounded-full border-2 border-brutal-black ${isEnabled ? 'bg-brutal-green' : 'bg-transparent'}`}></div>
+                            <div className="p-4 bg-neutral-50 dark:bg-zinc-900 flex justify-between items-center border-b-4 border-brutal-black gap-3">
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <ProviderIcon provider={provider} />
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="font-black uppercase text-xl tracking-wide truncate dark:text-white">{provider.label}</span>
+                                        {provider.user_defined && (
+                                            <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">custom</span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                    {provider.user_defined && (
+                                        <button
+                                            onClick={() => handleDelete(provider.id)}
+                                            disabled={deletingId === provider.id}
+                                            className="text-[10px] font-black uppercase px-2 py-1 border-2 border-red-500 text-red-500 hover:bg-red-50 dark:hover:bg-red-950 disabled:opacity-40"
+                                            title={t('settings.providers.deleteProvider')}
+                                        >
+                                            {deletingId === provider.id ? '…' : '✕'}
+                                        </button>
+                                    )}
+                                    <div className={`w-4 h-4 rounded-full border-2 border-brutal-black ${isEnabled ? 'bg-brutal-green' : 'bg-transparent'}`}></div>
+                                </div>
                             </div>
 
                             {/* Tabs */}
@@ -128,6 +420,9 @@ export function ProvidersTab({
                                                 </div>
                                             );
                                         })}
+                                        {provider.fields.length === 0 && (
+                                            <p className="text-xs text-neutral-400 italic">{t('settings.providers.noCredentials')}</p>
+                                        )}
                                     </div>
                                 )}
 

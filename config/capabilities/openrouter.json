@@ -1,0 +1,838 @@
+{
+  "models": {
+    "openrouter/anthropic/claude-3-haiku": {
+      "mode": "chat",
+      "input_cost_per_token": 2.5e-07,
+      "output_cost_per_token": 1.25e-06,
+      "supports_vision": true,
+      "supports_function_calling": true
+    },
+    "openrouter/anthropic/claude-3.5-sonnet": {
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 8192,
+      "input_cost_per_token": 3e-06,
+      "output_cost_per_token": 1.5e-05,
+      "supports_vision": true,
+      "supports_function_calling": true
+    },
+    "openrouter/anthropic/claude-3.7-sonnet": {
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 128000,
+      "input_cost_per_token": 3e-06,
+      "output_cost_per_token": 1.5e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "openrouter/anthropic/claude-opus-4": {
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 32000,
+      "input_cost_per_token": 1.5e-05,
+      "output_cost_per_token": 7.5e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/anthropic/claude-opus-4.1": {
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 32000,
+      "input_cost_per_token": 1.5e-05,
+      "output_cost_per_token": 7.5e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/anthropic/claude-sonnet-4": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 64000,
+      "input_cost_per_token": 3e-06,
+      "output_cost_per_token": 1.5e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/anthropic/claude-sonnet-4.6": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "input_cost_per_token": 3e-06,
+      "output_cost_per_token": 1.5e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/anthropic/claude-opus-4.5": {
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 32000,
+      "input_cost_per_token": 5e-06,
+      "output_cost_per_token": 2.5e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/anthropic/claude-opus-4.6": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "input_cost_per_token": 5e-06,
+      "output_cost_per_token": 2.5e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/anthropic/claude-sonnet-4.5": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 1000000,
+      "input_cost_per_token": 3e-06,
+      "output_cost_per_token": 1.5e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/anthropic/claude-haiku-4.5": {
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 200000,
+      "input_cost_per_token": 1e-06,
+      "output_cost_per_token": 5e-06,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/anthropic/claude-opus-4.7": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "input_cost_per_token": 5e-06,
+      "output_cost_per_token": 2.5e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/bytedance/ui-tars-1.5-7b": {
+      "mode": "chat",
+      "max_input_tokens": 131072,
+      "max_output_tokens": 2048,
+      "input_cost_per_token": 1e-07,
+      "output_cost_per_token": 2e-07
+    },
+    "openrouter/deepseek/deepseek-chat": {
+      "mode": "chat",
+      "max_input_tokens": 65536,
+      "max_output_tokens": 8192,
+      "input_cost_per_token": 1.4e-07,
+      "output_cost_per_token": 2.8e-07,
+      "supports_prompt_caching": true
+    },
+    "openrouter/deepseek/deepseek-chat-v3-0324": {
+      "mode": "chat",
+      "max_input_tokens": 65536,
+      "max_output_tokens": 8192,
+      "input_cost_per_token": 1.4e-07,
+      "output_cost_per_token": 2.8e-07,
+      "supports_prompt_caching": true
+    },
+    "openrouter/deepseek/deepseek-chat-v3.1": {
+      "mode": "chat",
+      "max_input_tokens": 163840,
+      "max_output_tokens": 163840,
+      "input_cost_per_token": 2e-07,
+      "output_cost_per_token": 8e-07,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/deepseek/deepseek-v3.2": {
+      "mode": "chat",
+      "max_input_tokens": 163840,
+      "max_output_tokens": 163840,
+      "input_cost_per_token": 2.8e-07,
+      "output_cost_per_token": 4e-07,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/deepseek/deepseek-v3.2-exp": {
+      "mode": "chat",
+      "max_input_tokens": 163840,
+      "max_output_tokens": 163840,
+      "input_cost_per_token": 2e-07,
+      "output_cost_per_token": 4e-07,
+      "supports_function_calling": true,
+      "supports_reasoning": false,
+      "supports_prompt_caching": true
+    },
+    "openrouter/deepseek/deepseek-r1": {
+      "mode": "chat",
+      "max_input_tokens": 65336,
+      "max_output_tokens": 8192,
+      "input_cost_per_token": 5.5e-07,
+      "output_cost_per_token": 2.19e-06,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/deepseek/deepseek-r1-0528": {
+      "mode": "chat",
+      "max_input_tokens": 65336,
+      "max_output_tokens": 8192,
+      "input_cost_per_token": 5e-07,
+      "output_cost_per_token": 2.15e-06,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/google/gemini-2.0-flash-001": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 8192,
+      "input_cost_per_token": 1e-07,
+      "output_cost_per_token": 4e-07,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true
+    },
+    "openrouter/google/gemini-2.5-flash": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 8192,
+      "input_cost_per_token": 3e-07,
+      "output_cost_per_token": 2.5e-06,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true
+    },
+    "openrouter/google/gemini-2.5-pro": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 8192,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 1e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true
+    },
+    "openrouter/google/gemini-3-pro-preview": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65535,
+      "input_cost_per_token": 2e-06,
+      "output_cost_per_token": 1.2e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/google/gemini-3-flash-preview": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65535,
+      "input_cost_per_token": 5e-07,
+      "output_cost_per_token": 3e-06,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/google/gemini-3.1-flash-lite-preview": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "input_cost_per_token": 2.5e-07,
+      "output_cost_per_token": 1.5e-06,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/google/gemini-3.1-pro-preview": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "input_cost_per_token": 2e-06,
+      "output_cost_per_token": 1.2e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/gryphe/mythomax-l2-13b": {
+      "mode": "chat",
+      "input_cost_per_token": 1.875e-06,
+      "output_cost_per_token": 1.875e-06
+    },
+    "openrouter/mancer/weaver": {
+      "mode": "chat",
+      "input_cost_per_token": 5.625e-06,
+      "output_cost_per_token": 5.625e-06
+    },
+    "openrouter/meta-llama/llama-3-70b-instruct": {
+      "mode": "chat",
+      "input_cost_per_token": 5.9e-07,
+      "output_cost_per_token": 7.9e-07
+    },
+    "openrouter/minimax/minimax-m2": {
+      "mode": "chat",
+      "max_input_tokens": 204800,
+      "max_output_tokens": 204800,
+      "input_cost_per_token": 2.55e-07,
+      "output_cost_per_token": 1.02e-06,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/mistralai/devstral-2512": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 65536,
+      "input_cost_per_token": 1.5e-07,
+      "output_cost_per_token": 6e-07,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_prompt_caching": false
+    },
+    "openrouter/mistralai/ministral-3b-2512": {
+      "mode": "chat",
+      "max_input_tokens": 131072,
+      "max_output_tokens": 131072,
+      "input_cost_per_token": 1e-07,
+      "output_cost_per_token": 1e-07,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_prompt_caching": false
+    },
+    "openrouter/mistralai/ministral-8b-2512": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 262144,
+      "input_cost_per_token": 1.5e-07,
+      "output_cost_per_token": 1.5e-07,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_prompt_caching": false
+    },
+    "openrouter/mistralai/ministral-14b-2512": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 262144,
+      "input_cost_per_token": 2e-07,
+      "output_cost_per_token": 2e-07,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_prompt_caching": false
+    },
+    "openrouter/mistralai/mistral-large-2512": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 262144,
+      "input_cost_per_token": 5e-07,
+      "output_cost_per_token": 1.5e-06,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_prompt_caching": false
+    },
+    "openrouter/mistralai/mistral-7b-instruct": {
+      "mode": "chat",
+      "input_cost_per_token": 1.3e-07,
+      "output_cost_per_token": 1.3e-07
+    },
+    "openrouter/mistralai/mistral-large": {
+      "mode": "chat",
+      "input_cost_per_token": 8e-06,
+      "output_cost_per_token": 2.4e-05
+    },
+    "openrouter/mistralai/mistral-small-3.1-24b-instruct": {
+      "mode": "chat",
+      "input_cost_per_token": 1e-07,
+      "output_cost_per_token": 3e-07
+    },
+    "openrouter/mistralai/mistral-small-3.2-24b-instruct": {
+      "mode": "chat",
+      "input_cost_per_token": 1e-07,
+      "output_cost_per_token": 3e-07
+    },
+    "openrouter/mistralai/mixtral-8x22b-instruct": {
+      "mode": "chat",
+      "input_cost_per_token": 6.5e-07,
+      "output_cost_per_token": 6.5e-07
+    },
+    "openrouter/moonshotai/kimi-k2.5": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 262144,
+      "input_cost_per_token": 6e-07,
+      "output_cost_per_token": 3e-06,
+      "supports_vision": true,
+      "supports_function_calling": true
+    },
+    "openrouter/openai/gpt-3.5-turbo": {
+      "mode": "chat",
+      "input_cost_per_token": 1.5e-06,
+      "output_cost_per_token": 2e-06
+    },
+    "openrouter/openai/gpt-3.5-turbo-16k": {
+      "mode": "chat",
+      "input_cost_per_token": 3e-06,
+      "output_cost_per_token": 4e-06
+    },
+    "openrouter/openai/gpt-4": {
+      "mode": "chat",
+      "input_cost_per_token": 3e-05,
+      "output_cost_per_token": 6e-05
+    },
+    "openrouter/openai/gpt-4.1": {
+      "mode": "chat",
+      "max_input_tokens": 1047576,
+      "max_output_tokens": 32768,
+      "input_cost_per_token": 2e-06,
+      "output_cost_per_token": 8e-06,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/openai/gpt-4.1-mini": {
+      "mode": "chat",
+      "max_input_tokens": 1047576,
+      "max_output_tokens": 32768,
+      "input_cost_per_token": 4e-07,
+      "output_cost_per_token": 1.6e-06,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/openai/gpt-4.1-nano": {
+      "mode": "chat",
+      "max_input_tokens": 1047576,
+      "max_output_tokens": 32768,
+      "input_cost_per_token": 1e-07,
+      "output_cost_per_token": 4e-07,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/openai/gpt-4o": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 4096,
+      "input_cost_per_token": 2.5e-06,
+      "output_cost_per_token": 1e-05,
+      "supports_vision": true,
+      "supports_function_calling": true
+    },
+    "openrouter/openai/gpt-4o-2024-05-13": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 4096,
+      "input_cost_per_token": 5e-06,
+      "output_cost_per_token": 1.5e-05,
+      "supports_vision": true,
+      "supports_function_calling": true
+    },
+    "openrouter/openai/gpt-5-chat": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 1e-05,
+      "supports_reasoning": true
+    },
+    "openrouter/openai/gpt-5-codex": {
+      "mode": "chat",
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 1e-05,
+      "supports_reasoning": true
+    },
+    "openrouter/openai/gpt-5.2-codex": {
+      "mode": "chat",
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "input_cost_per_token": 1.75e-06,
+      "output_cost_per_token": 1.4e-05,
+      "supports_reasoning": true
+    },
+    "openrouter/openai/gpt-5": {
+      "mode": "chat",
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 1e-05,
+      "supports_reasoning": true
+    },
+    "openrouter/openai/gpt-5-mini": {
+      "mode": "chat",
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "input_cost_per_token": 2.5e-07,
+      "output_cost_per_token": 2e-06,
+      "supports_reasoning": true
+    },
+    "openrouter/openai/gpt-5-nano": {
+      "mode": "chat",
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "input_cost_per_token": 5e-08,
+      "output_cost_per_token": 4e-07,
+      "supports_reasoning": true
+    },
+    "openrouter/openai/gpt-5.1-codex-max": {
+      "mode": "chat",
+      "max_input_tokens": 400000,
+      "max_output_tokens": 128000,
+      "input_cost_per_token": 1.25e-06,
+      "output_cost_per_token": 1e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/openai/gpt-5.2": {
+      "mode": "chat",
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "input_cost_per_token": 1.75e-06,
+      "output_cost_per_token": 1.4e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/openai/gpt-5.2-chat": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 16384,
+      "input_cost_per_token": 1.75e-06,
+      "output_cost_per_token": 1.4e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/openai/gpt-5.2-pro": {
+      "mode": "chat",
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "input_cost_per_token": 2.1e-05,
+      "output_cost_per_token": 0.000168,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": false
+    },
+    "openrouter/openai/gpt-oss-120b": {
+      "mode": "chat",
+      "max_input_tokens": 131072,
+      "max_output_tokens": 32768,
+      "input_cost_per_token": 1.8e-07,
+      "output_cost_per_token": 8e-07,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true
+    },
+    "openrouter/openai/gpt-oss-20b": {
+      "mode": "chat",
+      "max_input_tokens": 131072,
+      "max_output_tokens": 32768,
+      "input_cost_per_token": 2e-08,
+      "output_cost_per_token": 1e-07,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true
+    },
+    "openrouter/openai/o1": {
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 100000,
+      "input_cost_per_token": 1.5e-05,
+      "output_cost_per_token": 6e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/openai/o3-mini": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 65536,
+      "input_cost_per_token": 1.1e-06,
+      "output_cost_per_token": 4.4e-06,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "openrouter/openai/o3-mini-high": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 65536,
+      "input_cost_per_token": 1.1e-06,
+      "output_cost_per_token": 4.4e-06,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "openrouter/qwen/qwen-2.5-coder-32b-instruct": {
+      "mode": "chat",
+      "max_input_tokens": 33792,
+      "max_output_tokens": 33792,
+      "input_cost_per_token": 1.8e-07,
+      "output_cost_per_token": 1.8e-07
+    },
+    "openrouter/qwen/qwen-vl-plus": {
+      "mode": "chat",
+      "max_input_tokens": 8192,
+      "max_output_tokens": 2048,
+      "input_cost_per_token": 2.1e-07,
+      "output_cost_per_token": 6.3e-07,
+      "supports_vision": true
+    },
+    "openrouter/qwen/qwen3-coder": {
+      "mode": "chat",
+      "max_input_tokens": 262100,
+      "max_output_tokens": 262100,
+      "input_cost_per_token": 2.2e-07,
+      "output_cost_per_token": 9.5e-07,
+      "supports_function_calling": true
+    },
+    "openrouter/qwen/qwen3-coder-plus": {
+      "mode": "chat",
+      "max_input_tokens": 997952,
+      "max_output_tokens": 65536,
+      "input_cost_per_token": 1e-06,
+      "output_cost_per_token": 5e-06,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "openrouter/qwen/qwen3-235b-a22b-2507": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 262144,
+      "input_cost_per_token": 7.1e-08,
+      "output_cost_per_token": 1e-07,
+      "supports_function_calling": true
+    },
+    "openrouter/qwen/qwen3-235b-a22b-thinking-2507": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 262144,
+      "input_cost_per_token": 1.1e-07,
+      "output_cost_per_token": 6e-07,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "openrouter/qwen/qwen3.5-35b-a3b": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 65536,
+      "input_cost_per_token": 2.5e-07,
+      "output_cost_per_token": 2e-06,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "openrouter/qwen/qwen3.5-27b": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 65536,
+      "input_cost_per_token": 3e-07,
+      "output_cost_per_token": 2.4e-06,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "openrouter/qwen/qwen3.5-122b-a10b": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 65536,
+      "input_cost_per_token": 4e-07,
+      "output_cost_per_token": 2e-06,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "openrouter/qwen/qwen3.5-flash-02-23": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 65536,
+      "input_cost_per_token": 1e-07,
+      "output_cost_per_token": 4e-07,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "openrouter/qwen/qwen3.5-plus-02-15": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 65536,
+      "input_cost_per_token": 4e-07,
+      "output_cost_per_token": 2.4e-06,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "openrouter/qwen/qwen3.5-397b-a17b": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 65536,
+      "input_cost_per_token": 6e-07,
+      "output_cost_per_token": 3.6e-06,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "openrouter/switchpoint/router": {
+      "mode": "chat",
+      "max_input_tokens": 131072,
+      "max_output_tokens": 131072,
+      "input_cost_per_token": 8.5e-07,
+      "output_cost_per_token": 3.4e-06
+    },
+    "openrouter/undi95/remm-slerp-l2-13b": {
+      "mode": "chat",
+      "input_cost_per_token": 1.875e-06,
+      "output_cost_per_token": 1.875e-06
+    },
+    "openrouter/x-ai/grok-4": {
+      "mode": "chat",
+      "max_input_tokens": 256000,
+      "max_output_tokens": 256000,
+      "input_cost_per_token": 3e-06,
+      "output_cost_per_token": 1.5e-05,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "openrouter/z-ai/glm-4.6": {
+      "mode": "chat",
+      "max_input_tokens": 202800,
+      "max_output_tokens": 131000,
+      "input_cost_per_token": 4e-07,
+      "output_cost_per_token": 1.75e-06,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/z-ai/glm-4.6:exacto": {
+      "mode": "chat",
+      "max_input_tokens": 202800,
+      "max_output_tokens": 131000,
+      "input_cost_per_token": 4.5e-07,
+      "output_cost_per_token": 1.9e-06,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/xiaomi/mimo-v2-flash": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 16384,
+      "input_cost_per_token": 9e-08,
+      "output_cost_per_token": 2.9e-07,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": false
+    },
+    "openrouter/z-ai/glm-4.7": {
+      "mode": "chat",
+      "max_input_tokens": 202752,
+      "max_output_tokens": 64000,
+      "input_cost_per_token": 4e-07,
+      "output_cost_per_token": 1.5e-06,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": false
+    },
+    "openrouter/z-ai/glm-4.7-flash": {
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 32000,
+      "input_cost_per_token": 7e-08,
+      "output_cost_per_token": 4e-07,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": false
+    },
+    "openrouter/z-ai/glm-5": {
+      "mode": "chat",
+      "max_input_tokens": 202752,
+      "max_output_tokens": 128000,
+      "input_cost_per_token": 8e-07,
+      "output_cost_per_token": 2.56e-06,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "openrouter/minimax/minimax-m2.1": {
+      "mode": "chat",
+      "max_input_tokens": 204000,
+      "max_output_tokens": 64000,
+      "input_cost_per_token": 2.7e-07,
+      "output_cost_per_token": 1.2e-06,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": false
+    },
+    "openrouter/minimax/minimax-m2.5": {
+      "mode": "chat",
+      "max_input_tokens": 196608,
+      "max_output_tokens": 65536,
+      "input_cost_per_token": 3e-07,
+      "output_cost_per_token": 1.1e-06,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "openrouter/openrouter/auto": {
+      "mode": "chat",
+      "max_input_tokens": 2000000,
+      "input_cost_per_token": 0,
+      "output_cost_per_token": 0,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true
+    },
+    "openrouter/openrouter/free": {
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "input_cost_per_token": 0,
+      "output_cost_per_token": 0,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true
+    },
+    "openrouter/openrouter/bodybuilder": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "input_cost_per_token": 0,
+      "output_cost_per_token": 0
+    }
+  }
+}

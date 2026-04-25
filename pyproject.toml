@@ -37,6 +37,8 @@ dependencies = [
     "croniter>=2.0.0",
     "docker>=7.0",
     "prompt_toolkit>=3.0.0",
+    "keyring>=25.0.0",
+    "cryptography>=42.0.0",
 ]
 
 [project.scripts]

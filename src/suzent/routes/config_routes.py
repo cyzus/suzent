@@ -17,6 +17,7 @@ from starlette.responses import JSONResponse
 from suzent.config import CONFIG
 from suzent.core.providers import (
     PROVIDER_CONFIG,
+    PROVIDER_REGISTRY,
     ProviderFactory,
     get_effective_memory_config,
     get_enabled_models_from_db,
@@ -197,6 +198,10 @@ async def save_global_sandbox_config(request: Request) -> JSONResponse:
 async def get_api_keys_status(request: Request) -> JSONResponse:
     """Get configured providers and their status with masked secrets."""
     try:
+        from suzent.core.secrets import get_secret_manager
+
+        sm = get_secret_manager()
+
         db = get_database()
         api_keys = db.get_api_keys() or {}
 
@@ -209,26 +214,25 @@ async def get_api_keys_status(request: Request) -> JSONResponse:
                 pass
 
         providers = []
-        for provider_def in PROVIDER_CONFIG:
-            provider_id = provider_def["id"]
+        for spec in PROVIDER_REGISTRY:
+            provider_id = spec.id
             user_conf = custom_config.get(provider_id, {})
 
             provider_data: dict[str, Any] = {
                 "id": provider_id,
-                "label": provider_def["label"],
-                "default_models": provider_def.get("default_models", []),
+                "label": spec.label,
+                "logo_url": spec.logo_url,
+                "default_models": spec.default_models,
+                "user_defined": spec.user_defined,
                 "fields": [],
                 "models": [],
             }
 
-            for field in provider_def["fields"]:
+            for field in spec.fields:
                 key = field["key"]
-                val = api_keys.get(key)
-                source = "db" if val else None
-
-                if not val and os.environ.get(key):
-                    val = os.environ.get(key)
-                    source = "env"
+                # Use SecretManager to check all sources
+                val = sm.get(key)
+                source = sm.get_source(key)
 
                 display_val = ""
                 if val:
@@ -252,6 +256,7 @@ async def get_api_keys_status(request: Request) -> JSONResponse:
                         "type": field["type"],
                         "value": display_val,
                         "isSet": bool(val),
+                        "source": source,
                     }
                 )
 
@@ -271,8 +276,12 @@ async def get_api_keys_status(request: Request) -> JSONResponse:
 
 
 async def save_api_keys(request: Request) -> JSONResponse:
-    """Save API keys to database and inject into runtime environment."""
+    """Save API keys via SecretManager and inject into runtime environment."""
     try:
+        from suzent.core.secrets import get_secret_manager
+
+        sm = get_secret_manager()
+
         data = await request.json()
         keys = data.get("keys", {})
 
@@ -296,13 +305,10 @@ async def save_api_keys(request: Request) -> JSONResponse:
                 continue
 
             if not value:
-                db.delete_api_key(key)
-                if key in os.environ:
-                    del os.environ[key]
+                sm.delete(key)
                 cleared_keys.add(key)
             else:
-                db.save_api_key(key, value)
-                os.environ[key] = value
+                sm.set(key, value)
                 newly_set_keys.add(key)
                 count += 1
 
@@ -360,6 +366,15 @@ async def verify_provider(request: Request) -> JSONResponse:
             )
 
         models = await provider.list_models()
+
+        if models:
+            from suzent.core.model_registry import (
+                save_discovered_models,
+                get_model_registry,
+            )
+
+            save_discovered_models(provider_id, [m.id for m in models])
+            get_model_registry().reload()
 
         return JSONResponse(
             {
@@ -526,6 +541,229 @@ async def save_social_config(request: Request) -> JSONResponse:
         ):
             new_model = existing_config.get("model")
             request.app.state.social_brain.update_model(new_model)
+
+        return JSONResponse({"success": True})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# Cost Tracking Endpoints
+# ---------------------------------------------------------------------------
+
+
+async def get_global_cost(request: Request) -> JSONResponse:
+    """GET /api/config/cost/global?days=30 — global cost overview."""
+    try:
+        from suzent.core.cost_tracker import get_cost_tracker
+
+        days = int(request.query_params.get("days", "30"))
+        tracker = get_cost_tracker()
+        data = await tracker.get_global_cost(days=days)
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def get_chat_cost(request: Request) -> JSONResponse:
+    """GET /api/config/cost/chat/{chat_id} — single chat cost."""
+    try:
+        from suzent.core.cost_tracker import get_cost_tracker
+
+        chat_id = request.path_params["chat_id"]
+        tracker = get_cost_tracker()
+        data = await tracker.get_chat_cost(chat_id)
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def get_daily_cost(request: Request) -> JSONResponse:
+    """GET /api/config/cost/daily?days=30 — daily cost breakdown."""
+    try:
+        from suzent.core.cost_tracker import get_cost_tracker
+
+        days = int(request.query_params.get("days", "30"))
+        tracker = get_cost_tracker()
+        data = await tracker.get_daily_breakdown(days=days)
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# Role Model Endpoints
+# ---------------------------------------------------------------------------
+
+
+async def get_role_models(request: Request) -> JSONResponse:
+    """GET /api/config/role-models — get current role→model mappings."""
+    try:
+        from suzent.core.role_router import get_role_router
+
+        router = get_role_router()
+        return JSONResponse({"roles": router.list_roles()})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def save_role_models(request: Request) -> JSONResponse:
+    """POST /api/config/role-models — save role→model mappings."""
+    try:
+        from suzent.core.role_router import get_role_router
+
+        data = await request.json()
+        roles = data.get("roles", {})
+
+        router = get_role_router()
+        router.load_from_dict(roles)
+        router.save_to_db()
+
+        return JSONResponse({"success": True, "roles": router.list_roles()})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# Role Suggestions Endpoint
+# ---------------------------------------------------------------------------
+
+
+async def get_role_suggestions(request: Request) -> JSONResponse:
+    """GET /api/config/role-suggestions — mode-filtered model suggestions per role.
+
+    Returns a dict mapping each role to a list of suitable model IDs drawn
+    from the enabled provider models (chat roles) and the model capabilities
+    registry (embedding / tts / image_generation roles).
+    """
+    try:
+        from suzent.core.model_registry import get_model_registry
+        from suzent.core.providers.helpers import get_enabled_models_from_db
+
+        registry = get_model_registry()
+        chat_models = get_enabled_models_from_db()
+
+        # Vision: only enabled models with confirmed supports_vision=True
+        vision_models = [m for m in chat_models if registry.supports_vision(m)]
+
+        # Specialised modes from capabilities file
+        caps = registry._capabilities  # type: ignore[attr-defined]
+        embedding_models = sorted(m for m, c in caps.items() if c.mode == "embedding")
+        image_gen_models = sorted(
+            m for m, c in caps.items() if c.mode == "image_generation"
+        )
+        tts_models = sorted(m for m, c in caps.items() if c.mode == "tts")
+
+        return JSONResponse(
+            {
+                "primary": chat_models,
+                "cheap": chat_models,
+                "vision": vision_models,
+                "embedding": embedding_models,
+                "image_generation": image_gen_models,
+                "tts": tts_models,
+            }
+        )
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# Custom Provider Endpoint
+# ---------------------------------------------------------------------------
+
+
+async def save_custom_provider(request: Request) -> JSONResponse:
+    """POST /api/config/providers/custom — add a user-defined provider."""
+    try:
+        import json as _json
+        from suzent.core.providers.catalog import _CONFIG_DIR, reload_registry
+
+        data = await request.json()
+
+        # Validate required fields
+        for field in ("id", "label", "api_type"):
+            if field not in data:
+                return JSONResponse(
+                    {"error": f"Missing required field: {field}"}, status_code=400
+                )
+
+        user_path = _CONFIG_DIR / "providers.user.json"
+
+        # Load existing user providers
+        existing: list = []
+        if user_path.exists():
+            try:
+                raw = _json.loads(user_path.read_text(encoding="utf-8"))
+                existing = raw.get("providers", [])
+            except _json.JSONDecodeError:
+                pass
+
+        # Check for duplicate ID
+        if any(p.get("id") == data["id"] for p in existing):
+            return JSONResponse(
+                {"error": f"Provider '{data['id']}' already exists"}, status_code=409
+            )
+
+        existing.append(data)
+        user_path.write_text(
+            _json.dumps({"providers": existing}, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        # Hot-reload
+        reload_registry()
+
+        return JSONResponse({"success": True, "provider_id": data["id"]})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def sync_capabilities(request: Request) -> JSONResponse:
+    """POST /api/config/capabilities/sync — pull LiteLLM capability data."""
+    try:
+        from suzent.core.model_registry import sync_from_litellm, get_model_registry
+
+        stats = await sync_from_litellm()
+        get_model_registry().reload()
+
+        total = sum(stats.values())
+        return JSONResponse(
+            {"success": True, "providers": len(stats), "models": total, "detail": stats}
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def delete_custom_provider(request: Request) -> JSONResponse:
+    """DELETE /api/config/providers/custom/{provider_id} — remove a user-defined provider."""
+    try:
+        import json as _json
+        from suzent.core.providers.catalog import _CONFIG_DIR, reload_registry
+
+        provider_id = request.path_params["provider_id"]
+
+        user_path = _CONFIG_DIR / "providers.user.json"
+        if not user_path.exists():
+            return JSONResponse(
+                {"error": "No custom providers configured"}, status_code=404
+            )
+
+        raw = _json.loads(user_path.read_text(encoding="utf-8"))
+        providers = raw.get("providers", [])
+        filtered = [p for p in providers if p.get("id") != provider_id]
+
+        if len(filtered) == len(providers):
+            return JSONResponse(
+                {"error": f"Provider '{provider_id}' not found"}, status_code=404
+            )
+
+        user_path.write_text(
+            _json.dumps({"providers": filtered}, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        reload_registry()
 
         return JSONResponse({"success": True})
     except Exception as e:

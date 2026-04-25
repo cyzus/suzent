@@ -1,4 +1,4 @@
-"""Auto-title generation for new chats using the extraction_model."""
+"""Auto-title generation for new chats using the RoleRouter."""
 
 from loguru import logger
 
@@ -8,21 +8,29 @@ async def generate_auto_title(
 ) -> str | None:
     """Generate a semantic title from the user's first message.
 
-    Uses extraction_model (lightweight) and runs in parallel with the agent.
-    Updates the DB and returns the title string, or None on failure.
+    Uses the ``cheap`` role (lightweight model) via RoleRouter, falling back
+    to legacy config if no role is configured.
     """
     try:
         from suzent.llm import LLMClient
-        from suzent.core.providers.helpers import get_effective_memory_config
+        from suzent.core.role_router import get_role_router
         from suzent.database import get_database
 
-        from suzent.config import CONFIG
+        router = get_role_router()
+        model = router.get_model_id("cheap")
 
-        mem_config = get_effective_memory_config()
-        model = mem_config.get("extraction_model") or fallback_model or CONFIG.model
+        if not model:
+            # Legacy fallback
+            from suzent.core.providers.helpers import get_effective_memory_config
+            from suzent.config import CONFIG
+
+            mem_config = get_effective_memory_config()
+            model = mem_config.get("extraction_model") or fallback_model or CONFIG.model
+
         if not model:
             logger.warning(f"Auto-title skipped for {chat_id}: no model configured")
             return None
+
         client = LLMClient(model=model)
         title = await client.complete(
             prompt=user_content[:500],

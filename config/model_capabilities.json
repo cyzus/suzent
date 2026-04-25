@@ -1,0 +1,5 @@
+{
+  "_schema_version": "1.0",
+  "_doc": "Global model capability overrides. Per-provider entries live in config/capabilities/{provider}.json. Add entries here only to override a per-provider default.",
+  "models": {}
+}

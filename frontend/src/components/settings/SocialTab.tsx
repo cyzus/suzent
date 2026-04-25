@@ -3,7 +3,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { PairingRequest, SocialConfig, approvePairing, denyPairing, fetchPairings } from '../../lib/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
-import { BrutalSelect } from '../BrutalSelect';
 import { BrutalToggle } from '../BrutalToggle';
 
 interface McpServersData {
@@ -14,7 +13,6 @@ interface McpServersData {
 
 interface SocialTabProps {
     socialConfig: SocialConfig;
-    models: string[];
     tools: string[];
     mcpServers: McpServersData | null;
     useCustomTools: boolean;
@@ -26,7 +24,6 @@ interface SocialTabProps {
 
 export function SocialTab({
     socialConfig,
-    models,
     tools,
     mcpServers,
     useCustomTools,
@@ -83,21 +80,6 @@ export function SocialTab({
                 </div>
 
                 <div className="space-y-4">
-                    <div className="space-y-2">
-                        <label className="text-sm font-bold uppercase text-neutral-800">
-                            {t('settings.social.socialModel')}
-                        </label>
-                        <BrutalSelect
-                            value={socialConfig.model || ''}
-                            onChange={(val) => onConfigChange({ ...socialConfig, model: val })}
-                            options={[
-                                { value: '', label: t('settings.social.useDefaultModel') },
-                                ...models.map((model) => ({ value: model, label: model }))
-                            ]}
-                            placeholder={t('settings.social.selectModelPlaceholder')}
-                        />
-                    </div>
-
                     <div className="space-y-2">
                         <label className="text-sm font-bold uppercase text-neutral-800">
                             {t('settings.social.globalAllowedUsers')}

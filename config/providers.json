@@ -1,0 +1,164 @@
+{
+  "_schema_version": "1.0",
+  "_doc": "Provider registry for Suzent. api_type determines the wire protocol. native_provider specifies a pydantic-ai provider class for direct integration. base_url is for OpenAI/Anthropic-compatible endpoints.",
+  "providers": [
+    {
+      "id": "openai",
+      "label": "OpenAI",
+      "logo_url": "https://cdn.simpleicons.org/openai",
+      "api_type": "openai",
+      "env_keys": ["OPENAI_API_KEY"],
+      "fields": [
+        {"key": "OPENAI_API_KEY", "label": "API Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "OPENAI_BASE_URL", "label": "Base URL (Optional)", "placeholder": "https://api.openai.com/v1", "type": "text"}
+      ],
+      "default_models": [
+        {"id": "openai/gpt-4.1", "name": "GPT-4.1"},
+        {"id": "openai/gpt-4.1-mini", "name": "GPT-4.1 Mini"},
+        {"id": "openai/o3", "name": "o3"},
+        {"id": "openai/o4-mini", "name": "o4-mini"}
+      ]
+    },
+    {
+      "id": "anthropic",
+      "label": "Anthropic",
+      "logo_url": "https://cdn.simpleicons.org/anthropic",
+      "api_type": "anthropic",
+      "env_keys": ["ANTHROPIC_API_KEY"],
+      "fields": [
+        {"key": "ANTHROPIC_API_KEY", "label": "API Key", "placeholder": "sk-ant-...", "type": "secret"}
+      ],
+      "default_models": [
+        {"id": "anthropic/claude-opus-4-6", "name": "Claude Opus 4.6"},
+        {"id": "anthropic/claude-sonnet-4-6", "name": "Claude Sonnet 4.6"},
+        {"id": "anthropic/claude-haiku-4-5", "name": "Claude Haiku 4.5"}
+      ]
+    },
+    {
+      "id": "gemini",
+      "label": "Google Gemini",
+      "logo_url": "https://cdn.simpleicons.org/googlegemini",
+      "api_type": "google",
+      "aliases": ["google"],
+      "env_keys": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+      "fields": [
+        {"key": "GEMINI_API_KEY", "label": "API Key", "placeholder": "AIza...", "type": "secret"}
+      ],
+      "default_models": [
+        {"id": "gemini/gemini-2.5-pro", "name": "Gemini 2.5 Pro"},
+        {"id": "gemini/gemini-2.5-flash", "name": "Gemini 2.5 Flash"},
+        {"id": "gemini/gemini-2.0-flash", "name": "Gemini 2.0 Flash"}
+      ],
+      "model_settings": {
+        "google_thinking_config": {"include_thoughts": true}
+      }
+    },
+    {
+      "id": "xai",
+      "label": "xAI (Grok)",
+      "api_type": "xai",
+      "env_keys": ["XAI_API_KEY"],
+      "fields": [
+        {"key": "XAI_API_KEY", "label": "API Key", "placeholder": "xai-...", "type": "secret"}
+      ],
+      "default_models": [
+        {"id": "xai/grok-3", "name": "Grok 3"},
+        {"id": "xai/grok-3-mini", "name": "Grok 3 Mini"},
+        {"id": "xai/grok-3-fast", "name": "Grok 3 Fast"}
+      ]
+    },
+    {
+      "id": "deepseek",
+      "label": "DeepSeek",
+      "logo_url": "https://cdn.simpleicons.org/deepseek",
+      "api_type": "openai",
+      "native_provider": {"module": "pydantic_ai.providers.deepseek", "class": "DeepSeekProvider"},
+      "env_keys": ["DEEPSEEK_API_KEY"],
+      "fields": [
+        {"key": "DEEPSEEK_API_KEY", "label": "API Key", "placeholder": "sk-...", "type": "secret"}
+      ],
+      "default_models": [
+        {"id": "deepseek/deepseek-chat", "name": "DeepSeek Chat"},
+        {"id": "deepseek/deepseek-reasoner", "name": "DeepSeek Reasoner"}
+      ]
+    },
+    {
+      "id": "minimax",
+      "label": "MiniMax",
+      "api_type": "openai",
+      "base_url": "https://api.minimaxi.com/v1",
+      "env_keys": ["MINIMAX_API_KEY"],
+      "fields": [
+        {"key": "MINIMAX_API_KEY", "label": "API Key", "placeholder": "...", "type": "secret"}
+      ],
+      "default_models": [
+        {"id": "minimax/MiniMax-M2.5", "name": "MiniMax M2.5"},
+        {"id": "minimax/MiniMax-M2.1", "name": "MiniMax M2.1"}
+      ]
+    },
+    {
+      "id": "moonshot",
+      "label": "Moonshot (Kimi)",
+      "api_type": "openai",
+      "base_url": "https://api.moonshot.cn/v1",
+      "native_provider": {"module": "pydantic_ai.providers.moonshotai", "class": "MoonshotAIProvider"},
+      "env_keys": ["MOONSHOT_API_KEY"],
+      "fields": [
+        {"key": "MOONSHOT_API_KEY", "label": "API Key", "placeholder": "sk-...", "type": "secret"}
+      ],
+      "default_models": [
+        {"id": "moonshot/moonshot-v1-128k", "name": "Kimi v1 128K"},
+        {"id": "moonshot/moonshot-v1-32k", "name": "Kimi v1 32K"},
+        {"id": "moonshot/moonshot-v1-8k", "name": "Kimi v1 8K"}
+      ]
+    },
+    {
+      "id": "zhipuai",
+      "label": "Zhipu AI (GLM)",
+      "api_type": "openai",
+      "base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "aliases": ["zai"],
+      "env_keys": ["ZHIPUAI_API_KEY", "ZAI_API_KEY"],
+      "fields": [
+        {"key": "ZAI_API_KEY", "label": "API Key", "placeholder": "...", "type": "secret"}
+      ],
+      "default_models": [
+        {"id": "zai/glm-4.7-flash", "name": "GLM-4.7 Flash"}
+      ]
+    },
+    {
+      "id": "openrouter",
+      "label": "OpenRouter",
+      "logo_url": "https://cdn.simpleicons.org/openrouter",
+      "api_type": "openrouter",
+      "env_keys": ["OPENROUTER_API_KEY"],
+      "fields": [
+        {"key": "OPENROUTER_API_KEY", "label": "API Key", "placeholder": "sk-or-...", "type": "secret"}
+      ],
+      "default_models": []
+    },
+    {
+      "id": "litellm_proxy",
+      "label": "LiteLLM Proxy",
+      "api_type": "litellm_proxy",
+      "env_keys": ["LITELLM_MASTER_KEY", "LITELLM_PROXY_API_KEY"],
+      "fields": [
+        {"key": "LITELLM_MASTER_KEY", "label": "Master Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "LITELLM_BASE_URL", "label": "Base URL", "placeholder": "http://localhost:4000", "type": "text"}
+      ],
+      "default_models": []
+    },
+    {
+      "id": "ollama",
+      "label": "Ollama",
+      "logo_url": "https://cdn.simpleicons.org/ollama",
+      "api_type": "ollama",
+      "env_keys": ["OLLAMA_BASE_URL"],
+      "fields": [
+        {"key": "OLLAMA_BASE_URL", "label": "Base URL", "placeholder": "http://localhost:11434", "type": "text"},
+        {"key": "OLLAMA_API_KEY", "label": "API Key (Optional)", "placeholder": "...", "type": "secret"}
+      ],
+      "default_models": []
+    }
+  ]
+}

@@ -2,27 +2,14 @@ import React from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 
 import { useI18n } from '../../i18n';
-import { BrutalSelect } from '../BrutalSelect';
 
 interface MemoryTabProps {
-    embeddingModels: string[];
-    models: string[];
-    selectedEmbeddingModel: string;
-    selectedExtractionModel: string;
     globalNotebookHostPath: string;
-    onEmbeddingModelChange: (model: string) => void;
-    onExtractionModelChange: (model: string) => void;
     onGlobalNotebookHostPathChange: (path: string) => void;
 }
 
 export function MemoryTab({
-    embeddingModels,
-    models,
-    selectedEmbeddingModel,
-    selectedExtractionModel,
     globalNotebookHostPath,
-    onEmbeddingModelChange,
-    onExtractionModelChange,
     onGlobalNotebookHostPathChange,
 }: MemoryTabProps): React.ReactElement {
     const { t } = useI18n();
@@ -43,6 +30,15 @@ export function MemoryTab({
     return (
         <div className="space-y-6">
             <h2 className="text-3xl font-brutal font-black uppercase text-brutal-black dark:text-white">{t('settings.memoryConfig.title')}</h2>
+
+            {/* Model roles redirect notice */}
+            <div className="bg-brutal-yellow/20 border-2 border-brutal-black p-4 flex items-start gap-3">
+                <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-sm font-bold">{t('settings.memoryConfig.modelRolesHint')}</p>
+            </div>
+
             <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6">
                 <div className="flex items-start gap-4 mb-6">
                     <div className="w-12 h-12 bg-brutal-blue border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
@@ -51,44 +47,6 @@ export function MemoryTab({
                     <div>
                         <h3 className="text-xl font-bold uppercase">{t('settings.memoryConfig.systemConfigTitle')}</h3>
                         <p className="text-sm text-neutral-600 mt-1">{t('settings.memoryConfig.systemConfigDesc')}</p>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-6">
-                    {/* Extraction Model */}
-                    <div className="space-y-2">
-                        <label className="text-sm font-bold uppercase text-neutral-800 flex justify-between">
-                            {t('settings.memoryConfig.extractionModelLabel')}
-                            <span className="text-[10px] bg-neutral-200 dark:bg-zinc-700 px-2 py-0.5 border border-brutal-black">{t('settings.memoryConfig.extractionModelHint')}</span>
-                        </label>
-                        <BrutalSelect
-                            value={selectedExtractionModel}
-                            onChange={onExtractionModelChange}
-                            options={[
-                                { value: '', label: t('settings.memoryConfig.extractionModelHeuristics') },
-                                ...models.map((model) => ({ value: model, label: model }))
-                            ]}
-                            placeholder={t('settings.memoryConfig.extractionModelPlaceholder')}
-                            className="z-20"
-                        />
-                    </div>
-
-                    {/* Embedding Model */}
-                    <div className="space-y-2">
-                        <label className="text-sm font-bold uppercase text-neutral-800 flex justify-between">
-                            {t('settings.memoryConfig.embeddingModelLabel')}
-                            <span className="text-[10px] bg-neutral-200 dark:bg-zinc-700 px-2 py-0.5 border border-brutal-black">{t('settings.memoryConfig.embeddingModelHint')}</span>
-                        </label>
-                        <BrutalSelect
-                            value={selectedEmbeddingModel}
-                            onChange={onEmbeddingModelChange}
-                            options={[
-                                { value: '', label: t('settings.memoryConfig.embeddingModelNoneDefault') },
-                                ...embeddingModels.map((model) => ({ value: model, label: model }))
-                            ]}
-                            placeholder={t('settings.memoryConfig.embeddingModelPlaceholder')}
-                            className="z-10"
-                        />
                     </div>
                 </div>
 

@@ -29,27 +29,28 @@ class EmbeddingGenerator:
         """Initialize embedding generator.
 
         Args:
-            model: LiteLLM model identifier (e.g., 'text-embedding-3-small')
-            dimension: Expected embedding dimension (0 = auto-detect from first response)
+            model: LiteLLM model identifier. If omitted, resolved from the
+                   RoleRouter "embedding" role. Callers should check
+                   ``self.model`` before use; pass None means not configured.
+            dimension: Expected embedding dimension (0 = auto-detect).
         """
-        from suzent.core.providers import get_effective_memory_config
+        if model:
+            self.model = model
+        else:
+            try:
+                from suzent.core.role_router import get_role_router
 
-        mem_config = get_effective_memory_config()
-        self.model = model or mem_config["embedding_model"]
+                self.model = get_role_router().get_model_id("embedding")
+            except Exception:
+                self.model = None
         self.dimension = dimension or CONFIG.embedding_dimension
 
     async def generate(self, text: str) -> List[float]:
-        """Generate embedding for a single text.
-
-        Args:
-            text: Input text to embed
-
-        Returns:
-            List of floats representing the embedding vector
-
-        Raises:
-            ValueError: If embedding dimension doesn't match expected dimension
-        """
+        """Generate embedding for a single text."""
+        if not self.model:
+            raise ValueError(
+                "No embedding model configured. Set it in Settings → Model Roles → Embedding."
+            )
         if not text or not text.strip():
             return [0.0] * self.dimension
 
@@ -81,15 +82,11 @@ class EmbeddingGenerator:
     async def generate_batch(
         self, texts: List[str], batch_size: int = 32
     ) -> List[List[float]]:
-        """Generate embeddings for multiple texts in batches.
-
-        Args:
-            texts: List of texts to embed
-            batch_size: Number of texts to process in each batch
-
-        Returns:
-            List of embedding vectors, one per input text
-        """
+        """Generate embeddings for multiple texts in batches."""
+        if not self.model:
+            raise ValueError(
+                "No embedding model configured. Set it in Settings → Model Roles → Embedding."
+            )
         if not texts:
             return []
 
@@ -115,14 +112,15 @@ class ImageGenerator:
     """Generate images using LiteLLM."""
 
     def __init__(self, model: str = None):
-        """Initialize image generator.
+        if model:
+            self.model = model
+        else:
+            try:
+                from suzent.core.role_router import get_role_router
 
-        Args:
-            model: LiteLLM model identifier
-        """
-        # CONFIG.image_generation_model exists but might be None, so getattr fallback is bypassed
-        config_model = getattr(CONFIG, "image_generation_model", None)
-        self.model = model or config_model
+                self.model = get_role_router().get_model_id("image_generation")
+            except Exception:
+                self.model = None
 
     async def generate(self, prompt: str, size: str = "1024x1024") -> str:
         """Generate an image from a prompt.

@@ -1,0 +1,66 @@
+{
+  "models": {
+    "minimax/MiniMax-M2.5": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 8192,
+      "input_cost_per_token": 3e-07,
+      "output_cost_per_token": 1.2e-06,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "minimax/MiniMax-M2.1": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 8192,
+      "input_cost_per_token": 3e-07,
+      "output_cost_per_token": 1.2e-06,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "minimax/speech-02-hd": {
+      "mode": "tts"
+    },
+    "minimax/speech-02-turbo": {
+      "mode": "tts"
+    },
+    "minimax/speech-2.6-hd": {
+      "mode": "tts"
+    },
+    "minimax/speech-2.6-turbo": {
+      "mode": "tts"
+    },
+    "minimax/MiniMax-M2.1-lightning": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 8192,
+      "input_cost_per_token": 3e-07,
+      "output_cost_per_token": 2.4e-06,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "minimax/MiniMax-M2.5-lightning": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 8192,
+      "input_cost_per_token": 3e-07,
+      "output_cost_per_token": 2.4e-06,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "minimax/MiniMax-M2": {
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 8192,
+      "input_cost_per_token": 3e-07,
+      "output_cost_per_token": 1.2e-06,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    }
+  }
+}

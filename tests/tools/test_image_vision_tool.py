@@ -68,12 +68,14 @@ async def test_image_vision_success(mock_open, mock_acompletion, mock_ctx):
     mock_response.choices[0].message.content = "A beautiful cyber tentacle."
     mock_acompletion.return_value = mock_response
 
+    mock_router = MagicMock()
+    mock_router.get_model_id.return_value = "openai/gpt-4.1"
+
     with patch(
         "suzent.tools.image_vision_tool.get_or_create_path_resolver",
         return_value=mock_resolver,
     ):
-        # Mock CONFIG.default_model issue by setting model directly
-        with patch("suzent.tools.image_vision_tool.getattr", return_value="gpt-4o"):
+        with patch("suzent.core.role_router.get_role_router", return_value=mock_router):
             tool = ImageVisionTool()
             result = await tool.forward(mock_ctx, "test.png", "Describe")
 
@@ -94,12 +96,15 @@ async def test_image_vision_no_model(mock_ctx):
     mock_resolver = MagicMock()
     mock_resolver.resolve.return_value = mock_path
 
-    # Force getattr to return None for model lookup
+    # RoleRouter returns None → no vision model configured
+    mock_router = MagicMock()
+    mock_router.get_model_id.return_value = None
+
     with patch(
         "suzent.tools.image_vision_tool.get_or_create_path_resolver",
         return_value=mock_resolver,
     ):
-        with patch("suzent.tools.image_vision_tool.getattr", return_value=None):
+        with patch("suzent.core.role_router.get_role_router", return_value=mock_router):
             with patch("builtins.open", new_callable=MagicMock) as mock_open:
                 mock_file = MagicMock()
                 mock_file.read.return_value = b"fake_image_data"
@@ -110,7 +115,7 @@ async def test_image_vision_no_model(mock_ctx):
 
                 assert not result.success
                 assert result.error_code == ToolErrorCode.EXECUTION_FAILED
-                assert "No vision_model" in result.message
+                assert "vision model" in result.message.lower()
 
 
 @pytest.mark.asyncio

@@ -71,6 +71,8 @@ export interface UserConfig {
 export interface ApiProvider {
   id: string;
   label: string;
+  logo_url?: string;
+  user_defined?: boolean;
   default_models: Model[];
   fields: ApiField[];
   models: Model[];
@@ -284,6 +286,91 @@ export async function verifyProvider(
   } catch (e) {
     console.error(e);
     return { success: false, models: [] };
+  }
+}
+
+export interface CustomProviderPayload {
+  id: string;
+  label: string;
+  api_type: string;
+  base_url?: string;
+  env_keys?: string[];
+  fields?: Array<{ key: string; label: string; placeholder: string; type: 'secret' | 'text' }>;
+  default_models?: Model[];
+  logo_url?: string;
+}
+
+export async function saveCustomProvider(payload: CustomProviderPayload): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${getApiBase()}/config/providers/custom`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return await res.json();
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+}
+
+export async function deleteCustomProvider(providerId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${getApiBase()}/config/providers/custom/${providerId}`, {
+      method: 'DELETE',
+    });
+    return await res.json();
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+}
+
+export async function syncCapabilities(): Promise<{ success: boolean; providers?: number; models?: number; error?: string }> {
+  try {
+    const res = await fetch(`${getApiBase()}/config/capabilities/sync`, { method: 'POST' });
+    return await res.json();
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Role Models
+// -----------------------------------------------------------------------------
+
+export async function fetchRoleSuggestions(): Promise<Record<string, string[]>> {
+  try {
+    const res = await fetch(`${getApiBase()}/config/role-suggestions`);
+    if (!res.ok) return {};
+    return await res.json();
+  } catch (e) {
+    console.error('Error fetching role suggestions:', e);
+    return {};
+  }
+}
+
+export async function fetchRoleModels(): Promise<Record<string, string[]>> {
+  try {
+    const res = await fetch(`${getApiBase()}/config/role-models`);
+    if (!res.ok) return {};
+    const data = await res.json();
+    return data.roles || {};
+  } catch (e) {
+    console.error('Error fetching role models:', e);
+    return {};
+  }
+}
+
+export async function saveRoleModels(roles: Record<string, string[]>): Promise<boolean> {
+  try {
+    const res = await fetch(`${getApiBase()}/config/role-models`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roles }),
+    });
+    return res.ok;
+  } catch (e) {
+    console.error('Error saving role models:', e);
+    return false;
   }
 }
 

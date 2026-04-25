@@ -132,6 +132,9 @@ class ConfigModel(BaseModel):
     instructions: str = ""
     additional_authorized_imports: List[str] = []
 
+    # Unified role → model mapping (new)
+    role_models: Dict[str, Any] = {}
+
     tts_model: str = ""
     tts_voice: str = ""
 

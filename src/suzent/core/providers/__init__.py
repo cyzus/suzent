@@ -6,6 +6,10 @@ from suzent.core.providers.catalog import (
     PROVIDER_CONFIG,
     PROVIDER_CONFIG_BY_ID,
     PROVIDER_ENV_KEYS,
+    PROVIDER_REGISTRY,
+    PROVIDER_REGISTRY_BY_ID,
+    ProviderSpec,
+    reload_registry,
 )
 from suzent.core.providers.factory import ProviderFactory
 from suzent.core.providers.generic import GenericLiteLLMProvider
@@ -25,7 +29,12 @@ __all__ = [
     "Model",
     "_temporary_env",
     "prefixed",
-    # catalog
+    # catalog — new registry
+    "ProviderSpec",
+    "PROVIDER_REGISTRY",
+    "PROVIDER_REGISTRY_BY_ID",
+    "reload_registry",
+    # catalog — legacy compat
     "PROVIDER_CONFIG",
     "PROVIDER_CONFIG_BY_ID",
     "PROVIDER_ENV_KEYS",

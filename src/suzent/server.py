@@ -50,6 +50,15 @@ from suzent.routes.config_routes import (
     verify_provider,
     get_social_config,
     save_social_config,
+    get_global_cost,
+    get_chat_cost,
+    get_daily_cost,
+    get_role_models,
+    save_role_models,
+    get_role_suggestions,
+    save_custom_provider,
+    delete_custom_provider,
+    sync_capabilities,
 )
 from suzent.routes.plan_routes import get_plan, get_plans
 from suzent.routes.mcp_routes import (
@@ -199,6 +208,53 @@ async def deny_pairing(request: Request) -> JSONResponse:
     return JSONResponse({"success": True})
 
 
+async def _refresh_provider_models() -> None:
+    """Background task: discover available models for all configured providers."""
+    import asyncio as _asyncio
+
+    await _asyncio.sleep(3)  # let server finish starting up
+
+    try:
+        from suzent.core.providers import ProviderFactory, PROVIDER_REGISTRY
+        from suzent.core.providers.helpers import resolve_api_key
+        from suzent.core.model_registry import (
+            save_discovered_models,
+            get_model_registry,
+        )
+
+        refreshed = 0
+        for spec in PROVIDER_REGISTRY:
+            if not spec.env_keys:
+                continue
+            if not resolve_api_key(spec.id):
+                continue
+            try:
+                provider = ProviderFactory.get_provider(spec.id, {})
+                models = await provider.list_models()
+                if models:
+                    save_discovered_models(spec.id, [m.id for m in models])
+                    refreshed += 1
+            except Exception:
+                pass  # credentials invalid or network unreachable — skip silently
+
+        if refreshed:
+            get_model_registry().reload()
+            logger.info(
+                "Background model refresh completed for {} provider(s)", refreshed
+            )
+
+        # Pull capability metadata from LiteLLM after model discovery
+        try:
+            from suzent.core.model_registry import sync_from_litellm
+
+            await sync_from_litellm()
+            get_model_registry().reload()
+        except Exception as exc:
+            logger.debug("LiteLLM capability sync skipped: {}", exc)
+    except Exception as exc:
+        logger.debug("Background model refresh failed: {}", exc)
+
+
 async def startup():
     """Initialize services on application startup."""
     from suzent.memory.lifecycle import init_memory_system, _memory_rag_hook
@@ -229,19 +285,30 @@ async def startup():
 
     db = get_database()
     try:
-        api_keys = db.get_api_keys()
-        loaded_count = 0
+        # Load all stored secrets into os.environ via SecretManager
+        from suzent.core.secrets import get_secret_manager
+
+        sm = get_secret_manager()
+        loaded_count = sm.inject_all_to_env()
+
+        # Also load non-secret config blobs from DB (e.g. _PROVIDER_CONFIG_)
+        api_keys = db.get_api_keys() or {}
         for key, value in api_keys.items():
-            if value:
+            if key.startswith("_") and value and key not in os.environ:
                 os.environ[key] = value
-                loaded_count += 1
+
         if loaded_count > 0:
-            key_names = [
-                k for k in api_keys if k != "_PROVIDER_CONFIG_" and api_keys[k]
-            ]
-            logger.info(f"Loaded {loaded_count} API keys from database: {key_names}")
+            logger.info(f"Loaded {loaded_count} secrets via {sm.backend_name}")
     except Exception as e:
-        logger.error(f"Failed to load API keys on startup: {e}")
+        logger.error(f"Failed to load secrets on startup: {e}")
+        # Fallback: raw DB injection (legacy)
+        try:
+            api_keys = db.get_api_keys() or {}
+            for key, value in api_keys.items():
+                if value:
+                    os.environ[key] = value
+        except Exception:
+            pass
 
     async def init_background_services(cm, sb):
         """Run heavy initialization tasks (memory, channels, social, scheduler) in background."""
@@ -344,6 +411,9 @@ async def startup():
 
     except Exception as e:
         logger.error(f"Failed to initialize Social Messaging: {e}")
+
+    # Silently refresh model lists for all configured providers in the background.
+    asyncio.create_task(_refresh_provider_models())
 
 
 def ensure_app_data():
@@ -491,6 +561,19 @@ app = Starlette(
             "/config/providers/{provider_id}/verify", verify_provider, methods=["POST"]
         ),
         Route("/config/embedding-models", get_embedding_models, methods=["GET"]),
+        Route("/config/cost/global", get_global_cost, methods=["GET"]),
+        Route("/config/cost/chat/{chat_id}", get_chat_cost, methods=["GET"]),
+        Route("/config/cost/daily", get_daily_cost, methods=["GET"]),
+        Route("/config/role-models", get_role_models, methods=["GET"]),
+        Route("/config/role-models", save_role_models, methods=["POST"]),
+        Route("/config/role-suggestions", get_role_suggestions, methods=["GET"]),
+        Route("/config/providers/custom", save_custom_provider, methods=["POST"]),
+        Route(
+            "/config/providers/custom/{provider_id}",
+            delete_custom_provider,
+            methods=["DELETE"],
+        ),
+        Route("/config/capabilities/sync", sync_capabilities, methods=["POST"]),
         Route("/config/social", get_social_config, methods=["GET"]),
         Route("/config/social", save_social_config, methods=["POST"]),
         Route("/social/pairing", list_pairings, methods=["GET"]),

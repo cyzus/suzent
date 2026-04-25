@@ -53,11 +53,22 @@ class SpeakTool(Tool):
                 )  # Higher quality for TTS
 
             if not self._speech:
-                # Use configured model or default to a reasonable one if not set
-                # Use configured model or default to a reasonable one if not set
+                model = None
+                try:
+                    from suzent.core.role_router import get_role_router
+
+                    model = get_role_router().get_model_id("tts")
+                except Exception:
+                    pass
+
+                if not model:
+                    return ToolResult.error_result(
+                        ToolErrorCode.EXECUTION_FAILED,
+                        "No TTS model configured. Set it in Settings → Model Roles → TTS.",
+                    )
+
                 from suzent.config import CONFIG
 
-                model = CONFIG.tts_model or "openai/tts-1"
                 voice = CONFIG.tts_voice or "alloy"
 
                 self._speech = SpeechOutput(

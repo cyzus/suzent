@@ -16,11 +16,12 @@ def resolve_api_key(
 
     Checks (in order):
     1. Explicit ``config["api_key"]`` or ``config[ENV_KEY]``
-    2. Environment variables from ``PROVIDER_ENV_KEYS``
-    3. Falls back to ``<PROVIDER_ID>.upper()_API_KEY``
+    2. SecretManager (keyring / encrypted DB)
+    3. Environment variables (fallback)
     """
     env_keys = PROVIDER_ENV_KEYS.get(provider, [f"{provider.upper()}_API_KEY"])
 
+    # 1. Check explicit config dict
     if config:
         val = config.get("api_key")
         if val:
@@ -30,6 +31,20 @@ def resolve_api_key(
             if val:
                 return val
 
+    # 2. Check SecretManager (handles both backend + env fallback)
+    try:
+        from suzent.core.secrets import get_secret_manager
+
+        sm = get_secret_manager()
+        for env_key in env_keys:
+            val = sm.get(env_key)
+            if val:
+                return val
+    except Exception:
+        # Fall back to raw env if SecretManager init fails
+        pass
+
+    # 3. Raw environment fallback (redundant if SecretManager works, but safe)
     for env_key in env_keys:
         val = os.environ.get(env_key)
         if val:

@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 
 import { useChatStore } from '../../hooks/useChatStore';
-import { ApiProvider, fetchApiKeys, fetchEmbeddingModels, fetchSocialConfig, fetchMcpServers, saveApiKeys, saveGlobalSandboxConfig, saveSocialConfig, saveUserPreferences, SocialConfig, UserConfig, verifyProvider } from '../../lib/api';
+import { ApiProvider, CustomProviderPayload, deleteCustomProvider, fetchApiKeys, fetchRoleModels, fetchRoleSuggestions, fetchSocialConfig, fetchMcpServers, saveApiKeys, saveCustomProvider, saveGlobalSandboxConfig, saveRoleModels, saveSocialConfig, saveUserPreferences, SocialConfig, UserConfig, verifyProvider } from '../../lib/api';
 import { AppearanceTab } from './AppearanceTab';
 import { AutomationTab } from './AutomationTab';
 import { McpTab } from './McpTab';
 import { MemoryTab } from './MemoryTab';
+import { ModelRolesTab } from './ModelRolesTab';
 import { ProvidersTab } from './ProvidersTab';
 import { SocialTab } from './SocialTab';
 import { useI18n, type Locale } from '../../i18n';
@@ -35,7 +36,7 @@ interface SettingsModalProps {
 }
 
 type ProviderTab = 'credentials' | 'models';
-type CategoryType = 'providers' | 'memory' | 'social' | 'mcp' | 'automation' | 'appearance';
+type CategoryType = 'providers' | 'roles' | 'memory' | 'social' | 'mcp' | 'automation' | 'appearance';
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
@@ -49,10 +50,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Memory Configuration state
-  const [embeddingModels, setEmbeddingModels] = useState<string[]>([]);
-  const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState<string>('');
-  const [selectedExtractionModel, setSelectedExtractionModel] = useState<string>('');
+  // Role models + suggestions
+  const [roleModels, setRoleModels] = useState<Record<string, string[]>>({});
+  const [roleSuggestions, setRoleSuggestions] = useState<Record<string, string[]>>({});
+
   const [activeCategory, setActiveCategory] = useState<CategoryType>('providers');
 
   // Social Config State
@@ -99,9 +100,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
       setLoading(false);
     });
 
-    fetchEmbeddingModels().then(models => {
-      setEmbeddingModels(models);
-    });
+    fetchRoleModels().then(setRoleModels);
+    fetchRoleSuggestions().then(setRoleSuggestions);
 
     fetchSocialConfig().then(config => {
       setSocialConfig(config);
@@ -133,12 +133,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
 
       setMcpServerList([...urlServers, ...stdioServers]);
     }).catch(() => setMcpServers(null));
-
-    const prefs = (backendConfig as any)?.userPreferences;
-    if (prefs) {
-      setSelectedEmbeddingModel(prefs.embedding_model || '');
-      setSelectedExtractionModel(prefs.extraction_model || '');
-    }
 
     const globalVolumes = backendConfig?.globalSandboxVolumes || [];
     const notebookVolume = globalVolumes.find((volume) => {
@@ -213,15 +207,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
 
     const configBlob = JSON.stringify(userConfigs);
     await saveApiKeys({ ...keysToSave, "_PROVIDER_CONFIG_": configBlob });
+    await saveRoleModels(roleModels);
 
-    if (selectedEmbeddingModel || selectedExtractionModel) {
-      await saveUserPreferences({
-        embedding_model: selectedEmbeddingModel || undefined,
-        extraction_model: selectedExtractionModel || undefined,
-      });
-    }
+    // Strip model from social config — primary role is used instead
+    const socialToSave = { ...socialConfig };
+    delete socialToSave.model;
+    await saveSocialConfig(socialToSave);
 
-    await saveSocialConfig(socialConfig);
+    // Persist preferences (sandbox only now; model fields moved to roles)
+    await saveUserPreferences({});
+
     const sandboxVolumes = globalNotebookHostPath.trim()
       ? [`${globalNotebookHostPath.trim()}:/mnt/notebook`]
       : [];
@@ -239,6 +234,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
       id: 'providers', label: t('settings.categories.providers'), icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        </svg>
+      )
+    },
+    {
+      id: 'roles', label: t('settings.categories.roles'), icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
         </svg>
       )
     },
@@ -303,7 +305,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
               ]}
               label={t('settings.language')}
             />
-
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
@@ -370,18 +371,40 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                       onConfigChange={(providerId, config) => setUserConfigs(prev => ({ ...prev, [providerId]: config }))}
                       onAddCustomModel={addCustomModel}
                       onVerify={handleVerify}
+                      onAddProvider={async (payload: CustomProviderPayload) => {
+                        const result = await saveCustomProvider(payload);
+                        if (!result.success) throw new Error(result.error || 'Failed to save');
+                        const data = await fetchApiKeys();
+                        if (data?.providers) {
+                          setProviders(data.providers);
+                          const configs: Record<string, UserConfig> = {};
+                          const tabs: Record<string, 'credentials' | 'models'> = {};
+                          for (const p of data.providers) {
+                            configs[p.id] = p.user_config || { enabled_models: [], custom_models: [] };
+                            tabs[p.id] = activeTabs[p.id] || 'credentials';
+                          }
+                          setUserConfigs(configs);
+                          setActiveTabs(tabs);
+                        }
+                      }}
+                      onDeleteProvider={async (providerId: string) => {
+                        await deleteCustomProvider(providerId);
+                        setProviders(prev => prev.filter(p => p.id !== providerId));
+                      }}
+                    />
+                  )}
+
+                  {activeCategory === 'roles' && (
+                    <ModelRolesTab
+                      roleModels={roleModels}
+                      suggestions={roleSuggestions}
+                      onChange={setRoleModels}
                     />
                   )}
 
                   {activeCategory === 'memory' && (
                     <MemoryTab
-                      embeddingModels={embeddingModels}
-                      models={backendConfig?.models || []}
-                      selectedEmbeddingModel={selectedEmbeddingModel}
-                      selectedExtractionModel={selectedExtractionModel}
                       globalNotebookHostPath={globalNotebookHostPath}
-                      onEmbeddingModelChange={setSelectedEmbeddingModel}
-                      onExtractionModelChange={setSelectedExtractionModel}
                       onGlobalNotebookHostPathChange={setGlobalNotebookHostPath}
                     />
                   )}
@@ -389,7 +412,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                   {activeCategory === 'social' && (
                     <SocialTab
                       socialConfig={socialConfig}
-                      models={backendConfig?.models || []}
                       tools={backendConfig?.tools || []}
                       mcpServers={mcpServers}
                       useCustomTools={useCustomTools}

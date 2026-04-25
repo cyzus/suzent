@@ -8,7 +8,6 @@ import litellm
 from suzent.core.agent_deps import AgentDeps
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 from suzent.tools.filesystem.file_tool_utils import get_or_create_path_resolver
-from suzent.config import CONFIG
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -23,6 +22,15 @@ class ImageVisionTool(Tool):
     tool_name: str = "analyze_image"
     group: ToolGroup = ToolGroup.CREATIVE
     requires_approval: bool = False
+
+    def _resolve_vision_model(self) -> str | None:
+        """Resolve vision model from RoleRouter only."""
+        try:
+            from suzent.core.role_router import get_role_router
+
+            return get_role_router().get_model_id("vision")
+        except Exception:
+            return None
 
     async def forward(
         self,
@@ -73,14 +81,11 @@ class ImageVisionTool(Tool):
             elif ext == ".gif":
                 mime_type = "image/gif"
 
-            # model access fix
-            model = getattr(
-                CONFIG, "vision_model", getattr(CONFIG, "default_model", None)
-            )
+            model = self._resolve_vision_model()
             if not model:
                 return ToolResult.error_result(
                     ToolErrorCode.EXECUTION_FAILED,
-                    "No vision_model or default_model configured in system CONFIG.",
+                    "No vision model configured. Set it in Settings → Model Roles.",
                 )
 
             messages = [
@@ -106,6 +111,23 @@ class ImageVisionTool(Tool):
             )
 
             result_text = response.choices[0].message.content
+
+            # Log cost
+            try:
+                usage = response.usage
+                if usage:
+                    from suzent.core.cost_tracker import get_cost_tracker
+
+                    await get_cost_tracker().log_cost(
+                        chat_id=getattr(ctx.deps, "chat_id", None),
+                        model=model,
+                        role="vision",
+                        input_tokens=getattr(usage, "prompt_tokens", 0),
+                        output_tokens=getattr(usage, "completion_tokens", 0),
+                    )
+            except Exception:
+                pass
+
             return ToolResult.success_result(result_text)
 
         except Exception as e:

@@ -186,12 +186,23 @@ async def init_memory_system() -> bool:
             markdown_store = MarkdownMemoryStore(str(shared_memory_dir))
             logger.info(f"Markdown memory store initialized at {shared_memory_dir}")
 
+        # Resolve embedding and extraction models from RoleRouter only
+        try:
+            from suzent.core.role_router import get_role_router
+
+            _router = get_role_router()
+            _embedding_model = _router.get_model_id("embedding")
+            _extraction_model = _router.get_model_id("cheap")
+        except Exception:
+            _embedding_model = None
+            _extraction_model = None
+
         # Initialize memory manager
         memory_manager = MemoryManager(
             store=memory_store,
-            embedding_model=CONFIG.embedding_model,
+            embedding_model=_embedding_model,
             embedding_dimension=CONFIG.embedding_dimension,
-            llm_for_extraction=CONFIG.extraction_model,
+            llm_for_extraction=_extraction_model,
             markdown_store=markdown_store,
         )
 
@@ -214,7 +225,8 @@ async def init_memory_system() -> bool:
 
         logger.info(
             f"Memory system initialized successfully "
-            f"(extraction: {'LLM' if CONFIG.extraction_model else 'heuristic'}, "
+            f"(extraction: {'LLM' if _extraction_model else 'heuristic'}, "
+            f"embedding: {_embedding_model or 'disabled'}, "
             f"markdown: {'enabled' if markdown_store else 'disabled'})"
         )
 
@@ -227,8 +239,8 @@ async def init_memory_system() -> bool:
             CONFIG.tool_options.append("MemorySearchTool")
             logger.info("Added MemorySearchTool to config")
 
-        # Start background core-file watcher (Phase 2)
-        if markdown_store and CONFIG.embedding_model:
+        # Start background core-file watcher only when embedding is configured
+        if markdown_store and _embedding_model:
             _watcher_task = asyncio.create_task(
                 _core_file_watch_loop(memory_manager, CONFIG.user_id),
                 name="core_memory_file_watcher",

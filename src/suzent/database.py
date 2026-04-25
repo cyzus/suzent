@@ -176,6 +176,41 @@ class ApiKeyModel(SQLModel, table=True):
     updated_at: datetime = Field(serialization_alias="updatedAt")
 
 
+class CostLedgerModel(SQLModel, table=True):
+    """Global cost ledger — every LLM call is recorded here.
+
+    Entries survive chat deletion so lifetime spend is always accurate.
+    """
+
+    __tablename__ = "cost_ledger"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    chat_id: Optional[str] = None
+    model: str
+    role: str = "primary"
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ChatCostSummaryModel(SQLModel, table=True):
+    """Per-chat cost summary — denormalized for fast per-chat queries.
+
+    Can be rebuilt from ``cost_ledger`` if needed.
+    """
+
+    __tablename__ = "chat_cost_summary"
+
+    chat_id: str = Field(primary_key=True)
+    total_cost_usd: float = 0.0
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    last_updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+
+
 class MemoryConfigModel(SQLModel, table=True):
     """Singleton table for memory system configuration."""
 
@@ -1657,6 +1692,12 @@ class ChatDatabase:
             statement = select(ApiKeyModel)
             results = session.exec(statement).all()
             return {item.key: item.value for item in results}
+
+    def get_api_key(self, key: str) -> Optional[str]:
+        """Get a single API key value by key name."""
+        with self._session() as session:
+            item = session.get(ApiKeyModel, key)
+            return item.value if item else None
 
     def save_api_key(self, key: str, value: str) -> bool:
         """Save or update an API key."""

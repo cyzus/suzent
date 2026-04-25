@@ -1,0 +1,62 @@
+{
+  "_doc": "Anthropic model capabilities. Auto-updated by Fetch; manually curate the flags.",
+  "models": {
+    "anthropic/claude-opus-4-6": {
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 32000,
+      "input_cost_per_token": 1.5e-05,
+      "output_cost_per_token": 7.5e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true,
+      "supports_response_schema": true
+    },
+    "anthropic/claude-sonnet-4-6": {
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 64000,
+      "input_cost_per_token": 3e-06,
+      "output_cost_per_token": 1.5e-05,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true,
+      "supports_response_schema": true
+    },
+    "anthropic/claude-haiku-4-5": {
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 64000,
+      "input_cost_per_token": 1e-06,
+      "output_cost_per_token": 5e-06,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true,
+      "supports_response_schema": true
+    },
+    "anthropic/claude-opus-4-7": {
+      "mode": "chat"
+    },
+    "anthropic/claude-opus-4-5-20251101": {
+      "mode": "chat"
+    },
+    "anthropic/claude-haiku-4-5-20251001": {
+      "mode": "chat"
+    },
+    "anthropic/claude-sonnet-4-5-20250929": {
+      "mode": "chat"
+    },
+    "anthropic/claude-opus-4-1-20250805": {
+      "mode": "chat"
+    },
+    "anthropic/claude-opus-4-20250514": {
+      "mode": "chat"
+    },
+    "anthropic/claude-sonnet-4-20250514": {
+      "mode": "chat"
+    }
+  }
+}
