@@ -52,9 +52,51 @@ def build_agent_deps(
     workspace_root = _get_config_value(config, "workspace_root", CONFIG.workspace_root)
     cwd = _get_config_value(config, "cwd", None)
     auto_approve_tools = _get_config_value(config, "auto_approve_tools", False)
-    tool_permission_policies = _get_config_value(
-        config, "permission_policies", CONFIG.permission_policies
-    )
+    # Layer 1 (lowest): global config from CONFIG / permissions.yaml
+    # Layer 2 (middle): per-chat session rules persisted in DB
+    # Layer 3 (highest): runtime config sent by client this request
+    _global_perm = dict(CONFIG.permission_policies or {})
+    _request_perm = _get_config_value(config, "permission_policies", None)
+
+    try:
+        from suzent.database import get_database as _gdb
+
+        _chat_obj = _gdb().get_chat(chat_id)
+        _chat_perm = (
+            (_chat_obj.config or {}).get("permission_policies") if _chat_obj else None
+        )
+    except Exception:
+        _chat_perm = None
+
+    # Merge layers: later layers win on conflict; command_rules are unioned by pattern
+    def _merge_perm(base: dict, overlay: dict) -> dict:
+        result = dict(base)
+        for tool, policy in overlay.items():
+            if (
+                tool in result
+                and isinstance(result[tool], dict)
+                and isinstance(policy, dict)
+            ):
+                merged_tool = {**result[tool], **policy}
+                base_rules = {
+                    r["pattern"]: r
+                    for r in (result[tool].get("command_rules") or [])
+                    if isinstance(r, dict) and r.get("pattern")
+                }
+                for r in policy.get("command_rules") or []:
+                    if isinstance(r, dict) and r.get("pattern"):
+                        base_rules[r["pattern"]] = r
+                merged_tool["command_rules"] = list(base_rules.values())
+                result[tool] = merged_tool
+            else:
+                result[tool] = policy
+        return result
+
+    tool_permission_policies = _global_perm
+    if isinstance(_chat_perm, dict):
+        tool_permission_policies = _merge_perm(tool_permission_policies, _chat_perm)
+    if isinstance(_request_perm, dict):
+        tool_permission_policies = _merge_perm(tool_permission_policies, _request_perm)
     custom_volumes = get_effective_volumes(
         _get_config_value(config, "sandbox_volumes", None)
     )

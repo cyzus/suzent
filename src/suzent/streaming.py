@@ -49,6 +49,112 @@ def _encode_custom(name: str, value: Any) -> str:
     return _encoder.encode(CustomEvent(name=name, value=value))
 
 
+def _bash_command_decision(tc: Any, deps: "AgentDeps") -> "bool | None":
+    """Check a bash tool call against session command-level rules.
+
+    Returns True (allow), False (deny), or None (no match → ask user).
+    """
+    try:
+        from suzent.tools.shell.permissions.rule_engine import (
+            normalize_rules,
+            evaluate_rules,
+        )
+        from suzent.tools.shell.permissions import CommandDecision
+
+        perm_policies = getattr(deps, "tool_permission_policies", {}) or {}
+        bash_policy = (
+            perm_policies.get("bash_execute") or perm_policies.get("BashTool") or {}
+        )
+        raw_rules = (
+            bash_policy.get("command_rules", [])
+            if isinstance(bash_policy, dict)
+            else []
+        )
+        if not raw_rules:
+            return None
+
+        command_text = ""
+        if isinstance(tc.args, dict):
+            command_text = tc.args.get("content", "") or ""
+        if not command_text:
+            return None
+
+        rules = normalize_rules(raw_rules)
+        decision = evaluate_rules(command_text, rules)
+        if decision == CommandDecision.ALLOW:
+            return True
+        if decision == CommandDecision.DENY:
+            return False
+    except Exception:
+        pass
+    return None
+
+
+def _bash_baseline_decision(tc: Any, deps: "AgentDeps") -> "bool | None":
+    """Mirror bash_tool.py's internal baseline policy check.
+
+    Auto-approves commands that bash would run without raising ApprovalRequired,
+    so that setting requires_approval=True on BashTool doesn't break the desktop
+    experience for simple commands.
+
+    Returns:
+        True  → safe, auto-approve (no dialog)
+        False → hard-deny (dangerous pattern or blocked path)
+        None  → needs user decision (git, chaining, policy-ASK)
+    """
+    try:
+        from suzent.tools.shell.permissions import (
+            evaluate_command_policy,
+            CommandDecision,
+        )
+        from suzent.tools.filesystem.file_tool_utils import get_or_create_path_resolver
+
+        if not isinstance(tc.args, dict):
+            return True  # malformed args — let bash handle it
+
+        language = (tc.args.get("language") or "command").strip().lower()
+        if language != "command":
+            return True  # python / nodejs: no baseline restriction
+
+        command_text = tc.args.get("content", "") or ""
+        if not command_text:
+            return True
+
+        resolver = get_or_create_path_resolver(deps)
+        baseline_eval = evaluate_command_policy(
+            command_text=command_text,
+            resolver=resolver,
+            mode_value="accept_edits",
+            raw_rules=[],
+            default_action="ask",
+        )
+
+        _HARD_DENY_PREFIXES = (
+            "Command blocked by high-risk shell semantics",
+            "Path denied by policy",
+            "Dangerous delete target blocked",
+        )
+        if (
+            baseline_eval.decision == CommandDecision.DENY
+            and baseline_eval.reason.startswith(_HARD_DENY_PREFIXES)
+        ):
+            return False
+
+        _ASK_PREFIXES = (
+            "Command requires approval due to shell chaining semantics",
+            "Git commands require approval",
+        )
+        if (
+            baseline_eval.decision == CommandDecision.ASK
+            and baseline_eval.reason.startswith(_ASK_PREFIXES)
+        ):
+            return None  # show user dialog
+
+        return True  # everything else is safe
+    except Exception:
+        return None  # on error, fall through to user dialog
+
+
 def _plan_snapshot(chat_id: Optional[str] = None) -> dict:
     """Get a snapshot of the current plan state."""
     try:
@@ -387,6 +493,44 @@ async def stream_agent_responses(
                                         f"(always_deny policy)"
                                     )
                                 else:
+                                    # For bash: check rules then baseline before asking user.
+                                    # This preserves the original requires_approval=False
+                                    # behaviour (only git/chained/dangerous require a dialog)
+                                    # now that BashTool.requires_approval=True.
+                                    if tc.tool_name in ("bash_execute", "BashTool"):
+                                        # 1. Session/global command rules (remembered decisions)
+                                        cmd_decision = _bash_command_decision(tc, deps)
+                                        if cmd_decision is True:
+                                            auto_approvals[tc.tool_call_id] = True
+                                            logger.debug(
+                                                "[Streaming] Auto-approving bash "
+                                                "(command rule match)"
+                                            )
+                                            continue
+                                        if cmd_decision is False:
+                                            auto_approvals[tc.tool_call_id] = False
+                                            logger.debug(
+                                                "[Streaming] Auto-denying bash "
+                                                "(command rule match)"
+                                            )
+                                            continue
+                                        # 2. Baseline safety check (mirrors bash_tool.py logic)
+                                        baseline = _bash_baseline_decision(tc, deps)
+                                        if baseline is True:
+                                            auto_approvals[tc.tool_call_id] = True
+                                            logger.debug(
+                                                "[Streaming] Auto-approving bash "
+                                                "(baseline: safe command)"
+                                            )
+                                            continue
+                                        if baseline is False:
+                                            auto_approvals[tc.tool_call_id] = False
+                                            logger.debug(
+                                                "[Streaming] Auto-denying bash "
+                                                "(baseline: dangerous command)"
+                                            )
+                                            continue
+                                        # baseline is None → show approval dialog
                                     pending_approvals.append(tc)
 
                             if not pending_approvals:

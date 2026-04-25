@@ -65,7 +65,7 @@ class SocialBrain(BaseBrain):
         self._sessions: Dict[str, PendingApprovalSession] = {}  # chat_id -> session
         self._session_policies: Dict[
             str, Dict[str, str]
-        ] = {}  # chat_id -> {tool -> policy}
+        ] = {}  # chat_id -> {tool -> policy} (non-bash, in-memory only)
         self._run_states: Dict[str, ChatRunState] = {}  # per social_chat_id
         self._cleanup_task: Optional[asyncio.Task] = None
 
@@ -621,7 +621,7 @@ class SocialBrain(BaseBrain):
 
             config_override = build_agent_config(base_config, require_social_tool=False)
 
-            # Inject any session-level tool approval policies
+            # Inject any session-level tool approval policies (non-bash tools)
             policies = self._session_policies.get(social_chat_id)
             if policies:
                 config_override["tool_approval_policy"] = dict(policies)
@@ -750,13 +750,33 @@ class SocialBrain(BaseBrain):
             if session.total > 1
             else ""
         )
-        alert = (
-            f"⚠️ Approval Required {counter}\n{req.format_alert_text(markdown=False)}"
-        )
+
+        is_bash = req.tool_name in ("bash_execute", "BashTool")
+        if is_bash:
+            # Show description and the command clearly
+            description = req.args.get("description", "") if req.args else ""
+            command = req.args.get("content", "") if req.args else ""
+            from suzent.tools.shell.permissions.command_parser import parse_command
+
+            base_cmd = parse_command(command).base_command if command else ""
+            alert_parts = [f"⚠️ Approval Required {counter}"]
+            if description:
+                alert_parts.append(f"Action: {description}")
+            if command:
+                preview = command if len(command) <= 120 else command[:117] + "..."
+                alert_parts.append(f"Command: {preview}")
+            alert = "\n".join(alert_parts)
+            always_allow_label = (
+                f"✅ Always Allow `{base_cmd}...`" if base_cmd else "✅ Always Allow"
+            )
+        else:
+            alert = f"⚠️ Approval Required {counter}\n{req.format_alert_text(markdown=False)}"
+            always_allow_label = "✅ Always Allow"
+
         options = [
             ("✅ Allow", "/approve"),
             ("❌ Deny", "/deny"),
-            ("✅ Always Allow", "/ya"),
+            (always_allow_label, "/ya"),
         ]
         channel = self.channel_manager.channels.get(session.platform)
         if channel:
@@ -802,17 +822,59 @@ class SocialBrain(BaseBrain):
         # Confirmation message
         tool_name = req.tool_name if req else "tool"
         status = "Approved" if approved else "Denied"
-        suffix = " (remembered for session)" if remember else ""
+
+        remember_label = ""
+        if remember and req:
+            is_bash = req.tool_name in ("bash_execute", "BashTool")
+            if is_bash:
+                command = req.args.get("content", "") if req.args else ""
+                from suzent.tools.shell.permissions.command_parser import parse_command
+
+                base_cmd = parse_command(command).base_command if command else ""
+                if base_cmd:
+                    remember_label = f" (remembered: always allow `{base_cmd}...`)"
+                else:
+                    remember_label = " (remembered for session)"
+            else:
+                remember_label = " (remembered for session)"
+
         await self.channel_manager.send_message(
-            platform, target_id, f"{status} {tool_name}{suffix}"
+            platform, target_id, f"{status} {tool_name}{remember_label}"
         )
 
         # Persist "always" policy for this session
         if remember and req:
-            policy = "always_allow" if approved else "always_deny"
-            self._session_policies.setdefault(social_chat_id, {})[req.tool_name] = (
-                policy
-            )
+            is_bash = req.tool_name in ("bash_execute", "BashTool")
+            if is_bash and approved:
+                # For bash, store a prefix rule on the base command in the chat DB
+                # so it survives brain restarts and is scoped to this chat only.
+                command = req.args.get("content", "") if req.args else ""
+                from suzent.tools.shell.permissions.command_parser import parse_command
+                from suzent.core.chat_processor import _upsert_command_rule
+
+                base_cmd = parse_command(command).base_command if command else ""
+                if base_cmd:
+                    try:
+                        _db = get_database()
+                        _chat = _db.get_chat(social_chat_id)
+                        _chat_cfg = dict((_chat.config or {}) if _chat else {})
+                        _chat_perm = dict(_chat_cfg.get("permission_policies") or {})
+                        _upsert_command_rule(
+                            _chat_perm,
+                            tool_name="bash_execute",
+                            command_pattern=base_cmd,
+                            action="allow",
+                            match_type="prefix",
+                        )
+                        _chat_cfg["permission_policies"] = _chat_perm
+                        _db.update_chat(social_chat_id, config=_chat_cfg)
+                    except Exception as _exc:
+                        logger.warning(f"Failed to persist bash session rule: {_exc}")
+            else:
+                policy = "always_allow" if approved else "always_deny"
+                self._session_policies.setdefault(social_chat_id, {})[req.tool_name] = (
+                    policy
+                )
 
         logger.info(
             f"SocialBrain: Decision {session.current_index}/{session.total} "
@@ -834,14 +896,26 @@ class SocialBrain(BaseBrain):
         """Resume the agent turn after all approvals are collected."""
         try:
             from suzent.core.chat_processor import ChatProcessor
+            from suzent.core.stream_parser import ApprovalRequest as _AR
 
             processor = ChatProcessor()
 
-            # Ensure session policies are in the config for the resumed turn
-            config = session.config_override or {}
+            # Build config: inject non-bash session policies; bash rules come
+            # from the DB automatically via build_agent_deps.
+            config = dict(session.config_override or {})
             policies = self._session_policies.get(social_chat_id)
             if policies:
                 config["tool_approval_policy"] = dict(policies)
+
+            # Collect any new approval requests that arise during resume
+            new_approvals: list[_AR] = []
+
+            async def on_event(event):
+                if isinstance(event, _AR):
+                    logger.info(
+                        f"SocialBrain: New approval request during resume for {event.tool_name}"
+                    )
+                    new_approvals.append(event)
 
             full_response = await processor.process_turn_text(
                 chat_id=social_chat_id,
@@ -850,7 +924,21 @@ class SocialBrain(BaseBrain):
                 resume_approvals=session.to_resume_approvals(),
                 config_override=config,
                 is_social=True,
+                on_event=on_event,
             )
+
+            # If new approvals arose (e.g. second bash command), prompt them
+            if new_approvals:
+                new_session = PendingApprovalSession(
+                    requests=new_approvals,
+                    config_override=config,
+                    platform=session.platform,
+                    target_id=session.target_id,
+                    sender_id=session.sender_id,
+                )
+                self._sessions[social_chat_id] = new_session
+                await self._prompt_next_approval(new_session)
+                return  # agent hasn't finished yet; response will come after approvals
 
             if full_response.strip():
                 await self.channel_manager.send_message(

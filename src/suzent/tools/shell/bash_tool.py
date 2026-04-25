@@ -43,7 +43,7 @@ class BashTool(Tool):
     name = "BashTool"
     tool_name = "bash_execute"
     group = ToolGroup.EXECUTION
-    requires_approval = False
+    requires_approval = True
     session_guidance = (
         "BashTool is for shell/system commands ONLY. "
         "NEVER use bash to read, search, or edit files (no cat, head, tail, grep, find, sed, awk). "

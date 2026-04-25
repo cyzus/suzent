@@ -196,7 +196,11 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
 
     decisions.forEach(d => {
       if ((d.remember === 'session' || d.remember === 'global') && d.toolName === 'bash_execute') {
-        const command = typeof d.args?.command === 'string' ? d.args.command.trim() : '';
+        // Bash tool stores the command under "content"; fall back to "command" for safety.
+        const command = (
+          typeof d.args?.content === 'string' ? d.args.content :
+          typeof d.args?.command === 'string' ? d.args.command : ''
+        ).trim();
         if (!command) {
           return;
         }

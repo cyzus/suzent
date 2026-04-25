@@ -584,8 +584,12 @@ class ChatProcessor:
                     args = _coerce_approval_args(app.get("args"))
 
                     # Bash approvals can be remembered per command.
+                    # Bash tool uses "content" for the command; fall back to "command"
+                    # for any legacy callers that normalised the field name.
                     if tool_name == "bash_execute":
-                        command_pattern = str(args.get("command") or "").strip()
+                        command_pattern = str(
+                            args.get("content") or args.get("command") or ""
+                        ).strip()
                         if command_pattern:
                             action = "allow" if approved else "deny"
                             _upsert_command_rule(
@@ -595,7 +599,34 @@ class ChatProcessor:
                                 action=action,
                             )
 
-                            if remember_scope == "global":
+                            if remember_scope == "session":
+                                # Persist per-chat session rule to DB so it survives
+                                # page refresh and is scoped to this chat only.
+                                try:
+                                    _db = get_database()
+                                    _chat = _db.get_chat(chat_id)
+                                    _chat_cfg = dict(
+                                        (_chat.config or {}) if _chat else {}
+                                    )
+                                    _chat_perm = dict(
+                                        _chat_cfg.get("permission_policies") or {}
+                                    )
+                                    _upsert_command_rule(
+                                        _chat_perm,
+                                        tool_name=tool_name,
+                                        command_pattern=command_pattern,
+                                        action=action,
+                                    )
+                                    _chat_cfg["permission_policies"] = _chat_perm
+                                    _db.update_chat(chat_id, config=_chat_cfg)
+                                except Exception as exc:
+                                    logger.warning(
+                                        "Failed to persist session command rule for {}: {}",
+                                        chat_id,
+                                        exc,
+                                    )
+
+                            elif remember_scope == "global":
                                 try:
                                     persist_global_command_rule(
                                         PROJECT_DIR,

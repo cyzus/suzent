@@ -61,6 +61,7 @@ src-tauri/gen/
 
 # Config & data
 config/default.yaml
+config/permissions.yaml
 config/providers.user.json
 config/skills.json
 config/social.json
