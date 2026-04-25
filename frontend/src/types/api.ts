@@ -17,7 +17,7 @@ export interface FileAttachment {
 }
 
 export interface Message {
-  role: 'user' | 'assistant' | 'notice' | 'canvas_action' | 'trigger';
+  role: 'user' | 'assistant' | 'notice' | 'canvas_action' | 'system_triggered';
   content: string;
   timestamp?: string;         // ISO 8601 timestamp when the message was created
   stepInfo?: string; // Step metadata like "Step: 1 | Input tokens: 100 | Output tokens: 50"

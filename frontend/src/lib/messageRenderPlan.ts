@@ -19,12 +19,12 @@ function isEmptyAssistantPlaceholder(message: Message): boolean {
 }
 
 /**
- * A turn boundary is any non-assistant input that kicks off a new agent turn:
- * a real user message, or a cron/heartbeat 'trigger' row. Empty user rows no
- * longer reach this function — loadChat promotes legacy empties to triggers.
+ * A turn boundary separates one agent turn from the next.
+ * Real user messages and system_triggered rows (cron, heartbeat, wake-parent) qualify.
+ * Empty user rows are tool-resume continuations — they don't start a new turn.
  */
 function isTurnBoundary(message: Message): boolean {
-  if (message.role === 'trigger') return true;
+  if (message.role === 'system_triggered') return true;
   if (message.role !== 'user') return false;
   if ((message.content || '').trim().length > 0) return true;
   if (message.images && message.images.length > 0) return true;
