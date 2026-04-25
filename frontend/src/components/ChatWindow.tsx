@@ -17,7 +17,7 @@ import { NewChatView } from './NewChatView';
 import { ChatInputPanel } from './ChatInputPanel';
 import { ImageViewer } from './ImageViewer';
 import { FileViewer } from './FileViewer';
-import { UserMessage, AssistantMessage, RightSidebar } from './chat';
+import { UserMessage, AssistantMessage, RightSidebar, MarkdownRenderer } from './chat';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 import { SubAgentView } from './sidebar/SubAgentView';
@@ -165,7 +165,7 @@ const NoticeMessage: React.FC<{ message: Message }> = ({ message }) => {
     <div className="w-full max-w-3xl pl-2 md:pl-6">
       <div className="border-2 border-dashed border-brutal-black bg-brutal-yellow/20 px-4 py-3 shadow-[3px_3px_0_0_#000]">
         <div className="text-[10px] font-bold uppercase tracking-wider text-brutal-black">Notice</div>
-        <div className="text-sm leading-relaxed text-brutal-black whitespace-pre-wrap break-words">{message.content}</div>
+        <div className="text-sm leading-relaxed text-brutal-black"><MarkdownRenderer content={message.content} /></div>
       </div>
     </div>
   );
