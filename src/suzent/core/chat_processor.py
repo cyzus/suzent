@@ -1583,7 +1583,7 @@ def _rebuild_display_messages(messages: list) -> list:
                         )
                         if reminder_body:
                             entry: dict = {
-                                "role": "trigger",
+                                "role": "system_triggered",
                                 "content": reminder_body,
                             }
                             if ts:

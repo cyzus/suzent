@@ -256,17 +256,15 @@ const MessageList: React.FC<{
           );
         }
 
-        // Cron/heartbeat trigger — compact card showing what kicked off this turn.
-        // Legacy rows (from before the trigger role existed) have no content; show
-        // a neutral placeholder so they still act as a visible turn separator.
-        if (m.role === 'trigger') {
-          const body = (m.content || '').trim();
+        // System-triggered turn (cron, heartbeat, wake-parent etc.) — compact card
+        // showing what kicked off this agent turn.
+        if (m.role === 'system_triggered') {
           return (
             <div key={idx} className="chat-msg-row w-full flex justify-start">
               <div className="inline-flex items-start gap-2 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2 text-xs font-mono shadow-brutal-sm max-w-3xl">
                 <span className="text-brutal-blue mt-[1px]">⏱</span>
                 <span className="whitespace-pre-wrap text-brutal-black dark:text-neutral-200">
-                  {body || <span className="italic text-neutral-500">Scheduled run</span>}
+                  {m.content}
                 </span>
               </div>
             </div>

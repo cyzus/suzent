@@ -92,24 +92,21 @@ describe('buildMessageRenderPlan', () => {
     expect(plan.stepSummaryByMessageIndex.get(2)).toContain('4 steps');
   });
 
-  it('treats trigger rows as turn boundaries so each cron fire renders its own badge', () => {
+  it('treats system_triggered rows as turn boundaries so each cron/heartbeat fire has its own badge', () => {
     const toolCall = '<details><summary>🔧 bash_execute</summary><pre><code class="language-text">{}</code></pre></details>';
     const messages: Message[] = [
-      { role: 'trigger', content: 'Scheduled Task: ingest' },
+      { role: 'system_triggered', content: 'Scheduled Task: ingest' },
       assistant(toolCall, 'Input: 10 | Output: 2'),
       assistant('Run 1 done.', 'Input: 5 | Output: 6'),
-      { role: 'trigger', content: 'Scheduled Task: ingest' },
+      { role: 'system_triggered', content: 'Scheduled Task: ingest' },
       assistant(toolCall, 'Input: 20 | Output: 3'),
       assistant('Run 2 done.', 'Input: 5 | Output: 6'),
-      { role: 'trigger', content: '' }, // legacy empty trigger
-      assistant(toolCall, 'Input: 30 | Output: 4'),
-      assistant('Run 3 done.', 'Input: 5 | Output: 6'),
     ];
 
     const plan = buildMessageRenderPlan(messages);
 
-    // One group representative per cron fire, keyed at the first intermediate of each turn.
-    expect(Array.from(plan.groupRenders.keys()).sort((a, b) => a - b)).toEqual([1, 4, 7]);
+    // One group representative per system-triggered fire.
+    expect(Array.from(plan.groupRenders.keys()).sort((a, b) => a - b)).toEqual([1, 4]);
   });
 
   it('resets turn grouping at each user message', () => {

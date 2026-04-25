@@ -969,20 +969,19 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
           for (const msg of serverMessages) {
             if (msg.role === 'user') {
-              // Legacy cron/heartbeat chats persisted pure-reminder prompts as
-              // empty user rows before the 'trigger' role existed. Promote them
-              // to trigger rows (with no body) so each one acts as a proper
-              // turn boundary in the renderer.
+              // Empty user rows are tool-resume continuations (system-reminder injected
+              // by the backend, then stripped to empty). Drop them — they don't represent
+              // a real turn and must not flush the assistant buffer or act as boundaries.
               if (!(msg.content || '').trim() && !(msg.images?.length) && !(msg.files?.length)) {
-                if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
-                mappedMessages.push({ role: 'trigger', content: '', timestamp: msg.timestamp });
                 continue;
               }
               if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
               mappedMessages.push(msg);
-            } else if (msg.role === 'trigger') {
+            } else if (msg.role === 'system_triggered' || msg.role === 'trigger') {
+              // 'trigger' is the legacy name; normalize to 'system_triggered' so the
+              // rest of the render pipeline only needs to handle one role.
               if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
-              mappedMessages.push(msg);
+              mappedMessages.push({ ...msg, role: 'system_triggered' } as Message);
             } else if (msg.role === 'assistant') {
               if (!currentAssistant) {
                 currentAssistant = { ...msg, content: msg.content || '' };
