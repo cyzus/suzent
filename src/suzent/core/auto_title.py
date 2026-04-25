@@ -20,12 +20,7 @@ async def generate_auto_title(
         model = router.get_model_id("cheap")
 
         if not model:
-            # Legacy fallback
-            from suzent.core.providers.helpers import get_effective_memory_config
-            from suzent.config import CONFIG
-
-            mem_config = get_effective_memory_config()
-            model = mem_config.get("extraction_model") or fallback_model or CONFIG.model
+            model = fallback_model
 
         if not model:
             logger.warning(f"Auto-title skipped for {chat_id}: no model configured")
@@ -41,6 +36,8 @@ async def generate_auto_title(
             temperature=0.3,
             max_tokens=20,
         )
+        if not title:
+            return None
         title = title.strip().strip("\"'").strip()
         if title:
             db = get_database()
