@@ -2,6 +2,8 @@
 Telegram channel implementation.
 """
 
+from __future__ import annotations
+
 import asyncio
 import os
 from typing import Any
@@ -9,11 +11,12 @@ from suzent.logger import get_logger
 from suzent.channels.base import SocialChannel, UnifiedMessage
 
 try:
-    from telegram import Update
+    from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
     from telegram.constants import ParseMode
     from telegram.error import TelegramError
     from telegram.ext import (
         ApplicationBuilder,
+        CallbackQueryHandler,
         ContextTypes,
         MessageHandler,
         filters,
@@ -21,6 +24,8 @@ try:
 except ImportError:
     # Handle optional dependency
     Update = Any
+    InlineKeyboardButton = None
+    InlineKeyboardMarkup = None
 
 logger = get_logger(__name__)
 
@@ -155,6 +160,8 @@ class TelegramChannel(SocialChannel):
                     filters.PHOTO | filters.Document.ALL, self._handle_media_message
                 )
             )
+            # Handle inline keyboard button presses
+            self.app.add_handler(CallbackQueryHandler(self._handle_callback_query))
 
             # Initialize and start
             await self.app.initialize()
@@ -368,6 +375,138 @@ class TelegramChannel(SocialChannel):
         await new_file.download_to_drive(custom_path=local_path)
 
         return str(local_path), filename
+
+    async def send_keyboard(
+        self,
+        target_id: str,
+        text: str,
+        buttons: list[list[tuple[str, str]]],
+    ) -> bool:
+        """Send a message with an inline keyboard.
+
+        ``buttons`` is a list of rows, each row a list of (label, callback_data) pairs.
+        """
+        if not self.app or InlineKeyboardMarkup is None:
+            return False
+        keyboard = [
+            [InlineKeyboardButton(label, callback_data=data) for label, data in row]
+            for row in buttons
+        ]
+        markup = InlineKeyboardMarkup(keyboard)
+        try:
+            await self.app.bot.send_message(
+                chat_id=self._parse_chat_id(target_id),
+                text=text,
+                reply_markup=markup,
+                parse_mode=ParseMode.HTML,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send keyboard to {target_id}: {e}")
+            return False
+
+    async def _handle_callback_query(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ):
+        """Handle inline keyboard button presses."""
+        query = update.callback_query
+        if not query or not query.data:
+            return
+
+        data = query.data
+        sender_id = str(query.from_user.id)
+
+        # Model selection: ms:{sender_id}:{model_index}
+        if data.startswith("ms:"):
+            parts = data.split(":", 2)
+            if len(parts) != 3:
+                await query.answer("Invalid selection.")
+                return
+
+            try:
+                model_idx = int(parts[2])
+            except ValueError:
+                await query.answer("Invalid selection.")
+                return
+
+            from suzent.core.providers.helpers import get_enabled_models_from_db
+            from suzent.core.commands.sess import get_active_chat_id
+            from suzent.database import get_database
+
+            models = get_enabled_models_from_db()
+            if model_idx < 0 or model_idx >= len(models):
+                await query.answer("Model no longer available.")
+                return
+
+            model_id = models[model_idx]
+            default_chat_id = f"social-telegram-{sender_id}"
+            chat_id = get_active_chat_id(sender_id, default_chat_id)
+
+            db = get_database()
+            chat = db.get_chat(chat_id)
+            if chat:
+                new_config = dict(chat.config or {})
+                new_config["model"] = model_id
+                db.update_chat(chat_id, config=new_config)
+            else:
+                db.create_chat(
+                    title=f"Telegram chat {sender_id}",
+                    config={
+                        "platform": "telegram",
+                        "sender_id": sender_id,
+                        "model": model_id,
+                    },
+                    chat_id=chat_id,
+                )
+
+            await query.answer(f"Switched to {model_id}")
+            try:
+                await query.edit_message_text(
+                    f"Model set to <code>{model_id}</code>",
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception:
+                pass
+            return
+
+        # Model list pagination: mp:{sender_id}:{page}
+        if data.startswith("mp:"):
+            parts = data.split(":", 2)
+            if len(parts) != 3:
+                await query.answer()
+                return
+            try:
+                page = int(parts[2])
+            except ValueError:
+                await query.answer()
+                return
+
+            from suzent.core.providers.helpers import get_enabled_models_from_db
+            from suzent.core.commands.sess import get_active_chat_id
+            from suzent.core.commands.model import _build_model_keyboard
+            from suzent.database import get_database
+
+            models = get_enabled_models_from_db()
+            default_chat_id = f"social-telegram-{sender_id}"
+            chat_id = get_active_chat_id(sender_id, default_chat_id)
+            db = get_database()
+            chat = db.get_chat(chat_id)
+            current_model = (chat.config or {}).get("model", "") if chat else ""
+
+            buttons = _build_model_keyboard(models, sender_id, current_model, page=page)
+            keyboard = [
+                [InlineKeyboardButton(label, callback_data=cb) for label, cb in row]
+                for row in buttons
+            ]
+            markup = InlineKeyboardMarkup(keyboard)
+            await query.answer()
+            try:
+                await query.edit_message_reply_markup(reply_markup=markup)
+            except Exception:
+                pass
+            return
+
+        await query.answer()
 
     async def _handle_text_message(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE

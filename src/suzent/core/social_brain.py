@@ -538,28 +538,34 @@ class SocialBrain(BaseBrain):
 
                 cmd_result = await _dispatch_command(
                     _CmdCtx(
-                        chat_id=social_chat_id, user_id=CONFIG.user_id, surface="social"
+                        chat_id=social_chat_id,
+                        user_id=CONFIG.user_id,
+                        surface="social",
+                        platform=message.platform,
+                        sender_id=message.sender_id,
+                        channel_manager=self.channel_manager,
                     ),
                     message.content.strip(),
                 )
                 if cmd_result is not None:
-                    try:
-                        from suzent.database import get_database as _get_db
+                    if cmd_result:  # empty string = command sent its own reply
+                        try:
+                            from suzent.database import get_database as _get_db
 
-                        _db = _get_db()
-                        _chat = _db.get_chat(social_chat_id)
-                        if _chat is not None:
-                            updated = _append_command_messages(
-                                list(_chat.messages or []),
-                                message.content.strip(),
-                                cmd_result,
-                            )
-                            _db.update_chat(social_chat_id, messages=updated)
-                    except Exception:
-                        pass
-                    await self.channel_manager.send_message(
-                        message.platform, target_id, cmd_result
-                    )
+                            _db = _get_db()
+                            _chat = _db.get_chat(social_chat_id)
+                            if _chat is not None:
+                                updated = _append_command_messages(
+                                    list(_chat.messages or []),
+                                    message.content.strip(),
+                                    cmd_result,
+                                )
+                                _db.update_chat(social_chat_id, messages=updated)
+                        except Exception:
+                            pass
+                        await self.channel_manager.send_message(
+                            message.platform, target_id, cmd_result
+                        )
                     return
 
             # 3. Envelope header — prepend platform metadata to message
@@ -592,8 +598,19 @@ class SocialBrain(BaseBrain):
                     "event_loop": event_loop,
                 },
             }
-            if self.model:
-                base_config["model"] = self.model
+            # Prefer per-chat model override (set via /model), fall back to social brain default
+            chat_model = None
+            try:
+                from suzent.database import get_database as _gdb
+
+                _chat = _gdb().get_chat(social_chat_id)
+                if _chat and _chat.config:
+                    chat_model = _chat.config.get("model")
+            except Exception:
+                pass
+            effective_model = chat_model or self.model
+            if effective_model:
+                base_config["model"] = effective_model
             if self.tools is not None:
                 base_config["tools"] = self.tools
             else:
