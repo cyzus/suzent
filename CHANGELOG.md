@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚀 Added
+- **Model Roles**: New "Model Roles" tab in Settings lets you assign specific models to each role — Primary, Cheap, Vision, Embedding, Image Generation, and TTS — with a searchable dropdown populated from your enabled providers.
+- **`/model` Slash Command**: View or change the active model directly from social channels (Telegram, etc.) or the CLI. `/model` shows the current model, `/model ls` lists all enabled models, `/model <id>` switches immediately. Telegram shows an interactive button keyboard for quick selection.
+- **Chat Unread State**: Chat list now tracks read/unread status — chats with new messages are visually marked until you open them.
+
+### ⚡ Changed
+- **Providers Settings UX**: Improved layout and interaction for API key and provider configuration in Settings.
+
+### 🐛 Fixed
+- **Tool Approval in Social Channels**: Fixed permission rule logic for tool approvals sent via Telegram and other social channels. Bash command approvals now show the command preview and offer "Always Allow `<command>...`" as a session-level rule. Non-bash tool approvals correctly surface the tool description.
+- **Social "Remember" Approval**: The "remember" decision for approved tools is now correctly forwarded through the approval pipeline so the session-level rule actually takes effect.
+- **Chat Message Count**: Fixed incorrect message count in the chat list.
+- **Redundant Unread Badges**: Cleaned up duplicate unread indicators in the chat list.
+- **Auto-title Crash**: Fixed a crash when the auto-title generator returned no result.
+
 ## [v0.6.0] - 2026-04-23
 
 ### ⚡ Changed
