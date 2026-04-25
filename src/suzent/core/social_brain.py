@@ -751,13 +751,22 @@ class SocialBrain(BaseBrain):
             else ""
         )
         alert = (
-            f"⚠️ Approval Required {counter}\n"
-            f"{req.format_alert_text(markdown=False)}\n\n"
-            f"/y allow | /n deny | /ya always allow | /na always deny"
+            f"⚠️ Approval Required {counter}\n{req.format_alert_text(markdown=False)}"
         )
-        await self.channel_manager.send_message(
-            session.platform, session.target_id, alert
-        )
+        options = [
+            ("✅ Allow", "/approve"),
+            ("❌ Deny", "/deny"),
+            ("✅ Always Allow", "/ya"),
+        ]
+        channel = self.channel_manager.channels.get(session.platform)
+        if channel:
+            await channel.send_options(session.target_id, alert, options, columns=2)
+        else:
+            await self.channel_manager.send_message(
+                session.platform,
+                session.target_id,
+                f"{alert}\n\n/y allow | /n deny | /ya always allow",
+            )
 
     async def handle_approval_response(
         self,
@@ -788,7 +797,7 @@ class SocialBrain(BaseBrain):
 
         # Record this decision
         req = session.next_request
-        session.record(approved)
+        session.record(approved, remember=remember)
 
         # Confirmation message
         tool_name = req.tool_name if req else "tool"

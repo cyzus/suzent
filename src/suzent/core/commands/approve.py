@@ -2,8 +2,8 @@ import typer
 from suzent.core.commands.base import register_command, CommandContext
 
 _APPROVE = {"/approve", "/y", "/yes", "/allow", "/ya"}
-_DENY = {"/n", "/no", "/deny", "/reject", "/na"}
-_REMEMBER = {"/ya", "/na"}
+_DENY = {"/n", "/no", "/deny", "/reject"}
+_REMEMBER = {"/ya"}
 
 
 @register_command(
@@ -24,7 +24,7 @@ def handle_approve(ctx: typer.Context, req_id: str = typer.Argument(None)):
 
 
 @register_command(
-    ["/deny", "/n", "/no", "/reject", "/na"],
+    ["/deny", "/n", "/no", "/reject"],
     description="Deny a pending tool action",
     usage="/deny [id]",
     surfaces=["social"],

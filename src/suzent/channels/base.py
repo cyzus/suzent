@@ -68,6 +68,31 @@ class SocialChannel(ABC):
         """Send a file."""
         pass
 
+    @property
+    def supports_interactive(self) -> bool:
+        """True if this channel can render interactive buttons."""
+        return False
+
+    async def send_options(
+        self,
+        target_id: str,
+        text: str,
+        options: list[tuple[str, str]],
+        columns: int = 2,
+    ) -> bool:
+        """Send a message with selectable options.
+
+        ``options`` is a list of ``(display_label, value)`` pairs where ``value``
+        is the command string that will be dispatched when the user selects it.
+
+        The default implementation falls back to a plain-text numbered list.
+        Channels with button support should override this method.
+        """
+        lines = [text, ""]
+        for label, value in options:
+            lines.append(f"• {label}  ({value})")
+        return await self.send_message(target_id, "\n".join(lines))
+
     async def _invoke_callback(self, message: UnifiedMessage):
         """Helper to safely invoke the registered callback (sync or async)."""
         if self.on_message:

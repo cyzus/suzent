@@ -17,6 +17,9 @@ class PendingApprovalSession:
 
     requests: List[ApprovalRequest]
     decisions: Dict[str, bool] = field(default_factory=dict)  # request_id -> approved
+    remember_decisions: Dict[str, bool] = field(
+        default_factory=dict
+    )  # request_id -> remember
     config_override: Optional[Dict] = None
     platform: str = ""
     target_id: str = ""
@@ -40,19 +43,29 @@ class PendingApprovalSession:
             return None
         return self.requests[self.current_index]
 
-    def record(self, approved: bool):
+    def record(self, approved: bool, remember: bool = False):
         """Record a decision for the current request."""
         req = self.next_request
         if req:
             self.decisions[req.request_id] = approved
+            self.remember_decisions[req.request_id] = remember
 
     def to_resume_approvals(self) -> List[Dict]:
-        """Build the resume_approvals payload for ChatProcessor."""
+        """Build the resume_approvals payload for ChatProcessor.
+
+        Includes ``remember``, ``tool_name``, and ``args`` so ChatProcessor can
+        apply the standard permission pathway (command-level rules, global persist).
+        """
         return [
             {
                 "request_id": req.request_id,
                 "tool_call_id": req.tool_call_id,
                 "approved": self.decisions[req.request_id],
+                "remember": "session"
+                if self.remember_decisions.get(req.request_id)
+                else "",
+                "tool_name": req.tool_name,
+                "args": req.args,
             }
             for req in self.requests
         ]

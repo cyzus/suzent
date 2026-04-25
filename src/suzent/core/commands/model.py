@@ -45,24 +45,32 @@ def handle_model(
             except Exception:
                 current_model = "(not set)"
 
-        # Telegram: show interactive keyboard for /model and /model ls
+        # Social channels: show interactive options (buttons if supported, text otherwise)
         if (
-            cmd_ctx.platform == "telegram"
+            (target is None or target.lower() == "ls")
             and cmd_ctx.channel_manager
-            and (target is None or target.lower() == "ls")
+            and cmd_ctx.platform
         ):
-            tg = cmd_ctx.channel_manager.channels.get("telegram")
-            if not models:
-                return "No models enabled. Configure providers in Settings."
-            if tg:
+            channel = cmd_ctx.channel_manager.channels.get(cmd_ctx.platform)
+            if channel:
+                if not models:
+                    return "No models enabled. Configure providers in Settings."
                 sender_id = cmd_ctx.sender_id or cmd_ctx.chat_id
-                buttons = _build_model_keyboard(models, sender_id, current_model)
-                await tg.send_keyboard(
+                options = [
+                    (
+                        f"• {m.split('/', 1)[-1]}"
+                        if m == current_model
+                        else m.split("/", 1)[-1],
+                        f"/model {m}",
+                    )
+                    for m in models
+                ]
+                await channel.send_options(
                     sender_id,
-                    f"Current model: <code>{current_model}</code>\nSelect a model:",
-                    buttons,
+                    f"Current model: `{current_model}`\nSelect a model:",
+                    options,
                 )
-                return ""  # empty string = handled, no extra text response
+                return ""
 
         if target is None:
             return f"Current model: `{current_model}`"
@@ -102,46 +110,3 @@ def handle_model(
         return f"Model switched to `{target_resolved}`"
 
     return _impl
-
-
-def _build_model_keyboard(
-    models: list[str],
-    sender_id: str,
-    current_model: str,
-    page: int = 0,
-    page_size: int = 16,
-) -> list[list[tuple[str, str]]]:
-    """Build a 2-column inline keyboard for model selection.
-
-    Each button label shows the part after the provider prefix (e.g. 'gpt-4.1'
-    from 'openai/gpt-4.1'), with a marker on the current model.
-    Callback data: ms:{sender_id}:{global_model_index}
-    """
-    start = page * page_size
-    page_models = models[start : start + page_size]
-
-    rows: list[list[tuple[str, str]]] = []
-    for i in range(0, len(page_models), 2):
-        row = []
-        for j in range(2):
-            if i + j >= len(page_models):
-                break
-            global_idx = start + i + j
-            m = page_models[i + j]
-            short = m.split("/", 1)[-1]
-            label = f"• {short}" if m == current_model else short
-            row.append((label, f"ms:{sender_id}:{global_idx}"))
-        rows.append(row)
-
-    # Pagination row
-    total_pages = (len(models) + page_size - 1) // page_size
-    if total_pages > 1:
-        nav = []
-        if page > 0:
-            nav.append(("◀ Prev", f"mp:{sender_id}:{page - 1}"))
-        if page < total_pages - 1:
-            nav.append(("Next ▶", f"mp:{sender_id}:{page + 1}"))
-        if nav:
-            rows.append(nav)
-
-    return rows

@@ -133,6 +133,12 @@ class TelegramChannel(SocialChannel):
         self.token = config.get("token")
         self.app = None  # telegram.ext.Application or None
         self._running = False
+        # nonce → list of (label, value) for pending option menus
+        self._option_sessions: dict[str, list[tuple[str, str]]] = {}
+
+    @property
+    def supports_interactive(self) -> bool:
+        return True
 
     async def connect(self):
         """Start the Telegram bot poller."""
@@ -376,128 +382,153 @@ class TelegramChannel(SocialChannel):
 
         return str(local_path), filename
 
-    async def send_keyboard(
+    async def send_options(
         self,
         target_id: str,
         text: str,
-        buttons: list[list[tuple[str, str]]],
+        options: list[tuple[str, str]],
+        columns: int = 2,
     ) -> bool:
-        """Send a message with an inline keyboard.
-
-        ``buttons`` is a list of rows, each row a list of (label, callback_data) pairs.
-        """
+        """Send options as an inline keyboard. Falls back to text if bot not ready."""
         if not self.app or InlineKeyboardMarkup is None:
-            return False
-        keyboard = [
-            [InlineKeyboardButton(label, callback_data=data) for label, data in row]
-            for row in buttons
-        ]
+            return await super().send_options(target_id, text, options, columns)
+
+        import uuid
+
+        nonce = uuid.uuid4().hex[:8]
+        self._option_sessions[nonce] = options
+
+        keyboard = self._build_options_keyboard(nonce, options, 0, columns)
         markup = InlineKeyboardMarkup(keyboard)
         try:
             await self.app.bot.send_message(
                 chat_id=self._parse_chat_id(target_id),
-                text=text,
+                text=_to_html(text),
                 reply_markup=markup,
                 parse_mode=ParseMode.HTML,
             )
             return True
         except Exception as e:
-            logger.error(f"Failed to send keyboard to {target_id}: {e}")
+            logger.error(f"Failed to send options to {target_id}: {e}")
             return False
 
+    def _build_options_keyboard(
+        self,
+        nonce: str,
+        options: list[tuple[str, str]],
+        page: int,
+        columns: int,
+        page_size: int = 16,
+    ) -> list[list]:
+        start = page * page_size
+        page_opts = options[start : start + page_size]
+
+        rows = []
+        for i in range(0, len(page_opts), columns):
+            row = []
+            for j in range(columns):
+                idx = i + j
+                if idx >= len(page_opts):
+                    break
+                label, _ = page_opts[idx]
+                global_idx = start + idx
+                row.append(
+                    InlineKeyboardButton(
+                        label, callback_data=f"op:{nonce}:{global_idx}"
+                    )
+                )
+            rows.append(row)
+
+        total_pages = (len(options) + page_size - 1) // page_size
+        if total_pages > 1:
+            nav = []
+            if page > 0:
+                nav.append(
+                    InlineKeyboardButton(
+                        "◀ Prev", callback_data=f"pg:{nonce}:{page - 1}:{columns}"
+                    )
+                )
+            if page < total_pages - 1:
+                nav.append(
+                    InlineKeyboardButton(
+                        "Next ▶", callback_data=f"pg:{nonce}:{page + 1}:{columns}"
+                    )
+                )
+            if nav:
+                rows.append(nav)
+
+        return rows
+
     async def _handle_callback_query(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+        self, update: Update, context: "ContextTypes.DEFAULT_TYPE"
     ):
         """Handle inline keyboard button presses."""
         query = update.callback_query
         if not query or not query.data:
             return
 
+        import time
+
         data = query.data
         sender_id = str(query.from_user.id)
 
-        # Model selection: ms:{sender_id}:{model_index}
-        if data.startswith("ms:"):
+        # Option selected: op:{nonce}:{global_index}
+        if data.startswith("op:"):
             parts = data.split(":", 2)
             if len(parts) != 3:
-                await query.answer("Invalid selection.")
+                await query.answer()
                 return
-
+            nonce, idx_str = parts[1], parts[2]
             try:
-                model_idx = int(parts[2])
+                idx = int(idx_str)
             except ValueError:
-                await query.answer("Invalid selection.")
+                await query.answer()
                 return
 
-            from suzent.core.providers.helpers import get_enabled_models_from_db
-            from suzent.core.commands.sess import get_active_chat_id
-            from suzent.database import get_database
-
-            models = get_enabled_models_from_db()
-            if model_idx < 0 or model_idx >= len(models):
-                await query.answer("Model no longer available.")
+            options = self._option_sessions.get(nonce)
+            if not options or idx >= len(options):
+                await query.answer("Option no longer available.")
                 return
 
-            model_id = models[model_idx]
-            default_chat_id = f"social-telegram-{sender_id}"
-            chat_id = get_active_chat_id(sender_id, default_chat_id)
-
-            db = get_database()
-            chat = db.get_chat(chat_id)
-            if chat:
-                new_config = dict(chat.config or {})
-                new_config["model"] = model_id
-                db.update_chat(chat_id, config=new_config)
-            else:
-                db.create_chat(
-                    title=f"Telegram chat {sender_id}",
-                    config={
-                        "platform": "telegram",
-                        "sender_id": sender_id,
-                        "model": model_id,
-                    },
-                    chat_id=chat_id,
-                )
-
-            await query.answer(f"Switched to {model_id}")
+            _, value = options[idx]
+            thread_id = str(query.message.chat.id) if query.message else sender_id
+            synthetic = UnifiedMessage(
+                id=f"cb:{query.id}",
+                content=value,
+                sender_id=sender_id,
+                sender_name=query.from_user.full_name or sender_id,
+                platform="telegram",
+                timestamp=time.time(),
+                thread_id=thread_id,
+            )
+            await query.answer()
             try:
-                await query.edit_message_text(
-                    f"Model set to <code>{model_id}</code>",
-                    parse_mode=ParseMode.HTML,
-                )
+                await query.edit_message_reply_markup(reply_markup=None)
             except Exception:
                 pass
+            await self._invoke_callback(synthetic)
             return
 
-        # Model list pagination: mp:{sender_id}:{page}
-        if data.startswith("mp:"):
-            parts = data.split(":", 2)
-            if len(parts) != 3:
+        # Pagination: pg:{nonce}:{page}:{columns}
+        if data.startswith("pg:"):
+            parts = data.split(":", 3)
+            if len(parts) < 3:
                 await query.answer()
                 return
             try:
+                nonce = parts[1]
                 page = int(parts[2])
-            except ValueError:
+                columns = int(parts[3]) if len(parts) > 3 else 2
+            except (ValueError, IndexError):
                 await query.answer()
                 return
 
-            from suzent.core.providers.helpers import get_enabled_models_from_db
-            from suzent.core.commands.sess import get_active_chat_id
-            from suzent.core.commands.model import _build_model_keyboard
-            from suzent.database import get_database
+            options = self._option_sessions.get(nonce)
+            if not options:
+                await query.answer("Session expired.")
+                return
 
-            models = get_enabled_models_from_db()
-            default_chat_id = f"social-telegram-{sender_id}"
-            chat_id = get_active_chat_id(sender_id, default_chat_id)
-            db = get_database()
-            chat = db.get_chat(chat_id)
-            current_model = (chat.config or {}).get("model", "") if chat else ""
-
-            buttons = _build_model_keyboard(models, sender_id, current_model, page=page)
-            keyboard = [
-                [InlineKeyboardButton(label, callback_data=cb) for label, cb in row]
-                for row in buttons
-            ]
+            keyboard = self._build_options_keyboard(nonce, options, page, columns)
             markup = InlineKeyboardMarkup(keyboard)
             await query.answer()
             try:
@@ -509,7 +540,7 @@ class TelegramChannel(SocialChannel):
         await query.answer()
 
     async def _handle_text_message(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+        self, update: Update, context: "ContextTypes.DEFAULT_TYPE"
     ):
         """Internal handler for text messages."""
         print(f"DEBUG: Telegram update received: {update}")
@@ -540,7 +571,7 @@ class TelegramChannel(SocialChannel):
         await self._invoke_callback(unified_msg)
 
     async def _handle_media_message(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+        self, update: Update, context: "ContextTypes.DEFAULT_TYPE"
     ):
         """Internal handler for media messages."""
         if not update.effective_message:

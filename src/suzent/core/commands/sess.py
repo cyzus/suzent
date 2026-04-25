@@ -84,10 +84,26 @@ async def _cmd_ls(ctx: CommandContext) -> str:
     sender_id = ctx.sender_id or ctx.chat_id
     active_id = _active_chats.get(sender_id)
 
+    if ctx.channel_manager and ctx.platform:
+        channel = ctx.channel_manager.channels.get(ctx.platform)
+        if channel:
+            options = []
+            for chat in chats:
+                short_id = chat.id[-8:] if len(chat.id) > 8 else chat.id
+                marker = " ◀" if chat.id == active_id else ""
+                label = f"{chat.title}{marker} [{short_id}]"
+                options.append((label, f"/sess switch {chat.id}"))
+            await channel.send_options(
+                sender_id,
+                "📋 Sessions (tap to switch):",
+                options,
+                columns=1,
+            )
+            return ""
+
     lines = ["📋 Sessions (most recent first):"]
     for chat in chats:
         marker = " ◀ active" if chat.id == active_id else ""
-        # Show short ID suffix for readability
         short_id = chat.id[-8:] if len(chat.id) > 8 else chat.id
         lines.append(f"  [{short_id}] {chat.title}{marker}")
     lines.append("\nUse /sess switch <id> to switch.")

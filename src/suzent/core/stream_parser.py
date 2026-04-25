@@ -82,7 +82,7 @@ class ApprovalRequest(StreamEvent):
         text = f"Tool: {tool_fmt}\n"
 
         if not self.args:
-            return f"{text}Arguments: None"
+            return text.strip()
 
         text += "Arguments:\n"
 

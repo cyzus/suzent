@@ -159,6 +159,21 @@ class ChannelManager:
             logger.error(f"Error streaming on {platform}: {e}")
             return False
 
+    async def send_options(
+        self,
+        platform: str,
+        target_id: str,
+        text: str,
+        options: list[tuple[str, str]],
+        columns: int = 2,
+    ) -> bool:
+        """Route interactive options to the correct channel driver."""
+        channel = self.channels.get(platform)
+        if not channel:
+            logger.error(f"Cannot send options: Platform '{platform}' not configured.")
+            return False
+        return await channel.send_options(target_id, text, options, columns)
+
     async def send_file(
         self,
         platform: str,
