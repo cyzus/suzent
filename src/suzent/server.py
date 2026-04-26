@@ -265,6 +265,14 @@ async def startup():
 
     logger.info("Application startup - initializing services")
 
+    try:
+        from genai_prices import UpdatePrices
+
+        UpdatePrices().start()
+        logger.info("genai-prices background updater started")
+    except Exception as e:
+        logger.warning(f"Failed to start genai-prices updater: {e}")
+
     register_global_hook(skills_reminder_hook)
     register_global_hook(plan_reminder_hook)
     register_per_turn_hook(_memory_rag_hook)

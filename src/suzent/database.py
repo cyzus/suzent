@@ -190,6 +190,8 @@ class CostLedgerModel(SQLModel, table=True):
     role: str = "primary"
     input_tokens: int = 0
     output_tokens: int = 0
+    cache_write_tokens: int = 0
+    cache_read_tokens: int = 0
     cost_usd: float = 0.0
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -206,6 +208,8 @@ class ChatCostSummaryModel(SQLModel, table=True):
     total_cost_usd: float = 0.0
     total_input_tokens: int = 0
     total_output_tokens: int = 0
+    total_cache_write_tokens: int = 0
+    total_cache_read_tokens: int = 0
     last_updated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -534,6 +538,43 @@ class ChatDatabase:
                         "CREATE INDEX IF NOT EXISTS idx_postprocess_jobs_status ON postprocess_jobs(status)"
                     )
                 )
+                conn.commit()
+
+        # Migration: Add cache token columns to cost_ledger and chat_cost_summary
+        if "cost_ledger" in inspector.get_table_names():
+            columns = [col["name"] for col in inspector.get_columns("cost_ledger")]
+            with self.engine.connect() as conn:
+                if "cache_write_tokens" not in columns:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE cost_ledger ADD COLUMN cache_write_tokens INTEGER DEFAULT 0"
+                        )
+                    )
+                if "cache_read_tokens" not in columns:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE cost_ledger ADD COLUMN cache_read_tokens INTEGER DEFAULT 0"
+                        )
+                    )
+                conn.commit()
+
+        if "chat_cost_summary" in inspector.get_table_names():
+            columns = [
+                col["name"] for col in inspector.get_columns("chat_cost_summary")
+            ]
+            with self.engine.connect() as conn:
+                if "total_cache_write_tokens" not in columns:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE chat_cost_summary ADD COLUMN total_cache_write_tokens INTEGER DEFAULT 0"
+                        )
+                    )
+                if "total_cache_read_tokens" not in columns:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE chat_cost_summary ADD COLUMN total_cache_read_tokens INTEGER DEFAULT 0"
+                        )
+                    )
                 conn.commit()
 
     def _session(self) -> Session:

@@ -399,6 +399,21 @@ async def get_chat(request: Request) -> JSONResponse:
             mode="json", by_alias=True, exclude={"agent_state"}
         )
 
+        if chat.agent_state:
+            try:
+                from suzent.core.agent_serializer import deserialize_state
+                from suzent.core.context_compressor import estimate_tokens
+                from suzent.config import CONFIG as _CFG
+
+                state = deserialize_state(chat.agent_state)
+                if state and state.get("message_history"):
+                    budget = estimate_tokens(
+                        state["message_history"], _CFG.max_context_tokens
+                    )
+                    response_chat["contextTokens"] = budget.estimated_tokens
+            except Exception:
+                pass
+
         hb_path = Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
         if hb_path.exists():
             try:

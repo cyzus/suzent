@@ -648,11 +648,6 @@ async def stream_agent_responses(
                 msg_type, payload = msg
 
                 if msg_type == "event":
-                    # Removed manual tracking from RunRequestEvent because these events
-                    # were removed in pydantic-ai 0.0.1+ and fail silently.
-                    pass
-
-                    # AgentRunResultEvent: final result with all messages
                     if isinstance(payload, AgentRunResultEvent):
                         # Save message history — must not be gated on usage extraction
                         try:
@@ -678,6 +673,22 @@ async def stream_agent_responses(
                             await out_queue.put(
                                 ("chunk", _encode_custom("usage_update", usage_data))
                             )
+                            # Persist usage to the cost ledger
+                            if usage.input_tokens or usage.output_tokens:
+                                from suzent.core.cost_tracker import get_cost_tracker
+
+                                _model_id = getattr(
+                                    agent, "_model_id", None
+                                ) or getattr(agent, "model", None)
+                                await get_cost_tracker().log_cost(
+                                    chat_id=chat_id,
+                                    model=str(_model_id or "unknown"),
+                                    role="primary",
+                                    input_tokens=usage.input_tokens or 0,
+                                    output_tokens=usage.output_tokens or 0,
+                                    cache_write_tokens=usage.cache_write_tokens or 0,
+                                    cache_read_tokens=usage.cache_read_tokens or 0,
+                                )
                         except Exception as e:
                             logger.warning(
                                 f"[Streaming] Failed to extract usage data: {e}"

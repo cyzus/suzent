@@ -32,8 +32,6 @@ class ModelCapabilities:
     mode: str = "chat"  # chat | embedding | image_generation | tts
     max_input_tokens: int = 0
     max_output_tokens: int = 0
-    input_cost_per_token: float = 0.0
-    output_cost_per_token: float = 0.0
     output_vector_size: int = 0  # embedding models only
     supports_vision: bool = False
     supports_function_calling: bool = False
@@ -45,20 +43,12 @@ class ModelCapabilities:
     def context_window(self) -> int:
         return self.max_input_tokens + self.max_output_tokens
 
-    def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
-        return (
-            input_tokens * self.input_cost_per_token
-            + output_tokens * self.output_cost_per_token
-        )
-
 
 def _parse_model_entry(attrs: dict) -> ModelCapabilities:
     return ModelCapabilities(
         mode=attrs.get("mode", "chat"),
         max_input_tokens=attrs.get("max_input_tokens", 0),
         max_output_tokens=attrs.get("max_output_tokens", 0),
-        input_cost_per_token=attrs.get("input_cost_per_token", 0.0),
-        output_cost_per_token=attrs.get("output_cost_per_token", 0.0),
         output_vector_size=attrs.get("output_vector_size", 0),
         supports_vision=attrs.get("supports_vision", False),
         supports_function_calling=attrs.get("supports_function_calling", False),
@@ -183,12 +173,10 @@ async def sync_from_litellm() -> dict[str, int]:
             entry: dict = dict(curr.get(model_id, {}))  # preserve existing fields
             entry["mode"] = mapped_mode
 
-            # Pricing & context window — overwrite from LiteLLM
+            # Context window — overwrite from LiteLLM
             for src, dst in (
                 ("max_input_tokens", "max_input_tokens"),
                 ("max_output_tokens", "max_output_tokens"),
-                ("input_cost_per_token", "input_cost_per_token"),
-                ("output_cost_per_token", "output_cost_per_token"),
                 ("output_vector_size", "output_vector_size"),
             ):
                 val = info.get(src)
@@ -297,13 +285,6 @@ class ModelRegistry:
         """Check if a model supports extended thinking/reasoning."""
         caps = self.get_capabilities(model_id)
         return caps.supports_reasoning if caps is not None else False
-
-    def estimate_cost(
-        self, model_id: str, input_tokens: int, output_tokens: int
-    ) -> float:
-        """Estimate call cost in USD. Returns 0.0 if model is not registered."""
-        caps = self.get_capabilities(model_id)
-        return caps.estimate_cost(input_tokens, output_tokens) if caps else 0.0
 
     def list_models(self, *, mode: Optional[str] = None) -> list[str]:
         """List all registered model IDs, optionally filtered by mode."""

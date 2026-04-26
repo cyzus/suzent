@@ -4,8 +4,6 @@
       "mode": "chat",
       "max_input_tokens": 1000000,
       "max_output_tokens": 8192,
-      "input_cost_per_token": 3e-07,
-      "output_cost_per_token": 1.2e-06,
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
@@ -14,8 +12,6 @@
       "mode": "chat",
       "max_input_tokens": 1000000,
       "max_output_tokens": 8192,
-      "input_cost_per_token": 3e-07,
-      "output_cost_per_token": 1.2e-06,
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
@@ -36,8 +32,6 @@
       "mode": "chat",
       "max_input_tokens": 1000000,
       "max_output_tokens": 8192,
-      "input_cost_per_token": 3e-07,
-      "output_cost_per_token": 2.4e-06,
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
@@ -46,8 +40,6 @@
       "mode": "chat",
       "max_input_tokens": 1000000,
       "max_output_tokens": 8192,
-      "input_cost_per_token": 3e-07,
-      "output_cost_per_token": 2.4e-06,
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
@@ -56,8 +48,6 @@
       "mode": "chat",
       "max_input_tokens": 200000,
       "max_output_tokens": 8192,
-      "input_cost_per_token": 3e-07,
-      "output_cost_per_token": 1.2e-06,
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true

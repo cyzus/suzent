@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { Message, ChatConfig, ConfigOptions, Chat, ChatSummary } from '../types/api';
 import { getApiBase } from '../lib/api';
 import { shouldKeepLocalAssistantContent } from '../lib/chatSyncGuards';
+import { useContextUsageStore } from './useContextUsageStore';
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -948,8 +949,19 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await fetch(`${getApiBase()}/chats/${chatId}`);
       if (res.ok) {
-        const chat: Chat = await res.json();
+        const chat: Chat & { contextTokens?: number } = await res.json();
         setCurrentChatTitle(chat.title);
+
+        if (chat.contextTokens) {
+          useContextUsageStore.getState().setUsage({
+            input_tokens: chat.contextTokens,
+            output_tokens: 0,
+            total_tokens: chat.contextTokens,
+            cache_write_tokens: 0,
+            cache_read_tokens: 0,
+            requests: 0,
+          });
+        }
         setConfigByChat(prev => ({ ...prev, [key]: chat.config }));
         setConfigState(chat.config);
         // Save to localStorage to remember for next new chat (but strip approval policy)

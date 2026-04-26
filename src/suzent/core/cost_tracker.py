@@ -25,7 +25,6 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from suzent.core.model_registry import get_model_registry
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -41,15 +40,30 @@ class CostTracker:
         role: str,
         input_tokens: int,
         output_tokens: int,
-        cost_usd: Optional[float] = None,
+        cache_write_tokens: int = 0,
+        cache_read_tokens: int = 0,
     ) -> None:
-        """Record a single LLM call's cost.
+        """Record a single LLM call's cost, estimated via genai-prices."""
+        try:
+            from genai_prices import calc_price
+            from genai_prices.types import Usage as GPUsage
 
-        If ``cost_usd`` is None, it is estimated from the model registry.
-        """
-        if cost_usd is None:
-            registry = get_model_registry()
-            cost_usd = registry.estimate_cost(model, input_tokens, output_tokens)
+            gp_usage = GPUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cache_write_tokens=cache_write_tokens or None,
+                cache_read_tokens=cache_read_tokens or None,
+            )
+            # Our model IDs are "provider/model-ref"; genai-prices wants them split
+            if "/" in model:
+                provider_id, model_ref = model.split("/", 1)
+            else:
+                provider_id, model_ref = None, model
+            cost_usd = float(
+                calc_price(gp_usage, model_ref, provider_id=provider_id).total_price
+            )
+        except Exception:
+            cost_usd = 0.0
 
         try:
             loop = asyncio.get_running_loop()
@@ -61,6 +75,8 @@ class CostTracker:
                 role,
                 input_tokens,
                 output_tokens,
+                cache_write_tokens,
+                cache_read_tokens,
                 cost_usd,
             )
         except Exception as e:
@@ -73,6 +89,8 @@ class CostTracker:
         role: str,
         input_tokens: int,
         output_tokens: int,
+        cache_write_tokens: int,
+        cache_read_tokens: int,
         cost_usd: float,
     ) -> None:
         """Synchronous write — runs in executor."""
@@ -94,6 +112,8 @@ class CostTracker:
                 role=role,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
+                cache_write_tokens=cache_write_tokens,
+                cache_read_tokens=cache_read_tokens,
                 cost_usd=cost_usd,
                 created_at=now,
             )
@@ -106,6 +126,8 @@ class CostTracker:
                     summary.total_cost_usd += cost_usd
                     summary.total_input_tokens += input_tokens
                     summary.total_output_tokens += output_tokens
+                    summary.total_cache_write_tokens += cache_write_tokens
+                    summary.total_cache_read_tokens += cache_read_tokens
                     summary.last_updated_at = now
                 else:
                     summary = ChatCostSummaryModel(
@@ -113,6 +135,8 @@ class CostTracker:
                         total_cost_usd=cost_usd,
                         total_input_tokens=input_tokens,
                         total_output_tokens=output_tokens,
+                        total_cache_write_tokens=cache_write_tokens,
+                        total_cache_read_tokens=cache_read_tokens,
                         last_updated_at=now,
                     )
                 session.add(summary)
@@ -166,12 +190,16 @@ class CostTracker:
                     "total_cost_usd": 0.0,
                     "total_input_tokens": 0,
                     "total_output_tokens": 0,
+                    "total_cache_write_tokens": 0,
+                    "total_cache_read_tokens": 0,
                 }
             return {
                 "chat_id": chat_id,
                 "total_cost_usd": summary.total_cost_usd,
                 "total_input_tokens": summary.total_input_tokens,
                 "total_output_tokens": summary.total_output_tokens,
+                "total_cache_write_tokens": summary.total_cache_write_tokens,
+                "total_cache_read_tokens": summary.total_cache_read_tokens,
             }
 
     async def get_daily_breakdown(self, days: int = 30) -> List[Dict[str, Any]]:

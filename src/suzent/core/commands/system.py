@@ -63,12 +63,17 @@ def handle_status(ctx: typer.Context):
                 cost = await tracker.get_chat_cost(cmd_ctx.chat_id)
                 total_in = cost.get("total_input_tokens", 0)
                 total_out = cost.get("total_output_tokens", 0)
+                cache_write = cost.get("total_cache_write_tokens", 0)
+                cache_read = cost.get("total_cache_read_tokens", 0)
                 total_cost = cost.get("total_cost_usd", 0.0)
                 if total_in or total_out:
                     status.append("")
                     status.append("**Usage (this chat)**")
                     status.append(f"  Input:  {total_in:,} tokens")
                     status.append(f"  Output: {total_out:,} tokens")
+                    if cache_write or cache_read:
+                        status.append(f"  Cache write: {cache_write:,} tokens")
+                        status.append(f"  Cache read:  {cache_read:,} tokens")
                     if total_cost > 0:
                         status.append(f"  Cost:   ${total_cost:.4f}")
 
