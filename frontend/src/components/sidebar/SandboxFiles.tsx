@@ -72,7 +72,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
         const cls = "w-3.5 h-3.5 shrink-0 stroke-2";
         if (isDir) {
             return isExpanded
-                ? <FolderOpenIcon className={`${cls} text-brutal-yellow`} />
+                ? <FolderOpenIcon className={`${cls} dark:text-zinc-300`} />
                 : <FolderIcon className={`${cls} dark:text-zinc-300`} />;
         }
         if (isImageFile(name)) return <PhotoIcon className={`${cls} text-brutal-blue`} />;
@@ -213,9 +213,8 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
 
     const handleRefresh = useCallback(() => {
         setDirContents(new Map());
-        setExpandedDirs(new Set([ROOT_PATH]));
-        fetchDirContents(ROOT_PATH);
-    }, [fetchDirContents]);
+        expandedDirs.forEach(dir => fetchDirContents(dir));
+    }, [expandedDirs, fetchDirContents]);
 
     const fetchFileContent = useCallback(async (path: string) => {
         if (!currentChatId) return;
