@@ -182,7 +182,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
               }
 
               // Pattern 2: Plain absolute path in backticks: `/persistence/file.txt`
-              const absolutePathMatch = codeContent.match(/^\/[\w\-./]+\.\w{2,5}$/);
+              const absolutePathMatch = codeContent.match(/^\/(persistence|mnt)\/[\w\-./]+\.\w{2,5}$/);
               if (absolutePathMatch) {
                 const path = codeContent.trim();
                 return <FileButton path={path} displayName={path} onFileClick={onFileClick} />;

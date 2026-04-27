@@ -17,10 +17,9 @@ export const ClickableContent: React.FC<ClickableContentProps> = ({ content, onF
     const segments = useMemo(() => {
         if (!content || !onFileClick) return [];
 
-        // Minimal regex: only absolute paths with extensions
+        // Minimal regex: only known sandbox filesystem paths with extensions
         // Example: /persistence/file.txt or /mnt/data/report.pdf
-        // Uses lookbehind to ensure start of path isn't part of a URL (e.g. https://)
-        const pathRegex = /(?<![:/])\/(?!\/)[\w\-./]+\.\w{2,5}\b/g;
+        const pathRegex = /\/(persistence|mnt)\/[\w\-./]+\.\w{2,5}\b/g;
 
         const parts: Array<{ type: 'text' | 'path'; value: string; path: string }> = [];
         let lastIndex = 0;
