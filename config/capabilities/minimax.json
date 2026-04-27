@@ -51,6 +51,18 @@
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
+    },
+    "minimax/MiniMax-M2.7": {
+      "mode": "chat"
+    },
+    "minimax/MiniMax-M2.7-highspeed": {
+      "mode": "chat"
+    },
+    "minimax/MiniMax-M2.5-highspeed": {
+      "mode": "chat"
+    },
+    "minimax/MiniMax-M2.1-highspeed": {
+      "mode": "chat"
     }
   }
 }

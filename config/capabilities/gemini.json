@@ -291,7 +291,9 @@
       "output_vector_size": 3072
     },
     "gemini/gemini-embedding-2": {
-      "mode": "chat"
+      "mode": "embedding",
+      "max_input_tokens": 8192,
+      "output_vector_size": 3072
     },
     "gemini/aqa": {
       "mode": "chat"

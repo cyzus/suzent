@@ -3,7 +3,9 @@
     "openrouter/anthropic/claude-3-haiku": {
       "mode": "chat",
       "supports_vision": true,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "max_input_tokens": 200000,
+      "max_output_tokens": 4096
     },
     "openrouter/anthropic/claude-3.5-sonnet": {
       "mode": "chat",
@@ -227,10 +229,14 @@
       "mode": "chat"
     },
     "openrouter/mancer/weaver": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 8000,
+      "max_output_tokens": 2000
     },
     "openrouter/meta-llama/llama-3-70b-instruct": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 8192,
+      "max_output_tokens": 8000
     },
     "openrouter/minimax/minimax-m2": {
       "mode": "chat",
@@ -281,19 +287,29 @@
       "supports_prompt_caching": false
     },
     "openrouter/mistralai/mistral-7b-instruct": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 32768,
+      "max_output_tokens": 8191
     },
     "openrouter/mistralai/mistral-large": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 8191
     },
     "openrouter/mistralai/mistral-small-3.1-24b-instruct": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 131072,
+      "max_output_tokens": 131072
     },
     "openrouter/mistralai/mistral-small-3.2-24b-instruct": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 128000
     },
     "openrouter/mistralai/mixtral-8x22b-instruct": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 65536,
+      "max_output_tokens": 65536
     },
     "openrouter/moonshotai/kimi-k2.5": {
       "mode": "chat",
@@ -303,13 +319,19 @@
       "supports_function_calling": true
     },
     "openrouter/openai/gpt-3.5-turbo": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 16385,
+      "max_output_tokens": 4096
     },
     "openrouter/openai/gpt-3.5-turbo-16k": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 16385,
+      "max_output_tokens": 4096
     },
     "openrouter/openai/gpt-4": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 8191,
+      "max_output_tokens": 4096
     },
     "openrouter/openai/gpt-4.1": {
       "mode": "chat",
@@ -555,7 +577,9 @@
       "max_output_tokens": 131072
     },
     "openrouter/undi95/remm-slerp-l2-13b": {
-      "mode": "chat"
+      "mode": "chat",
+      "max_input_tokens": 6144,
+      "max_output_tokens": 4096
     },
     "openrouter/x-ai/grok-4": {
       "mode": "chat",
