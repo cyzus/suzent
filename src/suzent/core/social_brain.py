@@ -605,10 +605,21 @@ class SocialBrain(BaseBrain):
 
                 _chat = _gdb().get_chat(social_chat_id)
                 if _chat and _chat.config:
-                    chat_model = _chat.config.get("model")
+                    _raw = _chat.config.get("model")
+                    if isinstance(_raw, str) and _raw:
+                        chat_model = _raw
             except Exception:
                 pass
             effective_model = chat_model or self.model
+            if not effective_model:
+                try:
+                    from suzent.database import get_database as _gdb
+
+                    _prefs = _gdb().get_user_preferences(message.sender_id)
+                    if _prefs and isinstance(getattr(_prefs, "model", None), str):
+                        effective_model = _prefs.model or effective_model
+                except Exception:
+                    pass
             if effective_model:
                 base_config["model"] = effective_model
             if self.tools is not None:

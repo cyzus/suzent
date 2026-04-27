@@ -12,6 +12,7 @@ def _ctx(tmp_path, sandbox_enabled=False):
         path_resolver=None,
         auto_approve_tools=False,
         tool_approval_policy={},
+        tool_permission_policies={},
     )
     return SimpleNamespace(deps=deps)
 

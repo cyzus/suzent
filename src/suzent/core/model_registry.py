@@ -38,10 +38,18 @@ class ModelCapabilities:
     supports_reasoning: bool = False
     supports_prompt_caching: bool = False
     supports_response_schema: bool = False
+    input_cost_per_token: float = 0.0
+    output_cost_per_token: float = 0.0
 
     @property
     def context_window(self) -> int:
         return self.max_input_tokens + self.max_output_tokens
+
+    def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
+        return (
+            input_tokens * self.input_cost_per_token
+            + output_tokens * self.output_cost_per_token
+        )
 
 
 def _parse_model_entry(attrs: dict) -> ModelCapabilities:
