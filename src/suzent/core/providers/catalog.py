@@ -121,13 +121,49 @@ for _spec in PROVIDER_REGISTRY:
 
 def reload_registry() -> None:
     """Hot-reload provider registry (e.g. after user adds a custom provider)."""
-    global PROVIDER_REGISTRY
-    PROVIDER_REGISTRY = load_provider_registry()
+    new_registry = load_provider_registry()
+    PROVIDER_REGISTRY.clear()
+    PROVIDER_REGISTRY.extend(new_registry)
+
     PROVIDER_REGISTRY_BY_ID.clear()
     for spec in PROVIDER_REGISTRY:
         PROVIDER_REGISTRY_BY_ID[spec.id] = spec
         for alias in spec.aliases:
             PROVIDER_REGISTRY_BY_ID[alias] = spec
+
+    PROVIDER_ENV_KEYS.clear()
+    for s in PROVIDER_REGISTRY:
+        PROVIDER_ENV_KEYS[s.id] = s.env_keys
+        for alias in s.aliases:
+            if alias not in PROVIDER_ENV_KEYS:
+                PROVIDER_ENV_KEYS[alias] = s.env_keys
+
+    OPENAI_COMPAT_PROVIDERS.clear()
+    for s in PROVIDER_REGISTRY:
+        if s.base_url is not None:
+            OPENAI_COMPAT_PROVIDERS[s.id] = s.base_url
+            for alias in s.aliases:
+                if alias not in OPENAI_COMPAT_PROVIDERS:
+                    OPENAI_COMPAT_PROVIDERS[alias] = s.base_url
+
+    PROVIDER_CONFIG.clear()
+    PROVIDER_CONFIG.extend(
+        [
+            {
+                "id": s.id,
+                "label": s.label,
+                "logo_url": s.logo_url,
+                "default_models": s.default_models,
+                "fields": s.fields,
+            }
+            for s in PROVIDER_REGISTRY
+            if not s.user_defined
+        ]
+    )
+
+    PROVIDER_CONFIG_BY_ID.clear()
+    for entry in PROVIDER_CONFIG:
+        PROVIDER_CONFIG_BY_ID[entry["id"]] = entry
 
 
 # ---------------------------------------------------------------------------

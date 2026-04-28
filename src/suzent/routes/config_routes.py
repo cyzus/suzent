@@ -16,7 +16,6 @@ from starlette.responses import JSONResponse
 
 from suzent.config import CONFIG
 from suzent.core.providers import (
-    PROVIDER_CONFIG,
     PROVIDER_REGISTRY,
     ProviderFactory,
     get_effective_memory_config,
@@ -325,10 +324,10 @@ async def save_api_keys(request: Request) -> JSONResponse:
             # Build a map of provider field keys → provider id
             key_to_provider: dict[str, str] = {}
             provider_defaults: dict[str, list[str]] = {}
-            for p in PROVIDER_CONFIG:
-                pid = p["id"]
-                provider_defaults[pid] = [m["id"] for m in p.get("default_models", [])]
-                for field in p.get("fields", []):
+            for p in PROVIDER_REGISTRY:
+                pid = p.id
+                provider_defaults[pid] = [m["id"] for m in p.default_models]
+                for field in p.fields:
                     key_to_provider[field["key"]] = pid
 
             # For each provider whose key was newly set and has no enabled_models,

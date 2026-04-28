@@ -1,0 +1,876 @@
+{
+  "models": {
+    "dashscope/qwen-coder": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 16384,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen-flash": {
+      "mode": "chat",
+      "max_input_tokens": 997952,
+      "max_output_tokens": 32768,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen-flash-2025-07-28": {
+      "mode": "chat",
+      "max_input_tokens": 997952,
+      "max_output_tokens": 32768,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen-max": {
+      "mode": "chat",
+      "max_input_tokens": 30720,
+      "max_output_tokens": 8192,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen-plus": {
+      "mode": "chat",
+      "max_input_tokens": 129024,
+      "max_output_tokens": 16384,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen-plus-2025-01-25": {
+      "mode": "chat",
+      "max_input_tokens": 129024,
+      "max_output_tokens": 8192,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen-plus-2025-04-28": {
+      "mode": "chat",
+      "max_input_tokens": 129024,
+      "max_output_tokens": 16384,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen-plus-2025-07-14": {
+      "mode": "chat",
+      "max_input_tokens": 129024,
+      "max_output_tokens": 16384,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen-plus-2025-07-28": {
+      "mode": "chat",
+      "max_input_tokens": 997952,
+      "max_output_tokens": 32768,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen-plus-2025-09-11": {
+      "mode": "chat",
+      "max_input_tokens": 997952,
+      "max_output_tokens": 32768,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen-plus-latest": {
+      "mode": "chat",
+      "max_input_tokens": 997952,
+      "max_output_tokens": 32768,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen-turbo": {
+      "mode": "chat",
+      "max_input_tokens": 129024,
+      "max_output_tokens": 16384,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen-turbo-2024-11-01": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 8192,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen-turbo-2025-04-28": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 16384,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen-turbo-latest": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 16384,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen3-30b-a3b": {
+      "mode": "chat",
+      "max_input_tokens": 129024,
+      "max_output_tokens": 16384,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen3-coder-flash": {
+      "mode": "chat",
+      "max_input_tokens": 997952,
+      "max_output_tokens": 65536,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen3-coder-flash-2025-07-28": {
+      "mode": "chat",
+      "max_input_tokens": 997952,
+      "max_output_tokens": 65536,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen3-coder-plus": {
+      "mode": "chat",
+      "max_input_tokens": 997952,
+      "max_output_tokens": 65536,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen3-coder-plus-2025-07-22": {
+      "mode": "chat",
+      "max_input_tokens": 997952,
+      "max_output_tokens": 65536,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen3-max-preview": {
+      "mode": "chat",
+      "max_input_tokens": 258048,
+      "max_output_tokens": 65536,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen3-max": {
+      "mode": "chat",
+      "max_input_tokens": 258048,
+      "max_output_tokens": 65536,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen3-max-2026-01-23": {
+      "mode": "chat",
+      "max_input_tokens": 258048,
+      "max_output_tokens": 65536,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen3-next-80b-a3b-instruct": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 65536,
+      "supports_function_calling": true
+    },
+    "dashscope/qwen3-next-80b-a3b-thinking": {
+      "mode": "chat",
+      "max_input_tokens": 262144,
+      "max_output_tokens": 65536,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen3-vl-235b-a22b-instruct": {
+      "mode": "chat",
+      "max_input_tokens": 131072,
+      "max_output_tokens": 32768,
+      "supports_vision": true,
+      "supports_function_calling": true
+    },
+    "dashscope/qwen3-vl-235b-a22b-thinking": {
+      "mode": "chat",
+      "max_input_tokens": 131072,
+      "max_output_tokens": 32768,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen3-vl-32b-instruct": {
+      "mode": "chat",
+      "max_input_tokens": 131072,
+      "max_output_tokens": 32768,
+      "supports_vision": true,
+      "supports_function_calling": true
+    },
+    "dashscope/qwen3-vl-32b-thinking": {
+      "mode": "chat",
+      "max_input_tokens": 131072,
+      "max_output_tokens": 32768,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen3-vl-plus": {
+      "mode": "chat",
+      "max_input_tokens": 260096,
+      "max_output_tokens": 32768,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen3.5-plus": {
+      "mode": "chat",
+      "max_input_tokens": 991808,
+      "max_output_tokens": 65536,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwq-plus": {
+      "mode": "chat",
+      "max_input_tokens": 98304,
+      "max_output_tokens": 8192,
+      "supports_function_calling": true,
+      "supports_reasoning": true
+    },
+    "dashscope/qwen-image-2.0": {
+      "mode": "image_generation"
+    },
+    "dashscope/qwen-image-2.0-pro": {
+      "mode": "image_generation"
+    },
+    "dashscope/kimi/kimi-k2.6": {
+      "mode": "chat"
+    },
+    "dashscope/deepseek-v4-flash": {
+      "mode": "chat"
+    },
+    "dashscope/deepseek-v4-pro": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-image-2.0-pro-2026-04-22": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-plus-2026-04-20": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.6-27b": {
+      "mode": "chat"
+    },
+    "dashscope/kimi-k2.6": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.6-max-preview": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.6-35b-a3b": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.6-flash-2026-04-16": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.6-flash": {
+      "mode": "chat"
+    },
+    "dashscope/glm-5.1": {
+      "mode": "chat"
+    },
+    "dashscope/vanchin/deepseek-v3.1-terminus": {
+      "mode": "chat"
+    },
+    "dashscope/vanchin/deepseek-v3": {
+      "mode": "chat"
+    },
+    "dashscope/vanchin/deepseek-r1": {
+      "mode": "chat"
+    },
+    "dashscope/vanchin/deepseek-ocr": {
+      "mode": "chat"
+    },
+    "dashscope/vanchin/deepseek-v3.2-think": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-omni-plus-realtime-2026-03-15": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-omni-plus-realtime": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-omni-plus-2026-03-15": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-omni-plus": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-omni-flash-realtime-2026-03-15": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-omni-flash-realtime": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-omni-flash-2026-03-15": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-omni-flash": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.6-plus-2026-04-02": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.6-plus": {
+      "mode": "chat"
+    },
+    "dashscope/wan2.7-image-pro": {
+      "mode": "chat"
+    },
+    "dashscope/wan2.7-image": {
+      "mode": "chat"
+    },
+    "dashscope/MiniMax/MiniMax-M2.7": {
+      "mode": "chat"
+    },
+    "dashscope/MiniMax/speech-2.8-hd": {
+      "mode": "chat"
+    },
+    "dashscope/MiniMax/speech-2.8-turbo": {
+      "mode": "chat"
+    },
+    "dashscope/MiniMax/speech-02-turbo": {
+      "mode": "chat"
+    },
+    "dashscope/MiniMax/speech-02-hd": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-deep-research-2025-12-15": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-image-2.0-2026-03-03": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-image-2.0-pro-2026-03-03": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-asr-flash-2026-02-10": {
+      "mode": "chat"
+    },
+    "dashscope/glm-5": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-flash-character-2026-02-26": {
+      "mode": "chat"
+    },
+    "dashscope/MiniMax-M2.5": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-flash-2026-02-23": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-flash": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-122b-a10b": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-35b-a3b": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-27b": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-coder-next": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-397b-a17b": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-plus-2026-02-15": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-asr-flash-realtime-2026-02-10": {
+      "mode": "chat"
+    },
+    "dashscope/MiniMax/MiniMax-M2.1": {
+      "mode": "chat"
+    },
+    "dashscope/MiniMax/MiniMax-M2.5": {
+      "mode": "chat"
+    },
+    "dashscope/kimi/kimi-k2.5": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-tts-vd-2026-01-26": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-tts-instruct-flash-2026-01-26": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-tts-instruct-flash": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-tts-vc-2026-01-22": {
+      "mode": "chat"
+    },
+    "dashscope/glm-4.7": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-tts-instruct-flash-realtime-2026-01-22": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-tts-instruct-flash-realtime": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-tts-vd-realtime-2026-01-15": {
+      "mode": "chat"
+    },
+    "dashscope/kimi-k2.5": {
+      "mode": "chat"
+    },
+    "dashscope/tongyi-xiaomi-analysis-flash": {
+      "mode": "chat"
+    },
+    "dashscope/tongyi-xiaomi-analysis-pro": {
+      "mode": "chat"
+    },
+    "dashscope/siliconflow/deepseek-v3.2": {
+      "mode": "chat"
+    },
+    "dashscope/siliconflow/deepseek-v3.1-terminus": {
+      "mode": "chat"
+    },
+    "dashscope/siliconflow/deepseek-v3-0324": {
+      "mode": "chat"
+    },
+    "dashscope/siliconflow/deepseek-r1-0528": {
+      "mode": "chat"
+    },
+    "dashscope/MiniMax-M2.1": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-vl-flash-2026-01-22": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-tts-vc-realtime-2026-01-15": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-image-edit-max-2026-01-16": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-image-edit-max": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-image-plus-2026-01-09": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-flash-character": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-image-max-2025-12-30": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-image-max": {
+      "mode": "chat"
+    },
+    "dashscope/z-image-turbo": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-vl-plus-2025-12-19": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-tts-vd-realtime-2025-12-16": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-image-edit-plus-2025-12-15": {
+      "mode": "chat"
+    },
+    "dashscope/deepseek-v3.2": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-omni-flash-2025-12-01": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-omni-flash-realtime-2025-12-01": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-livetranslate-flash-2025-12-01": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-livetranslate-flash": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-plus-2025-12-01": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-tts-vc-realtime-2025-11-27": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-tts-flash-2025-11-27": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-tts-flash-realtime-2025-11-27": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-plus-2025-11-05": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-mt-lite": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-vl-ocr-2025-11-20": {
+      "mode": "chat"
+    },
+    "dashscope/kimi-k2-thinking": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-mt-flash": {
+      "mode": "chat"
+    },
+    "dashscope/gui-plus": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-image-edit-plus-2025-10-30": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-image-edit-plus": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-deep-search-planning": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-asr-flash-realtime-2025-10-27": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-asr-flash-realtime": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-vl-flash": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-vl-flash-2025-10-15": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-tts-flash": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-tts-flash-2025-09-18": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-tts-flash-realtime-2025-09-18": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-tts-flash-realtime": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-omni-flash-realtime": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-omni-flash": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-omni-flash-2025-09-15": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-omni-flash-realtime-2025-09-15": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-s2s-flash-realtime-2025-09-22": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-livetranslate-flash-realtime": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-livetranslate-flash-realtime-2025-09-22": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2.5-14b-instruct-1m": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2.5-7b-instruct-1m": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-max-2025-01-25": {
+      "mode": "chat"
+    },
+    "dashscope/qwq-plus-2025-03-05": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2.5-vl-32b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qvq-max": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-omni-turbo": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-vl-max-2025-04-08": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-vl-plus-2025-01-25": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-vl-plus-latest": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-vl-max-latest": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-vl-plus-2025-05-07": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-turbo-2025-07-15": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-235b-a22b-instruct-2507": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-235b-a22b-thinking-2507": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-30b-a3b-thinking-2507": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-30b-a3b-instruct-2507": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-coder-plus-2025-09-23": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-max-2025-09-23": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-vl-plus-2025-09-23": {
+      "mode": "chat"
+    },
+    "dashscope/deepseek-v3.1": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-vl-plus-2025-08-15": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-coder-480b-a35b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-mt-turbo": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-mt-plus": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-tts-2025-05-22": {
+      "mode": "chat"
+    },
+    "dashscope/qvq-plus": {
+      "mode": "chat"
+    },
+    "dashscope/qvq-plus-2025-05-15": {
+      "mode": "chat"
+    },
+    "dashscope/qvq-max-2025-05-15": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-4b": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-32b": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-235b-a22b": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-14b": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-1.7b": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-0.6b": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3-8b": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-vl-max-2025-04-02": {
+      "mode": "chat"
+    },
+    "dashscope/deepseek-v3": {
+      "mode": "chat"
+    },
+    "dashscope/deepseek-r1-distill-llama-70b": {
+      "mode": "chat"
+    },
+    "dashscope/deepseek-r1-distill-qwen-32b": {
+      "mode": "chat"
+    },
+    "dashscope/deepseek-r1-distill-qwen-14b": {
+      "mode": "chat"
+    },
+    "dashscope/deepseek-r1-distill-llama-8b": {
+      "mode": "chat"
+    },
+    "dashscope/deepseek-r1-distill-qwen-1.5b": {
+      "mode": "chat"
+    },
+    "dashscope/deepseek-r1-distill-qwen-7b": {
+      "mode": "chat"
+    },
+    "dashscope/deepseek-r1": {
+      "mode": "chat"
+    },
+    "dashscope/qwen1.5-7b-chat": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-vl-ocr-latest": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-vl-ocr": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-coder-plus-1106": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-coder-plus": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-coder-plus-latest": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2.5-coder-14b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2.5-coder-32b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2.5-32b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-max-latest": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-turbo-0919": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-math-turbo-0919": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-coder-turbo-latest": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2.5-math-72b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2.5-7b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2.5-14b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2.5-0.5b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-math-plus": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-max-0919": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-math-turbo-latest": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-math-turbo": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-math-plus-latest": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-math-plus-0919": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-coder-turbo-0919": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-coder-turbo": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2.5-math-7b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2.5-coder-7b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2.5-72b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2.5-1.5b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2.5-math-1.5b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2.5-3b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2-1.5b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2-57b-a14b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2-7b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen2-0.5b-instruct": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-long": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-vl-max": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-vl-plus": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-max-0428": {
+      "mode": "chat"
+    },
+    "dashscope/qwen1.5-110b-chat": {
+      "mode": "chat"
+    },
+    "dashscope/codeqwen1.5-7b-chat": {
+      "mode": "chat"
+    },
+    "dashscope/qwen1.5-0.5b-chat": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-7b-chat": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-1.8b-chat": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-1.8b-longcontext-chat": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-72b-chat": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-14b-chat": {
+      "mode": "chat"
+    },
+    "dashscope/qwen1.5-1.8b-chat": {
+      "mode": "chat"
+    },
+    "dashscope/qwen1.5-72b-chat": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-max-longcontext": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-max-1201": {
+      "mode": "chat"
+    },
+    "dashscope/qwen1.5-32b-chat": {
+      "mode": "chat"
+    },
+    "dashscope/qwen1.5-14b-chat": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-max-0107": {
+      "mode": "chat"
+    }
+  }
+}

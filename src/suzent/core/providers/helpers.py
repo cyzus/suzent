@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional
 
-from suzent.core.providers.catalog import PROVIDER_CONFIG, PROVIDER_ENV_KEYS
+from suzent.core.providers.catalog import PROVIDER_ENV_KEYS
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -73,15 +73,17 @@ def get_enabled_models_from_db() -> List[str]:
     if not custom_config:
         if CONFIG.model_options:
             return CONFIG.model_options
-        defaults = [
-            m["id"] for p in PROVIDER_CONFIG for m in p.get("default_models", [])
-        ]
+        from suzent.core.providers.catalog import PROVIDER_REGISTRY
+
+        defaults = [m["id"] for p in PROVIDER_REGISTRY for m in p.default_models]
         return sorted(set(defaults))
+
+    from suzent.core.providers.catalog import PROVIDER_REGISTRY
 
     all_models = [
         model_id
-        for p in PROVIDER_CONFIG
-        for model_id in custom_config.get(p["id"], {}).get("enabled_models", [])
+        for p in PROVIDER_REGISTRY
+        for model_id in custom_config.get(p.id, {}).get("enabled_models", [])
     ]
 
     return sorted(set(all_models))
