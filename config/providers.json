@@ -68,6 +68,24 @@
       ]
     },
     {
+      "id": "dashscope",
+      "label": "dashscope",
+      "api_type": "openai",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "env_keys": [
+        "DASHSCOPE_API_KEY"
+      ],
+      "fields": [
+        {
+          "key": "DASHSCOPE_API_KEY",
+          "label": "API Key",
+          "placeholder": "sk-**",
+          "type": "secret"
+        }
+      ],
+      "default_models": []
+    },
+    {
       "id": "deepseek",
       "label": "DeepSeek",
       "logo_url": "https://cdn.simpleicons.org/deepseek",
