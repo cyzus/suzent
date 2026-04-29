@@ -23,6 +23,7 @@ from suzent.core.providers import (
 )
 from suzent.tools.registry import get_tool_groups
 from suzent.database import get_database
+from suzent.core.volume_metadata import refresh_volume_metadata
 
 
 def get_resource_path(path: str) -> Path:
@@ -59,6 +60,7 @@ async def get_config(request: Request) -> JSONResponse:
         "maxContextTokens": CONFIG.max_context_tokens,
         "embeddingModel": CONFIG.embedding_model,
         "extractionModel": CONFIG.extraction_model,
+        "volumeMetadata": db.get_volume_metadata(sandbox_volumes),
     }
 
     if user_prefs:
@@ -72,6 +74,10 @@ async def get_config(request: Request) -> JSONResponse:
             "embedding_model": embedding_model,
             "extraction_model": extraction_model,
         }
+        if user_prefs.sandbox_volumes:
+            data["userPreferences"]["volume_metadata"] = db.get_volume_metadata(
+                user_prefs.sandbox_volumes
+            )
     else:
         # Even if no user_prefs, provide memory config defaults
         data["userPreferences"] = {
@@ -97,6 +103,8 @@ async def save_preferences(request: Request) -> JSONResponse:
         sandbox_enabled=data.get("sandbox_enabled"),
         sandbox_volumes=data.get("sandbox_volumes"),
     )
+    if success and data.get("sandbox_volumes") is not None:
+        refresh_volume_metadata(db, data.get("sandbox_volumes") or [])
 
     # Save memory configuration separately
     if (
@@ -186,8 +194,16 @@ async def save_global_sandbox_config(request: Request) -> JSONResponse:
 
         # Keep runtime config in sync without requiring restart.
         CONFIG.sandbox_volumes = sandbox_volumes
+        db = get_database()
+        refresh_volume_metadata(db, sandbox_volumes)
 
-        return JSONResponse({"success": True, "globalSandboxVolumes": sandbox_volumes})
+        return JSONResponse(
+            {
+                "success": True,
+                "globalSandboxVolumes": sandbox_volumes,
+                "volumeMetadata": db.get_volume_metadata(sandbox_volumes),
+            }
+        )
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     except Exception as exc:

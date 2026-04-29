@@ -283,6 +283,7 @@ def build_custom_volumes_section(deps: Any) -> str:
         return ""
 
     volumes_info = []
+    volume_metadata = getattr(deps, "custom_volume_metadata", {}) or {}
     for v in deps.custom_volumes:
         from suzent.tools.filesystem.path_resolver import PathResolver
 
@@ -294,12 +295,33 @@ def build_custom_volumes_section(deps: Any) -> str:
             host_path = v
             mount_point = ""
 
-        if mount_point in _NON_CODE_MOUNT_POINTS:
-            volumes_info.append(f"- {v} (Notebook vault mount)")
+        metadata = volume_metadata.get(v) or {}
+        kind = metadata.get("kind") or (
+            "notebook" if mount_point in _NON_CODE_MOUNT_POINTS else "generic"
+        )
+        status = metadata.get("status")
+        is_git_repo = metadata.get("is_git_repo")
+        git_root = metadata.get("git_root")
+
+        if kind == "notebook":
+            details = "Notebook vault mount"
+        elif kind == "skills":
+            details = "Skills mount"
+        elif is_git_repo is True:
+            details = f"Git repo: Yes, root={git_root}" if git_root else "Git repo: Yes"
+        elif is_git_repo is False:
+            details = "Git repo: No"
+        elif status:
+            details = f"Git repo: Unknown, status={status}"
         elif parsed:
-            volumes_info.append(f"- {host_path}:{mount_point} (Host Path:Virtual Name)")
+            details = "Host Path:Virtual Name"
         else:
-            volumes_info.append(f"- {v} (Host Path:Virtual Name)")
+            details = "Host Path:Virtual Name"
+
+        if parsed:
+            volumes_info.append(f"- {host_path}:{mount_point} ({details})")
+        else:
+            volumes_info.append(f"- {v} ({details})")
 
     volumes_list = "\n".join(volumes_info)
     return CUSTOM_VOLUMES_SECTION.format(volumes_list=volumes_list)

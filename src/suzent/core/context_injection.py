@@ -100,6 +100,13 @@ def build_agent_deps(
     custom_volumes = get_effective_volumes(
         _get_config_value(config, "sandbox_volumes", None)
     )
+    try:
+        from suzent.database import get_database
+
+        custom_volume_metadata = get_database().get_volume_metadata(custom_volumes)
+    except Exception as exc:
+        logger.debug(f"Failed to load custom volume metadata: {exc}")
+        custom_volume_metadata = {}
 
     # Build PathResolver
     from suzent.tools.filesystem.path_resolver import PathResolver
@@ -162,6 +169,7 @@ def build_agent_deps(
         workspace_root=workspace_root,
         cwd=cwd,
         custom_volumes=custom_volumes,
+        custom_volume_metadata=custom_volume_metadata,
         path_resolver=path_resolver,
         memory_manager=memory_manager,
         channel_manager=channel_manager,
