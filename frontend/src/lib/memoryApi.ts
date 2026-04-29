@@ -17,7 +17,7 @@ import type {
 } from '../types/memory';
 import { getApiBase } from './api';
 
-const MEMORY_ENDPOINT = `${getApiBase()}/memory`;
+const memoryEndpoint = () => `${getApiBase()}/memory`;
 
 export const memoryApi = {
   /**
@@ -28,7 +28,7 @@ export const memoryApi = {
     if (chatId) {
       params.set('chat_id', chatId);
     }
-    const response = await fetch(`${MEMORY_ENDPOINT}/core?${params}`);
+    const response = await fetch(`${memoryEndpoint()}/core?${params}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch core memory: ${response.statusText}`);
     }
@@ -44,7 +44,7 @@ export const memoryApi = {
     content: string,
     userId: string = 'default-user'
   ): Promise<void> {
-    const response = await fetch(`${MEMORY_ENDPOINT}/core`, {
+    const response = await fetch(`${memoryEndpoint()}/core`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -81,7 +81,7 @@ export const memoryApi = {
       params.set('query', query);
     }
 
-    const response = await fetch(`${MEMORY_ENDPOINT}/archival?${params}`);
+    const response = await fetch(`${memoryEndpoint()}/archival?${params}`);
     if (!response.ok) {
       throw new Error(`Failed to search archival memory: ${response.statusText}`);
     }
@@ -93,7 +93,7 @@ export const memoryApi = {
    * Delete an archival memory by ID
    */
   async deleteArchivalMemory(memoryId: string): Promise<void> {
-    const response = await fetch(`${MEMORY_ENDPOINT}/archival/${encodeURIComponent(memoryId)}`, {
+    const response = await fetch(`${memoryEndpoint()}/archival/${encodeURIComponent(memoryId)}`, {
       method: 'DELETE',
     });
 
@@ -106,7 +106,7 @@ export const memoryApi = {
    * Get memory statistics
    */
   async getMemoryStats(userId: string = 'default-user'): Promise<MemoryStats> {
-    const response = await fetch(`${MEMORY_ENDPOINT}/stats?user_id=${encodeURIComponent(userId)}`);
+    const response = await fetch(`${memoryEndpoint()}/stats?user_id=${encodeURIComponent(userId)}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch memory stats: ${response.statusText}`);
     }
@@ -120,7 +120,7 @@ export const memoryApi = {
    * List all available daily memory log dates
    */
   async listDailyLogs(): Promise<DailyLogListResponse> {
-    const response = await fetch(`${MEMORY_ENDPOINT}/daily`);
+    const response = await fetch(`${memoryEndpoint()}/daily`);
     if (!response.ok) {
       throw new Error(`Failed to list daily logs: ${response.statusText}`);
     }
@@ -131,7 +131,7 @@ export const memoryApi = {
    * Get a specific daily memory log by date
    */
   async getDailyLog(date: string): Promise<DailyLogResponse> {
-    const response = await fetch(`${MEMORY_ENDPOINT}/daily/${encodeURIComponent(date)}`);
+    const response = await fetch(`${memoryEndpoint()}/daily/${encodeURIComponent(date)}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch daily log: ${response.statusText}`);
     }
@@ -142,7 +142,7 @@ export const memoryApi = {
    * Get the curated MEMORY.md content
    */
   async getMemoryFile(): Promise<MemoryFileResponse> {
-    const response = await fetch(`${MEMORY_ENDPOINT}/file`);
+    const response = await fetch(`${memoryEndpoint()}/file`);
     if (!response.ok) {
       throw new Error(`Failed to fetch MEMORY.md: ${response.statusText}`);
     }
@@ -181,7 +181,7 @@ export const memoryApi = {
    * Trigger re-index of markdown memories into LanceDB
    */
   async reindexMemories(clearExisting: boolean = false): Promise<ReindexResponse> {
-    const response = await fetch(`${MEMORY_ENDPOINT}/reindex`, {
+    const response = await fetch(`${memoryEndpoint()}/reindex`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ clear_existing: clearExisting }),
