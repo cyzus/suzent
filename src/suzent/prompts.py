@@ -4,6 +4,7 @@ Prompt formatting utilities for Suzent agents.
 Provides functions to format and enhance agent instructions with dynamic context.
 """
 
+import asyncio
 from datetime import datetime
 import platform
 from typing import Any, Callable, Sequence
@@ -11,6 +12,12 @@ from typing import Any, Callable, Sequence
 from pydantic_ai import RunContext
 from pydantic_ai.messages import ModelMessage, UserContent
 from pydantic_ai.usage import RunUsage
+from suzent.logger import get_logger
+
+logger = get_logger(__name__)
+
+_DEBUG_INSTRUCTION_TIMEOUT_SECONDS = 2.0
+_NON_CODE_MOUNT_POINTS = frozenset({"/mnt/notebook"})
 
 STATIC_INSTRUCTIONS = """# Role
 You are Suzent, a digital coworker.
@@ -234,7 +241,20 @@ async def resolve_full_system_prompt(
         parts.append(static_instructions)
 
     for runner in instruction_runners:
-        section = await runner.run(run_context)
+        runner_func = getattr(runner, "function", None)
+        runner_name = getattr(runner_func, "__name__", runner.__class__.__name__)
+        try:
+            section = await asyncio.wait_for(
+                runner.run(run_context),
+                timeout=_DEBUG_INSTRUCTION_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "[SystemPrompt] Dynamic instruction '{}' timed out after {:.1f}s",
+                runner_name,
+                _DEBUG_INSTRUCTION_TIMEOUT_SECONDS,
+            )
+            continue
         if section:
             parts.append(section)
 
@@ -258,41 +278,28 @@ def build_execution_mode_section(
 
 
 def build_custom_volumes_section(deps: Any) -> str:
-    """Build directory mapping section for configured custom volumes, including Git status."""
+    """Build directory mapping section for configured custom volumes."""
     if not deps.custom_volumes:
         return ""
 
-    import os
-    import subprocess
-
     volumes_info = []
     for v in deps.custom_volumes:
-        # custom_volumes format is expected to be "host_path:mnt_name"
-        # Support Windows drive letters (e.g., D:\workspace:/mnt)
-        if v.count(":") > 1 or (
-            ":" in v
-            and not (len(v.split(":")[0]) == 1 and (v[1] == "\\" or v[1] == "/"))
-        ):
-            host_path = v.rsplit(":", 1)[0]
+        from suzent.tools.filesystem.path_resolver import PathResolver
+
+        parsed = PathResolver.parse_volume_string(v)
+        if parsed:
+            host_path, mount_point = parsed
+            mount_point = mount_point.strip().replace("\\", "/")
         else:
-            host_path = v.split(":")[0] if ":" in v else v
+            host_path = v
+            mount_point = ""
 
-        is_git = "No"
-        try:
-            if os.path.exists(host_path):
-                result = subprocess.run(
-                    ["git", "rev-parse", "--is-inside-work-tree"],
-                    cwd=host_path,
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                if result.returncode == 0 and result.stdout.strip() == "true":
-                    is_git = "Yes"
-        except Exception:
-            is_git = "Unknown"
-
-        volumes_info.append(f"- {v} (Host Path:Virtual Name) [Git Repo: {is_git}]")
+        if mount_point in _NON_CODE_MOUNT_POINTS:
+            volumes_info.append(f"- {v} (Notebook vault mount)")
+        elif parsed:
+            volumes_info.append(f"- {host_path}:{mount_point} (Host Path:Virtual Name)")
+        else:
+            volumes_info.append(f"- {v} (Host Path:Virtual Name)")
 
     volumes_list = "\n".join(volumes_info)
     return CUSTOM_VOLUMES_SECTION.format(volumes_list=volumes_list)
