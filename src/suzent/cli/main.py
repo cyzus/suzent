@@ -10,6 +10,7 @@ import signal
 import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -56,38 +57,47 @@ def _fetch_latest_release() -> dict:
         return json.loads(resp.read())
 
 
+def _latest_asset_url(asset_name: str) -> str:
+    return f"https://github.com/{_REPO}/releases/latest/download/{asset_name}"
+
+
 def _local_ui_version(root: Path) -> str:
     f = root / _BIN_DIR / "version.txt"
     return f.read_text().strip() if f.exists() else ""
+
+
+def _download_file_atomic(url: str, dest: Path, *, timeout: float = 60.0) -> None:
+    dest.parent.mkdir(exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{dest.name}.", suffix=".tmp", dir=dest.parent
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as file:
+            req = urllib.request.Request(url, headers={"User-Agent": "suzent-updater"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                shutil.copyfileobj(resp, file)
+        tmp_path.replace(dest)
+    except Exception:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
 
 
 def download_ui_binary(root: Path) -> bool:
     """Download the pre-built UI binary from GitHub Releases. Returns True on success."""
     asset_name = _platform_asset_name()
     try:
-        release = _fetch_latest_release()
-        tag = release.get("tag_name", "")
-        url = next(
-            (
-                a["browser_download_url"]
-                for a in release.get("assets", [])
-                if a["name"] == asset_name
-            ),
-            None,
-        )
-        if not url:
-            typer.echo(f"  ⚠️  No binary found for {asset_name} in {tag} — skipping.")
-            return False
-
         bin_dir = root / _BIN_DIR
-        bin_dir.mkdir(exist_ok=True)
         dest = bin_dir / ("suzent-ui.exe" if IS_WINDOWS else "suzent-ui")
 
-        typer.echo(f"  • Downloading UI binary {tag}...")
-        urllib.request.urlretrieve(url, dest)
+        typer.echo("  • Downloading UI binary...")
+        _download_file_atomic(_latest_asset_url(asset_name), dest)
         if not IS_WINDOWS:
             dest.chmod(0o755)
-        (bin_dir / "version.txt").write_text(tag)
+        (bin_dir / "version.txt").write_text("latest")
         typer.echo(f"  ✅ UI binary ready at {dest}")
         return True
     except Exception as e:
@@ -108,6 +118,8 @@ def _update_ui_binary(root: Path) -> None:
             typer.echo(f"  • UI binary up to date ({local})")
     except Exception as e:
         typer.echo(f"  ⚠️  Could not check UI binary version: {e}")
+        typer.echo("  • Attempting direct latest binary download...")
+        download_ui_binary(root)
 
 
 def _configure_console_encoding():

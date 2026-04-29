@@ -13,6 +13,7 @@ from pydantic_ai import RunContext
 from pydantic_ai.messages import ModelMessage, UserContent
 from pydantic_ai.usage import RunUsage
 from suzent.logger import get_logger
+from suzent.tools.filesystem.path_resolver import PathResolver
 
 logger = get_logger(__name__)
 
@@ -285,8 +286,6 @@ def build_custom_volumes_section(deps: Any) -> str:
     volumes_info = []
     volume_metadata = getattr(deps, "custom_volume_metadata", {}) or {}
     for v in deps.custom_volumes:
-        from suzent.tools.filesystem.path_resolver import PathResolver
-
         parsed = PathResolver.parse_volume_string(v)
         if parsed:
             host_path, mount_point = parsed

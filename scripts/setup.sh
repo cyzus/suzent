@@ -189,34 +189,41 @@ download_binary() {
         *) return ;;
     esac
 
-    info "Fetching latest release..."
-    local api="https://api.github.com/repos/cyzus/suzent/releases/latest"
-    local json
-    json="$(curl -fsSL "$api" 2>/dev/null)" || { warn "Could not fetch release info — skipping UI binary."; return; }
+    mkdir -p bin
+    local url tmp
+    url="https://github.com/cyzus/suzent/releases/latest/download/$asset"
+    tmp="bin/suzent-ui.tmp"
 
-    local url tag
-    url="$(echo "$json" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-for a in d.get('assets', []):
-    if a['name'] == '$asset':
-        print(a['browser_download_url']); break
-" 2>/dev/null)"
-    tag="$(echo "$json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null)"
-
-    if [ -z "$url" ]; then
-        warn "No binary found for $asset — skipping."
-        return
+    info "Downloading pre-built UI binary..."
+    if ! curl --connect-timeout 15 --max-time 300 -fL "$url" -o "$tmp"; then
+        rm -f "$tmp"
+        warn "UI binary download failed. Retry later, or set SUZENT_DEV_SETUP=1 for developer dependencies."
+        return 1
     fi
 
-    mkdir -p bin
-    info "Downloading UI binary ($tag)..."
-    curl -fsSL "$url" -o "bin/suzent-ui"
+    mv "$tmp" "bin/suzent-ui"
     chmod +x "bin/suzent-ui"
-    echo "$tag" > "bin/version.txt"
+    echo "latest" > "bin/version.txt"
     ok "UI binary ready (bin/suzent-ui)"
 }
-download_binary
+download_binary || true
+
+install_dev_deps() {
+    info "Installing frontend dependencies (npm install)..."
+    (cd frontend && npm install) || die "npm install failed in frontend/."
+    ok "Frontend dependencies ready"
+
+    info "Installing src-tauri dependencies (npm install)..."
+    (cd src-tauri && npm install) || die "npm install failed in src-tauri/."
+    ok "Tauri JS dependencies ready"
+}
+
+if [ "${SUZENT_DEV_SETUP:-0}" = "1" ]; then
+    install_dev_deps
+else
+    info "Skipping frontend/Tauri npm dependencies for normal user setup."
+    info "Set SUZENT_DEV_SETUP=1 before running setup to prepare developer mode."
+fi
 
 # ── Playwright Chromium ───────────────────────────────────────────────────────
 if [ "${SUZENT_SKIP_PLAYWRIGHT:-0}" != "1" ]; then
