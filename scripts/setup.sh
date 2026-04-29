@@ -174,15 +174,49 @@ info "Syncing Python dependencies (uv sync)..."
 uv sync || die "uv sync failed — check errors above."
 ok "Python dependencies ready"
 
-# ── Install / sync frontend dependencies ─────────────────────────────────────
-info "Installing frontend dependencies (npm install)..."
-(cd frontend && npm install) || die "npm install failed in frontend/."
-ok "Frontend dependencies ready"
+# ── Download pre-built UI binary ─────────────────────────────────────────────
+download_binary() {
+    local machine
+    machine="$(uname -m)"
+    local asset
+    case "$OS" in
+        Darwin)
+            [ "$machine" = "arm64" ] && asset="suzent-macos-aarch64" || asset="suzent-macos-x86_64"
+            ;;
+        Linux)
+            asset="suzent-linux-x86_64"
+            ;;
+        *) return ;;
+    esac
 
-# ── Install / sync src-tauri JS dependencies ──────────────────────────────────
-info "Installing src-tauri dependencies (npm install)..."
-(cd src-tauri && npm install) || die "npm install failed in src-tauri/."
-ok "Tauri JS dependencies ready"
+    info "Fetching latest release..."
+    local api="https://api.github.com/repos/cyzus/suzent/releases/latest"
+    local json
+    json="$(curl -fsSL "$api" 2>/dev/null)" || { warn "Could not fetch release info — skipping UI binary."; return; }
+
+    local url tag
+    url="$(echo "$json" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+for a in d.get('assets', []):
+    if a['name'] == '$asset':
+        print(a['browser_download_url']); break
+" 2>/dev/null)"
+    tag="$(echo "$json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null)"
+
+    if [ -z "$url" ]; then
+        warn "No binary found for $asset — skipping."
+        return
+    fi
+
+    mkdir -p bin
+    info "Downloading UI binary ($tag)..."
+    curl -fsSL "$url" -o "bin/suzent-ui"
+    chmod +x "bin/suzent-ui"
+    echo "$tag" > "bin/version.txt"
+    ok "UI binary ready (bin/suzent-ui)"
+}
+download_binary
 
 # ── Playwright Chromium ───────────────────────────────────────────────────────
 if [ "${SUZENT_SKIP_PLAYWRIGHT:-0}" != "1" ]; then

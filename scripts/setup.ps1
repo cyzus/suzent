@@ -188,21 +188,29 @@ uv sync
 if ($LASTEXITCODE -ne 0) { Write-Fail "uv sync failed — check errors above." }
 Write-Ok "Python dependencies ready"
 
-# ── Frontend dependencies ─────────────────────────────────────────────────────
-Write-Info "Installing frontend dependencies (npm install)..."
-Push-Location "frontend"
-npm install
-if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Fail "npm install failed in frontend/." }
-Pop-Location
-Write-Ok "Frontend dependencies ready"
-
-# ── src-tauri JS dependencies ─────────────────────────────────────────────────
-Write-Info "Installing src-tauri dependencies (npm install)..."
-Push-Location "src-tauri"
-npm install
-if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Fail "npm install failed in src-tauri/." }
-Pop-Location
-Write-Ok "Tauri JS dependencies ready"
+# ── Download pre-built UI binary ─────────────────────────────────────────────
+function Get-UiBinary {
+    $asset = "suzent-windows-x86_64.exe"
+    $apiUrl = "https://api.github.com/repos/cyzus/suzent/releases/latest"
+    try {
+        $release = Invoke-RestMethod -Uri $apiUrl -Headers @{"User-Agent" = "suzent-setup"} -TimeoutSec 15
+        $assetInfo = $release.assets | Where-Object { $_.name -eq $asset } | Select-Object -First 1
+        if (-not $assetInfo) {
+            Write-Warn "No binary found for $asset in $($release.tag_name) — skipping."
+            return
+        }
+        $binDir = Join-Path $SuzentDir "bin"
+        if (-not (Test-Path $binDir)) { New-Item -ItemType Directory -Force -Path $binDir | Out-Null }
+        $dest = Join-Path $binDir "suzent-ui.exe"
+        Write-Info "Downloading UI binary ($($release.tag_name))..."
+        Invoke-WebRequest -Uri $assetInfo.browser_download_url -OutFile $dest
+        Set-Content -Path (Join-Path $binDir "version.txt") -Value $release.tag_name -NoNewline
+        Write-Ok "UI binary ready ($dest)"
+    } catch {
+        Write-Warn "Binary download failed: $_ — skipping."
+    }
+}
+Get-UiBinary
 
 # ── Playwright Chromium ───────────────────────────────────────────────────────
 if (-not $SkipPW) {
