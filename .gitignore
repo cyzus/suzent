@@ -83,3 +83,4 @@ Thumbs.db
 
 # Pre-built UI binary
 bin/
+/suzent.exe
