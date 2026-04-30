@@ -33,10 +33,10 @@ jobs:
         run: |
           gh release create "$TAG_NAME" \
             --title "$TAG_NAME" \
-            --generate-notes \
-            --verify-tag || gh release view "$TAG_NAME"
+            --generate-notes || gh release view "$TAG_NAME"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ steps.release-tag.outputs.tag_name }}
 
   build:
