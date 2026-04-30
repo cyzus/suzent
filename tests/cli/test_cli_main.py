@@ -2,6 +2,7 @@
 
 import importlib
 import subprocess
+from pathlib import Path
 
 import pytest
 import typer
@@ -165,3 +166,23 @@ def test_serve_ctrl_c_calls_graceful_terminator(monkeypatch):
     assert result.exit_code == 0
     assert len(terminate_calls) == 1
     assert terminate_calls[0] is process
+
+
+def test_update_ui_binary_records_release_version(monkeypatch):
+    download_calls = []
+    root = Path("C:/tmp/suzent-test-root")
+
+    monkeypatch.setattr(
+        cli_main, "_fetch_latest_release", lambda: {"tag_name": "v1.2.3"}
+    )
+    monkeypatch.setattr(cli_main, "_local_ui_version", lambda root: "")
+
+    def fake_download(root: Path, *, version: str = "latest"):
+        download_calls.append((root, version))
+        return True
+
+    monkeypatch.setattr(cli_main, "download_ui_binary", fake_download)
+
+    cli_main._update_ui_binary(root)
+
+    assert download_calls == [(root, "v1.2.3")]

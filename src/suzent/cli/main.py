@@ -86,7 +86,7 @@ def _download_file_atomic(url: str, dest: Path, *, timeout: float = 60.0) -> Non
         raise
 
 
-def download_ui_binary(root: Path) -> bool:
+def download_ui_binary(root: Path, *, version: str = "latest") -> bool:
     """Download the pre-built UI binary from GitHub Releases. Returns True on success."""
     asset_name = _platform_asset_name()
     try:
@@ -97,7 +97,7 @@ def download_ui_binary(root: Path) -> bool:
         _download_file_atomic(_latest_asset_url(asset_name), dest)
         if not IS_WINDOWS:
             dest.chmod(0o755)
-        (bin_dir / "version.txt").write_text("latest")
+        (bin_dir / "version.txt").write_text(version)
         typer.echo(f"  ✅ UI binary ready at {dest}")
         return True
     except Exception as e:
@@ -113,7 +113,7 @@ def _update_ui_binary(root: Path) -> None:
         local = _local_ui_version(root)
         if latest and latest != local:
             typer.echo(f"  • UI binary: {local or 'none'} → {latest}")
-            download_ui_binary(root)
+            download_ui_binary(root, version=latest)
         else:
             typer.echo(f"  • UI binary up to date ({local})")
     except Exception as e:
