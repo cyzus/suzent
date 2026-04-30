@@ -1,6 +1,9 @@
 name: Build Desktop
 
 on:
+  push:
+    tags:
+      - 'v*'
   release:
     types: [published]
   workflow_dispatch:
@@ -9,7 +12,35 @@ permissions:
   contents: write
 
 jobs:
+  create-release:
+    runs-on: ubuntu-22.04
+    outputs:
+      tag_name: ${{ steps.release-tag.outputs.tag_name }}
+    steps:
+      - name: Resolve release tag
+        id: release-tag
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "tag_name=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Release for tag
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          gh release create "$TAG_NAME" \
+            --title "$TAG_NAME" \
+            --generate-notes \
+            --verify-tag || gh release view "$TAG_NAME"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.release-tag.outputs.tag_name }}
+
   build:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -62,11 +93,11 @@ jobs:
         run: cd src-tauri && npm run build:dist
 
       - name: Upload binary to Release
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || github.event_name == 'push'
         shell: bash
         run: |
           cp "${{ matrix.binary }}" "${{ matrix.asset }}"
-          gh release upload "${{ github.event.release.tag_name }}" \
+          gh release upload "${{ needs.create-release.outputs.tag_name }}" \
             "${{ matrix.asset }}" --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
