@@ -6,12 +6,8 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 #[cfg(not(debug_assertions))]
 use std::time::Duration;
-#[cfg(all(not(debug_assertions), windows))]
-use std::os::windows::process::CommandExt;
 #[cfg(not(debug_assertions))]
 use std::thread;
-#[cfg(not(debug_assertions))]
-use std::io::{BufRead, BufReader};
 
 pub struct BackendProcess {
     child: Option<std::process::Child>,
@@ -34,68 +30,78 @@ impl BackendProcess {
 // Release-only: launch and health-check the backend process.
 #[cfg(not(debug_assertions))]
 impl BackendProcess {
-    /// Start backend using `uv run python -m suzent.server` in the repo directory.
+    /// Start backend: prefer venv Python directly (avoids uv wrapper stdout pipe issues on Windows).
+    /// Falls back to `uv run --no-sync` if venv not found.
+    ///
+    /// stdout/stderr are redirected to the log file (not piped), and the backend
+    /// is launched without CREATE_NO_WINDOW so its Windows process environment
+    /// matches `suzent serve` as closely as possible.
     pub fn start_with_uv(&mut self, uv_exe: &Path, repo_dir: &Path, hint_port: u16) -> Result<u16, String> {
-        let mut command = Command::new(uv_exe);
+        let suzent_dir = repo_dir.join(".suzent");
+        std::fs::create_dir_all(&suzent_dir)
+            .map_err(|e| format!("Failed to create .suzent dir: {}", e))?;
+
+        let port_file = suzent_dir.join("server.port");
+        // Delete stale port file so we can detect when the new backend writes it.
+        let _ = std::fs::remove_file(&port_file);
+
+        let log_file = suzent_dir.join("server.log");
+        let log_handle = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_file)
+            .map_err(|e| format!("Failed to open log file: {}", e))?;
+
+        let venv_python = find_venv_python(repo_dir);
+        let mut command = if let Some(ref py) = venv_python {
+            let mut cmd = Command::new(py);
+            cmd.args(["-m", "suzent.server"]);
+            cmd
+        } else {
+            let mut cmd = Command::new(uv_exe);
+            cmd.args(["run", "--no-sync", "python", "-m", "suzent.server"]);
+            cmd
+        };
+
+        // Duplicate the log handle for stderr.
+        let log_handle_stderr = log_handle.try_clone()
+            .map_err(|e| format!("Failed to clone log handle: {}", e))?;
+
         command
-            .args(["run", "python", "-m", "suzent.server"])
             .env("SUZENT_PORT", hint_port.to_string())
             .env("SUZENT_HOST", "127.0.0.1")
+            .env("PYTHONUNBUFFERED", "1")
+            .env("LOG_FILE", &log_file)
             .current_dir(repo_dir)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .stdin(Stdio::null());
+            .stdout(Stdio::from(log_handle))
+            .stderr(Stdio::from(log_handle_stderr))
+            .stdin(Stdio::piped()); // keep pipe open; Python monitor_stdin blocks on it until Tauri exits
 
-        #[cfg(windows)]
-        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
-
-        let mut child = command.spawn()
+        let child = command.spawn()
             .map_err(|e| format!("Failed to start backend: {}", e))?;
-
-        let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
-        let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
-
-        let (tx, rx) = std::sync::mpsc::channel::<u16>();
-
-        thread::spawn(move || {
-            let reader = BufReader::new(stdout);
-            let mut sent = false;
-            for line in reader.lines().flatten() {
-                println!("BE: {}", line);
-                if !sent {
-                    if let Some(idx) = line.find("SERVER_PORT:") {
-                        let after = &line[idx + "SERVER_PORT:".len()..];
-                        if let Some(token) = after.split_whitespace().next() {
-                            if let Ok(port) = token.parse::<u16>() {
-                                let _ = tx.send(port);
-                                sent = true;
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        thread::spawn(move || {
-            let reader = BufReader::new(stderr);
-            for line in reader.lines().flatten() {
-                eprintln!("BE ERR: {}", line);
-            }
-        });
 
         self.child = Some(child);
 
-        match rx.recv_timeout(Duration::from_secs(30)) {
-            Ok(port) => {
-                self.port = port;
-                println!("Backend reported port: {}", port);
-                self.wait_for_backend()?;
-                Ok(port)
+        // Poll server.port file written by Python's write_port_file() at startup.
+        let port = self.poll_port_file(&port_file, Duration::from_secs(30))?;
+        self.port = port;
+        println!("Backend reported port: {}", port);
+        self.wait_for_backend()?;
+        Ok(port)
+    }
+
+    fn poll_port_file(&self, port_file: &std::path::Path, timeout: Duration) -> Result<u16, String> {
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            if std::time::Instant::now() >= deadline {
+                return Err("Timed out waiting for backend to write server.port".to_string());
             }
-            Err(_) => {
-                self.stop();
-                Err("Timed out waiting for backend to start".to_string())
+            if let Ok(contents) = std::fs::read_to_string(port_file) {
+                if let Ok(port) = contents.trim().parse::<u16>() {
+                    return Ok(port);
+                }
             }
+            thread::sleep(Duration::from_millis(200));
         }
     }
 
@@ -191,6 +197,17 @@ fn which_uv() -> Result<PathBuf, ()> {
         }
     }
     Err(())
+}
+
+/// Return the venv Python executable if the venv exists under repo_dir.
+#[cfg(not(debug_assertions))]
+fn find_venv_python(repo_dir: &Path) -> Option<PathBuf> {
+    let py = if cfg!(windows) {
+        repo_dir.join(".venv").join("Scripts").join("python.exe")
+    } else {
+        repo_dir.join(".venv").join("bin").join("python")
+    };
+    if py.exists() { Some(py) } else { None }
 }
 
 fn dirs_home() -> PathBuf {

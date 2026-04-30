@@ -684,13 +684,17 @@ class ChatProcessor:
         # as resolved by pydantic-ai instruction runners for this run context.
         try:
             if logger._core.min_level <= 10:  # DEBUG
+                import asyncio as _asyncio
                 from suzent.prompts import resolve_full_system_prompt
 
-                system_prompt = await resolve_full_system_prompt(
-                    agent,
-                    deps,
-                    user_prompt=full_prompt or None,
-                    message_history=message_history,
+                system_prompt = await _asyncio.wait_for(
+                    resolve_full_system_prompt(
+                        agent,
+                        deps,
+                        user_prompt=full_prompt or None,
+                        message_history=message_history,
+                    ),
+                    timeout=5.0,
                 )
                 logger.debug(
                     "[SystemPrompt] Resolved full prompt ({} chars) for chat {}:\n{}",

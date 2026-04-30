@@ -3,17 +3,123 @@ Top-level CLI commands: start, doctor, upgrade, setup-build-tools.
 """
 
 import io
+import json
 import os
+import platform
 import signal
 import shutil
 import subprocess
 import sys
+import tempfile
+import urllib.request
 from pathlib import Path
 
 import typer
 from suzent.config import DEFAULT_PORT
 
 IS_WINDOWS = sys.platform == "win32"
+
+_REPO = "cyzus/suzent"
+_BIN_DIR = "bin"
+
+
+def _get_ui_binary(root: Path) -> Path | None:
+    """Return path to UI binary: newest local/release build wins."""
+    name = "suzent-ui.exe" if IS_WINDOWS else "suzent-ui"
+    release_name = "suzent.exe" if IS_WINDOWS else "suzent"
+    candidates = [
+        root / _BIN_DIR / name,
+        root / "src-tauri" / "target" / "release" / release_name,
+    ]
+    existing = [p for p in candidates if p.exists()]
+    if not existing:
+        return None
+    return max(existing, key=lambda p: p.stat().st_mtime)
+
+
+def _platform_asset_name() -> str:
+    machine = platform.machine().lower()
+    if IS_WINDOWS:
+        return "suzent-windows-x86_64.exe"
+    if sys.platform == "darwin":
+        return (
+            "suzent-macos-aarch64"
+            if machine in ("arm64", "aarch64")
+            else "suzent-macos-x86_64"
+        )
+    return "suzent-linux-x86_64"
+
+
+def _fetch_latest_release() -> dict:
+    url = f"https://api.github.com/repos/{_REPO}/releases/latest"
+    req = urllib.request.Request(url, headers={"User-Agent": "suzent-updater"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read())
+
+
+def _latest_asset_url(asset_name: str) -> str:
+    return f"https://github.com/{_REPO}/releases/latest/download/{asset_name}"
+
+
+def _local_ui_version(root: Path) -> str:
+    f = root / _BIN_DIR / "version.txt"
+    return f.read_text().strip() if f.exists() else ""
+
+
+def _download_file_atomic(url: str, dest: Path, *, timeout: float = 60.0) -> None:
+    dest.parent.mkdir(exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{dest.name}.", suffix=".tmp", dir=dest.parent
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as file:
+            req = urllib.request.Request(url, headers={"User-Agent": "suzent-updater"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                shutil.copyfileobj(resp, file)
+        tmp_path.replace(dest)
+    except Exception:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
+
+
+def download_ui_binary(root: Path) -> bool:
+    """Download the pre-built UI binary from GitHub Releases. Returns True on success."""
+    asset_name = _platform_asset_name()
+    try:
+        bin_dir = root / _BIN_DIR
+        dest = bin_dir / ("suzent-ui.exe" if IS_WINDOWS else "suzent-ui")
+
+        typer.echo("  • Downloading UI binary...")
+        _download_file_atomic(_latest_asset_url(asset_name), dest)
+        if not IS_WINDOWS:
+            dest.chmod(0o755)
+        (bin_dir / "version.txt").write_text("latest")
+        typer.echo(f"  ✅ UI binary ready at {dest}")
+        return True
+    except Exception as e:
+        typer.echo(f"  ⚠️  Binary download failed: {e}")
+        return False
+
+
+def _update_ui_binary(root: Path) -> None:
+    """Download a new UI binary only if the release version changed."""
+    try:
+        release = _fetch_latest_release()
+        latest = release.get("tag_name", "")
+        local = _local_ui_version(root)
+        if latest and latest != local:
+            typer.echo(f"  • UI binary: {local or 'none'} → {latest}")
+            download_ui_binary(root)
+        else:
+            typer.echo(f"  • UI binary up to date ({local})")
+    except Exception as e:
+        typer.echo(f"  ⚠️  Could not check UI binary version: {e}")
+        typer.echo("  • Attempting direct latest binary download...")
+        download_ui_binary(root)
 
 
 def _configure_console_encoding():
@@ -330,7 +436,6 @@ def register_commands(app: typer.Typer):
     ):
         """Start the Suzent development environment."""
         root = get_project_root()
-        ensure_cargo_in_path()
 
         if docs:
             typer.echo("📚 Starting Documentation Server...")
@@ -338,7 +443,20 @@ def register_commands(app: typer.Typer):
 
         typer.echo("🚀 Starting SUZENT...")
 
-        # Pre-flight: ensure MSVC linker is available on Windows
+        ui_bin = _get_ui_binary(root)
+        if ui_bin:
+            # Pre-built binary manages both backend and webview internally.
+            typer.echo(f"  • Launching UI binary ({ui_bin.name})...")
+            try:
+                subprocess.run([str(ui_bin)])
+            except (subprocess.CalledProcessError, KeyboardInterrupt):
+                pass
+            return
+
+        # ── Developer fallback: tauri dev ────────────────────────────────────
+        typer.echo("  ⚠️  No pre-built UI binary found — starting in developer mode.")
+        typer.echo("     Run 'suzent upgrade' to download the binary.")
+        ensure_cargo_in_path()
         ensure_msvc_linker()
 
         for port, name in [(DEFAULT_PORT, "Backend"), (18080, "Frontend")]:
@@ -356,10 +474,6 @@ def register_commands(app: typer.Typer):
                 else:
                     typer.echo("   ❌ Startup aborted.")
                     raise typer.Exit(code=1)
-
-        backend_cmd = ["python", "src/suzent/server.py"]
-        if debug:
-            backend_cmd.append("--debug")
 
         backend_env = os.environ.copy()
         backend_env["SUZENT_PORT"] = str(DEFAULT_PORT)
@@ -433,10 +547,21 @@ def register_commands(app: typer.Typer):
     ):
         """Start only the Tauri frontend (assumes backend is already running)."""
         root = get_project_root()
-        ensure_cargo_in_path()
-        ensure_msvc_linker()
 
         typer.echo(f"🖥️  Starting SUZENT UI (connecting to backend on port {port})...")
+
+        ui_bin = _get_ui_binary(root)
+        if ui_bin:
+            env = os.environ.copy()
+            env["SUZENT_PORT"] = str(port)
+            try:
+                subprocess.run([str(ui_bin)], env=env)
+            except (subprocess.CalledProcessError, KeyboardInterrupt):
+                pass
+            return
+
+        ensure_cargo_in_path()
+        ensure_msvc_linker()
         _ensure_npm_deps(root)
 
         env = os.environ.copy()
@@ -663,6 +788,17 @@ def register_commands(app: typer.Typer):
                 "  ⚠️  Playwright browser update failed (will retry on first use)."
             )
 
+        # Update pre-built UI binary (non-fatal)
+        typer.echo("  • Checking UI binary...")
+        _update_ui_binary(root)
+
+        ui_bin = _get_ui_binary(root)
+        if ui_bin:
+            # Frontend is embedded in the binary — no npm steps needed.
+            typer.echo("\n✨ Suzent successfully upgraded!")
+            return
+
+        # ── Developer path: update npm dependencies ───────────────────────────
         typer.echo("  • Updating frontend dependencies...")
         frontend_dir = root / "frontend"
         try:

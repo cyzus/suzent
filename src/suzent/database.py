@@ -149,6 +149,23 @@ class UserPreferencesModel(SQLModel, table=True):
     updated_at: datetime = Field(serialization_alias="updatedAt")
 
 
+class VolumeMetadataModel(SQLModel, table=True):
+    """Cached metadata for configured custom volumes."""
+
+    __tablename__ = "volume_metadata"
+
+    volume: str = Field(primary_key=True)
+    host_path: str
+    mount_point: str
+    kind: str = Field(default="generic")
+    exists: bool = Field(default=False)
+    is_git_repo: Optional[bool] = None
+    git_root: Optional[str] = None
+    status: str = Field(default="unknown")
+    error: Optional[str] = None
+    checked_at: datetime = Field(serialization_alias="checkedAt")
+
+
 class MCPServerModel(SQLModel, table=True):
     """MCP server configuration."""
 
@@ -1465,6 +1482,80 @@ class ChatDatabase:
                 )
 
             session.add(prefs)
+            session.commit()
+            return True
+
+    # -------------------------------------------------------------------------
+    # Volume Metadata Operations
+    # -------------------------------------------------------------------------
+
+    def get_volume_metadata(
+        self, volumes: Optional[List[str]] = None
+    ) -> Dict[str, Dict[str, Any]]:
+        """Return cached metadata keyed by volume string."""
+        with self._session() as session:
+            statement = select(VolumeMetadataModel)
+            if volumes is not None:
+                if not volumes:
+                    return {}
+                statement = statement.where(VolumeMetadataModel.volume.in_(volumes))
+
+            rows = session.exec(statement).all()
+            return {
+                row.volume: {
+                    "volume": row.volume,
+                    "host_path": row.host_path,
+                    "mount_point": row.mount_point,
+                    "kind": row.kind,
+                    "exists": row.exists,
+                    "is_git_repo": row.is_git_repo,
+                    "git_root": row.git_root,
+                    "status": row.status,
+                    "error": row.error,
+                    "checked_at": row.checked_at.isoformat()
+                    if row.checked_at
+                    else None,
+                }
+                for row in rows
+            }
+
+    def save_volume_metadata(self, items: List[Dict[str, Any]]) -> bool:
+        """Upsert cached metadata for custom volumes."""
+        now = datetime.now()
+
+        with self._session() as session:
+            for item in items:
+                volume = item.get("volume")
+                if not volume:
+                    continue
+
+                row = session.get(VolumeMetadataModel, volume)
+                if row is None:
+                    row = VolumeMetadataModel(
+                        volume=volume,
+                        host_path=item.get("host_path", ""),
+                        mount_point=item.get("mount_point", ""),
+                        kind=item.get("kind", "generic"),
+                        exists=bool(item.get("exists", False)),
+                        is_git_repo=item.get("is_git_repo"),
+                        git_root=item.get("git_root"),
+                        status=item.get("status", "unknown"),
+                        error=item.get("error"),
+                        checked_at=item.get("checked_at") or now,
+                    )
+                else:
+                    row.host_path = item.get("host_path", "")
+                    row.mount_point = item.get("mount_point", "")
+                    row.kind = item.get("kind", "generic")
+                    row.exists = bool(item.get("exists", False))
+                    row.is_git_repo = item.get("is_git_repo")
+                    row.git_root = item.get("git_root")
+                    row.status = item.get("status", "unknown")
+                    row.error = item.get("error")
+                    row.checked_at = item.get("checked_at") or now
+
+                session.add(row)
+
             session.commit()
             return True
 

@@ -188,21 +188,53 @@ uv sync
 if ($LASTEXITCODE -ne 0) { Write-Fail "uv sync failed — check errors above." }
 Write-Ok "Python dependencies ready"
 
-# ── Frontend dependencies ─────────────────────────────────────────────────────
-Write-Info "Installing frontend dependencies (npm install)..."
-Push-Location "frontend"
-npm install
-if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Fail "npm install failed in frontend/." }
-Pop-Location
-Write-Ok "Frontend dependencies ready"
+# ── Download pre-built UI binary ─────────────────────────────────────────────
+function Get-UiBinary {
+    $asset = "suzent-windows-x86_64.exe"
+    $url = "https://github.com/cyzus/suzent/releases/latest/download/$asset"
+    $tmp = $null
+    try {
+        $binDir = Join-Path $SuzentDir "bin"
+        if (-not (Test-Path $binDir)) { New-Item -ItemType Directory -Force -Path $binDir | Out-Null }
+        $dest = Join-Path $binDir "suzent-ui.exe"
+        $tmp = "$dest.tmp"
+        Write-Info "Downloading pre-built UI binary..."
+        Invoke-WebRequest -Uri $url -OutFile $tmp -TimeoutSec 300
+        Move-Item -Force $tmp $dest
+        Set-Content -Path (Join-Path $binDir "version.txt") -Value "latest" -NoNewline
+        Write-Ok "UI binary ready ($dest)"
+    } catch {
+        if ($tmp -and (Test-Path $tmp)) {
+            Remove-Item -Force $tmp -ErrorAction SilentlyContinue
+        }
+        Write-Warn "UI binary download failed: $_"
+        Write-Warn "Retry later, or set SUZENT_DEV_SETUP=1 for developer dependencies."
+    }
+}
+Get-UiBinary
 
-# ── src-tauri JS dependencies ─────────────────────────────────────────────────
-Write-Info "Installing src-tauri dependencies (npm install)..."
-Push-Location "src-tauri"
-npm install
-if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Fail "npm install failed in src-tauri/." }
-Pop-Location
-Write-Ok "Tauri JS dependencies ready"
+function Install-DevDependencies {
+    Write-Info "Installing frontend dependencies (npm install)..."
+    Push-Location "frontend"
+    npm install
+    if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Fail "npm install failed in frontend/." }
+    Pop-Location
+    Write-Ok "Frontend dependencies ready"
+
+    Write-Info "Installing src-tauri dependencies (npm install)..."
+    Push-Location "src-tauri"
+    npm install
+    if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Fail "npm install failed in src-tauri/." }
+    Pop-Location
+    Write-Ok "Tauri JS dependencies ready"
+}
+
+if ($env:SUZENT_DEV_SETUP -eq "1") {
+    Install-DevDependencies
+} else {
+    Write-Info "Skipping frontend/Tauri npm dependencies for normal user setup."
+    Write-Info "Set SUZENT_DEV_SETUP=1 before running setup to prepare developer mode."
+}
 
 # ── Playwright Chromium ───────────────────────────────────────────────────────
 if (-not $SkipPW) {

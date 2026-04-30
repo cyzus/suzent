@@ -40,6 +40,7 @@ class AgentDeps:
     workspace_root: str = ""
     cwd: Optional[str] = None  # Optional working directory override for subagents
     custom_volumes: list = field(default_factory=list)
+    custom_volume_metadata: dict[str, dict[str, Any]] = field(default_factory=dict)
     path_resolver: Any = None  # PathResolver instance
 
     # --- Memory system ---

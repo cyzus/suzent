@@ -80,3 +80,7 @@ skills/pptx
 # OS
 .DS_Store
 Thumbs.db
+
+# Pre-built UI binary
+bin/
+/suzent.exe

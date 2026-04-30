@@ -803,8 +803,16 @@ if __name__ == "__main__":
                     import time
 
                     logger.info(f"Starting parent monitor for PID {pid}")
+                    pid_exists = getattr(psutil, "pid_exists", None)
+                    if pid_exists is None:
+                        logger.warning(
+                            "psutil.pid_exists unavailable; parent monitoring disabled "
+                            "(relying on stdin monitor)."
+                        )
+                        return
+
                     while True:
-                        if not psutil.pid_exists(pid):
+                        if not pid_exists(pid):
                             logger.critical(
                                 f"Parent process {pid} died. Shutting down."
                             )

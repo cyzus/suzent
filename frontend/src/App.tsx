@@ -667,7 +667,7 @@ export default function App() {
   // a port from a previous session while the backend is still starting up.
   // The initial value handles the rare race where Rust injects the port before React renders.
   const [backendReady, setBackendReady] = React.useState<boolean>(
-    !!(window as any).__SUZENT_BACKEND_PORT__ || hasPersistedBackendPort()
+    !!(window as any).__SUZENT_BACKEND_PORT__
   );
   const [backendError, setBackendError] = React.useState<string | null>(null);
 

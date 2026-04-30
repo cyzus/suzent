@@ -23,7 +23,11 @@ from pydantic_ai import (
 from pydantic_ai.run import AgentRunResultEvent
 from pydantic_ai.tools import DeferredToolRequests, DeferredToolResults
 from pydantic_ai.ui.ag_ui._event_stream import AGUIEventStream
-from ag_ui.core import RunAgentInput, CustomEvent, RunErrorEvent
+from ag_ui.core import (
+    RunAgentInput,
+    CustomEvent,
+    RunErrorEvent,
+)
 from ag_ui.encoder import EventEncoder
 
 from suzent.core.agent_deps import AgentDeps
@@ -42,11 +46,48 @@ from loguru import logger
 
 # Module-level encoder for custom events
 _encoder = EventEncoder()
+_FIRST_STREAM_EVENT_TIMEOUT_SECONDS = 45.0
+_STREAM_IDLE_TIMEOUT_SECONDS = 120.0
 
 
 def _encode_custom(name: str, value: Any) -> str:
     """Encode a custom AG-UI event as an SSE string."""
     return _encoder.encode(CustomEvent(name=name, value=value))
+
+
+async def _iter_stream_events_with_timeout(
+    agent: Any,
+    prompt: Any,
+    run_kwargs: Dict[str, Any],
+) -> AsyncGenerator[Any, None]:
+    """Yield stream events, failing fast if the provider never produces one."""
+    stream = agent.run_stream_events(prompt, **run_kwargs)
+    first_event = True
+    try:
+        while True:
+            timeout = (
+                _FIRST_STREAM_EVENT_TIMEOUT_SECONDS
+                if first_event
+                else _STREAM_IDLE_TIMEOUT_SECONDS
+            )
+            try:
+                event = await asyncio.wait_for(anext(stream), timeout=timeout)
+            except StopAsyncIteration:
+                break
+            except asyncio.TimeoutError as exc:
+                phase = "first event" if first_event else "next event"
+                raise TimeoutError(
+                    f"Timed out waiting for LLM stream {phase} after {timeout:.0f}s"
+                ) from exc
+            first_event = False
+            yield event
+    finally:
+        aclose = getattr(stream, "aclose", None)
+        if aclose is not None:
+            try:
+                await aclose()
+            except Exception:
+                pass
 
 
 def _bash_command_decision(tc: Any, deps: "AgentDeps") -> "bool | None":
@@ -386,7 +427,9 @@ async def stream_agent_responses(
         current_deferred = deferred_tool_results
 
         try:
+            logger.debug("[Streaming] Entering agent context (MCP init)...")
             async with agent:  # MCP server context management
+                logger.debug("[Streaming] Agent context ready. Starting run loop.")
                 while not control.cancel_event.is_set():
                     run_kwargs: Dict[str, Any] = {"deps": deps}
                     if history:
@@ -394,8 +437,11 @@ async def stream_agent_responses(
                     if current_deferred:
                         run_kwargs["deferred_tool_results"] = current_deferred
 
-                    last_result_event = None
-                    async for event in agent.run_stream_events(prompt, **run_kwargs):
+                    last_run_result = None
+                    logger.debug("[Streaming] Calling agent.run_stream_events()...")
+                    async for event in _iter_stream_events_with_timeout(
+                        agent, prompt, run_kwargs
+                    ):
                         if control.cancel_event.is_set():
                             break
                         try:
@@ -403,7 +449,7 @@ async def stream_agent_responses(
                                 f"[Streaming] Received event from agent: {type(event).__name__}"
                             )
                             if isinstance(event, AgentRunResultEvent):
-                                last_result_event = event
+                                last_run_result = event.result
                                 final_response_text = str(event.result.output)
 
                                 # HITL BUG FIX: Emit deferred tool recovery events with output
@@ -452,14 +498,14 @@ async def stream_agent_responses(
                             continue
 
                     # Check if deferred tools need approval before terminating
-                    if last_result_event and isinstance(
-                        last_result_event.result.output, DeferredToolRequests
+                    if last_run_result and isinstance(
+                        last_run_result.output, DeferredToolRequests
                     ):
-                        current_history = last_result_event.result.all_messages()
+                        current_history = last_run_result.all_messages()
                         partial_history = current_history
                         deps.last_messages = current_history
 
-                        deferred = last_result_event.result.output
+                        deferred = last_run_result.output
                         if deferred.approvals:
                             # Short-circuit: if auto_approve_tools is set (e.g. heartbeat / scheduler),
                             # approve all tools immediately without prompting the user.
@@ -585,6 +631,7 @@ async def stream_agent_responses(
                     await sse_queue.put(("heartbeat_ok", None))
 
         except Exception as e:
+            logger.error(f"[Streaming] LLM call failed: {type(e).__name__}: {e}")
             await sse_queue.put(("error", e))
         finally:
             await sse_queue.put(("done", None))

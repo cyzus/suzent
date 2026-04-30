@@ -26,15 +26,6 @@ fn get_backend_port(state: State<AppState>) -> Result<u16, String> {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    // GUI mode: hide the console window Windows creates for console-subsystem apps.
-    if args.len() == 1 {
-        #[cfg(windows)]
-        unsafe {
-            use windows_sys::Win32::System::Console::FreeConsole;
-            FreeConsole();
-        }
-    }
-
     // CLI mode: delegate to `uv run suzent <args>` in the repo directory.
     if args.len() > 1 {
         let repo_dir = backend::find_repo_dir();
@@ -42,6 +33,7 @@ fn main() {
 
         let status = std::process::Command::new(&uv_exe)
             .arg("run")
+            .arg("--no-sync")
             .arg("suzent")
             .args(&args[1..])
             .current_dir(&repo_dir)
@@ -117,9 +109,9 @@ try {{ localStorage.setItem('SUZENT_PORT', '{port}'); }} catch (e) {{}}
         .expect("error while running tauri application");
 }
 
-/// Read the port written by the Python backend to DATA_DIR/server.port.
+#[cfg(debug_assertions)]
 fn read_port_file() -> Option<u16> {
-    let data_dir = backend::find_repo_dir().join("data");
+    let data_dir = backend::find_repo_dir().join(".suzent");
     let port_file = data_dir.join("server.port");
     let text = std::fs::read_to_string(&port_file).ok()?;
     text.trim().parse::<u16>().ok()

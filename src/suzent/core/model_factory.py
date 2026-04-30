@@ -190,7 +190,7 @@ def create_pydantic_ai_model(model_id: str) -> object:
     # Dispatch: native provider class takes priority over base_url compat
     if spec.has_native_provider:
         logger.debug(
-            "Mapped %s → OpenAIModel via %s",
+            "Mapped {} -> OpenAIModel via {}",
             model_id,
             spec.native_provider["class"],
         )
@@ -204,7 +204,7 @@ def create_pydantic_ai_model(model_id: str) -> object:
         )
 
     logger.debug(
-        "Mapped %s → %s (api_type=%s, base_url=%s)",
+        "Mapped {} -> {} (api_type={}, base_url={})",
         model_id,
         handler.__name__,
         spec.api_type,

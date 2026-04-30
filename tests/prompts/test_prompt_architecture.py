@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from suzent.prompts import (
     STATIC_INSTRUCTIONS,
+    build_custom_volumes_section,
     build_session_guidance_section,
     format_session_guidance_debug,
     register_dynamic_instructions,
@@ -81,6 +82,25 @@ def test_register_dynamic_instructions_empty_social_returns_empty_string():
     )
 
     assert funcs["inject_social_context"](ctx) == ""
+
+
+def test_notebook_volume_does_not_run_git_probe(monkeypatch):
+    calls = []
+
+    def fake_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("notebook volumes should not be Git-probed")
+
+    import subprocess
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    deps = SimpleNamespace(custom_volumes=["C:/Users/example/Notebook:/mnt/notebook"])
+
+    section = build_custom_volumes_section(deps)
+
+    assert "(Notebook vault mount)" in section
+    assert calls == []
 
 
 def test_build_session_guidance_section_tool_aware_rules():

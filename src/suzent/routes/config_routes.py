@@ -10,6 +10,7 @@ import os
 import traceback
 from pathlib import Path
 from typing import Any
+import asyncio
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -23,6 +24,10 @@ from suzent.core.providers import (
 )
 from suzent.tools.registry import get_tool_groups
 from suzent.database import get_database
+from suzent.core.volume_metadata import refresh_volume_metadata
+from suzent.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def get_resource_path(path: str) -> Path:
@@ -30,6 +35,27 @@ def get_resource_path(path: str) -> Path:
     from suzent.config import PROJECT_DIR
 
     return PROJECT_DIR / path
+
+
+def _schedule_volume_metadata_refresh(volumes: list[str]) -> None:
+    """Refresh volume metadata without blocking the request path."""
+    if not volumes:
+        return
+
+    async def _refresh() -> None:
+        try:
+            db = get_database()
+            await asyncio.to_thread(refresh_volume_metadata, db, volumes)
+        except Exception as exc:
+            logger.warning("Volume metadata refresh failed: {}", exc)
+
+    try:
+        asyncio.create_task(_refresh())
+    except RuntimeError:
+        try:
+            refresh_volume_metadata(get_database(), volumes)
+        except Exception as exc:
+            logger.warning("Volume metadata refresh failed: {}", exc)
 
 
 async def get_config(request: Request) -> JSONResponse:
@@ -59,6 +85,7 @@ async def get_config(request: Request) -> JSONResponse:
         "maxContextTokens": CONFIG.max_context_tokens,
         "embeddingModel": CONFIG.embedding_model,
         "extractionModel": CONFIG.extraction_model,
+        "volumeMetadata": db.get_volume_metadata(sandbox_volumes),
     }
 
     if user_prefs:
@@ -72,6 +99,10 @@ async def get_config(request: Request) -> JSONResponse:
             "embedding_model": embedding_model,
             "extraction_model": extraction_model,
         }
+        if user_prefs.sandbox_volumes:
+            data["userPreferences"]["volume_metadata"] = db.get_volume_metadata(
+                user_prefs.sandbox_volumes
+            )
     else:
         # Even if no user_prefs, provide memory config defaults
         data["userPreferences"] = {
@@ -97,6 +128,8 @@ async def save_preferences(request: Request) -> JSONResponse:
         sandbox_enabled=data.get("sandbox_enabled"),
         sandbox_volumes=data.get("sandbox_volumes"),
     )
+    if success and data.get("sandbox_volumes") is not None:
+        _schedule_volume_metadata_refresh(data.get("sandbox_volumes") or [])
 
     # Save memory configuration separately
     if (
@@ -186,8 +219,16 @@ async def save_global_sandbox_config(request: Request) -> JSONResponse:
 
         # Keep runtime config in sync without requiring restart.
         CONFIG.sandbox_volumes = sandbox_volumes
+        db = get_database()
+        _schedule_volume_metadata_refresh(sandbox_volumes)
 
-        return JSONResponse({"success": True, "globalSandboxVolumes": sandbox_volumes})
+        return JSONResponse(
+            {
+                "success": True,
+                "globalSandboxVolumes": sandbox_volumes,
+                "volumeMetadata": db.get_volume_metadata(sandbox_volumes),
+            }
+        )
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     except Exception as exc:

@@ -82,6 +82,363 @@
     },
     "openai/sora-2-pro-high-res": {
       "mode": "chat"
+    },
+    "openai/gpt-4-0613": {
+      "mode": "chat"
+    },
+    "openai/gpt-4": {
+      "mode": "chat"
+    },
+    "openai/gpt-3.5-turbo": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.5-pro-2026-04-23": {
+      "mode": "chat"
+    },
+    "openai/gpt-image-2-2026-04-21": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.5": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.5-2026-04-23": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.5-pro": {
+      "mode": "chat"
+    },
+    "openai/davinci-002": {
+      "mode": "chat"
+    },
+    "openai/babbage-002": {
+      "mode": "chat"
+    },
+    "openai/gpt-3.5-turbo-instruct": {
+      "mode": "chat"
+    },
+    "openai/gpt-3.5-turbo-instruct-0914": {
+      "mode": "chat"
+    },
+    "openai/gpt-3.5-turbo-1106": {
+      "mode": "chat"
+    },
+    "openai/tts-1-1106": {
+      "mode": "chat"
+    },
+    "openai/tts-1-hd-1106": {
+      "mode": "chat"
+    },
+    "openai/gpt-3.5-turbo-0125": {
+      "mode": "chat"
+    },
+    "openai/gpt-4-turbo": {
+      "mode": "chat"
+    },
+    "openai/gpt-4-turbo-2024-04-09": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-2024-05-13": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-mini-2024-07-18": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-mini": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-2024-08-06": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-audio-preview": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-realtime-preview": {
+      "mode": "chat"
+    },
+    "openai/omni-moderation-latest": {
+      "mode": "chat"
+    },
+    "openai/omni-moderation-2024-09-26": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-realtime-preview-2024-12-17": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-audio-preview-2024-12-17": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-mini-realtime-preview-2024-12-17": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-mini-audio-preview-2024-12-17": {
+      "mode": "chat"
+    },
+    "openai/o1-2024-12-17": {
+      "mode": "chat"
+    },
+    "openai/o1": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-mini-realtime-preview": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-mini-audio-preview": {
+      "mode": "chat"
+    },
+    "openai/o3-mini": {
+      "mode": "chat"
+    },
+    "openai/o3-mini-2025-01-31": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-2024-11-20": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-mini-search-preview-2025-03-11": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-mini-search-preview": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-transcribe": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-mini-transcribe": {
+      "mode": "chat"
+    },
+    "openai/o1-pro-2025-03-19": {
+      "mode": "chat"
+    },
+    "openai/o1-pro": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-mini-tts": {
+      "mode": "chat"
+    },
+    "openai/o3-2025-04-16": {
+      "mode": "chat"
+    },
+    "openai/o4-mini-2025-04-16": {
+      "mode": "chat"
+    },
+    "openai/gpt-4.1-2025-04-14": {
+      "mode": "chat"
+    },
+    "openai/gpt-4.1-mini-2025-04-14": {
+      "mode": "chat"
+    },
+    "openai/gpt-4.1-nano-2025-04-14": {
+      "mode": "chat"
+    },
+    "openai/gpt-image-1": {
+      "mode": "chat"
+    },
+    "openai/o3-pro": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-realtime-preview-2025-06-03": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-audio-preview-2025-06-03": {
+      "mode": "chat"
+    },
+    "openai/o3-pro-2025-06-10": {
+      "mode": "chat"
+    },
+    "openai/o4-mini-deep-research": {
+      "mode": "chat"
+    },
+    "openai/o3-deep-research": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-transcribe-diarize": {
+      "mode": "chat"
+    },
+    "openai/o3-deep-research-2025-06-26": {
+      "mode": "chat"
+    },
+    "openai/o4-mini-deep-research-2025-06-26": {
+      "mode": "chat"
+    },
+    "openai/gpt-5-chat-latest": {
+      "mode": "chat"
+    },
+    "openai/gpt-5-2025-08-07": {
+      "mode": "chat"
+    },
+    "openai/gpt-5": {
+      "mode": "chat"
+    },
+    "openai/gpt-5-mini-2025-08-07": {
+      "mode": "chat"
+    },
+    "openai/gpt-5-mini": {
+      "mode": "chat"
+    },
+    "openai/gpt-5-nano-2025-08-07": {
+      "mode": "chat"
+    },
+    "openai/gpt-5-nano": {
+      "mode": "chat"
+    },
+    "openai/gpt-audio-2025-08-28": {
+      "mode": "chat"
+    },
+    "openai/gpt-realtime": {
+      "mode": "chat"
+    },
+    "openai/gpt-realtime-2025-08-28": {
+      "mode": "chat"
+    },
+    "openai/gpt-audio": {
+      "mode": "chat"
+    },
+    "openai/gpt-5-codex": {
+      "mode": "chat"
+    },
+    "openai/gpt-image-1-mini": {
+      "mode": "chat"
+    },
+    "openai/gpt-5-pro-2025-10-06": {
+      "mode": "chat"
+    },
+    "openai/gpt-5-pro": {
+      "mode": "chat"
+    },
+    "openai/gpt-audio-mini": {
+      "mode": "chat"
+    },
+    "openai/gpt-audio-mini-2025-10-06": {
+      "mode": "chat"
+    },
+    "openai/gpt-5-search-api": {
+      "mode": "chat"
+    },
+    "openai/gpt-realtime-mini": {
+      "mode": "chat"
+    },
+    "openai/gpt-realtime-mini-2025-10-06": {
+      "mode": "chat"
+    },
+    "openai/gpt-5-search-api-2025-10-14": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.1-chat-latest": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.1-2025-11-13": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.1": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.1-codex": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.1-codex-mini": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.1-codex-max": {
+      "mode": "chat"
+    },
+    "openai/gpt-image-1.5": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.2-2025-12-11": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.2": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.2-pro-2025-12-11": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.2-pro": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.2-chat-latest": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-mini-transcribe-2025-12-15": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-mini-transcribe-2025-03-20": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-mini-tts-2025-03-20": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-mini-tts-2025-12-15": {
+      "mode": "chat"
+    },
+    "openai/gpt-realtime-mini-2025-12-15": {
+      "mode": "chat"
+    },
+    "openai/gpt-audio-mini-2025-12-15": {
+      "mode": "chat"
+    },
+    "openai/chatgpt-image-latest": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.2-codex": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.3-codex": {
+      "mode": "chat"
+    },
+    "openai/gpt-realtime-1.5": {
+      "mode": "chat"
+    },
+    "openai/gpt-audio-1.5": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-search-preview": {
+      "mode": "chat"
+    },
+    "openai/gpt-4o-search-preview-2025-03-11": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.3-chat-latest": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.4-2026-03-05": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.4-pro": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.4-pro-2026-03-05": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.4": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.4-nano-2026-03-17": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.4-nano": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.4-mini-2026-03-17": {
+      "mode": "chat"
+    },
+    "openai/gpt-5.4-mini": {
+      "mode": "chat"
+    },
+    "openai/gpt-image-2": {
+      "mode": "chat"
+    },
+    "openai/gpt-3.5-turbo-16k": {
+      "mode": "chat"
+    },
+    "openai/whisper-1": {
+      "mode": "chat"
+    },
+    "openai/text-embedding-ada-002": {
+      "mode": "chat"
     }
   }
 }
