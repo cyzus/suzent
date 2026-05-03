@@ -18,6 +18,9 @@ async def generate_auto_title(
 
         router = get_role_router()
         model = router.get_model_id("cheap")
+        logger.info(
+            f"[AutoTitle] cheap role model={model!r}, fallback={fallback_model!r}"
+        )
 
         if not model:
             model = fallback_model
