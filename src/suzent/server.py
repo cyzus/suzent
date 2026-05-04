@@ -12,6 +12,7 @@ This server provides a REST API with the following endpoints:
 The application uses modular routing with separated concerns for maintainability.
 """
 
+import asyncio
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -167,6 +168,63 @@ scheduler_brain: SchedulerBrain = None
 heartbeat_runner: HeartbeatRunner = None
 
 
+_social_reload_lock = asyncio.Lock()
+
+
+def _build_social_from_config(
+    social_config: dict,
+) -> tuple["ChannelManager", "SocialBrain"]:
+    cm = ChannelManager()
+    cm.load_drivers_from_config(social_config)
+
+    allowed_users = set(social_config.get("allowed_users", []))
+    env_allowed = os.environ.get("ALLOWED_SOCIAL_USERS", "")
+    if env_allowed:
+        allowed_users.update([u.strip() for u in env_allowed.split(",") if u.strip()])
+
+    platform_allowlists = {}
+    for platform, settings in social_config.items():
+        if isinstance(settings, dict) and "allowed_users" in settings:
+            platform_allowlists[platform] = settings.get("allowed_users", [])
+
+    handshake_cfg = social_config.get("handshake", {})
+    sb = SocialBrain(
+        cm,
+        allowed_users=list(allowed_users),
+        platform_allowlists=platform_allowlists,
+        model=social_config.get("model"),
+        memory_enabled=social_config.get("memory_enabled", True),
+        tools=social_config.get("tools"),
+        mcp_enabled=social_config.get("mcp_enabled"),
+        handshake_enabled=handshake_cfg.get("enabled", False),
+        handshake_greeting=handshake_cfg.get("greeting"),
+    )
+    return cm, sb
+
+
+async def reload_social(starlette_app, social_config: dict) -> None:
+    """Stop the current social stack and restart it from the given config."""
+    global social_brain, channel_manager
+
+    async with _social_reload_lock:
+        if social_brain is not None:
+            await _stop(social_brain.stop(), "SocialBrain")
+        if channel_manager is not None:
+            await _stop(channel_manager.stop_all(), "ChannelManager")
+
+        new_cm, new_sb = _build_social_from_config(social_config)
+        social_brain = new_sb
+        channel_manager = new_cm
+        starlette_app.state.social_brain = new_sb
+
+    try:
+        await new_cm.start_all()
+        await new_sb.start()
+        logger.info("Social stack reloaded successfully.")
+    except Exception as e:
+        logger.error(f"Error starting reloaded social stack: {e}")
+
+
 # ---------------------------------------------------------------------------
 # Pairing / handshake REST handlers
 # ---------------------------------------------------------------------------
@@ -210,9 +268,7 @@ async def deny_pairing(request: Request) -> JSONResponse:
 
 async def _refresh_provider_models() -> None:
     """Background task: discover available models for all configured providers."""
-    import asyncio as _asyncio
-
-    await _asyncio.sleep(3)  # let server finish starting up
+    await asyncio.sleep(3)  # let server finish starting up
 
     try:
         from suzent.core.providers import ProviderFactory, PROVIDER_REGISTRY
@@ -277,7 +333,6 @@ async def startup():
     register_global_hook(plan_reminder_hook)
     register_per_turn_hook(_memory_rag_hook)
 
-    import asyncio
     from suzent.tools.browsing_tool import BrowserSessionManager
     from suzent.config import CONFIG
 
@@ -371,8 +426,6 @@ async def startup():
         import json
         from suzent.config import PROJECT_DIR
 
-        channel_manager = ChannelManager()
-
         config_path = PROJECT_DIR / "config/social.json"
         social_config = {}
 
@@ -384,36 +437,7 @@ async def startup():
             except Exception as e:
                 logger.error(f"Failed to load social config: {e}")
 
-        social_model = social_config.get("model")
-
-        channel_manager.load_drivers_from_config(social_config)
-
-        allowed_users = set(social_config.get("allowed_users", []))
-
-        env_allowed = os.environ.get("ALLOWED_SOCIAL_USERS", "")
-        if env_allowed:
-            allowed_users.update(
-                [u.strip() for u in env_allowed.split(",") if u.strip()]
-            )
-
-        platform_allowlists = {}
-        for platform, settings in social_config.items():
-            if isinstance(settings, dict) and "allowed_users" in settings:
-                platform_allowlists[platform] = settings.get("allowed_users", [])
-
-        handshake_cfg = social_config.get("handshake", {})
-        social_brain = SocialBrain(
-            channel_manager,
-            allowed_users=list(allowed_users),
-            platform_allowlists=platform_allowlists,
-            model=social_model,
-            memory_enabled=social_config.get("memory_enabled", True),
-            tools=social_config.get("tools"),
-            mcp_enabled=social_config.get("mcp_enabled"),
-            handshake_enabled=handshake_cfg.get("enabled", False),
-            handshake_greeting=handshake_cfg.get("greeting"),
-        )
-
+        channel_manager, social_brain = _build_social_from_config(social_config)
         app.state.social_brain = social_brain
         asyncio.create_task(init_background_services(channel_manager, social_brain))
 
@@ -447,8 +471,6 @@ def ensure_app_data():
 
 
 async def _stop(coro, name: str, timeout: float = 5.0):
-    import asyncio
-
     try:
         await asyncio.wait_for(coro, timeout=timeout)
     except asyncio.TimeoutError:
@@ -459,7 +481,6 @@ async def _stop(coro, name: str, timeout: float = 5.0):
 
 async def shutdown():
     """Cleanup services on application shutdown."""
-    import asyncio
     from suzent.memory.lifecycle import shutdown_memory_system
     from suzent.a2ui import pending as pending_questions
 
@@ -518,7 +539,6 @@ async def shutdown():
     # Gracefully shut down litellm's logging worker to avoid "Event loop is closed" noise
     try:
         from litellm.litellm_core_utils.logging_worker import GLOBAL_LOGGING_WORKER
-        import asyncio
 
         task = GLOBAL_LOGGING_WORKER._worker_task
         if task and not task.done():
@@ -672,7 +692,6 @@ app = Starlette(
 
 
 if __name__ == "__main__":
-    import asyncio
     import datetime
     from pathlib import Path
 

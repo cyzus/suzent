@@ -576,13 +576,9 @@ async def save_social_config(request: Request) -> JSONResponse:
         with open(config_path, "w") as f:
             json.dump(existing_config, f, indent=4)
 
-        # Dynamic reload of model if available
-        if (
-            hasattr(request.app.state, "social_brain")
-            and request.app.state.social_brain
-        ):
-            new_model = existing_config.get("model")
-            request.app.state.social_brain.update_model(new_model)
+        from suzent.server import reload_social
+
+        asyncio.create_task(reload_social(request.app, existing_config))
 
         return JSONResponse({"success": True})
     except Exception as e:
