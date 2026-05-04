@@ -113,11 +113,11 @@ The backend automatically detects bundled environment through:
 |----------|---------|
 | `SUZENT_PORT` | Dynamically assigned port (0 = OS picks) |
 | `SUZENT_HOST` | Bound to `127.0.0.1` in production |
-| `SUZENT_APP_DATA` | Application data directory (set by Rust in bundled mode) |
+| `SUZENT_DATA_DIR` | User data directory (defaults to `~/.suzent`) |
 | `CHATS_DB_PATH` | SQLite database path |
 | `LANCEDB_URI` | LanceDB vector store path |
 | `SANDBOX_DATA_PATH` | Sandbox data directory |
-| `SKILLS_DIR` | Skills directory path |
+| `SKILLS_DIR` | Advanced extra skills directory override |
 
 ### Tauri Configuration
 

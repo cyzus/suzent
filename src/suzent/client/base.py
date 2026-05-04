@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -21,42 +20,11 @@ def get_server_url() -> str:
     # 2. File (running instance)
     if not port:
         try:
-            from suzent.config import DATA_DIR
+            from suzent.config import RUNTIME_DIR
 
-            port_file = DATA_DIR / "server.port"
+            port_file = RUNTIME_DIR / "server.port"
             if port_file.exists():
                 port = port_file.read_text(encoding="utf-8").strip()
-
-            if not port:
-                import platform
-
-                system = platform.system()
-                prod_dir = None
-
-                if system == "Windows":
-                    roaming = os.getenv("APPDATA")
-                    if roaming:
-                        prod_dir = Path(roaming) / "com.suzent.app"
-                elif system == "Darwin":
-                    prod_dir = (
-                        Path.home() / "Library/Application Support/com.suzent.app"
-                    )
-                else:  # Linux
-                    xdg = os.getenv("XDG_DATA_HOME")
-                    if xdg:
-                        prod_dir = Path(xdg) / "com.suzent.app"
-                    else:
-                        prod_dir = Path.home() / ".local/share/com.suzent.app"
-
-                if prod_dir:
-                    prod_port_file = prod_dir / "server.port"
-
-                    if prod_port_file.exists():
-                        port = prod_port_file.read_text(encoding="utf-8").strip()
-                    else:
-                        nested = prod_dir / ".suzent" / "server.port"
-                        if nested.exists():
-                            port = nested.read_text(encoding="utf-8").strip()
 
         except Exception:
             pass

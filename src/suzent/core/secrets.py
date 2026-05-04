@@ -155,9 +155,9 @@ class EncryptedDBBackend(SecretBackend):
             return env_key.encode()
 
         # Auto-generate and persist
-        from suzent.config import PROJECT_DIR
+        from suzent.config import DATA_DIR
 
-        key_file = PROJECT_DIR / "data" / ".secret_key"
+        key_file = DATA_DIR / ".secret_key"
         key_file.parent.mkdir(parents=True, exist_ok=True)
 
         if key_file.exists():

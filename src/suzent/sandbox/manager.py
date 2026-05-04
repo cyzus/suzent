@@ -303,7 +303,7 @@ class DockerSession:
         """
         import re
 
-        from suzent.config import CONFIG, DATA_DIR
+        from suzent.config import CONFIG, RUNTIME_DIR
 
         env = dict(self.env)
 
@@ -318,7 +318,7 @@ class DockerSession:
 
         # Override port when server started with SUZENT_PORT=0 (dynamic port)
         try:
-            port_file = DATA_DIR / "server.port"
+            port_file = RUNTIME_DIR / "server.port"
             if port_file.exists():
                 port = port_file.read_text(encoding="utf-8").strip()
                 base_url = re.sub(r":\d+$", f":{port}", base_url)

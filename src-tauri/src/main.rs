@@ -111,8 +111,7 @@ try {{ localStorage.setItem('SUZENT_PORT', '{port}'); }} catch (e) {{}}
 
 #[cfg(debug_assertions)]
 fn read_port_file() -> Option<u16> {
-    let data_dir = backend::find_repo_dir().join(".suzent");
-    let port_file = data_dir.join("server.port");
+    let port_file = backend::find_data_dir().join("runtime").join("server.port");
     let text = std::fs::read_to_string(&port_file).ok()?;
     text.trim().parse::<u16>().ok()
 }

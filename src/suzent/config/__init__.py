@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -13,11 +14,7 @@ DEFAULT_HOST: str = os.getenv("SUZENT_HOST", "localhost")
 
 
 def get_project_root() -> Path:
-    """Get project root, handling dev, bundled, and installed CLI scenarios."""
-
-    app_data = os.getenv("SUZENT_APP_DATA")
-    if app_data:
-        return Path(app_data)
+    """Get source/project root, handling dev, bundled, and installed CLI scenarios."""
 
     current_file = Path(__file__).resolve()
     dev_root = current_file.parents[3]
@@ -52,10 +49,86 @@ def get_project_root() -> Path:
     return dev_root
 
 
+def get_data_dir() -> Path:
+    """Get SUZENT's user data directory."""
+    override = os.getenv("SUZENT_DATA_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
+    return (Path.home() / ".suzent").resolve()
+
+
+def _is_effectively_empty(path: Path) -> bool:
+    if not path.exists():
+        return True
+    try:
+        return not any(path.iterdir())
+    except OSError:
+        return False
+
+
+def _migrate_legacy_data_dir(project_dir: Path, data_dir: Path) -> None:
+    """Copy legacy repo-local .suzent data into the user data directory once."""
+    legacy_dir = project_dir / ".suzent"
+    if legacy_dir.resolve() == data_dir.resolve() or not legacy_dir.exists():
+        return
+    if not _is_effectively_empty(data_dir):
+        return
+
+    logger = get_logger(__name__)
+    try:
+        data_dir.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(legacy_dir, data_dir, dirs_exist_ok=True)
+        migrated_marker = legacy_dir / "MIGRATED.md"
+        migrated_marker.write_text(
+            f"SUZENT data has been migrated to the user data directory:\n{data_dir}\n",
+            encoding="utf-8",
+        )
+        logger.info(
+            "Migrated legacy data directory from {} to {}", legacy_dir, data_dir
+        )
+    except Exception as exc:
+        logger.warning(
+            "Failed to migrate legacy data directory from {} to {}: {}",
+            legacy_dir,
+            data_dir,
+            exc,
+        )
+
+
 PROJECT_DIR = get_project_root()
 
-DATA_DIR = PROJECT_DIR / ".suzent"
+DATA_DIR = get_data_dir()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+_migrate_legacy_data_dir(PROJECT_DIR, DATA_DIR)
+
+RUNTIME_DIR = DATA_DIR / "runtime"
+CACHE_DIR = DATA_DIR / "cache"
+USER_CONFIG_DIR = DATA_DIR / "config"
+USER_SKILLS_DIR = DATA_DIR / "skills"
+MERGED_SKILLS_DIR = RUNTIME_DIR / "skills_merged"
+
+for _dir in (RUNTIME_DIR, CACHE_DIR, USER_CONFIG_DIR, USER_SKILLS_DIR):
+    _dir.mkdir(parents=True, exist_ok=True)
+
+
+def rebuild_merged_skills_dir() -> Path:
+    """Build the runtime skills view mounted into sandboxes."""
+    if MERGED_SKILLS_DIR.exists():
+        shutil.rmtree(MERGED_SKILLS_DIR)
+    MERGED_SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+
+    for root in [PROJECT_DIR / "skills", USER_SKILLS_DIR]:
+        if not root.exists():
+            continue
+        for skill_dir in root.iterdir():
+            if not skill_dir.is_dir() or not (skill_dir / "SKILL.md").exists():
+                continue
+            target = MERGED_SKILLS_DIR / skill_dir.name
+            if target.exists():
+                shutil.rmtree(target)
+            shutil.copytree(skill_dir, target)
+
+    return MERGED_SKILLS_DIR
 
 
 def _normalize_keys(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -97,7 +170,7 @@ def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[st
         volumes.append(vol)
 
     if not any(v.endswith(":/mnt/skills") for v in volumes):
-        skills_resolved = str((PROJECT_DIR / "skills").resolve())
+        skills_resolved = str(rebuild_merged_skills_dir().resolve())
         volumes.append(f"{skills_resolved}:/mnt/skills")
 
     return volumes
@@ -186,12 +259,15 @@ class ConfigModel(BaseModel):
     def load_from_files(cls) -> "ConfigModel":
         logger = get_logger(__name__)
         cfg_dir = PROJECT_DIR / "config"
+        user_cfg_dir = USER_CONFIG_DIR
 
         example_path = cfg_dir / "default.example.yaml"
         default_path = cfg_dir / "default.yaml"
+        user_default_path = user_cfg_dir / "default.yaml"
 
         example_data: Dict[str, Any] = {}
         default_data: Dict[str, Any] = {}
+        user_data: Dict[str, Any] = {}
         loaded_files: List[Path] = []
 
         def _read_file(p: Path) -> Dict[str, Any]:
@@ -222,10 +298,18 @@ class ConfigModel(BaseModel):
                 default_data = _normalize_keys(raw_default)
                 loaded_files.append(default_path)
 
-        data = {**example_data, **default_data}
+        if user_default_path.exists():
+            raw_user = _read_file(user_default_path)
+            if isinstance(raw_user, dict):
+                user_data = _normalize_keys(raw_user)
+                loaded_files.append(user_default_path)
+
+        data = {**example_data, **default_data, **user_data}
 
         try:
-            permission_overrides = load_permission_overrides(PROJECT_DIR, logger)
+            permission_overrides = load_permission_overrides(
+                PROJECT_DIR, logger, USER_CONFIG_DIR
+            )
             if permission_overrides:
                 data.update(permission_overrides)
         except Exception as exc:

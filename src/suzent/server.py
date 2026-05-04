@@ -60,6 +60,15 @@ from suzent.routes.config_routes import (
     delete_custom_provider,
     sync_capabilities,
 )
+from suzent.routes.data_routes import (
+    export_data_route,
+    get_data_path,
+    get_data_status_route,
+    import_data_dry_run_route,
+    import_data_route,
+    sync_pull_route,
+    sync_push_route,
+)
 from suzent.routes.plan_routes import get_plan, get_plans
 from suzent.routes.mcp_routes import (
     list_mcp_servers,
@@ -425,13 +434,18 @@ async def startup():
 
 
 def ensure_app_data():
-    """Ensure required data directories (config, skills) exist in PROJECT_DIR."""
-    from suzent.config import PROJECT_DIR
+    """Ensure required user data directories exist."""
+    from suzent.config import (
+        CACHE_DIR,
+        DATA_DIR,
+        RUNTIME_DIR,
+        USER_CONFIG_DIR,
+        USER_SKILLS_DIR,
+    )
 
     print("INFO: Starting App Data Verification...", flush=True)
 
-    for dir_name in ["config", "skills"]:
-        target = PROJECT_DIR / dir_name
+    for target in [DATA_DIR, RUNTIME_DIR, CACHE_DIR, USER_CONFIG_DIR, USER_SKILLS_DIR]:
         if target.exists():
             logger.debug(f"Directory exists: {target}")
         else:
@@ -584,6 +598,13 @@ app = Starlette(
         Route("/config/capabilities/sync", sync_capabilities, methods=["POST"]),
         Route("/config/social", get_social_config, methods=["GET"]),
         Route("/config/social", save_social_config, methods=["POST"]),
+        Route("/data/path", get_data_path, methods=["GET"]),
+        Route("/data/status", get_data_status_route, methods=["GET"]),
+        Route("/data/export", export_data_route, methods=["POST"]),
+        Route("/data/import/dry-run", import_data_dry_run_route, methods=["POST"]),
+        Route("/data/import", import_data_route, methods=["POST"]),
+        Route("/data/sync/push", sync_push_route, methods=["POST"]),
+        Route("/data/sync/pull", sync_pull_route, methods=["POST"]),
         Route("/social/pairing", list_pairings, methods=["GET"]),
         Route("/social/pairing/{sender_id}/approve", approve_pairing, methods=["POST"]),
         Route("/social/pairing/{sender_id}/deny", deny_pairing, methods=["POST"]),
@@ -674,26 +695,23 @@ app = Starlette(
 if __name__ == "__main__":
     import asyncio
     import datetime
-    from pathlib import Path
 
     import uvicorn
 
-    # File logging in bundled mode (stdout must stay clean for Tauri port detection)
-    if os.getenv("SUZENT_APP_DATA"):
-        try:
-            log_dir = Path(os.environ["SUZENT_APP_DATA"]) / "logs"
-            log_dir.mkdir(parents=True, exist_ok=True)
-            debug_log = log_dir / "suzent_startup.log"
-            from loguru import logger as _debug_logger
+    # File logging in runtime dir (stdout must stay clean for Tauri port detection)
+    try:
+        from suzent.config import RUNTIME_DIR
 
-            _debug_logger.add(
-                str(debug_log), rotation="10 MB", retention=2, level="DEBUG"
-            )
-            _debug_logger.info(
-                f"--- SERVER PROCESS STARTING AT {datetime.datetime.now()} ---"
-            )
-        except Exception:
-            pass
+        RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+        debug_log = RUNTIME_DIR / "suzent_startup.log"
+        from loguru import logger as _debug_logger
+
+        _debug_logger.add(str(debug_log), rotation="10 MB", retention=2, level="DEBUG")
+        _debug_logger.info(
+            f"--- SERVER PROCESS STARTING AT {datetime.datetime.now()} ---"
+        )
+    except Exception:
+        pass
 
     ensure_app_data()
 
@@ -705,9 +723,10 @@ if __name__ == "__main__":
 
     def write_port_file(effective_port: int) -> None:
         """Write the effective port to a file for CLI discovery."""
-        from suzent.config import DATA_DIR
+        from suzent.config import RUNTIME_DIR
 
-        port_file = DATA_DIR / "server.port"
+        RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+        port_file = RUNTIME_DIR / "server.port"
         try:
             port_file.write_text(str(effective_port), encoding="utf-8")
         except Exception:
@@ -715,9 +734,9 @@ if __name__ == "__main__":
 
     def remove_port_file() -> None:
         """Remove the port file on shutdown."""
-        from suzent.config import DATA_DIR
+        from suzent.config import RUNTIME_DIR
 
-        port_file = DATA_DIR / "server.port"
+        port_file = RUNTIME_DIR / "server.port"
         try:
             if port_file.exists():
                 port_file.unlink()
@@ -753,12 +772,7 @@ if __name__ == "__main__":
         try:
             _sock.bind((host, port))
         except OSError as e:
-            if port != 0 and os.getenv("SUZENT_APP_DATA"):
-                logger.warning(f"Port {port} in use, falling back to dynamic port: {e}")
-                port = 0
-                _sock.bind((host, port))
-            else:
-                raise e
+            raise e
         _sock.listen()
         _sock.set_inheritable(True)
         effective_port = _sock.getsockname()[1]

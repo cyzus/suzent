@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Optional
-from suzent.config import PROJECT_DIR
+from suzent.config import PROJECT_DIR, USER_CONFIG_DIR, USER_SKILLS_DIR
 from suzent.logger import get_logger
 from suzent.tools.filesystem.path_resolver import PathResolver
 from .loader import SkillLoader
@@ -12,26 +12,26 @@ class SkillManager:
     _instance = None
 
     def __init__(self, skills_dir: Optional[Path] = None):
+        self.skills_dirs: list[Path]
         if skills_dir is None:
-            # Default to 'skills' directory in project root
-            # Check environment variable first
             import os
 
+            self.skills_dirs = [PROJECT_DIR / "skills", USER_SKILLS_DIR]
             env_path = os.getenv("SKILLS_DIR")
             if env_path:
-                skills_dir = Path(env_path)
-            else:
-                skills_dir = PROJECT_DIR / "skills"
+                self.skills_dirs.append(Path(env_path).expanduser())
+        else:
+            self.skills_dirs = [skills_dir]
 
-        self.skills_dir = skills_dir
-        self.loader = SkillLoader(skills_dir)
-        self.persistence_file = PROJECT_DIR / "config" / "skills.json"
+        self.skills_dir = self.skills_dirs[-1]
+        self.loader = SkillLoader(self.skills_dirs)
+        self.persistence_file = USER_CONFIG_DIR / "skills.json"
 
         # Initialize enabled state
         self.enabled_skills = set()
         self._load_enabled_state()
 
-        logger.info(f"SkillManager initialized with directory: {skills_dir}")
+        logger.info(f"SkillManager initialized with directories: {self.skills_dirs}")
 
     @classmethod
     def get_instance(cls):

@@ -45,7 +45,7 @@ Each skill is a directory containing a `SKILL.md` file and optional resource fol
 ### Directory Layout
 
 ```
-skills/
+~/.suzent/skills/
 ├── my-skill/
 │   ├── SKILL.md          # Required: Main skill definition
 │   ├── scripts/          # Optional: Helper scripts
@@ -86,7 +86,7 @@ Your skill documentation goes here. This can include:
 
 ### Enabling Skills
 
-Skills are managed via `config/skills.json`:
+Skills are managed via `~/.suzent/config/skills.json`:
 
 ```json
 {
@@ -124,15 +124,15 @@ Skills are automatically mounted in the sandbox at `/mnt/skills/{skill-name}/`:
 
 ### Step 1: Create Skill Directory
 
-Create a new directory in `./skills/`:
+Create a new directory in `~/.suzent/skills/`:
 
 ```bash
-mkdir -p skills/my-custom-skill
+mkdir -p ~/.suzent/skills/my-custom-skill
 ```
 
 ### Step 2: Create SKILL.md
 
-Create `skills/my-custom-skill/SKILL.md`:
+Create `~/.suzent/skills/my-custom-skill/SKILL.md`:
 
 ```markdown
 ---
@@ -176,17 +176,17 @@ Add helper scripts, references, or assets:
 
 ```bash
 # Add a helper script
-mkdir skills/my-custom-skill/scripts
-echo "#!/bin/bash\necho 'Helper script'" > skills/my-custom-skill/scripts/helper.sh
+mkdir ~/.suzent/skills/my-custom-skill/scripts
+echo "#!/bin/bash\necho 'Helper script'" > ~/.suzent/skills/my-custom-skill/scripts/helper.sh
 
 # Add reference documentation
-mkdir skills/my-custom-skill/references
-cp ~/docs/api-reference.md skills/my-custom-skill/references/
+mkdir ~/.suzent/skills/my-custom-skill/references
+cp ~/docs/api-reference.md ~/.suzent/skills/my-custom-skill/references/
 ```
 
 ### Step 4: Enable the Skill
 
-Add your skill to `config/skills.json`:
+Add your skill to `~/.suzent/config/skills.json`:
 
 ```json
 {
@@ -232,27 +232,28 @@ Add your skill to `config/skills.json`:
 
 ### Configuration Location
 
-- **Skills Directory**: `./skills/` (or set via `SKILLS_DIR` env var)
-- **Config File**: `config/skills.json`
+- **Built-in Skills Directory**: `./skills/`
+- **User Skills Directory**: `~/.suzent/skills/`
+- **Config File**: `~/.suzent/config/skills.json`
 - **Sandbox Mount**: `/mnt/skills/`
 
 ### Environment Variables
 
 ```bash
-# Custom skills directory
+# Advanced extra skills directory
 SKILLS_DIR=/path/to/custom/skills
 ```
 
 ### Reloading Skills
 
 Skills are loaded at startup. To reload:
-1. Modify `config/skills.json`
+1. Modify `~/.suzent/config/skills.json`
 2. Restart the Suzent server
 
 ### Skill Discovery
 
 The SkillManager automatically discovers skills by:
-1. Scanning the skills directory
+1. Scanning built-in skills, user skills, and optional `SKILLS_DIR`
 2. Looking for `SKILL.md` files
 3. Parsing YAML frontmatter
 4. Validating required fields
@@ -275,7 +276,7 @@ The SkillManager automatically discovers skills by:
 **Problem:** Skill exists but agent can't use it
 
 **Solutions:**
-1. Check `config/skills.json` includes the skill name
+1. Check `~/.suzent/config/skills.json` includes the skill name
 2. Verify skill name matches exactly (case-sensitive)
 3. Restart Suzent server after config changes
 
