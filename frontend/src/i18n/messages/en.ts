@@ -173,6 +173,7 @@ export const en = {
     data: {
       title: 'Data',
       subtitle: 'Manage local data snapshots and sync folders.',
+      storageTitle: 'Local Data',
       currentPath: 'Current path',
       portableEntries: 'Portable entries',
       loading: 'Loading...',

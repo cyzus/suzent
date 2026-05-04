@@ -173,6 +173,7 @@ export const zhCN = {
     data: {
       title: '数据',
       subtitle: '管理本地数据快照和同步文件夹。',
+      storageTitle: '本地数据',
       currentPath: '当前路径',
       portableEntries: '可迁移内容',
       loading: '加载中...',
