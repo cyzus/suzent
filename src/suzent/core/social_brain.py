@@ -320,8 +320,16 @@ class SocialBrain(BaseBrain):
                         f"(TTL: {ttl_seconds}s)"
                     )
 
-                # Clean up expired pairing tokens
+                # Clean up expired pairing tokens and stale waiting entries
                 self._cleanup_expired_tokens()
+                stale_waiting_ttl = 86400  # 24 hours
+                stale_keys = [
+                    k
+                    for k, e in self._pending_pairings.items()
+                    if current_time - e["requested_at"] > stale_waiting_ttl
+                ]
+                for k in stale_keys:
+                    del self._pending_pairings[k]
 
                 # Also clean up global run states
                 from suzent.core.run_state import cleanup_stale_states
@@ -343,7 +351,10 @@ class SocialBrain(BaseBrain):
     # ------------------------------------------------------------------ #
 
     def _generate_token(self) -> str:
-        return "".join(secrets.choice(_TOKEN_CHARS) for _ in range(6))
+        while True:
+            token = "".join(secrets.choice(_TOKEN_CHARS) for _ in range(6))
+            if token not in self._pending_tokens:
+                return token
 
     def _cleanup_expired_tokens(self):
         now = time.time()

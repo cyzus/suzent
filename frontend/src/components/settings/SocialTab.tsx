@@ -235,7 +235,7 @@ export function SocialTab({
                 </div>
 
                 {!handshakeEnabled && (
-                    <p className="text-sm text-neutral-500 dark:text-neutral-400 italic">Pairing disabled — anyone can chat if not in allowlist.</p>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400 italic">Pairing disabled — only users in the allowlist can chat.</p>
                 )}
 
                 {handshakeEnabled && (pairings.length === 0 ? (

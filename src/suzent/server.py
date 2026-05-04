@@ -196,7 +196,7 @@ def _build_social_from_config(
         memory_enabled=social_config.get("memory_enabled", True),
         tools=social_config.get("tools"),
         mcp_enabled=social_config.get("mcp_enabled"),
-        handshake_enabled=handshake_cfg.get("enabled", True),
+        handshake_enabled=handshake_cfg.get("enabled", False),
         handshake_greeting=handshake_cfg.get("greeting"),
     )
     return cm, sb
@@ -239,25 +239,28 @@ async def list_pairings(request: Request) -> JSONResponse:
 
 
 async def _parse_pairing_request(request: Request):
-    """Return (brain, token) or raise JSONResponse on error."""
+    """Return (brain, token, None) on success, or (None, None, error_response) on failure."""
     brain: SocialBrain = getattr(request.app.state, "social_brain", None)
     if brain is None:
-        raise JSONResponse({"error": "Social brain not running"}, status_code=503)
+        return (
+            None,
+            None,
+            JSONResponse({"error": "Social brain not running"}, status_code=503),
+        )
     try:
         data = await request.json()
         token = str(data.get("token", "")).strip()
     except Exception:
-        raise JSONResponse({"error": "Invalid payload"}, status_code=400)
+        return None, None, JSONResponse({"error": "Invalid payload"}, status_code=400)
     if not token:
-        raise JSONResponse({"error": "token is required"}, status_code=400)
-    return brain, token
+        return None, None, JSONResponse({"error": "token is required"}, status_code=400)
+    return brain, token, None
 
 
 async def approve_pairing(request: Request) -> JSONResponse:
     """POST /social/pairing/approve  body: {"token": "..."}"""
-    try:
-        brain, token = await _parse_pairing_request(request)
-    except JSONResponse as err:
+    brain, token, err = await _parse_pairing_request(request)
+    if err is not None:
         return err
     ok = await brain.approve_by_token(token)
     if not ok:
@@ -267,9 +270,8 @@ async def approve_pairing(request: Request) -> JSONResponse:
 
 async def deny_pairing(request: Request) -> JSONResponse:
     """POST /social/pairing/deny  body: {"token": "..."}"""
-    try:
-        brain, token = await _parse_pairing_request(request)
-    except JSONResponse as err:
+    brain, token, err = await _parse_pairing_request(request)
+    if err is not None:
         return err
     ok = await brain.deny_by_token(token)
     if not ok:

@@ -147,6 +147,13 @@ class TelegramChannel(SocialChannel):
 
     async def connect(self):
         """Start the Telegram bot poller."""
+        if ApplicationBuilder is None:
+            logger.error(
+                "python-telegram-bot is not installed. "
+                "Install with: pip install suzent[social]"
+            )
+            return
+
         if not self.token:
             logger.warning("No Telegram token provided. Channel disabled.")
             return
