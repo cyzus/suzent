@@ -10,7 +10,9 @@ import { markChatRead } from '../lib/api';
 export const ChatList: React.FC = () => {
   const {
     chats,
+    chatTotal,
     loadingChats,
+    loadingMoreChats,
     refreshingChats,
     currentChatId,
     searchQuery,
@@ -19,7 +21,8 @@ export const ChatList: React.FC = () => {
     beginNewChat,
     deleteChat,
     switchToView,
-    refreshChatList
+    refreshChatList,
+    loadMoreChats,
   } = useChatStore();
 
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
@@ -62,11 +65,12 @@ export const ChatList: React.FC = () => {
     setLocalSearchQuery(searchQuery);
   }, []);
 
-  // Debounce search to avoid too many API calls
+  // Debounce search — force=true bypasses the 3500ms throttle so every keystroke
+  // (after the 300ms debounce) actually fires a new request.
   useEffect(() => {
     const timeout = setTimeout(() => {
       setSearchQuery(localSearchQuery);
-      refreshChatList(localSearchQuery);
+      refreshChatList(localSearchQuery, true);
     }, 300);
     return () => clearTimeout(timeout);
   }, [localSearchQuery]);
@@ -248,7 +252,7 @@ export const ChatList: React.FC = () => {
           </div>
         ) : (
           <div className="flex flex-col bg-white dark:bg-zinc-800 pt-[3px]">
-            {displayedChats.map((chat: ChatSummary, idx: number) => (
+            {displayedChats.map((chat: ChatSummary, _idx: number) => (
               <div
                 key={chat.id}
                 onClick={() => {
@@ -354,6 +358,18 @@ export const ChatList: React.FC = () => {
                 </div>
               </div>
             ))}
+            {/* Load more button — shown when server has more chats than currently loaded */}
+            {chats.length < chatTotal && (
+              <button
+                onClick={loadMoreChats}
+                disabled={loadingMoreChats}
+                className="w-full py-2.5 text-[10px] font-bold uppercase border-t-2 border-brutal-black bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loadingMoreChats
+                  ? t('chatList.loadingMore')
+                  : t('chatList.loadMore').replace('{count}', String(chatTotal - chats.length))}
+              </button>
+            )}
           </div>
         )}
       </div>

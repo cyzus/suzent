@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 from sqlalchemy.orm import selectinload
-from sqlalchemy import text, inspect
+from sqlalchemy import cast, Text, or_, text, inspect
 from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import (
     Column,
@@ -791,7 +791,12 @@ class ChatDatabase:
             statement = select(ChatModel).order_by(ChatModel.updated_at.desc())
 
             if search:
-                statement = statement.where(ChatModel.title.contains(search))
+                statement = statement.where(
+                    or_(
+                        ChatModel.title.contains(search),
+                        cast(ChatModel.messages, Text).contains(search),
+                    )
+                )
 
             statement = statement.offset(offset).limit(limit)
             chats = session.exec(statement).all()
@@ -868,8 +873,12 @@ class ChatDatabase:
         with self._session() as session:
             statement = select(ChatModel)
             if search:
-                # Simplified search logic matching list_chats
-                statement = statement.where(ChatModel.title.contains(search))
+                statement = statement.where(
+                    or_(
+                        ChatModel.title.contains(search),
+                        cast(ChatModel.messages, Text).contains(search),
+                    )
+                )
             return len(session.exec(statement).all())
 
     def reassign_plan_chat(self, old_chat_id: str, new_chat_id: str) -> int:
