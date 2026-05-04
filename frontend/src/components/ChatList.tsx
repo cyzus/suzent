@@ -239,16 +239,30 @@ export const ChatList: React.FC = () => {
       {/* Chat List - Scrollable Content */}
       <div className="flex-1 overflow-y-auto scrollbar-thin min-h-0">
         {displayedChats.length === 0 ? (
-          <div className="p-8 text-center bg-white dark:bg-zinc-800">
-            <div className="w-16 h-16 mx-auto mb-3">
-              <RobotAvatar variant={searchQuery ? "ghost" : "portal"} />
+          <div className="flex flex-col bg-white dark:bg-zinc-800">
+            <div className="p-8 text-center">
+              <div className="w-16 h-16 mx-auto mb-3">
+                <RobotAvatar variant={searchQuery ? "ghost" : "portal"} />
+              </div>
+              <p className="text-brutal-black dark:text-white text-sm font-bold uppercase">
+                {searchQuery ? t('chatList.empty.noResultsTitle') : (viewMode === 'social' ? t('chatList.empty.noSocialTitle') : t('chatList.empty.noChatsTitle'))}
+              </p>
+              <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-1">
+                {searchQuery ? t('chatList.empty.noResultsDesc') : (viewMode === 'social' ? t('chatList.empty.noSocialDesc') : t('chatList.empty.noChatsDesc'))}
+              </p>
             </div>
-            <p className="text-brutal-black dark:text-white text-sm font-bold uppercase">
-              {searchQuery ? t('chatList.empty.noResultsTitle') : (viewMode === 'social' ? t('chatList.empty.noSocialTitle') : t('chatList.empty.noChatsTitle'))}
-            </p>
-            <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-1">
-              {searchQuery ? t('chatList.empty.noResultsDesc') : (viewMode === 'social' ? t('chatList.empty.noSocialDesc') : t('chatList.empty.noChatsDesc'))}
-            </p>
+            {/* Load more even when current view is empty (e.g. social tab but chats beyond first page) */}
+            {chats.length < chatTotal && (
+              <button
+                onClick={loadMoreChats}
+                disabled={loadingMoreChats}
+                className="w-full py-2.5 text-[10px] font-bold uppercase border-t-2 border-brutal-black bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loadingMoreChats
+                  ? t('chatList.loadingMore')
+                  : t('chatList.loadMore', { count: Math.max(0, chatTotal - chats.length) })}
+              </button>
+            )}
           </div>
         ) : (
           <div className="flex flex-col bg-white dark:bg-zinc-800 pt-[3px]">
@@ -367,7 +381,7 @@ export const ChatList: React.FC = () => {
               >
                 {loadingMoreChats
                   ? t('chatList.loadingMore')
-                  : t('chatList.loadMore').replace('{count}', String(chatTotal - chats.length))}
+                  : t('chatList.loadMore', { count: Math.max(0, chatTotal - chats.length) })}
               </button>
             )}
           </div>

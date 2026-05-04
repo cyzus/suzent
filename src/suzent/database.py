@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 from sqlalchemy.orm import selectinload
-from sqlalchemy import cast, Text, or_, text, inspect
+from sqlalchemy import cast, Text, or_, text, inspect, func
 from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import (
     Column,
@@ -871,7 +871,7 @@ class ChatDatabase:
     def get_chat_count(self, search: str = None) -> int:
         """Get total number of chats."""
         with self._session() as session:
-            statement = select(ChatModel)
+            statement = select(func.count()).select_from(ChatModel)
             if search:
                 statement = statement.where(
                     or_(
@@ -879,7 +879,7 @@ class ChatDatabase:
                         cast(ChatModel.messages, Text).contains(search),
                     )
                 )
-            return len(session.exec(statement).all())
+            return session.exec(statement).one()
 
     def reassign_plan_chat(self, old_chat_id: str, new_chat_id: str) -> int:
         """Reassign all plans from one chat_id to another."""

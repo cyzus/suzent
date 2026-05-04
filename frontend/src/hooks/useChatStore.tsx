@@ -207,6 +207,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const chatsLoadedRef = useRef(false);
   const refreshInFlightRef = useRef(false);
   const lastRefreshAtRef = useRef(0);
+  const searchRequestIdRef = useRef(0);
   const chatCreationPromiseRef = useRef<Promise<string | null> | null>(null);
   const saveTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
   const messagesByChatRef = useRef(messagesByChat);
@@ -410,6 +411,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Deduplicate overlapping non-initial refreshes to reduce repeated /chats traffic.
     // Skip throttle when force=true (e.g. search queries must always go through).
+    // Do NOT update lastRefreshAtRef for forced requests so background consistency
+    // refreshes (e.g. after deleteChat) are not accidentally suppressed.
+    let requestId = 0;
     if (!isFirstLoad && !force) {
       const now = Date.now();
       if (refreshInFlightRef.current) return;
@@ -417,8 +421,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       refreshInFlightRef.current = true;
       lastRefreshAtRef.current = now;
     } else if (!isFirstLoad && force) {
-      // For forced requests, still update timestamp to reset the throttle window
-      lastRefreshAtRef.current = Date.now();
+      // Assign a monotonically increasing ID; only apply the response if it's still latest.
+      searchRequestIdRef.current += 1;
+      requestId = searchRequestIdRef.current;
     }
 
     if (isFirstLoad) {
@@ -434,6 +439,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const url = searchParam ? `${apiBase}/chats?search=${encodeURIComponent(searchParam)}` : `${apiBase}/chats`;
       const res = await fetch(url);
       if (res.ok) {
+        // Discard stale forced-search responses that arrived out of order.
+        if (force && requestId !== searchRequestIdRef.current) return;
+
         const data = await res.json();
         const serverList: ChatSummary[] = data.chats || [];
         setChatTotal(data.total ?? serverList.length);
@@ -527,7 +535,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (res.ok) {
         const data = await res.json();
         const newChats: ChatSummary[] = data.chats || [];
-        setChatTotal(data.total ?? 0);
+        if (data.total != null) setChatTotal(data.total);
         setChatOffset(nextOffset);
         setChats(prev => {
           const existingIds = new Set(prev.map(c => c.id));
