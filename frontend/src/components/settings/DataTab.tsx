@@ -9,17 +9,31 @@ export function DataTab(): React.ReactElement {
   const [syncTarget, setSyncTarget] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [isError, setIsError] = useState(false);
 
   useEffect(() => {
-    fetchDataStatus().then(setStatus).catch(() => setStatus(null));
+    fetchDataStatus().then(setStatus).catch(() => {
+      setStatus(null);
+      setIsError(true);
+      setMessage(t('settings.data.statusFailed'));
+    });
   }, []);
 
   async function handleExport(): Promise<void> {
     setBusy(true);
-    setMessage('');
+    setIsError(false);
+    setMessage(t('settings.data.exporting'));
     try {
       const result = await exportData();
       setMessage(t('settings.data.exported').replace('{path}', result.output_path));
+    } catch (error) {
+      setIsError(true);
+      setMessage(
+        t('settings.data.exportFailed').replace(
+          '{error}',
+          error instanceof Error ? error.message : String(error)
+        )
+      );
     } finally {
       setBusy(false);
     }
@@ -28,10 +42,19 @@ export function DataTab(): React.ReactElement {
   async function handleSyncPush(): Promise<void> {
     if (!syncTarget.trim()) return;
     setBusy(true);
-    setMessage('');
+    setIsError(false);
+    setMessage(t('settings.data.syncing'));
     try {
       const result = await syncPush(syncTarget.trim());
       setMessage(t('settings.data.synced').replace('{path}', result.output_path));
+    } catch (error) {
+      setIsError(true);
+      setMessage(
+        t('settings.data.syncFailed').replace(
+          '{error}',
+          error instanceof Error ? error.message : String(error)
+        )
+      );
     } finally {
       setBusy(false);
     }
@@ -67,11 +90,18 @@ export function DataTab(): React.ReactElement {
           onClick={handleExport}
           className="px-4 py-2 border-2 border-brutal-black bg-brutal-yellow text-brutal-black font-bold uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50"
         >
-          {t('settings.data.export')}
+          {busy ? t('settings.data.working') : t('settings.data.export')}
         </button>
+        <span className="self-center text-xs text-neutral-600 dark:text-neutral-400">
+          {t('settings.data.exportHint')}
+        </span>
       </div>
 
       <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] space-y-3">
+        <div>
+          <div className="text-xs uppercase font-bold text-neutral-500">{t('settings.data.syncTarget')}</div>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{t('settings.data.syncDesc')}</p>
+        </div>
         <label className="block text-xs uppercase font-bold text-neutral-500">{t('settings.data.syncTarget')}</label>
         <input
           value={syncTarget}
@@ -90,7 +120,7 @@ export function DataTab(): React.ReactElement {
       </div>
 
       {message && (
-        <div className="border-2 border-brutal-black bg-green-100 text-brutal-black p-3 font-mono text-sm">
+        <div className={`border-2 border-brutal-black p-3 font-mono text-sm ${isError ? 'bg-red-100 text-brutal-black' : 'bg-green-100 text-brutal-black'}`}>
           {message}
         </div>
       )}
