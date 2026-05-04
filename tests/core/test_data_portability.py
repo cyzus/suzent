@@ -1,4 +1,5 @@
 from pathlib import Path
+import zipfile
 
 from suzent.core import data_portability
 
@@ -25,6 +26,38 @@ def test_export_excludes_runtime_cache_and_exports(monkeypatch, tmp_path: Path):
     assert "cache" not in result.included
     assert "exports" not in result.included
     assert ".secret_key" not in result.included
+
+
+def test_export_skips_inaccessible_files(monkeypatch, tmp_path: Path):
+    data_dir = tmp_path / ".suzent"
+    monkeypatch.setattr(data_portability, "DATA_DIR", data_dir)
+    monkeypatch.setattr(data_portability, "RUNTIME_DIR", data_dir / "runtime")
+    monkeypatch.setattr(data_portability, "CACHE_DIR", data_dir / "cache")
+
+    bad_file = (
+        data_dir / "sandbox" / "sessions" / "one" / "node_modules" / ".bin" / "gws"
+    )
+    good_file = data_dir / "sandbox" / "sessions" / "one" / "notes.txt"
+    bad_file.parent.mkdir(parents=True)
+    good_file.write_text("keep", encoding="utf-8")
+    bad_file.write_text("bad", encoding="utf-8")
+
+    original_is_file = Path.is_file
+
+    def fake_is_file(path: Path) -> bool:
+        if path == bad_file:
+            raise OSError("unreachable")
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", fake_is_file)
+
+    archive = tmp_path / "backup.zip"
+    result = data_portability.export_data(archive)
+
+    assert "sandbox/sessions/one/node_modules/.bin/gws" in result.skipped
+    with zipfile.ZipFile(archive) as zf:
+        assert "sandbox/sessions/one/notes.txt" in zf.namelist()
+        assert "sandbox/sessions/one/node_modules/.bin/gws" not in zf.namelist()
 
 
 def test_import_dry_run_does_not_replace_data(monkeypatch, tmp_path: Path):

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from suzent.config import CACHE_DIR, DATA_DIR, RUNTIME_DIR
 
@@ -26,6 +26,7 @@ class DataStatus(BaseModel):
 class ExportResult(BaseModel):
     output_path: str
     included: list[str]
+    skipped: list[str] = Field(default_factory=list)
     manifest: dict[str, Any]
 
 
@@ -68,20 +69,28 @@ def export_data(output_path: Path | None = None) -> ExportResult:
         "includes": included,
     }
 
+    skipped: list[str] = []
+
     with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(MANIFEST_NAME, json.dumps(manifest, indent=2))
         for name in included:
             path = DATA_DIR / name
-            if path.is_file():
-                zf.write(path, name)
-            elif path.is_dir():
+            if _safe_is_file(path, skipped):
+                _safe_write(zf, path, name, skipped)
+            elif _safe_is_dir(path, skipped):
                 for child in path.rglob("*"):
-                    if child.is_file():
-                        zf.write(child, child.relative_to(DATA_DIR).as_posix())
+                    if _safe_is_file(child, skipped):
+                        _safe_write(
+                            zf,
+                            child,
+                            child.relative_to(DATA_DIR).as_posix(),
+                            skipped,
+                        )
 
     return ExportResult(
         output_path=str(output_path),
         included=included,
+        skipped=skipped,
         manifest=manifest,
     )
 
@@ -145,6 +154,47 @@ def _portable_entries(root: Path) -> list[str]:
             continue
         entries.append(child.name)
     return sorted(entries)
+
+
+def _safe_is_file(path: Path, skipped: list[str]) -> bool:
+    if path.is_symlink():
+        skipped.append(_portable_path(path))
+        return False
+    try:
+        return path.is_file()
+    except OSError:
+        skipped.append(_portable_path(path))
+        return False
+
+
+def _safe_is_dir(path: Path, skipped: list[str]) -> bool:
+    if path.is_symlink():
+        skipped.append(_portable_path(path))
+        return False
+    try:
+        return path.is_dir()
+    except OSError:
+        skipped.append(_portable_path(path))
+        return False
+
+
+def _safe_write(
+    zf: zipfile.ZipFile,
+    path: Path,
+    arcname: str,
+    skipped: list[str],
+) -> None:
+    try:
+        zf.write(path, arcname)
+    except OSError:
+        skipped.append(_portable_path(path))
+
+
+def _portable_path(path: Path) -> str:
+    try:
+        return path.relative_to(DATA_DIR).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def _default_export_path() -> Path:

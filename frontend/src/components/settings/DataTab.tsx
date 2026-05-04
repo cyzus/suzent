@@ -1,7 +1,17 @@
 import React, { useEffect, useState } from 'react';
+import { open } from '@tauri-apps/plugin-dialog';
 
 import { useI18n } from '../../i18n';
-import { DataStatus, exportData, fetchDataStatus, syncPush } from '../../lib/dataApi';
+import {
+  DataStatus,
+  exportData,
+  fetchDataStatus,
+  importData,
+  previewImportData,
+  previewSyncPull,
+  syncPull,
+  syncPush,
+} from '../../lib/dataApi';
 
 export function DataTab(): React.ReactElement {
   const { t } = useI18n();
@@ -39,6 +49,45 @@ export function DataTab(): React.ReactElement {
     }
   }
 
+  async function handleImport(): Promise<void> {
+    setBusy(true);
+    setIsError(false);
+    setMessage('');
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: 'SUZENT Export', extensions: ['zip'] }],
+      });
+      if (!selected || Array.isArray(selected)) return;
+
+      const archive = String(selected);
+      const preview = await previewImportData(archive);
+      const confirmed = window.confirm(
+        t('settings.data.importConfirm', { count: preview.entries.length })
+      );
+      if (!confirmed) return;
+
+      setMessage(t('settings.data.importing'));
+      const result = await importData(archive);
+      setStatus(await fetchDataStatus());
+      setMessage(
+        t('settings.data.imported', {
+          path: result.data_dir,
+          backup: result.backup_path,
+        })
+      );
+    } catch (error) {
+      setIsError(true);
+      setMessage(
+        t('settings.data.importFailed', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleSyncPush(): Promise<void> {
     if (!syncTarget.trim()) return;
     setBusy(true);
@@ -54,6 +103,38 @@ export function DataTab(): React.ReactElement {
           '{error}',
           error instanceof Error ? error.message : String(error)
         )
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSyncPull(): Promise<void> {
+    if (!syncTarget.trim()) return;
+    setBusy(true);
+    setIsError(false);
+    setMessage(t('settings.data.pulling'));
+    try {
+      const preview = await previewSyncPull(syncTarget.trim());
+      const confirmed = window.confirm(
+        t('settings.data.pullConfirm', { count: preview.entries.length })
+      );
+      if (!confirmed) return;
+
+      const result = await syncPull(syncTarget.trim());
+      setStatus(await fetchDataStatus());
+      setMessage(
+        t('settings.data.pulled', {
+          path: result.data_dir,
+          backup: result.backup_path,
+        })
+      );
+    } catch (error) {
+      setIsError(true);
+      setMessage(
+        t('settings.data.pullFailed', {
+          error: error instanceof Error ? error.message : String(error),
+        })
       );
     } finally {
       setBusy(false);
@@ -107,6 +188,14 @@ export function DataTab(): React.ReactElement {
             >
               {busy ? t('settings.data.working') : t('settings.data.export')}
             </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleImport}
+              className="px-4 py-2 bg-white dark:bg-zinc-700 border-2 border-brutal-black font-bold uppercase text-xs text-brutal-black dark:text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:brightness-110 transition-colors active:shadow-none disabled:opacity-50"
+            >
+              {t('settings.data.import')}
+            </button>
             <span className="self-center text-xs text-neutral-600 dark:text-neutral-400">
               {t('settings.data.exportHint')}
             </span>
@@ -118,7 +207,8 @@ export function DataTab(): React.ReactElement {
         <div className="flex items-start gap-4 mb-6">
           <div className="w-12 h-12 bg-brutal-blue border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-white">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v6h6M20 20v-6h-6M5 19a9 9 0 0114-7.5M19 5A9 9 0 005 12.5" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16V9m0 0l-3 3m3-3l3 3" />
             </svg>
           </div>
           <div>
@@ -134,14 +224,24 @@ export function DataTab(): React.ReactElement {
             placeholder={t('settings.data.syncPlaceholder')}
             className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
           />
-          <button
-            type="button"
-            disabled={busy || !syncTarget.trim()}
-            onClick={handleSyncPush}
-            className="px-4 py-2 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-xs text-brutal-black hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
-          >
-            {t('settings.data.syncPush')}
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              disabled={busy || !syncTarget.trim()}
+              onClick={handleSyncPush}
+              className="px-4 py-2 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-xs text-brutal-black hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
+            >
+              {t('settings.data.syncPush')}
+            </button>
+            <button
+              type="button"
+              disabled={busy || !syncTarget.trim()}
+              onClick={handleSyncPull}
+              className="px-4 py-2 bg-white dark:bg-zinc-700 border-2 border-brutal-black font-bold uppercase text-xs text-brutal-black dark:text-white hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
+            >
+              {t('settings.data.syncPull')}
+            </button>
+          </div>
         </div>
       </div>
 
