@@ -26,6 +26,11 @@ except ImportError:
     Update = Any
     InlineKeyboardButton = None
     InlineKeyboardMarkup = None
+    ApplicationBuilder = None
+    CallbackQueryHandler = None
+    ContextTypes = None
+    MessageHandler = None
+    filters = None
 
 logger = get_logger(__name__)
 

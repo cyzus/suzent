@@ -95,11 +95,11 @@ class SocialAPI:
     async def pending_pairings(self) -> dict:
         return await self.client.get("/social/pairing")
 
-    async def approve_pairing(self, sender_id: str) -> dict:
-        return await self.client.post(f"/social/pairing/{sender_id}/approve")
+    async def approve_pairing_by_token(self, token: str) -> dict:
+        return await self.client.post("/social/pairing/approve", json={"token": token})
 
-    async def deny_pairing(self, sender_id: str) -> dict:
-        return await self.client.post(f"/social/pairing/{sender_id}/deny")
+    async def deny_pairing_by_token(self, token: str) -> dict:
+        return await self.client.post("/social/pairing/deny", json={"token": token})
 
 
 class ChatAPI:

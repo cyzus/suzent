@@ -409,13 +409,14 @@ export interface SocialConfig {
 }
 
 export interface PairingRequest {
-  key: string;
+  token: string;
   sender_id: string;
   sender_name: string;
   platform: string;
   intro: string;
   state: string;
   requested_at: number;
+  expires_at: number;
 }
 
 export async function fetchPairings(): Promise<PairingRequest[]> {
@@ -429,18 +430,26 @@ export async function fetchPairings(): Promise<PairingRequest[]> {
   }
 }
 
-export async function approvePairing(senderId: string): Promise<boolean> {
+export async function approvePairing(token: string): Promise<boolean> {
   try {
-    const res = await fetch(`${getApiBase()}/social/pairing/${encodeURIComponent(senderId)}/approve`, { method: 'POST' });
+    const res = await fetch(`${getApiBase()}/social/pairing/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
     return res.ok;
   } catch {
     return false;
   }
 }
 
-export async function denyPairing(senderId: string): Promise<boolean> {
+export async function denyPairing(token: string): Promise<boolean> {
   try {
-    const res = await fetch(`${getApiBase()}/social/pairing/${encodeURIComponent(senderId)}/deny`, { method: 'POST' });
+    const res = await fetch(`${getApiBase()}/social/pairing/deny`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
     return res.ok;
   } catch {
     return false;

@@ -196,7 +196,7 @@ def _build_social_from_config(
         memory_enabled=social_config.get("memory_enabled", True),
         tools=social_config.get("tools"),
         mcp_enabled=social_config.get("mcp_enabled"),
-        handshake_enabled=handshake_cfg.get("enabled", False),
+        handshake_enabled=handshake_cfg.get("enabled", True),
         handshake_greeting=handshake_cfg.get("greeting"),
     )
     return cm, sb
@@ -238,31 +238,42 @@ async def list_pairings(request: Request) -> JSONResponse:
     return JSONResponse({"pairings": brain.list_pairings()})
 
 
-async def approve_pairing(request: Request) -> JSONResponse:
-    """POST /social/pairing/{sender_id}/approve"""
+async def _parse_pairing_request(request: Request):
+    """Return (brain, token) or raise JSONResponse on error."""
     brain: SocialBrain = getattr(request.app.state, "social_brain", None)
     if brain is None:
-        return JSONResponse({"error": "Social brain not running"}, status_code=503)
-    sender_id = request.path_params["sender_id"]
-    ok = await brain.approve_pairing(sender_id)
+        raise JSONResponse({"error": "Social brain not running"}, status_code=503)
+    try:
+        data = await request.json()
+        token = str(data.get("token", "")).strip()
+    except Exception:
+        raise JSONResponse({"error": "Invalid payload"}, status_code=400)
+    if not token:
+        raise JSONResponse({"error": "token is required"}, status_code=400)
+    return brain, token
+
+
+async def approve_pairing(request: Request) -> JSONResponse:
+    """POST /social/pairing/approve  body: {"token": "..."}"""
+    try:
+        brain, token = await _parse_pairing_request(request)
+    except JSONResponse as err:
+        return err
+    ok = await brain.approve_by_token(token)
     if not ok:
-        return JSONResponse(
-            {"error": f"No pending pairing for {sender_id}"}, status_code=404
-        )
+        return JSONResponse({"error": "Invalid or expired token"}, status_code=404)
     return JSONResponse({"success": True})
 
 
 async def deny_pairing(request: Request) -> JSONResponse:
-    """POST /social/pairing/{sender_id}/deny"""
-    brain: SocialBrain = getattr(request.app.state, "social_brain", None)
-    if brain is None:
-        return JSONResponse({"error": "Social brain not running"}, status_code=503)
-    sender_id = request.path_params["sender_id"]
-    ok = await brain.deny_pairing(sender_id)
+    """POST /social/pairing/deny  body: {"token": "..."}"""
+    try:
+        brain, token = await _parse_pairing_request(request)
+    except JSONResponse as err:
+        return err
+    ok = await brain.deny_by_token(token)
     if not ok:
-        return JSONResponse(
-            {"error": f"No pending pairing for {sender_id}"}, status_code=404
-        )
+        return JSONResponse({"error": "Invalid or expired token"}, status_code=404)
     return JSONResponse({"success": True})
 
 
@@ -438,6 +449,7 @@ async def startup():
                 logger.error(f"Failed to load social config: {e}")
 
         channel_manager, social_brain = _build_social_from_config(social_config)
+
         app.state.social_brain = social_brain
         asyncio.create_task(init_background_services(channel_manager, social_brain))
 
@@ -605,8 +617,8 @@ app = Starlette(
         Route("/config/social", get_social_config, methods=["GET"]),
         Route("/config/social", save_social_config, methods=["POST"]),
         Route("/social/pairing", list_pairings, methods=["GET"]),
-        Route("/social/pairing/{sender_id}/approve", approve_pairing, methods=["POST"]),
-        Route("/social/pairing/{sender_id}/deny", deny_pairing, methods=["POST"]),
+        Route("/social/pairing/approve", approve_pairing, methods=["POST"]),
+        Route("/social/pairing/deny", deny_pairing, methods=["POST"]),
         Route("/mcp_servers", list_mcp_servers, methods=["GET"]),
         Route("/mcp_servers", add_mcp_server, methods=["POST"]),
         Route("/mcp_servers/remove", remove_mcp_server, methods=["POST"]),
