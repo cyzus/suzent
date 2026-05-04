@@ -42,8 +42,11 @@ interface ChatCoreContextValue {
   finalSave: (chatId?: string | null) => Promise<void>;
   forceSaveNow: (chatId?: string | null) => Promise<void>;
   deleteChat: (chatId: string) => Promise<void>;
-  refreshChatList: (searchQuery?: string) => Promise<void>;
+  chatTotal: number;
+  loadingMoreChats: boolean;
+  refreshChatList: (searchQuery?: string, force?: boolean) => Promise<void>;
   refreshChatListSilently: (searchQuery?: string) => Promise<void>;
+  loadMoreChats: () => Promise<void>;
   updateChatTitleLocally: (chatId: string, title: string) => void;
   updateMessage: (index: number, update: Partial<Message>, chatId?: string | null) => void;
   truncateMessagesFrom: (fromIndex: number, chatId?: string | null) => void;
@@ -195,12 +198,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [currentChatTitle, setCurrentChatTitle] = useState<string>('New Chat');
   const [chats, setChats] = useState<ChatSummary[]>([]);
+  const [chatTotal, setChatTotal] = useState<number>(0);
+  const [chatOffset, setChatOffset] = useState<number>(0);
   const [loadingChats, setLoadingChats] = useState(false);
+  const [loadingMoreChats, setLoadingMoreChats] = useState(false);
   const [refreshingChats, setRefreshingChats] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const chatsLoadedRef = useRef(false);
   const refreshInFlightRef = useRef(false);
   const lastRefreshAtRef = useRef(0);
+  const searchRequestIdRef = useRef(0);
   const chatCreationPromiseRef = useRef<Promise<string | null> | null>(null);
   const saveTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
   const messagesByChatRef = useRef(messagesByChat);
@@ -394,20 +401,29 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshChatListInternal = useCallback(async (
     search?: string,
-    options?: { silent?: boolean },
+    options?: { silent?: boolean; force?: boolean },
     attempt = 1,
     maxAttempts = 5,
   ) => {
     const silent = !!options?.silent;
+    const force = !!options?.force;
     const isFirstLoad = !chatsLoadedRef.current;
 
     // Deduplicate overlapping non-initial refreshes to reduce repeated /chats traffic.
-    if (!isFirstLoad) {
+    // Skip throttle when force=true (e.g. search queries must always go through).
+    // Do NOT update lastRefreshAtRef for forced requests so background consistency
+    // refreshes (e.g. after deleteChat) are not accidentally suppressed.
+    let requestId = 0;
+    if (!isFirstLoad && !force) {
       const now = Date.now();
       if (refreshInFlightRef.current) return;
       if (now - lastRefreshAtRef.current < 3500) return;
       refreshInFlightRef.current = true;
       lastRefreshAtRef.current = now;
+    } else if (!isFirstLoad && force) {
+      // Assign a monotonically increasing ID; only apply the response if it's still latest.
+      searchRequestIdRef.current += 1;
+      requestId = searchRequestIdRef.current;
     }
 
     if (isFirstLoad) {
@@ -423,8 +439,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const url = searchParam ? `${apiBase}/chats?search=${encodeURIComponent(searchParam)}` : `${apiBase}/chats`;
       const res = await fetch(url);
       if (res.ok) {
+        // Discard stale forced-search responses that arrived out of order.
+        if (force && requestId !== searchRequestIdRef.current) return;
+
         const data = await res.json();
         const serverList: ChatSummary[] = data.chats || [];
+        setChatTotal(data.total ?? serverList.length);
+        setChatOffset(0);
 
         // Merge server list with local state, preserving local updates
         setChats(prev => {
@@ -493,13 +514,41 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [currentChatId, currentChatTitle, getMessagesForChat, searchQuery]);
 
-  const refreshChatList = useCallback(async (search?: string) => {
-    await refreshChatListInternal(search, { silent: false });
+  const refreshChatList = useCallback(async (search?: string, force?: boolean) => {
+    await refreshChatListInternal(search, { silent: false, force });
   }, [refreshChatListInternal]);
 
   const refreshChatListSilently = useCallback(async (search?: string) => {
     await refreshChatListInternal(search, { silent: true });
   }, [refreshChatListInternal]);
+
+  const loadMoreChats = useCallback(async () => {
+    if (loadingMoreChats) return;
+    setLoadingMoreChats(true);
+    try {
+      const apiBase = getApiBase();
+      const nextOffset = chatOffset + 50;
+      const searchParam = searchQuery;
+      let url = `${apiBase}/chats?limit=50&offset=${nextOffset}`;
+      if (searchParam) url += `&search=${encodeURIComponent(searchParam)}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        const newChats: ChatSummary[] = data.chats || [];
+        if (data.total != null) setChatTotal(data.total);
+        setChatOffset(nextOffset);
+        setChats(prev => {
+          const existingIds = new Set(prev.map(c => c.id));
+          const appended = newChats.filter(c => !existingIds.has(c.id));
+          return [...prev, ...appended];
+        });
+      }
+    } catch (error) {
+      console.error('Error loading more chats:', error);
+    } finally {
+      setLoadingMoreChats(false);
+    }
+  }, [chatOffset, loadingMoreChats, searchQuery]);
 
   const updateChatTitleLocally = useCallback((chatId: string, title: string) => {
     setChats(prev => prev.map(c => c.id === chatId ? { ...c, title } : c));
@@ -1176,7 +1225,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       removeEmptyAssistantMessage,
       currentChatId,
       chats,
+      chatTotal,
       loadingChats,
+      loadingMoreChats,
       refreshingChats,
       searchQuery,
       setSearchQuery,
@@ -1189,6 +1240,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       deleteChat,
       refreshChatList,
       refreshChatListSilently,
+      loadMoreChats,
       updateChatTitleLocally,
       updateMessage,
       truncateMessagesFrom,
@@ -1213,7 +1265,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     removeEmptyAssistantMessage,
     currentChatId,
     chats,
+    chatTotal,
     loadingChats,
+    loadingMoreChats,
     refreshingChats,
     searchQuery,
     setSearchQuery,
@@ -1226,6 +1280,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     deleteChat,
     refreshChatList,
     refreshChatListSilently,
+    loadMoreChats,
     updateChatTitleLocally,
     updateMessage,
     truncateMessagesFrom,

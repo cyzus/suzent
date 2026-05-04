@@ -385,6 +385,8 @@ export const en = {
     },
     untitled: 'Untitled chat',
     messagesCount: '{count} MSG',
+    loadMore: 'Load more ({count} remaining)',
+    loadingMore: 'Loading...',
   },
   chatInput: {
     removeFile: 'Remove file',

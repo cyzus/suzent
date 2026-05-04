@@ -312,6 +312,8 @@ export const zhCN = {
     },
     untitled: '未命名对话',
     messagesCount: '{count} 条消息',
+    loadMore: '加载更多（还有 {count} 条）',
+    loadingMore: '加载中...',
   },
   chatInput: {
     removeFile: '移除文件',

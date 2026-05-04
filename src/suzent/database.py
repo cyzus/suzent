@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 from sqlalchemy.orm import selectinload
-from sqlalchemy import text, inspect
+from sqlalchemy import cast, Text, or_, text, inspect, func
 from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import (
     Column,
@@ -24,6 +24,38 @@ from sqlmodel import (
     create_engine,
     select,
 )
+
+
+def _json_escape_for_like(s: str) -> str:
+    """Return the \\uXXXX form of any non-ASCII chars in s.
+
+    SQLAlchemy's JSON column stores non-ASCII characters as \\uXXXX escape
+    sequences (ensure_ascii=True default). A plain LIKE '%中文%' therefore
+    never matches; we must search for '\\u4e2d\\u6587' instead.
+    ASCII characters are left unchanged so English searches still work.
+    """
+    result = []
+    for ch in s:
+        if ord(ch) > 127:
+            result.append(f"\\u{ord(ch):04x}")
+        else:
+            result.append(ch)
+    return "".join(result)
+
+
+def _messages_search_filter(search: str):
+    """Build an OR filter that matches search in the messages JSON column.
+
+    Searches both the raw text (for any future ensure_ascii=False storage)
+    and the \\uXXXX-escaped form (for current ensure_ascii=True storage).
+    """
+    escaped = _json_escape_for_like(search)
+    if escaped == search:
+        return cast(ChatModel.messages, Text).contains(search)
+    return or_(
+        cast(ChatModel.messages, Text).contains(search),
+        cast(ChatModel.messages, Text).contains(escaped),
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -791,7 +823,12 @@ class ChatDatabase:
             statement = select(ChatModel).order_by(ChatModel.updated_at.desc())
 
             if search:
-                statement = statement.where(ChatModel.title.contains(search))
+                statement = statement.where(
+                    or_(
+                        ChatModel.title.contains(search),
+                        _messages_search_filter(search),
+                    )
+                )
 
             statement = statement.offset(offset).limit(limit)
             chats = session.exec(statement).all()
@@ -866,11 +903,15 @@ class ChatDatabase:
     def get_chat_count(self, search: str = None) -> int:
         """Get total number of chats."""
         with self._session() as session:
-            statement = select(ChatModel)
+            statement = select(func.count()).select_from(ChatModel)
             if search:
-                # Simplified search logic matching list_chats
-                statement = statement.where(ChatModel.title.contains(search))
-            return len(session.exec(statement).all())
+                statement = statement.where(
+                    or_(
+                        ChatModel.title.contains(search),
+                        _messages_search_filter(search),
+                    )
+                )
+            return session.exec(statement).one()
 
     def reassign_plan_chat(self, old_chat_id: str, new_chat_id: str) -> int:
         """Reassign all plans from one chat_id to another."""
