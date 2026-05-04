@@ -3,7 +3,11 @@ Social Brain: The bridge between Social Channels and the Suzent Agent.
 """
 
 import asyncio
+import secrets
+import string
+import time
 from typing import Optional, Dict
+
 from suzent.logger import get_logger
 from suzent.channels.manager import ChannelManager
 from suzent.channels.base import UnifiedMessage
@@ -19,6 +23,8 @@ from suzent.core.stream_registry import (
 )
 
 logger = get_logger(__name__)
+
+_TOKEN_CHARS = string.ascii_uppercase + string.digits
 
 
 def get_active_social_brain() -> Optional["SocialBrain"]:
@@ -76,8 +82,12 @@ class SocialBrain(BaseBrain):
             "who are you and what brings you here?"
         )
         # sender_key → {state, sender_id, sender_name, platform, intro, requested_at}
-        # This dict is the canonical pairing registry; exposed via REST + CLI.
+        # Only tracks the first "waiting" step (greeting sent, awaiting user intro).
         self._pending_pairings: Dict[str, dict] = {}
+
+        # token → {sender_key, sender_id, sender_name, platform, intro, requested_at, expires_at}
+        # Canonical pairing registry for admin approval; exposed via REST + CLI.
+        self._pending_tokens: Dict[str, dict] = {}
 
     def update_model(self, model: str):
         """Update the model used for social interactions."""
@@ -310,6 +320,17 @@ class SocialBrain(BaseBrain):
                         f"(TTL: {ttl_seconds}s)"
                     )
 
+                # Clean up expired pairing tokens and stale waiting entries
+                self._cleanup_expired_tokens()
+                stale_waiting_ttl = 86400  # 24 hours
+                stale_keys = [
+                    k
+                    for k, e in self._pending_pairings.items()
+                    if current_time - e["requested_at"] > stale_waiting_ttl
+                ]
+                for k in stale_keys:
+                    del self._pending_pairings[k]
+
                 # Also clean up global run states
                 from suzent.core.run_state import cleanup_stale_states
 
@@ -329,15 +350,48 @@ class SocialBrain(BaseBrain):
     # Pairing / handshake protocol                                        #
     # ------------------------------------------------------------------ #
 
+    def _generate_token(self) -> str:
+        while True:
+            token = "".join(secrets.choice(_TOKEN_CHARS) for _ in range(6))
+            if token not in self._pending_tokens:
+                return token
+
+    def _cleanup_expired_tokens(self):
+        now = time.time()
+        expired = [t for t, e in self._pending_tokens.items() if e["expires_at"] < now]
+        for t in expired:
+            del self._pending_tokens[t]
+
+    def _find_token_for_sender(self, sender_key: str) -> Optional[str]:
+        now = time.time()
+        return next(
+            (
+                t
+                for t, e in self._pending_tokens.items()
+                if e["sender_key"] == sender_key and e["expires_at"] > now
+            ),
+            None,
+        )
+
     async def _handle_handshake(self, message: UnifiedMessage):
         """
         Two-step pairing flow for unknown users:
           1. First contact → send greeting, record state=waiting
-          2. User replies with intro → state=pending; admin approves via UI or CLI
+          2. User replies with intro → generate token, reply with it; admin approves via token
         """
-        import time
-
         key = self._sender_key(message)
+
+        # If the user already has an active (unexpired) token, remind them.
+        self._cleanup_expired_tokens()
+        existing_token = self._find_token_for_sender(key)
+        if existing_token:
+            await self.channel_manager.send_message(
+                message.platform,
+                message.sender_id,
+                f"⏳ Your request is still pending. Share this code with the admin: {existing_token}",
+            )
+            return
+
         entry = self._pending_pairings.get(key)
         content = message.content.strip()
 
@@ -357,85 +411,87 @@ class SocialBrain(BaseBrain):
             return
 
         if entry["state"] == self._HANDSHAKE_WAITING:
-            # User replied with their intro → promote to pending (awaiting admin)
-            entry["state"] = self._HANDSHAKE_PENDING
-            entry["intro"] = content
+            # User replied with their intro → generate token and move to pending_tokens
+            token = self._generate_token()
+            now = time.time()
+            self._pending_tokens[token] = {
+                "sender_key": key,
+                "sender_id": message.sender_id,
+                "sender_name": message.sender_name,
+                "platform": message.platform,
+                "intro": content,
+                "requested_at": now,
+                "expires_at": now + 600,  # 10-minute window
+            }
+            self._pending_pairings.pop(key, None)
             await self.channel_manager.send_message(
                 message.platform,
                 message.sender_id,
-                "✅ Thanks! Your request has been sent for review. Please wait.",
+                f"✅ Thanks! Share this code with the admin to get approved: {token}",
             )
             return
 
-        # Already pending
+        # Shouldn't normally be reached, but handle gracefully
         await self.channel_manager.send_message(
             message.platform,
             message.sender_id,
-            "⏳ Your access request is still pending admin approval.",
+            "⏳ Your access request is pending admin approval.",
         )
 
     # -- Public API (called by REST routes and CLI) -- #
 
     def list_pairings(self) -> list[dict]:
-        """Return all pending pairing requests as a list of dicts."""
+        """Return all pending pairing requests awaiting admin action."""
+        self._cleanup_expired_tokens()
         return [
             {
-                "key": key,
+                "token": t,
                 "sender_id": e["sender_id"],
                 "sender_name": e["sender_name"],
                 "platform": e["platform"],
                 "intro": e["intro"],
-                "state": e["state"],
+                "state": "pending",
                 "requested_at": e["requested_at"],
+                "expires_at": e["expires_at"],
             }
-            for key, e in self._pending_pairings.items()
+            for t, e in self._pending_tokens.items()
         ]
 
-    async def approve_pairing(self, sender_id: str) -> bool:
-        """Approve a pending pairing request by sender_id."""
-        matched_key = next(
-            (
-                k
-                for k, e in self._pending_pairings.items()
-                if e["sender_id"] == sender_id
-            ),
-            None,
-        )
-        if not matched_key:
+    def _pop_token(self, token: str) -> dict | None:
+        """Normalize, validate, and remove a token; returns its entry or None."""
+        self._cleanup_expired_tokens()
+        return self._pending_tokens.pop(token.upper().strip(), None)
+
+    async def approve_by_token(self, token: str) -> bool:
+        """Approve a pending pairing request by token."""
+        entry = self._pop_token(token)
+        if entry is None:
             return False
 
-        entry = self._pending_pairings.pop(matched_key)
-        self.allowed_users.add(entry["sender_id"])
+        sender_id = entry["sender_id"]
+        self.allowed_users.add(sender_id)
         self.allowed_users.add(entry["sender_name"])
-        await self._persist_approved_user(entry["sender_id"])
+        await self._persist_approved_user(sender_id)
 
         try:
             await self.channel_manager.send_message(
                 entry["platform"],
-                entry["sender_id"],
+                sender_id,
                 "✅ Your access has been approved! You can now send messages.",
             )
         except Exception:
             pass
         logger.info(
-            f"Pairing approved: {entry['sender_id']} ({entry['sender_name']}) on {entry['platform']}"
+            f"Pairing approved via token: {sender_id} ({entry['sender_name']}) on {entry['platform']}"
         )
         return True
 
-    async def deny_pairing(self, sender_id: str) -> bool:
-        """Deny a pending pairing request by sender_id."""
-        matched_key = next(
-            (
-                k
-                for k, e in self._pending_pairings.items()
-                if e["sender_id"] == sender_id
-            ),
-            None,
-        )
-        if not matched_key:
+    async def deny_by_token(self, token: str) -> bool:
+        """Deny a pending pairing request by token."""
+        entry = self._pop_token(token)
+        if entry is None:
             return False
 
-        entry = self._pending_pairings.pop(matched_key)
         try:
             await self.channel_manager.send_message(
                 entry["platform"],
@@ -445,7 +501,7 @@ class SocialBrain(BaseBrain):
         except Exception:
             pass
         logger.info(
-            f"Pairing denied: {entry['sender_id']} ({entry['sender_name']}) on {entry['platform']}"
+            f"Pairing denied via token: {entry['sender_id']} ({entry['sender_name']}) on {entry['platform']}"
         )
         return True
 
@@ -471,10 +527,10 @@ class SocialBrain(BaseBrain):
 
     def _is_authorized(self, message: UnifiedMessage) -> bool:
         """Check if a message sender is authorized."""
-        # No restrictions if both lists are empty
         platform_allowed = self.platform_allowlists.get(message.platform)
+        # Empty allowlists always deny — users must be approved via pairing or pre-configured.
         if not self.allowed_users and not platform_allowed:
-            return True
+            return False
 
         # Check if sender is in either global or platform-specific allowlist
         identifiers = {message.sender_id, message.sender_name}

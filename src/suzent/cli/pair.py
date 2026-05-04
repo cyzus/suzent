@@ -2,9 +2,9 @@
 `suzent pair` — manage social channel pairing requests.
 
 Usage:
-  suzent pair list                       List pending pairing requests
-  suzent pair approve <sender_id>        Approve a pairing request
-  suzent pair deny    <sender_id>        Deny a pairing request
+  suzent pair list                    List pending pairing requests (shows tokens)
+  suzent pair approve <token>         Approve a pairing request by token
+  suzent pair deny    <token>         Deny a pairing request by token
 """
 
 import typer
@@ -33,10 +33,10 @@ def pair_list():
                 return
 
             table = Table(show_header=True, header_style="bold")
+            table.add_column("Token", style="bold yellow", no_wrap=True)
             table.add_column("Platform", style="cyan", no_wrap=True)
-            table.add_column("Sender ID", style="yellow", no_wrap=True)
             table.add_column("Name")
-            table.add_column("State")
+            table.add_column("Sender ID", style="dim")
             table.add_column("Intro")
 
             for p in pairings:
@@ -44,10 +44,10 @@ def pair_list():
                 if len(intro) > 60:
                     intro = intro[:57] + "..."
                 table.add_row(
+                    p.get("token", ""),
                     p.get("platform", ""),
-                    p.get("sender_id", ""),
                     p.get("sender_name", ""),
-                    p.get("state", ""),
+                    p.get("sender_id", ""),
                     intro,
                 )
 
@@ -60,14 +60,14 @@ def pair_list():
 
 
 @pair_app.command("approve")
-def pair_approve(sender_id: str = typer.Argument(..., help="Sender ID to approve")):
-    """Approve a pending pairing request."""
+def pair_approve(token: str = typer.Argument(..., help="Pairing token to approve")):
+    """Approve a pending pairing request by token."""
 
     async def _run():
         try:
             client = get_client()
-            await client.social.approve_pairing(sender_id)
-            console.print(f"[green]✅ Approved:[/green] {sender_id}")
+            await client.social.approve_pairing_by_token(token)
+            console.print(f"[green]✅ Approved token:[/green] {token.upper()}")
         except ClientError as e:
             console.print(f"[red]❌ Error:[/red] {e}")
             raise typer.Exit(code=1)
@@ -76,14 +76,14 @@ def pair_approve(sender_id: str = typer.Argument(..., help="Sender ID to approve
 
 
 @pair_app.command("deny")
-def pair_deny(sender_id: str = typer.Argument(..., help="Sender ID to deny")):
-    """Deny a pending pairing request."""
+def pair_deny(token: str = typer.Argument(..., help="Pairing token to deny")):
+    """Deny a pending pairing request by token."""
 
     async def _run():
         try:
             client = get_client()
-            await client.social.deny_pairing(sender_id)
-            console.print(f"[red]❌ Denied:[/red] {sender_id}")
+            await client.social.deny_pairing_by_token(token)
+            console.print(f"[red]❌ Denied token:[/red] {token.upper()}")
         except ClientError as e:
             console.print(f"[red]❌ Error:[/red] {e}")
             raise typer.Exit(code=1)

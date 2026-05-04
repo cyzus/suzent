@@ -52,13 +52,13 @@ export function SocialTab({
         refreshPairings();
     }, [refreshPairings]);
 
-    const handleApprove = async (senderId: string) => {
-        await approvePairing(senderId);
+    const handleApprove = async (token: string) => {
+        await approvePairing(token);
         await refreshPairings();
     };
 
-    const handleDeny = async (senderId: string) => {
-        await denyPairing(senderId);
+    const handleDeny = async (token: string) => {
+        await denyPairing(token);
         await refreshPairings();
     };
 
@@ -201,64 +201,79 @@ export function SocialTab({
                 </div>
             </div>
 
-            {/* Pending Pairings card — only shown when handshake is enabled */}
-            {handshakeEnabled && (
-                <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
-                    <div className="flex items-start justify-between gap-4 mb-4">
-                        <div className="flex items-start gap-4">
-                            <div className="w-12 h-12 bg-brutal-yellow border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-bold uppercase">Pending Pairings</h3>
-                                <p className="text-sm text-neutral-600 mt-1">Users waiting for access approval</p>
-                            </div>
+            {/* Pairing / Handshake card — always shown */}
+            <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
+                <div className="flex items-start justify-between gap-4 mb-4">
+                    <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 bg-brutal-yellow border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
                         </div>
-                        <button
-                            onClick={refreshPairings}
-                            disabled={pairingLoading}
-                            className="px-3 py-1 text-xs font-bold uppercase border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-50"
-                        >
-                            {pairingLoading ? '…' : 'Refresh'}
-                        </button>
+                        <div>
+                            <h3 className="text-xl font-bold uppercase">Pairing & Access Control</h3>
+                            <p className="text-sm text-neutral-600 mt-1">Require strangers to verify before chatting</p>
+                        </div>
                     </div>
-
-                    {pairings.length === 0 ? (
-                        <p className="text-sm text-neutral-500 dark:text-neutral-400">No pending requests.</p>
-                    ) : (
-                        <div className="space-y-3">
-                            {pairings.map((p) => (
-                                <div key={p.key} className="border-2 border-brutal-black p-3 bg-neutral-50 dark:bg-zinc-900 flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="text-xs font-bold uppercase bg-neutral-200 dark:bg-zinc-700 px-1">{p.platform}</span>
-                                            <span className="font-mono text-sm font-bold">{p.sender_name}</span>
-                                            <span className="font-mono text-xs text-neutral-500">{p.sender_id}</span>
-                                        </div>
-                                        {p.intro && (
-                                            <p className="text-sm text-neutral-700 dark:text-neutral-300 mt-1 truncate">{p.intro}</p>
-                                        )}
-                                    </div>
-                                    <div className="flex gap-2 shrink-0">
-                                        <button
-                                            onClick={() => handleApprove(p.sender_id)}
-                                            className="px-3 py-1 text-xs font-bold uppercase border-2 border-brutal-black bg-brutal-green text-white hover:opacity-90"
-                                        >
-                                            Approve
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeny(p.sender_id)}
-                                            className="px-3 py-1 text-xs font-bold uppercase border-2 border-brutal-black bg-brutal-red text-white hover:opacity-90"
-                                        >
-                                            Deny
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                    <div className="flex items-center gap-3 shrink-0">
+                        <BrutalToggle
+                            checked={handshakeEnabled}
+                            onChange={(checked) => onConfigChange({
+                                ...socialConfig,
+                                handshake: { ...(socialConfig.handshake as any || {}), enabled: checked },
+                            })}
+                            label=""
+                        />
+                        {handshakeEnabled && (
+                            <button
+                                onClick={refreshPairings}
+                                disabled={pairingLoading}
+                                className="px-3 py-1 text-xs font-bold uppercase border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-50"
+                            >
+                                {pairingLoading ? '…' : 'Refresh'}
+                            </button>
+                        )}
+                    </div>
                 </div>
-            )}
+
+                {!handshakeEnabled && (
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400 italic">Pairing disabled — only users in the allowlist can chat.</p>
+                )}
+
+                {handshakeEnabled && (pairings.length === 0 ? (
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">No pending requests.</p>
+                ) : (
+                    <div className="space-y-3">
+                        {pairings.map((p) => (
+                            <div key={p.token} className="border-2 border-brutal-black p-3 bg-neutral-50 dark:bg-zinc-900 flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-mono text-base font-black tracking-widest bg-brutal-yellow border border-brutal-black px-2 py-0.5">{p.token}</span>
+                                        <span className="text-xs font-bold uppercase bg-neutral-200 dark:bg-zinc-700 px-1">{p.platform}</span>
+                                        <span className="font-mono text-sm font-bold">{p.sender_name}</span>
+                                        <span className="font-mono text-xs text-neutral-500">{p.sender_id}</span>
+                                    </div>
+                                    {p.intro && (
+                                        <p className="text-sm text-neutral-700 dark:text-neutral-300 mt-1 truncate">{p.intro}</p>
+                                    )}
+                                </div>
+                                <div className="flex gap-2 shrink-0">
+                                    <button
+                                        onClick={() => handleApprove(p.token)}
+                                        className="px-3 py-1 text-xs font-bold uppercase border-2 border-brutal-black bg-brutal-green text-white hover:opacity-90"
+                                    >
+                                        Approve
+                                    </button>
+                                    <button
+                                        onClick={() => handleDeny(p.token)}
+                                        className="px-3 py-1 text-xs font-bold uppercase border-2 border-brutal-black bg-brutal-red text-white hover:opacity-90"
+                                    >
+                                        Deny
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                        </div>
+                ))}
+            </div>
 
             {/* Platform-specific cards */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
