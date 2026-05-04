@@ -26,6 +26,38 @@ from sqlmodel import (
 )
 
 
+def _json_escape_for_like(s: str) -> str:
+    """Return the \\uXXXX form of any non-ASCII chars in s.
+
+    SQLAlchemy's JSON column stores non-ASCII characters as \\uXXXX escape
+    sequences (ensure_ascii=True default). A plain LIKE '%中文%' therefore
+    never matches; we must search for '\\u4e2d\\u6587' instead.
+    ASCII characters are left unchanged so English searches still work.
+    """
+    result = []
+    for ch in s:
+        if ord(ch) > 127:
+            result.append(f"\\u{ord(ch):04x}")
+        else:
+            result.append(ch)
+    return "".join(result)
+
+
+def _messages_search_filter(search: str):
+    """Build an OR filter that matches search in the messages JSON column.
+
+    Searches both the raw text (for any future ensure_ascii=False storage)
+    and the \\uXXXX-escaped form (for current ensure_ascii=True storage).
+    """
+    escaped = _json_escape_for_like(search)
+    if escaped == search:
+        return cast(ChatModel.messages, Text).contains(search)
+    return or_(
+        cast(ChatModel.messages, Text).contains(search),
+        cast(ChatModel.messages, Text).contains(escaped),
+    )
+
+
 # -----------------------------------------------------------------------------
 # SQLModel Table Definitions
 # -----------------------------------------------------------------------------
@@ -794,7 +826,7 @@ class ChatDatabase:
                 statement = statement.where(
                     or_(
                         ChatModel.title.contains(search),
-                        cast(ChatModel.messages, Text).contains(search),
+                        _messages_search_filter(search),
                     )
                 )
 
@@ -876,7 +908,7 @@ class ChatDatabase:
                 statement = statement.where(
                     or_(
                         ChatModel.title.contains(search),
-                        cast(ChatModel.messages, Text).contains(search),
+                        _messages_search_filter(search),
                     )
                 )
             return session.exec(statement).one()
