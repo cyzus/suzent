@@ -1,4 +1,5 @@
 from pathlib import Path
+import sqlite3
 import zipfile
 
 from suzent.core import data_portability
@@ -58,6 +59,38 @@ def test_export_skips_inaccessible_files(monkeypatch, tmp_path: Path):
     with zipfile.ZipFile(archive) as zf:
         assert "sandbox/sessions/one/notes.txt" in zf.namelist()
         assert "sandbox/sessions/one/node_modules/.bin/gws" not in zf.namelist()
+
+
+def test_export_scrubs_api_keys_from_chats_db(monkeypatch, tmp_path: Path):
+    data_dir = tmp_path / ".suzent"
+    monkeypatch.setattr(data_portability, "DATA_DIR", data_dir)
+    monkeypatch.setattr(data_portability, "RUNTIME_DIR", data_dir / "runtime")
+    monkeypatch.setattr(data_portability, "CACHE_DIR", data_dir / "cache")
+    data_dir.mkdir()
+
+    db_path = data_dir / "chats.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE api_keys (key TEXT PRIMARY KEY, value TEXT)")
+        conn.execute("INSERT INTO api_keys VALUES ('OPENAI_API_KEY', 'encrypted')")
+        conn.execute("CREATE TABLE notes (body TEXT)")
+        conn.execute("INSERT INTO notes VALUES ('keep')")
+        conn.commit()
+
+    archive = tmp_path / "backup.zip"
+    result = data_portability.export_data(archive)
+
+    assert result.manifest["secrets"] == "excluded"
+    exported_db = tmp_path / "exported.db"
+    with zipfile.ZipFile(archive) as zf:
+        zf.extract("chats.db", tmp_path)
+    (tmp_path / "chats.db").replace(exported_db)
+
+    with sqlite3.connect(exported_db) as conn:
+        api_keys_count = conn.execute("SELECT COUNT(*) FROM api_keys").fetchone()[0]
+        notes_count = conn.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
+
+    assert api_keys_count == 0
+    assert notes_count == 1
 
 
 def test_import_dry_run_does_not_replace_data(monkeypatch, tmp_path: Path):

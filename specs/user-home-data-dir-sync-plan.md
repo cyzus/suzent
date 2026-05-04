@@ -247,6 +247,7 @@ Import:
 API key export:
 
 - Default export should exclude secrets.
+- Current first-pass export excludes `~/.suzent/.secret_key` and scrubs the `api_keys` table from the exported `chats.db`; local before-import backups can include secrets because they remain inside `~/.suzent/backups/` and are excluded from portable exports.
 - Add an explicit `--include-secrets` CLI flag and matching frontend confirmation.
 - Secrets must be encrypted in the export archive.
 - Use the existing `cryptography` dependency for portable secret export.

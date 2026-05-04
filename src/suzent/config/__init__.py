@@ -113,22 +113,37 @@ for _dir in (RUNTIME_DIR, CACHE_DIR, USER_CONFIG_DIR, USER_SKILLS_DIR):
 
 def rebuild_merged_skills_dir() -> Path:
     """Build the runtime skills view mounted into sandboxes."""
-    if MERGED_SKILLS_DIR.exists():
-        shutil.rmtree(MERGED_SKILLS_DIR)
     MERGED_SKILLS_DIR.mkdir(parents=True, exist_ok=True)
 
+    expected_skills: set[str] = set()
     for root in [PROJECT_DIR / "skills", USER_SKILLS_DIR]:
         if not root.exists():
             continue
         for skill_dir in root.iterdir():
             if not skill_dir.is_dir() or not (skill_dir / "SKILL.md").exists():
                 continue
+            expected_skills.add(skill_dir.name)
             target = MERGED_SKILLS_DIR / skill_dir.name
+            tmp_target = MERGED_SKILLS_DIR / f".{skill_dir.name}.tmp"
+            if tmp_target.exists():
+                shutil.rmtree(tmp_target)
+            shutil.copytree(skill_dir, tmp_target)
             if target.exists():
                 shutil.rmtree(target)
-            shutil.copytree(skill_dir, target)
+            tmp_target.replace(target)
+
+    for child in MERGED_SKILLS_DIR.iterdir():
+        if child.name.startswith(".") or child.name in expected_skills:
+            continue
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
 
     return MERGED_SKILLS_DIR
+
+
+rebuild_merged_skills_dir()
 
 
 def _normalize_keys(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -170,7 +185,8 @@ def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[st
         volumes.append(vol)
 
     if not any(v.endswith(":/mnt/skills") for v in volumes):
-        skills_resolved = str(rebuild_merged_skills_dir().resolve())
+        MERGED_SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+        skills_resolved = str(MERGED_SKILLS_DIR.resolve())
         volumes.append(f"{skills_resolved}:/mnt/skills")
 
     return volumes

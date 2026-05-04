@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import shutil
+import sqlite3
+import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -54,38 +56,52 @@ def get_data_status() -> DataStatus:
     )
 
 
-def export_data(output_path: Path | None = None) -> ExportResult:
+def export_data(
+    output_path: Path | None = None,
+    *,
+    include_secrets: bool = False,
+) -> ExportResult:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     output_path = output_path or _default_export_path()
     output_path = output_path.expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     included = _portable_entries(DATA_DIR)
+    if include_secrets and (DATA_DIR / ".secret_key").exists():
+        included.append(".secret_key")
+        included = sorted(set(included))
     manifest = {
         "app": "suzent",
         "format_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "source_data_dir": str(DATA_DIR),
         "includes": included,
+        "secrets": "included" if include_secrets else "excluded",
     }
 
     skipped: list[str] = []
 
-    with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr(MANIFEST_NAME, json.dumps(manifest, indent=2))
-        for name in included:
-            path = DATA_DIR / name
-            if _safe_is_file(path, skipped):
-                _safe_write(zf, path, name, skipped)
-            elif _safe_is_dir(path, skipped):
-                for child in path.rglob("*"):
-                    if _safe_is_file(child, skipped):
-                        _safe_write(
-                            zf,
-                            child,
-                            child.relative_to(DATA_DIR).as_posix(),
-                            skipped,
-                        )
+    with tempfile.TemporaryDirectory(prefix="suzent-export-") as temp_dir_name:
+        temp_dir = Path(temp_dir_name)
+        with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(MANIFEST_NAME, json.dumps(manifest, indent=2))
+            for name in included:
+                path = DATA_DIR / name
+                if _safe_is_file(path, skipped):
+                    _safe_write_portable_file(
+                        zf, path, name, skipped, temp_dir, include_secrets
+                    )
+                elif _safe_is_dir(path, skipped):
+                    for child in path.rglob("*"):
+                        if _safe_is_file(child, skipped):
+                            _safe_write_portable_file(
+                                zf,
+                                child,
+                                child.relative_to(DATA_DIR).as_posix(),
+                                skipped,
+                                temp_dir,
+                                include_secrets,
+                            )
 
     return ExportResult(
         output_path=str(output_path),
@@ -190,6 +206,43 @@ def _safe_write(
         skipped.append(_portable_path(path))
 
 
+def _safe_write_portable_file(
+    zf: zipfile.ZipFile,
+    path: Path,
+    arcname: str,
+    skipped: list[str],
+    temp_dir: Path,
+    include_secrets: bool = False,
+) -> None:
+    source: Path | None = path
+    if arcname == "chats.db" and not include_secrets:
+        source = _scrub_chats_db(path, temp_dir, skipped)
+    if source is None:
+        return
+    _safe_write(zf, source, arcname, skipped)
+
+
+def _scrub_chats_db(path: Path, temp_dir: Path, skipped: list[str]) -> Path | None:
+    scrubbed = temp_dir / "chats.db"
+    conn: sqlite3.Connection | None = None
+    try:
+        shutil.copy2(path, scrubbed)
+        conn = sqlite3.connect(scrubbed)
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='api_keys'"
+        )
+        if cursor.fetchone():
+            conn.execute("DELETE FROM api_keys")
+            conn.commit()
+        return scrubbed
+    except (OSError, sqlite3.DatabaseError):
+        skipped.append(f"{_portable_path(path)}: api_keys scrub failed")
+        return None
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def _portable_path(path: Path) -> str:
     try:
         return path.relative_to(DATA_DIR).as_posix()
@@ -230,7 +283,7 @@ def _backup_current_data_dir() -> Path:
     backup_root = DATA_DIR / "backups"
     backup_root.mkdir(parents=True, exist_ok=True)
     backup_path = backup_root / f"before-import-{_default_export_name()}"
-    export_data(backup_path)
+    export_data(backup_path, include_secrets=True)
     return backup_path
 
 

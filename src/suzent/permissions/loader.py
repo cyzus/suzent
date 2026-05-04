@@ -115,7 +115,7 @@ def persist_global_command_rule(
     match_type: str = "exact",
     user_config_dir: Path | None = None,
 ) -> bool:
-    """Persist a global command policy rule to config/permissions.yaml.
+    """Persist a global command policy rule to the user permissions file.
 
     Returns True if the permissions file was changed.
     """

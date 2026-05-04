@@ -1,6 +1,11 @@
 from pathlib import Path
 from typing import Optional
-from suzent.config import PROJECT_DIR, USER_CONFIG_DIR, USER_SKILLS_DIR
+from suzent.config import (
+    PROJECT_DIR,
+    USER_CONFIG_DIR,
+    USER_SKILLS_DIR,
+    rebuild_merged_skills_dir,
+)
 from suzent.logger import get_logger
 from suzent.tools.filesystem.path_resolver import PathResolver
 from .loader import SkillLoader
@@ -26,6 +31,7 @@ class SkillManager:
         self.skills_dir = self.skills_dirs[-1]
         self.loader = SkillLoader(self.skills_dirs)
         self.persistence_file = USER_CONFIG_DIR / "skills.json"
+        rebuild_merged_skills_dir()
 
         # Initialize enabled state
         self.enabled_skills = set()
@@ -93,6 +99,7 @@ class SkillManager:
     def reload(self):
         """Reload all skills from disk."""
         self.loader.load_skills()
+        rebuild_merged_skills_dir()
         # Re-verify enabled skills exist?
         available = {s.metadata.name for s in self.loader.list_skills()}
         self.enabled_skills = self.enabled_skills.intersection(available)

@@ -35,14 +35,13 @@ export function DataTab(): React.ReactElement {
     setMessage(t('settings.data.exporting'));
     try {
       const result = await exportData();
-      setMessage(t('settings.data.exported').replace('{path}', result.output_path));
+      setMessage(t('settings.data.exported', { path: result.output_path }));
     } catch (error) {
       setIsError(true);
       setMessage(
-        t('settings.data.exportFailed').replace(
-          '{error}',
-          error instanceof Error ? error.message : String(error)
-        )
+        t('settings.data.exportFailed', {
+          error: error instanceof Error ? error.message : String(error),
+        })
       );
     } finally {
       setBusy(false);
@@ -95,14 +94,13 @@ export function DataTab(): React.ReactElement {
     setMessage(t('settings.data.syncing'));
     try {
       const result = await syncPush(syncTarget.trim());
-      setMessage(t('settings.data.synced').replace('{path}', result.output_path));
+      setMessage(t('settings.data.synced', { path: result.output_path }));
     } catch (error) {
       setIsError(true);
       setMessage(
-        t('settings.data.syncFailed').replace(
-          '{error}',
-          error instanceof Error ? error.message : String(error)
-        )
+        t('settings.data.syncFailed', {
+          error: error instanceof Error ? error.message : String(error),
+        })
       );
     } finally {
       setBusy(false);
