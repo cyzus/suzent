@@ -8,8 +8,9 @@ logger = get_logger(__name__)
 
 
 class SkillLoader:
-    def __init__(self, skills_dir: Path):
-        self.skills_dir = skills_dir
+    def __init__(self, skills_dir: Path | List[Path]):
+        self.skills_dirs = [skills_dir] if isinstance(skills_dir, Path) else skills_dir
+        self.skills_dir = self.skills_dirs[-1] if self.skills_dirs else Path("skills")
         self.skills: Dict[str, Skill] = {}
         # We load skills immediately upon initialization
         self.load_skills()
@@ -54,27 +55,27 @@ class SkillLoader:
             return None
 
     def load_skills(self):
-        """Scan skills directory and load all valid SKILL.md files."""
+        """Scan skills directories and load all valid SKILL.md files."""
         self.skills.clear()
-        if not self.skills_dir.exists():
-            logger.debug(
-                f"Skills directory {self.skills_dir} does not exist. No skills loaded."
-            )
-            # We don't necessarily create it here, let manager or setup handle creation if needed
-            return
-
-        for skill_dir in self.skills_dir.iterdir():
-            if not skill_dir.is_dir():
+        for skills_dir in self.skills_dirs:
+            if not skills_dir.exists():
+                logger.debug(
+                    f"Skills directory {skills_dir} does not exist. No skills loaded from it."
+                )
                 continue
 
-            skill_md = skill_dir / "SKILL.md"
-            if not skill_md.exists():
-                continue
+            for skill_dir in skills_dir.iterdir():
+                if not skill_dir.is_dir():
+                    continue
 
-            skill = self.parse_skill_md(skill_md)
-            if skill:
-                self.skills[skill.metadata.name] = skill
-                logger.debug(f"Loaded skill: {skill.metadata.name}")
+                skill_md = skill_dir / "SKILL.md"
+                if not skill_md.exists():
+                    continue
+
+                skill = self.parse_skill_md(skill_md)
+                if skill:
+                    self.skills[skill.metadata.name] = skill
+                    logger.debug(f"Loaded skill: {skill.metadata.name}")
 
     def get_skill(self, name: str) -> Optional[Skill]:
         return self.skills.get(name)

@@ -42,7 +42,9 @@ def _extract_permissions_payload(raw: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def load_permission_overrides(project_dir: Path, logger) -> dict[str, Any]:
+def load_permission_overrides(
+    project_dir: Path, logger, user_config_dir: Path | None = None
+) -> dict[str, Any]:
     """Load generic permissions settings from dedicated config files.
 
     Load order: permissions.example.yaml -> permissions.yaml
@@ -51,9 +53,14 @@ def load_permission_overrides(project_dir: Path, logger) -> dict[str, Any]:
     cfg_dir = project_dir / "config"
     example_path = cfg_dir / "permissions.example.yaml"
     user_path = cfg_dir / "permissions.yaml"
+    data_user_path = user_config_dir / "permissions.yaml" if user_config_dir else None
 
     merged_tools: dict[str, dict[str, Any]] = {}
-    for path in (example_path, user_path):
+    paths = [example_path, user_path]
+    if data_user_path is not None:
+        paths.append(data_user_path)
+
+    for path in paths:
         if not path.exists():
             continue
 
@@ -106,8 +113,9 @@ def persist_global_command_rule(
     command_pattern: str,
     action: str,
     match_type: str = "exact",
+    user_config_dir: Path | None = None,
 ) -> bool:
-    """Persist a global command policy rule to config/permissions.yaml.
+    """Persist a global command policy rule to the user permissions file.
 
     Returns True if the permissions file was changed.
     """
@@ -123,7 +131,7 @@ def persist_global_command_rule(
     if cleaned_match not in {"exact", "prefix"}:
         raise ValueError(f"Unsupported match_type: {match_type}")
 
-    cfg_dir = project_dir / "config"
+    cfg_dir = user_config_dir if user_config_dir is not None else project_dir / "config"
     user_path = cfg_dir / "permissions.yaml"
 
     document, has_wrapper = _load_permissions_user_file(user_path, logger)

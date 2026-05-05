@@ -37,15 +37,16 @@ impl BackendProcess {
     /// is launched without CREATE_NO_WINDOW so its Windows process environment
     /// matches `suzent serve` as closely as possible.
     pub fn start_with_uv(&mut self, uv_exe: &Path, repo_dir: &Path, hint_port: u16) -> Result<u16, String> {
-        let suzent_dir = repo_dir.join(".suzent");
-        std::fs::create_dir_all(&suzent_dir)
-            .map_err(|e| format!("Failed to create .suzent dir: {}", e))?;
+        let data_dir = find_data_dir();
+        let runtime_dir = data_dir.join("runtime");
+        std::fs::create_dir_all(&runtime_dir)
+            .map_err(|e| format!("Failed to create runtime dir: {}", e))?;
 
-        let port_file = suzent_dir.join("server.port");
+        let port_file = runtime_dir.join("server.port");
         // Delete stale port file so we can detect when the new backend writes it.
         let _ = std::fs::remove_file(&port_file);
 
-        let log_file = suzent_dir.join("server.log");
+        let log_file = runtime_dir.join("server.log");
         let log_handle = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -70,6 +71,7 @@ impl BackendProcess {
         command
             .env("SUZENT_PORT", hint_port.to_string())
             .env("SUZENT_HOST", "127.0.0.1")
+            .env("SUZENT_DATA_DIR", &data_dir)
             .env("PYTHONUNBUFFERED", "1")
             .env("LOG_FILE", &log_file)
             .current_dir(repo_dir)
@@ -155,6 +157,16 @@ pub fn find_repo_dir() -> PathBuf {
         }
     }
     std::env::current_dir().unwrap_or_default()
+}
+
+/// Locate SUZENT's user data directory.
+pub fn find_data_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("SUZENT_DATA_DIR") {
+        if !dir.trim().is_empty() {
+            return PathBuf::from(dir);
+        }
+    }
+    dirs_home().join(".suzent")
 }
 
 /// Locate the `uv` executable (PATH, ~/.cargo/bin, ~/.local/bin).

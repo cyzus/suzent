@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import AsyncGenerator, List, Dict, Any, Optional
 
 from suzent.logger import get_logger
-from suzent.config import CONFIG, PROJECT_DIR, get_effective_volumes
+from suzent.config import CONFIG, PROJECT_DIR, USER_CONFIG_DIR, get_effective_volumes
 from suzent.agent_manager import get_or_create_agent
 from suzent.permissions.loader import persist_global_command_rule
 
@@ -616,6 +616,7 @@ class ChatProcessor:
                                         tool_name=tool_name,
                                         command_pattern=command_pattern,
                                         action=action,
+                                        user_config_dir=USER_CONFIG_DIR,
                                     )
                                     _chat_cfg["permission_policies"] = _chat_perm
                                     _db.update_chat(chat_id, config=_chat_cfg)

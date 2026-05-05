@@ -4,6 +4,7 @@ import { useChatStore } from '../../hooks/useChatStore';
 import { ApiProvider, CustomProviderPayload, deleteCustomProvider, fetchApiKeys, fetchRoleModels, fetchRoleSuggestions, fetchSocialConfig, fetchMcpServers, saveApiKeys, saveCustomProvider, saveGlobalSandboxConfig, saveRoleModels, saveSocialConfig, saveUserPreferences, SocialConfig, UserConfig, verifyProvider } from '../../lib/api';
 import { AppearanceTab } from './AppearanceTab';
 import { AutomationTab } from './AutomationTab';
+import { DataTab } from './DataTab';
 import { McpTab } from './McpTab';
 import { MemoryTab } from './MemoryTab';
 import { ModelRolesTab } from './ModelRolesTab';
@@ -36,7 +37,7 @@ interface SettingsModalProps {
 }
 
 type ProviderTab = 'credentials' | 'models';
-type CategoryType = 'providers' | 'roles' | 'memory' | 'social' | 'mcp' | 'automation' | 'appearance';
+type CategoryType = 'providers' | 'roles' | 'memory' | 'social' | 'mcp' | 'automation' | 'data' | 'appearance';
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
@@ -275,6 +276,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
       )
     },
     {
+      id: 'data', label: t('settings.categories.data'), icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 7c0 1.657 3.582 3 8 3s8-1.343 8-3M4 7c0-1.657 3.582-3 8-3s8 1.343 8 3M4 7v10c0 1.657 3.582 3 8 3s8-1.343 8-3V7M4 12c0 1.657 3.582 3 8 3s8-1.343 8-3" />
+        </svg>
+      )
+    },
+    {
       id: 'appearance', label: t('settings.categories.appearance'), icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
@@ -437,6 +445,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                       models={backendConfig?.models || []}
                       tools={backendConfig?.tools || []}
                     />
+                  )}
+
+                  {activeCategory === 'data' && (
+                    <DataTab />
                   )}
 
                   {activeCategory === 'appearance' && (
