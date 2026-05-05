@@ -13,36 +13,34 @@ import {
   syncPush,
 } from '../../lib/dataApi';
 
+type Notification = { text: string; isError: boolean };
+
+function errMsg(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export function DataTab(): React.ReactElement {
   const { t } = useI18n();
   const [status, setStatus] = useState<DataStatus | null>(null);
   const [syncTarget, setSyncTarget] = useState('');
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
-  const [isError, setIsError] = useState(false);
+  const [notification, setNotification] = useState<Notification | null>(null);
 
   useEffect(() => {
     fetchDataStatus().then(setStatus).catch(() => {
       setStatus(null);
-      setIsError(true);
-      setMessage(t('settings.data.statusFailed'));
+      setNotification({ text: t('settings.data.statusFailed'), isError: true });
     });
   }, []);
 
   async function handleExport(): Promise<void> {
     setBusy(true);
-    setIsError(false);
-    setMessage(t('settings.data.exporting'));
+    setNotification({ text: t('settings.data.exporting'), isError: false });
     try {
       const result = await exportData();
-      setMessage(t('settings.data.exported', { path: result.output_path }));
+      setNotification({ text: t('settings.data.exported', { path: result.output_path }), isError: false });
     } catch (error) {
-      setIsError(true);
-      setMessage(
-        t('settings.data.exportFailed', {
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      setNotification({ text: t('settings.data.exportFailed', { error: errMsg(error) }), isError: true });
     } finally {
       setBusy(false);
     }
@@ -50,14 +48,13 @@ export function DataTab(): React.ReactElement {
 
   async function handleImport(): Promise<void> {
     setBusy(true);
-    setIsError(false);
-    setMessage('');
+    setNotification(null);
     try {
       const selected = await open({
         multiple: false,
         filters: [{ name: 'SUZENT Export', extensions: ['zip'] }],
       });
-      if (!selected || Array.isArray(selected)) return;
+      if (!selected) return;
 
       const archive = String(selected);
       const preview = await previewImportData(archive);
@@ -66,22 +63,12 @@ export function DataTab(): React.ReactElement {
       );
       if (!confirmed) return;
 
-      setMessage(t('settings.data.importing'));
+      setNotification({ text: t('settings.data.importing'), isError: false });
       const result = await importData(archive);
       setStatus(await fetchDataStatus());
-      setMessage(
-        t('settings.data.imported', {
-          path: result.data_dir,
-          backup: result.backup_path,
-        })
-      );
+      setNotification({ text: t('settings.data.imported', { path: result.data_dir, backup: result.backup_path }), isError: false });
     } catch (error) {
-      setIsError(true);
-      setMessage(
-        t('settings.data.importFailed', {
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      setNotification({ text: t('settings.data.importFailed', { error: errMsg(error) }), isError: true });
     } finally {
       setBusy(false);
     }
@@ -90,18 +77,12 @@ export function DataTab(): React.ReactElement {
   async function handleSyncPush(): Promise<void> {
     if (!syncTarget.trim()) return;
     setBusy(true);
-    setIsError(false);
-    setMessage(t('settings.data.syncing'));
+    setNotification({ text: t('settings.data.syncing'), isError: false });
     try {
       const result = await syncPush(syncTarget.trim());
-      setMessage(t('settings.data.synced', { path: result.output_path }));
+      setNotification({ text: t('settings.data.synced', { path: result.output_path }), isError: false });
     } catch (error) {
-      setIsError(true);
-      setMessage(
-        t('settings.data.syncFailed', {
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      setNotification({ text: t('settings.data.syncFailed', { error: errMsg(error) }), isError: true });
     } finally {
       setBusy(false);
     }
@@ -110,8 +91,7 @@ export function DataTab(): React.ReactElement {
   async function handleSyncPull(): Promise<void> {
     if (!syncTarget.trim()) return;
     setBusy(true);
-    setIsError(false);
-    setMessage(t('settings.data.pulling'));
+    setNotification({ text: t('settings.data.pulling'), isError: false });
     try {
       const preview = await previewSyncPull(syncTarget.trim());
       const confirmed = window.confirm(
@@ -121,19 +101,9 @@ export function DataTab(): React.ReactElement {
 
       const result = await syncPull(syncTarget.trim());
       setStatus(await fetchDataStatus());
-      setMessage(
-        t('settings.data.pulled', {
-          path: result.data_dir,
-          backup: result.backup_path,
-        })
-      );
+      setNotification({ text: t('settings.data.pulled', { path: result.data_dir, backup: result.backup_path }), isError: false });
     } catch (error) {
-      setIsError(true);
-      setMessage(
-        t('settings.data.pullFailed', {
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      setNotification({ text: t('settings.data.pullFailed', { error: errMsg(error) }), isError: true });
     } finally {
       setBusy(false);
     }
@@ -243,9 +213,9 @@ export function DataTab(): React.ReactElement {
         </div>
       </div>
 
-      {message && (
-        <div className={`border-4 border-brutal-black p-4 font-mono text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${isError ? 'bg-red-100 text-brutal-black' : 'bg-green-100 text-brutal-black'}`}>
-          {message}
+      {notification && (
+        <div className={`border-4 border-brutal-black p-4 font-mono text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${notification.isError ? 'bg-red-100 text-brutal-black' : 'bg-green-100 text-brutal-black'}`}>
+          {notification.text}
         </div>
       )}
     </div>
