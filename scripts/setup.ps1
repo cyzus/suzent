@@ -183,9 +183,9 @@ if (-not (Test-Path ".env")) {
 }
 
 # ── Python dependencies ───────────────────────────────────────────────────────
-Write-Info "Syncing Python dependencies (uv sync)..."
-uv sync
-if ($LASTEXITCODE -ne 0) { Write-Fail "uv sync failed — check errors above." }
+Write-Info "Syncing Python dependencies with social channel support (uv sync --extra social)..."
+uv sync --extra social
+if ($LASTEXITCODE -ne 0) { Write-Fail "uv sync --extra social failed — check errors above." }
 Write-Ok "Python dependencies ready"
 
 # ── Download pre-built UI binary ─────────────────────────────────────────────

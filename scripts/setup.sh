@@ -170,8 +170,8 @@ else
 fi
 
 # ── Install / sync Python dependencies ───────────────────────────────────────
-info "Syncing Python dependencies (uv sync)..."
-uv sync || die "uv sync failed — check errors above."
+info "Syncing Python dependencies with social channel support (uv sync --extra social)..."
+uv sync --extra social || die "uv sync --extra social failed — check errors above."
 ok "Python dependencies ready"
 
 # ── Download pre-built UI binary ─────────────────────────────────────────────

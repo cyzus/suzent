@@ -787,7 +787,7 @@ def register_commands(app: typer.Typer):
             if not sh_shim.exists():
                 sh_shim.write_text("#!/bin/sh\n# Placeholder\n")
 
-        typer.echo("  • Updating backend dependencies...")
+        typer.echo("  • Updating backend dependencies with social channel support...")
         # On Windows, the running suzent.exe in .venv/Scripts/ is locked by the OS.
         # uv sync will fail trying to remove it ("Access denied", os error 5).
         # Workaround: rename the locked exe out of the way first — Windows allows
@@ -811,9 +811,13 @@ def register_commands(app: typer.Typer):
                     pass
 
         try:
-            run_command(["uv", "sync"], cwd=root, shell_on_windows=True)
+            run_command(
+                ["uv", "sync", "--extra", "social"], cwd=root, shell_on_windows=True
+            )
         except subprocess.CalledProcessError:
-            typer.echo("  ❌ Backend dependency update failed (uv sync).")
+            typer.echo(
+                "  ❌ Backend dependency update failed (uv sync --extra social)."
+            )
             # Try to restore the renamed exe so the CLI still works
             if _renamed_exe and _renamed_exe.exists():
                 try:

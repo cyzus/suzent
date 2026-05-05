@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### ⚡ Changed
 - **Desktop Runtime Paths**: Desktop runtime files such as `server.port` and backend logs now live under `~/.suzent/runtime`, so source checkouts stay clean.
 - **Configuration Layers**: User config and permission overrides can be stored under `~/.suzent/config`, while repository config remains the default/template layer.
+- **Social Channel Dependencies**: Setup scripts and `suzent upgrade` now sync the `social` extra by default so Telegram, Slack, Discord, and Feishu integrations are available for normal user installs.
 
 ### 🐛 Fixed
 - **Desktop Binary Compatibility**: Avoid launching stale local UI binaries when backend/Tauri startup files have changed in the source checkout.
