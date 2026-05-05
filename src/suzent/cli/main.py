@@ -24,17 +24,73 @@ _BIN_DIR = "bin"
 
 
 def _get_ui_binary(root: Path) -> Path | None:
-    """Return path to UI binary: newest local/release build wins."""
+    """Return a compatible UI binary: newest local/release build wins."""
     name = "suzent-ui.exe" if IS_WINDOWS else "suzent-ui"
     release_name = "suzent.exe" if IS_WINDOWS else "suzent"
     candidates = [
         root / _BIN_DIR / name,
         root / "src-tauri" / "target" / "release" / release_name,
     ]
-    existing = [p for p in candidates if p.exists()]
+    existing = [p for p in candidates if p.exists() and _is_ui_binary_current(root, p)]
     if not existing:
         return None
     return max(existing, key=lambda p: p.stat().st_mtime)
+
+
+def _is_ui_binary_current(root: Path, binary: Path) -> bool:
+    """Avoid launching a stale UI binary against newer backend/Tauri sources."""
+    try:
+        if (root / _BIN_DIR) in binary.resolve().parents and _has_unreleased_ui_changes(
+            root
+        ):
+            return False
+    except OSError:
+        return False
+
+    source_paths = [
+        root / "src-tauri" / "src" / "backend.rs",
+        root / "src-tauri" / "src" / "main.rs",
+        root / "src-tauri" / "tauri.conf.json",
+    ]
+    existing_sources = [path for path in source_paths if path.exists()]
+    if not existing_sources:
+        return True
+    binary_mtime = binary.stat().st_mtime
+    return all(path.stat().st_mtime <= binary_mtime for path in existing_sources)
+
+
+def _has_unreleased_ui_changes(root: Path) -> bool:
+    """Return True when local backend/Tauri changes are not represented by releases."""
+    if not (root / ".git").exists():
+        return False
+
+    watched_paths = [
+        "src-tauri",
+        "src/suzent/server.py",
+        "src/suzent/config/__init__.py",
+        "src/suzent/client/base.py",
+        "src/suzent/sandbox/manager.py",
+    ]
+
+    commands = [
+        ["git", "diff", "--name-only", "--", *watched_paths],
+        ["git", "diff", "--name-only", "main...HEAD", "--", *watched_paths],
+    ]
+    for command in commands:
+        try:
+            result = subprocess.run(
+                command,
+                cwd=root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except OSError:
+            continue
+        if result.returncode == 0 and result.stdout.strip():
+            return True
+
+    return False
 
 
 def _platform_asset_name() -> str:

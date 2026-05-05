@@ -6,8 +6,12 @@ Updates version in:
 - src-tauri/tauri.conf.prod.json
 - src-tauri/package.json
 - src-tauri/Cargo.toml
+- src-tauri/Cargo.lock
 - frontend/package.json
 - pyproject.toml
+- frontend/package-lock.json
+- src-tauri/package-lock.json
+- uv.lock
 """
 
 import argparse
@@ -23,6 +27,7 @@ FILES = {
     "tauri_conf_prod": Path("src-tauri/tauri.conf.prod.json"),
     "tauri_pkg": Path("src-tauri/package.json"),
     "cargo": Path("src-tauri/Cargo.toml"),
+    "cargo_lock": Path("src-tauri/Cargo.lock"),
     "frontend_pkg": Path("frontend/package.json"),
     "pyproject": Path("pyproject.toml"),
 }
@@ -87,6 +92,39 @@ def update_toml(path, new_version):
     print(f"  [UPDATE] {path} -> {new_version}")
 
 
+def update_cargo_lock(path, new_version):
+    """Update only the root suzent package entry in Cargo.lock."""
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    pattern = r'(\[\[package\]\]\nname = "suzent"\nversion = ")([\d\.]+)(")'
+    match = re.search(pattern, content)
+    if not match:
+        print(f"  [ERROR] Could not find suzent package entry in {path}")
+        return
+
+    old_version = match.group(2)
+    if old_version == new_version:
+        print(f"  [SKIP] {path} already at {new_version}")
+        return
+
+    new_content = re.sub(pattern, f"\\g<1>{new_version}\\g<3>", content, count=1)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(new_content)
+
+    print(f"  [UPDATE] {path}: {old_version} -> {new_version}")
+
+
+def print_subprocess_error(label, error):
+    print(f"  [ERROR] Failed to update {label}: {error}")
+    stdout = (error.stdout or b"").decode("utf-8", errors="replace")
+    stderr = (error.stderr or b"").decode("utf-8", errors="replace")
+    if stdout.strip():
+        print(stdout.strip())
+    if stderr.strip():
+        print(stderr.strip())
+
+
 def main():
     parser = argparse.ArgumentParser(description="Bump project version")
     parser.add_argument(
@@ -111,6 +149,13 @@ def main():
             if path.suffix == ".json":
                 with open(path, "r") as f:
                     v = json.load(f)["version"]
+            elif name == "cargo_lock":
+                with open(path, "r", encoding="utf-8") as f:
+                    match = re.search(
+                        r'\[\[package\]\]\nname = "suzent"\nversion = "([\d\.]+)"',
+                        f.read(),
+                    )
+                    v = match.group(1) if match else "unknown"
             else:
                 with open(path, "r") as f:
                     match = re.search(r'version\s*=\s*"([\d\.]+)"', f.read())
@@ -141,6 +186,7 @@ def main():
     update_json(PATHS["tauri_pkg"], new_version)
     update_json(PATHS["frontend_pkg"], new_version)
     update_toml(PATHS["cargo"], new_version)
+    update_cargo_lock(PATHS["cargo_lock"], new_version)
     update_toml(PATHS["pyproject"], new_version)
 
     # Update lock files
@@ -155,7 +201,7 @@ def main():
         )
         print("  [OK] Updated frontend/package-lock.json")
     except subprocess.CalledProcessError as e:
-        print(f"  [ERROR] Failed to update frontend lock: {e}")
+        print_subprocess_error("frontend lock", e)
 
     try:
         subprocess.run(
@@ -167,7 +213,7 @@ def main():
         )
         print("  [OK] Updated src-tauri/package-lock.json")
     except subprocess.CalledProcessError as e:
-        print(f"  [ERROR] Failed to update src-tauri lock: {e}")
+        print_subprocess_error("src-tauri lock", e)
 
     try:
         print("Updating uv.lock...")
@@ -180,7 +226,7 @@ def main():
         )
         print("  [OK] Updated uv.lock")
     except subprocess.CalledProcessError as e:
-        print(f"  [ERROR] Failed to update uv lock: {e}")
+        print_subprocess_error("uv lock", e)
 
     print("\nDone! Lock files updated. Now commit and release:")
     print("git add .")

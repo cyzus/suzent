@@ -26,10 +26,14 @@ python scripts/bump_version.py 1.2.3
 
 The script will automatically updates:
 - `src-tauri/tauri.conf.json`
+- `src-tauri/tauri.conf.prod.json`
 - `src-tauri/package.json`
 - `src-tauri/Cargo.toml`
+- `src-tauri/Cargo.lock`
 - `frontend/package.json`
 - `pyproject.toml`
+- npm lock files
+- `uv.lock`
 
 At the end, it will output the git commands you need to run to commit the changes.
 

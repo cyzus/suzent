@@ -22,6 +22,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Redundant Unread Badges**: Cleaned up duplicate unread indicators in the chat list.
 - **Auto-title Crash**: Fixed a crash when the auto-title generator returned no result.
 
+## [v0.6.2] - 2026-05-05
+
+### 🚀 Added
+- **User Home Data Directory**: SUZENT now stores user data in `~/.suzent` by default, with `SUZENT_DATA_DIR` available for custom locations.
+- **Data Import, Export, and Sync**: Added snapshot export/import APIs, CLI commands, and a Settings > Data tab. Snapshot sync supports pushing timestamped archives to a shared folder and pulling the latest snapshot back.
+- **User Skills Directory**: User-installed skills can live under `~/.suzent/skills`, layered above bundled repository skills.
+
+### ⚡ Changed
+- **Desktop Runtime Paths**: Desktop runtime files such as `server.port` and backend logs now live under `~/.suzent/runtime`, so source checkouts stay clean.
+- **Configuration Layers**: User config and permission overrides can be stored under `~/.suzent/config`, while repository config remains the default/template layer.
+
+### 🐛 Fixed
+- **Desktop Binary Compatibility**: Avoid launching stale local UI binaries when backend/Tauri startup files have changed in the source checkout.
+- **Windows Data Export**: Export now skips inaccessible symlink-like files instead of failing with Windows `WinError 1920`.
+- **Secret Export Safety**: Default portable exports scrub encrypted API-key rows from `chats.db` and continue excluding `.secret_key`; local pre-import backups preserve secrets inside excluded backup storage.
+- **Import Error Handling**: Invalid or missing import archives now return structured 400/404 responses instead of uncaught 500 errors.
+
 ## [v0.6.0] - 2026-04-23
 
 ### ⚡ Changed
