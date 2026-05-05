@@ -68,6 +68,15 @@ function parseToolResultEnvelope(output: string | undefined): ToolResultEnvelope
   return null;
 }
 
+function formatToolArgsForDisplay(args: string | undefined): string {
+  if (!args) return '';
+  try {
+    return JSON.stringify(JSON.parse(args), null, 2);
+  } catch {
+    return args;
+  }
+}
+
 interface ToolCallBlockProps {
   toolName: string;
   toolArgs?: string;
@@ -124,6 +133,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const toolResultMessage = typeof parsedOutput?.message === 'string'
     ? parsedOutput.message
     : null;
+  const displayToolArgs = React.useMemo(() => formatToolArgsForDisplay(toolArgs), [toolArgs]);
 
   const parsedToolArgs = React.useMemo<Record<string, unknown> | null>(() => {
     if (!toolArgs) return null;
@@ -235,11 +245,11 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
         ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}
       `}>
         <div className="overflow-hidden min-h-0 min-w-0 w-full">
-          <div className="ml-2 pl-3 border-l-2 border-neutral-200 mt-1 mb-2 space-y-2 min-w-0 overflow-x-hidden">
+          <div className="ml-2 pl-3 pr-2 border-l-2 border-neutral-200 dark:border-zinc-700 mt-1 mb-2 space-y-3 min-w-0 overflow-x-hidden">
             {/* Arguments or Running status */}
             {(toolArgs || (isStreaming && !output)) && (
               <div className="min-w-0 w-full overflow-hidden">
-                <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-1 flex items-center gap-2">
+                <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-1.5 flex items-center gap-2 tracking-wide">
                   {isStreaming && !output ? (
                     <>
                       <span className="text-brutal-black dark:text-neutral-300 animate-pulse">Running {displayName}...</span>
@@ -252,9 +262,9 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                   )}
                 </div>
                 {toolArgs && (
-                  <div className="max-h-[200px] overflow-y-auto scrollbar-thin w-full" style={{ overflowX: 'hidden' }}>
-                    <pre className="tool-call-pre text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed font-mono w-full">
-                      {toolArgs}
+                  <div className="max-h-[220px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2" style={{ overflowX: 'hidden' }}>
+                    <pre className="tool-call-pre font-mono text-[12px] leading-5 text-neutral-600 dark:text-neutral-300 w-full m-0">
+                      {displayToolArgs}
                     </pre>
                   </div>
                 )}
@@ -360,18 +370,18 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
             {/* Output section */}
             {output && (
               <div className="min-w-0 w-full overflow-hidden mt-2">
-                <div className="text-[10px] flex items-center justify-between font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-2">
+                <div className="text-[10px] flex items-center justify-between font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-1.5 tracking-wide">
                   <span>{t('toolCallBlock.output')}</span>
                 </div>
-                <div className="max-h-[300px] overflow-y-auto scrollbar-thin w-full" style={{ overflowX: 'hidden' }}>
+                <div className="max-h-[320px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2" style={{ overflowX: 'hidden' }}>
                   {toolResultMessage ? (
-                    <div className="prose prose-sm dark:prose-invert max-w-none text-neutral-700 dark:text-neutral-300">
+                    <div className="tool-result-markdown text-[13px] leading-6 text-neutral-700 dark:text-neutral-300 break-words">
                       <MarkdownRenderer content={toolResultMessage} />
                     </div>
                   ) : toolName.includes('search') || toolName.includes('web') ? (
                     <WebSearchRenderer output={output} />
                   ) : (
-                    <pre className="tool-call-pre text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed font-mono w-full">
+                    <pre className="tool-call-pre font-mono text-[12px] leading-5 text-neutral-600 dark:text-neutral-300 w-full m-0">
                       {output}
                     </pre>
                   )}

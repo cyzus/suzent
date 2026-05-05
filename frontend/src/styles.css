@@ -161,6 +161,31 @@ code {
   overflow-x: hidden !important;
 }
 
+.tool-result-markdown .prose {
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+
+.tool-result-markdown .prose p,
+.tool-result-markdown .prose ul,
+.tool-result-markdown .prose ol,
+.tool-result-markdown .prose blockquote {
+  margin-top: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.tool-result-markdown .prose :where(strong, h1, h2, h3, h4) {
+  color: inherit;
+}
+
+.tool-result-markdown .prose :where(h1, h2, h3, h4) {
+  font-size: 0.95rem;
+  line-height: 1.35;
+  margin-top: 0.45rem;
+  margin-bottom: 0.35rem;
+}
+
 /* Ensure smooth text selection */
 .select-text,
 .select-text * {
