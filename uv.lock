@@ -3778,6 +3778,7 @@ social = [
     { name = "markdown" },
     { name = "python-telegram-bot" },
     { name = "slack-sdk" },
+    { name = "zstandard" },
 ]
 
 [package.metadata]
@@ -3821,6 +3822,7 @@ requires-dist = [
     { name = "uvicorn" },
     { name = "wsproto", specifier = ">=1.3.2" },
     { name = "zstandard", marker = "extra == 'dev'" },
+    { name = "zstandard", marker = "extra == 'social'", specifier = ">=0.23.0" },
 ]
 provides-extras = ["social", "dev", "all"]
 
