@@ -838,7 +838,20 @@ class ChatDatabase:
     ) -> List[ChatSummaryModel]:
         """List chat summaries ordered by last updated."""
         with self._session() as session:
-            statement = select(ChatModel).order_by(ChatModel.updated_at.desc())
+            statement = (
+                select(
+                    ChatModel.id,
+                    ChatModel.title,
+                    ChatModel.created_at,
+                    ChatModel.updated_at,
+                    ChatModel.config,
+                    ChatModel.messages,
+                    ChatModel.last_result_at,
+                )
+                .order_by(ChatModel.updated_at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
 
             if search:
                 statement = statement.where(
@@ -848,14 +861,20 @@ class ChatDatabase:
                     )
                 )
 
-            statement = statement.offset(offset).limit(limit)
-            chats = session.exec(statement).all()
-
             results = []
             import re
 
-            for chat in chats:
-                messages = chat.messages or []
+            for row in session.exec(statement).all():
+                (
+                    chat_id,
+                    title,
+                    created_at,
+                    updated_at,
+                    config,
+                    messages,
+                    last_result_at,
+                ) = row
+                messages = messages or []
                 last_message = None
                 if messages:
                     last_msg = messages[-1]
@@ -887,7 +906,7 @@ class ChatDatabase:
                     if len(clean_content) > 100:
                         last_message += "..."
 
-                config = chat.config or {}
+                config = config or {}
                 # Count only assistant messages that carry visible text.
                 # Pure tool-call turns have role="assistant" but no text content,
                 # so we exclude them to avoid inflating the unread badge.
@@ -901,16 +920,16 @@ class ChatDatabase:
                 )
                 results.append(
                     ChatSummaryModel(
-                        id=chat.id,
-                        title=chat.title,
-                        createdAt=chat.created_at.isoformat(),
-                        updatedAt=chat.updated_at.isoformat(),
+                        id=chat_id,
+                        title=title,
+                        createdAt=created_at.isoformat(),
+                        updatedAt=updated_at.isoformat(),
                         messageCount=visible_count,
                         lastMessage=last_message,
                         platform=config.get("platform"),
                         heartbeatEnabled=config.get("heartbeat_enabled", False),
-                        lastResultAt=chat.last_result_at.isoformat()
-                        if chat.last_result_at
+                        lastResultAt=last_result_at.isoformat()
+                        if last_result_at
                         else None,
                         unreadCount=config.get("unread_count", 0),
                     )
@@ -951,9 +970,29 @@ class ChatDatabase:
     def get_active_heartbeats(self) -> List[ChatModel]:
         """Get all chats that have heartbeat enabled in their config."""
         with self._session() as session:
-            statement = select(ChatModel)
-            chats = session.exec(statement).all()
-            return [c for c in chats if c.config.get("heartbeat_enabled") is True]
+            statement = select(
+                ChatModel.id,
+                ChatModel.title,
+                ChatModel.created_at,
+                ChatModel.updated_at,
+                ChatModel.config,
+            )
+            chats = []
+            for chat_id, title, created_at, updated_at, config in session.exec(
+                statement
+            ).all():
+                config = config or {}
+                if config.get("heartbeat_enabled") is True:
+                    chats.append(
+                        ChatModel(
+                            id=chat_id,
+                            title=title,
+                            created_at=created_at,
+                            updated_at=updated_at,
+                            config=config,
+                        )
+                    )
+            return chats
 
     # -------------------------------------------------------------------------
     # PostProcess Job Operations

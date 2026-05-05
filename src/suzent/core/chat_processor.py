@@ -1584,6 +1584,21 @@ def _rebuild_display_messages(messages: list) -> list:
             return json.dumps(args, ensure_ascii=False)
         return str(args)
 
+    def truncate_display_text(text: str, limit: int) -> str:
+        if len(text) <= limit:
+            return text
+        return text[:limit] + f"\n... [{len(text) - limit} chars truncated for display]"
+
+    def normalize_tool_output_for_part(output: str) -> str:
+        text = strip_system_reminders(output)
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict) and isinstance(parsed.get("message"), str):
+                text = parsed["message"]
+        except Exception:
+            pass
+        return truncate_display_text(text, 12000)
+
     # First pass: find all tool returns so assistant rows can also carry
     # AG-UI-compatible parts for stable historical rendering.
     executed_tool_calls = set()
@@ -1684,11 +1699,13 @@ def _rebuild_display_messages(messages: list) -> list:
                         "type": "tool",
                         "toolCallId": part.tool_call_id,
                         "toolName": part.tool_name,
-                        "args": args_str,
+                        "args": truncate_display_text(args_str, 6000),
                         "state": tool_state,
                     }
                     if tool_output is not None:
-                        structured_tool_part["output"] = tool_output
+                        structured_tool_part["output"] = normalize_tool_output_for_part(
+                            tool_output
+                        )
                     structured_parts.append(structured_tool_part)
 
                     tc_dict = {

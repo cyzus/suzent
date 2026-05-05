@@ -400,7 +400,7 @@ async def get_chat(request: Request) -> JSONResponse:
         )
         context_usage = dict(chat.context_usage or {})
 
-        if chat.agent_state:
+        if chat.agent_state and context_usage.get("context_tokens") is None:
             try:
                 from suzent.core.agent_serializer import deserialize_state
                 from suzent.core.context_compressor import estimate_tokens

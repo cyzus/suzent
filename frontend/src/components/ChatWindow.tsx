@@ -49,6 +49,11 @@ function formatUsage(usage: any): string {
   return `Input: ${fmt(usage.input_tokens)} | Output: ${fmt(usage.output_tokens)} | Total: ${fmt(usage.total_tokens)}`;
 }
 
+function truncateForStore(value: string, limit: number): string {
+  if (value.length <= limit) return value;
+  return `${value.slice(0, limit)}\n... [${value.length - limit} chars truncated for display]`;
+}
+
 /**
  * Convert AG-UI streaming parts to a store Message for persistence.
  * Tool invocations are serialized as HTML <details> blocks with emoji conventions
@@ -70,7 +75,8 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any, role: Message['
     } else if (part.type === 'tool') {
       const toolName = part.toolName || 'unknown';
       const toolCallId = part.toolCallId || '';
-      const argsStr = part.args || '';
+      const argsStr = truncateForStore(part.args || '', 6000);
+      const outputStr = part.output != null ? truncateForStore(part.output, 12000) : undefined;
       const approvalId = part.approvalId || '';
       const stateAttr = part.state === 'approval-requested' ? 'pending' : (part.state === 'error' ? 'denied' : '');
       const attrs = ` data-tool-call-id="${toolCallId}"` +
@@ -78,10 +84,10 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any, role: Message['
         (stateAttr ? ` data-approval-state="${stateAttr}"` : '');
 
       content += `\n\n<details${attrs}><summary>\u{1F527} ${toolName}</summary>\n\n<pre><code class="language-text">${escapeHtmlForStore(argsStr)}</code></pre>\n\n</details>\n\n`;
-      if (part.output != null) {
-        content += `\n\n<details data-tool-call-id="${toolCallId}"><summary>\u{1F4E6} ${toolName}</summary>\n\n<pre><code class="language-text">${escapeHtmlForStore(part.output)}</code></pre>\n\n</details>\n\n`;
+      if (outputStr != null) {
+        content += `\n\n<details data-tool-call-id="${toolCallId}"><summary>\u{1F4E6} ${toolName}</summary>\n\n<pre><code class="language-text">${escapeHtmlForStore(outputStr)}</code></pre>\n\n</details>\n\n`;
       }
-      persistedParts.push({ ...part });
+      persistedParts.push({ ...part, args: argsStr, output: outputStr });
     } else if (part.type === 'a2ui' && part.surface && !part.surface.deferred) {
       // Inline A2UI surface — stored as a data attribute for re-hydration.
       // Deferred surfaces (ask_question) are transient and must not persist in history.
