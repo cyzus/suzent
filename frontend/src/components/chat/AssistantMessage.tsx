@@ -607,7 +607,7 @@ const AGUIPartsContent: React.FC<{
           <div key={ci} className="border-3 border-brutal-black shadow-brutal-lg bg-white dark:bg-zinc-800 px-6 py-5 relative">
             <div className="space-y-4">
               <MarkdownRenderer content={fullText} onFileClick={onFileClick} streamingLite={Boolean(isStreaming && isLastChunk)} />
-              {isLastChunk && (
+              {isStreaming && isLastChunk && (
                 <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1" />
               )}
             </div>
