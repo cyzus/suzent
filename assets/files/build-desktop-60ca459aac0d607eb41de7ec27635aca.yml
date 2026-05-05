@@ -1,0 +1,103 @@
+name: Build Desktop
+
+on:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-22.04
+    outputs:
+      tag_name: ${{ steps.release-tag.outputs.tag_name }}
+    steps:
+      - name: Resolve release tag
+        id: release-tag
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "tag_name=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Release for tag
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          gh release create "$TAG_NAME" \
+            --title "$TAG_NAME" \
+            --generate-notes || gh release view "$TAG_NAME"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ steps.release-tag.outputs.tag_name }}
+
+  build:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            asset: suzent-windows-x86_64.exe
+            binary: src-tauri/target/release/suzent.exe
+          - os: macos-latest
+            asset: suzent-macos-aarch64
+            binary: src-tauri/target/release/suzent
+          - os: macos-13
+            asset: suzent-macos-x86_64
+            binary: src-tauri/target/release/suzent
+          - os: ubuntu-22.04
+            asset: suzent-linux-x86_64
+            binary: src-tauri/target/release/suzent
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workdir: src-tauri
+
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install frontend deps
+        run: cd frontend && npm ci
+
+      - name: Install Tauri JS deps
+        run: cd src-tauri && npm ci
+
+      - name: Build
+        run: cd src-tauri && npm run build:dist
+
+      - name: Upload binary to Release
+        if: github.event_name == 'release' || github.event_name == 'push'
+        shell: bash
+        run: |
+          cp "${{ matrix.binary }}" "${{ matrix.asset }}"
+          gh release upload "${{ needs.create-release.outputs.tag_name }}" \
+            "${{ matrix.asset }}" --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
