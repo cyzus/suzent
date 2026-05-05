@@ -1056,6 +1056,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 if (msg.content) {
                   currentAssistant.content = (currentAssistant.content ? currentAssistant.content + '\n\n' : '') + msg.content;
                 }
+                if (Array.isArray(msg.parts) && msg.parts.length > 0) {
+                  currentAssistant.parts = [
+                    ...((currentAssistant.parts as any[] | undefined) || []),
+                    ...msg.parts,
+                  ];
+                }
               }
               if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
                 msg.tool_calls.forEach((tc: any) => {

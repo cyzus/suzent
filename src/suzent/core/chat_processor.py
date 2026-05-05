@@ -1579,13 +1579,23 @@ def _rebuild_display_messages(messages: list) -> list:
             return ""
         return f'\n\n<details data-reasoning="true"><summary>Thinking</summary>\n\n{text}\n\n</details>\n\n'
 
-    # First pass: find all tool calls that have a corresponding return
+    def stringify_tool_args(args: Any) -> str:
+        if isinstance(args, dict):
+            return json.dumps(args, ensure_ascii=False)
+        return str(args)
+
+    # First pass: find all tool returns so assistant rows can also carry
+    # AG-UI-compatible parts for stable historical rendering.
     executed_tool_calls = set()
+    tool_returns_by_id: dict[str, str] = {}
     for msg in messages:
         if isinstance(msg, ModelRequest):
             for part in msg.parts:
                 if isinstance(part, ToolReturnPart):
                     executed_tool_calls.add(part.tool_call_id)
+                    tool_returns_by_id[part.tool_call_id] = strip_system_reminders(
+                        str(part.content)
+                    )
 
     result = []
     for msg in messages:
@@ -1650,18 +1660,37 @@ def _rebuild_display_messages(messages: list) -> list:
                     result.append(entry)
         elif isinstance(msg, ModelResponse):
             ordered_content_parts = []
+            structured_parts = []
             tool_calls = []
             for part in msg.parts:
                 if isinstance(part, TextPart):
                     ordered_content_parts.append(part.content)
+                    structured_parts.append({"type": "text", "text": part.content})
                 elif isinstance(part, ThinkingPart):
                     ordered_content_parts.append(render_reasoning_block(part.content))
+                    if part.content.strip():
+                        structured_parts.append(
+                            {"type": "reasoning", "text": part.content}
+                        )
                 elif isinstance(part, ToolCallPart):
-                    args_str = (
-                        json.dumps(part.args)
-                        if isinstance(part.args, dict)
-                        else str(part.args)
+                    args_str = stringify_tool_args(part.args)
+                    tool_output = tool_returns_by_id.get(part.tool_call_id)
+                    tool_state = (
+                        "completed"
+                        if part.tool_call_id in executed_tool_calls
+                        else "approval-requested"
                     )
+                    structured_tool_part: dict[str, Any] = {
+                        "type": "tool",
+                        "toolCallId": part.tool_call_id,
+                        "toolName": part.tool_name,
+                        "args": args_str,
+                        "state": tool_state,
+                    }
+                    if tool_output is not None:
+                        structured_tool_part["output"] = tool_output
+                    structured_parts.append(structured_tool_part)
+
                     tc_dict = {
                         "id": part.tool_call_id,
                         "type": "function",
@@ -1674,11 +1703,13 @@ def _rebuild_display_messages(messages: list) -> list:
             ordered_content = (
                 "".join(ordered_content_parts) if ordered_content_parts else None
             )
-            if not ordered_content and not tool_calls:
+            if not ordered_content and not tool_calls and not structured_parts:
                 continue
 
             ts = msg.timestamp.isoformat() if getattr(msg, "timestamp", None) else None
             entry = {"role": "assistant", "content": ordered_content}
+            if structured_parts:
+                entry["parts"] = structured_parts
             if tool_calls:
                 entry["tool_calls"] = tool_calls
             if ts:
@@ -1719,4 +1750,9 @@ def _append_inline_a2ui_surfaces(
     target_entry["content"] = (target_entry.get("content") or "") + "".join(
         render_inline_a2ui(surface) for surface in surfaces
     )
+    target_parts = target_entry.setdefault("parts", [])
+    if isinstance(target_parts, list):
+        target_parts.extend(
+            {"type": "a2ui", "surface": surface} for surface in surfaces
+        )
     return display_messages

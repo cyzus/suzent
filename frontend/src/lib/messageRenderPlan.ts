@@ -15,6 +15,7 @@ export interface MessageRenderPlan {
 const IGNORED_TOOL_NAMES = ['final_answer', 'final answer'];
 
 function isEmptyAssistantPlaceholder(message: Message): boolean {
+  if (message.parts && message.parts.length > 0) return false;
   return message.role !== 'user' && !message.content?.trim() && !message.stepInfo;
 }
 
@@ -92,6 +93,8 @@ export function buildMessageRenderPlan(messages: Message[]): MessageRenderPlan {
       const msg = messages[idx];
       if (isEmptyAssistantPlaceholder(msg)) {
         emptyIndices.push(idx);
+      } else if (msg.parts && msg.parts.length > 0) {
+        finalIndices.push(idx);
       } else if (isIntermediateStepContent(msg.content, msg.stepInfo)) {
         intermediateIndices.push(idx);
       } else {

@@ -670,7 +670,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   onRetry,
 }) => {
   const isStreamingThis = isStreaming && isLastMessage;
-  const hasParts = aguiParts && aguiParts.length > 0;
+  const effectiveParts = aguiParts ?? message.parts;
+  const hasParts = effectiveParts && effectiveParts.length > 0;
   const isThinking = isStreamingThis && !message.content && !hasParts;
 
   // Suppress the streaming cursor during the assembly→reveal animation.
@@ -690,8 +691,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
 
   // ── Compute full message text for copying ──
   const fullMessageText = useMemo(() => {
-    if (aguiParts) {
-      return aguiParts
+    if (effectiveParts) {
+      return effectiveParts
         .filter(p => p.type === 'text')
         .map(p => p.text || '')
         .join('')
@@ -704,24 +705,24 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
         .join('\n\n')
         .trim();
     }
-  }, [aguiParts, message.content]);
+  }, [effectiveParts, message.content]);
 
   // 1. 抓取当前正在跑的 Tool 和 错误状态
   let currentToolName: string | undefined = undefined;
   let hasError: boolean = false;
   let isPendingApproval: boolean = false;
 
-  if (aguiParts && aguiParts.length > 0) {
-    hasError = aguiParts.some(p => p.type === 'tool' && p.state === 'error');
-    isPendingApproval = aguiParts.some(p => p.type === 'tool' && p.state === 'approval-requested');
+  if (effectiveParts && effectiveParts.length > 0) {
+    hasError = effectiveParts.some(p => p.type === 'tool' && p.state === 'error');
+    isPendingApproval = effectiveParts.some(p => p.type === 'tool' && p.state === 'approval-requested');
 
     // 优先找正在 running 的 tool
-    const runningTool = aguiParts.find(p => p.type === 'tool' && !p.output);
+    const runningTool = effectiveParts.find(p => p.type === 'tool' && !p.output);
     if (runningTool) {
       currentToolName = runningTool.toolName;
     } else {
       // 没有正在运行的，看最后一个 block 是不是 tool (做完了但没新东西)
-      const lastPart = aguiParts[aguiParts.length - 1];
+      const lastPart = effectiveParts[effectiveParts.length - 1];
       if (lastPart && lastPart.type === 'tool') {
         currentToolName = lastPart.toolName;
       }
@@ -775,7 +776,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   );
 
   // ── AG-UI parts-based rendering path (for streaming messages) ──
-  if (aguiParts !== undefined) {
+  if (effectiveParts !== undefined) {
     return (
       <div className="group w-full max-w-4xl break-all overflow-x-hidden text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
         {/* Badge/Assembly Container */}
@@ -785,7 +786,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
           <div className="overflow-hidden min-h-0 min-w-0 flex flex-col space-y-3 pr-2 pb-2">
             {hasParts ? (
               <AGUIPartsContent
-                parts={aguiParts}
+                parts={effectiveParts}
                 messageIndex={messageIndex}
                 isStreaming={isStreamingThis}
                 onFileClick={onFileClick}

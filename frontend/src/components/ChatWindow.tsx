@@ -56,13 +56,16 @@ function formatUsage(usage: any): string {
  */
 function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any, role: Message['role'] = 'assistant'): Message {
   let content = '';
+  const persistedParts: AGUIPart[] = [];
   for (const part of parts) {
     if (part.type === 'text') {
       content += part.text || '';
+      persistedParts.push({ ...part });
     } else if (part.type === 'reasoning') {
       const text = part.text || '';
       if (text) {
         content += `\n\n<details data-reasoning="true"><summary>Thinking</summary>\n\n${text}\n\n</details>\n\n`;
+        persistedParts.push({ ...part });
       }
     } else if (part.type === 'tool') {
       const toolName = part.toolName || 'unknown';
@@ -78,14 +81,16 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any, role: Message['
       if (part.output != null) {
         content += `\n\n<details data-tool-call-id="${toolCallId}"><summary>\u{1F4E6} ${toolName}</summary>\n\n<pre><code class="language-text">${escapeHtmlForStore(part.output)}</code></pre>\n\n</details>\n\n`;
       }
+      persistedParts.push({ ...part });
     } else if (part.type === 'a2ui' && part.surface && !part.surface.deferred) {
       // Inline A2UI surface — stored as a data attribute for re-hydration.
       // Deferred surfaces (ask_question) are transient and must not persist in history.
       const encoded = encodeURIComponent(JSON.stringify(part.surface));
       content += `\n\n<div data-a2ui="${encoded}"></div>\n\n`;
+      persistedParts.push({ ...part, surface: { ...part.surface } });
     }
   }
-  return { role, content, timestamp: new Date().toISOString(), stepInfo: usage ? formatUsage(usage) : undefined };
+  return { role, content, parts: persistedParts, timestamp: new Date().toISOString(), stepInfo: usage ? formatUsage(usage) : undefined };
 }
 
 function groupedBlocksToAssistantContent(blocks: ContentBlock[]): string {

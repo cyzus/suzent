@@ -1,3 +1,5 @@
+import type { AGUIPart } from './agui';
+
 export interface ImageAttachment {
   id: string;
   data: string; // base64 encoded
@@ -21,6 +23,7 @@ export interface Message {
   content: string;
   timestamp?: string;         // ISO 8601 timestamp when the message was created
   stepInfo?: string; // Step metadata like "Step: 1 | Input tokens: 100 | Output tokens: 50"
+  parts?: AGUIPart[]; // Structured assistant display parts; content remains as fallback.
   images?: ImageAttachment[]; // Optional image attachments
   files?: FileAttachment[];   // Optional file attachments
 }

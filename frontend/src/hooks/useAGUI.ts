@@ -6,35 +6,11 @@
  */
 import { useState, useCallback, useRef } from 'react';
 import type { A2UISurface } from '../types/a2ui';
+import type { AGUIPart, ApprovalRememberScope } from '../types/agui';
 
 // ── Types ────────────────────────────────────────────────────────────
-
-export interface AGUIPart {
-  type: 'text' | 'reasoning' | 'tool' | 'a2ui';
-  /** Text content (for text and reasoning parts) */
-  text?: string;
-  /** AG-UI message_id for correlating text deltas */
-  messageId?: string;
-  /** Tool call identifier */
-  toolCallId?: string;
-  /** Tool name */
-  toolName?: string;
-  /** Accumulated tool arguments (JSON string built from deltas) */
-  args?: string;
-  /** Tool result output */
-  output?: string;
-  /** Tool execution state */
-  state?: 'running' | 'completed' | 'error' | 'approval-requested';
-  /** HITL approval request identifier */
-  approvalId?: string;
-  /** Rich display data from CustomEvent (for future use) */
-  displayData?: unknown;
-  /** Inline A2UI surface (type === 'a2ui') */
-  surface?: A2UISurface & { target?: string };
-}
-
 export type AGUIStatus = 'idle' | 'submitted' | 'streaming' | 'error';
-export type ApprovalRememberScope = 'session' | 'global' | null;
+export type { AGUIPart, ApprovalRememberScope };
 
 interface UseAGUIOptions {
   url: string;

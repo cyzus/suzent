@@ -7,6 +7,67 @@ import type { ApprovalRememberScope } from '../../hooks/useAGUI';
 
 export type ApprovalState = 'pending' | 'approved' | 'denied' | undefined;
 
+interface ToolResultEnvelope {
+  success?: boolean;
+  message?: string;
+  metadata?: unknown;
+  error_code?: string;
+}
+
+function stripJsonFence(value: string): string {
+  const trimmed = value.trim();
+  const match = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return match ? match[1].trim() : trimmed;
+}
+
+function parseToolResultEnvelope(output: string | undefined): ToolResultEnvelope | null {
+  if (!output) return null;
+
+  let current: unknown = output;
+  for (let i = 0; i < 3; i += 1) {
+    if (typeof current === 'string') {
+      try {
+        current = JSON.parse(stripJsonFence(current));
+        continue;
+      } catch {
+        return null;
+      }
+    }
+
+    if (current && typeof current === 'object' && !Array.isArray(current)) {
+      const candidate = current as ToolResultEnvelope & {
+        result?: unknown;
+        content?: unknown;
+        output?: unknown;
+      };
+      if (typeof candidate.message === 'string') return candidate;
+      const nested = candidate.result ?? candidate.content ?? candidate.output;
+      if (typeof nested === 'string') {
+        current = nested;
+        continue;
+      }
+      if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+        current = nested;
+        continue;
+      }
+      return null;
+    }
+
+    return null;
+  }
+
+  const messageMatch = stripJsonFence(output).match(/"message"\s*:\s*"((?:\\.|[^"\\])*)"/);
+  if (messageMatch) {
+    try {
+      return { message: JSON.parse(`"${messageMatch[1]}"`) };
+    } catch {
+      return { message: messageMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"') };
+    }
+  }
+
+  return null;
+}
+
 interface ToolCallBlockProps {
   toolName: string;
   toolArgs?: string;
@@ -55,6 +116,14 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const isDenied = approvalState === 'denied';
   const isWebTool = toolName === 'web_search' || toolName === 'webpage_fetch';
   const isBashTool = toolName === 'bash_execute';
+
+  const parsedOutput = React.useMemo<ToolResultEnvelope | null>(() => {
+    return parseToolResultEnvelope(output);
+  }, [output]);
+
+  const toolResultMessage = typeof parsedOutput?.message === 'string'
+    ? parsedOutput.message
+    : null;
 
   const parsedToolArgs = React.useMemo<Record<string, unknown> | null>(() => {
     if (!toolArgs) return null;
@@ -295,7 +364,11 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                   <span>{t('toolCallBlock.output')}</span>
                 </div>
                 <div className="max-h-[300px] overflow-y-auto scrollbar-thin w-full" style={{ overflowX: 'hidden' }}>
-                  {toolName.includes('search') || toolName.includes('web') ? (
+                  {toolResultMessage ? (
+                    <div className="prose prose-sm dark:prose-invert max-w-none text-neutral-700 dark:text-neutral-300">
+                      <MarkdownRenderer content={toolResultMessage} />
+                    </div>
+                  ) : toolName.includes('search') || toolName.includes('web') ? (
                     <WebSearchRenderer output={output} />
                   ) : (
                     <pre className="tool-call-pre text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed font-mono w-full">
