@@ -378,6 +378,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [currentUsage, setCurrentUsage] = useState<any>(null);
   const {
     setUsage: setLastKnownUsage,
+    setUsageForChat,
     clearUsage: clearLastKnownUsage,
     setCompactNotice,
   } = useContextUsageStore();
@@ -395,7 +396,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const activeChatIdRef = useRef<string | null>(currentChatId);
   useEffect(() => {
     activeChatIdRef.current = currentChatId;
-    clearLastKnownUsage();
+    if (!currentChatId) {
+      clearLastKnownUsage();
+      return;
+    }
+
+    const cachedUsage = useContextUsageStore.getState().getUsageForChat(currentChatId);
+    if (cachedUsage) {
+      setLastKnownUsage(cachedUsage);
+    } else {
+      clearLastKnownUsage();
+    }
   }, [currentChatId]);
 
   // Keep sub-agent UI state scoped to the currently viewed chat.
@@ -551,7 +562,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         refreshPlan(chatId);
       } else if (name === 'usage_update') {
         setCurrentUsage(value);
-        setLastKnownUsage(value as any);
+        const chatId = streamingChatIdRef.current || activeChatIdRef.current;
+        if (chatId) {
+          setUsageForChat(chatId, value as any);
+        } else {
+          setLastKnownUsage(value as any);
+        }
       } else if (name === 'heartbeat_ok') {
         // Backend signals that this heartbeat run was OK and messages were rolled back.
         heartbeatOkRef.current = true;

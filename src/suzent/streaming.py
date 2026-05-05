@@ -697,9 +697,11 @@ async def stream_agent_responses(
                 if msg_type == "event":
                     if isinstance(payload, AgentRunResultEvent):
                         # Save message history — must not be gated on usage extraction
+                        result_messages = None
                         try:
-                            agent._last_messages = payload.result.all_messages()  # type: ignore[attr-defined]
-                            deps.last_messages = agent._last_messages
+                            result_messages = payload.result.all_messages()
+                            agent._last_messages = result_messages  # type: ignore[attr-defined]
+                            deps.last_messages = result_messages
                         except Exception as e:
                             logger.warning(
                                 f"[Streaming] Failed to extract message history: {e}"
@@ -708,10 +710,28 @@ async def stream_agent_responses(
                         # Extract usage data (independent — failure doesn't affect history)
                         try:
                             usage = payload.result.usage()
+                            context_tokens = None
+                            if result_messages is not None:
+                                try:
+                                    from suzent.config import CONFIG
+                                    from suzent.core.context_compressor import (
+                                        estimate_tokens,
+                                    )
+
+                                    context_tokens = estimate_tokens(
+                                        result_messages,
+                                        CONFIG.max_context_tokens,
+                                    ).estimated_tokens
+                                except Exception as e:
+                                    logger.debug(
+                                        f"[Streaming] Failed to estimate context usage: {e}"
+                                    )
+
                             usage_data = {
                                 "input_tokens": usage.input_tokens,
                                 "output_tokens": usage.output_tokens,
                                 "total_tokens": usage.total_tokens,
+                                "context_tokens": context_tokens,
                                 "cache_write_tokens": usage.cache_write_tokens,
                                 "cache_read_tokens": usage.cache_read_tokens,
                                 "requests": usage.requests,

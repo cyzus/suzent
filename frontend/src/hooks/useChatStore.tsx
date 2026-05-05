@@ -1002,13 +1002,17 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentChatTitle(chat.title);
 
         if (chat.contextTokens) {
-          useContextUsageStore.getState().setUsage({
-            input_tokens: chat.contextTokens,
-            output_tokens: 0,
-            total_tokens: chat.contextTokens,
-            cache_write_tokens: 0,
-            cache_read_tokens: 0,
-            requests: 0,
+          const contextUsageStore = useContextUsageStore.getState();
+          const existingUsage = contextUsageStore.getUsageForChat(chatId);
+          contextUsageStore.setUsageForChat(chatId, {
+            input_tokens: existingUsage?.input_tokens ?? chat.contextTokens,
+            output_tokens: existingUsage?.output_tokens ?? 0,
+            total_tokens: existingUsage?.total_tokens ?? chat.contextTokens,
+            context_tokens: chat.contextTokens,
+            cache_write_tokens: existingUsage?.cache_write_tokens ?? 0,
+            cache_read_tokens: existingUsage?.cache_read_tokens ?? 0,
+            requests: existingUsage?.requests ?? 0,
+            details: existingUsage?.details,
           });
         }
         setConfigByChat(prev => ({ ...prev, [key]: chat.config }));

@@ -142,8 +142,8 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
   const hintTimerRef = useRef<number | null>(null);
   const hoverCloseTimerRef = useRef<number | null>(null);
 
-  const total = usage.total_tokens ?? 0;
-  const pct = Math.min(100, (total / limit) * 100);
+  const contextTokens = usage.context_tokens ?? usage.total_tokens ?? 0;
+  const pct = Math.min(100, (contextTokens / limit) * 100);
   const barColor = pct >= 80 ? 'bg-brutal-red' : pct >= 60 ? 'bg-brutal-yellow' : 'bg-neutral-400 dark:bg-neutral-500';
 
   const inputTokens = usage.input_tokens ?? 0;
@@ -269,7 +269,7 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
         <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
       </div>
       <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">
-        {fmt(total)}
+        {fmt(contextTokens)}
       </span>
       {compactRecommended && !compacting && (
         <span className="hidden md:inline text-[9px] font-bold uppercase tracking-wider text-brutal-red" title="Context usage is high, consider compacting.">
@@ -305,7 +305,7 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
           <div className="space-y-0.5">
             <div className="flex justify-between">
               <span className="text-neutral-500 dark:text-neutral-400">Total</span>
-              <span>{fmt(total)} / {fmt(limit)}</span>
+              <span>{fmt(contextTokens)} / {fmt(limit)}</span>
             </div>
             <div className="w-full h-1 rounded-full bg-neutral-100 dark:bg-zinc-800">
               <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
