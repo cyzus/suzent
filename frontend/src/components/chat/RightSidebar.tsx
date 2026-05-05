@@ -187,6 +187,13 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     if (hasValidPlan && !isOpen) onOpen();
   }, [hasValidPlan]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (isOpen && activeTab === 'plan' && !hasValidPlan) {
+      onClose();
+      setActiveTab('browser');
+    }
+  }, [isOpen, activeTab, hasValidPlan, onClose]);
+
   // ── Icon strip click: toggle panel or switch tab ───────────────────
   const handleTabClick = useCallback((tabId: TabId) => {
     const targetTab = tabs.find(tab => tab.id === tabId);
