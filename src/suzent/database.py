@@ -89,6 +89,7 @@ class ChatModel(SQLModel, table=True):
     updated_at: datetime = Field(serialization_alias="updatedAt")
     config: dict = Field(default_factory=dict, sa_column=Column(JSON))
     messages: list = Field(default_factory=list, sa_column=Column(JSON))
+    context_usage: dict = Field(default_factory=dict, sa_column=Column(JSON))
     agent_state: Optional[bytes] = None
 
     # Session lifecycle fields
@@ -626,6 +627,16 @@ class ChatDatabase:
                     )
                 conn.commit()
 
+        # Migration: Persist the latest rich context/usage payload per chat for UI display.
+        if "chats" in inspector.get_table_names():
+            columns = [col["name"] for col in inspector.get_columns("chats")]
+            with self.engine.connect() as conn:
+                if "context_usage" not in columns:
+                    conn.execute(
+                        text("ALTER TABLE chats ADD COLUMN context_usage JSON")
+                    )
+                conn.commit()
+
     def _session(self) -> Session:
         """Create a new database session."""
         return Session(self.engine)
@@ -642,6 +653,7 @@ class ChatDatabase:
         agent_state: bytes = None,
         chat_id: str = None,
         working_directory: str = None,
+        context_usage: Dict[str, Any] = None,
     ) -> str:
         """Create a new chat and return its ID."""
         now = datetime.now()
@@ -653,6 +665,7 @@ class ChatDatabase:
             updated_at=now,
             config=config,
             messages=messages or [],
+            context_usage=context_usage or {},
             agent_state=agent_state,
             working_directory=working_directory,
         )
@@ -676,6 +689,7 @@ class ChatDatabase:
         messages: List[Dict[str, Any]] = None,
         agent_state: bytes = None,
         working_directory: str = None,
+        context_usage: Dict[str, Any] = None,
     ) -> bool:
         """Update an existing chat."""
         with self._session() as session:
@@ -696,6 +710,10 @@ class ChatDatabase:
             if messages is not None:
                 chat.messages = messages
                 should_update_timestamp = True
+
+            if context_usage is not None:
+                chat.context_usage = context_usage
+                flag_modified(chat, "context_usage")
 
             if agent_state is not None:
                 chat.agent_state = agent_state

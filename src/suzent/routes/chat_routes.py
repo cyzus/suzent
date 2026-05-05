@@ -398,6 +398,7 @@ async def get_chat(request: Request) -> JSONResponse:
         response_chat = chat.model_dump(
             mode="json", by_alias=True, exclude={"agent_state"}
         )
+        context_usage = dict(chat.context_usage or {})
 
         if chat.agent_state:
             try:
@@ -411,8 +412,13 @@ async def get_chat(request: Request) -> JSONResponse:
                         state["message_history"], _CFG.max_context_tokens
                     )
                     response_chat["contextTokens"] = budget.estimated_tokens
+                    context_usage["context_tokens"] = budget.estimated_tokens
             except Exception:
                 pass
+
+        response_chat.pop("context_usage", None)
+        if context_usage:
+            response_chat["contextUsage"] = context_usage
 
         hb_path = Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
         if hb_path.exists():

@@ -740,6 +740,19 @@ async def stream_agent_responses(
                             await out_queue.put(
                                 ("chunk", _encode_custom("usage_update", usage_data))
                             )
+                            if chat_id:
+                                try:
+                                    from suzent.database import get_database
+
+                                    await asyncio.to_thread(
+                                        get_database().update_chat,
+                                        chat_id,
+                                        context_usage=usage_data,
+                                    )
+                                except Exception as e:
+                                    logger.debug(
+                                        f"[Streaming] Failed to persist context usage: {e}"
+                                    )
                             # Persist usage to the cost ledger
                             if usage.input_tokens or usage.output_tokens:
                                 from suzent.core.cost_tracker import get_cost_tracker
