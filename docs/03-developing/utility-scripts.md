@@ -40,10 +40,17 @@ Steps: Build frontend → Bundle Python → Build Tauri app.
 ## Maintenance
 
 ### `bump_version.py`
-Updates version numbers across `pyproject.toml`, `package.json`, and Cargo files.
+Updates version numbers across `pyproject.toml`, `package.json`, and Cargo files. Also generates a changelog draft from conventional commits since the last tag.
 
 ```bash
-python scripts/bump_version.py [major|minor|patch]
+# Bump version and print changelog draft
+python scripts/bump_version.py [major|minor|patch|x.y.z]
+
+# Preview changelog draft without bumping
+python scripts/bump_version.py --changelog
+
+# Check all files are at the same version
+python scripts/bump_version.py --check <version>
 ```
 
 ### `fix_timestamps.py`

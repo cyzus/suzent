@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Unified version bumper for Suzent.
 Updates version in:
@@ -125,13 +126,71 @@ def print_subprocess_error(label, error):
         print(stderr.strip())
 
 
+def generate_changelog_draft(version: str, root: Path) -> str:
+    prev_tag = subprocess.run(
+        ["git", "describe", "--tags", "--abbrev=0"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    ).stdout.strip()
+
+    range_spec = f"{prev_tag}..HEAD" if prev_tag else "HEAD"
+
+    result = subprocess.run(
+        ["git", "log", range_spec, "--format=%s", "--no-merges"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    commits = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+    ADDED = "Added"
+    CHANGED = "Changed"
+    FIXED = "Fixed"
+    groups: dict[str, list[str]] = {ADDED: [], CHANGED: [], FIXED: []}
+    skip_prefixes = ("chore:", "ci:", "docs:", "test:", "style:", "build:")
+
+    for msg in commits:
+        if any(msg.startswith(p) for p in skip_prefixes):
+            continue
+        if msg.startswith("feat:"):
+            groups[ADDED].append(msg[len("feat:") :].strip())
+        elif msg.startswith("fix:"):
+            groups[FIXED].append(msg[len("fix:") :].strip())
+        elif msg.startswith(("refactor:", "perf:")):
+            prefix = "refactor:" if msg.startswith("refactor:") else "perf:"
+            groups[CHANGED].append(msg[len(prefix) :].strip())
+
+    group_headers = {ADDED: "### Added", CHANGED: "### Changed", FIXED: "### Fixed"}
+
+    today = __import__("datetime").date.today().isoformat()
+    lines = [f"## [v{version}] - {today}", ""]
+    for group, items in groups.items():
+        if items:
+            lines.append(group_headers[group])
+            for item in items:
+                lines.append(f"- {item[0].upper()}{item[1:]}")
+            lines.append("")
+
+    return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Bump project version")
     parser.add_argument(
-        "version", help="New version (x.y.z) or bump type (major/minor/patch)"
+        "version",
+        nargs="?",
+        help="New version (x.y.z) or bump type (major/minor/patch)",
     )
     parser.add_argument(
         "--check", action="store_true", help="Check for consistency only"
+    )
+    parser.add_argument(
+        "--changelog",
+        action="store_true",
+        help="Preview changelog draft without bumping",
     )
 
     args = parser.parse_args()
@@ -141,6 +200,13 @@ def main():
 
     current_version = get_current_version(PATHS["tauri_conf"])
     print(f"Current version: {current_version}")
+
+    if args.changelog:
+        print(generate_changelog_draft(current_version, root))
+        return
+
+    if not args.version:
+        parser.error("version is required unless --changelog is specified")
 
     if args.check:
         # Check all files match
@@ -228,9 +294,13 @@ def main():
     except subprocess.CalledProcessError as e:
         print_subprocess_error("uv lock", e)
 
-    print("\nDone! Lock files updated. Now commit and release:")
+    # Generate changelog draft
+    print("\nGenerating changelog draft...")
+    draft = generate_changelog_draft(new_version, root)
+    print(draft)
+    print("\nDone! Paste the draft above into CHANGELOG.md, then commit and release:")
     print("git add .")
-    print(f'git commit -m "chore: bump version to {new_version}"')
+    print(f'git commit -m "chore: release v{new_version}"')
     print(f"git tag v{new_version}")
     print("git push && git push --tags")
 

@@ -143,6 +143,7 @@ See full guidelines in the codebase documentation.
 - [ ] Changes have been tested locally
 - [ ] Documentation updated if needed
 - [ ] No unnecessary changes to unrelated files
+- [ ] Commit messages use conventional format (`feat:`, `fix:`, `refactor:`, etc.) so changelog can be generated automatically
 
 ## Roadmap
 

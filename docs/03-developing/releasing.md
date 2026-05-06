@@ -2,13 +2,22 @@
 
 This guide describes how to release a new version of Suzent. The process is automated using GitHub Actions, but requires a manual version bump and tagging.
 
-## 1. Bump Version
+## 1. Update Changelog
 
-We use a helper script to consistently update the version number across all necessary files (`package.json`, `Cargo.toml`, `pyproject.toml`, etc.).
+Generate a draft from commits since the last tag, then edit it into `CHANGELOG.md` before bumping the version — so the changelog and version bump land in the same commit.
 
-### Usage
+```bash
+python scripts/bump_version.py --changelog
+```
 
-Run the `bump_version.py` script from the root directory:
+This prints all `feat:`, `fix:`, `refactor:`, and `perf:` commits since the last tag. Copy the output into `CHANGELOG.md`, edit for clarity, then save.
+
+> [!TIP]
+> The draft only picks up commits with conventional prefixes. Commits without a prefix are skipped, so keeping commit messages consistent ensures nothing is missed.
+
+## 2. Bump Version
+
+With the changelog already updated, run the version bump. This updates version numbers across all necessary files (`package.json`, `Cargo.toml`, `pyproject.toml`, etc.) and prints the changelog draft again for reference.
 
 ```bash
 # Bump patch version (e.g., 0.1.0 -> 0.1.1)
@@ -24,7 +33,7 @@ python scripts/bump_version.py major
 python scripts/bump_version.py 1.2.3
 ```
 
-The script will automatically updates:
+Files updated:
 - `src-tauri/tauri.conf.json`
 - `src-tauri/tauri.conf.prod.json`
 - `src-tauri/package.json`
@@ -34,25 +43,6 @@ The script will automatically updates:
 - `pyproject.toml`
 - npm lock files
 - `uv.lock`
-
-At the end, it will output the git commands you need to run to commit the changes.
-
-## 2. Update Changelog
-
-Before committing and tagging, add an entry to `CHANGELOG.md` for the new version. Follow the [Keep a Changelog](https://keepachangelog.com/) format:
-
-```markdown
-## [v0.2.3] - 2026-02-03
-
-### 🚀 Added
-- **Feature**: Description of new features.
-
-### ⚡ Changed
-- **Component**: Description of changes.
-
-### 🐛 Fixed
-- **Bug**: Description of bug fixes.
-```
 
 > [!IMPORTANT]
 > The version in the changelog header (e.g., `[v0.2.3]`) must match the git tag exactly. Release notes are automatically extracted from this section.
@@ -76,21 +66,9 @@ ruff format .
 > pre-commit install
 > ```
 
-## 4. Update Lock Files
+## 4. Commit and Tag
 
-After bumping the version, the lock files need to be regenerated to reflect the new version numbers:
-
-```bash
-# Update npm lock files
-cd frontend && npm install && cd ..
-cd src-tauri && npm install && cd ..
-
-# Update Cargo.lock (will be done automatically on next cargo build)
-```
-
-## 5. Trigger Release (commit & tag)
-
-After bumping the version, updating lock files, updating the changelog, and running pre-commit, commit the changes and create a git tag. The GitHub Action workflow listens for tags starting with `v` (e.g., `v0.1.1`).
+Commit the changelog and version bump together, then create a git tag. The GitHub Action workflow listens for tags starting with `v`.
 
 ```bash
 # 1. Commit the version bump, lock files, and changelog
