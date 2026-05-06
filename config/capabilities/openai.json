@@ -439,6 +439,9 @@
     },
     "openai/text-embedding-ada-002": {
       "mode": "chat"
+    },
+    "openai/chat-latest": {
+      "mode": "chat"
     }
   }
 }
