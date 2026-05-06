@@ -11,9 +11,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Model Roles**: New "Model Roles" tab in Settings lets you assign specific models to each role — Primary, Cheap, Vision, Embedding, Image Generation, and TTS — with a searchable dropdown populated from your enabled providers.
 - **`/model` Slash Command**: View or change the active model directly from social channels (Telegram, etc.) or the CLI. `/model` shows the current model, `/model ls` lists all enabled models, `/model <id>` switches immediately. Telegram shows an interactive button keyboard for quick selection.
 - **Chat Unread State**: Chat list now tracks read/unread status — chats with new messages are visually marked until you open them.
+- **ZhipuAI Provider**: Added ZhipuAI as a supported capability provider with model definitions.
+- **New OpenAI Models**: Updated OpenAI capabilities configuration with the latest available models.
 
 ### ⚡ Changed
 - **Providers Settings UX**: Improved layout and interaction for API key and provider configuration in Settings.
+- **AG-UI Message Structure**: Enhanced message rendering with AG-UI parts for improved real-time streaming display and stable historical replay. Tool call blocks now show formatted arguments and improved markdown styling.
+- **Streaming Indicator**: Blinking indicator in assistant messages now correctly reflects active streaming state.
+- **Context Usage Tracking**: Context usage is now tracked in the chat model and surfaced via API responses and the status bar. Persisted in the database for accurate per-chat display.
+- **Display Text Truncation**: Long display text in chat components and database queries is now truncated for improved performance and readability.
+- **Social Dependencies**: `suzent upgrade` and setup scripts now sync the `zstandard` compression dependency required by social channel features.
+
+### 🐛 Fixed
+- **Plan Tab Auto-close**: Right sidebar now automatically closes the Plan tab when an invalid or missing plan is detected, preventing a stuck empty panel.
+
+## [v0.6.1]
+
+### 🚀 Added
+- **Chat Unread State**: Chat list now tracks read/unread status — chats with new messages are visually marked until you open them.
+- **Dashscope Provider**: Added Dashscope provider configuration.
+- **Custom Volume Metadata Cache**: Volume metadata is now cached on settings save for faster context injection.
+
+### ⚡ Changed
+- **Provider Registry**: Enhanced provider registry management and model retrieval logic.
+- **Model Cost Estimation**: Added cost estimation to `ModelCapabilities` and updated model selection UX.
+- **Desktop Startup Flow**: Improved prebuilt desktop startup sequence and backend health checks.
 
 ### 🐛 Fixed
 - **Tool Approval in Social Channels**: Fixed permission rule logic for tool approvals sent via Telegram and other social channels. Bash command approvals now show the command preview and offer "Always Allow `<command>...`" as a session-level rule. Non-bash tool approvals correctly surface the tool description.
@@ -21,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Chat Message Count**: Fixed incorrect message count in the chat list.
 - **Redundant Unread Badges**: Cleaned up duplicate unread indicators in the chat list.
 - **Auto-title Crash**: Fixed a crash when the auto-title generator returned no result.
+- **Desktop Backend Startup Reliability**: Fixed reliability issues with desktop backend startup.
+- **Agent Startup Hangs**: Prevented agent startup hangs caused by prompt probing.
 
 ## [v0.6.2] - 2026-05-05
 
@@ -92,6 +116,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Shell Tool Organization**: Move shell execution tools into `tools/shell` and route process execution through a centralized host process registry.
 - **Chat and Sidebar UX**: Update chat/right-sidebar/canvas/sub-agent UI state handling and styles for clearer tool-call and sub-agent rendering.
 - **Bash Tool Permission**: Optimize bash tool permission level.
+- **Tool Approval Enhancement**: Expanded tool approval system with global "remember" scope, per-tool permission policies for `BashTool`, and utility to collect unprocessed tool call IDs. `bash_execute` is skipped for remember semantics to avoid double-approval.
 
 ### 🐛 Fixed
 - **File-Level Retry Snapshots**: Replace full directory `copytree` with per-file backups for retry checkpoints. `edit_file` and `write_file` now back up each file before the first write per turn (`{sha256(path)[:16]}@v1` under `sandbox/file-history/{chat_id}/`); a snapshot is finalised after each turn and stored in the DB checkpoint. On `/retry` only the actually-modified files are restored (or deleted if newly created), instead of re-copying entire session and volume directories. Turns with no file edits produce zero disk I/O.
