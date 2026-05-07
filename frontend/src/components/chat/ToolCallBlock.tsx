@@ -126,6 +126,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const isDenied = approvalState === 'denied';
   const isWebTool = toolName === 'web_search' || toolName === 'webpage_fetch';
   const isBashTool = toolName === 'bash_execute';
+  const isFileTool = toolName === 'edit_file' || toolName === 'write_file';
 
   const parsedOutput = React.useMemo<ToolResultEnvelope | null>(() => {
     return parseToolResultEnvelope(output);
@@ -248,7 +249,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
         <div className="overflow-hidden min-h-0 min-w-0 w-full">
           <div className="ml-2 pl-3 pr-2 border-l-2 border-neutral-200 dark:border-zinc-700 mt-1 mb-2 space-y-3 min-w-0 overflow-x-hidden">
             {/* Arguments or Running status */}
-            {(toolArgs || (isStreaming && !output)) && (
+            {(toolArgs || (isStreaming && !output)) && !(isFileTool && hasOutput) && (
               <div className="min-w-0 w-full overflow-hidden">
                 <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-1.5 flex items-center gap-2 tracking-wide">
                   {isStreaming && !output ? (
@@ -263,8 +264,8 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                   )}
                 </div>
                 {toolArgs && (
-                  (toolName === 'edit_file' || toolName === 'write_file') ? (
-                    <FileDiffViewer 
+                  isFileTool ? (
+                    <FileDiffViewer
                       toolName={toolName}
                       parsedArgs={parsedToolArgs}
                       metadata={parsedOutput?.metadata as Record<string, unknown> | undefined}
@@ -382,21 +383,29 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                 <div className="text-[10px] flex items-center justify-between font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-1.5 tracking-wide">
                   <span>{t('toolCallBlock.output')}</span>
                 </div>
-                <div className="max-h-[320px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2" style={{ overflowX: 'hidden' }}>
-                  {isWebTool ? (
-                    <WebSearchRenderer output={output} />
-                  ) : toolResultMessage ? (
-                    <div className="tool-result-markdown text-[13px] leading-6 text-neutral-700 dark:text-neutral-300 break-words">
-                      <MarkdownRenderer content={toolResultMessage} />
-                    </div>
-                  ) : toolName.includes('search') || toolName.includes('web') ? (
-                    <WebSearchRenderer output={output} />
-                  ) : (
-                    <pre className="tool-call-pre font-mono text-[12px] leading-5 text-neutral-600 dark:text-neutral-300 w-full m-0">
-                      {output}
-                    </pre>
-                  )}
-                </div>
+                {isFileTool ? (
+                  <FileDiffViewer
+                    toolName={toolName}
+                    parsedArgs={parsedToolArgs}
+                    metadata={parsedOutput?.metadata as Record<string, unknown> | undefined}
+                  />
+                ) : (
+                  <div className="max-h-[320px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2" style={{ overflowX: 'hidden' }}>
+                    {isWebTool ? (
+                      <WebSearchRenderer output={output} />
+                    ) : toolResultMessage ? (
+                      <div className="tool-result-markdown text-[13px] leading-6 text-neutral-700 dark:text-neutral-300 break-words">
+                        <MarkdownRenderer content={toolResultMessage} />
+                      </div>
+                    ) : toolName.includes('search') || toolName.includes('web') ? (
+                      <WebSearchRenderer output={output} />
+                    ) : (
+                      <pre className="tool-call-pre font-mono text-[12px] leading-5 text-neutral-600 dark:text-neutral-300 w-full m-0">
+                        {output}
+                      </pre>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -190,6 +190,7 @@ class WriteFileTool(Tool):
             metadata = {
                 "action": "overwrite" if existed else "create",
                 "bytes_written": size,
+                "abs_path": str(resolved_path),
             }
             # Only include old content if it's reasonably sized (<= 200KB)
             if old_content is not None and len(old_content) <= 200 * 1024:

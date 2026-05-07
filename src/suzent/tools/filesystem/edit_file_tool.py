@@ -462,7 +462,11 @@ class EditFileTool(Tool):
                 file_path=file_path,
                 replaced_count=replaced,
             )
-            metadata = {"replaced_count": replaced, "file_path": file_path}
+            metadata = {
+                "replaced_count": replaced,
+                "file_path": file_path,
+                "abs_path": str(resolved_path),
+            }
             if len(content) <= 200 * 1024 and len(new_content) <= 200 * 1024:
                 metadata["old_content"] = content
                 metadata["new_content"] = new_content
