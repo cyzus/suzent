@@ -442,6 +442,15 @@
     },
     "openai/chat-latest": {
       "mode": "chat"
+    },
+    "openai/gpt-realtime-translate": {
+      "mode": "chat"
+    },
+    "openai/gpt-realtime-2": {
+      "mode": "chat"
+    },
+    "openai/gpt-realtime-whisper": {
+      "mode": "chat"
     }
   }
 }

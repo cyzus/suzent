@@ -453,6 +453,9 @@
       "max_output_tokens": 65536,
       "supports_vision": true,
       "supports_function_calling": true
+    },
+    "gemini/gemini-3.1-flash-lite": {
+      "mode": "chat"
     }
   }
 }
