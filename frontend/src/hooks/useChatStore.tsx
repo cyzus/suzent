@@ -201,8 +201,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [chatTotal, setChatTotal] = useState<number>(0);
   const [chatOffset, setChatOffset] = useState<number>(0);
+  const chatOffsetRef = useRef<number>(0);
   const [socialChatTotal, setSocialChatTotal] = useState<number>(0);
   const [socialChatOffset, setSocialChatOffset] = useState<number>(0);
+  const socialChatOffsetRef = useRef<number>(0);
+  // Keep refs in sync so refresh callbacks always see the latest offset values
+  useEffect(() => { chatOffsetRef.current = chatOffset; }, [chatOffset]);
+  useEffect(() => { socialChatOffsetRef.current = socialChatOffset; }, [socialChatOffset]);
   const [loadingChats, setLoadingChats] = useState(false);
   const [loadingMoreChats, setLoadingMoreChats] = useState(false);
   const [refreshingChats, setRefreshingChats] = useState(false);
@@ -427,6 +432,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Assign a monotonically increasing ID; only apply the response if it's still latest.
       searchRequestIdRef.current += 1;
       requestId = searchRequestIdRef.current;
+      // Reset offsets so the fetch covers only the first page for the new query
+      chatOffsetRef.current = 0;
+      socialChatOffsetRef.current = 0;
+      setChatOffset(0);
+      setSocialChatOffset(0);
     }
 
     if (isFirstLoad) {
@@ -437,36 +447,39 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const currentMessages = currentChatId ? getMessagesForChat(currentChatId) : null;
     try {
       const searchParam = search !== undefined ? search : searchQuery;
-      // Use getApiBase() to ensure dynamic port resolution
       const apiBase = getApiBase();
-      const url = searchParam ? `${apiBase}/chats?search=${encodeURIComponent(searchParam)}` : `${apiBase}/chats`;
-      const socialCountUrl = searchParam
-        ? `${apiBase}/chats?limit=0&platform=social&search=${encodeURIComponent(searchParam)}`
-        : `${apiBase}/chats?limit=0&platform=social`;
-      const [res, socialRes] = await Promise.all([fetch(url), fetch(socialCountUrl)]);
+      // Re-fetch enough rows to cover what the user has already loaded via "load more"
+      const personalLimit = chatOffsetRef.current + 50;
+      const socialLimit = socialChatOffsetRef.current + 50;
+      let url = `${apiBase}/chats?limit=${personalLimit}&platform=personal`;
+      if (searchParam) url += `&search=${encodeURIComponent(searchParam)}`;
+      let socialUrl = `${apiBase}/chats?limit=${socialLimit}&platform=social`;
+      if (searchParam) socialUrl += `&search=${encodeURIComponent(searchParam)}`;
+      const [res, socialRes] = await Promise.all([fetch(url), fetch(socialUrl)]);
       if (res.ok) {
         // Discard stale forced-search responses that arrived out of order.
         if (force && requestId !== searchRequestIdRef.current) return;
 
         const data = await res.json();
-        const serverList: ChatSummary[] = data.chats || [];
-        setChatTotal(data.total ?? serverList.length);
-        setChatOffset(0);
+        const personalList: ChatSummary[] = data.chats || [];
+        setChatTotal(data.total ?? personalList.length);
+
+        let socialList: ChatSummary[] = [];
         if (socialRes.ok) {
           const socialData = await socialRes.json();
+          socialList = socialData.chats || [];
           setSocialChatTotal(socialData.total ?? 0);
         }
-        setSocialChatOffset(0);
+
+        const serverList = [...personalList, ...socialList];
 
         // Merge server list with local state, preserving local updates
         setChats(prev => {
           const merged = serverList.map(serverChat => {
             const localChat = prev.find(c => c.id === serverChat.id);
-            // If we have local state with more messages, keep the local version
             if (localChat && localChat.messageCount > serverChat.messageCount) {
               return localChat;
             }
-            // Otherwise use server version
             return serverChat;
           });
           return merged;
