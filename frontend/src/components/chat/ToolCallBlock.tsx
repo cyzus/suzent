@@ -6,6 +6,11 @@ import { ToolGroupIcon } from './toolGroupIcon';
 import { FileDiffViewer } from './FileDiffViewer';
 import type { ApprovalRememberScope } from '../../hooks/useAGUI';
 
+export const TOOL_RENDERERS: Record<string, React.FC<any> | undefined> = {
+  edit_file: FileDiffViewer,
+  write_file: FileDiffViewer,
+};
+
 export type ApprovalState = 'pending' | 'approved' | 'denied' | undefined;
 
 interface ToolResultEnvelope {
@@ -126,7 +131,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const isDenied = approvalState === 'denied';
   const isWebTool = toolName === 'web_search' || toolName === 'webpage_fetch';
   const isBashTool = toolName === 'bash_execute';
-  const isFileTool = toolName === 'edit_file' || toolName === 'write_file';
+  const CustomRenderer = TOOL_RENDERERS[toolName];
 
   const parsedOutput = React.useMemo<ToolResultEnvelope | null>(() => {
     return parseToolResultEnvelope(output);
@@ -249,7 +254,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
         <div className="overflow-hidden min-h-0 min-w-0 w-full">
           <div className="ml-2 pl-3 pr-2 border-l-2 border-neutral-200 dark:border-zinc-700 mt-1 mb-2 space-y-3 min-w-0 overflow-x-hidden">
             {/* Arguments or Running status */}
-            {(toolArgs || (isStreaming && !output)) && !(isFileTool && hasOutput) && (
+            {(toolArgs || (isStreaming && !output)) && !(CustomRenderer && hasOutput) && (
               <div className="min-w-0 w-full overflow-hidden">
                 <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-1.5 flex items-center gap-2 tracking-wide">
                   {isStreaming && !output ? (
@@ -264,8 +269,8 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                   )}
                 </div>
                 {toolArgs && (
-                  isFileTool ? (
-                    <FileDiffViewer
+                  CustomRenderer ? (
+                    <CustomRenderer
                       toolName={toolName}
                       parsedArgs={parsedToolArgs}
                       metadata={parsedOutput?.metadata as Record<string, unknown> | undefined}
@@ -383,8 +388,8 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                 <div className="text-[10px] flex items-center justify-between font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-1.5 tracking-wide">
                   <span>{t('toolCallBlock.output')}</span>
                 </div>
-                {isFileTool ? (
-                  <FileDiffViewer
+                {CustomRenderer ? (
+                  <CustomRenderer
                     toolName={toolName}
                     parsedArgs={parsedToolArgs}
                     metadata={parsedOutput?.metadata as Record<string, unknown> | undefined}
