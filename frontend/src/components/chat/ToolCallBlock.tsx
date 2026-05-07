@@ -3,6 +3,7 @@ import { useI18n } from '../../i18n';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { WebSearchRenderer } from './WebSearchRenderer';
 import { ToolGroupIcon } from './toolGroupIcon';
+import { FileDiffViewer } from './FileDiffViewer';
 import type { ApprovalRememberScope } from '../../hooks/useAGUI';
 
 export type ApprovalState = 'pending' | 'approved' | 'denied' | undefined;
@@ -262,11 +263,19 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                   )}
                 </div>
                 {toolArgs && (
-                  <div className="max-h-[220px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2" style={{ overflowX: 'hidden' }}>
-                    <pre className="tool-call-pre font-mono text-[12px] leading-5 text-neutral-600 dark:text-neutral-300 w-full m-0">
-                      {displayToolArgs}
-                    </pre>
-                  </div>
+                  (toolName === 'edit_file' || toolName === 'write_file') ? (
+                    <FileDiffViewer 
+                      toolName={toolName}
+                      parsedArgs={parsedToolArgs}
+                      metadata={parsedOutput?.metadata as Record<string, unknown> | undefined}
+                    />
+                  ) : (
+                    <div className="max-h-[220px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2" style={{ overflowX: 'hidden' }}>
+                      <pre className="tool-call-pre font-mono text-[12px] leading-5 text-neutral-600 dark:text-neutral-300 w-full m-0">
+                        {displayToolArgs}
+                      </pre>
+                    </div>
+                  )
                 )}
               </div>
             )}

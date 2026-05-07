@@ -462,9 +462,14 @@ class EditFileTool(Tool):
                 file_path=file_path,
                 replaced_count=replaced,
             )
+            metadata = {"replaced_count": replaced, "file_path": file_path}
+            if len(content) <= 200 * 1024 and len(new_content) <= 200 * 1024:
+                metadata["old_content"] = content
+                metadata["new_content"] = new_content
+
             return ToolResult.success_result(
                 f"Replaced {replaced} occurrence(s) in {file_path}",
-                metadata={"replaced_count": replaced, "file_path": file_path},
+                metadata=metadata,
             )
 
         except ValueError as e:

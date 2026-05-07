@@ -87,6 +87,7 @@ class WriteFileTool(Tool):
 
             existed = resolved_path.exists()
             encoding = "utf-8"
+            old_content = None
 
             if existed:
                 if not resolved_path.is_file():
@@ -186,12 +187,17 @@ class WriteFileTool(Tool):
                 bytes_written=size,
             )
 
+            metadata = {
+                "action": "overwrite" if existed else "create",
+                "bytes_written": size,
+            }
+            # Only include old content if it's reasonably sized (<= 200KB)
+            if old_content is not None and len(old_content) <= 200 * 1024:
+                metadata["old_content"] = old_content
+
             return ToolResult.success_result(
                 f"{action} file: {file_path} ({size} bytes written)",
-                metadata={
-                    "action": "overwrite" if existed else "create",
-                    "bytes_written": size,
-                },
+                metadata=metadata,
             )
 
         except ValueError as e:
