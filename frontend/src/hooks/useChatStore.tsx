@@ -43,10 +43,11 @@ interface ChatCoreContextValue {
   forceSaveNow: (chatId?: string | null) => Promise<void>;
   deleteChat: (chatId: string) => Promise<void>;
   chatTotal: number;
+  socialChatTotal: number;
   loadingMoreChats: boolean;
   refreshChatList: (searchQuery?: string, force?: boolean) => Promise<void>;
   refreshChatListSilently: (searchQuery?: string) => Promise<void>;
-  loadMoreChats: () => Promise<void>;
+  loadMoreChats: (tab?: 'personal' | 'social') => Promise<void>;
   updateChatTitleLocally: (chatId: string, title: string) => void;
   updateMessage: (index: number, update: Partial<Message>, chatId?: string | null) => void;
   truncateMessagesFrom: (fromIndex: number, chatId?: string | null) => void;
@@ -200,6 +201,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [chatTotal, setChatTotal] = useState<number>(0);
   const [chatOffset, setChatOffset] = useState<number>(0);
+  const [socialChatTotal, setSocialChatTotal] = useState<number>(0);
+  const [socialChatOffset, setSocialChatOffset] = useState<number>(0);
   const [loadingChats, setLoadingChats] = useState(false);
   const [loadingMoreChats, setLoadingMoreChats] = useState(false);
   const [refreshingChats, setRefreshingChats] = useState(false);
@@ -437,7 +440,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Use getApiBase() to ensure dynamic port resolution
       const apiBase = getApiBase();
       const url = searchParam ? `${apiBase}/chats?search=${encodeURIComponent(searchParam)}` : `${apiBase}/chats`;
-      const res = await fetch(url);
+      const socialCountUrl = searchParam
+        ? `${apiBase}/chats?limit=0&platform=social&search=${encodeURIComponent(searchParam)}`
+        : `${apiBase}/chats?limit=0&platform=social`;
+      const [res, socialRes] = await Promise.all([fetch(url), fetch(socialCountUrl)]);
       if (res.ok) {
         // Discard stale forced-search responses that arrived out of order.
         if (force && requestId !== searchRequestIdRef.current) return;
@@ -446,6 +452,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const serverList: ChatSummary[] = data.chats || [];
         setChatTotal(data.total ?? serverList.length);
         setChatOffset(0);
+        if (socialRes.ok) {
+          const socialData = await socialRes.json();
+          setSocialChatTotal(socialData.total ?? 0);
+        }
+        setSocialChatOffset(0);
 
         // Merge server list with local state, preserving local updates
         setChats(prev => {
@@ -522,21 +533,27 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await refreshChatListInternal(search, { silent: true });
   }, [refreshChatListInternal]);
 
-  const loadMoreChats = useCallback(async () => {
+  const loadMoreChats = useCallback(async (tab: 'personal' | 'social' = 'personal') => {
     if (loadingMoreChats) return;
     setLoadingMoreChats(true);
     try {
       const apiBase = getApiBase();
-      const nextOffset = chatOffset + 50;
+      const currentOffset = tab === 'social' ? socialChatOffset : chatOffset;
+      const nextOffset = currentOffset + 50;
       const searchParam = searchQuery;
-      let url = `${apiBase}/chats?limit=50&offset=${nextOffset}`;
+      let url = `${apiBase}/chats?limit=50&offset=${nextOffset}&platform=${tab}`;
       if (searchParam) url += `&search=${encodeURIComponent(searchParam)}`;
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         const newChats: ChatSummary[] = data.chats || [];
-        if (data.total != null) setChatTotal(data.total);
-        setChatOffset(nextOffset);
+        if (tab === 'social') {
+          if (data.total != null) setSocialChatTotal(data.total);
+          setSocialChatOffset(nextOffset);
+        } else {
+          if (data.total != null) setChatTotal(data.total);
+          setChatOffset(nextOffset);
+        }
         setChats(prev => {
           const existingIds = new Set(prev.map(c => c.id));
           const appended = newChats.filter(c => !existingIds.has(c.id));
@@ -548,7 +565,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setLoadingMoreChats(false);
     }
-  }, [chatOffset, loadingMoreChats, searchQuery]);
+  }, [chatOffset, socialChatOffset, loadingMoreChats, searchQuery]);
 
   const updateChatTitleLocally = useCallback((chatId: string, title: string) => {
     setChats(prev => prev.map(c => c.id === chatId ? { ...c, title } : c));
@@ -1238,6 +1255,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       currentChatId,
       chats,
       chatTotal,
+      socialChatTotal,
       loadingChats,
       loadingMoreChats,
       refreshingChats,
@@ -1278,6 +1296,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     currentChatId,
     chats,
     chatTotal,
+    socialChatTotal,
     loadingChats,
     loadingMoreChats,
     refreshingChats,

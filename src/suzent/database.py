@@ -835,6 +835,7 @@ class ChatDatabase:
         limit: int = 50,
         offset: int = 0,
         search: str = None,
+        platform: str = None,
     ) -> List[ChatSummaryModel]:
         """List chat summaries ordered by last updated."""
         with self._session() as session:
@@ -859,6 +860,15 @@ class ChatDatabase:
                         ChatModel.title.contains(search),
                         _messages_search_filter(search),
                     )
+                )
+
+            if platform == "social":
+                statement = statement.where(
+                    text("json_extract(config, '$.platform') IS NOT NULL")
+                )
+            elif platform == "personal":
+                statement = statement.where(
+                    text("json_extract(config, '$.platform') IS NULL")
                 )
 
             results = []
@@ -937,7 +947,7 @@ class ChatDatabase:
 
             return results
 
-    def get_chat_count(self, search: str = None) -> int:
+    def get_chat_count(self, search: str = None, platform: str = None) -> int:
         """Get total number of chats."""
         with self._session() as session:
             statement = select(func.count()).select_from(ChatModel)
@@ -947,6 +957,14 @@ class ChatDatabase:
                         ChatModel.title.contains(search),
                         _messages_search_filter(search),
                     )
+                )
+            if platform == "social":
+                statement = statement.where(
+                    text("json_extract(config, '$.platform') IS NOT NULL")
+                )
+            elif platform == "personal":
+                statement = statement.where(
+                    text("json_extract(config, '$.platform') IS NULL")
                 )
             return session.exec(statement).one()
 

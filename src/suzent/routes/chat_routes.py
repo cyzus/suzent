@@ -359,9 +359,12 @@ async def get_chats(request: Request) -> JSONResponse:
         limit = int(request.query_params.get("limit", 50))
         offset = int(request.query_params.get("offset", 0))
         search = request.query_params.get("search", "").strip() or None
+        platform = request.query_params.get("platform", "").strip() or None
 
-        chats = db.list_chats(limit=limit, offset=offset, search=search)
-        total = db.get_chat_count(search=search)
+        chats = db.list_chats(
+            limit=limit, offset=offset, search=search, platform=platform
+        )
+        total = db.get_chat_count(search=search, platform=platform)
 
         # Convert Pydantic models to dicts, annotating live background streams
         chats_data = [

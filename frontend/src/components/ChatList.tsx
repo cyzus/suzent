@@ -11,6 +11,7 @@ export const ChatList: React.FC = () => {
   const {
     chats,
     chatTotal,
+    socialChatTotal,
     loadingChats,
     loadingMoreChats,
     refreshingChats,
@@ -252,17 +253,22 @@ export const ChatList: React.FC = () => {
               </p>
             </div>
             {/* Load more even when current view is empty (e.g. social tab but chats beyond first page) */}
-            {chats.length < chatTotal && (
-              <button
-                onClick={loadMoreChats}
-                disabled={loadingMoreChats}
-                className="w-full py-2.5 text-[10px] font-bold uppercase border-t-2 border-brutal-black bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loadingMoreChats
-                  ? t('chatList.loadingMore')
-                  : t('chatList.loadMore', { count: Math.max(0, chatTotal - chats.length) })}
-              </button>
-            )}
+            {(() => {
+              const tabTotal = viewMode === 'social' ? socialChatTotal : chatTotal - socialChatTotal;
+              const remaining = Math.max(0, tabTotal - displayedChats.length);
+              if (remaining <= 0) return null;
+              return (
+                <button
+                  onClick={() => loadMoreChats(viewMode)}
+                  disabled={loadingMoreChats}
+                  className="w-full py-2.5 text-[10px] font-bold uppercase border-t-2 border-brutal-black bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loadingMoreChats
+                    ? t('chatList.loadingMore')
+                    : t('chatList.loadMore', { count: remaining })}
+                </button>
+              );
+            })()}
           </div>
         ) : (
           <div className="flex flex-col bg-white dark:bg-zinc-800 pt-[3px]">
@@ -372,18 +378,23 @@ export const ChatList: React.FC = () => {
                 </div>
               </div>
             ))}
-            {/* Load more button — shown when server has more chats than currently loaded */}
-            {chats.length < chatTotal && (
-              <button
-                onClick={loadMoreChats}
-                disabled={loadingMoreChats}
-                className="w-full py-2.5 text-[10px] font-bold uppercase border-t-2 border-brutal-black bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loadingMoreChats
-                  ? t('chatList.loadingMore')
-                  : t('chatList.loadMore', { count: Math.max(0, chatTotal - chats.length) })}
-              </button>
-            )}
+            {/* Load more button — per-tab count */}
+            {(() => {
+              const tabTotal = viewMode === 'social' ? socialChatTotal : chatTotal - socialChatTotal;
+              const remaining = Math.max(0, tabTotal - displayedChats.length);
+              if (remaining <= 0) return null;
+              return (
+                <button
+                  onClick={() => loadMoreChats(viewMode)}
+                  disabled={loadingMoreChats}
+                  className="w-full py-2.5 text-[10px] font-bold uppercase border-t-2 border-brutal-black bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loadingMoreChats
+                    ? t('chatList.loadingMore')
+                    : t('chatList.loadMore', { count: remaining })}
+                </button>
+              );
+            })()}
           </div>
         )}
       </div>
