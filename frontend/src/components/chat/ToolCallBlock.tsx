@@ -6,7 +6,9 @@ import { ToolGroupIcon } from './toolGroupIcon';
 import { FileDiffViewer } from './FileDiffViewer';
 import type { ApprovalRememberScope } from '../../hooks/useAGUI';
 
-export const TOOL_RENDERERS: Record<string, React.FC<any> | undefined> = {
+import type { FileDiffViewerProps } from './FileDiffViewer';
+
+const TOOL_RENDERERS: Record<string, React.FC<FileDiffViewerProps> | undefined> = {
   edit_file: FileDiffViewer,
   write_file: FileDiffViewer,
 };
@@ -136,6 +138,13 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const parsedOutput = React.useMemo<ToolResultEnvelope | null>(() => {
     return parseToolResultEnvelope(output);
   }, [output]);
+
+  const rendererMetadata = React.useMemo<Record<string, unknown> | undefined>(() => {
+    const m = parsedOutput?.metadata;
+    return m && typeof m === 'object' && !Array.isArray(m)
+      ? m as Record<string, unknown>
+      : undefined;
+  }, [parsedOutput]);
 
   const toolResultMessage = typeof parsedOutput?.message === 'string'
     ? parsedOutput.message
@@ -273,7 +282,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                     <CustomRenderer
                       toolName={toolName}
                       parsedArgs={parsedToolArgs}
-                      metadata={parsedOutput?.metadata as Record<string, unknown> | undefined}
+                      metadata={rendererMetadata}
                     />
                   ) : (
                     <div className="max-h-[220px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2" style={{ overflowX: 'hidden' }}>
@@ -392,7 +401,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                   <CustomRenderer
                     toolName={toolName}
                     parsedArgs={parsedToolArgs}
-                    metadata={parsedOutput?.metadata as Record<string, unknown> | undefined}
+                    metadata={rendererMetadata}
                   />
                 ) : (
                   <div className="max-h-[320px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2" style={{ overflowX: 'hidden' }}>

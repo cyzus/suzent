@@ -15,7 +15,7 @@ const EDITOR_OPTIONS = {
 
 const LOADING_FALLBACK = <div className="p-4 text-xs text-neutral-500">Loading viewer...</div>;
 
-interface FileDiffViewerProps {
+export interface FileDiffViewerProps {
   toolName: string;
   parsedArgs: Record<string, unknown> | null;
   metadata?: Record<string, unknown> | null;
@@ -49,17 +49,17 @@ const getLanguageFromPath = (filePath: string): string => {
 
 export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsedArgs, metadata }) => {
   const { theme } = useTheme();
-  const filePath = typeof metadata?.abs_path === 'string'
-    ? metadata.abs_path
-    : typeof parsedArgs?.file_path === 'string' ? parsedArgs.file_path : '';
-  const language = getLanguageFromPath(filePath);
-  const lastSep = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
-  const dirPart = lastSep >= 0 ? filePath.slice(0, lastSep + 1) : '';
-  const namePart = lastSep >= 0 ? filePath.slice(lastSep + 1) : filePath;
-  
   const editorTheme = theme === 'dark' ? 'vs-dark' : 'light';
 
-  const { isDiff, original, modified, height } = useMemo(() => {
+  const { filePath, dirPart, namePart, language, isDiff, original, modified, height } = useMemo(() => {
+    const filePath = typeof metadata?.abs_path === 'string'
+      ? metadata.abs_path
+      : typeof parsedArgs?.file_path === 'string' ? parsedArgs.file_path : '';
+    const lastSep = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+    const dirPart = lastSep >= 0 ? filePath.slice(0, lastSep + 1) : '';
+    const namePart = lastSep >= 0 ? filePath.slice(lastSep + 1) : filePath;
+    const language = getLanguageFromPath(filePath);
+
     let isDiff = false;
     let original = '';
     let modified = '';
@@ -89,7 +89,7 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsed
     const lineCount = Math.max(original.split('\n').length, modified.split('\n').length);
     const height = Math.min(Math.max(lineCount * 19 + 16, 100), 500);
 
-    return { isDiff, original, modified, height };
+    return { filePath, dirPart, namePart, language, isDiff, original, modified, height };
   }, [toolName, parsedArgs, metadata]);
 
   return (
