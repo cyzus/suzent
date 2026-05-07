@@ -374,7 +374,9 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                   <span>{t('toolCallBlock.output')}</span>
                 </div>
                 <div className="max-h-[320px] overflow-y-auto scrollbar-thin w-full rounded-sm bg-neutral-50/70 dark:bg-zinc-800/40 px-2.5 py-2" style={{ overflowX: 'hidden' }}>
-                  {toolResultMessage ? (
+                  {isWebTool ? (
+                    <WebSearchRenderer output={output} />
+                  ) : toolResultMessage ? (
                     <div className="tool-result-markdown text-[13px] leading-6 text-neutral-700 dark:text-neutral-300 break-words">
                       <MarkdownRenderer content={toolResultMessage} />
                     </div>
