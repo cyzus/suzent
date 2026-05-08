@@ -43,6 +43,9 @@
     "vite": "^5.3.4",
     "vitest": "^2.1.8"
   },
+  "overrides": {
+    "dompurify": ">=3.3.4"
+  },
   "browserslist": [
     ">0.2%",
     "not dead",
