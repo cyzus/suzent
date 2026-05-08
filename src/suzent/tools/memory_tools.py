@@ -25,6 +25,7 @@ class MemorySearchTool(Tool):
 
     name = "MemorySearchTool"
     tool_name = "memory_search"
+    deferrable = False
 
     def __init__(self):
         super().__init__()

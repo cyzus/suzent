@@ -74,6 +74,9 @@ class CustomEventName(str, Enum):
     # A2UI canvas rendering
     A2UI_RENDER = "a2ui.render"
 
+    # Agent-activated tool notification
+    TOOL_ACTIVATED = "tool_activated"
+
 
 # Backwards compatibility aliases
 TEXT_MESSAGE_CONTENT = StreamEventType.TEXT_MESSAGE_CONTENT

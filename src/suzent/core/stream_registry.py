@@ -18,7 +18,7 @@ Bus event shapes:
 """
 
 import asyncio
-from typing import Dict, Optional, Set
+from typing import Any, Dict, Optional, Set
 
 
 class StreamControl:
@@ -219,3 +219,23 @@ def get_background_queue(chat_id: str) -> Optional[_BusStreamQueue]:
 def is_background_streaming(chat_id: str) -> bool:
     """Return True if a background stream is currently active for this chat."""
     return chat_id in background_queues
+
+
+async def push_custom_event(chat_id: str, event_name: str, data: Any) -> None:
+    """Push a custom SSE event to the active or background queue for chat_id.
+
+    Prefers the live /chat stream; falls back to background_queues for
+    heartbeat/social/subagent contexts.
+    """
+    try:
+        from suzent.streaming import _encode_custom
+
+        chunk = _encode_custom(event_name, data)
+        q = active_stream_queues.get(chat_id) or background_queues.get(chat_id)
+        if q is not None:
+            try:
+                q.put_nowait(("chunk", chunk))
+            except asyncio.QueueFull:
+                pass
+    except Exception:
+        pass

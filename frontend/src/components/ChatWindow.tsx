@@ -25,6 +25,7 @@ import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
 import { useEventBus, isBusStreaming, subscribeToStreamEvents } from '../hooks/useEventBus';
 import { useStatusStore } from '../hooks/useStatusStore';
 import { useContextUsageStore } from '../hooks/useContextUsageStore';
+import { useActivatedToolsStore } from '../hooks/useActivatedToolsStore';
 import type { SubAgentStatus } from './chat/SubAgentCallBlock';
 import type {
   SubAgentSpawnedPayload,
@@ -54,6 +55,13 @@ function truncateForStore(value: string, limit: number): string {
   return `${value.slice(0, limit)}\n... [${value.length - limit} chars truncated for display]`;
 }
 
+function formatToolArgsForStore(toolName: string, args: string): string {
+  if ((toolName === 'edit_file' || toolName === 'write_file') && args.length <= 200 * 1024) {
+    return args;
+  }
+  return truncateForStore(args, 6000);
+}
+
 /**
  * Convert AG-UI streaming parts to a store Message for persistence.
  * Tool invocations are serialized as HTML <details> blocks with emoji conventions
@@ -75,7 +83,7 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any, role: Message['
     } else if (part.type === 'tool') {
       const toolName = part.toolName || 'unknown';
       const toolCallId = part.toolCallId || '';
-      const argsStr = truncateForStore(part.args || '', 6000);
+      const argsStr = formatToolArgsForStore(toolName, part.args || '');
       const outputStr = part.output != null ? truncateForStore(part.output, 12000) : undefined;
       const approvalId = part.approvalId || '';
       const stateAttr = part.state === 'approval-requested' ? 'pending' : (part.state === 'error' ? 'denied' : '');
@@ -393,6 +401,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     clearUsage: clearLastKnownUsage,
     setCompactNotice,
   } = useContextUsageStore();
+  const { addActivatedTools, clearActivatedTools } = useActivatedToolsStore();
   const [subAgentTasks, setSubAgentTasks] = useState<Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>>({});
   const [viewingSubAgentTaskId, setViewingSubAgentTaskId] = useState<string | null>(null);
   const [forcedWebContextId, setForcedWebContextId] = useState<string | null>(null);
@@ -407,6 +416,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const activeChatIdRef = useRef<string | null>(currentChatId);
   useEffect(() => {
     activeChatIdRef.current = currentChatId;
+    clearActivatedTools();
     if (!currentChatId) {
       clearLastKnownUsage();
       return;
@@ -596,6 +606,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onSubAgentFailed(p);
         setSubAgentTasks(prev => ({ ...prev, [p.task_id]: { status: 'failed', error: p.error } }));
         setStatusBar(`Sub-agent failed — ${p.task_id}`, 'error', 5000);
+      } else if (name === 'tool_activated') {
+        const { toolNames } = value as { toolNames: string[] };
+        if (Array.isArray(toolNames)) addActivatedTools(toolNames);
       } else if (name === 'a2ui.render') {
         const rawSurface = value as (A2UISurface & { chatId?: string }) | null;
         if (!rawSurface || typeof rawSurface !== 'object' || !('id' in rawSurface) || !('component' in rawSurface)) {

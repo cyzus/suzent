@@ -5,6 +5,8 @@ import { useHeartbeatRunning } from '../../hooks/useHeartbeatRunning';
 import { fetchMcpServers, setMcpServerEnabled } from '../../lib/api';
 import { BrutalSelect } from '../BrutalSelect';
 import { useI18n } from '../../i18n';
+import { useActivatedToolsStore } from '../../hooks/useActivatedToolsStore';
+import { deactivateTool } from '../../lib/api';
 
 
 type MCPUrlServer = {
@@ -33,6 +35,7 @@ export function ConfigView({ isActive = true }: ConfigViewProps): React.ReactEle
   const { config, setConfig, backendConfig, currentChatId, loadChat } = useChatCoreStore();
   const { isStreaming } = useChatStreamingStore();
   const { t } = useI18n();
+  const { activatedByAI, removeActivatedTool } = useActivatedToolsStore();
 
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [loading, setLoading] = useState(false);
@@ -260,19 +263,49 @@ export function ConfigView({ isActive = true }: ConfigViewProps): React.ReactEle
                     <div className="flex flex-col gap-1 p-1.5 pl-3">
                       {tools.map(tool => {
                         const active = selected.includes(tool);
+                        const isAIActive = activatedByAI.has(tool) && !active;
                         return (
                           <button
                             key={tool}
                             type="button"
                             onClick={() => toggleTool(tool)}
-                            className={`flex items-center gap-3 px-3 py-2 border-2 text-xs font-bold uppercase transition-all duration-100 w-full text-left ${active
-                              ? 'bg-brutal-green text-brutal-black border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[-1px] translate-y-[-1px]'
-                              : 'border-brutal-black text-brutal-black dark:text-white bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 brutal-btn shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'}`}
+                            className={`flex items-center gap-3 px-3 py-2 border-2 text-xs font-bold uppercase transition-all duration-100 w-full text-left shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
+                              active
+                                ? 'bg-brutal-green text-brutal-black border-brutal-black'
+                                : isAIActive
+                                  ? 'bg-brutal-yellow text-brutal-black border-brutal-black'
+                                  : 'border-brutal-black text-brutal-black dark:text-white bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 brutal-btn'
+                            }`}
                           >
-                            <div className={`w-4 h-4 border-2 border-brutal-black flex-shrink-0 flex items-center justify-center ${active ? 'bg-brutal-black' : 'bg-white dark:bg-zinc-900'}`}>
+                            <div className={`w-4 h-4 border-2 border-brutal-black flex-shrink-0 flex items-center justify-center ${(active || isAIActive) ? 'bg-brutal-black' : 'bg-white dark:bg-zinc-900'}`}>
                               {active && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                              {isAIActive && <span className="text-[7px] text-white font-black leading-none">AI</span>}
                             </div>
                             <span className="truncate" title={tool}>{formatLabel(tool)}</span>
+                            {isAIActive && (
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeActivatedTool(tool);
+                                  deactivateTool(currentChatId || '', tool);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.stopPropagation();
+                                    removeActivatedTool(tool);
+                                    deactivateTool(currentChatId || '', tool);
+                                  }
+                                }}
+                                className="ml-auto flex-shrink-0 w-4 h-4 flex items-center justify-center hover:opacity-70 cursor-pointer"
+                                title="Deactivate"
+                              >
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </span>
+                            )}
                           </button>
                         );
                       })}

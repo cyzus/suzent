@@ -64,6 +64,11 @@ class AgentDeps:
     cancel_event: Any = None  # asyncio.Event - set when stream is cancelled
     last_messages: Optional[list] = None  # To preserve session history correctly
 
+    # --- Tool inventory ---
+    base_tool_names: frozenset = field(
+        default_factory=frozenset
+    )  # user-selected tools for this session
+
     # --- A2UI canvas ---
     a2ui_queue: Optional[asyncio.Queue] = (
         None  # surface events queued by render_ui tool

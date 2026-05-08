@@ -102,28 +102,35 @@ interface VerifyProviderResponse {
 // Tool Approval (Human-in-the-Loop)
 // -----------------------------------------------------------------------------
 
+async function postOk(path: string, body: Record<string, unknown>): Promise<boolean> {
+  try {
+    const res = await fetch(`${getApiBase()}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function approveTool(
   chatId: string,
   requestId: string,
   approved: boolean,
   remember?: 'session' | 'global' | null,
 ): Promise<boolean> {
-  try {
-    const res = await fetch(`${getApiBase()}/chat/approve-tool`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        request_id: requestId,
-        approved,
-        remember: remember || null,
-      }),
-    });
-    return res.ok;
-  } catch (error) {
-    console.error('Error approving tool:', error);
-    return false;
-  }
+  return postOk('/chat/approve-tool', {
+    chat_id: chatId,
+    request_id: requestId,
+    approved,
+    remember: remember || null,
+  });
+}
+
+export async function deactivateTool(chatId: string, toolName: string): Promise<boolean> {
+  return postOk('/chat/deactivate-tool', { chat_id: chatId, tool_name: toolName });
 }
 
 // -----------------------------------------------------------------------------

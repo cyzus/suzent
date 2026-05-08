@@ -1589,6 +1589,11 @@ def _rebuild_display_messages(messages: list) -> list:
             return text
         return text[:limit] + f"\n... [{len(text) - limit} chars truncated for display]"
 
+    def format_tool_args_for_display(tool_name: str, args: str) -> str:
+        if tool_name in {"edit_file", "write_file"} and len(args) <= 200 * 1024:
+            return args
+        return truncate_display_text(args, 6000)
+
     def normalize_tool_output_for_part(output: str) -> str:
         text = strip_system_reminders(output)
         try:
@@ -1605,6 +1610,19 @@ def _rebuild_display_messages(messages: list) -> list:
             pass
         return truncate_display_text(text, 12000)
 
+    def serialize_tool_return_content(content: Any) -> str:
+        if isinstance(content, dict):
+            raw = json.dumps(content, ensure_ascii=False)
+        elif hasattr(content, "model_dump"):
+            try:
+                dumped = content.model_dump(mode="json")
+                raw = json.dumps(dumped, ensure_ascii=False)
+            except Exception:
+                raw = str(content)
+        else:
+            raw = str(content)
+        return strip_system_reminders(raw)
+
     # First pass: find all tool returns so assistant rows can also carry
     # AG-UI-compatible parts for stable historical rendering.
     executed_tool_calls = set()
@@ -1614,13 +1632,9 @@ def _rebuild_display_messages(messages: list) -> list:
             for part in msg.parts:
                 if isinstance(part, ToolReturnPart):
                     executed_tool_calls.add(part.tool_call_id)
-                    content = part.content
-                    raw = (
-                        json.dumps(content, ensure_ascii=False)
-                        if isinstance(content, dict)
-                        else str(content)
+                    tool_returns_by_id[part.tool_call_id] = (
+                        serialize_tool_return_content(part.content)
                     )
-                    tool_returns_by_id[part.tool_call_id] = strip_system_reminders(raw)
 
     result = []
     for msg in messages:
@@ -1678,7 +1692,7 @@ def _rebuild_display_messages(messages: list) -> list:
                         "role": "tool",
                         "tool_call_id": part.tool_call_id,
                         "name": part.tool_name,
-                        "content": strip_system_reminders(str(part.content)),
+                        "content": serialize_tool_return_content(part.content),
                     }
                     if ts:
                         entry["timestamp"] = ts
@@ -1709,7 +1723,7 @@ def _rebuild_display_messages(messages: list) -> list:
                         "type": "tool",
                         "toolCallId": part.tool_call_id,
                         "toolName": part.tool_name,
-                        "args": truncate_display_text(args_str, 6000),
+                        "args": format_tool_args_for_display(part.tool_name, args_str),
                         "state": tool_state,
                     }
                     if tool_output is not None:

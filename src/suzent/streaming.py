@@ -13,6 +13,7 @@ using Server-Sent Events (SSE), including:
 """
 
 import asyncio
+import json
 import traceback
 import uuid
 from typing import Optional, Dict, Any, AsyncGenerator
@@ -48,6 +49,17 @@ from loguru import logger
 _encoder = EventEncoder()
 _FIRST_STREAM_EVENT_TIMEOUT_SECONDS = 45.0
 _STREAM_IDLE_TIMEOUT_SECONDS = 120.0
+
+
+def _serialize_tool_output(output: Any) -> str:
+    if isinstance(output, dict):
+        return json.dumps(output, ensure_ascii=False)
+    if hasattr(output, "model_dump"):
+        try:
+            return json.dumps(output.model_dump(mode="json"), ensure_ascii=False)
+        except Exception:
+            return str(output)
+    return str(output) if output else ""
 
 
 def _encode_custom(name: str, value: Any) -> str:
@@ -260,7 +272,7 @@ def _find_tool_return_parts(
                     or getattr(part, "text", None)
                     or ""
                 )
-                output = str(output) if output else ""
+                output = _serialize_tool_output(output)
                 logger.debug(
                     f"[Streaming] Found tool return part: {tool_call_id} -> {tool_name}, "
                     f"output_len={len(output)}"

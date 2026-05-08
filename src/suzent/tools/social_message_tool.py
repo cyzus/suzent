@@ -32,6 +32,7 @@ class SocialMessageTool(Tool):
     tool_name = "social_message"
     group = ToolGroup.CREATIVE
     requires_approval = False
+    deferrable = False
 
     def __init__(self):
         super().__init__()

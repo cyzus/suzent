@@ -162,6 +162,8 @@ def build_agent_deps(
 
     file_tracker = FileTracker(chat_id)
 
+    base_tool_names = frozenset(_get_config_value(config, "tools", []) or [])
+
     return AgentDeps(
         chat_id=chat_id,
         user_id=user_id,
@@ -179,6 +181,7 @@ def build_agent_deps(
         auto_approve_tools=auto_approve_tools,
         tool_permission_policies=dict(tool_permission_policies or {}),
         tool_approval_policy=tool_approval_policy,
+        base_tool_names=base_tool_names,
         a2ui_queue=asyncio.Queue(),
         inline_a2ui_surfaces={},
         file_tracker=file_tracker,

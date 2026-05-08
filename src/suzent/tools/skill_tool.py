@@ -9,6 +9,7 @@ from suzent.tools.base import Tool, ToolErrorCode, ToolResult
 class SkillTool(Tool):
     name = "SkillTool"
     tool_name = "skill_execute"
+    deferrable = False
     session_guidance = (
         "When the task matches a known skill, use SkillTool early instead of "
         "reconstructing the workflow from scratch."

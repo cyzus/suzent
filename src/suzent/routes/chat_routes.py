@@ -289,6 +289,26 @@ async def stop_chat(request: Request) -> JSONResponse:
     return JSONResponse({"status": "stopping", "reason": reason})
 
 
+async def deactivate_tool(request: Request) -> JSONResponse:
+    """Remove a specific agent-activated tool from the deferred toolset for a chat."""
+    try:
+        data = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "Invalid JSON."}, status_code=400)
+
+    chat_id = data.get("chat_id")
+    tool_name = data.get("tool_name")
+    if not chat_id or not tool_name:
+        return JSONResponse(
+            {"error": "chat_id and tool_name are required"}, status_code=400
+        )
+
+    from suzent.agent_manager import remove_unlocked_tool
+
+    remove_unlocked_tool(chat_id, tool_name)
+    return JSONResponse({"status": "ok", "tool_name": tool_name})
+
+
 async def live_stream(request: Request) -> StreamingResponse:
     """Subscribe to a live background stream for a chat (cron, heartbeat, social).
 
@@ -554,6 +574,9 @@ async def delete_chat(request: Request) -> JSONResponse:
         if not success:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
 
+        from suzent.agent_manager import clear_unlocked_tools
+
+        clear_unlocked_tools(chat_id)
         return JSONResponse({"message": "Chat deleted successfully"})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

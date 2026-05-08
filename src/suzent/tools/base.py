@@ -138,6 +138,7 @@ class Tool:
     tool_name: str = ""  # pydantic-ai function name (e.g., "read_file")
     group: Union[ToolGroup, str] = ""  # empty = hidden from UI
     requires_approval: bool = False
+    deferrable: bool = True  # False = never goes into the activatable pool
     session_guidance: Optional[str] = None
     guidance_priority: int = 100
     output_char_limit: int = OUTPUT_CHAR_LIMIT
