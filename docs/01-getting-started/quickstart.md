@@ -56,21 +56,21 @@ Once the UI is open, go to **Settings → Providers** to configure your API key.
 
 **Get your key:** [platform.openai.com/api-keys](https://platform.openai.com/api-keys) → Create new secret key (starts with `sk-...`)
 
-In Settings, paste it into **OpenAI → API Key**, enable the models you want, then click **Save → Verify**.
+In Settings, open the OpenAI card → **API KEYS** tab → **CHANGE** → paste your key. Then go to the **MODELS** tab → **FETCH**, select the models you want, and click **Save Changes**.
 
 </TabItem>
 <TabItem value="anthropic" label="Anthropic">
 
 **Get your key:** [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) → Create Key (starts with `sk-ant-...`)
 
-In Settings, paste it into **Anthropic → API Key**, enable the models you want, then click **Save → Verify**.
+In Settings, open the Anthropic card → **API KEYS** tab → **CHANGE** → paste your key. Then go to the **MODELS** tab → **FETCH**, select the models you want, and click **Save Changes**.
 
 </TabItem>
 <TabItem value="gemini" label="Google Gemini">
 
 **Get your key (free tier available):** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) → Create API Key (starts with `AIza...`)
 
-In Settings, paste it into **Google Gemini → API Key**, enable the models you want, then click **Save → Verify**.
+In Settings, open the Google Gemini card → **API KEYS** tab → **CHANGE** → paste your key. Then go to the **MODELS** tab → **FETCH**, select the models you want, and click **Save Changes**.
 
 </TabItem>
 </Tabs>

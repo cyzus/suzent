@@ -200,4 +200,98 @@ The first Rust build takes 5-10 minutes to compile all dependencies. Subsequent 
 
 ---
 
-For production builds, see [desktop-guide.md](./desktop-guide.md#production-build).
+---
+
+## Production Build
+
+Build the complete standalone application:
+
+```bash
+cd src-tauri
+npm run build:full
+```
+
+This automatically bundles the Python runtime, uv, and suzent wheel, then builds the Tauri application.
+
+**Convenience scripts:**
+
+```powershell
+# Windows
+.\scripts\build_tauri.ps1
+```
+
+```bash
+# macOS / Linux
+./scripts/build_tauri.sh
+```
+
+### Build Artifacts
+
+| Platform | Location |
+|----------|----------|
+| Windows | `src-tauri/target/release/bundle/msi/SUZENT_x.x.x_x64_en-US.msi` |
+| macOS | `src-tauri/target/release/bundle/dmg/SUZENT_x.x.x_x64.dmg` |
+| Linux | `src-tauri/target/release/bundle/appimage/suzent_x.x.x_amd64.AppImage` |
+
+---
+
+## Desktop App Architecture
+
+```
++-------------------------------------------+
+|           Tauri Application               |
+|  +--------------+    +------------------+ |
+|  |   Webview    |    |  Rust Process    | |
+|  |   (React)    |    |  - Backend       | |
+|  |  Frontend    |--->|    Lifecycle     | |
+|  |  Built       |    |  - Port Mgmt     | |
+|  |  Assets      |    |  - First-Run     | |
+|  +--------------+    |    Setup         | |
+|         |            +------------------+ |
+|         +-----HTTP API------+             |
+|             (localhost:dynamic)           |
++-------------------------------------------+
+                    |
+            +-------v--------+
+            | Python Backend |
+            | (uv-managed    |
+            |  venv)         |
+            +----------------+
+```
+
+---
+
+## First-Run Behavior
+
+When the desktop app launches for the first time (or after an update):
+
+1. **Venv Creation** (~10–30 seconds): Rust runs `uv venv` with bundled Python, then installs the suzent wheel. A version marker prevents re-running on subsequent launches.
+2. **Playwright Install** (~1–2 minutes): Chromium is downloaded for the browsing tool. Non-fatal — retries on first use if it fails.
+3. **Config Sync**: Example configs and skills are copied to the app data directory. Existing files are preserved.
+
+---
+
+## Application Data Location
+
+| Platform | Location |
+|----------|----------|
+| Windows | `%APPDATA%\com.suzent.app\` |
+| macOS | `~/Library/Application Support/com.suzent.app/` |
+| Linux | `~/.config/com.suzent.app/` |
+
+Contents: `backend-venv/`, `chats.db`, `memory/`, `skills/`, `sandbox-data/`, `config/`
+
+---
+
+## Additional Troubleshooting
+
+**Bundle script fails — missing `build` package:**
+```bash
+uv pip install build
+```
+
+**Backend fails to start in built app:**
+- Check `~/suzent_startup.log` for startup logs
+- Delete `backend-venv/` in the app data directory to force venv re-creation on next launch
+
+**Large bundle size** — The bundled app is 80–150 MB (Python runtime, uv, LanceDB). Playwright/Chromium (~300 MB) is downloaded separately on first launch.

@@ -162,7 +162,18 @@ Filesystem search tools.
 
 ### `planning_update`
 
-Creates and manages structured plans for multi-step tasks. See [Planning Tool](./planning_tool.md) for detailed documentation.
+Creates and manages structured plans for multi-step tasks. Plans are stored in the database and visualized in the frontend sidebar.
+
+**Parameters:**
+- `action`: `update` (create/overwrite a plan) or `advance` (mark a phase complete)
+- `goal`: High-level goal description (required for `update`)
+- `phases`: List of phases, each with `id`, `title`, `capabilities` (required for `update`)
+- `current_phase_id`: Phase being completed (required for `advance`)
+- `next_phase_id`: Phase to start next (required for `advance`)
+
+**`action='update'`** — Creates a new plan or overwrites the existing one. Resets all progress: first phase becomes `in_progress`, all others `pending`.
+
+**`action='advance'`** — Marks `current_phase_id` as `completed` and `next_phase_id` as `in_progress`. If `next_phase_id` skips phases, all intermediate phases are auto-completed.
 
 ### `memory_search` / `memory_block_update`
 
