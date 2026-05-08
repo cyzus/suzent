@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 # ── Leaf Components ────────────────────────────────────────────────────
@@ -25,8 +25,9 @@ class A2UIText(BaseModel):
     """Plain text block with typographic variants."""
 
     type: Literal["text"] = "text"
-    content: str
+    content: str = Field(validation_alias=AliasChoices("content", "text"))
     variant: Literal["body", "heading", "subheading", "caption", "code"] = "body"
+    markdown: bool = False
 
 
 class A2UIBadge(BaseModel):
@@ -69,8 +70,16 @@ class A2UIFormField(BaseModel):
 
     name: str
     label: str
-    type: Literal["text", "number", "select", "checkbox", "textarea"] = "text"
+    type: Literal[
+        "text",
+        "number",
+        "select",
+        "multiselect",
+        "checkbox",
+        "textarea",
+    ] = "text"
     options: list[str] = Field(default_factory=list)  # for select fields
+    allow_free_text: bool = False
     required: bool = False
     default: Any = None
     placeholder: str = ""
@@ -83,6 +92,7 @@ class A2UIForm(BaseModel):
     fields: list[A2UIFormField]
     submit_label: str = "Submit"
     action: str
+    paged: bool = False
 
 
 class A2UIList(BaseModel):
@@ -176,7 +186,7 @@ class A2UISurface(BaseModel):
                "inline" renders the surface directly inside the chat message.
     """
 
-    id: str
+    id: str = Field(validation_alias=AliasChoices("id", "surface_id", "surfaceId"))
     title: Optional[str] = None
     component: A2UIComponent
     target: Literal["canvas", "inline"] = "canvas"
