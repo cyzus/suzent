@@ -703,17 +703,16 @@ export default function App() {
     };
   }, [backendReady]);
 
-  if (!backendReady || backendError) {
-    return <BackendLoadingScreen error={backendError} />;
-  }
-
-
   return (
     <ErrorBoundary>
-      <ChatProvider>
-        <PlanProvider>
-          <AppInner />
-        </PlanProvider>
+      <ChatProvider enabled={backendReady && !backendError}>
+        {!backendReady || backendError ? (
+          <BackendLoadingScreen error={backendError} />
+        ) : (
+          <PlanProvider>
+            <AppInner />
+          </PlanProvider>
+        )}
       </ChatProvider>
     </ErrorBoundary>
   );

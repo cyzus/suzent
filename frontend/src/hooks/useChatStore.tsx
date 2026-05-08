@@ -182,7 +182,10 @@ const preferencesEqual = (a: SavedPreferences | null, b: SavedPreferences | null
   );
 };
 
-export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boolean }> = ({
+  children,
+  enabled = true,
+}) => {
   const [messagesByChat, setMessagesByChat] = useState<Record<string, Message[]>>({
     [UNSAVED_CHAT_KEY]: []
   });
@@ -404,8 +407,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Fetch backend config once on mount
   useEffect(() => {
+    if (!enabled) return;
     fetchConfigWithRetry();
-  }, [fetchConfigWithRetry]);
+  }, [enabled, fetchConfigWithRetry]);
 
   const refreshChatListInternal = useCallback(async (
     search?: string,
@@ -587,8 +591,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Load chat list on mount (and when refreshChatList reference changes)
   useEffect(() => {
+    if (!enabled) return;
     refreshChatList();
-  }, [refreshChatList]);
+  }, [enabled, refreshChatList]);
 
   const saveChatById = useCallback(async (chatId: string | null, skipRefresh = false) => {
     const key = keyForChat(chatId);
