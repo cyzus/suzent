@@ -194,7 +194,11 @@ function processEvent(
         const existingOutput = next[existingStartIdx].output;
         next[existingStartIdx] = {
           ...next[existingStartIdx],
-          args: '',          // reset so replayed TOOL_CALL_ARGS don't double-up
+          // Keep existing args visible during approval/resume. If the backend
+          // replays TOOL_CALL_ARGS, the first replay delta replaces these args
+          // below; if it only sends the result, file renderers still have path/content.
+          args: next[existingStartIdx].args || '',
+          argsReplayPending: Boolean(next[existingStartIdx].args),
           state: 'running',
           // Keep any already-received output to avoid losing it on replayed starts.
           output: existingOutput,
@@ -217,7 +221,9 @@ function processEvent(
       const delta = (data.delta as string) || '';
       for (let i = next.length - 1; i >= 0; i--) {
         if (next[i].type === 'tool' && next[i].toolCallId === tcId) {
-          next[i] = { ...next[i], args: (next[i].args || '') + delta };
+          next[i] = next[i].argsReplayPending
+            ? { ...next[i], args: delta, argsReplayPending: false }
+            : { ...next[i], args: (next[i].args || '') + delta };
           break;
         }
       }

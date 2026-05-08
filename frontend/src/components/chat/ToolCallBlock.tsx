@@ -14,17 +14,16 @@ export interface ToolRendererProps {
   output?: string;
 }
 
-// Renders in the args section (command only); stays visible after execution.
+// Renders in the args section; stays visible after execution.
 const ARGS_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> = {
   bash_execute: BashCommandRenderer,
+  edit_file: FileDiffViewer,
+  write_file: FileDiffViewer,
 };
 
 // Renders in the output section when output arrives.
-// For file tools: args section hides when output arrives.
 // For bash: args section stays, output section shows stdout separately.
 const OUTPUT_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> = {
-  edit_file: FileDiffViewer,
-  write_file: FileDiffViewer,
   bash_execute: BashOutputRenderer,
 };
 
@@ -314,7 +313,6 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                       toolName={toolName}
                       parsedArgs={parsedToolArgs}
                       metadata={rendererMetadata}
-                      output={toolResultMessage ?? output}
                     />
                   ) : OutputRenderer ? (
                     <OutputRenderer

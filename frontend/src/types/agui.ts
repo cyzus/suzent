@@ -7,6 +7,7 @@ export interface AGUIPart {
   toolCallId?: string;
   toolName?: string;
   args?: string;
+  argsReplayPending?: boolean;
   output?: string;
   state?: 'running' | 'completed' | 'error' | 'approval-requested';
   approvalId?: string;
