@@ -10,8 +10,15 @@ Suzent uses [pydantic-ai](https://ai.pydantic.dev/) for its agent framework. Too
 Agent
  ├── tools: [web_search, read_file, bash_execute, ...]   ← function-based
  ├── toolsets: [MCPServerStdio(...), ...]                 ← MCP servers
+ │    └── _deferred_toolset (per_run_step=True)           ← AI-activated tools
  └── deps_type: AgentDeps                                 ← shared context
 ```
+
+### Deferred (AI-Activated) Tools
+
+Not all tools need to be loaded at session start. The agent can call `tool_search` mid-conversation to activate additional tools on demand. Activated tools are injected into the agent's toolset before each LLM step via a `@agent.toolset` with `per_run_step=True`, and persist for the rest of the session.
+
+Tools opt out of deferral by setting `deferrable = False` on their class (e.g. `MemorySearchTool`, `SkillTool`, `SocialMessageTool` — always-on internals that the agent shouldn't re-activate).
 
 ### AgentDeps
 
@@ -29,6 +36,7 @@ class AgentDeps:
     channel_manager: Any          # Social messaging channels
     skill_manager: Any            # User-defined skills
     a2ui_queue: asyncio.Queue     # Canvas UI event queue (render_ui)
+    base_tool_names: frozenset    # User-selected tools for this session (used by tool_search)
     # ... plus HITL fields (see Human-in-the-Loop doc)
 ```
 
@@ -83,6 +91,12 @@ See [Canvas (A2UI)](./canvas.md) for full documentation.
 | SocialMessageTool | `social_message` | ChannelManager | **Yes** (sends only) | Send messages to Telegram, Discord, Slack, Feishu |
 | SpeakTool | `speak` | — | — | Text-to-speech output |
 | SkillTool | `skill_execute` | SkillManager | — | Execute user-defined skills |
+
+### Agent & Meta
+
+| Tool | Function | Context | Description |
+|------|----------|---------|-------------|
+| ToolSearchTool | `tool_search` | AgentDeps | Discover and activate additional tools mid-conversation |
 
 **HITL** = Requires human approval before execution. See [Human-in-the-Loop](./human-in-the-loop.md).
 
@@ -180,6 +194,22 @@ Text-to-speech output. Converts text to audio and plays it.
 
 Execute user-defined skills. See [Skills](../skills/skills.md).
 
+### `tool_search`
+
+Meta-tool always available to the agent. Lets it discover and activate additional tools mid-conversation without restarting the session.
+
+**Parameters:**
+- `query` (optional): Exact tool key to activate — either the class name (e.g. `"WebSearchTool"`) or the pydantic-ai runtime name (e.g. `"web_search"`). Omit to list tool status.
+
+**List mode** (no query): Returns three sections:
+- `ENABLED (user-selected)` — tools the user turned on in ConfigView
+- `ACTIVE (AI-activated this session)` — tools the agent has already activated
+- `AVAILABLE TO ACTIVATE` — deferrable tools not yet active
+
+**Activation mode** (with query): Activates the matched tool immediately; the tool becomes callable in the agent's next step. Emits a `tool_activated` SSE event so the frontend can update ConfigView in real time.
+
+Tools with `deferrable = False` (MemorySearchTool, SkillTool, SocialMessageTool) are excluded from the catalog and cannot be activated this way — they are always-on internals.
+
 ## Configuring Tools
 
 ### Default Tools
@@ -253,6 +283,7 @@ TOOL_FUNCTIONS = {
 - Async tools (`async def`) are preferred for I/O operations
 - If the tool is dangerous (writes, executes, sends), add HITL approval — see [Human-in-the-Loop](./human-in-the-loop.md)
 - Return informative error messages as strings (don't raise exceptions)
+- Set `deferrable = False` on the tool class if it should never appear in the `tool_search` catalog (e.g. always-on internals like MemorySearchTool)
 
 ## Tool Registry
 
