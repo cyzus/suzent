@@ -1,19 +1,102 @@
 import React, { useMemo } from 'react';
-import { Editor, DiffEditor } from '@monaco-editor/react';
-import { useTheme } from '../../hooks/useTheme';
+import { Editor, DiffEditor, type BeforeMount } from '@monaco-editor/react';
+import { SCHEME_COLORS, type Scheme, useTheme } from '../../hooks/useTheme';
 
 const EDITOR_OPTIONS = {
   readOnly: true,
   minimap: { enabled: false },
   scrollBeyondLastLine: false,
   fontSize: 12,
+  fontFamily: "Consolas, 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, 'Liberation Mono', 'Ubuntu Mono', 'DejaVu Sans Mono', 'Segoe UI Symbol', 'Courier New', monospace",
   wordWrap: 'on' as const,
   renderSideBySide: false, // Unified diff is better for inline chat context
   automaticLayout: true,
   padding: { top: 8, bottom: 8 },
+  unicodeHighlight: {
+    ambiguousCharacters: false,
+    invisibleCharacters: false,
+    nonBasicASCII: false,
+  },
 } as const;
 
 const LOADING_FALLBACK = <div className="p-4 text-xs text-neutral-500">Loading viewer...</div>;
+
+const THEME_PREFIX = 'suzent-file-viewer';
+const REGISTERED_THEMES = new Set<string>();
+
+const stripHash = (color: string): string => color.replace(/^#/, '');
+
+const transparentize = (color: string, alphaHex: string): string => `${stripHash(color)}${alphaHex}`;
+
+const getMonacoThemeName = (theme: 'light' | 'dark', scheme: Scheme): string => {
+  return `${THEME_PREFIX}-${theme}-${scheme}`;
+};
+
+const makeBeforeMount = (theme: 'light' | 'dark', scheme: Scheme): BeforeMount => {
+  const themeName = getMonacoThemeName(theme, scheme);
+
+  return (monaco) => {
+    if (REGISTERED_THEMES.has(themeName)) return;
+
+    const accent = SCHEME_COLORS[scheme][theme];
+    const isDark = theme === 'dark';
+    const background = isDark ? '#1e1e1e' : '#ffffff';
+    const foreground = isDark ? '#e5e7eb' : '#111111';
+    const muted = isDark ? '#a1a1aa' : '#6b7280';
+    const gutter = isDark ? '#27272a' : '#f5f5f4';
+    const line = isDark ? '#2f3138' : '#eeeeec';
+    const selection = isDark ? transparentize(accent, '33') : transparentize(accent, '55');
+
+    monaco.editor.defineTheme(themeName, {
+      base: isDark ? 'vs-dark' : 'vs',
+      inherit: true,
+      rules: [
+        { token: '', foreground: stripHash(foreground) },
+        { token: 'comment', foreground: stripHash(muted), fontStyle: 'italic' },
+        { token: 'keyword', foreground: stripHash(foreground), fontStyle: 'bold' },
+        { token: 'number', foreground: isDark ? 'fbbf24' : '92400e' },
+        { token: 'string', foreground: isDark ? '86efac' : '166534' },
+        { token: 'type', foreground: stripHash(foreground), fontStyle: 'bold' },
+        { token: 'function', foreground: stripHash(foreground) },
+        { token: 'variable', foreground: stripHash(foreground) },
+        { token: 'tag', foreground: stripHash(foreground), fontStyle: 'bold' },
+        { token: 'attribute.name', foreground: stripHash(muted) },
+        { token: 'delimiter', foreground: stripHash(foreground) },
+        { token: 'strong', foreground: stripHash(foreground), fontStyle: 'bold' },
+        { token: 'emphasis', foreground: stripHash(foreground), fontStyle: 'italic' },
+        { token: 'markup.heading', foreground: stripHash(accent), fontStyle: 'bold' },
+        { token: 'markup.quote', foreground: stripHash(muted) },
+        { token: 'markup.list', foreground: stripHash(accent) },
+        { token: 'markup.inline.raw', foreground: stripHash(foreground) },
+      ],
+      colors: {
+        'editor.background': background,
+        'editor.foreground': foreground,
+        'editor.lineHighlightBackground': isDark ? '#ffffff08' : '#00000005',
+        'editor.selectionBackground': `#${selection}`,
+        'editor.inactiveSelectionBackground': isDark ? '#ffffff14' : '#00000012',
+        'editorCursor.foreground': accent,
+        'editorLineNumber.foreground': isDark ? '#71717a' : '#0e7490',
+        'editorLineNumber.activeForeground': accent,
+        'editorGutter.background': gutter,
+        'editorIndentGuide.background1': line,
+        'editorIndentGuide.activeBackground1': accent,
+        'editorWhitespace.foreground': isDark ? '#ffffff1f' : '#0000001f',
+        'scrollbar.shadow': '#00000000',
+        'scrollbarSlider.background': isDark ? '#ffffff2b' : '#0000002b',
+        'scrollbarSlider.hoverBackground': isDark ? '#ffffff45' : '#00000045',
+        'scrollbarSlider.activeBackground': isDark ? '#ffffff66' : '#00000066',
+        'diffEditor.insertedTextBackground': isDark ? '#22c55e26' : '#16a34a24',
+        'diffEditor.removedTextBackground': isDark ? '#ef444426' : '#dc262624',
+        'diffEditor.insertedLineBackground': isDark ? '#22c55e14' : '#16a34a12',
+        'diffEditor.removedLineBackground': isDark ? '#ef444414' : '#dc262612',
+        'diffEditor.diagonalFill': isDark ? '#71717a55' : '#a3a3a355',
+      },
+    });
+
+    REGISTERED_THEMES.add(themeName);
+  };
+};
 
 import type { ToolRendererProps } from './ToolCallBlock';
 export type FileDiffViewerProps = ToolRendererProps;
@@ -74,8 +157,9 @@ const hasProp = (source: Record<string, unknown> | null | undefined, key: string
 };
 
 export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsedArgs, metadata, output }) => {
-  const { theme } = useTheme();
-  const editorTheme = theme === 'dark' ? 'vs-dark' : 'light';
+  const { theme, scheme } = useTheme();
+  const editorTheme = getMonacoThemeName(theme, scheme);
+  const beforeMount = useMemo(() => makeBeforeMount(theme, scheme), [theme, scheme]);
 
   const { filePath, dirPart, namePart, language, isDiff, original, modified, height, canPreview } = useMemo(() => {
     const config = FILE_TOOL_PREVIEW_CONFIG[toolName];
@@ -148,6 +232,7 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsed
             language={language}
             theme={editorTheme}
             options={EDITOR_OPTIONS}
+            beforeMount={beforeMount}
             loading={LOADING_FALLBACK}
           />
         ) : (
@@ -156,6 +241,7 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsed
             language={language}
             theme={editorTheme}
             options={EDITOR_OPTIONS}
+            beforeMount={beforeMount}
             loading={LOADING_FALLBACK}
           />
         )}
