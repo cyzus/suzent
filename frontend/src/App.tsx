@@ -11,7 +11,7 @@ import { ConfigView } from './components/sidebar/ConfigView';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { SkillsView } from './components/skills/SkillsView';
 import { StatusBar } from './components/StatusBar';
-import { ChatProvider, useChatCoreStore } from './hooks/useChatStore.js';
+import { ChatProvider, useChatCoreStore } from './hooks/useChatStore';
 import { PlanProvider, usePlan } from './hooks/usePlan';
 import { useStatusStore } from './hooks/useStatusStore';
 import { useTheme } from './hooks/useTheme';
