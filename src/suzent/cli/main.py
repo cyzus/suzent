@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
 
@@ -729,6 +730,34 @@ def register_commands(app: typer.Typer):
         else:
             typer.echo("\n⚠️  Some tools are missing. Please install them.")
 
+    def _kill_other_suzent_processes() -> None:
+        """Terminate any running suzent.exe processes (except this one) before upgrade."""
+        if not IS_WINDOWS:
+            return
+        my_pid = os.getpid()
+        try:
+            result = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq suzent.exe", "/FO", "CSV", "/NH"],
+                capture_output=True,
+                text=True,
+            )
+            for line in result.stdout.strip().splitlines():
+                parts = [p.strip('"') for p in line.split('","')]
+                if len(parts) < 2:
+                    continue
+                try:
+                    pid = int(parts[1])
+                except ValueError:
+                    continue
+                if pid == my_pid:
+                    continue
+                typer.echo(f"  • Stopping running suzent process (PID {pid})...")
+                subprocess.run(
+                    ["taskkill", "/F", "/PID", str(pid)], capture_output=True
+                )
+        except Exception:
+            pass
+
     @app.command()
     def upgrade():
         """Update Suzent to the latest version."""
@@ -789,26 +818,30 @@ def register_commands(app: typer.Typer):
 
         typer.echo("  • Updating backend dependencies with social channel support...")
         # On Windows, the running suzent.exe in .venv/Scripts/ is locked by the OS.
-        # uv sync will fail trying to remove it ("Access denied", os error 5).
-        # Workaround: rename the locked exe out of the way first — Windows allows
+        # uv sync will fail trying to remove it. Workaround: kill other suzent
+        # processes first, then rename the exe out of the way — Windows allows
         # renaming a running executable even though it can't delete it.
+        # Retry the rename a few times to handle transient AV scanner locks (error 32).
         _renamed_exe: Path | None = None
         if IS_WINDOWS:
             venv_exe = root / ".venv" / "Scripts" / "suzent.exe"
             bak_exe = root / ".venv" / "Scripts" / "suzent.exe.bak"
             if venv_exe.exists():
-                try:
-                    # Remove any previous leftover .bak
-                    if bak_exe.exists():
-                        try:
-                            bak_exe.unlink()
-                        except OSError:
-                            pass
-                    venv_exe.rename(bak_exe)
-                    _renamed_exe = bak_exe
-                except OSError:
-                    # If rename also fails, uv sync will just have to try
-                    pass
+                _kill_other_suzent_processes()
+                # Remove any previous leftover .bak
+                if bak_exe.exists():
+                    try:
+                        bak_exe.unlink()
+                    except OSError:
+                        pass
+                for attempt in range(4):
+                    try:
+                        venv_exe.rename(bak_exe)
+                        _renamed_exe = bak_exe
+                        break
+                    except OSError:
+                        if attempt < 3:
+                            time.sleep(1)
 
         try:
             run_command(
