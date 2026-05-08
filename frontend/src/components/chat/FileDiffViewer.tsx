@@ -15,11 +15,8 @@ const EDITOR_OPTIONS = {
 
 const LOADING_FALLBACK = <div className="p-4 text-xs text-neutral-500">Loading viewer...</div>;
 
-export interface FileDiffViewerProps {
-  toolName: string;
-  parsedArgs: Record<string, unknown> | null;
-  metadata?: Record<string, unknown> | null;
-}
+import type { ToolRendererProps } from './ToolCallBlock';
+export type FileDiffViewerProps = ToolRendererProps;
 
 const getLanguageFromPath = (filePath: string): string => {
   const ext = filePath.split('.').pop()?.toLowerCase();

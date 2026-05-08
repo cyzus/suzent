@@ -1593,8 +1593,14 @@ def _rebuild_display_messages(messages: list) -> list:
         text = strip_system_reminders(output)
         try:
             parsed = json.loads(text)
-            if isinstance(parsed, dict) and isinstance(parsed.get("message"), str):
-                text = parsed["message"]
+            if isinstance(parsed, dict) and "message" in parsed:
+                # Keep the full envelope so the frontend can access metadata
+                # (e.g. returncode, cwd for bash) while still extracting message
+                # for display via parseToolResultEnvelope.
+                msg = parsed["message"]
+                if isinstance(msg, str):
+                    parsed["message"] = truncate_display_text(msg, 12000)
+                return json.dumps(parsed, ensure_ascii=False)
         except Exception:
             pass
         return truncate_display_text(text, 12000)
@@ -1608,9 +1614,13 @@ def _rebuild_display_messages(messages: list) -> list:
             for part in msg.parts:
                 if isinstance(part, ToolReturnPart):
                     executed_tool_calls.add(part.tool_call_id)
-                    tool_returns_by_id[part.tool_call_id] = strip_system_reminders(
-                        str(part.content)
+                    content = part.content
+                    raw = (
+                        json.dumps(content, ensure_ascii=False)
+                        if isinstance(content, dict)
+                        else str(content)
                     )
+                    tool_returns_by_id[part.tool_call_id] = strip_system_reminders(raw)
 
     result = []
     for msg in messages:
