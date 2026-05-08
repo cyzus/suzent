@@ -240,7 +240,7 @@ function processEvent(
       const content = stringifyContent(raw);
       for (let i = next.length - 1; i >= 0; i--) {
         if (next[i].type === 'tool' && next[i].toolCallId === tcId) {
-          next[i] = { ...next[i], output: content, state: 'completed' };
+          next[i] = { ...next[i], output: content, state: 'completed', argsReplayPending: false };
           break;
         }
       }
@@ -300,6 +300,7 @@ function processEvent(
               ...next[i],
               state: resultData.status === 'executed' ? 'completed' : 'error',
               output,
+              argsReplayPending: false,
               approvalId: undefined // clear approval badge
             };
             found = true;
@@ -321,6 +322,7 @@ function processEvent(
                 toolCallId: next[i].toolCallId || tcId,
                 state: resultData.status === 'executed' ? 'completed' : 'error',
                 output,
+                argsReplayPending: false,
                 approvalId: undefined,
               };
               found = true;
