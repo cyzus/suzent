@@ -43,7 +43,7 @@ The script installs Suzent and any missing dependencies (Python/uv, Rust, build 
 suzent start
 ```
 
-This starts the backend and opens the UI in your browser. The default address is **http://localhost:25315**.
+This starts the backend and opens the desktop interface.
 
 ---
 
