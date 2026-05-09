@@ -1,7 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
 import { useLocation } from '@docusaurus/router';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
-import clsx from 'clsx';
 
 const LOCALE_LABEL: Record<string, string> = {
   en: 'EN',
@@ -17,21 +16,10 @@ export default function LocaleDropdownNavbarItem({
   mobile,
 }: {
   mobile?: boolean;
-  // Accept (and ignore) any extra props Docusaurus passes
   [key: string]: unknown;
 }) {
   const { i18n } = useDocusaurusContext();
   const { pathname } = useLocation();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
 
   const others = i18n.locales.filter(l => l !== i18n.currentLocale);
   const currentLabel = LOCALE_LABEL[i18n.currentLocale] ?? i18n.currentLocale.toUpperCase();
@@ -53,24 +41,21 @@ export default function LocaleDropdownNavbarItem({
   }
 
   return (
-    <div ref={ref} className="navbar__item dropdown dropdown--hoverable" style={{ position: 'relative' }}>
+    <div className="navbar__item dropdown dropdown--hoverable" style={{ position: 'relative' }}>
       <button
         className="navbar__link"
-        onClick={() => setOpen(v => !v)}
         aria-haspopup="true"
-        aria-expanded={open}
         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0.5rem' }}
       >
         {currentLabel}
       </button>
-      {open && others.length > 0 && (
-        <ul className={clsx('dropdown__menu')} style={{ display: 'block', right: 0, left: 'auto' }}>
+      {others.length > 0 && (
+        <ul className="dropdown__menu" style={{ right: 0, left: 'auto' }}>
           {others.map(locale => (
             <li key={locale}>
               <a
                 href={localeHref(locale, i18n.defaultLocale, pathname)}
                 className="dropdown__link"
-                onClick={() => setOpen(false)}
               >
                 {LOCALE_LABEL[locale] ?? locale}
               </a>
