@@ -1,22 +1,22 @@
 {
   "homepage.meta.title": {
-    "message": "你的超级个人协作智能体",
+    "message": "主权本地智能体",
     "description": "Homepage meta title"
   },
   "homepage.meta.description": {
-    "message": "与模型无关、本地优先的 AI 智能体，内置持久记忆、自动化任务调度，数据完全自主掌控。",
+    "message": "一个与模型无关、本地优先的智能体，具备持久记忆、定时操作和对数据的主权控制。",
     "description": "Homepage meta description"
   },
   "homepage.hero.kicker": {
-    "message": "超级个人协作智能体",
+    "message": "主权本地智能体",
     "description": "Hero section kicker above the title"
   },
   "homepage.hero.subtitle": {
-    "message": "掌控你的工作流。守护你的数据。按你的方式运行 AI。",
+    "message": "本地。·  持久。·  主权。",
     "description": "Hero subtitle"
   },
   "homepage.hero.cta.primary": {
-    "message": "快速开始 — 5 分钟",
+    "message": "查看指南",
     "description": "Primary CTA button in hero"
   },
   "homepage.hero.cta.github": {
@@ -24,11 +24,11 @@
     "description": "GitHub CTA button in hero"
   },
   "homepage.features.modelAgnostic.title": {
-    "message": "与模型无关",
+    "message": "模型无关",
     "description": "Feature card title"
   },
   "homepage.features.modelAgnostic.desc": {
-    "message": "通过统一界面使用 GPT、Claude、Gemini 等。切换模型无需修改任何配置。",
+    "message": "通过一个本地接口使用 GPT、Claude、Gemini 等提供商。更换模型无需重建工作流。",
     "description": "Feature card description"
   },
   "homepage.features.memory.title": {
@@ -36,39 +36,39 @@
     "description": "Feature card title"
   },
   "homepage.features.memory.desc": {
-    "message": "双层记忆架构：快速 Markdown 召回 + LanceDB 语义搜索。智能体跨会话记住一切。",
+    "message": "Markdown 召回与 LanceDB 语义搜索，为智能体保留跨会话的长期记录。",
     "description": "Feature card description"
   },
   "homepage.features.private.title": {
-    "message": "默认私密",
+    "message": "主权执行",
     "description": "Feature card title"
   },
   "homepage.features.private.desc": {
-    "message": "本地优先架构，沙箱隔离执行。你的数据始终留在你的机器上。",
+    "message": "本地优先架构，沙箱隔离执行。文件、记忆和运行时都由你掌控。",
     "description": "Feature card description"
   },
   "homepage.features.automation.title": {
-    "message": "内置自动化",
+    "message": "定时操作",
     "description": "Feature card title"
   },
   "homepage.features.automation.desc": {
-    "message": "通过定时任务（Cron）安排任务，或运行持续的心跳监控——无需额外工具。",
+    "message": "运行类 Cron 任务、周期检查和长期监控，无需额外接入另一套服务。",
     "description": "Feature card description"
   },
   "homepage.features.skills.title": {
-    "message": "可通过技能扩展",
+    "message": "技能索引",
     "description": "Feature card title"
   },
   "homepage.features.skills.desc": {
-    "message": "将领域知识打包为 Markdown 技能。放入即用，智能体立刻获得新能力。",
+    "message": "将领域知识打包为 Markdown 技能。在需要新能力时，本地添加即可。",
     "description": "Feature card description"
   },
   "homepage.features.crossPlatform.title": {
-    "message": "跨平台",
+    "message": "可演化设计",
     "description": "Feature card title"
   },
   "homepage.features.crossPlatform.desc": {
-    "message": "支持 Windows、macOS 和 Linux。通过节点（Nodes）以 WebSocket 连接伴侣设备。",
+    "message": "支持 Windows、macOS 和 Linux。可通过 Nodes、技能和 WebSocket 伴侣设备继续扩展系统。",
     "description": "Feature card description"
   },
   "homepage.howItWorks.heading": {

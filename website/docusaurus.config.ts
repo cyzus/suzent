@@ -6,7 +6,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'SUZENT',
-  tagline: 'Your sovereign digital coworker',
+  tagline: 'Sovereign local intelligence',
   favicon: 'img/logo.svg',
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
@@ -109,10 +109,10 @@ const config: Config = {
       style: 'light', // Use light style to match brutalist theme better or custom
       links: [
         {
-          title: 'Get Started',
+          title: 'Docs',
           items: [
             {
-              label: 'What is Suzent?',
+              label: 'Overview',
               to: '/docs/getting-started/intro',
             },
             {
@@ -126,7 +126,7 @@ const config: Config = {
           ],
         },
         {
-          title: 'Concepts',
+          title: 'Systems',
           items: [
             {
               label: 'Tools',
@@ -156,7 +156,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} Suzent. Built with Docusaurus.`,
+      copyright: `SPZ-NS // SOVEREIGN LOCAL RUNTIME // © ${new Date().getFullYear()} Suzent`,
     },
     prism: {
       theme: prismThemes.github,

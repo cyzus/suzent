@@ -5,13 +5,13 @@ title: What is Suzent?
 
 # What is Suzent?
 
-Suzent is a **sovereign digital coworker** — a local-first AI agent you own and control entirely. No cloud lock-in, no data leaving your machine unless you choose.
+Suzent is a **sovereign local agent** — a local-first AI system you own and control entirely. No cloud lock-in, no data leaving your machine unless you choose.
 
 ## Core ideas
 
-**Sovereign** means you run it. Your model keys, your data, your infrastructure. Suzent doesn't phone home.
+**Sovereign** means the important controls stay with you: model keys, data, memory, and runtime.
 
-**Digital coworker** means it's built to work *with* you over time — not just answer one-off questions. It remembers past sessions, schedules recurring tasks, and can monitor things while you sleep.
+**Local agent** means it is built for more than one-off answers. It can keep long-term memory, schedule recurring work, and run the operations you explicitly allow.
 
 ## What makes it different
 

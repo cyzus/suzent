@@ -4,7 +4,50 @@
  * work well for content-centric websites.
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;700&display=swap');
+
+/* ── Homepage theme tokens ──────────────────────────────────────────────── */
+:root {
+  --h-bg:               #f0ede8;
+  --h-text:             #0a0a0a;
+  --h-text-strong:      rgba(10, 10, 10, 0.82);
+  --h-text-dim:         rgba(10, 10, 10, 0.36);
+  --h-text-mid:         rgba(10, 10, 10, 0.54);
+  --h-border:           rgba(10, 10, 10, 0.16);
+  --h-border-faint:     rgba(10, 10, 10, 0.08);
+  --h-feat-bg:          #e8e5de;
+  --h-tab-active:       #0a0a0a;
+
+  /* Eye */
+  --h-eye-bg:           #0a0a0a;
+  --h-eye-glow:         rgba(10, 10, 10, 0.28);
+  --h-eye-glow-outer:   rgba(10, 10, 10, 0.1);
+
+  /* Card hover (inverted) */
+  --h-hover-bg:         #0a0a0a;
+  --h-hover-text:       #f0ede8;
+  --h-hover-muted:      rgba(240, 237, 232, 0.48);
+}
+
+[data-theme='dark'] {
+  --h-bg:               #000;
+  --h-text:             #f0ede8;
+  --h-text-strong:      rgba(240, 237, 232, 0.82);
+  --h-text-dim:         rgba(240, 237, 232, 0.36);
+  --h-text-mid:         rgba(240, 237, 232, 0.52);
+  --h-border:           rgba(240, 237, 232, 0.16);
+  --h-border-faint:     rgba(240, 237, 232, 0.08);
+  --h-feat-bg:          #080808;
+  --h-tab-active:       #f0ede8;
+
+  --h-eye-bg:           #f0ede8;
+  --h-eye-glow:         rgba(240, 237, 232, 0.55);
+  --h-eye-glow-outer:   rgba(240, 237, 232, 0.15);
+
+  --h-hover-bg:         #f0ede8;
+  --h-hover-text:       #000;
+  --h-hover-muted:      rgba(0, 0, 0, 0.52);
+}
 
 /* Neo-Brutalist Theme Overrides */
 :root {
@@ -39,11 +82,12 @@
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
 
   /* Navbar */
-  --ifm-navbar-background-color: var(--suzent-gray);
+  --ifm-navbar-background-color: #ffffff;
   --ifm-navbar-shadow: 4px 4px 0px var(--suzent-black);
 
   /* Layout */
-  --ifm-background-color: var(--suzent-gray);
+  --ifm-background-color: #ffffff;
+  --ifm-footer-background-color: #e8e5de;
   --ifm-background-surface-color: var(--suzent-white);
   --ifm-font-family-base: 'Space Grotesk', system-ui, -apple-system, sans-serif;
   --ifm-heading-font-family: 'Arial Black', 'Space Grotesk', sans-serif;
@@ -65,9 +109,10 @@
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 
   --suzent-gray: #000000;
-  --ifm-background-color: var(--suzent-gray);
+  --ifm-background-color: var(--suzent-dark-1);
   --ifm-background-surface-color: var(--suzent-dark-2);
   --ifm-navbar-background-color: var(--suzent-dark-2);
+  --ifm-footer-background-color: #080808;
   --ifm-navbar-shadow: 4px 4px 0px #000000;
 }
 
@@ -85,8 +130,13 @@ html.homepage-mode .navbar {
 
 .navbar__title,
 .navbar__brand,
-.navbar__link {
+.navbar__link,
+.navbar__toggle {
   color: var(--suzent-black);
+}
+
+[data-theme='light'] .navbar {
+  background-color: #ffffff;
 }
 
 /* Buttons */
