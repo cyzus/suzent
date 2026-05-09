@@ -42,6 +42,14 @@ const config: Config = {
     },
   },
 
+  headTags: [
+    {
+      tagName: 'script',
+      attributes: {},
+      innerHTML: `(function(){var p=location.pathname;if(p==='/'||p==='/zh-Hans'||p==='/zh-Hans/'){document.documentElement.classList.add('homepage-mode');}})();`,
+    },
+  ],
+
   presets: [
     [
       'classic',
