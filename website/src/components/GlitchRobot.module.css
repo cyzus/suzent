@@ -1,0 +1,177 @@
+.wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  animation: wrapper-shake 8s step-end infinite;
+}
+
+/* Periodic scan beam sweeping top → bottom */
+.scanBeam {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.scanBeam::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -4px;
+  height: 4px;
+  background: linear-gradient(to bottom, transparent, rgba(255, 230, 102, 0.55), transparent);
+  box-shadow: 0 0 10px 2px rgba(255, 230, 102, 0.35);
+  animation: scan-sweep 9s ease-in-out infinite;
+}
+
+@keyframes scan-sweep {
+  0%, 72%  { top: -4px;  opacity: 0; }
+  74%      { top: -4px;  opacity: 1; }
+  98%      { top: 104%;  opacity: 0.4; }
+  100%     { top: 104%;  opacity: 0; }
+}
+
+/* CRT scanlines */
+.scanlines {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 3px,
+    rgba(255, 255, 255, 0.04) 3px,
+    rgba(255, 255, 255, 0.04) 4px
+  );
+}
+
+/* All SVG layers stack in the same box */
+.base,
+.ghostR,
+.ghostC {
+  position: absolute;
+  inset: 0;
+}
+
+.base {
+  z-index: 1;
+}
+
+.ghostR {
+  z-index: 2;
+  opacity: 0;
+  animation: ghost-r 8s step-end infinite both;
+}
+
+.ghostC {
+  z-index: 2;
+  opacity: 0;
+  animation: ghost-c 8s step-end infinite both;
+  animation-delay: 40ms;
+}
+
+/* ── Animations ─────────────────────────────────────────── */
+
+/* Whole robot shakes on glitch frames */
+@keyframes wrapper-shake {
+  0%, 83%, 100% { transform: none; }
+  83.5%         { transform: translateX(-6px) skewX(-4deg); }
+  84%           { transform: translateX(8px)  skewX(3deg);  }
+  84.5%         { transform: translateX(-4px) skewX(-2deg); }
+  85%           { transform: translateX(6px);  }
+  85.5%         { transform: translateX(-2px); }
+  86%           { transform: none; }
+  91.5%         { transform: translateX(-5px) skewX(-3deg); }
+  92%           { transform: translateX(7px)  skewX(2deg);  }
+  92.5%         { transform: translateX(-3px); }
+  93%           { transform: none; }
+}
+
+/* Red channel: offset left, different horizontal strips */
+@keyframes ghost-r {
+  0%, 83%, 100% {
+    opacity: 0;
+    transform: none;
+    clip-path: none;
+  }
+  83.5% {
+    opacity: 1;
+    transform: translateX(-12px) skewX(-4deg);
+    clip-path: none;
+  }
+  84% {
+    opacity: 1;
+    transform: translateX(-10px) skewX(2deg);
+    clip-path: inset(15% 0 50% 0);
+  }
+  84.5% {
+    opacity: 1;
+    transform: translateX(-14px);
+    clip-path: inset(55% 0 5% 0);
+  }
+  85% {
+    opacity: 1;
+    transform: translateX(-8px) skewX(-3deg);
+    clip-path: inset(30% 0 35% 0);
+  }
+  85.5% { opacity: 0; }
+  86%   { opacity: 0; }
+  91.5% {
+    opacity: 1;
+    transform: translateX(-11px);
+    clip-path: none;
+  }
+  92% {
+    opacity: 0.9;
+    transform: translateX(-9px) skewX(2deg);
+    clip-path: inset(40% 0 25% 0);
+  }
+  92.5% { opacity: 0; }
+  93%   { opacity: 0; }
+}
+
+/* Cyan channel: offset right, complementary strips */
+@keyframes ghost-c {
+  0%, 83%, 100% {
+    opacity: 0;
+    transform: none;
+    clip-path: none;
+  }
+  83.5% {
+    opacity: 1;
+    transform: translateX(12px) skewX(4deg);
+    clip-path: none;
+  }
+  84% {
+    opacity: 1;
+    transform: translateX(10px) skewX(-2deg);
+    clip-path: inset(50% 0 15% 0);
+  }
+  84.5% {
+    opacity: 1;
+    transform: translateX(14px);
+    clip-path: inset(5% 0 55% 0);
+  }
+  85% {
+    opacity: 1;
+    transform: translateX(8px) skewX(3deg);
+    clip-path: inset(25% 0 40% 0);
+  }
+  85.5% { opacity: 0; }
+  86%   { opacity: 0; }
+  91.5% {
+    opacity: 1;
+    transform: translateX(11px);
+    clip-path: none;
+  }
+  92% {
+    opacity: 0.9;
+    transform: translateX(9px) skewX(-2deg);
+    clip-path: inset(25% 0 40% 0);
+  }
+  92.5% { opacity: 0; }
+  93%   { opacity: 0; }
+}

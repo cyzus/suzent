@@ -1,0 +1,48 @@
+.root {
+  width: 100%;
+  height: 100%;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.eyesGroup {
+  display: flex;
+  gap: 24px;
+  /* Very snappy, responsive spring-like transition */
+  transition: transform 0.1s cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Shift slightly up to feel like a face */
+  margin-top: -30px;
+}
+
+.eyeL, .eyeR {
+  width: 44px;
+  height: 44px;
+  background: #fff;
+  border-radius: 10px;
+  transform-origin: center;
+  animation: eye-blink 5s infinite;
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.eyeR {
+  animation-delay: 0.1s;
+}
+
+@keyframes eye-blink {
+  0%, 45%, 100% { transform: scaleY(1); opacity: 1; }
+  46% { transform: scaleY(0.1); opacity: 1; }
+  48% { transform: scaleY(1); opacity: 1; }
+  49% { transform: scaleY(0.1); opacity: 1; }
+  51% { transform: scaleY(1); opacity: 1; }
+}
+
+/* Hovering the root (right column) makes it squint playfully */
+.root:hover .eyeL, .root:hover .eyeR {
+  animation: none;
+  transform: scaleY(0.35) translateY(-4px);
+}
+

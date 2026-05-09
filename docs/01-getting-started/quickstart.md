@@ -20,7 +20,7 @@ Get Suzent running in under 5 minutes.
 <TabItem value="windows" label="Windows" default>
 
 ```powershell
-powershell -c "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
+irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex
 ```
 
 </TabItem>

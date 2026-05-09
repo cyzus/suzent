@@ -70,7 +70,7 @@ const config: Config = {
     announcementBar: {
       id: 'github_star',
       content: 'If you find Suzent useful, give it a star on <a href="https://github.com/cyzus/suzent" target="_blank" rel="noopener noreferrer">GitHub</a>!',
-      backgroundColor: '#ffe666',
+      backgroundColor: '#ffffff',
       textColor: '#000000',
       isCloseable: true,
     },

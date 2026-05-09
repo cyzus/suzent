@@ -4,13 +4,15 @@
  * work well for content-centric websites.
  */
 
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
 /* Neo-Brutalist Theme Overrides */
 :root {
   /* Suzent Brand Colors */
   --suzent-green: #A8E6A3;
-  --suzent-yellow: #FFE666;
+  --suzent-yellow: #ffffff;
   --suzent-yellow-strong: #e0b800;
-  --suzent-yellow-soft: #FFE666;
+  --suzent-yellow-soft: #ffffff;
   --suzent-red: #FF0000;
   --suzent-black: #000000;
   --suzent-white: #FFFFFF;
@@ -43,8 +45,8 @@
   /* Layout */
   --ifm-background-color: var(--suzent-gray);
   --ifm-background-surface-color: var(--suzent-white);
-  --ifm-font-family-base: 'Inter', system-ui, -apple-system, sans-serif;
-  --ifm-heading-font-family: 'Arial Black', 'Inter', sans-serif;
+  --ifm-font-family-base: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --ifm-heading-font-family: 'Arial Black', 'Space Grotesk', sans-serif;
 
   /* Code (light mode) */
   --ifm-code-background: var(--suzent-code-bg);
@@ -62,7 +64,7 @@
   --ifm-color-primary-lightest: #f1f1f3;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 
-  --suzent-gray: var(--suzent-dark-1);
+  --suzent-gray: #000000;
   --ifm-background-color: var(--suzent-gray);
   --ifm-background-surface-color: var(--suzent-dark-2);
   --ifm-navbar-background-color: var(--suzent-dark-2);
@@ -70,6 +72,11 @@
 }
 
 /* Neo-Brutalist Components */
+
+/* Hide global navbar on homepage — homepage renders its own */
+html.homepage-mode .navbar {
+  display: none !important;
+}
 
 /* Navbar */
 .navbar {
