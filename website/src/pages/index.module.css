@@ -82,16 +82,18 @@
   border: none;
   border-left: 1px solid #333;
   padding: 0 1.5rem;
-  font-size: 1.2rem;
+  height: 100%;
+  color: #ffffff;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.08s;
+  transition: background 0.08s, color 0.08s;
 }
 
 .themeToggleBtn:hover {
   background: #ffffff;
+  color: #000000;
 }
 
 :global([data-theme='dark']) .homeNav {

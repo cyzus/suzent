@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import Link from '@docusaurus/Link';
 import Head from '@docusaurus/Head';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
+import { useLocation } from '@docusaurus/router';
 import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
 import Translate, { translate } from '@docusaurus/Translate';
@@ -56,8 +57,44 @@ const FEATURE_CARDS = [
   },
 ];
 
+function MoonIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="square">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
+
+function SunIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="square">
+      <circle cx="12" cy="12" r="4" />
+      <line x1="12" y1="2" x2="12" y2="5" />
+      <line x1="12" y1="19" x2="12" y2="22" />
+      <line x1="4.22" y1="4.22" x2="6.34" y2="6.34" />
+      <line x1="17.66" y1="17.66" x2="19.78" y2="19.78" />
+      <line x1="2" y1="12" x2="5" y2="12" />
+      <line x1="19" y1="12" x2="22" y2="12" />
+      <line x1="4.22" y1="19.78" x2="6.34" y2="17.66" />
+      <line x1="17.66" y1="6.34" x2="19.78" y2="4.22" />
+    </svg>
+  );
+}
+
 function HomepageNav() {
   const { colorMode, setLightTheme, setDarkTheme } = useColorMode();
+  const { i18n } = useDocusaurusContext();
+  const { pathname } = useLocation();
+
+  const otherLocale = i18n.locales.find(l => l !== i18n.currentLocale);
+  const otherLabel = otherLocale === 'zh-Hans' ? '中文' : 'EN';
+
+  function switchLocaleHref(): string {
+    if (!otherLocale) return '#';
+    const stripped = pathname.replace(/^\/(zh-Hans)(\/|$)/, '/') || '/';
+    return otherLocale === i18n.defaultLocale ? stripped : `/zh-Hans${stripped === '/' ? '/' : stripped}`;
+  }
+
   return (
     <nav className={styles.homeNav} aria-label="Homepage navigation">
       <div className={styles.homeNavInner}>
@@ -69,28 +106,17 @@ function HomepageNav() {
         </Link>
         <div className={styles.homeNavLinks}>
           <Link to="/docs/getting-started/intro" className={styles.homeNavLink}>Docs</Link>
-          <a
-            href="https://github.com/cyzus/suzent"
-            className={styles.homeNavLink}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            GitHub
-          </a>
-          <a
-            href="https://discord.gg/suzent"
-            className={styles.homeNavLink}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Discord
-          </a>
+          <a href="https://github.com/cyzus/suzent" className={styles.homeNavLink} target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://discord.gg/suzent" className={styles.homeNavLink} target="_blank" rel="noopener noreferrer">Discord</a>
+          {otherLocale && (
+            <a href={switchLocaleHref()} className={styles.homeNavLink}>{otherLabel}</a>
+          )}
           <button
             className={styles.themeToggleBtn}
             onClick={() => colorMode === 'dark' ? setLightTheme() : setDarkTheme()}
             aria-label="Toggle dark mode"
           >
-            {colorMode === 'dark' ? '☀️' : '🌙'}
+            {colorMode === 'dark' ? <SunIcon /> : <MoonIcon />}
           </button>
         </div>
       </div>
@@ -143,7 +169,7 @@ function ScrambleTitle({ text }: { text: string }) {
         setDisplayText(
           text
             .split('')
-            .map((letter, index) => {
+            .map((_letter, index) => {
               if (resolvedIndices.has(index)) {
                 return text[index];
               }
