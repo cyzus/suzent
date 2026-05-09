@@ -96,6 +96,7 @@ export function HeroArt({ pointer = { x: 0, y: 0, active: false } }: HeroArtProp
         eye.node.style.height = `${size}px`;
         eye.node.style.borderRadius = `${radius}px`;
         eye.node.style.transform = `matrix(${matrixA}, ${matrixB}, ${matrixC}, ${matrixD}, ${topLeft.x * displayScale}, ${topLeft.y * displayScale})`;
+        eye.node.style.visibility = 'visible';
 
         const hoverDistance = Math.hypot(pointerScreen.x - center.x, pointerScreen.y - center.y);
         if (cursor.active && hoverDistance < logicalSize * 0.95) {
