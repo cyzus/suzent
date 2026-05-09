@@ -6,6 +6,7 @@ import { CodeBlockComponent } from './CodeBlockComponent';
 import { ClickableContent } from '../ClickableContent';
 import { DocumentTextIcon } from '@heroicons/react/24/outline';
 import { useI18n } from '../../i18n';
+import { getApiBase } from '../../lib/api';
 
 const ALLOWED_LANGUAGES = new Set([
   'python', 'javascript', 'typescript', 'java', 'cpp', 'c', 'go', 'rust', 'sql',
@@ -19,6 +20,55 @@ interface MarkdownRendererProps {
   content: string;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
   streamingLite?: boolean;
+}
+
+function encodePathSegments(path: string): string {
+  return path
+    .split('/')
+    .filter(Boolean)
+    .map(segment => encodeURIComponent(segment))
+    .join('/');
+}
+
+function fileUrlToPath(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'file:') return null;
+
+    let pathname = decodeURIComponent(parsed.pathname).replace(/\\/g, '/');
+    // Windows file URLs parse as /C:/path. Strip the leading slash.
+    if (/^\/[a-zA-Z]:\//.test(pathname)) {
+      pathname = pathname.slice(1);
+    }
+    return pathname;
+  } catch {
+    return null;
+  }
+}
+
+function suzentSessionFileUrlToServeUrl(url: string): string | null {
+  const path = fileUrlToPath(url);
+  if (!path) return null;
+
+  const normalized = path.replace(/\\/g, '/');
+  const match = normalized.match(/(?:^|\/)sessions\/([^/]+)\/(.+)$/);
+  if (!match) return null;
+
+  const [, chatId, relativePath] = match;
+  if (!chatId || !relativePath || relativePath.includes('..')) return null;
+
+  return `${getApiBase()}/sandbox/serve/${encodeURIComponent(chatId)}/persistence/${encodePathSegments(relativePath)}`;
+}
+
+function normalizeMarkdownUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+
+  if (/^file:/i.test(trimmed)) {
+    return suzentSessionFileUrlToServeUrl(trimmed) || '';
+  }
+
+  return trimmed;
 }
 
 // Reusable clickable file button component
@@ -106,24 +156,32 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
     return ALLOWED_LANGUAGES.has(clean) ? `\`\`\`${clean}` : '```';
   });
 
-  // Safe URL transform - block dangerous protocols while allowing file:// and standard protocols
+  // Safe URL transform - block dangerous protocols while allowing standard protocols.
+  // Suzent-owned file:// session paths are rewritten to /sandbox/serve URLs.
   const safeUrlTransform = (url: string): string => {
-    const urlLower = url.toLowerCase().trim();
+    const normalizedUrl = normalizeMarkdownUrl(url);
+    const urlLower = normalizedUrl.toLowerCase().trim();
 
     // Allow safe protocols
-    const safeProtocols = ['http:', 'https:', 'mailto:', 'file:', 'tel:'];
+    const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:'];
     const hasProtocol = urlLower.includes(':');
+
+    if (urlLower.startsWith('data:image/')) {
+      return /^data:image\/(?:png|jpe?g|gif|webp|svg\+xml);base64,/i.test(normalizedUrl)
+        ? normalizedUrl
+        : '';
+    }
 
     if (hasProtocol) {
       const isAllowed = safeProtocols.some(protocol => urlLower.startsWith(protocol));
       if (!isAllowed) {
-        // Block dangerous protocols like javascript:, data:, vbscript:, etc.
+        // Block dangerous protocols like javascript:, unsupported data:, vbscript:, etc.
         return '';
       }
     }
 
     // Allow relative URLs and fragment links
-    return url;
+    return normalizedUrl;
   };
 
   return (
@@ -233,6 +291,22 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
               >
                 {children}
               </a>
+            );
+          },
+          img: (props: any) => {
+            const src = safeUrlTransform(String(props.src || ''));
+            if (!src) {
+              return <span className="text-neutral-500">{props.alt || ''}</span>;
+            }
+
+            return (
+              <img
+                src={src}
+                alt={props.alt || ''}
+                title={props.title}
+                className="max-w-full max-h-[60vh] object-contain border-2 border-brutal-black shadow-brutal-sm bg-white"
+                loading="lazy"
+              />
             );
           },
           table: (p: any) => (
