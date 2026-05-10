@@ -51,6 +51,8 @@ interface FileMentionSuggestion extends FileMentionSelection {
 }
 
 const FILE_MENTION_PATTERN = /(^|\s)(@(?:"[^"]+"|\[[^\]]+\]|\/[^\s@]+))/g;
+const INPUT_TEXT_METRIC_CLASS =
+    'text-lg leading-7 tracking-normal font-sans font-medium [tab-size:4]';
 
 function getFileExtensionLabel(filename: string): string {
     const ext = filename.split('.').pop()?.trim().toUpperCase();
@@ -419,7 +421,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 <pre
                     ref={highlightRef}
                     aria-hidden="true"
-                    className="absolute inset-0 w-full min-h-[44px] max-h-[200px] overflow-hidden whitespace-pre-wrap break-words pointer-events-none text-lg text-brutal-black dark:text-white font-medium border-none p-2 font-sans"
+                    className={`absolute inset-0 w-full min-h-[44px] max-h-[200px] overflow-hidden whitespace-pre-wrap break-words pointer-events-none text-brutal-black dark:text-white border-none p-2 ${INPUT_TEXT_METRIC_CLASS}`}
                 >
                     {renderInputWithFileMentionHighlights(input)}
                     {' '}
@@ -427,7 +429,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 < textarea
                     autoFocus
                     ref={textareaRef}
-                    className="relative w-full resize-none overflow-y-auto min-h-[44px] max-h-[200px] bg-transparent focus:outline-none text-lg text-transparent caret-brutal-black dark:caret-white placeholder-neutral-400 dark:placeholder-neutral-500 font-medium placeholder:font-bold border-none p-2 selection:bg-brutal-blue/30 text-left"
+                    className={`relative w-full resize-none overflow-y-auto min-h-[44px] max-h-[200px] bg-transparent focus:outline-none text-transparent caret-brutal-black dark:caret-white placeholder-neutral-400 dark:placeholder-neutral-500 placeholder:font-bold border-none p-2 selection:bg-brutal-blue/30 text-left ${INPUT_TEXT_METRIC_CLASS}`}
                     value={input}
                     onScroll={(e) => {
                         if (highlightRef.current) {
