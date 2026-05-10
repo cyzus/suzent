@@ -185,6 +185,7 @@ class ChatProcessor:
         user_id: str,
         message_content: str,
         files: List[Any] = None,
+        file_mentions: List[Any] = None,
         config_override: Dict = None,
         is_social: bool = False,
         resume_approvals: List[Dict] = None,
@@ -417,6 +418,18 @@ class ChatProcessor:
             except Exception as e:
                 logger.error(f"Failed to process attachments: {e}")
                 attachment_context += "\n[System Error: Failed to process attachments]"
+
+        if file_mentions:
+            mentioned_paths: list[tuple[str, str]] = []
+            for item in file_mentions:
+                path = item.get("path") if isinstance(item, dict) else str(item)
+                path = path.strip()
+                raw_type = item.get("type") if isinstance(item, dict) else None
+                mention_type = "directory" if raw_type == "directory" else "file"
+                if path and path.startswith("/"):
+                    mentioned_paths.append((mention_type, path))
+            for mention_type, path in dict.fromkeys(mentioned_paths):
+                attachment_context += f"\n[User referenced {mention_type}: {path}]"
 
         # 6. Prepare Prompt or Resume
         from pydantic_ai.messages import ModelRequest, UserPromptPart
@@ -1490,6 +1503,7 @@ class ChatProcessor:
 
 
 _ATTACHMENT_PATTERN = re.compile(r"\n?\[User attached (?:an image|a file): ([^\]]+)\]")
+_REFERENCE_PATTERN = re.compile(r"\n?\[User referenced (?:file|directory): ([^\]]+)\]")
 
 
 def _extract_attachment_files(text: str) -> list:
@@ -1515,7 +1529,8 @@ def _extract_attachment_files(text: str) -> list:
 
 def _strip_attachment_annotations(text: str) -> str:
     """Remove [User attached …] annotations from display text."""
-    return _ATTACHMENT_PATTERN.sub("", text).strip()
+    text = _ATTACHMENT_PATTERN.sub("", text)
+    return _REFERENCE_PATTERN.sub("", text).strip()
 
 
 def _extract_tool_calls(messages: list) -> List[AgentAction]:

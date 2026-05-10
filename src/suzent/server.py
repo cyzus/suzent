@@ -87,6 +87,7 @@ from suzent.routes.memory_routes import (
 )
 from suzent.routes.sandbox_routes import (
     list_sandbox_files,
+    search_file_mentions,
     read_sandbox_file,
     write_sandbox_file,
     delete_sandbox_file,
@@ -649,6 +650,7 @@ app = Starlette(
         Route("/mcp_servers/remove", remove_mcp_server, methods=["POST"]),
         Route("/mcp_servers/enabled", set_mcp_server_enabled, methods=["POST"]),
         Route("/sandbox/files", list_sandbox_files, methods=["GET"]),
+        Route("/sandbox/mentions", search_file_mentions, methods=["GET"]),
         Route("/sandbox/read_file", read_sandbox_file, methods=["GET"]),
         Route("/sandbox/file", write_sandbox_file, methods=["POST", "PUT"]),
         Route("/sandbox/file", delete_sandbox_file, methods=["DELETE"]),

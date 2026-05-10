@@ -59,6 +59,11 @@ async def chat(request: Request) -> StreamingResponse:
                 resume_approvals = []
 
             files_list = form.getlist("files")
+            file_mentions_str = form.get("file_mentions", "[]")
+            try:
+                file_mentions = json.loads(file_mentions_str)
+            except json.JSONDecodeError:
+                file_mentions = []
             is_heartbeat = False
         else:
             data = await request.json()
@@ -68,6 +73,7 @@ async def chat(request: Request) -> StreamingResponse:
             chat_id = data.get("chat_id")
             stream = data.get("stream", True)
             files_list = data.get("files", [])
+            file_mentions = data.get("file_mentions", [])
             resume_approvals = data.get("resume_approvals", [])
             is_heartbeat = data.get("is_heartbeat", False)
 
@@ -163,6 +169,7 @@ async def chat(request: Request) -> StreamingResponse:
             user_id=CONFIG.user_id,
             message_content=message,
             files=files_list,
+            file_mentions=file_mentions,
             config_override=config_override,
             resume_approvals=resume_approvals,
             is_heartbeat=is_heartbeat,
