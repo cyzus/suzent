@@ -70,6 +70,7 @@ function renderInputWithFileMentionHighlights(value: string): React.ReactNode[] 
     let lastIndex = 0;
     let match: RegExpExecArray | null;
 
+    FILE_MENTION_PATTERN.lastIndex = 0;
     while ((match = FILE_MENTION_PATTERN.exec(value)) !== null) {
         const prefix = match[1];
         const mention = match[2];
@@ -95,6 +96,11 @@ function renderInputWithFileMentionHighlights(value: string): React.ReactNode[] 
     }
 
     return nodes.length > 0 ? nodes : [value];
+}
+
+function hasFileMentionHighlight(value: string): boolean {
+    FILE_MENTION_PATTERN.lastIndex = 0;
+    return FILE_MENTION_PATTERN.test(value);
 }
 
 const ImagePreviewThumbnail: React.FC<{
@@ -160,6 +166,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     const [mentionRange, setMentionRange] = React.useState<{ start: number; end: number; query: string } | null>(null);
     const [isMentionLoading, setIsMentionLoading] = React.useState(false);
     const highlightRef = React.useRef<HTMLPreElement | null>(null);
+    const shouldHighlightFileMentions = hasFileMentionHighlight(input);
     const suggestions = useSlashCommands(input);
     React.useEffect(() => { setSelectedSuggestion(0); }, [suggestions.length]);
     React.useEffect(() => { setSelectedMentionSuggestion(0); }, [mentionSuggestions.length]);
@@ -418,21 +425,23 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             )}
 
             <div className="relative">
-                <pre
-                    ref={highlightRef}
-                    aria-hidden="true"
-                    className={`absolute inset-0 w-full min-h-[44px] max-h-[200px] overflow-hidden whitespace-pre-wrap break-words pointer-events-none text-brutal-black dark:text-white border-none p-2 ${INPUT_TEXT_METRIC_CLASS}`}
-                >
-                    {renderInputWithFileMentionHighlights(input)}
-                    {' '}
-                </pre>
+                {shouldHighlightFileMentions && (
+                    <pre
+                        ref={highlightRef}
+                        aria-hidden="true"
+                        className={`absolute inset-0 w-full min-h-[44px] max-h-[200px] overflow-hidden whitespace-pre-wrap break-words pointer-events-none text-brutal-black dark:text-white border-none p-2 ${INPUT_TEXT_METRIC_CLASS}`}
+                    >
+                        {renderInputWithFileMentionHighlights(input)}
+                        {' '}
+                    </pre>
+                )}
                 <textarea
                     autoFocus
                     ref={textareaRef}
-                    className={`relative w-full resize-none overflow-y-auto min-h-[44px] max-h-[200px] bg-transparent focus:outline-none text-transparent caret-brutal-black dark:caret-white placeholder-neutral-400 dark:placeholder-neutral-500 placeholder:font-bold border-none p-2 selection:bg-brutal-blue/30 text-left ${INPUT_TEXT_METRIC_CLASS}`}
+                    className={`relative w-full resize-none overflow-y-auto min-h-[44px] max-h-[200px] bg-transparent focus:outline-none caret-brutal-black dark:caret-white placeholder-neutral-400 dark:placeholder-neutral-500 placeholder:font-bold border-none p-2 selection:bg-brutal-blue/30 text-left ${shouldHighlightFileMentions ? 'text-transparent' : 'text-brutal-black dark:text-white'} ${INPUT_TEXT_METRIC_CLASS}`}
                     value={input}
                     onScroll={(e) => {
-                        if (highlightRef.current) {
+                        if (shouldHighlightFileMentions && highlightRef.current) {
                             highlightRef.current.scrollTop = e.currentTarget.scrollTop;
                         }
                     }}
