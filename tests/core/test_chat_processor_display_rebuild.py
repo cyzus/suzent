@@ -11,7 +11,9 @@ from pydantic_ai.messages import (
 from suzent.core.chat_processor import (
     _append_command_messages,
     _append_inline_a2ui_surfaces,
+    _build_file_mention_context,
     _rebuild_display_messages,
+    _strip_attachment_annotations,
 )
 
 
@@ -102,3 +104,31 @@ def test_append_command_messages_skips_empty_assistant_payload():
 
     assert len(updated) == 1
     assert updated[0] == {"role": "user", "content": "/somecmd"}
+
+
+def test_build_file_mention_context_skips_malformed_entries():
+    context = _build_file_mention_context(
+        [
+            {"path": "/mnt/project/notes.md", "type": "file"},
+            {"path": "/mnt/project/docs", "type": "directory"},
+            {"path": None},
+            {"path": "/mnt/project/bad]\ninject.md"},
+            {"path": "relative.md"},
+            123,
+        ]
+    )
+
+    assert "[User referenced file: /mnt/project/notes.md]" in context
+    assert "[User referenced directory: /mnt/project/docs]" in context
+    assert "inject" not in context
+    assert "relative.md" not in context
+
+
+def test_strip_attachment_annotations_removes_file_reference_annotations():
+    text = (
+        "summarize this\n"
+        "[User referenced file: /mnt/project/notes.md]\n"
+        "[User referenced directory: /mnt/project/docs]"
+    )
+
+    assert _strip_attachment_annotations(text) == "summarize this"

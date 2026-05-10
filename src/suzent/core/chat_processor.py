@@ -420,16 +420,7 @@ class ChatProcessor:
                 attachment_context += "\n[System Error: Failed to process attachments]"
 
         if file_mentions:
-            mentioned_paths: list[tuple[str, str]] = []
-            for item in file_mentions:
-                path = item.get("path") if isinstance(item, dict) else str(item)
-                path = path.strip()
-                raw_type = item.get("type") if isinstance(item, dict) else None
-                mention_type = "directory" if raw_type == "directory" else "file"
-                if path and path.startswith("/"):
-                    mentioned_paths.append((mention_type, path))
-            for mention_type, path in dict.fromkeys(mentioned_paths):
-                attachment_context += f"\n[User referenced {mention_type}: {path}]"
+            attachment_context += _build_file_mention_context(file_mentions)
 
         # 6. Prepare Prompt or Resume
         from pydantic_ai.messages import ModelRequest, UserPromptPart
@@ -1504,6 +1495,41 @@ class ChatProcessor:
 
 _ATTACHMENT_PATTERN = re.compile(r"\n?\[User attached (?:an image|a file): ([^\]]+)\]")
 _REFERENCE_PATTERN = re.compile(r"\n?\[User referenced (?:file|directory): ([^\]]+)\]")
+_SAFE_VIRTUAL_REFERENCE_PATTERN = re.compile(r"^/[A-Za-z0-9._~!$&'()*+,;=:@%/\- ]+$")
+
+
+def _normalize_file_mention_path(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+
+    path = value.strip().replace("\\", "/")
+    if not path.startswith("/"):
+        return None
+    if not _SAFE_VIRTUAL_REFERENCE_PATTERN.fullmatch(path):
+        return None
+    return path
+
+
+def _build_file_mention_context(file_mentions: list[Any]) -> str:
+    mentioned_paths: list[tuple[str, str]] = []
+    for item in file_mentions:
+        if isinstance(item, dict):
+            path = _normalize_file_mention_path(item.get("path"))
+            raw_type = item.get("type")
+        else:
+            path = _normalize_file_mention_path(item)
+            raw_type = None
+
+        if not path:
+            continue
+
+        mention_type = "directory" if raw_type == "directory" else "file"
+        mentioned_paths.append((mention_type, path))
+
+    return "".join(
+        f"\n[User referenced {mention_type}: {path}]"
+        for mention_type, path in dict.fromkeys(mentioned_paths)
+    )
 
 
 def _extract_attachment_files(text: str) -> list:

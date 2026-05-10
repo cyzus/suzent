@@ -169,7 +169,15 @@ async def list_sandbox_files(request: Request) -> JSONResponse:
         try:
             override_volumes = json.loads(volumes_json)
         except Exception:
-            pass
+            return JSONResponse(
+                {"error": "volumes must be valid JSON"}, status_code=400
+            )
+        if not isinstance(override_volumes, list) or not all(
+            isinstance(volume, str) for volume in override_volumes
+        ):
+            return JSONResponse(
+                {"error": "volumes must be a JSON array of strings"}, status_code=400
+            )
 
     if not chat_id:
         return JSONResponse({"error": "chat_id is required"}, status_code=400)
@@ -391,10 +399,12 @@ async def search_file_mentions(request: Request) -> JSONResponse:
                         f"{current_virtual.rstrip('/')}/{entry.name}".replace("\\", "/")
                     )
 
-                    try:
-                        stat = entry.stat()
-                    except OSError:
+                    haystack = f"{entry.name}\n{entry_virtual}".lower()
+                    if lowered_query and lowered_query not in haystack:
                         continue
+                    if entry_virtual in seen_virtual_paths:
+                        continue
+                    seen_virtual_paths.add(entry_virtual)
 
                     if entry.is_dir():
                         queue.append((entry, entry_virtual))
@@ -409,12 +419,10 @@ async def search_file_mentions(request: Request) -> JSONResponse:
                     else:
                         continue
 
-                    haystack = f"{entry.name}\n{entry_virtual}".lower()
-                    if lowered_query and lowered_query not in haystack:
+                    try:
+                        stat = entry.stat()
+                    except OSError:
                         continue
-                    if entry_virtual in seen_virtual_paths:
-                        continue
-                    seen_virtual_paths.add(entry_virtual)
 
                     results.append(
                         {
