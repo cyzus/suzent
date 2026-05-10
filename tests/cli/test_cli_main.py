@@ -186,3 +186,87 @@ def test_update_ui_binary_records_release_version(monkeypatch):
     cli_main._update_ui_binary(root)
 
     assert download_calls == [(root, "v1.2.3")]
+
+
+@pytest.mark.parametrize(
+    ("latest", "current", "expected"),
+    [
+        ("v0.6.3", "0.6.2", True),
+        ("0.6.2", "0.6.2", False),
+        ("v0.6.1", "0.6.2", False),
+    ],
+)
+def test_is_newer_version(latest, current, expected):
+    assert cli_main._is_newer_version(latest, current) is expected
+
+
+def test_check_for_update_detects_new_release(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli_main, "_current_version", lambda root: "0.6.2")
+
+    def fake_fetch_latest_release(timeout=10.0):
+        return {"tag_name": "v0.6.3", "html_url": "https://example.test/release"}
+
+    monkeypatch.setattr(cli_main, "_fetch_latest_release", fake_fetch_latest_release)
+
+    result = cli_main._check_for_update(tmp_path, use_cache=False)
+
+    assert result["current_version"] == "0.6.2"
+    assert result["latest_version"] == "v0.6.3"
+    assert result["update_available"] is True
+    assert (tmp_path / ".suzent" / "update-check.json").exists()
+
+
+def test_check_for_update_uses_fresh_cache(monkeypatch, tmp_path):
+    cache_path = tmp_path / ".suzent" / "update-check.json"
+    cache_path.parent.mkdir()
+    cache_path.write_text(
+        cli_main.json.dumps(
+            {
+                "checked_at": cli_main.time.time(),
+                "latest_version": "v0.6.3",
+                "html_url": "https://example.test/release",
+                "update_available": True,
+                "error": "",
+            }
+        )
+    )
+
+    monkeypatch.setattr(cli_main, "_current_version", lambda root: "0.6.2")
+
+    def fail_fetch_latest_release(timeout=10.0):
+        raise AssertionError("fresh cache should avoid network")
+
+    monkeypatch.setattr(cli_main, "_fetch_latest_release", fail_fetch_latest_release)
+
+    result = cli_main._check_for_update(tmp_path, use_cache=True)
+
+    assert result["latest_version"] == "v0.6.3"
+    assert result["current_version"] == "0.6.2"
+    assert result["update_available"] is True
+
+
+def test_check_update_json_command(monkeypatch):
+    app = typer.Typer()
+    cli_main.register_commands(app)
+
+    monkeypatch.setattr(cli_main, "get_project_root", lambda: Path("C:/tmp/suzent"))
+    monkeypatch.setattr(
+        cli_main,
+        "_check_for_update",
+        lambda root, use_cache=False: {
+            "checked_at": 1,
+            "current_version": "0.6.2",
+            "latest_version": "v0.6.3",
+            "html_url": "https://example.test/release",
+            "update_available": True,
+            "error": "",
+        },
+    )
+
+    result = runner.invoke(app, ["check-update", "--json"])
+
+    assert result.exit_code == 0
+    payload = cli_main.json.loads(result.output)
+    assert payload["current_version"] == "0.6.2"
+    assert payload["latest_version"] == "v0.6.3"
+    assert payload["update_available"] is True

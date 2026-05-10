@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { ArrowPathIcon } from '@heroicons/react/24/outline';
 
 import { ChatList } from './components/ChatList';
 import { ChatWindow } from './components/ChatWindow';
@@ -94,6 +96,13 @@ function HeaderTitle({ text, onUnlock }: HeaderTitleProps): React.ReactElement {
 
 type MainView = 'chat' | 'memory' | 'skills' | 'emotes';
 
+interface UpdateStatus {
+  current_version?: string;
+  latest_version?: string;
+  update_available?: boolean;
+  error?: string;
+}
+
 function NavTabs({ mainView, setMainView }: { mainView: MainView; setMainView: (v: MainView) => void }): React.ReactElement {
   const { t } = useI18n();
   const [sliderStyle, setSliderStyle] = React.useState({ left: 3, width: 0 });
@@ -147,6 +156,62 @@ function NavTabs({ mainView, setMainView }: { mainView: MainView; setMainView: (
         </button>
       ))}
     </div>
+  );
+}
+
+function UpdateButton(): React.ReactElement | null {
+  const { t } = useI18n();
+  const setStatusMsg = useStatusStore(s => s.setStatus);
+  const [updateStatus, setUpdateStatus] = React.useState<UpdateStatus | null>(null);
+  const [isStartingUpdate, setIsStartingUpdate] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    invoke<string>('check_for_update')
+      .then((raw) => {
+        if (cancelled) return;
+        setUpdateStatus(JSON.parse(raw) as UpdateStatus);
+      })
+      .catch(() => {
+        if (!cancelled) setUpdateStatus(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!updateStatus?.update_available) {
+    return null;
+  }
+
+  async function handleUpdate(): Promise<void> {
+    const latest = updateStatus?.latest_version || t('updates.latestVersion');
+    const ok = window.confirm(t('updates.confirmRestart', { version: latest }));
+    if (!ok) return;
+
+    setIsStartingUpdate(true);
+    try {
+      await invoke('start_update_and_restart');
+    } catch (error) {
+      setIsStartingUpdate(false);
+      const message = error instanceof Error ? error.message : String(error);
+      setStatusMsg(t('updates.startFailed', { error: message }), 'error', 6000);
+    }
+  }
+
+  return (
+    <button
+      onClick={handleUpdate}
+      disabled={isStartingUpdate}
+      className="h-8 min-w-8 px-2 flex items-center justify-center gap-1.5 border-2 border-brutal-black bg-brutal-yellow text-brutal-black font-brutal text-[10px] uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 disabled:opacity-60 disabled:cursor-wait disabled:hover:translate-x-0 disabled:hover:translate-y-0 transition-all"
+      aria-label={t('updates.available')}
+      title={t('updates.availableTitle', { version: updateStatus.latest_version || t('updates.latestVersion') })}
+    >
+      <ArrowPathIcon className={`h-4 w-4 flex-shrink-0 stroke-[2.5] ${isStartingUpdate ? 'animate-spin' : ''}`} />
+      <span className="hidden 2xl:inline">{isStartingUpdate ? t('updates.starting') : t('updates.updateNow')}</span>
+    </button>
   );
 }
 
@@ -402,6 +467,7 @@ function AppInner(): React.ReactElement {
 
             <div className={`flex items-center gap-3 ${showWindowsWindowControls ? 'pr-[108px]' : ''}`}>
               <NavTabs mainView={mainView} setMainView={setMainView} />
+              <UpdateButton />
 
               {/* Dark mode toggle */}
               <button

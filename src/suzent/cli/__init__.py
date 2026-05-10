@@ -2,7 +2,7 @@
 Suzent CLI — Your Digital Co-worker Manager.
 
 This package splits CLI commands into focused modules:
-- main:   start, doctor, upgrade, setup-build-tools
+- main:   start, doctor, update, upgrade, setup-build-tools
 - node:   list, status, describe, invoke (companion devices)
 - agent:  chat, status
 - config: show, get, set
@@ -41,7 +41,7 @@ def main(
     load_environment()
 
 
-# Register top-level commands (start, doctor, upgrade, setup-build_tools)
+# Register top-level commands (start, doctor, update, upgrade, setup-build_tools)
 register_commands(app)
 
 # Attach subcommand groups

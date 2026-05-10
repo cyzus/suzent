@@ -58,6 +58,15 @@ export const en = {
     restore: 'Restore',
     close: 'Close',
   },
+  updates: {
+    available: 'Update available',
+    availableTitle: 'Update available: {version}',
+    updateNow: 'Update',
+    starting: 'Updating...',
+    latestVersion: 'latest version',
+    confirmRestart: 'Suzent will close, update to {version}, and restart automatically. Continue?',
+    startFailed: 'Failed to start update: {error}',
+  },
   config: {
     loading: 'Loading config...',
     agentLabel: 'Agent',

@@ -58,6 +58,15 @@ export const zhCN = {
     restore: '还原',
     close: '关闭',
   },
+  updates: {
+    available: '有可用更新',
+    availableTitle: '有可用更新：{version}',
+    updateNow: '更新',
+    starting: '更新中...',
+    latestVersion: '最新版本',
+    confirmRestart: 'Suzent 将关闭、更新到 {version}，然后自动重启。是否继续？',
+    startFailed: '启动更新失败：{error}',
+  },
   config: {
     loading: '正在加载配置...',
     agentLabel: '智能体',

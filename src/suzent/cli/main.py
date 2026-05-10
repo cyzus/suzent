@@ -1,11 +1,12 @@
 """
-Top-level CLI commands: start, doctor, upgrade, setup-build-tools.
+Top-level CLI commands: start, doctor, update, upgrade, setup-build-tools.
 """
 
 import io
 import json
 import os
 import platform
+import re
 import signal
 import shutil
 import subprocess
@@ -13,6 +14,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import typer
@@ -22,6 +24,7 @@ IS_WINDOWS = sys.platform == "win32"
 
 _REPO = "cyzus/suzent"
 _BIN_DIR = "bin"
+_UPDATE_CHECK_TTL_SECONDS = 24 * 60 * 60
 
 
 def _get_ui_binary(root: Path) -> Path | None:
@@ -107,10 +110,10 @@ def _platform_asset_name() -> str:
     return "suzent-linux-x86_64"
 
 
-def _fetch_latest_release() -> dict:
+def _fetch_latest_release(timeout: float = 10.0) -> dict:
     url = f"https://api.github.com/repos/{_REPO}/releases/latest"
     req = urllib.request.Request(url, headers={"User-Agent": "suzent-updater"})
-    with urllib.request.urlopen(req, timeout=10) as resp:
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read())
 
 
@@ -121,6 +124,116 @@ def _latest_asset_url(asset_name: str) -> str:
 def _local_ui_version(root: Path) -> str:
     f = root / _BIN_DIR / "version.txt"
     return f.read_text().strip() if f.exists() else ""
+
+
+def _current_version(root: Path) -> str:
+    """Return the installed/project version, falling back to pyproject for source runs."""
+    try:
+        return version("suzent")
+    except PackageNotFoundError:
+        pass
+
+    pyproject = root / "pyproject.toml"
+    if not pyproject.exists():
+        return ""
+
+    for line in pyproject.read_text(encoding="utf-8").splitlines():
+        if line.strip().startswith("version ="):
+            return line.split("=", 1)[1].strip().strip('"')
+    return ""
+
+
+def _normalize_version_tag(value: str) -> str:
+    return value.strip().lstrip("vV")
+
+
+def _version_key(value: str) -> tuple[int, ...]:
+    """Build a simple comparable key for release tags like v0.6.2."""
+    parts = re.findall(r"\d+", _normalize_version_tag(value))
+    return tuple(int(part) for part in parts)
+
+
+def _is_newer_version(latest: str, current: str) -> bool:
+    latest_key = _version_key(latest)
+    current_key = _version_key(current)
+    return bool(latest_key and current_key and latest_key > current_key)
+
+
+def _update_check_cache_path(root: Path) -> Path:
+    return root / ".suzent" / "update-check.json"
+
+
+def _read_update_check_cache(root: Path) -> dict | None:
+    path = _update_check_cache_path(root)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    checked_at = data.get("checked_at")
+    if not isinstance(checked_at, (int, float)):
+        return None
+    if time.time() - checked_at > _UPDATE_CHECK_TTL_SECONDS:
+        return None
+    return data
+
+
+def _write_update_check_cache(root: Path, data: dict) -> None:
+    path = _update_check_cache_path(root)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _check_for_update(root: Path, *, use_cache: bool = True) -> dict:
+    """Return update metadata. Network failures are reported as unavailable."""
+    current = _current_version(root)
+    if use_cache:
+        cached = _read_update_check_cache(root)
+        if cached:
+            cached["current_version"] = current
+            latest_cached = str(cached.get("latest_version", ""))
+            cached["update_available"] = _is_newer_version(latest_cached, current)
+            return cached
+
+    try:
+        release = _fetch_latest_release(timeout=2.0)
+    except Exception as error:
+        return {
+            "checked_at": time.time(),
+            "current_version": current,
+            "latest_version": "",
+            "html_url": "",
+            "update_available": False,
+            "error": str(error),
+        }
+
+    latest = str(release.get("tag_name", ""))
+    data = {
+        "checked_at": time.time(),
+        "current_version": current,
+        "latest_version": latest,
+        "html_url": str(release.get("html_url", "")),
+        "update_available": _is_newer_version(latest, current),
+        "error": "",
+    }
+    _write_update_check_cache(root, data)
+    return data
+
+
+def _notify_update_available(root: Path) -> None:
+    if os.environ.get("SUZENT_SKIP_UPDATE_CHECK") == "1":
+        return
+
+    result = _check_for_update(root, use_cache=True)
+    if not result.get("update_available"):
+        return
+
+    latest = result.get("latest_version") or "latest"
+    current = result.get("current_version") or "unknown"
+    typer.echo(f"  • Update available: {current} -> {latest}. Run 'suzent update'.")
 
 
 def _download_file_atomic(url: str, dest: Path, *, timeout: float = 60.0) -> None:
@@ -499,6 +612,7 @@ def register_commands(app: typer.Typer):
             return
 
         typer.echo("🚀 Starting SUZENT...")
+        _notify_update_available(root)
 
         ui_bin = _get_ui_binary(root)
         if ui_bin:
@@ -512,7 +626,7 @@ def register_commands(app: typer.Typer):
 
         # ── Developer fallback: tauri dev ────────────────────────────────────
         typer.echo("  ⚠️  No pre-built UI binary found — starting in developer mode.")
-        typer.echo("     Run 'suzent upgrade' to download the binary.")
+        typer.echo("     Run 'suzent update' to download the binary.")
         ensure_cargo_in_path()
         ensure_msvc_linker()
 
@@ -606,6 +720,7 @@ def register_commands(app: typer.Typer):
         root = get_project_root()
 
         typer.echo(f"🖥️  Starting SUZENT UI (connecting to backend on port {port})...")
+        _notify_update_available(root)
 
         ui_bin = _get_ui_binary(root)
         if ui_bin:
@@ -731,7 +846,7 @@ def register_commands(app: typer.Typer):
             typer.echo("\n⚠️  Some tools are missing. Please install them.")
 
     def _kill_other_suzent_processes() -> None:
-        """Terminate any running suzent.exe processes (except this one) before upgrade."""
+        """Terminate any running suzent.exe processes (except this one) before update."""
         if not IS_WINDOWS:
             return
         my_pid = os.getpid()
@@ -758,10 +873,8 @@ def register_commands(app: typer.Typer):
         except Exception:
             pass
 
-    @app.command()
-    def upgrade():
-        """Update Suzent to the latest version."""
-        typer.echo("🔄 Upgrading Suzent...")
+    def _run_update() -> None:
+        typer.echo("🔄 Updating Suzent...")
         root = get_project_root()
 
         typer.echo("  • Pulling latest changes...")
@@ -788,7 +901,7 @@ def register_commands(app: typer.Typer):
                         "  ⚠️  Some stashed changes conflicted. Check 'git stash list'."
                     )
             else:
-                typer.echo("  ❌ Upgrade aborted.")
+                typer.echo("  ❌ Update aborted.")
                 raise typer.Exit(code=1)
 
         # Restore tracked resource placeholders (may be missing from stale clones)
@@ -866,7 +979,7 @@ def register_commands(app: typer.Typer):
             try:
                 _renamed_exe.unlink()
             except OSError:
-                pass  # Will be cleaned up on next upgrade
+                pass  # Will be cleaned up on next update
 
         # Update Playwright browser (non-fatal)
         typer.echo("  • Updating Playwright browser...")
@@ -888,7 +1001,7 @@ def register_commands(app: typer.Typer):
         ui_bin = _get_ui_binary(root)
         if ui_bin:
             # Frontend is embedded in the binary — no npm steps needed.
-            typer.echo("\n✨ Suzent successfully upgraded!")
+            typer.echo("\n✨ Suzent successfully updated!")
             return
 
         # ── Developer path: update npm dependencies ───────────────────────────
@@ -908,7 +1021,52 @@ def register_commands(app: typer.Typer):
             typer.echo("  ❌ Src-tauri dependency update failed (npm install).")
             raise typer.Exit(code=1)
 
-        typer.echo("\n✨ Suzent successfully upgraded!")
+        typer.echo("\n✨ Suzent successfully updated!")
+
+    @app.command()
+    def update():
+        """Update Suzent to the latest version."""
+        _run_update()
+
+    @app.command()
+    def upgrade():
+        """Alias for `update`."""
+        typer.echo(
+            "`suzent upgrade` is supported; `suzent update` is the primary command."
+        )
+        _run_update()
+
+    @app.command("check-update")
+    def check_update(
+        json_output: bool = typer.Option(
+            False, "--json", help="Print machine-readable JSON."
+        ),
+        cached: bool = typer.Option(
+            False, "--cached", help="Use the 24-hour update-check cache if available."
+        ),
+    ):
+        """Check whether a newer Suzent release is available."""
+        root = get_project_root()
+        result = _check_for_update(root, use_cache=cached)
+        current = result.get("current_version") or "unknown"
+        latest = result.get("latest_version") or "unknown"
+
+        if json_output:
+            typer.echo(json.dumps(result))
+            if result.get("error"):
+                raise typer.Exit(code=1)
+            return
+
+        if result.get("error"):
+            typer.echo(f"⚠️  Could not check for updates: {result['error']}")
+            raise typer.Exit(code=1)
+
+        if result.get("update_available"):
+            typer.echo(f"Update available: {current} -> {latest}")
+            typer.echo("Run `suzent update` to install it.")
+            return
+
+        typer.echo(f"Suzent is up to date ({current}).")
 
     @app.command()
     def setup_build_tools():

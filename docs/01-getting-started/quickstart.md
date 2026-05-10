@@ -102,7 +102,7 @@ suzent doctor
 **Updating**
 
 ```bash
-suzent upgrade
+suzent update
 ```
 
 ---

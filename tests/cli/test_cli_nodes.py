@@ -19,7 +19,9 @@ class TestCLIRoot:
         assert result.exit_code == 0
         assert "start" in result.output
         assert "doctor" in result.output
+        assert "update" in result.output
         assert "upgrade" in result.output
+        assert "check-update" in result.output
         assert "nodes" in result.output
         assert "agent" in result.output
         assert "config" in result.output
