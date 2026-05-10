@@ -373,7 +373,7 @@ async def search_file_mentions(request: Request) -> JSONResponse:
                 try:
                     entries = sorted(
                         current_host.iterdir(),
-                        key=lambda item: (not item.is_dir(), item.name.lower()),
+                        key=lambda item: item.name.lower(),
                     )
                 except OSError:
                     continue
@@ -383,6 +383,8 @@ async def search_file_mentions(request: Request) -> JSONResponse:
                     if visited >= MENTION_MAX_VISITED:
                         break
                     if _is_hidden_or_excluded(entry):
+                        continue
+                    if entry.is_symlink():
                         continue
 
                     entry_virtual = (

@@ -426,7 +426,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                     {renderInputWithFileMentionHighlights(input)}
                     {' '}
                 </pre>
-                < textarea
+                <textarea
                     autoFocus
                     ref={textareaRef}
                     className={`relative w-full resize-none overflow-y-auto min-h-[44px] max-h-[200px] bg-transparent focus:outline-none text-transparent caret-brutal-black dark:caret-white placeholder-neutral-400 dark:placeholder-neutral-500 placeholder:font-bold border-none p-2 selection:bg-brutal-blue/30 text-left ${INPUT_TEXT_METRIC_CLASS}`}
