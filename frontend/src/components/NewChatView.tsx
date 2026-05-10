@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ChatInputPanel } from './ChatInputPanel';
+import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
 import { ConfigOptions, ChatConfig } from '../types/api';
 import { RobotAvatar, RobotVariant } from './chat/RobotAvatar';
 import { useI18n } from '../i18n';
@@ -24,6 +24,8 @@ interface NewChatViewProps {
     streamingForCurrentChat: boolean;
     onPaste?: (files: File[]) => void;
     onImageClick?: (src: string) => void;
+    currentChatId?: string | null;
+    onFileMentionSelected?: (mention: FileMentionSelection) => void;
 }
 
 // Memoized greeting robot component to prevent animation restarts on input changes
@@ -82,6 +84,8 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
     streamingForCurrentChat,
     onPaste,
     onImageClick,
+    currentChatId,
+    onFileMentionSelected,
 }) => {
 
     return (
@@ -110,6 +114,8 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
                     modelSelectDropUp={false}
                     onPaste={onPaste}
                     onImageClick={onImageClick}
+                    currentChatId={currentChatId}
+                    onFileMentionSelected={onFileMentionSelected}
                 />
             </div>
         </div>

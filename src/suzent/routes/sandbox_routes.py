@@ -8,6 +8,7 @@ import shutil
 import mimetypes
 import time
 import uuid
+from collections import deque
 from pathlib import Path
 from datetime import datetime, timezone
 from starlette.requests import Request
@@ -20,6 +21,25 @@ from suzent.tools.filesystem.path_resolver import PathResolver
 from suzent.database import get_database
 
 logger = get_logger(__name__)
+
+MENTION_EXCLUDED_DIRS = {
+    ".cache",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "build",
+    "dist",
+    "node_modules",
+    "target",
+    "venv",
+}
+
+MENTION_MAX_VISITED = 5000
 
 
 def sanitize_filename(filename: str, max_length: int = 255) -> str:
@@ -149,7 +169,15 @@ async def list_sandbox_files(request: Request) -> JSONResponse:
         try:
             override_volumes = json.loads(volumes_json)
         except Exception:
-            pass
+            return JSONResponse(
+                {"error": "volumes must be valid JSON"}, status_code=400
+            )
+        if not isinstance(override_volumes, list) or not all(
+            isinstance(volume, str) for volume in override_volumes
+        ):
+            return JSONResponse(
+                {"error": "volumes must be a JSON array of strings"}, status_code=400
+            )
 
     if not chat_id:
         return JSONResponse({"error": "chat_id is required"}, status_code=400)
@@ -286,6 +314,143 @@ async def list_sandbox_files(request: Request) -> JSONResponse:
 
     except Exception as e:
         logger.error(f"Error listing files: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+def _is_hidden_or_excluded(path: Path) -> bool:
+    return path.name.startswith(".") or path.name in MENTION_EXCLUDED_DIRS
+
+
+def _score_mention_match(
+    query: str, virtual_path: str, filename: str
+) -> tuple[int, str]:
+    lowered_query = query.lower()
+    lowered_name = filename.lower()
+    lowered_path = virtual_path.lower()
+
+    if not lowered_query:
+        return (4, lowered_path)
+    if lowered_name == lowered_query:
+        return (0, lowered_path)
+    if lowered_name.startswith(lowered_query):
+        return (1, lowered_path)
+    if lowered_query in lowered_name:
+        return (2, lowered_path)
+    return (3, lowered_path)
+
+
+async def search_file_mentions(request: Request) -> JSONResponse:
+    """Search mounted sandbox files for chat input @ mentions."""
+
+    chat_id = request.query_params.get("chat_id")
+    query = request.query_params.get("query", "").strip().lstrip("@")
+    volumes_json = request.query_params.get("volumes")
+
+    try:
+        limit = max(1, min(int(request.query_params.get("limit", "30")), 50))
+    except ValueError:
+        limit = 30
+
+    override_volumes = None
+    if volumes_json:
+        try:
+            override_volumes = json.loads(volumes_json)
+        except Exception:
+            pass
+
+    if not chat_id:
+        return JSONResponse({"error": "chat_id is required"}, status_code=400)
+
+    try:
+        resolver = _get_resolver_for_request(chat_id, override_volumes=override_volumes)
+        roots = resolver.get_virtual_roots()
+        results: list[dict] = []
+        seen_virtual_paths: set[str] = set()
+        visited = 0
+        lowered_query = query.lower()
+
+        for virtual_root, host_root in roots:
+            if visited >= MENTION_MAX_VISITED:
+                break
+            if not host_root.exists() or not host_root.is_dir():
+                continue
+
+            queue: deque[tuple[Path, str]] = deque([(host_root, virtual_root)])
+            while queue and visited < MENTION_MAX_VISITED:
+                current_host, current_virtual = queue.popleft()
+                try:
+                    entries = sorted(
+                        current_host.iterdir(),
+                        key=lambda item: item.name.lower(),
+                    )
+                except OSError:
+                    continue
+
+                for entry in entries:
+                    visited += 1
+                    if visited >= MENTION_MAX_VISITED:
+                        break
+                    if _is_hidden_or_excluded(entry):
+                        continue
+                    if entry.is_symlink():
+                        continue
+
+                    entry_virtual = (
+                        f"{current_virtual.rstrip('/')}/{entry.name}".replace("\\", "/")
+                    )
+
+                    haystack = f"{entry.name}\n{entry_virtual}".lower()
+                    if lowered_query and lowered_query not in haystack:
+                        continue
+                    if entry_virtual in seen_virtual_paths:
+                        continue
+                    seen_virtual_paths.add(entry_virtual)
+
+                    if entry.is_dir():
+                        queue.append((entry, entry_virtual))
+                        entry_type = "directory"
+                        mime_type = "inode/directory"
+                    elif entry.is_file():
+                        entry_type = "file"
+                        mime_type = (
+                            mimetypes.guess_type(entry.name)[0]
+                            or "application/octet-stream"
+                        )
+                    else:
+                        continue
+
+                    try:
+                        stat = entry.stat()
+                    except OSError:
+                        continue
+
+                    results.append(
+                        {
+                            "name": entry.name,
+                            "path": entry_virtual,
+                            "root": virtual_root,
+                            "type": entry_type,
+                            "is_dir": entry_type == "directory",
+                            "size": stat.st_size,
+                            "mtime": stat.st_mtime,
+                            "mime_type": mime_type,
+                        }
+                    )
+
+        results.sort(
+            key=lambda item: _score_mention_match(query, item["path"], item["name"])
+        )
+        return JSONResponse(
+            {
+                "items": results[:limit],
+                "query": query,
+                "limit": limit,
+                "truncated": visited >= MENTION_MAX_VISITED,
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error searching file mentions: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 

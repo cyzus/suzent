@@ -185,6 +185,7 @@ class ChatProcessor:
         user_id: str,
         message_content: str,
         files: List[Any] = None,
+        file_mentions: List[Any] = None,
         config_override: Dict = None,
         is_social: bool = False,
         resume_approvals: List[Dict] = None,
@@ -417,6 +418,9 @@ class ChatProcessor:
             except Exception as e:
                 logger.error(f"Failed to process attachments: {e}")
                 attachment_context += "\n[System Error: Failed to process attachments]"
+
+        if file_mentions:
+            attachment_context += _build_file_mention_context(file_mentions)
 
         # 6. Prepare Prompt or Resume
         from pydantic_ai.messages import ModelRequest, UserPromptPart
@@ -1490,6 +1494,42 @@ class ChatProcessor:
 
 
 _ATTACHMENT_PATTERN = re.compile(r"\n?\[User attached (?:an image|a file): ([^\]]+)\]")
+_REFERENCE_PATTERN = re.compile(r"\n?\[User referenced (?:file|directory): ([^\]]+)\]")
+_SAFE_VIRTUAL_REFERENCE_PATTERN = re.compile(r"^/[A-Za-z0-9._~!$&'()*+,;=:@%/\- ]+$")
+
+
+def _normalize_file_mention_path(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+
+    path = value.strip().replace("\\", "/")
+    if not path.startswith("/"):
+        return None
+    if not _SAFE_VIRTUAL_REFERENCE_PATTERN.fullmatch(path):
+        return None
+    return path
+
+
+def _build_file_mention_context(file_mentions: list[Any]) -> str:
+    mentioned_paths: list[tuple[str, str]] = []
+    for item in file_mentions:
+        if isinstance(item, dict):
+            path = _normalize_file_mention_path(item.get("path"))
+            raw_type = item.get("type")
+        else:
+            path = _normalize_file_mention_path(item)
+            raw_type = None
+
+        if not path:
+            continue
+
+        mention_type = "directory" if raw_type == "directory" else "file"
+        mentioned_paths.append((mention_type, path))
+
+    return "".join(
+        f"\n[User referenced {mention_type}: {path}]"
+        for mention_type, path in dict.fromkeys(mentioned_paths)
+    )
 
 
 def _extract_attachment_files(text: str) -> list:
@@ -1515,7 +1555,8 @@ def _extract_attachment_files(text: str) -> list:
 
 def _strip_attachment_annotations(text: str) -> str:
     """Remove [User attached …] annotations from display text."""
-    return _ATTACHMENT_PATTERN.sub("", text).strip()
+    text = _ATTACHMENT_PATTERN.sub("", text)
+    return _REFERENCE_PATTERN.sub("", text).strip()
 
 
 def _extract_tool_calls(messages: list) -> List[AgentAction]:

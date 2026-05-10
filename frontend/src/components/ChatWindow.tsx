@@ -14,7 +14,7 @@ import { useUnifiedFileUpload } from '../hooks/useUnifiedFileUpload';
 import { useToolApproval } from '../hooks/chat/useToolApproval';
 import { PlanProgress } from './PlanProgress';
 import { NewChatView } from './NewChatView';
-import { ChatInputPanel } from './ChatInputPanel';
+import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
 import { ImageViewer } from './ImageViewer';
 import { FileViewer } from './FileViewer';
 import { UserMessage, AssistantMessage, RightSidebar, MarkdownRenderer } from './chat';
@@ -53,6 +53,29 @@ function formatUsage(usage: any): string {
 function truncateForStore(value: string, limit: number): string {
   if (value.length <= limit) return value;
   return `${value.slice(0, limit)}\n... [${value.length - limit} chars truncated for display]`;
+}
+
+function extractFileMentionPaths(value: string): string[] {
+  const paths = new Set<string>();
+  const pattern = /(^|\s)@((?:\/[^\s@]+)+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(value)) !== null) {
+    paths.add(match[2].replace(/[),.;:!?]+$/, ''));
+  }
+  return Array.from(paths);
+}
+
+function extractSelectedFileMentions(value: string, mentions: FileMentionSelection[]): FileMentionSelection[] {
+  const manualPaths = extractFileMentionPaths(value).map(path => ({ name: path.split('/').pop() || path, path, type: 'file' as const }));
+  const selected = mentions.filter(mention => {
+    const safeName = mention.name.replace(/"/g, "'");
+    return value.includes(`@"${safeName}"`) || value.includes(`@[${mention.name}]`);
+  });
+  const byPath = new Map<string, FileMentionSelection>();
+  for (const mention of [...selected, ...manualPaths]) {
+    byPath.set(mention.path, mention);
+  }
+  return Array.from(byPath.values());
 }
 
 function formatToolArgsForStore(toolName: string, args: string): string {
@@ -405,6 +428,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [subAgentTasks, setSubAgentTasks] = useState<Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>>({});
   const [viewingSubAgentTaskId, setViewingSubAgentTaskId] = useState<string | null>(null);
   const [forcedWebContextId, setForcedWebContextId] = useState<string | null>(null);
+  const [fileMentions, setFileMentions] = useState<FileMentionSelection[]>([]);
   const { onSpawned: onSubAgentSpawned, onCompleted: onSubAgentCompleted, onFailed: onSubAgentFailed } = useSubAgentStatus();
   const { setStatus: setStatusBar } = useStatusStore();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1021,6 +1045,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (resetFlag) consumeResetFlag();
     setInput('');
     clearFiles();
+    setFileMentions([]);
     setCurrentUsage(null);
 
     // Add user message to store for display + persistence
@@ -1037,12 +1062,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     stopInFlightRef.current = false;
 
     try {
+      const mentionsToSend = extractSelectedFileMentions(prompt, fileMentions);
       const payload: Record<string, unknown> = {
         message: prompt,
         config: safeConfig,
         chat_id: chatIdForSend,
         reset: resetFlag,
       };
+      if (mentionsToSend.length > 0) {
+        payload.file_mentions = mentionsToSend;
+      }
       if (uploadedFileMetadata) {
         payload.files = uploadedFileMetadata;
       }
@@ -1053,6 +1082,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         formData.append('config', JSON.stringify(safeConfig));
         formData.append('chat_id', chatIdForSend);
         formData.append('reset', String(resetFlag));
+        if (mentionsToSend.length > 0) {
+          formData.append('file_mentions', JSON.stringify(mentionsToSend));
+        }
         for (const file of imageFilesToSend) {
           formData.append('files', file);
         }
@@ -1226,6 +1258,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 streamingForCurrentChat={streamingForCurrentChat}
                 onPaste={handlePaste}
                 onImageClick={setViewingImage}
+                currentChatId={currentChatId}
+                onFileMentionSelected={(mention) => setFileMentions(prev => [...prev.filter(item => item.name !== mention.name), mention])}
               />
             ) : (
               <>
@@ -1325,6 +1359,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               hideConfigSelector={_isPlatformChat}
               onPaste={handlePaste}
               onImageClick={setViewingImage}
+              currentChatId={currentChatId}
+              onFileMentionSelected={(mention) => setFileMentions(prev => [...prev.filter(item => item.name !== mention.name), mention])}
             />
           </div>
         )}
