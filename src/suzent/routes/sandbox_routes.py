@@ -399,12 +399,8 @@ async def search_file_mentions(request: Request) -> JSONResponse:
                         f"{current_virtual.rstrip('/')}/{entry.name}".replace("\\", "/")
                     )
 
-                    haystack = f"{entry.name}\n{entry_virtual}".lower()
-                    if lowered_query and lowered_query not in haystack:
-                        continue
                     if entry_virtual in seen_virtual_paths:
                         continue
-                    seen_virtual_paths.add(entry_virtual)
 
                     if entry.is_dir():
                         queue.append((entry, entry_virtual))
@@ -418,6 +414,11 @@ async def search_file_mentions(request: Request) -> JSONResponse:
                         )
                     else:
                         continue
+
+                    haystack = f"{entry.name}\n{entry_virtual}".lower()
+                    if lowered_query and lowered_query not in haystack:
+                        continue
+                    seen_virtual_paths.add(entry_virtual)
 
                     try:
                         stat = entry.stat()
