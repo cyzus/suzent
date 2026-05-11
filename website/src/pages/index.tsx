@@ -16,32 +16,48 @@ import styles from './index.module.css';
 const UNIX_CMD = `curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | bash`;
 const WIN_CMD  = `irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex`;
 
-const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI'];
-
 const FEATURE_CARDS = [
   {
+    arcana: translate({ id: 'homepage.features.modelAgnostic.arcana', message: 'I · THE MODELLESS' }),
+    sigil: '⊕',
     title: translate({ id: 'homepage.features.modelAgnostic.title', message: 'Model Agnostic' }),
     desc:  translate({ id: 'homepage.features.modelAgnostic.desc',  message: 'Use GPT, Claude, Gemini, and other providers through one local interface. Change models without rebuilding your workflow.' }),
+    formula: 'provider ∈ any',
   },
   {
+    arcana: translate({ id: 'homepage.features.memory.arcana', message: 'II · THE UNDYING RECORD' }),
+    sigil: '∴',
     title: translate({ id: 'homepage.features.memory.title', message: 'Indelible Memory' }),
     desc:  translate({ id: 'homepage.features.memory.desc',  message: 'Markdown recall and semantic LanceDB search give the agent a durable record across sessions.' }),
+    formula: 'recall(t) → self',
   },
   {
+    arcana: translate({ id: 'homepage.features.private.arcana', message: 'III · THE SANDBOXED HAND' }),
+    sigil: '□',
     title: translate({ id: 'homepage.features.private.title', message: 'Sovereign Execution' }),
     desc:  translate({ id: 'homepage.features.private.desc',  message: 'Local-first architecture with sandboxed execution. Your files, memory, and runtime stay under your control.' }),
+    formula: 'files ⊄ cloud',
   },
   {
+    arcana: translate({ id: 'homepage.features.automation.arcana', message: 'IV · THE CRON ORACLE' }),
+    sigil: '⌁',
     title: translate({ id: 'homepage.features.automation.title', message: 'Scheduled Operations' }),
     desc:  translate({ id: 'homepage.features.automation.desc',  message: 'Run cron-like tasks, recurring checks, and long-lived monitors without bolting on another service.' }),
+    formula: 'task ↻ time',
   },
   {
+    arcana: translate({ id: 'homepage.features.skills.arcana', message: 'V · THE SKILL GRIMOIRE' }),
+    sigil: '✶',
     title: translate({ id: 'homepage.features.skills.title', message: 'Skill Codex' }),
     desc:  translate({ id: 'homepage.features.skills.desc',  message: 'Package domain knowledge as Markdown skills. Add them locally when the agent needs a new discipline.' }),
+    formula: 'SKILL.md',
   },
   {
+    arcana: translate({ id: 'homepage.features.crossPlatform.arcana', message: 'VI · THE PORTABLE VESSEL' }),
+    sigil: '△',
     title: translate({ id: 'homepage.features.crossPlatform.title', message: 'Evolvable by Design' }),
     desc:  translate({ id: 'homepage.features.crossPlatform.desc',  message: 'Runs on Windows, macOS, and Linux. Extend the system through Nodes, skills, and companion devices over WebSocket.' }),
+    formula: 'node ⇄ node',
   },
 ];
 
@@ -132,7 +148,9 @@ function CopyButton({ text }: { text: string }) {
   };
   return (
     <button className={clsx(styles.copyBtn, copied && styles.copyBtnDone)} onClick={copy}>
-      {copied ? '✓' : 'COPY'}
+      {copied
+        ? translate({ id: 'homepage.copy.sealed', message: 'SEALED' })
+        : translate({ id: 'homepage.copy.copy', message: 'COPY' })}
     </button>
   );
 }
@@ -247,25 +265,31 @@ function HomepageHeader() {
       {/* Below fold — install + CTA revealed on scroll */}
       <div className={styles.heroAction}>
         <div className={styles.heroInstall}>
+          <div className={styles.installSystemBar}>
+            <span><Translate id="homepage.install.status">RITUAL STATUS: LISTENING</Translate></span>
+            <span><Translate id="homepage.install.saasJab">NO SUBSCRIPTION ALTAR REQUIRED</Translate></span>
+          </div>
           <div className={styles.platformTabs}>
             <button
               className={clsx(styles.platformTab, platform === 'unix' && styles.platformTabActive)}
               onClick={() => setPlatform('unix')}
-            >Mac / Linux</button>
+            ><Translate id="homepage.install.unix">Linux/Mac Rite</Translate></button>
             <button
               className={clsx(styles.platformTab, platform === 'windows' && styles.platformTabActive)}
               onClick={() => setPlatform('windows')}
-            >Windows</button>
+            ><Translate id="homepage.install.windows">Windows Rite</Translate></button>
           </div>
+          <div className={styles.cmdLabel}><Translate id="homepage.install.invocation">Invocation Script</Translate></div>
           <div className={styles.cmdRow}>
             <pre className={styles.cmdText}>{installCmd}</pre>
             <CopyButton text={installCmd} />
           </div>
           <div className={styles.installDivider}>
             <span className={styles.installDividerLine} />
-            <span className={styles.installDividerLabel}>then run</span>
+            <span className={styles.installDividerLabel}><Translate id="homepage.install.thenRun">then run</Translate></span>
             <span className={styles.installDividerLine} />
           </div>
+          <div className={styles.cmdLabel}><Translate id="homepage.install.vessel">Open Vessel</Translate></div>
           <div className={styles.cmdRow}>
             <pre className={styles.cmdText}>suzent start</pre>
             <CopyButton text="suzent start" />
@@ -292,7 +316,7 @@ export default function Home(): ReactNode {
       description={translate({ id: 'homepage.meta.description', message: 'A model-agnostic, local-first agent with durable memory, scheduled operations, and sovereign control over your data.' })}
     >
       <Head>
-        <style>{`.navbar,.navbar--fixed-top{display:none!important}`}</style>
+        <style>{`.navbar,.navbar--fixed-top,.footer{display:none!important}`}</style>
       </Head>
       <HomepageNav />
       <HomepageHeader />
@@ -302,21 +326,29 @@ export default function Home(): ReactNode {
           <div className="container">
             <div className={styles.featuresHeader}>
               <span className={styles.featuresRuleLine} />
-              <span className={styles.featuresRuleLabel}>LOCAL CAPABILITIES</span>
+              <span className={styles.featuresRuleLabel}><Translate id="homepage.features.label">LOCAL CAPABILITIES / SYSTEM ARCANA</Translate></span>
               <span className={styles.featuresRuleLine} />
             </div>
             <div className={styles.grid}>
-              {FEATURE_CARDS.map(({ title, desc }, i) => (
+              {FEATURE_CARDS.map(({ arcana, sigil, title, desc, formula }, i) => (
                 <article key={title} className={styles.featureCard}>
-                  <div className={styles.featureCardNum}>{ROMAN[i]}</div>
+                  <div className={styles.featureCardTop}>
+                    <div className={styles.featureSigil}>{sigil}</div>
+                  </div>
+                  <div className={styles.featureArcana}>{arcana}</div>
                   <Heading as="h3" className={styles.featureTitle}>{title}</Heading>
                   <p className={styles.featureDesc}>{desc}</p>
+                  <div className={styles.featureFormula}>{formula}</div>
                 </article>
               ))}
             </div>
           </div>
         </section>
       </main>
+
+      <footer className={styles.homeFooter}>
+        <span>© 2026 SUZENT</span>
+      </footer>
     </Layout>
   );
 }

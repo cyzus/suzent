@@ -17,6 +17,7 @@
   --h-border-faint:     rgba(10, 10, 10, 0.08);
   --h-feat-bg:          #e8e5de;
   --h-tab-active:       #0a0a0a;
+  --h-dirty-texture:    url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.15' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.18'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 
   /* Eye */
   --h-eye-bg:           #0a0a0a;
@@ -44,9 +45,9 @@
   --h-eye-glow:         rgba(240, 237, 232, 0.55);
   --h-eye-glow-outer:   rgba(240, 237, 232, 0.15);
 
-  --h-hover-bg:         #f0ede8;
+  --h-hover-bg:         #b8b8b2;
   --h-hover-text:       #000;
-  --h-hover-muted:      rgba(0, 0, 0, 0.52);
+  --h-hover-muted:      rgba(0, 0, 0, 0.62);
 }
 
 /* Neo-Brutalist Theme Overrides */

@@ -164,7 +164,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `SPZ-NS // SOVEREIGN LOCAL RUNTIME // © ${new Date().getFullYear()} Suzent`,
+      copyright: `© ${new Date().getFullYear()} Suzent`,
     },
     prism: {
       theme: prismThemes.github,

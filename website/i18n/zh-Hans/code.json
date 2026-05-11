@@ -12,7 +12,7 @@
     "description": "Hero section kicker above the title"
   },
   "homepage.hero.subtitle": {
-    "message": "本地。·  持久。·  主权。",
+    "message": "本地·  持久·  主权",
     "description": "Hero subtitle"
   },
   "homepage.hero.cta.primary": {
@@ -23,6 +23,50 @@
     "message": "在 GitHub 上查看",
     "description": "GitHub CTA button in hero"
   },
+  "homepage.copy.copy": {
+    "message": "复制",
+    "description": "Copy button label"
+  },
+  "homepage.copy.sealed": {
+    "message": "已封印",
+    "description": "Copied button label"
+  },
+  "homepage.install.status": {
+    "message": "仪式状态：监听中",
+    "description": "Install terminal status"
+  },
+  "homepage.install.saasJab": {
+    "message": "无需订阅祭坛",
+    "description": "Anti-SaaS install terminal joke"
+  },
+  "homepage.install.unix": {
+    "message": "Linux/Mac 仪式",
+    "description": "Unix install tab"
+  },
+  "homepage.install.windows": {
+    "message": "Windows 仪式",
+    "description": "Windows install tab"
+  },
+  "homepage.install.invocation": {
+    "message": "召唤脚本",
+    "description": "Install command label"
+  },
+  "homepage.install.thenRun": {
+    "message": "然后运行",
+    "description": "Install divider label"
+  },
+  "homepage.install.vessel": {
+    "message": "打开容器",
+    "description": "Start command label"
+  },
+  "homepage.features.label": {
+    "message": "本地能力 / 系统秘仪",
+    "description": "Feature section label"
+  },
+  "homepage.features.modelAgnostic.arcana": {
+    "message": "I · 无模型者",
+    "description": "Feature card arcana label"
+  },
   "homepage.features.modelAgnostic.title": {
     "message": "模型无关",
     "description": "Feature card title"
@@ -30,6 +74,10 @@
   "homepage.features.modelAgnostic.desc": {
     "message": "通过一个本地接口使用 GPT、Claude、Gemini 等提供商。更换模型无需重建工作流。",
     "description": "Feature card description"
+  },
+  "homepage.features.memory.arcana": {
+    "message": "II · 不死记录",
+    "description": "Feature card arcana label"
   },
   "homepage.features.memory.title": {
     "message": "持久记忆",
@@ -39,6 +87,10 @@
     "message": "Markdown 召回与 LanceDB 语义搜索，为智能体保留跨会话的长期记录。",
     "description": "Feature card description"
   },
+  "homepage.features.private.arcana": {
+    "message": "III · 虚空之手",
+    "description": "Feature card arcana label"
+  },
   "homepage.features.private.title": {
     "message": "主权执行",
     "description": "Feature card title"
@@ -47,13 +99,21 @@
     "message": "本地优先架构，沙箱隔离执行。文件、记忆和运行时都由你掌控。",
     "description": "Feature card description"
   },
+  "homepage.features.automation.arcana": {
+    "message": "IV · 神谕轮回",
+    "description": "Feature card arcana label"
+  },
   "homepage.features.automation.title": {
     "message": "定时操作",
     "description": "Feature card title"
   },
   "homepage.features.automation.desc": {
-    "message": "运行类 Cron 任务、周期检查和长期监控，无需额外接入另一套服务。",
+    "message": "运行类 Cron 任务、心跳检查和长期监控，无需额外接入另一套服务。",
     "description": "Feature card description"
+  },
+  "homepage.features.skills.arcana": {
+    "message": "V · 技能魔典",
+    "description": "Feature card arcana label"
   },
   "homepage.features.skills.title": {
     "message": "技能索引",
@@ -62,6 +122,10 @@
   "homepage.features.skills.desc": {
     "message": "将领域知识打包为 Markdown 技能。在需要新能力时，本地添加即可。",
     "description": "Feature card description"
+  },
+  "homepage.features.crossPlatform.arcana": {
+    "message": "VI · 可携容器",
+    "description": "Feature card arcana label"
   },
   "homepage.features.crossPlatform.title": {
     "message": "可演化设计",

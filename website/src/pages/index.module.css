@@ -6,8 +6,14 @@
   position: sticky;
   top: 0;
   z-index: 999;
-  background: var(--h-bg);
+  background: var(--h-dirty-texture), var(--h-bg);
+  background-size: 180px 180px, auto;
   border-bottom: 1px solid var(--h-border);
+}
+
+:global([data-theme='dark']) .homeNav {
+  background: var(--h-dirty-texture), var(--h-bg);
+  background-size: 180px 180px, auto;
 }
 
 .homeNavInner {
@@ -61,7 +67,8 @@
 
 .homeNavLink:hover {
   color: var(--h-text) !important;
-  background: var(--h-border-faint);
+  background: var(--h-dirty-texture), var(--h-border-faint);
+  background-size: 160px 160px, auto;
 }
 
 .themeToggleBtn {
@@ -87,14 +94,36 @@
    ───────────────────────────────────────────────────────────────────────── */
 
 .heroBanner {
+  position: relative;
+  overflow: hidden;
   background: var(--h-bg);
   color: var(--h-text);
   padding: 0;
   transition: background 0.2s;
 }
 
+.heroBanner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent 0 calc(50% - 1px), var(--h-border-faint) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(0deg, transparent 0 calc(50% - 1px), var(--h-border-faint) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)),
+    repeating-linear-gradient(90deg, transparent 0 55px, var(--h-border-faint) 55px 56px),
+    repeating-linear-gradient(0deg, transparent 0 55px, var(--h-border-faint) 55px 56px);
+  opacity: 0.22;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, rgba(0, 0, 0, 0.82) 62%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0, rgba(0, 0, 0, 0.82) 62%, transparent 100%);
+}
+
+.heroBanner::after {
+  content: none;
+}
+
 /* Above-fold: fills the viewport below the nav */
 .heroInner {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -110,6 +139,8 @@
 
 /* Below-fold: install + CTA revealed on scroll */
 .heroAction {
+  position: relative;
+  z-index: 6;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -123,6 +154,8 @@
 
 /* Title block */
 .heroTitleArea {
+  position: relative;
+  z-index: 4;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -131,16 +164,38 @@
 }
 
 .heroTitleBox {
+  position: relative;
   line-height: 1;
+}
+
+.heroTitleBox::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 0;
+  width: min(92vw, 1060px);
+  height: 5px;
+  transform: translate(-50%, -50%);
+  background:
+    linear-gradient(
+      90deg,
+      var(--h-text) 0 calc(50% - 26rem),
+      transparent calc(50% - 26rem) calc(50% + 26rem),
+      var(--h-text) calc(50% + 26rem) 100%
+    );
+  opacity: 0.18;
+  pointer-events: none;
 }
 
 .heroTitleInner {
   display: block;
   position: relative;
-  font-size: clamp(4.5rem, 13vw, 8.5rem);
+  z-index: 1;
+  font-size: 9.35rem;
   font-weight: 900;
-  line-height: 0.92;
-  letter-spacing: -0.03em;
+  line-height: 0.84;
+  letter-spacing: 0;
   color: var(--h-text);
   font-family: 'Arial Black', sans-serif;
   text-transform: uppercase;
@@ -148,8 +203,8 @@
   user-select: none;
 }
 
-.heroTitleInner::before,
-.heroTitleInner::after {
+.heroTitleInner[data-text]::before,
+.heroTitleInner[data-text]::after {
   content: attr(data-text);
   position: absolute;
   top: 0;
@@ -161,20 +216,21 @@
   z-index: 10;
   mix-blend-mode: multiply;
   pointer-events: none;
+  user-select: none;
 }
 
-:global([data-theme='dark']) .heroTitleInner::before,
-:global([data-theme='dark']) .heroTitleInner::after {
+:global([data-theme='dark']) .heroTitleInner[data-text]::before,
+:global([data-theme='dark']) .heroTitleInner[data-text]::after {
   mix-blend-mode: screen;
 }
 
-.heroTitleInner::before {
-  color: #ff1144;
+.heroTitleInner[data-text]::before {
+  color: rgba(240, 237, 232, 0.72);
   animation: glitch-r 9s infinite ease-in-out;
 }
 
-.heroTitleInner::after {
-  color: #00e8ff;
+.heroTitleInner[data-text]::after {
+  color: rgba(128, 128, 128, 0.72);
   animation: glitch-c 9s infinite ease-in-out;
 }
 
@@ -193,8 +249,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .heroTitleInner::before,
-  .heroTitleInner::after { animation: none; display: none; }
+  .heroTitleInner[data-text]::before,
+  .heroTitleInner[data-text]::after { animation: none; display: none; }
 }
 
 .heroSubtitle {
@@ -210,10 +266,12 @@
 /* Orb — dot sphere + floating robot eyes */
 .heroOrb {
   position: relative;
-  width: min(620px, 60vh, 92vw);
-  height: min(620px, 60vh, 92vw);
+  width: min(720px, 64vh, 94vw);
+  height: min(720px, 64vh, 94vw);
   flex-shrink: 0;
   isolation: isolate;
+  margin-top: -0.25rem;
+  overflow: visible;
 }
 
 .heroOrb::before,
@@ -225,30 +283,115 @@
 }
 
 .heroOrb::before {
-  inset: -22%;
+  inset: -34%;
   background:
-    radial-gradient(ellipse at 50% 43%, rgba(10, 10, 10, 0.105), rgba(10, 10, 10, 0.025) 34%, transparent 58%),
-    radial-gradient(circle at 38% 34%, rgba(120, 0, 18, 0.08), transparent 28%),
-    radial-gradient(circle at 68% 42%, rgba(10, 10, 10, 0.06), transparent 30%),
-    repeating-radial-gradient(circle at 47% 49%, rgba(10, 10, 10, 0.055) 0 1px, transparent 1px 5px);
-  filter: blur(0.6px);
-  opacity: 0.78;
+    radial-gradient(ellipse at 50% 46%, rgba(10, 10, 10, 0.13), rgba(10, 10, 10, 0.02) 36%, transparent 60%),
+    radial-gradient(circle at 38% 34%, rgba(10, 10, 10, 0.055), transparent 18%),
+    radial-gradient(circle at 64% 40%, rgba(10, 10, 10, 0.05), transparent 22%),
+    repeating-radial-gradient(circle at 47% 49%, rgba(10, 10, 10, 0.03) 0 1px, transparent 1px 5px);
+  filter: blur(0.8px);
+  opacity: 0.70;
   mix-blend-mode: multiply;
-  -webkit-mask-image: radial-gradient(ellipse at 50% 47%, #000 0 46%, rgba(0, 0, 0, 0.54) 58%, transparent 74%);
-  mask-image: radial-gradient(ellipse at 50% 47%, #000 0 46%, rgba(0, 0, 0, 0.54) 58%, transparent 74%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 47%, #000 0 44%, rgba(0, 0, 0, 0.5) 58%, transparent 72%);
+  mask-image: radial-gradient(ellipse at 50% 47%, #000 0 44%, rgba(0, 0, 0, 0.5) 58%, transparent 72%);
 }
 
 .heroOrb::after {
   display: none;
 }
 
+.ritualGlyph {
+  position: absolute;
+  z-index: 3;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.2em;
+  color: var(--h-text-dim);
+  text-transform: uppercase;
+  pointer-events: none;
+  opacity: 0.78;
+}
+
+.ritualGlyph::before {
+  content: "[";
+  color: var(--h-text-mid);
+  margin-right: 0.35rem;
+}
+
+.ritualGlyph::after {
+  content: "]";
+  color: var(--h-text-mid);
+  margin-left: 0.35rem;
+}
+
+.ritualGlyphTopLeft {
+  top: 14%;
+  left: -4%;
+}
+
+.ritualGlyphTopRight {
+  top: 18%;
+  right: -6%;
+}
+
+.ritualGlyphBottomLeft {
+  bottom: 17%;
+  left: -7%;
+}
+
+.ritualGlyphBottomRight {
+  right: -5%;
+  bottom: 13%;
+}
+
+.orbSigil {
+  position: absolute;
+  inset: 3%;
+  z-index: 3;
+  pointer-events: none;
+  color: var(--h-text-mid);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 1.05rem;
+  opacity: 0.65;
+}
+
+.orbSigil span {
+  position: absolute;
+}
+
+.orbSigil span:nth-child(1) {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.orbSigil span:nth-child(2) {
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.orbSigil span:nth-child(3) {
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.orbSigil span:nth-child(4) {
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
 :global([data-theme='dark']) .heroOrb::before {
   background:
-    radial-gradient(ellipse at 50% 43%, rgba(240, 237, 232, 0.16), rgba(240, 237, 232, 0.035) 34%, transparent 58%),
-    radial-gradient(circle at 38% 34%, rgba(176, 0, 32, 0.16), transparent 28%),
-    radial-gradient(circle at 68% 42%, rgba(240, 237, 232, 0.08), transparent 30%),
-    repeating-radial-gradient(circle at 47% 49%, rgba(240, 237, 232, 0.05) 0 1px, transparent 1px 5px);
-  opacity: 0.74;
+    radial-gradient(ellipse at 50% 46%, rgba(240, 237, 232, 0.16), rgba(240, 237, 232, 0.03) 36%, transparent 60%),
+    radial-gradient(circle at 38% 34%, rgba(240, 237, 232, 0.08), transparent 18%),
+    radial-gradient(circle at 64% 40%, rgba(240, 237, 232, 0.06), transparent 22%),
+    repeating-radial-gradient(circle at 47% 49%, rgba(240, 237, 232, 0.03) 0 1px, transparent 1px 5px);
+  opacity: 0.70;
   mix-blend-mode: screen;
 }
 
@@ -265,8 +408,33 @@
 /* ── Install block ─────────────────────────────────────────────────────── */
 
 .heroInstall {
+  position: relative;
+  z-index: 6;
   width: 100%;
   max-width: 580px;
+  border: 1px solid var(--h-text-mid);
+  background: var(--h-dirty-texture), var(--h-bg);
+  background-size: 180px 180px, auto;
+}
+
+:global([data-theme='dark']) .heroInstall {
+  background: var(--h-dirty-texture), #000;
+  background-size: 180px 180px, auto;
+}
+
+.installSystemBar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.62rem 0.85rem;
+  border-bottom: 1px solid var(--h-text-mid);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.54rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.14em;
+  color: var(--h-text-mid);
+  text-transform: uppercase;
 }
 
 .platformTabs {
@@ -276,14 +444,15 @@
 }
 
 .platformTab {
-  padding: 0.45rem 1.25rem;
+  min-width: 11.5rem;
+  padding: 0.58rem 1.25rem;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   background: transparent;
-  color: var(--h-text-dim);
+  color: var(--h-text-mid);
   border: none;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
@@ -292,27 +461,45 @@
 }
 
 .platformTab:hover {
-  color: var(--h-text-mid);
+  color: var(--h-text);
 }
 
 .platformTabActive {
   color: var(--h-tab-active) !important;
   border-bottom-color: var(--h-tab-active) !important;
+  background: var(--h-border-faint);
+}
+
+.cmdLabel {
+  padding: 0.7rem 0.85rem 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--h-text-strong);
 }
 
 .cmdRow {
   display: flex;
   align-items: center;
   gap: 1rem;
-  padding: 0.9rem 0;
-  border-bottom: 1px solid var(--h-border-faint);
+  padding: 0.9rem 0.85rem;
+  border-bottom: 1px solid var(--h-border);
+  background: var(--h-dirty-texture), rgba(10, 10, 10, 0.018);
+  background-size: 160px 160px, auto;
+}
+
+:global([data-theme='dark']) .cmdRow {
+  background: var(--h-dirty-texture), rgba(240, 237, 232, 0.018);
+  background-size: 160px 160px, auto;
 }
 
 .cmdText {
   flex: 1;
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.78rem;
-  color: var(--h-text-strong);
+  font-size: 0.88rem;
+  color: var(--h-text);
   background: none;
   border: none;
   margin: 0;
@@ -330,8 +517,8 @@
   font-weight: 700;
   letter-spacing: 0.18em;
   background: transparent;
-  color: var(--h-text-dim);
-  border: 1px solid var(--h-border);
+  color: var(--h-text-mid);
+  border: 1px solid var(--h-text-mid);
   padding: 0.2rem 0.55rem;
   cursor: pointer;
   transition: background 0.1s, color 0.1s, border-color 0.1s;
@@ -350,13 +537,13 @@
   display: flex;
   align-items: center;
   gap: 1rem;
-  padding: 0.55rem 0;
+  padding: 0.55rem 0.85rem;
 }
 
 .installDividerLine {
   flex: 1;
   height: 1px;
-  background: var(--h-border-faint);
+  background: var(--h-border);
 }
 
 .installDividerLabel {
@@ -365,7 +552,7 @@
   font-weight: 400;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--h-text-dim);
+  color: var(--h-text-mid);
 }
 
 /* CTA */
@@ -375,23 +562,53 @@
 }
 
 .heroCtaBtn {
+  position: relative;
   display: inline-block;
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
-  letter-spacing: 0.28em;
+  letter-spacing: 0.26em;
   text-transform: uppercase;
-  color: var(--h-text) !important;
+  color: var(--h-text-strong) !important;
   text-decoration: none !important;
-  border: 1px solid var(--h-border);
-  padding: 0.8rem 2.8rem;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  border: 1px solid var(--h-text-mid);
+  background: var(--h-dirty-texture), rgba(10, 10, 10, 0.04);
+  background-size: 160px 160px, auto;
+  padding: 0.82rem 3.25rem;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.12s;
+}
+
+.heroCtaBtn::before,
+.heroCtaBtn::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 0.78rem;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.46;
+  transform: translateY(-50%);
+}
+
+.heroCtaBtn::before {
+  left: 1rem;
+}
+
+.heroCtaBtn::after {
+  right: 1rem;
+}
+
+:global([data-theme='dark']) .heroCtaBtn {
+  background: var(--h-dirty-texture), #0b0b0b;
+  background-size: 160px 160px, auto;
+  border-color: rgba(240, 237, 232, 0.36);
 }
 
 .heroCtaBtn:hover {
   background: var(--h-hover-bg);
   color: var(--h-hover-text) !important;
   border-color: var(--h-hover-bg);
+  transform: translateY(-1px);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -399,10 +616,28 @@
    ───────────────────────────────────────────────────────────────────────── */
 
 .featuresSection {
+  position: relative;
   background: var(--h-feat-bg);
   padding: 3.5rem 0 4rem;
   border-top: 1px solid var(--h-border-faint);
   transition: background 0.2s;
+}
+
+.featuresSection::before {
+  content: "DORIC_FAILURE // SEMANTIC_RECALL // LOCAL_MEMORY // VENDOR_HEAVEN_DENIED";
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  width: min(1200px, calc(100% - 2rem));
+  transform: translateX(-50%);
+  color: var(--h-text-dim);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.52rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  opacity: 0.42;
+  text-align: center;
+  pointer-events: none;
 }
 
 .featuresHeader {
@@ -420,10 +655,10 @@
 
 .featuresRuleLabel {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.6rem;
+  font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.38em;
-  color: var(--h-text-dim);
+  color: var(--h-text-mid);
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -436,17 +671,57 @@
 }
 
 .featureCard {
+  position: relative;
+  min-height: 260px;
   padding: 2rem 1.75rem;
   border-right: 1px solid var(--h-border-faint);
   border-bottom: 1px solid var(--h-border-faint);
-  background: var(--h-feat-bg);
+  background: var(--h-dirty-texture), var(--h-feat-bg);
+  background-size: 180px 180px, auto;
   color: var(--h-text);
   transition: background 0.15s, color 0.15s;
 }
 
+.featureCard::before,
+.featureCard::after {
+  content: "";
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-color: var(--h-border);
+  pointer-events: none;
+}
+
+.featureCard::before {
+  top: 0.7rem;
+  left: 0.7rem;
+  border-top: 1px solid;
+  border-left: 1px solid;
+}
+
+.featureCard::after {
+  right: 0.7rem;
+  bottom: 0.7rem;
+  border-right: 1px solid;
+  border-bottom: 1px solid;
+}
+
 .featureCard:hover {
-  background: var(--h-hover-bg);
+  background: var(--h-dirty-texture), var(--h-hover-bg);
+  background-size: 180px 180px, auto;
   color: var(--h-hover-text);
+}
+
+:global([data-theme='dark']) .featureCard:hover {
+  background: var(--h-dirty-texture), var(--h-hover-bg);
+  background-size: 180px 180px, auto;
+}
+
+.featureCardTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  margin-bottom: 1.35rem;
 }
 
 .featureCardNum {
@@ -455,8 +730,25 @@
   font-weight: 700;
   letter-spacing: 0.3em;
   color: var(--h-text-dim);
-  margin-bottom: 1.1rem;
+  margin-bottom: 0;
   transition: color 0.15s;
+}
+
+.featureSigil {
+  color: var(--h-text-mid);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.featureArcana {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--h-text-mid);
+  text-transform: uppercase;
+  margin-bottom: 0.65rem;
 }
 
 .featureCard:hover .featureCardNum {
@@ -465,7 +757,7 @@
 
 .featureTitle {
   font-family: 'Arial Black', sans-serif;
-  font-size: 0.82rem !important;
+  font-size: 0.94rem !important;
   font-weight: 900 !important;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -476,9 +768,9 @@
 
 .featureDesc {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.77rem;
-  line-height: 1.7;
-  color: var(--h-text-mid);
+  font-size: 0.86rem;
+  line-height: 1.75;
+  color: var(--h-text-strong);
   margin: 0;
   transition: color 0.15s;
 }
@@ -487,11 +779,50 @@
   color: var(--h-hover-muted);
 }
 
+.featureFormula {
+  position: absolute;
+  right: 1.75rem;
+  bottom: 1.45rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  color: var(--h-text-mid);
+  opacity: 0.85;
+}
+
+.featureCard:hover .featureArcana,
+.featureCard:hover .featureFormula {
+  color: var(--h-hover-muted);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   FOOTER
+   ───────────────────────────────────────────────────────────────────────── */
+
+.homeFooter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3.2rem;
+  background: var(--h-feat-bg);
+  border-top: 1px solid var(--h-border-faint);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  color: var(--h-text-dim);
+  text-transform: uppercase;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
    RESPONSIVE
    ───────────────────────────────────────────────────────────────────────── */
 
 @media screen and (max-width: 996px) {
+  .heroBanner::after {
+    display: none;
+  }
+
   .heroInner {
     padding: 1.5rem 1.5rem 1rem;
     gap: 1.2rem;
@@ -501,18 +832,87 @@
     padding: 0 1.5rem 4rem;
   }
 
+  .heroTitleInner {
+    font-size: 6.3rem;
+  }
+
+  .heroTitleBox::before,
+  .heroTitleBox::after {
+    display: none;
+  }
+
+  .ritualGlyph {
+    font-size: 0.5rem;
+  }
+
   .grid {
     grid-template-columns: 1fr;
   }
 }
 
 @media screen and (max-width: 600px) {
+  .homeNavInner {
+    padding: 0 1rem;
+  }
+
+  .homeNavTitle {
+    display: none;
+  }
+
+  .homeNavLink {
+    padding: 0 0.72rem;
+    font-size: 0.62rem;
+  }
+
+  .themeToggleBtn {
+    padding: 0 0.72rem;
+  }
+
+  .heroTitleInner {
+    font-size: 4.25rem;
+  }
+
   .heroSubtitle {
     font-size: 0.55rem;
     letter-spacing: 0.22em;
   }
 
+  .heroOrb {
+    width: min(520px, 58vh, 94vw);
+    height: min(520px, 58vh, 94vw);
+  }
+
+  .ritualGlyphTopLeft,
+  .ritualGlyphTopRight {
+    top: 8%;
+  }
+
+  .ritualGlyphBottomLeft,
+  .ritualGlyphBottomRight {
+    bottom: 8%;
+  }
+
+  .ritualGlyphTopLeft,
+  .ritualGlyphBottomLeft {
+    left: 0;
+  }
+
+  .ritualGlyphTopRight,
+  .ritualGlyphBottomRight {
+    right: 0;
+  }
+
+  .installSystemBar {
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
   .heroInstall {
     max-width: 100%;
+  }
+
+  .featureFormula {
+    position: static;
+    margin-top: 1.5rem;
   }
 }
