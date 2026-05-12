@@ -91,9 +91,35 @@ function formatToolArgsForStore(toolName: string, args: string): string {
  * so the existing historical message rendering pipeline can display them.
  */
 function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any, role: Message['role'] = 'assistant'): Message {
+  // Normalize: merge duplicate tool parts (same toolCallId) so only the final
+  // state is stored. Without this, a tool that went through approval-requested →
+  // completed would write two 🔧 blocks, the first with data-approval-state="pending".
+  const normalizedParts: AGUIPart[] = [];
+  const toolIndexById = new Map<string, number>();
+  for (const part of parts) {
+    if (part.type === 'tool' && part.toolCallId) {
+      const existingIdx = toolIndexById.get(part.toolCallId);
+      if (existingIdx !== undefined) {
+        const existing = normalizedParts[existingIdx];
+        normalizedParts[existingIdx] = {
+          ...existing,
+          ...part,
+          toolName: part.toolName || existing.toolName,
+          args: part.args ?? existing.args,
+          output: part.output ?? existing.output,
+          approvalId: part.approvalId ?? existing.approvalId,
+          state: part.state ?? existing.state,
+        };
+        continue;
+      }
+      toolIndexById.set(part.toolCallId, normalizedParts.length);
+    }
+    normalizedParts.push(part);
+  }
+
   let content = '';
   const persistedParts: AGUIPart[] = [];
-  for (const part of parts) {
+  for (const part of normalizedParts) {
     if (part.type === 'text') {
       content += part.text || '';
       persistedParts.push({ ...part });
@@ -109,7 +135,7 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any, role: Message['
       const argsStr = formatToolArgsForStore(toolName, part.args || '');
       const outputStr = part.output != null ? truncateForStore(part.output, 12000) : undefined;
       const approvalId = part.approvalId || '';
-      const stateAttr = part.state === 'approval-requested' ? 'pending' : (part.state === 'error' ? 'denied' : '');
+      const stateAttr = (part.state === 'approval-requested' && !outputStr) ? 'pending' : (part.state === 'error' ? 'denied' : '');
       const attrs = ` data-tool-call-id="${toolCallId}"` +
         (approvalId ? ` data-approval-id="${approvalId}"` : '') +
         (stateAttr ? ` data-approval-state="${stateAttr}"` : '');

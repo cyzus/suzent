@@ -230,17 +230,26 @@ const StepPills: React.FC<{
   const tools = blocks
     .filter(b => b.type === 'toolCall')
     .map((b, bi) => {
-      const isPending = b.approvalState === 'pending';
+      const hasOutput = !!(b.content);
+      // A tool is actionably pending only if: it has no output yet, has an approvalId
+      // we can act on, and the message is currently streaming (live approval dialog).
+      // Historical pending-without-output tools were skipped/denied — show as denied.
+      const isActionablyPending = b.approvalState === 'pending' && !hasOutput && !!b.approvalId && !!isStreaming;
+      const effectiveApprovalState = isActionablyPending
+        ? 'pending'
+        : (b.approvalState === 'denied' || (b.approvalState === 'pending' && !hasOutput))
+          ? 'denied'
+          : undefined;
       return {
         toolCallId: b.toolCallId || `historical-${bi}`,
         toolName: b.toolName || 'unknown',
         toolArgs: b.toolArgs,
         output: b.content || undefined,
-        approvalState: (b.approvalState as 'pending' | 'denied' | undefined),
-        onApprove: (isPending && b.approvalId && onToolApproval)
+        approvalState: effectiveApprovalState as 'pending' | 'denied' | undefined,
+        onApprove: (isActionablyPending && b.approvalId && onToolApproval)
           ? (remember: ApprovalRememberScope) => onToolApproval(b.approvalId!, b.toolCallId || '', true, remember, b.toolName)
           : undefined,
-        onDeny: (isPending && b.approvalId && onToolApproval)
+        onDeny: (isActionablyPending && b.approvalId && onToolApproval)
           ? () => onToolApproval(b.approvalId!, b.toolCallId || '', false, null, b.toolName)
           : undefined,
       };
@@ -356,7 +365,8 @@ const StaticContent: React.FC<{
             </div>
           );
         } else if (b.type === 'toolCall') {
-          const isPending = b.approvalState === 'pending';
+          const isPending = b.approvalState === 'pending' && !b.content;
+          const effectiveApprovalState = (isPending ? 'pending' : b.approvalState === 'denied' ? 'denied' : undefined) as 'pending' | 'denied' | undefined;
           const isAutoApproved = toolApprovalPolicy?.[b.toolName || ''] === 'always_allow';
 
           // Sub-agent special rendering
@@ -390,7 +400,7 @@ const StaticContent: React.FC<{
               toolName={b.toolName || 'unknown'}
               toolArgs={b.toolArgs}
               output={b.content || undefined}
-              approvalState={b.approvalState as 'pending' | 'denied' | undefined}
+              approvalState={effectiveApprovalState}
               onApprove={(isPending && b.approvalId && onToolApproval)
                 ? (remember) => onToolApproval(b.approvalId!, b.toolCallId || '', true, remember, b.toolName)
                 : undefined}
@@ -495,8 +505,11 @@ const AGUIPartsContent: React.FC<{
       {chunks.map((chunk, ci) => {
         if (chunk.type === 'tool') {
           const tools = chunk.items.map((tp, ti) => {
-            const approvalState = (tp.state === 'approval-requested' && !tp.output) ? 'pending' as const
-              : tp.state === 'error' ? 'denied' as const
+            // Pending = approval-requested with no output AND an actionable approvalId (live stream).
+            // approval-requested with no output but no approvalId = was skipped/denied historically → show denied.
+            const isActionablyPending = tp.state === 'approval-requested' && !tp.output && !!tp.approvalId && !!isStreaming;
+            const approvalState = isActionablyPending ? 'pending' as const
+              : (tp.state === 'error' || (tp.state === 'approval-requested' && !tp.output)) ? 'denied' as const
                 : undefined;
 
             return {
@@ -505,10 +518,10 @@ const AGUIPartsContent: React.FC<{
               toolArgs: tp.args || undefined,
               output: tp.output || undefined,
               approvalState,
-              onApprove: (approvalState === 'pending' && tp.approvalId && onToolApproval)
+              onApprove: (isActionablyPending && tp.approvalId && onToolApproval)
                 ? (remember: ApprovalRememberScope) => onToolApproval(tp.approvalId!, tp.toolCallId || '', true, remember, tp.toolName)
                 : undefined,
-              onDeny: (approvalState === 'pending' && tp.approvalId && onToolApproval)
+              onDeny: (isActionablyPending && tp.approvalId && onToolApproval)
                 ? () => onToolApproval(tp.approvalId!, tp.toolCallId || '', false, null, tp.toolName)
                 : undefined,
             };

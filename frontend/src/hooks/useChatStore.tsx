@@ -1136,14 +1136,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           // stream ends but before the backend persists the final resolved state.
           // Compare the LAST assistant message on each side — this avoids false negatives
           // when earlier history messages happen to contain pending state from old sessions.
-          const serverHasPendingApproval = mappedMessages.some(
-            (m: Message) => typeof m.content === 'string' && m.content.includes('data-approval-state="pending"')
-          );
+          const msgHasPendingApproval = (m: Message) => {
+            if (typeof m.content === 'string' && m.content.includes('data-approval-state="pending"')) return true;
+            if (Array.isArray((m as any).parts)) {
+              return (m as any).parts.some((p: any) => p.type === 'tool' && p.state === 'approval-requested');
+            }
+            return false;
+          };
+          const serverHasPendingApproval = mappedMessages.some(msgHasPendingApproval);
           const lastLocalAssistant = existing.length > 0
             ? [...existing].reverse().find((m: Message) => m.role === 'assistant')
             : undefined;
-          const localLastAssistantHasNoPending = lastLocalAssistant != null &&
-            !(typeof lastLocalAssistant.content === 'string' && lastLocalAssistant.content.includes('data-approval-state="pending"'));
+          const localLastAssistantHasNoPending = lastLocalAssistant != null && !msgHasPendingApproval(lastLocalAssistant);
           if (serverHasPendingApproval && localLastAssistantHasNoPending) {
             return prev;
           }
