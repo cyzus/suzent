@@ -6,6 +6,7 @@ import { ChatList } from './components/ChatList';
 import { ChatWindow } from './components/ChatWindow';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { RobotAvatar } from './components/chat/RobotAvatar';
+import { SuzentLogo } from './components/SuzentLogo';
 import { RobotShowcase } from './components/chat/RobotShowcase';
 import { MemoryView } from './components/memory/MemoryView';
 import { SettingsModal } from './components/settings/SettingsModal';
@@ -445,12 +446,7 @@ function AppInner(): React.ReactElement {
                   title={t('sidebar.open')}
                 >
                   <div className="group-hover:hidden">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Suzent Logo" className="h-10 w-10">
-                      <rect x="1.5" y="1.5" width="21" height="21" rx="3" fill="#FFFFFF" />
-                      <rect x="3.5" y="3.5" width="17" height="17" rx="3" fill="#000000" />
-                      <rect x="5.5" y="7" width="5" height="5" rx="1.5" fill="#FFFFFF" />
-                      <rect x="13.5" y="7" width="5" height="5" rx="1.5" fill="#FFFFFF" />
-                    </svg>
+                    <SuzentLogo className="h-7 w-7" interactive />
                   </div>
                   <div className="hidden group-hover:block">
                     <div className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors">

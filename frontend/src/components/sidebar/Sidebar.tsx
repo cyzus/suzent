@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { detectDesktopPlatform } from '../../lib/titleBarPlatform';
+import { SuzentLogo } from '../SuzentLogo';
 
 type SidebarTab = 'chats' | 'config';
 
@@ -152,12 +153,7 @@ export function Sidebar({
           <div className="h-6 w-[2px] bg-neutral-300 dark:bg-zinc-600 mx-2 rounded-full" />
 
           {/* Logo (Static) */}
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Suzent Logo" className="h-10 w-10">
-            <rect x="1.5" y="1.5" width="21" height="21" rx="3" fill="#FFFFFF" />
-            <rect x="3.5" y="3.5" width="17" height="17" rx="3" fill="#000000" />
-            <rect x="5.5" y="7" width="5" height="5" rx="1.5" fill="#FFFFFF" />
-            <rect x="13.5" y="7" width="5" height="5" rx="1.5" fill="#FFFFFF" />
-          </svg>
+          <SuzentLogo className="h-7 w-7" interactive />
         </div>
         <nav className="flex border-b-3 border-brutal-black" role="tablist" aria-label={t('sidebar.tabs.config')}>
           {TABS.map(tab => {
