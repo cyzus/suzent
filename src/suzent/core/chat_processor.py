@@ -1755,11 +1755,8 @@ def _rebuild_display_messages(messages: list) -> list:
                 elif isinstance(part, ToolCallPart):
                     args_str = stringify_tool_args(part.args)
                     tool_output = tool_returns_by_id.get(part.tool_call_id)
-                    tool_state = (
-                        "completed"
-                        if part.tool_call_id in executed_tool_calls
-                        else "approval-requested"
-                    )
+                    was_executed = part.tool_call_id in executed_tool_calls
+                    tool_state = "completed" if was_executed else "error"
                     structured_tool_part: dict[str, Any] = {
                         "type": "tool",
                         "toolCallId": part.tool_call_id,
@@ -1778,8 +1775,6 @@ def _rebuild_display_messages(messages: list) -> list:
                         "type": "function",
                         "function": {"name": part.tool_name, "arguments": args_str},
                     }
-                    if part.tool_call_id not in executed_tool_calls:
-                        tc_dict["state"] = "approval-requested"
                     tool_calls.append(tc_dict)
 
             ordered_content = (

@@ -495,7 +495,7 @@ const AGUIPartsContent: React.FC<{
       {chunks.map((chunk, ci) => {
         if (chunk.type === 'tool') {
           const tools = chunk.items.map((tp, ti) => {
-            const approvalState = tp.state === 'approval-requested' ? 'pending' as const
+            const approvalState = (tp.state === 'approval-requested' && !tp.output) ? 'pending' as const
               : tp.state === 'error' ? 'denied' as const
                 : undefined;
 
