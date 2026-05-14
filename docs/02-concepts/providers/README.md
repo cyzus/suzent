@@ -28,6 +28,7 @@ API keys are stored in the local database — never in plain text config files.
 | Provider | Notes |
 |---|---|
 | [OpenAI](./openai.md) | GPT and o-series models |
+| [Codex Login Session](./codex-login-session.md) | Uses the local Codex CLI ChatGPT login instead of an API key |
 | [Anthropic](./anthropic.md) | Claude models |
 | [Google Gemini](./gemini.md) | Free tier available |
 | [xAI (Grok)](./xai.md) | Grok models |
