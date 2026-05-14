@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Message, ChatConfig, ConfigOptions, Chat, ChatSummary } from '../types/api';
 import { getApiBase } from '../lib/api';
+import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import { shouldKeepLocalAssistantContent } from '../lib/chatSyncGuards';
 import { useContextUsageStore } from './useContextUsageStore';
 
@@ -82,18 +83,6 @@ const keyForChat = (chatId: string | null) => chatId ?? UNSAVED_CHAT_KEY;
 const stripApprovalPolicy = (config: ChatConfig): ChatConfig => {
   const { tool_approval_policy, ...rest } = config;
   return rest;
-};
-
-/**
- * Remove always_deny entries before persisting to DB.
- * Denying a tool call shouldn't permanently block it — only allow decisions persist.
- */
-const stripDenyPolicies = (config: ChatConfig): ChatConfig => {
-  if (!config.tool_approval_policy) return config;
-  const filtered = Object.fromEntries(
-    Object.entries(config.tool_approval_policy).filter(([, v]) => v !== 'always_deny')
-  );
-  return { ...config, tool_approval_policy: Object.keys(filtered).length ? filtered : undefined };
 };
 
 /** Build a ChatConfig from user preferences and backend defaults. */
@@ -620,7 +609,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         const res = await fetch(`${getApiBase()}/chats`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: chatTitle, config: stripDenyPolicies(chatConfig), messages: chatMessages })
+          body: JSON.stringify({ title: chatTitle, config: stripDenyApprovalPolicies(chatConfig), messages: chatMessages })
         });
         if (res.ok) {
           const newChat: Chat = await res.json();
@@ -650,7 +639,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     }
 
     try {
-      const payload: any = { config: stripDenyPolicies(chatConfig) };
+      const payload: any = { config: stripDenyApprovalPolicies(chatConfig) };
 
       const res = await fetch(`${getApiBase()}/chats/${chatId}`, {
         method: 'PUT',
@@ -1064,7 +1053,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             details: serverUsage?.details ?? existingUsage?.details,
           });
         }
-        const loadedConfig = stripDenyPolicies(chat.config);
+        const loadedConfig = stripDenyApprovalPolicies(chat.config);
         setConfigByChat(prev => ({ ...prev, [key]: loadedConfig }));
         setConfigState(loadedConfig);
         // Save to localStorage to remember for next new chat (but strip approval policy)

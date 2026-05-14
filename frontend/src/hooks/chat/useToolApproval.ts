@@ -1,4 +1,5 @@
 import { useCallback, useRef, type MutableRefObject } from 'react';
+import { stripDenyApprovalPolicies } from '../../lib/approvalPolicy';
 import type { ChatConfig, Message } from '../../types/api';
 import type { AGUIPart, ApprovalRememberScope } from '../useAGUI';
 
@@ -271,7 +272,7 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
     try {
       const payload: Record<string, unknown> = {
         message: '',
-        config: currentConfig,
+        config: stripDenyApprovalPolicies(currentConfig),
         chat_id: targetChatId,
         reset: false,
         resume_approvals: resumeApprovals,

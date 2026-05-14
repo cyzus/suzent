@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useChatStore } from '../hooks/useChatStore';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
 import { getApiBase, getSandboxParams } from '../lib/api';
+import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import type { Message, FileAttachment } from '../types/api';
 import type { ContentBlock } from '../lib/chatUtils';
 import { buildMessageRenderPlan } from '../lib/messageRenderPlan';
@@ -546,9 +547,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // Stream paused for HITL approvals: keep transient parts visible and
       // wait for resume before persisting to the chat history.
       if (hasPendingApprovals) {
-        setIsStreaming(false, chatId);
-        if (heartbeatInFlightRef.current) {
-        }
+        setIsStreaming(true, chatId);
         heartbeatInFlightRef.current = false;
         setCurrentUsage(null);
         // For live background streams (social/cron), save the parts so tryConnect's
@@ -790,12 +789,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Platform chats (cron, social) have no model/agent — fall back to user prefs.
   // The config selector is hidden for these chats so users can't override the managed config.
   const _isPlatformChat = !!(config as any)?.platform;
-  const safeConfig = {
+  const safeConfig = stripDenyApprovalPolicies({
     ..._base,
     model: _base.model || (_isPlatformChat ? (_prefs?.model || backendConfig?.models?.[0] || '') : ''),
     agent: _base.agent || (_isPlatformChat ? (_prefs?.agent || backendConfig?.agents?.[0] || '') : ''),
     tools: _base.tools?.length ? _base.tools : (_isPlatformChat ? (_prefs?.tools ?? []) : []),
-  };
+  });
 
   // Unified canvas action dispatcher — used by both the canvas sidebar panel and inline surfaces.
   // Adds a decorative canvas_action pill to the chat, then starts a real AG-UI stream so the
@@ -1120,12 +1119,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     } catch (error) {
       console.error('Error during streaming:', error);
-    } finally {
-      // Safety net: onFinish/onError handle state, but ensure cleanup.
-      // Skip if a steer is in progress — steer's own finally handles cleanup.
       if (!steeringRef.current) {
         setIsStreaming(false, chatIdForSend);
       }
+    } finally {
       stopInFlightRef.current = false;
       setTimeout(async () => {
         try { await forceSaveNow(chatIdForSend); } catch { }
@@ -1161,10 +1158,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       await sendAGUI({ message: '/retry', chat_id: chatIdForRetry, config: safeConfig });
     } catch (error) {
       console.error('Error during retry:', error);
-    } finally {
       if (!steeringRef.current) {
         setIsStreaming(false, chatIdForRetry);
       }
+    } finally {
       stopInFlightRef.current = false;
       setTimeout(async () => {
         try { await forceSaveNow(chatIdForRetry); } catch { }
