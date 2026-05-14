@@ -399,18 +399,32 @@ async def verify_provider(request: Request) -> JSONResponse:
         data = await request.json()
         config = data.get("config", {})
 
-        if provider_id == "codex-subscription":
-            from suzent.core.codex_session import get_codex_session_service
-            from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID
+        if provider_id == "chatgpt":
+            from suzent.core.providers.chatgpt import ChatGPTProvider
 
-            status = get_codex_session_service().get_status()
-            spec = PROVIDER_REGISTRY_BY_ID.get(provider_id)
-            models = spec.default_models if spec and status.connected else []
+            provider = ChatGPTProvider("chatgpt", config)
+            connected = await asyncio.to_thread(provider.is_authenticated)
+            if not connected:
+                return JSONResponse(
+                    {
+                        "success": False,
+                        "models": [],
+                        "message": "Not signed in. Use Settings → ChatGPT Subscription to sign in.",
+                    }
+                )
+            models = await provider.list_models()
+            if models:
+                from suzent.core.model_registry import (
+                    save_discovered_models,
+                    get_model_registry,
+                )
+
+                save_discovered_models("chatgpt", [m.id for m in models])
+                get_model_registry().reload()
             return JSONResponse(
                 {
-                    "success": status.connected and status.auth_mode == "chatgpt",
-                    "models": models,
-                    "message": status.message,
+                    "success": True,
+                    "models": [m.model_dump() for m in models],
                 }
             )
 

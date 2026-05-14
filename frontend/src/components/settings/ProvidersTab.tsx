@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 
 import { useI18n } from '../../i18n';
-import { ApiField, ApiProvider, CustomProviderPayload, fetchCodexStatus, logoutCodex, startCodexDeviceLogin, startCodexLogin, syncCapabilities, UserConfig } from '../../lib/api';
-import type { CodexSessionStatus } from '../../types/api';
+import { ApiField, ApiProvider, CustomProviderPayload, fetchChatGPTStatus, logoutChatGPT, startChatGPTLogin, syncCapabilities, UserConfig } from '../../lib/api';
+import type { ChatGPTLoginResponse, ChatGPTStatusResponse } from '../../types/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 
 // Brand colors keyed by provider id (hex without #). Kept in the frontend only.
@@ -245,33 +245,36 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
     );
 }
 
-function CodexProviderCard({
+function ChatGPTProviderCard({
     provider,
     config,
     onConfigChange,
-    onCodexChanged,
+    onAuthChanged,
+    onVerify,
+    verifying,
 }: {
     provider: ApiProvider;
     config: UserConfig;
     onConfigChange: (providerId: string, config: UserConfig) => void;
-    onCodexChanged?: () => Promise<void> | void;
+    onAuthChanged?: () => Promise<void> | void;
+    onVerify: (provider: ApiProvider) => void;
+    verifying: boolean;
 }): React.ReactElement {
     const { t } = useI18n();
-    const [status, setStatus] = useState<CodexSessionStatus | null>(null);
+    const [status, setStatus] = useState<ChatGPTStatusResponse | null>(null);
     const [loading, setLoading] = useState(false);
-    const [actionMessage, setActionMessage] = useState<string | null>(null);
+    const [pendingLogin, setPendingLogin] = useState<ChatGPTLoginResponse | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
     const refresh = async () => {
         setLoading(true);
         try {
-            const result = await fetchCodexStatus();
-            if (result?.status) {
-                setStatus(result.status);
-                if (result.status.connected && config.enabled_models.length === 0) {
-                    const defaults = provider.default_models.map(model => model.id);
-                    if (defaults.length > 0) {
-                        onConfigChange(provider.id, { ...config, enabled_models: defaults });
-                    }
+            const result = await fetchChatGPTStatus();
+            setStatus(result);
+            if (result?.connected && config.enabled_models.length === 0) {
+                const defaults = provider.default_models.map(m => m.id);
+                if (defaults.length > 0) {
+                    onConfigChange(provider.id, { ...config, enabled_models: defaults });
                 }
             }
         } finally {
@@ -279,24 +282,49 @@ function CodexProviderCard({
         }
     };
 
-    useEffect(() => {
-        void refresh();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [provider.id]);
+    useEffect(() => { void refresh(); }, [provider.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const runAction = async (action: 'login' | 'device' | 'logout') => {
+    // Poll /chatgpt/status until connected, while device code is displayed
+    useEffect(() => {
+        if (!pendingLogin) return;
+        const timer = setInterval(async () => {
+            const result = await fetchChatGPTStatus();
+            if (result?.connected) {
+                setPendingLogin(null);
+                setStatus(result);
+                if (config.enabled_models.length === 0) {
+                    const defaults = provider.default_models.map(m => m.id);
+                    if (defaults.length > 0) onConfigChange(provider.id, { ...config, enabled_models: defaults });
+                }
+                await onAuthChanged?.();
+            }
+        }, 3000);
+        return () => clearInterval(timer);
+    }, [pendingLogin]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const handleSignIn = async () => {
         setLoading(true);
-        setActionMessage(null);
+        setError(null);
         try {
-            const result = action === 'login'
-                ? await startCodexLogin()
-                : action === 'device'
-                    ? await startCodexDeviceLogin()
-                    : await logoutCodex();
-            setActionMessage(result.message);
-            if (result.status) setStatus(result.status);
+            const result = await startChatGPTLogin();
+            if (result.success) {
+                setPendingLogin(result);
+            } else {
+                setError(result.error ?? 'Failed to start login');
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDisconnect = async () => {
+        setLoading(true);
+        setError(null);
+        setPendingLogin(null);
+        try {
+            await logoutChatGPT();
             await refresh();
-            await onCodexChanged?.();
+            await onAuthChanged?.();
         } finally {
             setLoading(false);
         }
@@ -312,50 +340,77 @@ function CodexProviderCard({
                 <div className="flex items-center gap-3 min-w-0">
                     <ProviderIcon provider={provider} />
                     <div className="flex flex-col min-w-0">
-                        <span className="font-black uppercase text-xl tracking-wide truncate dark:text-white">{t('settings.providers.codex.title')}</span>
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">{t('settings.providers.codex.subtitle')}</span>
+                        <span className="font-black uppercase text-xl tracking-wide truncate dark:text-white">{t('settings.providers.chatgpt.title')}</span>
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">{t('settings.providers.chatgpt.subtitle')}</span>
                     </div>
                 </div>
                 <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 border-2 border-brutal-black ${connected ? 'bg-brutal-green text-brutal-black' : 'bg-white dark:bg-zinc-800 dark:text-white'}`}>
-                    {t(`settings.providers.codex.status.${statusKey}` as any)}
+                    {t(`settings.providers.chatgpt.status.${statusKey}` as any)}
                 </span>
             </div>
 
             <div className="p-6 flex flex-col gap-4 flex-1">
-                <div className="space-y-2">
-                    <p className="text-xs font-bold leading-relaxed text-neutral-700 dark:text-neutral-300">
-                        {status?.message || t('settings.providers.codex.loadingStatus')}
-                    </p>
-                    {status?.recovery_hint && (
-                        <p className="text-[11px] font-medium leading-relaxed text-neutral-500 dark:text-neutral-400">
-                            {status.recovery_hint}
+                {pendingLogin && (
+                    <div className="space-y-3 p-3 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900">
+                        <p className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                            {t('settings.providers.chatgpt.awaitingAuth')}
                         </p>
-                    )}
-                    {actionMessage && (
-                        <p className="text-[11px] font-bold leading-relaxed text-brutal-black dark:text-white">
-                            {actionMessage}
-                        </p>
-                    )}
-                    <div className="text-[10px] font-mono text-neutral-500 dark:text-neutral-400 truncate">
-                        {t('settings.providers.codex.home', { path: status?.codex_home || '~/.codex' })}
+                        <a
+                            href={pendingLogin.verify_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block text-xs font-mono underline text-blue-600 dark:text-blue-400 break-all"
+                        >
+                            {pendingLogin.verify_url}
+                        </a>
+                        <div className="flex items-center gap-3">
+                            <span className="font-mono text-2xl font-black tracking-[0.3em] border-4 border-brutal-black px-3 py-1 dark:text-white select-all">
+                                {pendingLogin.user_code}
+                            </span>
+                            <span className="text-[10px] text-neutral-400 uppercase font-bold animate-pulse">Waiting…</span>
+                        </div>
                     </div>
+                )}
+
+                <div className="space-y-2">
+                    {status?.auth_file && !pendingLogin && (
+                        <div className="text-[10px] font-mono text-neutral-500 dark:text-neutral-400 truncate">
+                            {t('settings.providers.chatgpt.authFile', { path: status.auth_file })}
+                        </div>
+                    )}
+                    {error && (
+                        <p className="text-[11px] font-bold text-red-600">{error}</p>
+                    )}
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                    <button
-                        onClick={() => runAction('login')}
-                        disabled={loading}
-                        className="px-3 py-2 text-xs font-black uppercase bg-brutal-black text-white border-2 border-brutal-black hover:bg-zinc-800 disabled:opacity-50"
-                    >
-                        {t('settings.providers.codex.connect')}
-                    </button>
-                    <button
-                        onClick={() => runAction('device')}
-                        disabled={loading}
-                        className="px-3 py-2 text-xs font-black uppercase border-2 border-brutal-black text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-50"
-                    >
-                        {t('settings.providers.codex.deviceLogin')}
-                    </button>
+                    {!connected && !pendingLogin && (
+                        <button
+                            onClick={handleSignIn}
+                            disabled={loading}
+                            className="px-3 py-2 text-xs font-black uppercase bg-brutal-black text-white border-2 border-brutal-black hover:bg-zinc-800 disabled:opacity-50"
+                        >
+                            {t('settings.providers.chatgpt.signIn')}
+                        </button>
+                    )}
+                    {pendingLogin && (
+                        <button
+                            onClick={() => setPendingLogin(null)}
+                            disabled={loading}
+                            className="px-3 py-2 text-xs font-black uppercase border-2 border-brutal-black text-neutral-500 hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-50"
+                        >
+                            Cancel
+                        </button>
+                    )}
+                    {connected && (
+                        <button
+                            onClick={handleDisconnect}
+                            disabled={loading}
+                            className="px-3 py-2 text-xs font-black uppercase border-2 border-brutal-black text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50"
+                        >
+                            {t('settings.providers.chatgpt.disconnect')}
+                        </button>
+                    )}
                     <button
                         onClick={refresh}
                         disabled={loading}
@@ -363,19 +418,21 @@ function CodexProviderCard({
                     >
                         {loading ? t('common.loading') : t('common.refresh')}
                     </button>
-                    <button
-                        onClick={() => runAction('logout')}
-                        disabled={loading}
-                        className="px-3 py-2 text-xs font-black uppercase border-2 border-brutal-black text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50"
-                    >
-                        {t('settings.providers.codex.disconnect')}
-                    </button>
                 </div>
 
                 <div className="pt-2 border-t-2 border-neutral-200 dark:border-zinc-700 space-y-2">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-                        {t('settings.providers.modelsTab')}
-                    </p>
+                    <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+                            {t('settings.providers.modelsTab')}
+                        </p>
+                        <button
+                            onClick={() => onVerify(provider)}
+                            disabled={verifying || !connected}
+                            className="text-xs bg-brutal-blue text-white px-3 py-1 font-black uppercase border-2 border-brutal-black hover:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none transition-all disabled:opacity-50"
+                        >
+                            {verifying ? t('settings.providers.fetching') : t('settings.providers.fetch')}
+                        </button>
+                    </div>
                     <BrutalMultiSelect
                         variant="list"
                         value={config.enabled_models}
@@ -495,14 +552,16 @@ export function ProvidersTab({
                     const conf = userConfigs[provider.id] || { enabled_models: [], custom_models: [] };
                     const isEnabled = conf.enabled_models.length > 0;
 
-                    if (provider.id === 'codex-subscription') {
+                    if (provider.id === 'chatgpt') {
                         return (
-                            <CodexProviderCard
+                            <ChatGPTProviderCard
                                 key={provider.id}
                                 provider={provider}
                                 config={conf}
                                 onConfigChange={onConfigChange}
-                                onCodexChanged={onCodexChanged}
+                                onAuthChanged={onCodexChanged}
+                                onVerify={onVerify}
+                                verifying={!!verifying[provider.id]}
                             />
                         );
                     }

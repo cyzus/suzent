@@ -41,11 +41,10 @@ from suzent.routes.chat_routes import (
     update_chat,
 )
 from suzent.routes.compact_routes import compact_chat
-from suzent.routes.codex_routes import (
-    get_codex_status,
-    logout_codex,
-    start_codex_device_login,
-    start_codex_login,
+from suzent.routes.chatgpt_routes import (
+    get_chatgpt_status,
+    logout_chatgpt,
+    start_chatgpt_login,
 )
 from suzent.routes.commands_routes import get_commands
 from suzent.routes.config_routes import (
@@ -489,6 +488,10 @@ def ensure_app_data():
         USER_SKILLS_DIR,
     )
 
+    # Redirect LiteLLM's ChatGPT token storage into Suzent's own config dir.
+    chatgpt_token_dir = USER_CONFIG_DIR / "chatgpt"
+    os.environ.setdefault("CHATGPT_TOKEN_DIR", str(chatgpt_token_dir))
+
     print("INFO: Starting App Data Verification...", flush=True)
 
     for target in [DATA_DIR, RUNTIME_DIR, CACHE_DIR, USER_CONFIG_DIR, USER_SKILLS_DIR]:
@@ -618,10 +621,9 @@ app = Starlette(
         Route("/plans", get_plans, methods=["GET"]),
         Route("/plan", get_plan, methods=["GET"]),
         Route("/config", get_config, methods=["GET"]),
-        Route("/codex/status", get_codex_status, methods=["GET"]),
-        Route("/codex/login", start_codex_login, methods=["POST"]),
-        Route("/codex/login/device", start_codex_device_login, methods=["POST"]),
-        Route("/codex/logout", logout_codex, methods=["POST"]),
+        Route("/chatgpt/status", get_chatgpt_status, methods=["GET"]),
+        Route("/chatgpt/login", start_chatgpt_login, methods=["POST"]),
+        Route("/chatgpt/logout", logout_chatgpt, methods=["POST"]),
         Route("/preferences", save_preferences, methods=["POST"]),
         Route("/config/sandbox-global", save_global_sandbox_config, methods=["POST"]),
         Route("/config/api-keys", get_api_keys_status, methods=["GET"]),

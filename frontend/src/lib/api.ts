@@ -1,4 +1,4 @@
-import { CodexCommandResponse, CodexStatusResponse, ConfigOptions } from '../types/api';
+import { ChatGPTLoginResponse, ChatGPTStatusResponse, ConfigOptions } from '../types/api';
 
 // -----------------------------------------------------------------------------
 // Tauri Integration
@@ -342,44 +342,44 @@ export async function syncCapabilities(): Promise<{ success: boolean; providers?
 }
 
 // -----------------------------------------------------------------------------
-// Codex Login Session
+// ChatGPT Subscription
 // -----------------------------------------------------------------------------
 
-export async function fetchCodexStatus(): Promise<CodexStatusResponse | null> {
+export async function fetchChatGPTStatus(): Promise<ChatGPTStatusResponse | null> {
   try {
-    const res = await fetch(`${getApiBase()}/codex/status`);
+    const res = await fetch(`${getApiBase()}/chatgpt/status`);
     if (!res.ok) return null;
     return await res.json();
   } catch (e) {
-    console.error('Error fetching Codex status:', e);
+    console.error('Error fetching ChatGPT status:', e);
     return null;
   }
 }
 
-async function postCodexCommand(path: string): Promise<CodexCommandResponse> {
+export async function startChatGPTLogin(): Promise<ChatGPTLoginResponse> {
   try {
-    const res = await fetch(`${getApiBase()}${path}`, {
+    const res = await fetch(`${getApiBase()}/chatgpt/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
-    const data = await res.json();
-    return data;
+    return await res.json();
   } catch (e) {
-    return { success: false, message: String(e), status: null };
+    return { success: false, error: String(e) };
   }
 }
 
-export async function startCodexLogin(): Promise<CodexCommandResponse> {
-  return postCodexCommand('/codex/login');
-}
-
-export async function startCodexDeviceLogin(): Promise<CodexCommandResponse> {
-  return postCodexCommand('/codex/login/device');
-}
-
-export async function logoutCodex(): Promise<CodexCommandResponse> {
-  return postCodexCommand('/codex/logout');
+export async function logoutChatGPT(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${getApiBase()}/chatgpt/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    return await res.json();
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
 }
 
 // -----------------------------------------------------------------------------
