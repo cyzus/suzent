@@ -1897,7 +1897,7 @@ def _rebuild_display_messages(messages: list) -> list:
                     args_str = stringify_tool_args(part.args)
                     tool_output = tool_returns_by_id.get(part.tool_call_id)
                     was_executed = part.tool_call_id in executed_tool_calls
-                    tool_state = "completed" if was_executed else "error"
+                    tool_state = "completed" if was_executed else "approval-requested"
                     structured_tool_part: dict[str, Any] = {
                         "type": "tool",
                         "toolCallId": part.tool_call_id,
@@ -1916,6 +1916,8 @@ def _rebuild_display_messages(messages: list) -> list:
                         "type": "function",
                         "function": {"name": part.tool_name, "arguments": args_str},
                     }
+                    if not was_executed:
+                        tc_dict["state"] = "approval-requested"
                     tool_calls.append(tc_dict)
 
             ordered_content = (
