@@ -130,7 +130,7 @@ export interface ChatGPTStatusResponse {
   connected: boolean;
   status: 'connected' | 'not_logged_in' | 'token_expired';
   account_id?: string | null;
-  auth_file?: string | null;
+  error?: string;
 }
 
 export interface ChatGPTLoginResponse {

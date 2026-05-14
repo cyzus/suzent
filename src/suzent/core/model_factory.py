@@ -100,33 +100,27 @@ def _create_ollama_model(model_name: str, _api_key: str, spec: ProviderSpec) -> 
 
 def _create_chatgpt_model(model_name: str, _api_key: str, spec: ProviderSpec) -> object:
     import httpx
-    from litellm.llms.chatgpt.authenticator import Authenticator
-    from litellm.llms.chatgpt.common_utils import (
-        CHATGPT_API_BASE,
-        get_chatgpt_default_headers,
-        get_chatgpt_default_instructions,
+    from suzent.core.providers.chatgpt_auth import (
+        chatgpt_api_base,
+        chatgpt_default_headers,
+        chatgpt_default_instructions,
+        create_authenticator,
+        get_account_id,
+        get_valid_access_token,
     )
     from pydantic_ai.models.openai import OpenAIResponsesModel
     from pydantic_ai.providers.openai import OpenAIProvider
     from openai import AsyncOpenAI
 
-    auth = Authenticator()
-    data = auth._read_auth_file()
-    token = data.get("access_token") if data else None
-    if not token or auth._is_token_expired(data, token):
-        refresh_token = data.get("refresh_token") if data else None
-        if refresh_token:
-            try:
-                token = auth._refresh_tokens(refresh_token)["access_token"]
-            except Exception:
-                token = None
+    auth = create_authenticator()
+    token = get_valid_access_token(auth)
     if not token:
         raise RuntimeError(
             "ChatGPT Subscription is not authenticated. "
             "Open Settings → ChatGPT Subscription and sign in first."
         )
 
-    _codex_instructions = get_chatgpt_default_instructions()
+    _chatgpt_instructions = chatgpt_default_instructions()
     # Params the ChatGPT Responses API does not accept
     _unsupported_params = {
         "max_output_tokens",
@@ -149,7 +143,7 @@ def _create_chatgpt_model(model_name: str, _api_key: str, spec: ProviderSpec) ->
                 for key in _unsupported_params:
                     body.pop(key, None)
                 if not body.get("instructions"):
-                    body["instructions"] = _codex_instructions
+                    body["instructions"] = _chatgpt_instructions
                 body["store"] = False
                 body["stream"] = True
                 new_content = _json.dumps(body).encode()
@@ -167,8 +161,8 @@ def _create_chatgpt_model(model_name: str, _api_key: str, spec: ProviderSpec) ->
     http_client = httpx.AsyncClient(transport=_ChatGPTTransport())
     client = AsyncOpenAI(
         api_key=token,
-        base_url=CHATGPT_API_BASE,
-        default_headers=get_chatgpt_default_headers(token, auth.get_account_id()),
+        base_url=chatgpt_api_base(),
+        default_headers=chatgpt_default_headers(token, get_account_id(auth)),
         http_client=http_client,
     )
 

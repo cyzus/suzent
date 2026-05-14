@@ -1991,51 +1991,6 @@ class ChatDatabase:
             session.commit()
             return True
 
-    # -------------------------------------------------------------------------
-    # Codex Connector Operations
-    # -------------------------------------------------------------------------
-
-    def get_codex_connector_config(self) -> Optional[CodexConnectorConfigModel]:
-        """Get non-secret Codex connector preferences."""
-        with self._session() as session:
-            return session.get(CodexConnectorConfigModel, 1)
-
-    def save_codex_connector_config(
-        self,
-        *,
-        enabled: bool | None = None,
-        codex_home: str | None = None,
-        last_status: str | None = None,
-        last_checked_at: datetime | None = None,
-    ) -> bool:
-        """Save non-secret Codex connector preferences."""
-        now = datetime.now()
-        with self._session() as session:
-            config = session.get(CodexConnectorConfigModel, 1)
-            if config is None:
-                config = CodexConnectorConfigModel(
-                    id=1,
-                    enabled=enabled if enabled is not None else False,
-                    codex_home=codex_home,
-                    last_status=last_status,
-                    last_checked_at=last_checked_at,
-                    updated_at=now,
-                )
-            else:
-                if enabled is not None:
-                    config.enabled = enabled
-                if codex_home is not None:
-                    config.codex_home = codex_home
-                if last_status is not None:
-                    config.last_status = last_status
-                if last_checked_at is not None:
-                    config.last_checked_at = last_checked_at
-                config.updated_at = now
-
-            session.add(config)
-            session.commit()
-            return True
-
 
 # Global database instance
 _db_instance = None

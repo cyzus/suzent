@@ -143,7 +143,7 @@ export const en = {
         signIn: 'Sign In',
         disconnect: 'Disconnect',
         awaitingAuth: 'Visit the URL below and enter the code to sign in:',
-        authFile: 'Token: {path}',
+        waiting: 'Waiting for authorization...',
         status: {
           connected: 'Connected',
           not_logged_in: 'Not Signed In',

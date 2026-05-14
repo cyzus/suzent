@@ -69,17 +69,6 @@ def _append_command_messages(
     return updated
 
 
-def _is_codex_subscription_model(model_id: Any) -> bool:
-    return isinstance(model_id, str) and model_id.startswith("codex-subscription/")
-
-
-def _codex_cli_model_name(model_id: str) -> str:
-    _provider, _separator, model_name = model_id.partition("/")
-    if model_name in {"gpt-5.1-codex", "gpt-5.1-codex-max"}:
-        return "gpt-5.5"
-    return model_name or model_id
-
-
 def _coerce_approval_args(raw_args: Any) -> dict[str, Any]:
     if isinstance(raw_args, dict):
         return raw_args
@@ -190,117 +179,6 @@ def _collect_unprocessed_tool_call_ids(messages: list[Any]) -> set[str]:
 class ChatProcessor:
     """Encapsulates the lifecycle of a single conversation turn."""
 
-    async def _process_codex_subscription_turn(
-        self,
-        *,
-        chat_id: str,
-        message_content: str,
-        config: Dict[str, Any],
-        files: List[Any] | None,
-        file_mentions: List[Any] | None,
-    ) -> AsyncGenerator[str, None]:
-        from ag_ui.core import (
-            RunFinishedEvent,
-            RunStartedEvent,
-            TextMessageContentEvent,
-            TextMessageEndEvent,
-            TextMessageStartEvent,
-        )
-        from ag_ui.encoder import EventEncoder
-        from pydantic_ai.messages import (
-            ModelRequest,
-            ModelResponse,
-            TextPart,
-            UserPromptPart,
-        )
-
-        encoder = EventEncoder()
-        run_id = str(uuid.uuid4())
-        msg_id = str(uuid.uuid4())
-        model_id = str(config.get("model") or "")
-        full_response = ""
-
-        yield encoder.encode(RunStartedEvent(run_id=run_id, thread_id=chat_id))
-        yield encoder.encode(TextMessageStartEvent(message_id=msg_id, role="assistant"))
-
-        try:
-            if files or file_mentions:
-                full_response = (
-                    "Codex Login Session chat currently supports text-only messages. "
-                    "Remove attachments or file mentions and try again."
-                )
-            else:
-                db = get_database()
-                chat = db.get_chat(chat_id)
-                cwd = (
-                    getattr(chat, "working_directory", None)
-                    if chat and getattr(chat, "working_directory", None)
-                    else str(PROJECT_DIR)
-                )
-
-                from suzent.core.codex_session import get_codex_session_service
-
-                prompt = (
-                    "Reply directly and concisely. Do not mention Suzent or the "
-                    f"repository unless the user asks about it.\n\n{message_content}"
-                )
-                result = await asyncio.to_thread(
-                    get_codex_session_service().exec_prompt,
-                    prompt,
-                    model=_codex_cli_model_name(model_id),
-                    cwd=cwd,
-                )
-                full_response = (
-                    result.output
-                    if result.success and result.output
-                    else f"Codex execution failed: {result.message}"
-                )
-
-            yield encoder.encode(
-                TextMessageContentEvent(message_id=msg_id, delta=full_response)
-            )
-        except Exception as exc:
-            logger.error(f"[CodexBridge] Codex turn failed: {exc}")
-            full_response = f"Codex execution failed: {exc}"
-            yield encoder.encode(
-                TextMessageContentEvent(message_id=msg_id, delta=full_response)
-            )
-        finally:
-            yield encoder.encode(TextMessageEndEvent(message_id=msg_id))
-            yield encoder.encode(RunFinishedEvent(run_id=run_id, thread_id=chat_id))
-            yield "data: [DONE]\n\n"
-
-            try:
-                db = get_database()
-                chat = db.get_chat(chat_id)
-                history = []
-                if chat and chat.agent_state:
-                    state = deserialize_state(chat.agent_state)
-                    if state and state.get("message_history"):
-                        history = list(state["message_history"])
-
-                history.append(
-                    ModelRequest(parts=[UserPromptPart(content=message_content)])
-                )
-                if full_response.strip():
-                    history.append(ModelResponse(parts=[TextPart(content=full_response)]))
-
-                await self._persist_state(
-                    chat_id=chat_id,
-                    messages=history,
-                    model_id=model_id,
-                    tool_names=[],
-                    user_content=message_content,
-                    agent_content=full_response,
-                )
-                await self._write_transcript(
-                    chat_id, message_content, full_response, history
-                )
-            except Exception as persist_exc:
-                logger.warning(
-                    f"[CodexBridge] Failed to persist Codex turn for {chat_id}: {persist_exc}"
-                )
-
     async def process_turn(
         self,
         chat_id: str,
@@ -344,25 +222,6 @@ class ChatProcessor:
         }
         if config_override:
             config.update(config_override)
-
-        model_id = config.get("model")
-        if (
-            _is_codex_subscription_model(model_id)
-            and message_content
-            and not message_content.strip().startswith("/")
-            and not resume_approvals
-            and not is_heartbeat
-            and _message_history_override is None
-        ):
-            async for chunk in self._process_codex_subscription_turn(
-                chat_id=chat_id,
-                message_content=message_content,
-                config=config,
-                files=files,
-                file_mentions=file_mentions,
-            ):
-                yield chunk
-            return
 
         # 2. Get Agent
         logger.debug("[ChatProcessor] Calling get_or_create_agent")

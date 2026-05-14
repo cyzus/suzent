@@ -44,7 +44,7 @@ interface ProvidersTabProps {
     onVerify: (provider: ApiProvider) => void;
     onAddProvider: (payload: CustomProviderPayload) => Promise<void>;
     onDeleteProvider: (providerId: string) => Promise<void>;
-    onCodexChanged?: () => Promise<void> | void;
+    onChatGPTAuthChanged?: () => Promise<void> | void;
 }
 
 // ─── KeyStatusBadge ──────────────────────────────────────────────────────────
@@ -271,6 +271,7 @@ function ChatGPTProviderCard({
         try {
             const result = await fetchChatGPTStatus();
             setStatus(result);
+            setError(result?.error ?? null);
             if (result?.connected && config.enabled_models.length === 0) {
                 const defaults = provider.default_models.map(m => m.id);
                 if (defaults.length > 0) {
@@ -363,21 +364,18 @@ function ChatGPTProviderCard({
                         >
                             {pendingLogin.verify_url}
                         </a>
-                        <div className="flex items-center gap-3">
-                            <span className="font-mono text-2xl font-black tracking-[0.3em] border-4 border-brutal-black px-3 py-1 dark:text-white select-all">
+                        <div className="flex flex-col gap-2">
+                            <span className="inline-flex w-fit max-w-full font-mono text-xl sm:text-2xl font-black tracking-[0.22em] border-4 border-brutal-black px-3 py-2 dark:text-white select-all whitespace-nowrap overflow-x-auto">
                                 {pendingLogin.user_code}
                             </span>
-                            <span className="text-[10px] text-neutral-400 uppercase font-bold animate-pulse">Waiting…</span>
+                            <span className="text-[10px] text-neutral-400 uppercase font-bold animate-pulse">
+                                {t('settings.providers.chatgpt.waiting')}
+                            </span>
                         </div>
                     </div>
                 )}
 
                 <div className="space-y-2">
-                    {status?.auth_file && !pendingLogin && (
-                        <div className="text-[10px] font-mono text-neutral-500 dark:text-neutral-400 truncate">
-                            {t('settings.providers.chatgpt.authFile', { path: status.auth_file })}
-                        </div>
-                    )}
                     {error && (
                         <p className="text-[11px] font-bold text-red-600">{error}</p>
                     )}
@@ -464,7 +462,7 @@ export function ProvidersTab({
     onVerify,
     onAddProvider,
     onDeleteProvider,
-    onCodexChanged,
+    onChatGPTAuthChanged,
 }: ProvidersTabProps): React.ReactElement {
     const { t } = useI18n();
     const [showAddForm, setShowAddForm] = useState(false);
@@ -559,7 +557,7 @@ export function ProvidersTab({
                                 provider={provider}
                                 config={conf}
                                 onConfigChange={onConfigChange}
-                                onAuthChanged={onCodexChanged}
+                                onAuthChanged={onChatGPTAuthChanged}
                                 onVerify={onVerify}
                                 verifying={!!verifying[provider.id]}
                             />

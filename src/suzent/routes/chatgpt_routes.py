@@ -7,18 +7,27 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from suzent.logger import get_logger
+from suzent.core.providers.chatgpt_auth import (
+    ChatGPTAuthUnavailable,
+    chatgpt_device_verify_url,
+    complete_device_login,
+    create_authenticator,
+    delete_auth_file,
+    get_account_id,
+    get_valid_access_token,
+    read_auth_file,
+    request_device_code,
+)
 
 logger = get_logger(__name__)
 
 
 def _authenticator():
-    from litellm.llms.chatgpt.authenticator import Authenticator
-
-    return Authenticator()
+    return create_authenticator()
 
 
 def _status_payload(auth) -> dict[str, Any]:
-    data = auth._read_auth_file()
+    data = read_auth_file(auth)
     if not data:
         return {"connected": False, "status": "not_logged_in"}
 
@@ -26,31 +35,22 @@ def _status_payload(auth) -> dict[str, Any]:
     if not token:
         return {"connected": False, "status": "not_logged_in"}
 
-    if auth._is_token_expired(data, token):
-        refresh_token = data.get("refresh_token")
-        if not refresh_token:
-            return {"connected": False, "status": "token_expired"}
-        try:
-            auth._refresh_tokens(refresh_token)
-            return {
-                "connected": True,
-                "status": "connected",
-                "account_id": auth.get_account_id(),
-            }
-        except Exception:
-            return {"connected": False, "status": "token_expired"}
+    if not get_valid_access_token(auth):
+        return {"connected": False, "status": "token_expired"}
 
     return {
         "connected": True,
         "status": "connected",
-        "account_id": auth.get_account_id(),
-        "auth_file": auth.auth_file,
+        "account_id": get_account_id(auth),
     }
 
 
 async def get_chatgpt_status(request: Request) -> JSONResponse:
-    auth = _authenticator()
-    payload = await asyncio.to_thread(_status_payload, auth)
+    try:
+        auth = _authenticator()
+        payload = await asyncio.to_thread(_status_payload, auth)
+    except ChatGPTAuthUnavailable as exc:
+        payload = {"connected": False, "status": "not_logged_in", "error": str(exc)}
     return JSONResponse(payload)
 
 
@@ -60,14 +60,16 @@ async def start_chatgpt_login(request: Request) -> JSONResponse:
     Returns the verify_url and user_code for the frontend to display while waiting.
     The frontend then polls GET /chatgpt/status to detect completion.
     """
-    auth = _authenticator()
+    try:
+        auth = _authenticator()
+    except ChatGPTAuthUnavailable as exc:
+        return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
 
     def _begin():
         from litellm.llms.chatgpt.common_utils import GetDeviceCodeError
 
         try:
-            device_code = auth._request_device_code()
-            auth._record_device_code_request()
+            device_code = request_device_code(auth)
             return {"success": True, "device_code": device_code}
         except GetDeviceCodeError as exc:
             return {"success": False, "error": str(exc)}
@@ -86,21 +88,17 @@ async def start_chatgpt_login(request: Request) -> JSONResponse:
     # The frontend polls GET /chatgpt/status to detect when auth completes.
     def _complete_login():
         try:
-            auth_code = auth._poll_for_authorization_code(dc)
-            tokens = auth._exchange_code_for_tokens(auth_code)
-            auth._write_auth_file(auth._build_auth_record(tokens))
+            complete_device_login(auth, dc)
             logger.info("ChatGPT device-code login completed")
         except Exception as exc:
             logger.warning("ChatGPT device-code login failed: {}", exc)
 
-    asyncio.get_event_loop().run_in_executor(None, _complete_login)
-
-    from litellm.llms.chatgpt.common_utils import CHATGPT_DEVICE_VERIFY_URL
+    asyncio.get_running_loop().run_in_executor(None, _complete_login)
 
     return JSONResponse(
         {
             "success": True,
-            "verify_url": CHATGPT_DEVICE_VERIFY_URL,
+            "verify_url": chatgpt_device_verify_url(),
             "user_code": dc["user_code"],
             "device_auth_id": dc["device_auth_id"],
             "interval": dc.get("interval", "5"),
@@ -109,13 +107,14 @@ async def start_chatgpt_login(request: Request) -> JSONResponse:
 
 
 async def logout_chatgpt(request: Request) -> JSONResponse:
-    auth = _authenticator()
+    try:
+        auth = _authenticator()
+    except ChatGPTAuthUnavailable as exc:
+        return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
 
     def _logout():
-        from pathlib import Path
-
         try:
-            Path(auth.auth_file).unlink(missing_ok=True)
+            delete_auth_file(auth)
             return {"success": True}
         except Exception as exc:
             return {"success": False, "error": str(exc)}

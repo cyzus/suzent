@@ -143,7 +143,7 @@ export const zhCN = {
         signIn: '登录',
         disconnect: '断开连接',
         awaitingAuth: '请访问以下链接并输入验证码完成登录：',
-        authFile: 'Token：{path}',
+        waiting: '正在等待授权...',
         status: {
           connected: '已连接',
           not_logged_in: '未登录',
