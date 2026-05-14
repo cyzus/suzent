@@ -226,19 +226,6 @@ class ApiKeyModel(SQLModel, table=True):
     updated_at: datetime = Field(serialization_alias="updatedAt")
 
 
-class CodexConnectorConfigModel(SQLModel, table=True):
-    """Non-secret configuration for the Codex subscription connector."""
-
-    __tablename__ = "codex_connector_config"
-
-    id: int = Field(default=1, primary_key=True)
-    enabled: bool = Field(default=False)
-    codex_home: Optional[str] = None
-    last_status: Optional[str] = None
-    last_checked_at: Optional[datetime] = None
-    updated_at: datetime = Field(serialization_alias="updatedAt")
-
-
 class CostLedgerModel(SQLModel, table=True):
     """Global cost ledger — every LLM call is recorded here.
 
