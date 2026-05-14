@@ -84,6 +84,18 @@ const stripApprovalPolicy = (config: ChatConfig): ChatConfig => {
   return rest;
 };
 
+/**
+ * Remove always_deny entries before persisting to DB.
+ * Denying a tool call shouldn't permanently block it — only allow decisions persist.
+ */
+const stripDenyPolicies = (config: ChatConfig): ChatConfig => {
+  if (!config.tool_approval_policy) return config;
+  const filtered = Object.fromEntries(
+    Object.entries(config.tool_approval_policy).filter(([, v]) => v !== 'always_deny')
+  );
+  return { ...config, tool_approval_policy: Object.keys(filtered).length ? filtered : undefined };
+};
+
 /** Build a ChatConfig from user preferences and backend defaults. */
 const buildConfigFromPreferences = (
   prefs: ConfigOptions['userPreferences'],
@@ -608,7 +620,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         const res = await fetch(`${getApiBase()}/chats`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: chatTitle, config: chatConfig, messages: chatMessages })
+          body: JSON.stringify({ title: chatTitle, config: stripDenyPolicies(chatConfig), messages: chatMessages })
         });
         if (res.ok) {
           const newChat: Chat = await res.json();
@@ -638,7 +650,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     }
 
     try {
-      const payload: any = { config: chatConfig };
+      const payload: any = { config: stripDenyPolicies(chatConfig) };
 
       const res = await fetch(`${getApiBase()}/chats/${chatId}`, {
         method: 'PUT',
@@ -1052,8 +1064,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             details: serverUsage?.details ?? existingUsage?.details,
           });
         }
-        setConfigByChat(prev => ({ ...prev, [key]: chat.config }));
-        setConfigState(chat.config);
+        const loadedConfig = stripDenyPolicies(chat.config);
+        setConfigByChat(prev => ({ ...prev, [key]: loadedConfig }));
+        setConfigState(loadedConfig);
         // Save to localStorage to remember for next new chat (but strip approval policy)
         try {
           localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripApprovalPolicy(chat.config)));
