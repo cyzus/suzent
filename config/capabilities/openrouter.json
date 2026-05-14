@@ -675,6 +675,14 @@
     "openrouter/openrouter/bodybuilder": {
       "mode": "chat",
       "max_input_tokens": 128000
+    },
+    "openrouter/qwen/qwen3.6-plus": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 65536,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_reasoning": true
     }
   }
 }
