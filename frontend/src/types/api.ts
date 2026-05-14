@@ -126,5 +126,22 @@ export interface ConfigOptions {
   };
 }
 
+export interface ChatGPTStatusResponse {
+  connected: boolean;
+  status: 'connected' | 'not_logged_in' | 'token_expired';
+  account_id?: string | null;
+  error?: string;
+}
+
+export interface ChatGPTLoginResponse {
+  success: boolean;
+  verify_url?: string;
+  user_code?: string;
+  device_auth_id?: string;
+  interval?: string;
+  error?: string;
+}
+
+
 // Note: Stream event types removed — the frontend now uses AG-UI protocol
 // via the useAGUI hook instead of manual SSE parsing.

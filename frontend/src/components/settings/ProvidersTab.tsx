@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { useI18n } from '../../i18n';
-import { ApiField, ApiProvider, CustomProviderPayload, syncCapabilities, UserConfig } from '../../lib/api';
+import { ApiField, ApiProvider, CustomProviderPayload, fetchChatGPTStatus, logoutChatGPT, startChatGPTLogin, syncCapabilities, UserConfig } from '../../lib/api';
+import type { ChatGPTLoginResponse, ChatGPTStatusResponse } from '../../types/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 
 // Brand colors keyed by provider id (hex without #). Kept in the frontend only.
@@ -43,6 +44,7 @@ interface ProvidersTabProps {
     onVerify: (provider: ApiProvider) => void;
     onAddProvider: (payload: CustomProviderPayload) => Promise<void>;
     onDeleteProvider: (providerId: string) => Promise<void>;
+    onChatGPTAuthChanged?: () => Promise<void> | void;
 }
 
 // ─── KeyStatusBadge ──────────────────────────────────────────────────────────
@@ -243,6 +245,206 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
     );
 }
 
+function ChatGPTProviderCard({
+    provider,
+    config,
+    onConfigChange,
+    onAuthChanged,
+    onVerify,
+    verifying,
+}: {
+    provider: ApiProvider;
+    config: UserConfig;
+    onConfigChange: (providerId: string, config: UserConfig) => void;
+    onAuthChanged?: () => Promise<void> | void;
+    onVerify: (provider: ApiProvider) => void;
+    verifying: boolean;
+}): React.ReactElement {
+    const { t } = useI18n();
+    const [status, setStatus] = useState<ChatGPTStatusResponse | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [pendingLogin, setPendingLogin] = useState<ChatGPTLoginResponse | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    const refresh = async () => {
+        setLoading(true);
+        try {
+            const result = await fetchChatGPTStatus();
+            setStatus(result);
+            setError(result?.error ?? null);
+            if (result?.connected && config.enabled_models.length === 0) {
+                const defaults = provider.default_models.map(m => m.id);
+                if (defaults.length > 0) {
+                    onConfigChange(provider.id, { ...config, enabled_models: defaults });
+                }
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => { void refresh(); }, [provider.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Poll /chatgpt/status until connected, while device code is displayed
+    useEffect(() => {
+        if (!pendingLogin) return;
+        const timer = setInterval(async () => {
+            const result = await fetchChatGPTStatus();
+            if (result?.connected) {
+                setPendingLogin(null);
+                setStatus(result);
+                if (config.enabled_models.length === 0) {
+                    const defaults = provider.default_models.map(m => m.id);
+                    if (defaults.length > 0) onConfigChange(provider.id, { ...config, enabled_models: defaults });
+                }
+                await onAuthChanged?.();
+            }
+        }, 3000);
+        return () => clearInterval(timer);
+    }, [pendingLogin]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const handleSignIn = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const result = await startChatGPTLogin();
+            if (result.success) {
+                setPendingLogin(result);
+            } else {
+                setError(result.error ?? 'Failed to start login');
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDisconnect = async () => {
+        setLoading(true);
+        setError(null);
+        setPendingLogin(null);
+        try {
+            await logoutChatGPT();
+            await refresh();
+            await onAuthChanged?.();
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const statusKey = status?.status ?? 'not_logged_in';
+    const connected = status?.connected === true;
+    const allModels = provider.default_models || [];
+
+    return (
+        <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col h-full">
+            <div className="p-4 bg-neutral-50 dark:bg-zinc-900 flex justify-between items-center border-b-4 border-brutal-black gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                    <ProviderIcon provider={provider} />
+                    <div className="flex flex-col min-w-0">
+                        <span className="font-black uppercase text-xl tracking-wide truncate dark:text-white">{t('settings.providers.chatgpt.title')}</span>
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">{t('settings.providers.chatgpt.subtitle')}</span>
+                    </div>
+                </div>
+                <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 border-2 border-brutal-black ${connected ? 'bg-brutal-green text-brutal-black' : 'bg-white dark:bg-zinc-800 dark:text-white'}`}>
+                    {t(`settings.providers.chatgpt.status.${statusKey}` as any)}
+                </span>
+            </div>
+
+            <div className="p-6 flex flex-col gap-4 flex-1">
+                {pendingLogin && (
+                    <div className="space-y-3 p-3 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900">
+                        <p className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                            {t('settings.providers.chatgpt.awaitingAuth')}
+                        </p>
+                        <a
+                            href={pendingLogin.verify_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block text-xs font-mono underline text-blue-600 dark:text-blue-400 break-all"
+                        >
+                            {pendingLogin.verify_url}
+                        </a>
+                        <div className="flex flex-col gap-2">
+                            <span className="inline-flex w-fit max-w-full font-mono text-xl sm:text-2xl font-black tracking-[0.22em] border-4 border-brutal-black px-3 py-2 dark:text-white select-all whitespace-nowrap overflow-x-auto">
+                                {pendingLogin.user_code}
+                            </span>
+                            <span className="text-[10px] text-neutral-400 uppercase font-bold animate-pulse">
+                                {t('settings.providers.chatgpt.waiting')}
+                            </span>
+                        </div>
+                    </div>
+                )}
+
+                <div className="space-y-2">
+                    {error && (
+                        <p className="text-[11px] font-bold text-red-600">{error}</p>
+                    )}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                    {!connected && !pendingLogin && (
+                        <button
+                            onClick={handleSignIn}
+                            disabled={loading}
+                            className="px-3 py-2 text-xs font-black uppercase bg-brutal-black text-white border-2 border-brutal-black hover:bg-zinc-800 disabled:opacity-50"
+                        >
+                            {t('settings.providers.chatgpt.signIn')}
+                        </button>
+                    )}
+                    {pendingLogin && (
+                        <button
+                            onClick={() => setPendingLogin(null)}
+                            disabled={loading}
+                            className="px-3 py-2 text-xs font-black uppercase border-2 border-brutal-black text-neutral-500 hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-50"
+                        >
+                            Cancel
+                        </button>
+                    )}
+                    {connected && (
+                        <button
+                            onClick={handleDisconnect}
+                            disabled={loading}
+                            className="px-3 py-2 text-xs font-black uppercase border-2 border-brutal-black text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50"
+                        >
+                            {t('settings.providers.chatgpt.disconnect')}
+                        </button>
+                    )}
+                    <button
+                        onClick={refresh}
+                        disabled={loading}
+                        className="px-3 py-2 text-xs font-black uppercase border-2 border-brutal-black text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-50"
+                    >
+                        {loading ? t('common.loading') : t('common.refresh')}
+                    </button>
+                </div>
+
+                <div className="pt-2 border-t-2 border-neutral-200 dark:border-zinc-700 space-y-2">
+                    <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+                            {t('settings.providers.modelsTab')}
+                        </p>
+                        <button
+                            onClick={() => onVerify(provider)}
+                            disabled={verifying || !connected}
+                            className="text-xs bg-brutal-blue text-white px-3 py-1 font-black uppercase border-2 border-brutal-black hover:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none transition-all disabled:opacity-50"
+                        >
+                            {verifying ? t('settings.providers.fetching') : t('settings.providers.fetch')}
+                        </button>
+                    </div>
+                    <BrutalMultiSelect
+                        variant="list"
+                        value={config.enabled_models}
+                        onChange={(newVal) => onConfigChange(provider.id, { ...config, enabled_models: newVal })}
+                        options={allModels.map(m => ({ value: m.id, label: m.name || m.id }))}
+                        emptyMessage={t('settings.providers.noModelsFound')}
+                        dropdownClassName="max-h-48"
+                    />
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ─── ProvidersTab ─────────────────────────────────────────────────────────────
 
 export function ProvidersTab({
@@ -260,6 +462,7 @@ export function ProvidersTab({
     onVerify,
     onAddProvider,
     onDeleteProvider,
+    onChatGPTAuthChanged,
 }: ProvidersTabProps): React.ReactElement {
     const { t } = useI18n();
     const [showAddForm, setShowAddForm] = useState(false);
@@ -346,6 +549,20 @@ export function ProvidersTab({
                     const activeTab = activeTabs[provider.id] || 'credentials';
                     const conf = userConfigs[provider.id] || { enabled_models: [], custom_models: [] };
                     const isEnabled = conf.enabled_models.length > 0;
+
+                    if (provider.id === 'chatgpt') {
+                        return (
+                            <ChatGPTProviderCard
+                                key={provider.id}
+                                provider={provider}
+                                config={conf}
+                                onConfigChange={onConfigChange}
+                                onAuthChanged={onChatGPTAuthChanged}
+                                onVerify={onVerify}
+                                verifying={!!verifying[provider.id]}
+                            />
+                        );
+                    }
 
                     const allModels = [...(provider.default_models || [])];
 

@@ -136,6 +136,20 @@ export const en = {
       syncTooltip: 'Pull pricing, context windows, and capability flags from LiteLLM',
       syncDone: 'Synced {providers} providers, {models} models',
       syncFailed: 'Sync failed',
+      chatgpt: {
+        title: 'ChatGPT Subscription',
+        subtitle: 'Sign in with your ChatGPT account',
+        loadingStatus: 'Checking login status...',
+        signIn: 'Sign In',
+        disconnect: 'Disconnect',
+        awaitingAuth: 'Visit the URL below and enter the code to sign in:',
+        waiting: 'Waiting for authorization...',
+        status: {
+          connected: 'Connected',
+          not_logged_in: 'Not Signed In',
+          token_expired: 'Expired',
+        },
+      },
       addForm: {
         title: 'Add Custom Provider',
         id: 'Provider ID',

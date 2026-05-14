@@ -136,6 +136,20 @@ export const zhCN = {
       syncTooltip: '从 LiteLLM 拉取定价、上下文窗口和功能标志',
       syncDone: '已同步 {providers} 个提供商，{models} 个模型',
       syncFailed: '同步失败',
+      chatgpt: {
+        title: 'ChatGPT 订阅',
+        subtitle: '使用 ChatGPT 账号登录',
+        loadingStatus: '正在检查登录状态...',
+        signIn: '登录',
+        disconnect: '断开连接',
+        awaitingAuth: '请访问以下链接并输入验证码完成登录：',
+        waiting: '正在等待授权...',
+        status: {
+          connected: '已连接',
+          not_logged_in: '未登录',
+          token_expired: '已过期',
+        },
+      },
       addForm: {
         title: '添加自定义提供商',
         id: '提供商 ID',

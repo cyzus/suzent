@@ -401,6 +401,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                         await deleteCustomProvider(providerId);
                         setProviders(prev => prev.filter(p => p.id !== providerId));
                       }}
+                      onChatGPTAuthChanged={refreshBackendConfig}
                     />
                   )}
 

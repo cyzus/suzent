@@ -1,4 +1,4 @@
-import { ConfigOptions } from '../types/api';
+import { ChatGPTLoginResponse, ChatGPTStatusResponse, ConfigOptions } from '../types/api';
 
 // -----------------------------------------------------------------------------
 // Tauri Integration
@@ -335,6 +335,47 @@ export async function deleteCustomProvider(providerId: string): Promise<{ succes
 export async function syncCapabilities(): Promise<{ success: boolean; providers?: number; models?: number; error?: string }> {
   try {
     const res = await fetch(`${getApiBase()}/config/capabilities/sync`, { method: 'POST' });
+    return await res.json();
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+}
+
+// -----------------------------------------------------------------------------
+// ChatGPT Subscription
+// -----------------------------------------------------------------------------
+
+export async function fetchChatGPTStatus(): Promise<ChatGPTStatusResponse | null> {
+  try {
+    const res = await fetch(`${getApiBase()}/chatgpt/status`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    console.error('Error fetching ChatGPT status:', e);
+    return null;
+  }
+}
+
+export async function startChatGPTLogin(): Promise<ChatGPTLoginResponse> {
+  try {
+    const res = await fetch(`${getApiBase()}/chatgpt/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    return await res.json();
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+}
+
+export async function logoutChatGPT(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${getApiBase()}/chatgpt/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
     return await res.json();
   } catch (e) {
     return { success: false, error: String(e) };

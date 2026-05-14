@@ -98,6 +98,100 @@ def _create_ollama_model(model_name: str, _api_key: str, spec: ProviderSpec) -> 
     return OpenAIModel(model_name, provider=OllamaProvider(base_url=base_url))
 
 
+def _create_chatgpt_model(model_name: str, _api_key: str, spec: ProviderSpec) -> object:
+    import httpx
+    from suzent.core.providers.chatgpt_auth import (
+        chatgpt_api_base,
+        chatgpt_default_headers,
+        chatgpt_default_instructions,
+        create_authenticator,
+        get_account_id,
+        get_valid_access_token,
+    )
+    from pydantic_ai.models.openai import OpenAIResponsesModel
+    from pydantic_ai.providers.openai import OpenAIProvider
+    from openai import AsyncOpenAI
+
+    auth = create_authenticator()
+    token = get_valid_access_token(auth)
+    if not token:
+        raise RuntimeError(
+            "ChatGPT Subscription is not authenticated. "
+            "Open Settings → ChatGPT Subscription and sign in first."
+        )
+
+    _chatgpt_instructions = chatgpt_default_instructions()
+    # Params the ChatGPT Responses API does not accept
+    _unsupported_params = {
+        "max_output_tokens",
+        "top_logprobs",
+        "prompt_cache_key",
+        "prompt_cache_retention",
+    }
+
+    # The ChatGPT Responses API has several quirks vs standard OpenAI Responses API:
+    # - Requires exactly `accept: text/event-stream` (SDK merges application/json in)
+    # - Requires non-empty `instructions` and `store: false`
+    # - Only accepts `stream: true` (must always stream)
+    # - Does not accept max_output_tokens and other standard params
+    class _ChatGPTTransport(httpx.AsyncHTTPTransport):
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            import json as _json
+
+            try:
+                body = _json.loads(request.content)
+                for key in _unsupported_params:
+                    body.pop(key, None)
+                if not body.get("instructions"):
+                    body["instructions"] = _chatgpt_instructions
+                body["store"] = False
+                body["stream"] = True
+                new_content = _json.dumps(body).encode()
+                headers = dict(request.headers)
+                headers["accept"] = "text/event-stream"
+                headers["content-type"] = "application/json"
+                headers["content-length"] = str(len(new_content))
+                request = httpx.Request(
+                    request.method, request.url, headers=headers, content=new_content
+                )
+            except Exception:
+                pass
+            return await super().handle_async_request(request)
+
+    http_client = httpx.AsyncClient(transport=_ChatGPTTransport())
+    client = AsyncOpenAI(
+        api_key=token,
+        base_url=chatgpt_api_base(),
+        default_headers=chatgpt_default_headers(token, get_account_id(auth)),
+        http_client=http_client,
+    )
+
+    # Subclass to always use the streaming path — the ChatGPT API only accepts stream=true,
+    # so we collect the stream even for non-streaming agent calls.
+    from pydantic_ai.models import ModelMessage, ModelRequestParameters, ModelResponse
+    from pydantic_ai.settings import ModelSettings
+
+    class _ChatGPTResponsesModel(OpenAIResponsesModel):
+        async def request(
+            self,
+            messages: list[ModelMessage],
+            model_settings: ModelSettings | None,
+            model_request_parameters: ModelRequestParameters,
+        ) -> ModelResponse:
+            # Always use the stream path since ChatGPT API only accepts stream=true.
+            async with self.request_stream(
+                messages, model_settings, model_request_parameters
+            ) as streamed:
+                async for _ in streamed:
+                    pass
+                return streamed.get()
+
+    return _ChatGPTResponsesModel(
+        model_name,
+        provider=OpenAIProvider(openai_client=client),
+    )
+
+
 def _create_litellm_proxy_model(
     model_name: str, _api_key: str, spec: ProviderSpec
 ) -> object:
@@ -131,6 +225,7 @@ _API_TYPE_HANDLERS: dict[str, Any] = {
     "openrouter": _create_openrouter_model,
     "ollama": _create_ollama_model,
     "litellm_proxy": _create_litellm_proxy_model,
+    "chatgpt_subscription": _create_chatgpt_model,
 }
 
 
@@ -177,9 +272,9 @@ def create_pydantic_ai_model(model_id: str) -> object:
             f"for custom providers)."
         )
 
-    # Resolve API key (ollama / litellm_proxy may not require one)
+    # Resolve API key (ollama / litellm_proxy / chatgpt_subscription manage their own auth)
     api_key = resolve_api_key(prefix)
-    requires_key = spec.api_type not in ("ollama",)
+    requires_key = spec.api_type not in ("ollama", "chatgpt_subscription")
 
     if requires_key and not api_key:
         raise RuntimeError(

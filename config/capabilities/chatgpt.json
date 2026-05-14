@@ -1,0 +1,103 @@
+{
+  "models": {
+    "chatgpt/gpt-5.5": {
+      "mode": "chat",
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true
+    },
+    "chatgpt/gpt-5.4": {
+      "mode": "chat",
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true
+    },
+    "chatgpt/gpt-5.4-mini": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 64000,
+      "supports_vision": true,
+      "supports_function_calling": true
+    },
+    "chatgpt/gpt-5.3-codex": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true
+    },
+    "chatgpt/gpt-5.2": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 64000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true
+    },
+    "chatgpt/codex-auto-review": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 128000
+    },
+    "chatgpt/gpt-5.4-pro": {
+      "mode": "chat",
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true
+    },
+    "chatgpt/gpt-5.3-codex-spark": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true
+    },
+    "chatgpt/gpt-5.3-instant": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 64000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true
+    },
+    "chatgpt/gpt-5.3-chat-latest": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 64000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true
+    },
+    "chatgpt/gpt-5.2-codex": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true
+    },
+    "chatgpt/gpt-5.1-codex-max": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 128000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true
+    },
+    "chatgpt/gpt-5.1-codex-mini": {
+      "mode": "chat",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 64000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true
+    }
+  }
+}

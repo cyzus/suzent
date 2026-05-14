@@ -20,6 +20,19 @@
       ]
     },
     {
+      "id": "chatgpt",
+      "label": "ChatGPT Subscription",
+      "logo_url": "https://cdn.simpleicons.org/openai",
+      "api_type": "chatgpt_subscription",
+      "env_keys": [],
+      "fields": [],
+      "default_models": [
+        {"id": "chatgpt/gpt-5.5", "name": "GPT-5.5"},
+        {"id": "chatgpt/gpt-5.4-mini", "name": "GPT-5.4-Mini"},
+        {"id": "chatgpt/gpt-5.3-codex", "name": "gpt-5.3-codex"}
+      ]
+    },
+    {
       "id": "anthropic",
       "label": "Anthropic",
       "logo_url": "https://cdn.simpleicons.org/anthropic",

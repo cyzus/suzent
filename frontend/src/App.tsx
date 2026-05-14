@@ -31,7 +31,7 @@ import {
 } from './lib/layout';
 import { TitleBar } from './components/TitleBar';
 import { detectDesktopPlatform } from './lib/titleBarPlatform';
-import { useI18n, getInitialLocale, tForLocale } from './i18n';
+import { I18nProvider, useI18n, getInitialLocale, tForLocale } from './i18n';
 
 interface HeaderTitleProps {
   text?: string;
@@ -766,17 +766,19 @@ export default function App() {
   }, [backendReady]);
 
   return (
-    <ErrorBoundary>
-      <ChatProvider enabled={backendReady && !backendError}>
-        {!backendReady || backendError ? (
-          <BackendLoadingScreen error={backendError} />
-        ) : (
-          <PlanProvider>
-            <AppInner />
-          </PlanProvider>
-        )}
-      </ChatProvider>
-    </ErrorBoundary>
+    <I18nProvider>
+      <ErrorBoundary>
+        <ChatProvider enabled={backendReady && !backendError}>
+          {!backendReady || backendError ? (
+            <BackendLoadingScreen error={backendError} />
+          ) : (
+            <PlanProvider>
+              <AppInner />
+            </PlanProvider>
+          )}
+        </ChatProvider>
+      </ErrorBoundary>
+    </I18nProvider>
   );
 }
 

@@ -7,6 +7,7 @@ from suzent.core.providers.catalog import OPENAI_COMPAT_PROVIDERS
 from suzent.core.providers.generic import GenericLiteLLMProvider
 from suzent.core.providers.litellm_proxy import LiteLLMProxyProvider
 from suzent.core.providers.ollama import OllamaProvider
+from suzent.core.providers.chatgpt import ChatGPTProvider
 from suzent.core.providers.openai import OpenAIProvider
 from suzent.core.providers.openai_compat import OpenAICompatProvider
 
@@ -15,6 +16,7 @@ class ProviderFactory:
     # Providers with fully custom discovery logic.
     _registry: Dict[str, type] = {
         "openai": OpenAIProvider,
+        "chatgpt": ChatGPTProvider,
         "ollama": OllamaProvider,
         "litellm_proxy": LiteLLMProxyProvider,
     }
