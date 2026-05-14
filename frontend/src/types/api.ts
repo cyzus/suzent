@@ -126,5 +126,42 @@ export interface ConfigOptions {
   };
 }
 
+export type CodexSessionState =
+  | 'connected'
+  | 'not_installed'
+  | 'not_logged_in'
+  | 'api_key_login'
+  | 'error';
+
+export interface CodexSessionStatus {
+  status: CodexSessionState;
+  connected: boolean;
+  auth_mode?: 'chatgpt' | 'api_key' | 'access_token' | null;
+  executable?: string | null;
+  codex_home: string;
+  message: string;
+  recovery_hint?: string | null;
+  checked_at?: string | null;
+}
+
+export interface CodexConnectorConfig {
+  enabled: boolean;
+  codex_home?: string | null;
+  last_status?: string | null;
+  last_checked_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface CodexStatusResponse {
+  status: CodexSessionStatus;
+  config: CodexConnectorConfig;
+}
+
+export interface CodexCommandResponse {
+  success: boolean;
+  message: string;
+  status?: CodexSessionStatus | null;
+}
+
 // Note: Stream event types removed — the frontend now uses AG-UI protocol
 // via the useAGUI hook instead of manual SSE parsing.

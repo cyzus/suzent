@@ -136,6 +136,22 @@ export const zhCN = {
       syncTooltip: '从 LiteLLM 拉取定价、上下文窗口和功能标志',
       syncDone: '已同步 {providers} 个提供商，{models} 个模型',
       syncFailed: '同步失败',
+      codex: {
+        title: 'Codex 登录会话',
+        subtitle: 'ChatGPT 订阅接入',
+        loadingStatus: '正在检查 Codex 登录状态...',
+        home: 'CODEX_HOME：{path}',
+        connect: '连接',
+        deviceLogin: '设备码登录',
+        disconnect: '断开连接',
+        status: {
+          connected: '已连接',
+          not_installed: '未安装',
+          not_logged_in: '未登录',
+          api_key_login: 'API Key 登录',
+          error: '错误',
+        },
+      },
       addForm: {
         title: '添加自定义提供商',
         id: '提供商 ID',

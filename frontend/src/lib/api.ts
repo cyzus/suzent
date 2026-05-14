@@ -1,4 +1,4 @@
-import { ConfigOptions } from '../types/api';
+import { CodexCommandResponse, CodexStatusResponse, ConfigOptions } from '../types/api';
 
 // -----------------------------------------------------------------------------
 // Tauri Integration
@@ -339,6 +339,47 @@ export async function syncCapabilities(): Promise<{ success: boolean; providers?
   } catch (e) {
     return { success: false, error: String(e) };
   }
+}
+
+// -----------------------------------------------------------------------------
+// Codex Login Session
+// -----------------------------------------------------------------------------
+
+export async function fetchCodexStatus(): Promise<CodexStatusResponse | null> {
+  try {
+    const res = await fetch(`${getApiBase()}/codex/status`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    console.error('Error fetching Codex status:', e);
+    return null;
+  }
+}
+
+async function postCodexCommand(path: string): Promise<CodexCommandResponse> {
+  try {
+    const res = await fetch(`${getApiBase()}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    return data;
+  } catch (e) {
+    return { success: false, message: String(e), status: null };
+  }
+}
+
+export async function startCodexLogin(): Promise<CodexCommandResponse> {
+  return postCodexCommand('/codex/login');
+}
+
+export async function startCodexDeviceLogin(): Promise<CodexCommandResponse> {
+  return postCodexCommand('/codex/login/device');
+}
+
+export async function logoutCodex(): Promise<CodexCommandResponse> {
+  return postCodexCommand('/codex/logout');
 }
 
 // -----------------------------------------------------------------------------

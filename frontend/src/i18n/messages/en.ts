@@ -136,6 +136,22 @@ export const en = {
       syncTooltip: 'Pull pricing, context windows, and capability flags from LiteLLM',
       syncDone: 'Synced {providers} providers, {models} models',
       syncFailed: 'Sync failed',
+      codex: {
+        title: 'Codex Login Session',
+        subtitle: 'ChatGPT subscription access',
+        loadingStatus: 'Checking Codex login status...',
+        home: 'CODEX_HOME: {path}',
+        connect: 'Connect',
+        deviceLogin: 'Device Login',
+        disconnect: 'Disconnect',
+        status: {
+          connected: 'Connected',
+          not_installed: 'Not Installed',
+          not_logged_in: 'Not Logged In',
+          api_key_login: 'API Key Login',
+          error: 'Error',
+        },
+      },
       addForm: {
         title: 'Add Custom Provider',
         id: 'Provider ID',

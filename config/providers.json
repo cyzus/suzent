@@ -20,6 +20,17 @@
       ]
     },
     {
+      "id": "codex-subscription",
+      "label": "Codex Login Session",
+      "logo_url": "https://cdn.simpleicons.org/openai",
+      "api_type": "codex_subscription",
+      "env_keys": [],
+      "fields": [],
+      "default_models": [
+        {"id": "codex-subscription/gpt-5.5", "name": "Codex GPT-5.5 (ChatGPT Login)"}
+      ]
+    },
+    {
       "id": "anthropic",
       "label": "Anthropic",
       "logo_url": "https://cdn.simpleicons.org/anthropic",

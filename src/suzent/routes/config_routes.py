@@ -399,6 +399,21 @@ async def verify_provider(request: Request) -> JSONResponse:
         data = await request.json()
         config = data.get("config", {})
 
+        if provider_id == "codex-subscription":
+            from suzent.core.codex_session import get_codex_session_service
+            from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID
+
+            status = get_codex_session_service().get_status()
+            spec = PROVIDER_REGISTRY_BY_ID.get(provider_id)
+            models = spec.default_models if spec and status.connected else []
+            return JSONResponse(
+                {
+                    "success": status.connected and status.auth_mode == "chatgpt",
+                    "models": models,
+                    "message": status.message,
+                }
+            )
+
         try:
             provider = ProviderFactory.get_provider(provider_id, config)
         except ValueError:

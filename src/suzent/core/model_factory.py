@@ -177,6 +177,21 @@ def create_pydantic_ai_model(model_id: str) -> object:
             f"for custom providers)."
         )
 
+    if prefix == "codex-subscription":
+        from suzent.core.codex_session import get_codex_session_service
+
+        status = get_codex_session_service().get_status()
+        if not status.connected or status.auth_mode != "chatgpt":
+            raise RuntimeError(
+                "Codex Login Session requires an active ChatGPT sign-in. "
+                "Open Settings → Providers → Codex Login Session and connect with ChatGPT."
+            )
+        raise RuntimeError(
+            "Codex Login Session is connected, but Suzent cannot use it as a normal "
+            "pydantic-ai chat model yet. Use this connector for session management until "
+            "a Codex CLI or official SDK runtime bridge is added."
+        )
+
     # Resolve API key (ollama / litellm_proxy may not require one)
     api_key = resolve_api_key(prefix)
     requires_key = spec.api_type not in ("ollama",)

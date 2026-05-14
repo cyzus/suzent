@@ -41,6 +41,12 @@ from suzent.routes.chat_routes import (
     update_chat,
 )
 from suzent.routes.compact_routes import compact_chat
+from suzent.routes.codex_routes import (
+    get_codex_status,
+    logout_codex,
+    start_codex_device_login,
+    start_codex_login,
+)
 from suzent.routes.commands_routes import get_commands
 from suzent.routes.config_routes import (
     get_api_keys_status,
@@ -612,6 +618,10 @@ app = Starlette(
         Route("/plans", get_plans, methods=["GET"]),
         Route("/plan", get_plan, methods=["GET"]),
         Route("/config", get_config, methods=["GET"]),
+        Route("/codex/status", get_codex_status, methods=["GET"]),
+        Route("/codex/login", start_codex_login, methods=["POST"]),
+        Route("/codex/login/device", start_codex_device_login, methods=["POST"]),
+        Route("/codex/logout", logout_codex, methods=["POST"]),
         Route("/preferences", save_preferences, methods=["POST"]),
         Route("/config/sandbox-global", save_global_sandbox_config, methods=["POST"]),
         Route("/config/api-keys", get_api_keys_status, methods=["GET"]),

@@ -59,9 +59,19 @@ def get_enabled_models_from_db() -> List[str]:
     from suzent.config import CONFIG
     from suzent.database import get_database
 
+    def codex_subscription_connected() -> bool:
+        try:
+            from suzent.core.codex_session import get_codex_session_service
+
+            status = get_codex_session_service().get_status()
+            return status.connected and status.auth_mode == "chatgpt"
+        except Exception:
+            return False
+
     db = get_database()
     api_keys = db.get_api_keys() or {}
     provider_config_blob = api_keys.get("_PROVIDER_CONFIG_")
+    codex_connected = codex_subscription_connected()
 
     custom_config = {}
     if provider_config_blob:
@@ -75,7 +85,12 @@ def get_enabled_models_from_db() -> List[str]:
             return CONFIG.model_options
         from suzent.core.providers.catalog import PROVIDER_REGISTRY
 
-        defaults = [m["id"] for p in PROVIDER_REGISTRY for m in p.default_models]
+        defaults = [
+            m["id"]
+            for p in PROVIDER_REGISTRY
+            if p.id != "codex-subscription" or codex_connected
+            for m in p.default_models
+        ]
         return sorted(set(defaults))
 
     from suzent.core.providers.catalog import PROVIDER_REGISTRY
@@ -83,6 +98,7 @@ def get_enabled_models_from_db() -> List[str]:
     all_models = [
         model_id
         for p in PROVIDER_REGISTRY
+        if p.id != "codex-subscription" or codex_connected
         for model_id in custom_config.get(p.id, {}).get("enabled_models", [])
     ]
 

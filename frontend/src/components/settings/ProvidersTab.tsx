@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { useI18n } from '../../i18n';
-import { ApiField, ApiProvider, CustomProviderPayload, syncCapabilities, UserConfig } from '../../lib/api';
+import { ApiField, ApiProvider, CustomProviderPayload, fetchCodexStatus, logoutCodex, startCodexDeviceLogin, startCodexLogin, syncCapabilities, UserConfig } from '../../lib/api';
+import type { CodexSessionStatus } from '../../types/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 
 // Brand colors keyed by provider id (hex without #). Kept in the frontend only.
@@ -43,6 +44,7 @@ interface ProvidersTabProps {
     onVerify: (provider: ApiProvider) => void;
     onAddProvider: (payload: CustomProviderPayload) => Promise<void>;
     onDeleteProvider: (providerId: string) => Promise<void>;
+    onCodexChanged?: () => Promise<void> | void;
 }
 
 // ─── KeyStatusBadge ──────────────────────────────────────────────────────────
@@ -243,6 +245,151 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
     );
 }
 
+function CodexProviderCard({
+    provider,
+    config,
+    onConfigChange,
+    onCodexChanged,
+}: {
+    provider: ApiProvider;
+    config: UserConfig;
+    onConfigChange: (providerId: string, config: UserConfig) => void;
+    onCodexChanged?: () => Promise<void> | void;
+}): React.ReactElement {
+    const { t } = useI18n();
+    const [status, setStatus] = useState<CodexSessionStatus | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+    const refresh = async () => {
+        setLoading(true);
+        try {
+            const result = await fetchCodexStatus();
+            if (result?.status) {
+                setStatus(result.status);
+                if (result.status.connected && config.enabled_models.length === 0) {
+                    const defaults = provider.default_models.map(model => model.id);
+                    if (defaults.length > 0) {
+                        onConfigChange(provider.id, { ...config, enabled_models: defaults });
+                    }
+                }
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        void refresh();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [provider.id]);
+
+    const runAction = async (action: 'login' | 'device' | 'logout') => {
+        setLoading(true);
+        setActionMessage(null);
+        try {
+            const result = action === 'login'
+                ? await startCodexLogin()
+                : action === 'device'
+                    ? await startCodexDeviceLogin()
+                    : await logoutCodex();
+            setActionMessage(result.message);
+            if (result.status) setStatus(result.status);
+            await refresh();
+            await onCodexChanged?.();
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const statusKey = status?.status ?? 'not_logged_in';
+    const connected = status?.connected === true;
+    const allModels = provider.default_models || [];
+
+    return (
+        <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col h-full">
+            <div className="p-4 bg-neutral-50 dark:bg-zinc-900 flex justify-between items-center border-b-4 border-brutal-black gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                    <ProviderIcon provider={provider} />
+                    <div className="flex flex-col min-w-0">
+                        <span className="font-black uppercase text-xl tracking-wide truncate dark:text-white">{t('settings.providers.codex.title')}</span>
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">{t('settings.providers.codex.subtitle')}</span>
+                    </div>
+                </div>
+                <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 border-2 border-brutal-black ${connected ? 'bg-brutal-green text-brutal-black' : 'bg-white dark:bg-zinc-800 dark:text-white'}`}>
+                    {t(`settings.providers.codex.status.${statusKey}` as any)}
+                </span>
+            </div>
+
+            <div className="p-6 flex flex-col gap-4 flex-1">
+                <div className="space-y-2">
+                    <p className="text-xs font-bold leading-relaxed text-neutral-700 dark:text-neutral-300">
+                        {status?.message || t('settings.providers.codex.loadingStatus')}
+                    </p>
+                    {status?.recovery_hint && (
+                        <p className="text-[11px] font-medium leading-relaxed text-neutral-500 dark:text-neutral-400">
+                            {status.recovery_hint}
+                        </p>
+                    )}
+                    {actionMessage && (
+                        <p className="text-[11px] font-bold leading-relaxed text-brutal-black dark:text-white">
+                            {actionMessage}
+                        </p>
+                    )}
+                    <div className="text-[10px] font-mono text-neutral-500 dark:text-neutral-400 truncate">
+                        {t('settings.providers.codex.home', { path: status?.codex_home || '~/.codex' })}
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        onClick={() => runAction('login')}
+                        disabled={loading}
+                        className="px-3 py-2 text-xs font-black uppercase bg-brutal-black text-white border-2 border-brutal-black hover:bg-zinc-800 disabled:opacity-50"
+                    >
+                        {t('settings.providers.codex.connect')}
+                    </button>
+                    <button
+                        onClick={() => runAction('device')}
+                        disabled={loading}
+                        className="px-3 py-2 text-xs font-black uppercase border-2 border-brutal-black text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-50"
+                    >
+                        {t('settings.providers.codex.deviceLogin')}
+                    </button>
+                    <button
+                        onClick={refresh}
+                        disabled={loading}
+                        className="px-3 py-2 text-xs font-black uppercase border-2 border-brutal-black text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-50"
+                    >
+                        {loading ? t('common.loading') : t('common.refresh')}
+                    </button>
+                    <button
+                        onClick={() => runAction('logout')}
+                        disabled={loading}
+                        className="px-3 py-2 text-xs font-black uppercase border-2 border-brutal-black text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50"
+                    >
+                        {t('settings.providers.codex.disconnect')}
+                    </button>
+                </div>
+
+                <div className="pt-2 border-t-2 border-neutral-200 dark:border-zinc-700 space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+                        {t('settings.providers.modelsTab')}
+                    </p>
+                    <BrutalMultiSelect
+                        variant="list"
+                        value={config.enabled_models}
+                        onChange={(newVal) => onConfigChange(provider.id, { ...config, enabled_models: newVal })}
+                        options={allModels.map(m => ({ value: m.id, label: m.name || m.id }))}
+                        emptyMessage={t('settings.providers.noModelsFound')}
+                        dropdownClassName="max-h-48"
+                    />
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ─── ProvidersTab ─────────────────────────────────────────────────────────────
 
 export function ProvidersTab({
@@ -260,6 +407,7 @@ export function ProvidersTab({
     onVerify,
     onAddProvider,
     onDeleteProvider,
+    onCodexChanged,
 }: ProvidersTabProps): React.ReactElement {
     const { t } = useI18n();
     const [showAddForm, setShowAddForm] = useState(false);
@@ -346,6 +494,18 @@ export function ProvidersTab({
                     const activeTab = activeTabs[provider.id] || 'credentials';
                     const conf = userConfigs[provider.id] || { enabled_models: [], custom_models: [] };
                     const isEnabled = conf.enabled_models.length > 0;
+
+                    if (provider.id === 'codex-subscription') {
+                        return (
+                            <CodexProviderCard
+                                key={provider.id}
+                                provider={provider}
+                                config={conf}
+                                onConfigChange={onConfigChange}
+                                onCodexChanged={onCodexChanged}
+                            />
+                        );
+                    }
 
                     const allModels = [...(provider.default_models || [])];
 

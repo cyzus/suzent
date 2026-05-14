@@ -226,6 +226,19 @@ class ApiKeyModel(SQLModel, table=True):
     updated_at: datetime = Field(serialization_alias="updatedAt")
 
 
+class CodexConnectorConfigModel(SQLModel, table=True):
+    """Non-secret configuration for the Codex subscription connector."""
+
+    __tablename__ = "codex_connector_config"
+
+    id: int = Field(default=1, primary_key=True)
+    enabled: bool = Field(default=False)
+    codex_home: Optional[str] = None
+    last_status: Optional[str] = None
+    last_checked_at: Optional[datetime] = None
+    updated_at: datetime = Field(serialization_alias="updatedAt")
+
+
 class CostLedgerModel(SQLModel, table=True):
     """Global cost ledger — every LLM call is recorded here.
 
@@ -1988,6 +2001,51 @@ class ChatDatabase:
             if not item:
                 return False
             session.delete(item)
+            session.commit()
+            return True
+
+    # -------------------------------------------------------------------------
+    # Codex Connector Operations
+    # -------------------------------------------------------------------------
+
+    def get_codex_connector_config(self) -> Optional[CodexConnectorConfigModel]:
+        """Get non-secret Codex connector preferences."""
+        with self._session() as session:
+            return session.get(CodexConnectorConfigModel, 1)
+
+    def save_codex_connector_config(
+        self,
+        *,
+        enabled: bool | None = None,
+        codex_home: str | None = None,
+        last_status: str | None = None,
+        last_checked_at: datetime | None = None,
+    ) -> bool:
+        """Save non-secret Codex connector preferences."""
+        now = datetime.now()
+        with self._session() as session:
+            config = session.get(CodexConnectorConfigModel, 1)
+            if config is None:
+                config = CodexConnectorConfigModel(
+                    id=1,
+                    enabled=enabled if enabled is not None else False,
+                    codex_home=codex_home,
+                    last_status=last_status,
+                    last_checked_at=last_checked_at,
+                    updated_at=now,
+                )
+            else:
+                if enabled is not None:
+                    config.enabled = enabled
+                if codex_home is not None:
+                    config.codex_home = codex_home
+                if last_status is not None:
+                    config.last_status = last_status
+                if last_checked_at is not None:
+                    config.last_checked_at = last_checked_at
+                config.updated_at = now
+
+            session.add(config)
             session.commit()
             return True
 
