@@ -207,7 +207,7 @@ function Get-UiBinary {
         if ($tmp -and (Test-Path $tmp)) {
             Remove-Item -Force $tmp -ErrorAction SilentlyContinue
         }
-        Write-Warn "UI binary download failed: $_"
+        Write-Warn ("UI binary download failed: " + $_.ToString())
         Write-Warn "Retry later, or set SUZENT_DEV_SETUP=1 for developer dependencies."
     }
 }
