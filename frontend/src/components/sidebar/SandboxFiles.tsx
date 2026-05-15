@@ -351,9 +351,8 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                             if (!isBinaryServedFile(filename)) fetchFileContent(selectedFile);
                         }}
                         title={t('sandbox.refresh')}
-                        className={loadingFile ? 'animate-spin' : ''}
                     >
-                        <ArrowPathIcon className="w-4 h-4 stroke-2" />
+                        <ArrowPathIcon className={`w-4 h-4 stroke-2 ${loadingFile ? 'animate-spin' : ''}`} />
                     </BrutalButton>
                     {onMaximize && (
                         <BrutalButton
@@ -401,11 +400,10 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
             <div className="bg-white dark:bg-zinc-800 p-2 border-b-3 border-brutal-black flex items-center gap-2 shrink-0">
                 <BrutalButton
                     onClick={handleRefresh}
-                    className={isRootLoading ? 'animate-spin' : ''}
                     title={t('sandbox.refresh')}
                     size="icon"
                 >
-                    <ArrowPathIcon className="w-4 h-4 stroke-2" />
+                    <ArrowPathIcon className={`w-4 h-4 stroke-2 ${isRootLoading ? 'animate-spin' : ''}`} />
                 </BrutalButton>
                 <BrutalButton onClick={openRootInExplorer} title={t('sandbox.openInExplorer')} size="icon">
                     <ArrowTopRightOnSquareIcon className="w-4 h-4 stroke-2" />
