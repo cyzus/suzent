@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
 import { getApiBase, getSandboxParams } from '../lib/api';
@@ -34,6 +34,9 @@ import type {
   SubAgentFailedPayload,
 } from '../lib/streamEvents';
 
+const INITIAL_VISIBLE_MESSAGES = 80;
+const LOAD_MORE_MESSAGES = 60;
+const LOAD_MORE_SCROLL_THRESHOLD_PX = 96;
 
 // ── AGUIPart[] → Store Message conversion ────────────────────────────
 function escapeHtmlForStore(unsafe: string): string {
@@ -244,6 +247,7 @@ const NoticeMessage: React.FC<{ message: Message }> = ({ message }) => {
 const MessageList: React.FC<{
   messages: Message[];
   streamingForCurrentChat: boolean;
+  messageIndexOffset?: number;
   chatId?: string;
   onImageClick?: (src: string) => void;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
@@ -256,7 +260,7 @@ const MessageList: React.FC<{
   onStopSubAgent?: (taskId: string) => void;
   onForceWebContext?: (contextId: string) => void;
   onRetry?: () => void;
-}> = ({ messages, streamingForCurrentChat, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext, onRetry }) => {
+}> = ({ messages, streamingForCurrentChat, messageIndexOffset = 0, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext, onRetry }) => {
   const { skipIndices, groupRenders, stepSummaryByMessageIndex } = useMemo(
     () => buildMessageRenderPlan(messages),
     [messages],
@@ -275,6 +279,7 @@ const MessageList: React.FC<{
       {messages.map((m, idx) => {
         if (skipIndices.has(idx)) return null; // Part of a group, rendered by representative
 
+        const globalIdx = messageIndexOffset + idx;
         const isUser = m.role === 'user';
         const isNotice = m.role === 'notice';
         const isLastMessage = idx === messages.length - 1;
@@ -289,11 +294,11 @@ const MessageList: React.FC<{
             timestamp: m.timestamp,
           };
           return (
-            <div key={idx} className="chat-msg-row w-full flex flex-col group/message">
+            <div key={globalIdx} className="chat-msg-row w-full flex flex-col group/message">
               <div className="flex justify-start w-full">
                 <AssistantMessage
                   message={groupedMessage}
-                  messageIndex={idx}
+                  messageIndex={globalIdx}
                   isStreaming={false}
                   isLastMessage={false}
                   onFileClick={onFileClick}
@@ -317,7 +322,7 @@ const MessageList: React.FC<{
         // Canvas action message — lightweight dashed pill
         if (m.role === 'canvas_action') {
           return (
-            <div key={idx} className="chat-msg-row w-full flex justify-start pl-2">
+            <div key={globalIdx} className="chat-msg-row w-full flex justify-start pl-2">
               <div className="border-2 border-dashed border-brutal-black px-4 py-2 text-sm font-mono text-neutral-500 dark:text-neutral-400 italic bg-white dark:bg-zinc-800">
                 {m.content}
               </div>
@@ -329,7 +334,7 @@ const MessageList: React.FC<{
         // showing what kicked off this agent turn.
         if (m.role === 'system_triggered') {
           return (
-            <div key={idx} className="chat-msg-row w-full flex justify-start">
+            <div key={globalIdx} className="chat-msg-row w-full flex justify-start">
               <div className="inline-flex items-start gap-2 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2 text-xs font-mono shadow-brutal-sm max-w-3xl">
                 <span className="text-brutal-blue mt-[1px]">⏱</span>
                 <span className="whitespace-pre-wrap text-brutal-black dark:text-neutral-200">
@@ -342,21 +347,21 @@ const MessageList: React.FC<{
 
         if (isNotice) {
           return (
-            <div key={idx} className="chat-msg-row w-full flex justify-start">
+            <div key={globalIdx} className="chat-msg-row w-full flex justify-start">
               <NoticeMessage message={m} />
             </div>
           );
         }
 
         return (
-          <div key={idx} className="chat-msg-row w-full flex flex-col group/message">
+          <div key={globalIdx} className="chat-msg-row w-full flex flex-col group/message">
             <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} w-full`}>
               {isUser ? (
                 <UserMessage message={m} chatId={chatId} onImageClick={onImageClick} onFileClick={onFileClick} />
               ) : (
                 <AssistantMessage
                   message={m}
-                  messageIndex={idx}
+                  messageIndex={globalIdx}
                   isStreaming={streamingForCurrentChat}
                   isLastMessage={isLastMessage}
                   onFileClick={onFileClick}
@@ -456,6 +461,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [viewingSubAgentTaskId, setViewingSubAgentTaskId] = useState<string | null>(null);
   const [forcedWebContextId, setForcedWebContextId] = useState<string | null>(null);
   const [fileMentions, setFileMentions] = useState<FileMentionSelection[]>([]);
+  const [visibleMessageCount, setVisibleMessageCount] = useState(INITIAL_VISIBLE_MESSAGES);
+  const prependScrollSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
   const { onSpawned: onSubAgentSpawned, onCompleted: onSubAgentCompleted, onFailed: onSubAgentFailed } = useSubAgentStatus();
   const { setStatus: setStatusBar } = useStatusStore();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -467,6 +474,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const activeChatIdRef = useRef<string | null>(currentChatId);
   useEffect(() => {
     activeChatIdRef.current = currentChatId;
+    setVisibleMessageCount(INITIAL_VISIBLE_MESSAGES);
+    prependScrollSnapshotRef.current = null;
     clearActivatedTools();
     if (!currentChatId) {
       clearLastKnownUsage();
@@ -784,6 +793,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Safe values
   const safeMessages = messages || [];
+  const visibleMessageStartIndex = Math.max(0, safeMessages.length - visibleMessageCount);
+  const visibleMessages = useMemo(
+    () => safeMessages.slice(visibleMessageStartIndex),
+    [safeMessages, visibleMessageStartIndex],
+  );
+  const hasHiddenOlderMessages = visibleMessageStartIndex > 0;
   const _prefs = backendConfig?.userPreferences;
   const _base = config || { model: '', agent: '', tools: [] as string[] };
   // Platform chats (cron, social) have no model/agent — fall back to user prefs.
@@ -892,6 +907,45 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const { scrollContainerRef, bottomRef, showScrollButton, scrollToBottom } = useAutoScroll(
     [safeMessages, isStreaming, isRightSidebarOpen, isPlanExpanded, canvas?.hasSurfaces]
   );
+
+  const loadOlderVisibleMessages = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el || !hasHiddenOlderMessages) return;
+
+    prependScrollSnapshotRef.current = {
+      scrollHeight: el.scrollHeight,
+      scrollTop: el.scrollTop,
+    };
+    setVisibleMessageCount(prev => Math.min(safeMessages.length, prev + LOAD_MORE_MESSAGES));
+  }, [hasHiddenOlderMessages, safeMessages.length, scrollContainerRef]);
+
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el || !hasHiddenOlderMessages) return;
+
+    const maybeLoadOlder = () => {
+      if (el.scrollTop <= LOAD_MORE_SCROLL_THRESHOLD_PX) {
+        loadOlderVisibleMessages();
+      }
+    };
+
+    el.addEventListener('scroll', maybeLoadOlder, { passive: true });
+
+    const raf = requestAnimationFrame(maybeLoadOlder);
+    return () => {
+      el.removeEventListener('scroll', maybeLoadOlder);
+      cancelAnimationFrame(raf);
+    };
+  }, [hasHiddenOlderMessages, loadOlderVisibleMessages, scrollContainerRef]);
+
+  useLayoutEffect(() => {
+    const snapshot = prependScrollSnapshotRef.current;
+    const el = scrollContainerRef.current;
+    if (!snapshot || !el) return;
+
+    el.scrollTop = el.scrollHeight - snapshot.scrollHeight + snapshot.scrollTop;
+    prependScrollSnapshotRef.current = null;
+  }, [visibleMessages.length, scrollContainerRef]);
 
   // Refresh plan when chat changes
   useEffect(() => {
@@ -1288,8 +1342,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               <>
                 {safeMessages.length > 0 && (
                   <MessageListMemo
-                    messages={safeMessages}
+                    messages={visibleMessages}
                     streamingForCurrentChat={false}
+                    messageIndexOffset={visibleMessageStartIndex}
                     chatId={currentChatId ?? undefined}
                     onImageClick={setViewingImage}
                     onFileClick={handleFileClick}
