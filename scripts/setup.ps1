@@ -156,7 +156,7 @@ if ($IsUpdate) {
     }
 
     git fetch origin
-    git checkout $SuzentBranch 2>$null
+    git checkout $SuzentBranch 2>&1 | Out-Null
     git pull origin $SuzentBranch
     $sha = git rev-parse --short HEAD
     Write-Ok "Repository updated to $sha"
