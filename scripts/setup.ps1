@@ -21,10 +21,10 @@ $RepoUrl      = "https://github.com/cyzus/suzent.git"
 $MinNodeMajor = 20
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-function Write-Ok   { param($m) Write-Host "[OK] $m" -ForegroundColor Green }
-function Write-Info { param($m) Write-Host " [*] $m" -ForegroundColor Cyan }
-function Write-Warn { param($m) Write-Host " [!] $m" -ForegroundColor Yellow }
-function Write-Fail { param($m) Write-Host "[ERR] $m" -ForegroundColor Red; exit 1 }
+function Write-Ok   { param($m) Write-Host ("[OK] " + $m) -ForegroundColor Green }
+function Write-Info { param($m) Write-Host (" [*] " + $m) -ForegroundColor Cyan }
+function Write-Warn { param($m) Write-Host (" [!] " + $m) -ForegroundColor Yellow }
+function Write-Fail { param($m) Write-Host ("[ERR] " + $m) -ForegroundColor Red; exit 1 }
 
 function Refresh-Path {
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" +
