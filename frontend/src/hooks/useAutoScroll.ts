@@ -1,14 +1,15 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 
 interface UseAutoScrollOptions {
   tolerance?: number;
+  resetKey?: unknown;
 }
 
 export function useAutoScroll(
   dependencies: any[],
   options: UseAutoScrollOptions = {}
 ) {
-  const { tolerance = 50 } = options;
+  const { tolerance = 50, resetKey } = options;
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -108,9 +109,28 @@ export function useAutoScroll(
     }, 150); // Give enough time for 'auto' or basic scrolling to settle
   }, [isAtBottom]);
 
+  const previousResetKeyRef = useRef(resetKey);
+  const skipNextSmoothScrollRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (previousResetKeyRef.current === resetKey) return;
+
+    previousResetKeyRef.current = resetKey;
+    skipNextSmoothScrollRef.current = true;
+    autoScrollEnabledRef.current = true;
+    setShowScrollButton(false);
+    performAutoScroll('auto');
+  }, [resetKey, performAutoScroll]);
+
   // Auto-scroll when dependencies change
   useEffect(() => {
     if (autoScrollEnabledRef.current) {
+      if (skipNextSmoothScrollRef.current) {
+        skipNextSmoothScrollRef.current = false;
+        performAutoScroll('auto');
+        return;
+      }
+
       performAutoScroll('smooth');
 
       // Re-apply after layout transitions (e.g. sidebar width animation)

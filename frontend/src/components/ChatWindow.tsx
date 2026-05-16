@@ -905,7 +905,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Auto-scroll
   const { scrollContainerRef, bottomRef, showScrollButton, scrollToBottom } = useAutoScroll(
-    [safeMessages, isStreaming, isRightSidebarOpen, isPlanExpanded, canvas?.hasSurfaces]
+    [safeMessages, isStreaming],
+    { resetKey: `${currentChatId ?? 'new'}:${safeMessages.length > 0}` },
   );
 
   const loadOlderVisibleMessages = useCallback(() => {
@@ -956,6 +957,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // fires stream_started for this chat. Works for all chat types (heartbeat, cron,
   // social, and regular chats receiving a subagent wakeup).
   const currentChatSummary = chats.find(c => c.id === currentChatId);
+  const isProbablyLoadingChatMessages =
+    !!currentChatId && safeMessages.length === 0 && (currentChatSummary?.messageCount ?? 0) > 0;
   const isBackgroundChat = !!currentChatSummary?.platform || !!currentChatSummary?.heartbeatEnabled;
   // Keep useEventBus subscribed so the singleton EventSource stays open.
   useEventBus();
@@ -1314,7 +1317,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               : "h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-6 scrollbar-thin bg-neutral-50 dark:bg-zinc-900"
             }
           >
-            {safeMessages.length === 0 && !showTransientAssistant ? (
+            {isProbablyLoadingChatMessages ? (
+              <LoadingIndicator />
+            ) : safeMessages.length === 0 && !showTransientAssistant ? (
               <NewChatView
                 input={input}
                 setInput={setInput}
