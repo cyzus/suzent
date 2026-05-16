@@ -54,6 +54,13 @@ const FILE_MENTION_PATTERN = /(^|\s)(@(?:"[^"]+"|\[[^\]]+\]|\/[^\s@]+))/g;
 const INPUT_TEXT_METRIC_CLASS =
     'text-lg leading-7 tracking-normal font-sans font-medium [tab-size:4]';
 
+function isImeCompositionKeyEvent(
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
+    isComposingRef: React.RefObject<boolean>
+): boolean {
+    return isComposingRef.current || event.nativeEvent.isComposing || event.keyCode === 229;
+}
+
 function getFileExtensionLabel(filename: string): string {
     const ext = filename.split('.').pop()?.trim().toUpperCase();
     if (!ext || ext === filename.toUpperCase()) return 'FILE';
@@ -166,6 +173,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     const [mentionRange, setMentionRange] = React.useState<{ start: number; end: number; query: string } | null>(null);
     const [isMentionLoading, setIsMentionLoading] = React.useState(false);
     const highlightRef = React.useRef<HTMLPreElement | null>(null);
+    const isComposingRef = React.useRef(false);
     const shouldHighlightFileMentions = hasFileMentionHighlight(input);
     const suggestions = useSlashCommands(input);
     React.useEffect(() => { setSelectedSuggestion(0); }, [suggestions.length]);
@@ -449,6 +457,14 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         setInput(e.target.value);
                         updateMentionRange(e.target.value, e.target.selectionStart);
                     }}
+                    onCompositionStart={() => {
+                        isComposingRef.current = true;
+                    }}
+                    onCompositionEnd={() => {
+                        window.setTimeout(() => {
+                            isComposingRef.current = false;
+                        }, 0);
+                    }}
                     onClick={(e) => updateMentionRange(input, e.currentTarget.selectionStart)}
                     onKeyUp={(e) => {
                         if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
@@ -456,6 +472,10 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         }
                     }}
                     onKeyDown={(e) => {
+                    if (isImeCompositionKeyEvent(e, isComposingRef)) {
+                        return;
+                    }
+
                     if (mentionRange && mentionSuggestions.length > 0) {
                         if (e.key === 'ArrowUp') {
                             e.preventDefault();
