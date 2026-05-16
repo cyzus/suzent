@@ -166,6 +166,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     const [mentionRange, setMentionRange] = React.useState<{ start: number; end: number; query: string } | null>(null);
     const [isMentionLoading, setIsMentionLoading] = React.useState(false);
     const highlightRef = React.useRef<HTMLPreElement | null>(null);
+    const isComposingRef = React.useRef(false);
     const shouldHighlightFileMentions = hasFileMentionHighlight(input);
     const suggestions = useSlashCommands(input);
     React.useEffect(() => { setSelectedSuggestion(0); }, [suggestions.length]);
@@ -449,6 +450,14 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         setInput(e.target.value);
                         updateMentionRange(e.target.value, e.target.selectionStart);
                     }}
+                    onCompositionStart={() => {
+                        isComposingRef.current = true;
+                    }}
+                    onCompositionEnd={() => {
+                        window.setTimeout(() => {
+                            isComposingRef.current = false;
+                        }, 0);
+                    }}
                     onClick={(e) => updateMentionRange(input, e.currentTarget.selectionStart)}
                     onKeyUp={(e) => {
                         if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
@@ -456,6 +465,12 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         }
                     }}
                     onKeyDown={(e) => {
+                    // Always ignore Enter if IME composition is active to allow selecting characters
+                    // Including e.keyCode === 229 for broad cross-browser compatibility
+                    if (e.key === 'Enter' && (isComposingRef.current || e.nativeEvent.isComposing || e.keyCode === 229)) {
+                        return;
+                    }
+
                     if (mentionRange && mentionSuggestions.length > 0) {
                         if (e.key === 'ArrowUp') {
                             e.preventDefault();
@@ -526,10 +541,6 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                     }
                     
                     if (e.key === 'Enter' && !e.shiftKey) {
-                        // e.nativeEvent.isComposing prevents sending when pressing Enter in an IME (like Chinese/Japanese input method)
-                        if (e.nativeEvent.isComposing) {
-                            return;
-                        }
                         e.preventDefault();
                         if (configReady && input.trim()) {
                             send();
