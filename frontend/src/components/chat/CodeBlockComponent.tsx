@@ -25,66 +25,30 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
 
   const safeLang = (lang || 'text').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
 
-  if (safeLang === 'text') {
-    return (
-      <div className="my-2 group/code relative border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-800 shadow-brutal-sm p-4">
-        <div className="absolute top-2 right-2 opacity-0 group-hover/code:opacity-100 transition-opacity z-10">
-          <button
-            onClick={handleCopy}
-            className="w-8 h-8 flex items-center justify-center bg-white dark:bg-zinc-700 text-brutal-black dark:text-white border-2 border-brutal-black hover:bg-brutal-yellow dark:hover:bg-brutal-yellow/80 transition-colors shadow-sm"
-            title={t('codeBlock.copyText')}
-          >
-            {copied ? (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            ) : (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <rect x="8" y="8" width="12" height="12" rx="2" ry="2" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
-              </svg>
-            )}
-          </button>
-        </div>
-        <div className="bg-transparent overflow-hidden">
-          <pre className="max-w-full text-xs text-brutal-code-text dark:text-neutral-300 p-0 font-sans leading-relaxed overflow-x-auto whitespace-pre-wrap break-all !bg-transparent">
-            <code className={`language-${safeLang}`}>
-              {content}
-              {isStreaming && <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1"></span>}
-            </code>
-          </pre>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="my-4 font-mono text-sm border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white dark:bg-zinc-800 group/code relative">
+    <div className="my-3 font-mono text-sm border-2 border-brutal-black dark:border-zinc-500 bg-white dark:bg-zinc-900 group/code relative overflow-hidden">
       {/* Header Bar */}
-      <div className="flex items-center justify-between px-3 py-2 bg-neutral-900 dark:bg-zinc-700 border-b-3 border-brutal-black select-none overflow-hidden">
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div className="flex items-center justify-center w-6 h-6 bg-white border-2 border-white text-brutal-black font-bold text-xs shrink-0">
-            <span>{'{}'}</span>
-          </div>
-          <span className="text-white font-bold uppercase tracking-wider text-xs truncate">
+      <div className="flex items-center justify-between gap-3 px-3 py-1.5 bg-brutal-black dark:bg-zinc-800 border-b-2 border-brutal-black dark:border-zinc-500 select-none overflow-hidden">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <span className="text-white dark:text-brutal-yellow font-black uppercase text-[10px] truncate">
             {lang || t('codeBlock.code')}
           </span>
-          <span className="text-neutral-400 text-[10px] font-bold shrink-0">
+          <span className="text-white/55 dark:text-neutral-400 text-[10px] font-bold shrink-0">
             {t('codeBlock.lines', { count: lineCount })}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 opacity-0 group-hover/code:opacity-100 focus-within:opacity-100 transition-opacity">
           <button
             onClick={handleCopy}
-            className="w-8 h-8 flex items-center justify-center bg-neutral-900 dark:bg-zinc-700 text-white border-2 border-white hover:bg-white hover:text-brutal-black transition-colors"
+            className="w-6 h-6 flex items-center justify-center text-white dark:text-neutral-200 border border-transparent hover:border-white dark:hover:border-zinc-400 hover:bg-white hover:text-brutal-black dark:hover:bg-zinc-700 transition-colors"
             title={t('codeBlock.copyCode')}
           >
             {copied ? (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             ) : (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <rect x="8" y="8" width="12" height="12" rx="2" ry="2" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
               </svg>
@@ -92,7 +56,7 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
           </button>
           <button
             onClick={() => setExpanded(!expanded)}
-            className="w-8 h-8 flex items-center justify-center bg-neutral-900 dark:bg-zinc-700 text-white text-lg font-bold border-2 border-white hover:bg-white hover:text-brutal-black transition-colors uppercase"
+            className="w-6 h-6 flex items-center justify-center text-white dark:text-neutral-200 text-sm font-black border border-transparent hover:border-white dark:hover:border-zinc-400 hover:bg-white hover:text-brutal-black dark:hover:bg-zinc-700 transition-colors uppercase"
             title={expanded ? t('codeBlock.collapse') : t('codeBlock.expand')}
           >
             {expanded ? '−' : '+'}
@@ -101,8 +65,8 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
       </div>
 
       {/* Content Area */}
-      <div className={`bg-neutral-100 dark:bg-zinc-900/70 transition-all duration-300 ease-in-out overflow-hidden ${expanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
-        <pre className={`max-w-full text-xs text-brutal-code-text dark:text-neutral-300 p-4 pt-4 leading-relaxed overflow-x-auto !bg-transparent whitespace-pre font-mono`}>
+      <div className={`bg-white dark:bg-zinc-950 overflow-hidden ${expanded ? 'block' : 'hidden'}`}>
+        <pre className={`max-w-full text-[12px] text-brutal-black dark:text-neutral-100 px-3 py-2.5 leading-5 overflow-x-auto !bg-transparent whitespace-pre font-mono m-0`}>
           <code className={`language-${safeLang}`}>
             {content}
             {isStreaming && <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1"></span>}
