@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useI18n } from '../../i18n';
 import { PlanProgress } from '../PlanProgress';
 import { SandboxFiles } from '../sidebar/SandboxFiles';
@@ -101,8 +101,18 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const effectiveViewportWidth = viewportWidthPx ?? window.innerWidth;
   const isDesktop = effectiveViewportWidth >= DESKTOP_BREAKPOINT_PX;
   const isOverlayMode = forceFullView || !isDesktop;
-  
-  const webHistory = useWebHistory(messages);
+
+  const shouldBuildWebHistory = isOpen || isBrowserStreamActive || Boolean(forcedWebContextId);
+  const webHistoryMessages = useMemo(
+    () => shouldBuildWebHistory ? messages : [],
+    [messages, shouldBuildWebHistory],
+  );
+  const webHistory = useWebHistory(webHistoryMessages);
+  const hasWebActivity = webHistory.length > 0 || (!shouldBuildWebHistory && messages.some(
+    message => message.role === 'assistant' && typeof message.content === 'string' && (
+      message.content.includes('web_search') || message.content.includes('webpage_fetch')
+    ),
+  ));
   const hasValidPlan = Boolean(plan && plan.phases && plan.phases.length > 0);
 
   // ── Tab definitions ─────────────────────────────────────────────────
@@ -120,8 +130,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       icon: GlobeAltIcon,
       labelKey: 'sidebar.tabs.browser',
       fallbackLabel: 'Web',
-      hasContent: isBrowserStreamActive || webHistory.length > 0,
-      hasActivity: isBrowserStreamActive || webHistory.length > 0,
+      hasContent: isBrowserStreamActive || hasWebActivity,
+      hasActivity: isBrowserStreamActive || hasWebActivity,
       activityClass: 'bg-brutal-green',
     },
     {
@@ -299,8 +309,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         z-20 flex flex-row shrink-0 min-h-0 h-full overflow-hidden bg-white dark:bg-zinc-900
         border-l-3 border-brutal-black
         ${isOverlayMode
-          ? `absolute inset-y-0 right-0 transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'}`
-          : 'relative transition-[width] duration-300 ease-in-out'
+          ? `absolute inset-y-0 right-0 transform-gpu will-change-transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'}`
+          : 'relative'
         }
       `}
     >
@@ -314,7 +324,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       )}
 
       {/* ── Content Panel ─────────────────────────────────────────── */}
-      <div className={`flex flex-col min-h-0 flex-1 overflow-hidden transition-opacity duration-200 ${isOpen ? 'opacity-100 border-r-3 border-brutal-black' : 'opacity-0 pointer-events-none w-0'}`}>
+      <div className={`flex flex-col min-h-0 min-w-0 flex-1 overflow-hidden transform-gpu will-change-transform transition-[opacity,transform] duration-200 ease-out ${isOpen ? 'opacity-100 translate-x-0 border-r-3 border-brutal-black' : 'opacity-0 translate-x-3 pointer-events-none'}`}>
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto bg-neutral-50/50 dark:bg-zinc-900 scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black flex flex-col min-h-0">
           <div className={`flex-1 h-full ${activeTab === 'files' ? 'block' : 'hidden'}`}>
@@ -328,7 +338,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
           {/* Web Activities View (replaces old BrowserView) */}
           <div className={`flex-1 h-full flex flex-col ${activeTab === 'browser' ? 'flex' : 'hidden'}`}>
             <WebActivitiesView 
-              messages={messages}
+              history={webHistory}
               isBrowserStreamActive={isBrowserStreamActive}
               onBrowserStreamActive={setIsBrowserStreamActive}
               forcedContextId={forcedWebContextId}

@@ -3,11 +3,10 @@ import { useI18n } from '../../i18n';
 import { BrowserView } from './BrowserView';
 import { WebSearchSidebarView } from './WebSearchSidebarView';
 import { WebPageReaderView } from './WebPageReaderView';
-import { useWebHistory } from '../../hooks/useWebHistory';
-import type { Message } from '../../types/api';
+import type { WebHistoryLog } from '../../hooks/useWebHistory';
 
 interface WebActivitiesViewProps {
-  messages: Message[];
+  history: WebHistoryLog[];
   isBrowserStreamActive: boolean;
   onBrowserStreamActive: (isActive: boolean) => void;
   // Allows parent to force an activity context
@@ -16,14 +15,13 @@ interface WebActivitiesViewProps {
 }
 
 export const WebActivitiesView: React.FC<WebActivitiesViewProps> = ({
-  messages,
+  history,
   isBrowserStreamActive,
   onBrowserStreamActive,
   forcedContextId,
   onClearForcedContext,
 }) => {
   const { t } = useI18n();
-  const history = useWebHistory(messages);
 
   const [activeViewId, setActiveViewId] = useState<string>('browser_active');
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);

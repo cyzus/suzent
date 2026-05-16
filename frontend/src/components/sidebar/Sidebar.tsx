@@ -129,7 +129,7 @@ export function Sidebar({
       <aside className={`
         fixed lg:relative z-50 h-full shrink-0
         w-80 border-r-3 border-brutal-black flex flex-col bg-neutral-50 dark:bg-zinc-900
-        transition-all duration-300 ease-in-out
+        transform-gpu will-change-transform transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0 lg:ml-0' : '-translate-x-full lg:translate-x-0 lg:-ml-80'}
       `}>
         <div
@@ -168,7 +168,7 @@ export function Sidebar({
                 aria-selected={active}
                 aria-controls={`left-sidebar-panel-${tab}`}
                 tabIndex={active ? 0 : -1}
-                className={`flex-1 py-2 text-xs font-bold uppercase relative transition-all duration-200 ${active
+                className={`flex-1 py-2 text-xs font-bold uppercase relative transition-colors duration-200 ${active
                   ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black'
                   : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-brutal-yellow dark:hover:bg-zinc-700 border-r-3 border-brutal-black last:border-r-0'}`}
               >
