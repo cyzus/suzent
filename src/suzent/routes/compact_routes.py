@@ -58,9 +58,15 @@ async def _compact_stream(chat_id: str, focus: str | None):
             {"stage": "summarizing", "message": "Compacting context..."},
         )
         ctx = CommandContext(chat_id=chat_id, user_id=CONFIG.user_id)
-        command_str = f"/compact {focus}" if focus else "/compact"
+        command_str = f"/compact -- {focus}" if focus else "/compact"
         result = await dispatch(ctx, command_str)
-        yield _sse("compaction_complete", {"skipped": False, "message": result})
+        if result is None:
+            yield _sse(
+                "compaction_error",
+                {"message": "Command dispatch failed or returned no result."},
+            )
+        else:
+            yield _sse("compaction_complete", {"skipped": False, "message": result})
     except Exception as e:
         logger.error(f"Compact route failed for {chat_id}: {e}")
         yield _sse("compaction_error", {"message": str(e)})
