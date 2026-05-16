@@ -526,6 +526,10 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                     }
                     
                     if (e.key === 'Enter' && !e.shiftKey) {
+                        // e.nativeEvent.isComposing prevents sending when pressing Enter in an IME (like Chinese/Japanese input method)
+                        if (e.nativeEvent.isComposing) {
+                            return;
+                        }
                         e.preventDefault();
                         if (configReady && input.trim()) {
                             send();
