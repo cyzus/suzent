@@ -220,6 +220,14 @@ class TestUserPreferences:
         assert "api_keys" not in tables
         assert db.get_api_key("_PROVIDER_CONFIG_") == '{"openai": {}}'
 
+    def test_save_api_key_does_not_mutate_environment(self, db, monkeypatch):
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+        assert db.save_api_key("OPENAI_API_KEY", "persisted-key") is True
+
+        assert os.environ.get("OPENAI_API_KEY") is None
+        assert db.get_api_key("OPENAI_API_KEY") == "persisted-key"
+
     def test_legacy_static_tables_are_migrated_out_of_sqlite(
         self, tmp_path, monkeypatch
     ):
@@ -354,6 +362,48 @@ class TestUserPreferences:
         assert secret_manager.get("OPENAI_API_KEY") == "persisted-db-key"
         assert b"persisted-db-key" not in secret_db_path.read_bytes()
         assert os.environ["OPENAI_API_KEY"] == "temporary-env-key"
+
+        db.engine.dispose()
+
+    def test_undecryptable_legacy_secret_keeps_api_keys_table(
+        self, tmp_path, monkeypatch
+    ):
+        db_path = tmp_path / "legacy-bad-key.db"
+        secret_db_path = tmp_path / "secrets.db"
+        old_key = Fernet.generate_key()
+        old_token = Fernet(old_key).encrypt(b"persisted-db-key").decode()
+        monkeypatch.setenv("SUZENT_USER_CONFIG_PATH", str(tmp_path / "config.yaml"))
+        monkeypatch.setenv("SUZENT_SECRET_DB_PATH", str(secret_db_path))
+        monkeypatch.setenv("SUZENT_SECRET_KEY", Fernet.generate_key().decode())
+        monkeypatch.setenv("SUZENT_SECRET_BACKEND", "encrypted_sqlite")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+        from suzent.core import secrets
+
+        secrets._instance = None
+
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                """
+                CREATE TABLE api_keys (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    updated_at DATETIME
+                )
+                """
+            )
+            conn.execute(
+                "INSERT INTO api_keys VALUES (?, ?, '2026-01-01T00:00:00')",
+                ("OPENAI_API_KEY", old_token),
+            )
+
+        db = ChatDatabase(str(db_path))
+
+        assert "api_keys" in set(inspect(db.engine).get_table_names())
+        assert secrets.get_secret_manager().has_backend_value("OPENAI_API_KEY") is False
+        assert old_token not in secret_db_path.read_text(
+            encoding="utf-8", errors="ignore"
+        )
 
         db.engine.dispose()
 

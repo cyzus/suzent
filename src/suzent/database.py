@@ -4,6 +4,7 @@ Database layer for chat persistence using SQLModel.
 Provides a clean, type-safe interface for all database operations.
 """
 
+import base64
 import json
 import os
 import uuid
@@ -647,17 +648,32 @@ class ChatDatabase:
 
         store = UserConfigStore()
         migrated = False
+        drop_tables: set[str] = set()
 
         try:
             with self.engine.connect() as conn:
-                migrated |= self._migrate_legacy_user_preferences(
+                did_migrate, can_drop = self._migrate_legacy_user_preferences(
                     conn, store, legacy_tables
                 )
-                migrated |= self._migrate_legacy_memory_config(
+                migrated |= did_migrate
+                if can_drop:
+                    drop_tables.add("user_preferences")
+
+                did_migrate, can_drop = self._migrate_legacy_memory_config(
                     conn, store, legacy_tables
                 )
-                migrated |= self._migrate_legacy_api_keys(conn, store, legacy_tables)
-                self._drop_legacy_static_tables(conn, legacy_tables)
+                migrated |= did_migrate
+                if can_drop:
+                    drop_tables.add("memory_config")
+
+                did_migrate, can_drop = self._migrate_legacy_api_keys(
+                    conn, store, legacy_tables
+                )
+                migrated |= did_migrate
+                if can_drop:
+                    drop_tables.add("api_keys")
+
+                self._drop_legacy_static_tables(conn, drop_tables)
                 conn.commit()
 
             if migrated:
@@ -671,9 +687,9 @@ class ChatDatabase:
 
     def _migrate_legacy_user_preferences(
         self, conn: Any, store: Any, legacy_tables: set[str]
-    ) -> bool:
-        if "user_preferences" not in legacy_tables or store.get_user_preferences():
-            return False
+    ) -> tuple[bool, bool]:
+        if "user_preferences" not in legacy_tables:
+            return False, False
 
         row = (
             conn.execute(
@@ -689,7 +705,14 @@ class ChatDatabase:
             .first()
         )
         if not row:
-            return False
+            return False, True
+        if store.get_user_preferences():
+            from suzent.logger import logger
+
+            logger.warning(
+                "Keeping legacy user_preferences table because user config already exists"
+            )
+            return False, False
 
         store.save_user_preferences(
             {
@@ -701,13 +724,13 @@ class ChatDatabase:
                 "sandbox_volumes": self._decode_json_value(row["sandbox_volumes"]),
             }
         )
-        return True
+        return True, True
 
     def _migrate_legacy_memory_config(
         self, conn: Any, store: Any, legacy_tables: set[str]
-    ) -> bool:
-        if "memory_config" not in legacy_tables or store.get_memory_config():
-            return False
+    ) -> tuple[bool, bool]:
+        if "memory_config" not in legacy_tables:
+            return False, False
 
         row = (
             conn.execute(
@@ -722,7 +745,14 @@ class ChatDatabase:
             .first()
         )
         if not row:
-            return False
+            return False, True
+        if store.get_memory_config():
+            from suzent.logger import logger
+
+            logger.warning(
+                "Keeping legacy memory_config table because user config already exists"
+            )
+            return False, False
 
         store.save_memory_config(
             {
@@ -730,15 +760,16 @@ class ChatDatabase:
                 "extraction_model": row["extraction_model"],
             }
         )
-        return True
+        return True, True
 
     def _migrate_legacy_api_keys(
         self, conn: Any, store: Any, legacy_tables: set[str]
-    ) -> bool:
+    ) -> tuple[bool, bool]:
         if "api_keys" not in legacy_tables:
-            return False
+            return False, False
 
         migrated = False
+        can_drop = True
         rows = conn.execute(text("SELECT key, value FROM api_keys")).mappings().all()
         for row in rows:
             key = row["key"]
@@ -749,9 +780,21 @@ class ChatDatabase:
                 if store.get_config_blob(key) is None:
                     store.save_config_blob(key, value)
                     migrated = True
+                else:
+                    from suzent.logger import logger
+
+                    logger.warning(
+                        "Keeping legacy api_keys table because config blob '{}' already exists",
+                        key,
+                    )
+                    can_drop = False
                 continue
-            migrated |= self._migrate_secret_to_backend(key, value)
-        return migrated
+            secret_migrated, secret_can_drop = self._migrate_secret_to_backend(
+                key, value
+            )
+            migrated |= secret_migrated
+            can_drop &= secret_can_drop
+        return migrated, can_drop
 
     @staticmethod
     def _drop_legacy_static_tables(conn: Any, legacy_tables: set[str]) -> None:
@@ -784,17 +827,27 @@ class ChatDatabase:
                 pass
         return datetime.now()
 
-    def _migrate_secret_to_backend(self, key: str, value: str) -> bool:
+    def _migrate_secret_to_backend(self, key: str, value: str) -> tuple[bool, bool]:
         from suzent.core.secrets import get_secret_manager
 
         secret_manager = get_secret_manager()
         if secret_manager.has_backend_value(key):
-            return False
-        secret_manager.set_backend_only(key, self._decrypt_legacy_secret(value))
-        return True
+            from suzent.logger import logger
+
+            logger.warning(
+                "Keeping legacy api_keys table because secret '{}' already exists",
+                key,
+            )
+            return False, False
+
+        secret = self._decrypt_legacy_secret(key, value)
+        if secret is None:
+            return False, False
+        secret_manager.set_backend_only(key, secret)
+        return True, True
 
     @staticmethod
-    def _decrypt_legacy_secret(value: str) -> str:
+    def _decrypt_legacy_secret(key: str, value: str) -> Optional[str]:
         try:
             from cryptography.fernet import Fernet, InvalidToken
             from suzent.config import DATA_DIR
@@ -813,7 +866,24 @@ class ChatDatabase:
                     continue
         except Exception:
             pass
+
+        if ChatDatabase._looks_like_fernet_token(value):
+            from suzent.logger import logger
+
+            logger.warning(
+                "Keeping legacy api_keys table because secret '{}' could not be decrypted",
+                key,
+            )
+            return None
         return value
+
+    @staticmethod
+    def _looks_like_fernet_token(value: str) -> bool:
+        try:
+            token = base64.urlsafe_b64decode(value.encode())
+        except Exception:
+            return False
+        return bool(token) and token[0] == 0x80
 
     # -------------------------------------------------------------------------
     # Chat Operations
@@ -2131,7 +2201,7 @@ class ChatDatabase:
         else:
             from suzent.core.secrets import get_secret_manager
 
-            get_secret_manager().set(key, value)
+            get_secret_manager().set_backend_only(key, value)
         return True
 
     def delete_api_key(self, key: str) -> bool:

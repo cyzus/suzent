@@ -10,14 +10,14 @@ from typing import Any
 
 import yaml
 
-from suzent.config import DATA_DIR
+from suzent.config import USER_CONFIG_DIR
 
 
 def get_user_config_path() -> Path:
     override = os.getenv("SUZENT_USER_CONFIG_PATH")
     if override:
         return Path(override).expanduser().resolve()
-    return DATA_DIR / "config.yaml"
+    return USER_CONFIG_DIR / "config.yaml"
 
 
 class UserConfigStore:
@@ -98,6 +98,10 @@ class UserConfigStore:
             with os.fdopen(fd, "w", encoding="utf-8") as file:
                 yaml.safe_dump(data, file, sort_keys=False, allow_unicode=False)
             tmp_path.replace(self.path)
+            try:
+                self.path.chmod(0o600)
+            except OSError:
+                pass
         finally:
             if tmp_path.exists():
                 tmp_path.unlink()

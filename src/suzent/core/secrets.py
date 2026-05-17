@@ -28,7 +28,7 @@ class SecretBackend(Protocol):
         ...
 
 
-class KeyringBackend(SecretBackend):
+class KeyringBackend:
     def __init__(self) -> None:
         try:
             import keyring as _kr
@@ -90,7 +90,7 @@ class KeyringBackend(SecretBackend):
             pass
 
 
-class EncryptedSQLiteBackend(SecretBackend):
+class EncryptedSQLiteBackend:
     def __init__(self, path: Path | None = None) -> None:
         from cryptography.fernet import Fernet
         from suzent.config import DATA_DIR
