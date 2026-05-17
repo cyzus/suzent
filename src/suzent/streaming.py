@@ -49,6 +49,7 @@ from loguru import logger
 _encoder = EventEncoder()
 _FIRST_STREAM_EVENT_TIMEOUT_SECONDS = 45.0
 _STREAM_IDLE_TIMEOUT_SECONDS = 120.0
+_DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS = 60.0
 
 
 def _serialize_tool_output(output: Any) -> str:
@@ -67,6 +68,27 @@ def _encode_custom(name: str, value: Any) -> str:
     return _encoder.encode(CustomEvent(name=name, value=value))
 
 
+def _tool_timeout_from_event(event: Any) -> float:
+    """Return a stream wait timeout while pydantic-ai is executing a tool."""
+    timeout = _DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS
+    part = getattr(event, "part", None)
+    tool_name = getattr(part, "tool_name", "")
+    if tool_name not in ("bash_execute", "BashTool"):
+        return timeout
+
+    args = getattr(part, "args", None)
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except json.JSONDecodeError:
+            args = None
+    if not isinstance(args, dict):
+        args = {}
+    from suzent.tools.shell.bash_tool import BashTool
+
+    return BashTool.stream_wait_timeout_seconds(args.get("timeout"))
+
+
 async def _iter_stream_events_with_timeout(
     agent: Any,
     prompt: Any,
@@ -75,23 +97,40 @@ async def _iter_stream_events_with_timeout(
     """Yield stream events, failing fast if the provider never produces one."""
     stream = agent.run_stream_events(prompt, **run_kwargs)
     first_event = True
+    tool_calls_in_flight = 0
+    tool_wait_timeout = 0.0
     try:
         while True:
-            timeout = (
-                _FIRST_STREAM_EVENT_TIMEOUT_SECONDS
-                if first_event
-                else _STREAM_IDLE_TIMEOUT_SECONDS
-            )
+            if first_event:
+                timeout = _FIRST_STREAM_EVENT_TIMEOUT_SECONDS
+                phase = "first event"
+            elif tool_calls_in_flight > 0:
+                timeout = (
+                    tool_wait_timeout or _DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS
+                )
+                phase = "tool result"
+            else:
+                timeout = _STREAM_IDLE_TIMEOUT_SECONDS
+                phase = "next event"
             try:
                 event = await asyncio.wait_for(anext(stream), timeout=timeout)
             except StopAsyncIteration:
                 break
             except asyncio.TimeoutError as exc:
-                phase = "first event" if first_event else "next event"
                 raise TimeoutError(
                     f"Timed out waiting for LLM stream {phase} after {timeout:.0f}s"
                 ) from exc
             first_event = False
+            event_kind = getattr(event, "event_kind", "")
+            if event_kind == "function_tool_call":
+                tool_calls_in_flight += 1
+                tool_wait_timeout = max(
+                    tool_wait_timeout, _tool_timeout_from_event(event)
+                )
+            elif event_kind == "function_tool_result":
+                tool_calls_in_flight = max(0, tool_calls_in_flight - 1)
+                if tool_calls_in_flight == 0:
+                    tool_wait_timeout = 0.0
             yield event
     finally:
         aclose = getattr(stream, "aclose", None)

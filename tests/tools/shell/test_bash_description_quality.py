@@ -32,15 +32,16 @@ def test_description_is_required_by_signature(tmp_path):
 def test_accepts_required_description(monkeypatch, tmp_path):
     tool = BashTool()
 
-    class _Result:
-        stdout = "ok"
-        stderr = ""
+    class _Process:
         returncode = 0
 
-    def fake_run(cmd, **kwargs):
-        return _Result()
+        def __init__(self, cmd, **kwargs):
+            pass
 
-    monkeypatch.setattr("suzent.tools.shell.bash_tool.subprocess.run", fake_run)
+        def communicate(self, timeout=None):
+            return "ok", ""
+
+    monkeypatch.setattr("suzent.tools.shell.bash_tool.subprocess.Popen", _Process)
 
     result = tool.forward(
         _ctx(tmp_path),

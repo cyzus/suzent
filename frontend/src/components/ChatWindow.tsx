@@ -160,6 +160,27 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any, role: Message['
   return { role, content, parts: persistedParts, timestamp: new Date().toISOString(), stepInfo: usage ? formatUsage(usage) : undefined };
 }
 
+function finalizeInterruptedParts(parts: AGUIPart[]): AGUIPart[] {
+  return parts.map(part => {
+    if (part.type === 'tool' && part.state === 'approval-requested') {
+      return {
+        ...part,
+        state: 'error' as const,
+        approvalId: undefined,
+        output: part.output ?? 'Cancelled: user redirected the conversation',
+      };
+    }
+    if (part.type === 'tool' && part.state === 'running') {
+      return {
+        ...part,
+        state: 'error' as const,
+        output: part.output ?? 'Interrupted: user redirected the conversation',
+      };
+    }
+    return part;
+  });
+}
+
 function groupedBlocksToAssistantContent(blocks: ContentBlock[]): string {
   let content = '';
   for (const block of blocks) {
@@ -686,7 +707,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         }
       }
     },
-    onError: (error) => {
+    onError: (error, parts = []) => {
       console.error('AG-UI error:', error);
       const chatId = streamingChatIdRef.current || activeChatIdRef.current;
       const wasHeartbeat = heartbeatInFlightRef.current;
@@ -707,8 +728,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         : (errorMessage || t('chatWindow.genericError'));
 
       if (!wasHeartbeat && !isLiveStreamRef.current && !isNetworkError) {
-        addMessage({ role: 'notice', content: `\u26a0\ufe0f Error: ${displayMessage}` }, chatId);
+        const partialMessage = aguiPartsToStoreMessage(parts, currentUsage, streamDisplayRoleRef.current);
+        if (partialMessage.content.trim()) {
+          addMessage(partialMessage, chatId);
+          addMessage({ role: 'notice', content: `\u26a0\ufe0f Error: ${displayMessage}` }, chatId);
+        } else {
+          addMessage({ role: 'assistant', content: `\u26a0\ufe0f Error: ${displayMessage}` }, chatId);
+        }
       }
+      clearParts();
+      setCurrentUsage(null);
       isLiveStreamRef.current = false;
       liveStreamPartsRef.current = [];
       setCurrentStreamDisplayRole('assistant');
@@ -1064,8 +1093,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // If currently streaming (or paused on pending approvals) for this chat,
     // steer instead of starting a brand-new turn.
     if ((streamingForCurrentChat || hasPendingTransientApprovals) && currentChatId) {
+      const interruptedMessage = aguiPartsToStoreMessage(
+        finalizeInterruptedParts(streamingParts),
+        currentUsage,
+        streamDisplayRoleRef.current,
+      );
+      if (interruptedMessage.content.trim()) {
+        addMessage(interruptedMessage, currentChatId);
+      }
       setInput('');
       addMessage({ role: 'user', content: prompt, timestamp: new Date().toISOString() }, currentChatId);
+      setCurrentUsage(null);
 
       steeringRef.current = true;
       setIsStreaming(true, currentChatId);
@@ -1080,9 +1118,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         });
       } catch (error) {
         console.error('Error during steer:', error);
+        setIsStreaming(false, currentChatId);
       } finally {
         steeringRef.current = false;
-        setIsStreaming(false, currentChatId);
         stopInFlightRef.current = false;
         setTimeout(async () => {
           try { await forceSaveNow(currentChatId); } catch { }

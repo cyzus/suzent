@@ -51,6 +51,8 @@ class BashTool(Tool):
     )
     guidance_priority = 10
     _SUPPORTED_LANGUAGES = {"python", "nodejs", "command"}
+    DEFAULT_TIMEOUT_SECONDS = 120
+    TOOL_STREAM_TIMEOUT_GRACE_SECONDS = 30
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -79,6 +81,24 @@ class BashTool(Tool):
         self.custom_volumes = volumes
         # Clear cached manager so it recreates with new volumes
         self._manager = None
+
+    @classmethod
+    def default_timeout_seconds(cls) -> int:
+        """Return the execution timeout used when the caller omits timeout."""
+        return cls.DEFAULT_TIMEOUT_SECONDS
+
+    @classmethod
+    def stream_wait_timeout_seconds(
+        cls,
+        timeout: Optional[int | float],
+    ) -> float:
+        """Return how long the outer SSE stream should wait for bash output."""
+        try:
+            requested_timeout = float(timeout or 0)
+        except (TypeError, ValueError):
+            requested_timeout = 0
+        effective_timeout = requested_timeout or float(cls.default_timeout_seconds())
+        return effective_timeout + cls.TOOL_STREAM_TIMEOUT_GRACE_SECONDS
 
     def _execution_metadata(
         self,
@@ -170,8 +190,9 @@ class BashTool(Tool):
                 default=None,
                 ge=0,
                 description=(
-                    "Optional execution timeout in seconds. Use background=True "
-                    "for long-running work."
+                    "Optional execution timeout in seconds. Defaults to 120s. "
+                    "If the command is expected to take longer, set timeout "
+                    "explicitly or use background=True."
                 ),
             ),
         ] = None,
@@ -400,11 +421,14 @@ class BashTool(Tool):
                 content, lang, description=description
             )
 
+        effective_timeout = timeout or self.default_timeout_seconds()
         if self.sandbox_enabled:
             return self._execute_in_sandbox(
-                content, lang, timeout, description=description
+                content, lang, effective_timeout, description=description
             )
-        return self._execute_on_host(content, lang, timeout, description=description)
+        return self._execute_on_host(
+            content, lang, effective_timeout, description=description
+        )
 
     def _execute_background(
         self, content: str, language: str, description: Optional[str] = None
@@ -624,30 +648,33 @@ class BashTool(Tool):
 
         cmd = self._build_cmd(content, language)
         working_dir = self._resolve_working_dir()
-        effective_timeout = timeout or 120
+        effective_timeout = timeout or self.default_timeout_seconds()
+        process = None
 
         try:
-            result = subprocess.run(
+            process = subprocess.Popen(
                 cmd,
                 cwd=str(working_dir),
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=effective_timeout,
                 env=self._get_host_env(),
             )
+            stdout, stderr = process.communicate(timeout=effective_timeout)
+            stdout = stdout or ""
+            stderr = stderr or ""
 
-            stdout = result.stdout
-            stderr = result.stderr
+            returncode = process.returncode or 0
 
             parts = []
             if stdout.strip():
                 parts.append(stdout)
             if stderr.strip():
                 parts.append(f"[stderr]\n{stderr}")
-            if result.returncode != 0:
-                parts.append(f"[exit code: {result.returncode}]")
+            if returncode != 0:
+                parts.append(f"[exit code: {returncode}]")
 
             body = "\n".join(parts) if parts else "(no output)"
             output = f"[cwd: {working_dir}]\n{body}"
@@ -662,7 +689,7 @@ class BashTool(Tool):
                 language=language,
                 timeout=effective_timeout,
                 background=False,
-                returncode=result.returncode,
+                returncode=returncode,
             )
             return self._success_result(
                 output,
@@ -670,11 +697,13 @@ class BashTool(Tool):
                 language=language,
                 timeout=effective_timeout,
                 background=False,
-                returncode=result.returncode,
+                returncode=returncode,
                 cwd=str(working_dir),
             )
 
         except subprocess.TimeoutExpired:
+            if process is not None:
+                self._kill_host_process_tree(process)
             logger.warning(f"Host execution timed out after {effective_timeout}s")
             self._audit_execution(
                 "timeout",
@@ -685,7 +714,11 @@ class BashTool(Tool):
             )
             return self._error_result(
                 ToolErrorCode.TIMEOUT,
-                f"Command timed out after {effective_timeout} seconds",
+                (
+                    f"Command timed out after {effective_timeout} seconds and was "
+                    "terminated. Continue with a different approach, set a larger "
+                    "timeout, or use background=True for expected long-running work."
+                ),
                 mode="host",
                 language=language,
                 timeout=effective_timeout,
@@ -727,6 +760,27 @@ class BashTool(Tool):
                 timeout=effective_timeout,
                 background=False,
             )
+
+    @staticmethod
+    def _kill_host_process_tree(process: subprocess.Popen) -> None:
+        """Terminate a host command and any children that may keep pipes open."""
+        try:
+            import psutil
+
+            parent = psutil.Process(process.pid)
+            children = parent.children(recursive=True)
+            for child in children:
+                child.kill()
+            parent.kill()
+            _, alive = psutil.wait_procs([*children, parent], timeout=5)
+            for proc in alive:
+                proc.kill()
+        except Exception as exc:
+            logger.debug(f"Falling back to direct process kill: {exc}")
+            try:
+                process.kill()
+            except Exception:
+                pass
 
     def _get_host_env(self) -> dict:
         """Build environment variables for host execution."""

@@ -1,14 +1,36 @@
 import asyncio
 
 import pytest
+from pydantic_ai.messages import FunctionToolCallEvent, FunctionToolResultEvent
+from pydantic_ai.messages import ToolCallPart, ToolReturnPart
 
 from suzent import streaming
+from suzent.tools.shell.bash_tool import BashTool
 
 
 class _HangingStreamAgent:
     async def run_stream_events(self, _prompt, **_kwargs):
         await asyncio.Event().wait()
         yield None
+
+
+class _SlowToolStreamAgent:
+    async def run_stream_events(self, _prompt, **_kwargs):
+        yield FunctionToolCallEvent(
+            ToolCallPart(
+                tool_name="bash_execute",
+                args={"content": "sleep 1", "timeout": 1},
+                tool_call_id="call-1",
+            )
+        )
+        await asyncio.sleep(0.03)
+        yield FunctionToolResultEvent(
+            ToolReturnPart(
+                tool_name="bash_execute",
+                content="done",
+                tool_call_id="call-1",
+            )
+        )
 
 
 async def test_stream_events_timeout_when_first_event_never_arrives(monkeypatch):
@@ -19,3 +41,55 @@ async def test_stream_events_timeout_when_first_event_never_arrives(monkeypatch)
             _HangingStreamAgent(), "hi", {}
         ):
             pass
+
+
+async def test_stream_events_do_not_idle_timeout_while_tool_is_running(monkeypatch):
+    monkeypatch.setattr(streaming, "_STREAM_IDLE_TIMEOUT_SECONDS", 0.01)
+
+    events = []
+    async for event in streaming._iter_stream_events_with_timeout(
+        _SlowToolStreamAgent(), "hi", {}
+    ):
+        events.append(event.event_kind)
+
+    assert events == ["function_tool_call", "function_tool_result"]
+
+
+def test_bash_tool_stream_timeout_uses_default_when_unspecified():
+    event = FunctionToolCallEvent(
+        ToolCallPart(
+            tool_name="bash_execute",
+            args={"content": "sleep 999"},
+            tool_call_id="call-1",
+        )
+    )
+
+    timeout = streaming._tool_timeout_from_event(event)
+
+    assert timeout == BashTool.stream_wait_timeout_seconds(None)
+
+
+def test_bash_tool_stream_timeout_uses_explicit_timeout_when_provided():
+    event = FunctionToolCallEvent(
+        ToolCallPart(
+            tool_name="bash_execute",
+            args={"content": "sleep 999", "timeout": 5},
+            tool_call_id="call-1",
+        )
+    )
+
+    timeout = streaming._tool_timeout_from_event(event)
+
+    assert timeout == BashTool.stream_wait_timeout_seconds(5)
+
+
+def test_non_bash_tool_stream_timeout_defaults_to_one_minute():
+    event = FunctionToolCallEvent(
+        ToolCallPart(
+            tool_name="other_tool",
+            args={"query": "slow thing"},
+            tool_call_id="call-1",
+        )
+    )
+
+    assert streaming._tool_timeout_from_event(event) == 60.0

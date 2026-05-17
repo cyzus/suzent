@@ -69,15 +69,16 @@ def test_policy_asks_unknown_command_in_full_approval(monkeypatch, tmp_path):
 def test_policy_allows_readonly_command_in_strict_mode(monkeypatch, tmp_path):
     tool = BashTool()
 
-    class _Result:
-        stdout = "ok"
-        stderr = ""
+    class _Process:
         returncode = 0
 
-    def fake_run(cmd, **kwargs):
-        return _Result()
+        def __init__(self, cmd, **kwargs):
+            pass
 
-    monkeypatch.setattr("suzent.tools.shell.bash_tool.subprocess.run", fake_run)
+        def communicate(self, timeout=None):
+            return "ok", ""
+
+    monkeypatch.setattr("suzent.tools.shell.bash_tool.subprocess.Popen", _Process)
     monkeypatch.setattr(
         CONFIG,
         "permission_policies",

@@ -712,6 +712,7 @@ class ChatProcessor:
 
         # 8. Stream Response
         full_response = ""
+        stream_failed = False
 
         try:
             async for chunk in stream_agent_responses(
@@ -733,6 +734,8 @@ class ChatProcessor:
                         msg_type = event_data.get("type")
                         if msg_type == "TEXT_MESSAGE_CONTENT":
                             full_response += event_data.get("delta", "")
+                        elif msg_type == "RUN_ERROR":
+                            stream_failed = True
                 except Exception:
                     pass
 
@@ -781,6 +784,27 @@ class ChatProcessor:
                 if snapshot_messages is None:
                     snapshot_messages = message_history
 
+                is_cancelled = (
+                    getattr(deps, "cancel_event", None) and deps.cancel_event.is_set()
+                )
+                if (is_cancelled or stream_failed) and full_response.strip():
+                    from pydantic_ai.messages import ModelResponse, TextPart
+
+                    snapshot_messages = list(snapshot_messages or [])
+                    if not snapshot_messages or not isinstance(
+                        snapshot_messages[-1], ModelResponse
+                    ):
+                        logger.debug(
+                            "[ChatProcessor] Preserving partial assistant text "
+                            "for interrupted/failed stream: {} chars",
+                            len(full_response),
+                        )
+                        snapshot_messages.append(
+                            ModelResponse(
+                                parts=[TextPart(content=full_response.strip())]
+                            )
+                        )
+
                 snapshot_revision = await self._persist_agent_state_snapshot(
                     chat_id=chat_id,
                     messages=snapshot_messages or [],
@@ -818,13 +842,18 @@ class ChatProcessor:
                 try:
                     last_messages = snapshot_messages or []
 
-                    # If the stream was interrupted, pydantic-ai does not emit the final ModelResponse.
-                    # We manually append the text generated so far so the agent remembers its interrupted thought.
+                    # If the stream was interrupted or failed, pydantic-ai may not emit
+                    # the final ModelResponse. Preserve generated text so the next turn
+                    # can continue from the visible partial assistant response.
                     is_cancelled = (
                         getattr(deps, "cancel_event", None)
                         and deps.cancel_event.is_set()
                     )
-                    if is_cancelled and full_response.strip() and last_messages:
+                    if (
+                        (is_cancelled or stream_failed)
+                        and full_response.strip()
+                        and last_messages
+                    ):
                         from pydantic_ai.messages import ModelResponse, TextPart
 
                         if not isinstance(last_messages[-1], ModelResponse):

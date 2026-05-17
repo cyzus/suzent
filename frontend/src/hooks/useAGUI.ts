@@ -17,7 +17,7 @@ interface UseAGUIOptions {
   onFinish?: (parts: AGUIPart[]) => void;
   onCustomEvent?: (name: string, value: unknown) => void;
   onMarkDeferred?: (surfaceId: string) => void;
-  onError?: (error: Error) => void;
+  onError?: (error: Error, parts: AGUIPart[]) => void;
 }
 
 interface UseAGUIReturn {
@@ -559,7 +559,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
             setStatus('error');
             setParts(currentParts);
             partsRef.current = currentParts;
-            onError?.(new Error(result.error));
+            onError?.(new Error(result.error), currentParts);
             return;
           }
         }
@@ -586,7 +586,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         const errorMsg = (err as Error).message;
         setError(errorMsg);
         setStatus('error');
-        onError?.(err as Error);
+        onError?.(err as Error, partsRef.current);
       }
     }
   }, []);
@@ -686,7 +686,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
             setStatus('error');
             setParts(currentParts);
             partsRef.current = currentParts;
-            onError?.(new Error(result.error));
+            onError?.(new Error(result.error), currentParts);
             return;
           }
         }
@@ -716,7 +716,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         const errorMsg = (err as Error).message;
         setError(errorMsg);
         setStatus('error');
-        onError?.(err as Error);
+        onError?.(err as Error, partsRef.current);
       }
     }
   }, []);
@@ -819,7 +819,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
             setStatus('error');
             setParts(currentParts);
             partsRef.current = currentParts;
-            onError?.(new Error(result.error));
+            onError?.(new Error(result.error), currentParts);
             return true;
           }
         }
@@ -847,7 +847,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         const errorMsg = (err as Error).message;
         setError(errorMsg);
         setStatus('error');
-        onError?.(err as Error);
+        onError?.(err as Error, partsRef.current);
       }
       return false;
     }
