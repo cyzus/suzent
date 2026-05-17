@@ -357,13 +357,7 @@ class ChatProcessor:
                     custom_volumes=custom_volumes,
                 )
 
-                if sandbox_enabled:
-                    uploads_virtual_path = "/persistence/uploads"
-                else:
-                    uploads_virtual_path = str(
-                        Path(CONFIG.workspace_root) / "uploads"
-                    ).replace("\\", "/")
-
+                uploads_virtual_path = "/persistence/uploads"
                 uploads_host_path = resolver.resolve(uploads_virtual_path)
                 uploads_host_path.mkdir(parents=True, exist_ok=True)
 

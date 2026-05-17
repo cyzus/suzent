@@ -26,7 +26,7 @@ class PathResolver:
       - [Custom Mounts] → mapped host paths
 
     In non-sandbox mode:
-      - Paths are relative to data/uploads/{chat_id}/
+      - Virtual /persistence, /shared, and /uploads paths use the same host dirs
       - Absolute paths are allowed if within allowed directories
     """
 
@@ -46,7 +46,7 @@ class PathResolver:
             chat_id: The chat session identifier
             sandbox_enabled: Whether sandbox mode is active
             sandbox_data_path: Base path for sandbox data (default: from CONFIG)
-            uploads_path: Base path for uploads (default: from CONFIG)
+            uploads_path: Deprecated; uploads live under each session directory
             custom_volumes: List of "host:container" volume mapping strings
             workspace_root: Root directory for host mode execution (default: from CONFIG)
         """

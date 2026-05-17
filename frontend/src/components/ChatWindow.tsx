@@ -1143,7 +1143,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
 
     const filesToSend = [...selectedFiles];
-    const imageFilesToSend = filesToSend.filter(f => f.type.startsWith('image/'));
 
     // Upload all files to server + generate base64 for images
     let uploadedFileMetadata: FileAttachment[] | undefined;
@@ -1196,22 +1195,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         payload.files = uploadedFileMetadata;
       }
 
-      if (imageFilesToSend.length > 0) {
-        const formData = new FormData();
-        formData.append('message', prompt);
-        formData.append('config', JSON.stringify(safeConfig));
-        formData.append('chat_id', chatIdForSend);
-        formData.append('reset', String(resetFlag));
-        if (mentionsToSend.length > 0) {
-          formData.append('file_mentions', JSON.stringify(mentionsToSend));
-        }
-        for (const file of imageFilesToSend) {
-          formData.append('files', file);
-        }
-        await sendAGUI(payload, { formData });
-      } else {
-        await sendAGUI(payload);
-      }
+      await sendAGUI(payload);
     } catch (error) {
       console.error('Error during streaming:', error);
       if (!steeringRef.current) {
