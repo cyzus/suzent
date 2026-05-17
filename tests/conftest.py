@@ -10,8 +10,16 @@ from suzent.database import ChatDatabase
 
 
 @pytest.fixture
-def temp_db():
+def temp_db(tmp_path, monkeypatch):
     """Create a temporary database for testing."""
+    monkeypatch.setenv("SUZENT_USER_CONFIG_PATH", str(tmp_path / "config.yaml"))
+    monkeypatch.setenv("SUZENT_ENV_FILE", str(tmp_path / ".env"))
+    monkeypatch.setenv("SUZENT_SECRET_BACKEND", "dotenv")
+
+    from suzent.core import secrets
+
+    secrets._instance = None
+
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
 

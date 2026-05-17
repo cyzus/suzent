@@ -1,10 +1,10 @@
 """Tests for SecretManager and secret backends."""
 
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from suzent.core.secrets import (
-    EncryptedDBBackend,
+    DotEnvBackend,
     SecretManager,
     SecretBackend,
 )
@@ -134,51 +134,20 @@ class TestSecretManager:
             assert os.environ["EXIST_KEY"] == "original_env_val"
 
 
-class TestEncryptedDBBackend:
-    """Tests for the Fernet-encrypted DB backend."""
+class TestDotEnvBackend:
+    """Tests for the sync-friendly .env backend."""
 
     def test_roundtrip(self, tmp_path):
-        key_file = tmp_path / "data" / ".secret_key"
-        key_file.parent.mkdir(parents=True)
+        env_file = tmp_path / ".env"
+        backend = DotEnvBackend(env_file)
 
-        with patch("suzent.core.secrets.os.environ", {"SUZENT_SECRET_KEY": ""}):
-            with patch("suzent.config.PROJECT_DIR", tmp_path):
-                # Mock the database
-                mock_db = MagicMock()
-                stored = {}
+        backend.set("TEST_KEY", "my_secret_value")
 
-                def save_key(k, v):
-                    stored[k] = v
+        assert backend.get("TEST_KEY") == "my_secret_value"
+        assert "TEST_KEY" in backend.list_keys()
+        assert "TEST_KEY='my_secret_value'" in env_file.read_text(encoding="utf-8")
 
-                def get_key(k):
-                    return stored.get(k)
+        backend.delete("TEST_KEY")
 
-                def del_key(k):
-                    stored.pop(k, None)
-
-                def get_all():
-                    return dict(stored)
-
-                mock_db.save_api_key = save_key
-                mock_db.get_api_key = get_key
-                mock_db.delete_api_key = del_key
-                mock_db.get_api_keys = get_all
-
-                with patch(
-                    "suzent.core.secrets.EncryptedDBBackend._get_db",
-                    return_value=mock_db,
-                ):
-                    backend = EncryptedDBBackend()
-
-                    backend.set("TEST_KEY", "my_secret_value")
-                    # Stored value should be encrypted (not plaintext)
-                    raw = stored.get("TEST_KEY")
-                    assert raw is not None
-                    assert raw != "my_secret_value"
-
-                    # Get should decrypt
-                    assert backend.get("TEST_KEY") == "my_secret_value"
-
-                    # Delete
-                    backend.delete("TEST_KEY")
-                    assert backend.get("TEST_KEY") is None
+        assert backend.get("TEST_KEY") is None
+        assert "TEST_KEY" not in backend.list_keys()

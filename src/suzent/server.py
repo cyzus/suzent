@@ -383,7 +383,7 @@ async def startup():
         sm = get_secret_manager()
         loaded_count = sm.inject_all_to_env()
 
-        # Also load non-secret config blobs from DB (e.g. _PROVIDER_CONFIG_)
+        # Also load non-secret config blobs (e.g. _PROVIDER_CONFIG_)
         api_keys = db.get_api_keys() or {}
         for key, value in api_keys.items():
             if key.startswith("_") and value and key not in os.environ:
@@ -393,11 +393,11 @@ async def startup():
             logger.info(f"Loaded {loaded_count} secrets via {sm.backend_name}")
     except Exception as e:
         logger.error(f"Failed to load secrets on startup: {e}")
-        # Fallback: raw DB injection (legacy)
+        # Fallback: load non-secret config blobs only.
         try:
             api_keys = db.get_api_keys() or {}
             for key, value in api_keys.items():
-                if value:
+                if key.startswith("_") and value:
                     os.environ[key] = value
         except Exception:
             pass

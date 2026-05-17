@@ -334,30 +334,17 @@ def configure_logging(verbose: bool = False):
 
 
 def load_environment():
-    """Load API keys from the database into environment variables."""
+    """Load persisted secrets into environment variables."""
     try:
-        from suzent.database import get_database
+        from suzent.core.secrets import get_secret_manager
 
-        # Initialize DB and fetch keys
-        db = get_database()
-        api_keys = db.get_api_keys() or {}
-
-        count = 0
-        for key, value in api_keys.items():
-            # Skip internal config keys
-            if key.startswith("_"):
-                continue
-
-            # Only set if not already set (allow manual override)
-            if key not in os.environ and value:
-                os.environ[key] = value
-                count += 1
+        count = get_secret_manager().inject_all_to_env()
 
         if count > 0:
             from suzent.logger import get_logger
 
             logger = get_logger(__name__)
-            logger.debug(f"Loaded {count} API keys from database into environment")
+            logger.debug(f"Loaded {count} persisted secrets into environment")
 
     except Exception as e:
         # Don't crash if DB fails, just log warning
@@ -365,7 +352,7 @@ def load_environment():
         from suzent.logger import get_logger
 
         logger = get_logger(__name__)
-        logger.debug(f"Failed to load environment from database: {e}")
+        logger.debug(f"Failed to load persisted environment: {e}")
 
 
 def get_project_root() -> Path:
