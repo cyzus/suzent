@@ -1,8 +1,18 @@
 """Unit tests for SQLModel database layer."""
 
-import pytest
+import os
+import sqlite3
 
-from suzent.database import ChatSummaryModel, PlanModel, UserPreferencesModel
+import pytest
+from cryptography.fernet import Fernet
+from sqlalchemy import inspect
+
+from suzent.database import (
+    ChatDatabase,
+    ChatSummaryModel,
+    PlanModel,
+    UserPreferencesModel,
+)
 
 
 @pytest.fixture
@@ -197,6 +207,205 @@ class TestUserPreferences:
         assert config is not None
         assert config.embedding_model == "gemini/gemini-embedding-001"
         assert config.extraction_model == "gemini/gemini-2.5-flash"
+
+    def test_static_preferences_are_not_sqlite_tables(self, db):
+        db.save_user_preferences(model="gpt-4", memory_enabled=True)
+        db.save_memory_config(embedding_model="embed", extraction_model="extract")
+        db.save_api_key("_PROVIDER_CONFIG_", '{"openai": {}}')
+
+        tables = set(inspect(db.engine).get_table_names())
+
+        assert "user_preferences" not in tables
+        assert "memory_config" not in tables
+        assert "api_keys" not in tables
+        assert db.get_api_key("_PROVIDER_CONFIG_") == '{"openai": {}}'
+
+    def test_save_api_key_does_not_mutate_environment(self, db, monkeypatch):
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+        assert db.save_api_key("OPENAI_API_KEY", "persisted-key") is True
+
+        assert os.environ.get("OPENAI_API_KEY") is None
+        assert db.get_api_key("OPENAI_API_KEY") == "persisted-key"
+
+    def test_legacy_static_tables_are_migrated_out_of_sqlite(
+        self, tmp_path, monkeypatch
+    ):
+        db_path = tmp_path / "legacy.db"
+        config_path = tmp_path / "config.yaml"
+        monkeypatch.setenv("SUZENT_USER_CONFIG_PATH", str(config_path))
+        monkeypatch.setenv("SUZENT_SECRET_DB_PATH", str(tmp_path / "secrets.db"))
+        monkeypatch.setenv("SUZENT_SECRET_KEY", Fernet.generate_key().decode())
+        monkeypatch.setenv("SUZENT_SECRET_BACKEND", "encrypted_sqlite")
+
+        from suzent.core import secrets
+
+        secrets._instance = None
+
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                """
+                CREATE TABLE user_preferences (
+                    id INTEGER PRIMARY KEY,
+                    model TEXT,
+                    agent TEXT,
+                    tools JSON,
+                    memory_enabled BOOLEAN,
+                    sandbox_enabled BOOLEAN,
+                    sandbox_volumes JSON,
+                    updated_at DATETIME
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO user_preferences
+                VALUES (1, 'gpt-4', 'Agent', '["ReadFileTool"]', 1, 0,
+                        '["C:/work:/mnt/work"]', '2026-01-01T00:00:00')
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE memory_config (
+                    id INTEGER PRIMARY KEY,
+                    embedding_model TEXT,
+                    extraction_model TEXT,
+                    updated_at DATETIME
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO memory_config
+                VALUES (1, 'embed-model', 'extract-model', '2026-01-01T00:00:00')
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE api_keys (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    updated_at DATETIME
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO api_keys VALUES
+                ('OPENAI_API_KEY', 'sk-test', '2026-01-01T00:00:00'),
+                ('_PROVIDER_CONFIG_', '{"openai":{"enabled_models":["openai/gpt-4"]}}',
+                 '2026-01-01T00:00:00')
+                """
+            )
+
+        db = ChatDatabase(str(db_path))
+
+        tables = set(inspect(db.engine).get_table_names())
+        prefs = db.get_user_preferences()
+        memory = db.get_memory_config()
+
+        assert "user_preferences" not in tables
+        assert "memory_config" not in tables
+        assert "api_keys" not in tables
+        assert prefs is not None
+        assert prefs.model == "gpt-4"
+        assert prefs.tools == ["ReadFileTool"]
+        assert prefs.memory_enabled is True
+        assert prefs.sandbox_enabled is False
+        assert prefs.sandbox_volumes == ["C:/work:/mnt/work"]
+        assert memory is not None
+        assert memory.embedding_model == "embed-model"
+        assert db.get_api_key("_PROVIDER_CONFIG_") == (
+            '{"openai":{"enabled_models":["openai/gpt-4"]}}'
+        )
+        assert secrets.get_secret_manager().get("OPENAI_API_KEY") == "sk-test"
+
+        db.engine.dispose()
+
+    def test_legacy_secret_migrates_even_when_env_var_is_set(
+        self, tmp_path, monkeypatch
+    ):
+        db_path = tmp_path / "legacy-env.db"
+        monkeypatch.setenv("SUZENT_USER_CONFIG_PATH", str(tmp_path / "config.yaml"))
+        secret_db_path = tmp_path / "secrets.db"
+        monkeypatch.setenv("SUZENT_SECRET_DB_PATH", str(secret_db_path))
+        monkeypatch.setenv("SUZENT_SECRET_KEY", Fernet.generate_key().decode())
+        monkeypatch.setenv("SUZENT_SECRET_BACKEND", "encrypted_sqlite")
+        monkeypatch.setenv("OPENAI_API_KEY", "temporary-env-key")
+
+        from suzent.core import secrets
+
+        secrets._instance = None
+
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                """
+                CREATE TABLE api_keys (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    updated_at DATETIME
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO api_keys
+                VALUES ('OPENAI_API_KEY', 'persisted-db-key', '2026-01-01T00:00:00')
+                """
+            )
+
+        db = ChatDatabase(str(db_path))
+        secret_manager = secrets.get_secret_manager()
+
+        assert "api_keys" not in set(inspect(db.engine).get_table_names())
+        assert secret_manager.has_backend_value("OPENAI_API_KEY") is True
+        assert secret_manager.get("OPENAI_API_KEY") == "persisted-db-key"
+        assert b"persisted-db-key" not in secret_db_path.read_bytes()
+        assert os.environ["OPENAI_API_KEY"] == "temporary-env-key"
+
+        db.engine.dispose()
+
+    def test_undecryptable_legacy_secret_keeps_api_keys_table(
+        self, tmp_path, monkeypatch
+    ):
+        db_path = tmp_path / "legacy-bad-key.db"
+        secret_db_path = tmp_path / "secrets.db"
+        old_key = Fernet.generate_key()
+        old_token = Fernet(old_key).encrypt(b"persisted-db-key").decode()
+        monkeypatch.setenv("SUZENT_USER_CONFIG_PATH", str(tmp_path / "config.yaml"))
+        monkeypatch.setenv("SUZENT_SECRET_DB_PATH", str(secret_db_path))
+        monkeypatch.setenv("SUZENT_SECRET_KEY", Fernet.generate_key().decode())
+        monkeypatch.setenv("SUZENT_SECRET_BACKEND", "encrypted_sqlite")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+        from suzent.core import secrets
+
+        secrets._instance = None
+
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                """
+                CREATE TABLE api_keys (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    updated_at DATETIME
+                )
+                """
+            )
+            conn.execute(
+                "INSERT INTO api_keys VALUES (?, ?, '2026-01-01T00:00:00')",
+                ("OPENAI_API_KEY", old_token),
+            )
+
+        db = ChatDatabase(str(db_path))
+
+        assert "api_keys" in set(inspect(db.engine).get_table_names())
+        assert secrets.get_secret_manager().has_backend_value("OPENAI_API_KEY") is False
+        assert old_token not in secret_db_path.read_text(
+            encoding="utf-8", errors="ignore"
+        )
+
+        db.engine.dispose()
 
 
 class TestMCPServers:

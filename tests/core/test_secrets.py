@@ -1,18 +1,16 @@
-"""Tests for SecretManager and secret backends."""
-
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
+from cryptography.fernet import Fernet
 
 from suzent.core.secrets import (
-    EncryptedDBBackend,
+    EncryptedSQLiteBackend,
     SecretManager,
     SecretBackend,
 )
 
 
 class InMemoryBackend(SecretBackend):
-    """Simple in-memory backend for testing."""
-
     def __init__(self):
         self._store: dict[str, str] = {}
 
@@ -30,8 +28,6 @@ class InMemoryBackend(SecretBackend):
 
 
 class TestSecretManager:
-    """Tests for the SecretManager facade."""
-
     def test_get_from_backend(self):
         backend = InMemoryBackend()
         backend.set("MY_KEY", "secret123")
@@ -54,15 +50,24 @@ class TestSecretManager:
     def test_set_also_injects_env(self):
         backend = InMemoryBackend()
         sm = SecretManager(backend)
-        # Clean env
         os.environ.pop("TEST_SET_KEY", None)
 
         sm.set("TEST_SET_KEY", "new_val")
         assert backend.get("TEST_SET_KEY") == "new_val"
         assert os.environ.get("TEST_SET_KEY") == "new_val"
 
-        # Cleanup
         os.environ.pop("TEST_SET_KEY", None)
+
+    def test_set_backend_only_does_not_override_env(self):
+        backend = InMemoryBackend()
+        sm = SecretManager(backend)
+
+        with patch.dict(os.environ, {"TEST_BACKEND_ONLY": "env_val"}):
+            sm.set_backend_only("TEST_BACKEND_ONLY", "backend_val")
+
+            assert backend.get("TEST_BACKEND_ONLY") == "backend_val"
+            assert os.environ["TEST_BACKEND_ONLY"] == "env_val"
+            assert sm.has_backend_value("TEST_BACKEND_ONLY") is True
 
     def test_delete_removes_from_both(self):
         backend = InMemoryBackend()
@@ -100,7 +105,6 @@ class TestSecretManager:
         assert "K1" in keys
         assert "K2" in keys
 
-        # Cleanup
         os.environ.pop("K1", None)
         os.environ.pop("K2", None)
 
@@ -110,7 +114,6 @@ class TestSecretManager:
         backend.set("INJ2", "b")
         sm = SecretManager(backend)
 
-        # Ensure keys not in env
         os.environ.pop("INJ1", None)
         os.environ.pop("INJ2", None)
 
@@ -119,7 +122,6 @@ class TestSecretManager:
         assert os.environ.get("INJ1") == "a"
         assert os.environ.get("INJ2") == "b"
 
-        # Cleanup
         os.environ.pop("INJ1", None)
         os.environ.pop("INJ2", None)
 
@@ -130,55 +132,23 @@ class TestSecretManager:
 
         with patch.dict(os.environ, {"EXIST_KEY": "original_env_val"}):
             count = sm.inject_all_to_env()
-            assert count == 0  # Should skip because already in env
+            assert count == 0
             assert os.environ["EXIST_KEY"] == "original_env_val"
 
 
-class TestEncryptedDBBackend:
-    """Tests for the Fernet-encrypted DB backend."""
+class TestEncryptedSQLiteBackend:
+    def test_roundtrip(self, tmp_path, monkeypatch):
+        db_path = tmp_path / "secrets.db"
+        monkeypatch.setenv("SUZENT_SECRET_KEY", Fernet.generate_key().decode())
+        backend = EncryptedSQLiteBackend(db_path)
 
-    def test_roundtrip(self, tmp_path):
-        key_file = tmp_path / "data" / ".secret_key"
-        key_file.parent.mkdir(parents=True)
+        backend.set("TEST_KEY", "my_secret_value")
 
-        with patch("suzent.core.secrets.os.environ", {"SUZENT_SECRET_KEY": ""}):
-            with patch("suzent.config.PROJECT_DIR", tmp_path):
-                # Mock the database
-                mock_db = MagicMock()
-                stored = {}
+        assert backend.get("TEST_KEY") == "my_secret_value"
+        assert "TEST_KEY" in backend.list_keys()
+        assert b"my_secret_value" not in db_path.read_bytes()
 
-                def save_key(k, v):
-                    stored[k] = v
+        backend.delete("TEST_KEY")
 
-                def get_key(k):
-                    return stored.get(k)
-
-                def del_key(k):
-                    stored.pop(k, None)
-
-                def get_all():
-                    return dict(stored)
-
-                mock_db.save_api_key = save_key
-                mock_db.get_api_key = get_key
-                mock_db.delete_api_key = del_key
-                mock_db.get_api_keys = get_all
-
-                with patch(
-                    "suzent.core.secrets.EncryptedDBBackend._get_db",
-                    return_value=mock_db,
-                ):
-                    backend = EncryptedDBBackend()
-
-                    backend.set("TEST_KEY", "my_secret_value")
-                    # Stored value should be encrypted (not plaintext)
-                    raw = stored.get("TEST_KEY")
-                    assert raw is not None
-                    assert raw != "my_secret_value"
-
-                    # Get should decrypt
-                    assert backend.get("TEST_KEY") == "my_secret_value"
-
-                    # Delete
-                    backend.delete("TEST_KEY")
-                    assert backend.get("TEST_KEY") is None
+        assert backend.get("TEST_KEY") is None
+        assert "TEST_KEY" not in backend.list_keys()

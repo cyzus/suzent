@@ -4,6 +4,7 @@ Database layer for chat persistence using SQLModel.
 Provides a clean, type-safe interface for all database operations.
 """
 
+import base64
 import json
 import os
 import uuid
@@ -167,10 +168,8 @@ class TaskModel(SQLModel, table=True):
     plan: Optional[PlanModel] = Relationship(back_populates="tasks")
 
 
-class UserPreferencesModel(SQLModel, table=True):
+class UserPreferencesModel(SQLModel):
     """Singleton table for global user preferences."""
-
-    __tablename__ = "user_preferences"
 
     id: int = Field(default=1, primary_key=True)
     model: Optional[str] = None
@@ -216,10 +215,8 @@ class MCPServerModel(SQLModel, table=True):
     updated_at: datetime = Field(serialization_alias="updatedAt")
 
 
-class ApiKeyModel(SQLModel, table=True):
-    """Secure storage for API keys."""
-
-    __tablename__ = "api_keys"
+class ApiKeyModel(SQLModel):
+    """Compatibility model for API key-shaped config values."""
 
     key: str = Field(primary_key=True)
     value: str
@@ -265,10 +262,8 @@ class ChatCostSummaryModel(SQLModel, table=True):
     )
 
 
-class MemoryConfigModel(SQLModel, table=True):
+class MemoryConfigModel(SQLModel):
     """Singleton table for memory system configuration."""
-
-    __tablename__ = "memory_config"
 
     id: int = Field(default=1, primary_key=True)
     embedding_model: Optional[str] = None
@@ -454,6 +449,7 @@ class ChatDatabase:
 
         # Run migrations for new columns
         self._run_migrations()
+        self._migrate_static_config_from_db()
 
     def _run_migrations(self):
         """Run database migrations for new columns."""
@@ -640,6 +636,254 @@ class ChatDatabase:
     def _session(self) -> Session:
         """Create a new database session."""
         return Session(self.engine)
+
+    def _migrate_static_config_from_db(self) -> None:
+        inspector = inspect(self.engine)
+        tables = set(inspector.get_table_names())
+        legacy_tables = {"user_preferences", "memory_config", "api_keys"} & tables
+        if not legacy_tables:
+            return
+
+        from suzent.core.user_config import UserConfigStore
+
+        store = UserConfigStore()
+        migrated = False
+        drop_tables: set[str] = set()
+
+        try:
+            with self.engine.connect() as conn:
+                did_migrate, can_drop = self._migrate_legacy_user_preferences(
+                    conn, store, legacy_tables
+                )
+                migrated |= did_migrate
+                if can_drop:
+                    drop_tables.add("user_preferences")
+
+                did_migrate, can_drop = self._migrate_legacy_memory_config(
+                    conn, store, legacy_tables
+                )
+                migrated |= did_migrate
+                if can_drop:
+                    drop_tables.add("memory_config")
+
+                did_migrate, can_drop = self._migrate_legacy_api_keys(
+                    conn, store, legacy_tables
+                )
+                migrated |= did_migrate
+                if can_drop:
+                    drop_tables.add("api_keys")
+
+                self._drop_legacy_static_tables(conn, drop_tables)
+                conn.commit()
+
+            if migrated:
+                from suzent.logger import logger
+
+                logger.info("Migrated legacy static config out of SQLite")
+        except Exception as exc:
+            from suzent.logger import logger
+
+            logger.warning("Failed to migrate legacy static config from SQLite: {}", exc)
+
+    def _migrate_legacy_user_preferences(
+        self, conn: Any, store: Any, legacy_tables: set[str]
+    ) -> tuple[bool, bool]:
+        if "user_preferences" not in legacy_tables:
+            return False, False
+
+        row = (
+            conn.execute(
+                text(
+                    """
+                    SELECT model, agent, tools, memory_enabled,
+                           sandbox_enabled, sandbox_volumes
+                    FROM user_preferences WHERE id = 1
+                    """
+                )
+            )
+            .mappings()
+            .first()
+        )
+        if not row:
+            return False, True
+        if store.get_user_preferences():
+            from suzent.logger import logger
+
+            logger.warning(
+                "Keeping legacy user_preferences table because user config already exists"
+            )
+            return False, False
+
+        store.save_user_preferences(
+            {
+                "model": row["model"],
+                "agent": row["agent"],
+                "tools": self._decode_json_value(row["tools"]),
+                "memory_enabled": self._bool_or_none(row["memory_enabled"]),
+                "sandbox_enabled": self._bool_or_none(row["sandbox_enabled"]),
+                "sandbox_volumes": self._decode_json_value(row["sandbox_volumes"]),
+            }
+        )
+        return True, True
+
+    def _migrate_legacy_memory_config(
+        self, conn: Any, store: Any, legacy_tables: set[str]
+    ) -> tuple[bool, bool]:
+        if "memory_config" not in legacy_tables:
+            return False, False
+
+        row = (
+            conn.execute(
+                text(
+                    """
+                    SELECT embedding_model, extraction_model
+                    FROM memory_config WHERE id = 1
+                    """
+                )
+            )
+            .mappings()
+            .first()
+        )
+        if not row:
+            return False, True
+        if store.get_memory_config():
+            from suzent.logger import logger
+
+            logger.warning(
+                "Keeping legacy memory_config table because user config already exists"
+            )
+            return False, False
+
+        store.save_memory_config(
+            {
+                "embedding_model": row["embedding_model"],
+                "extraction_model": row["extraction_model"],
+            }
+        )
+        return True, True
+
+    def _migrate_legacy_api_keys(
+        self, conn: Any, store: Any, legacy_tables: set[str]
+    ) -> tuple[bool, bool]:
+        if "api_keys" not in legacy_tables:
+            return False, False
+
+        migrated = False
+        can_drop = True
+        rows = conn.execute(text("SELECT key, value FROM api_keys")).mappings().all()
+        for row in rows:
+            key = row["key"]
+            value = row["value"]
+            if not key or not value:
+                continue
+            if key.startswith("_"):
+                if store.get_config_blob(key) is None:
+                    store.save_config_blob(key, value)
+                    migrated = True
+                else:
+                    from suzent.logger import logger
+
+                    logger.warning(
+                        "Keeping legacy api_keys table because config blob '{}' already exists",
+                        key,
+                    )
+                    can_drop = False
+                continue
+            secret_migrated, secret_can_drop = self._migrate_secret_to_backend(
+                key, value
+            )
+            migrated |= secret_migrated
+            can_drop &= secret_can_drop
+        return migrated, can_drop
+
+    @staticmethod
+    def _drop_legacy_static_tables(conn: Any, legacy_tables: set[str]) -> None:
+        for table in legacy_tables:
+            conn.execute(text(f"DROP TABLE IF EXISTS {table}"))
+
+    @staticmethod
+    def _decode_json_value(value: Any) -> Any:
+        if value is None or not isinstance(value, str):
+            return value
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+
+    @staticmethod
+    def _bool_or_none(value: Any) -> Optional[bool]:
+        if value is None:
+            return None
+        return bool(value)
+
+    @staticmethod
+    def _parse_config_datetime(value: Any) -> datetime:
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value)
+            except ValueError:
+                pass
+        return datetime.now()
+
+    def _migrate_secret_to_backend(self, key: str, value: str) -> tuple[bool, bool]:
+        from suzent.core.secrets import get_secret_manager
+
+        secret_manager = get_secret_manager()
+        if secret_manager.has_backend_value(key):
+            from suzent.logger import logger
+
+            logger.warning(
+                "Keeping legacy api_keys table because secret '{}' already exists",
+                key,
+            )
+            return False, False
+
+        secret = self._decrypt_legacy_secret(key, value)
+        if secret is None:
+            return False, False
+        secret_manager.set_backend_only(key, secret)
+        return True, True
+
+    @staticmethod
+    def _decrypt_legacy_secret(key: str, value: str) -> Optional[str]:
+        try:
+            from cryptography.fernet import Fernet, InvalidToken
+            from suzent.config import DATA_DIR
+
+            raw_keys = []
+            if env_key := os.environ.get("SUZENT_SECRET_KEY"):
+                raw_keys.append(env_key.encode())
+            key_file = DATA_DIR / ".secret_key"
+            if key_file.exists():
+                raw_keys.append(key_file.read_bytes().strip())
+
+            for raw_key in raw_keys:
+                try:
+                    return Fernet(raw_key).decrypt(value.encode()).decode()
+                except InvalidToken:
+                    continue
+        except Exception:
+            pass
+
+        if ChatDatabase._looks_like_fernet_token(value):
+            from suzent.logger import logger
+
+            logger.warning(
+                "Keeping legacy api_keys table because secret '{}' could not be decrypted",
+                key,
+            )
+            return None
+        return value
+
+    @staticmethod
+    def _looks_like_fernet_token(value: str) -> bool:
+        try:
+            token = base64.urlsafe_b64decode(value.encode())
+        except Exception:
+            return False
+        return bool(token) and token[0] == 0x80
 
     # -------------------------------------------------------------------------
     # Chat Operations
@@ -1543,12 +1787,22 @@ class ChatDatabase:
     # -------------------------------------------------------------------------
 
     def get_user_preferences(self) -> Optional[UserPreferencesModel]:
-        """Get user preferences from the database."""
-        with self._session() as session:
-            prefs = session.get(UserPreferencesModel, 1)
-            # Handle missing preferences by returning None or empty model?
-            # Consumers expect object or None.
-            return prefs
+        """Get user preferences from the user config file."""
+        from suzent.core.user_config import UserConfigStore
+
+        prefs = UserConfigStore().get_user_preferences()
+        if not prefs:
+            return None
+        return UserPreferencesModel(
+            id=1,
+            model=prefs.get("model"),
+            agent=prefs.get("agent"),
+            tools=prefs.get("tools"),
+            memory_enabled=bool(prefs.get("memory_enabled", False)),
+            sandbox_enabled=bool(prefs.get("sandbox_enabled", True)),
+            sandbox_volumes=prefs.get("sandbox_volumes"),
+            updated_at=self._parse_config_datetime(prefs.get("updated_at")),
+        )
 
     def save_user_preferences(
         self,
@@ -1559,47 +1813,20 @@ class ChatDatabase:
         sandbox_enabled: bool = None,
         sandbox_volumes: List[str] = None,
     ) -> bool:
-        """Save user preferences to the database."""
-        now = datetime.now()
+        """Save user preferences to the user config file."""
+        from suzent.core.user_config import UserConfigStore
 
-        with self._session() as session:
-            prefs = session.get(UserPreferencesModel, 1)
-
-            if prefs:
-                # Update existing
-                if model is not None:
-                    prefs.model = model
-                if agent is not None:
-                    prefs.agent = agent
-                if tools is not None:
-                    prefs.tools = tools
-                if memory_enabled is not None:
-                    prefs.memory_enabled = memory_enabled
-                if sandbox_enabled is not None:
-                    prefs.sandbox_enabled = sandbox_enabled
-                if sandbox_volumes is not None:
-                    prefs.sandbox_volumes = sandbox_volumes
-                prefs.updated_at = now
-            else:
-                # Create new
-                prefs = UserPreferencesModel(
-                    id=1,
-                    model=model,
-                    agent=agent,
-                    tools=tools,
-                    memory_enabled=memory_enabled
-                    if memory_enabled is not None
-                    else False,
-                    sandbox_enabled=sandbox_enabled
-                    if sandbox_enabled is not None
-                    else True,
-                    sandbox_volumes=sandbox_volumes,
-                    updated_at=now,
-                )
-
-            session.add(prefs)
-            session.commit()
-            return True
+        UserConfigStore().save_user_preferences(
+            {
+                "model": model,
+                "agent": agent,
+                "tools": tools,
+                "memory_enabled": memory_enabled,
+                "sandbox_enabled": sandbox_enabled,
+                "sandbox_volumes": sandbox_volumes,
+            }
+        )
+        return True
 
     # -------------------------------------------------------------------------
     # Volume Metadata Operations
@@ -1680,40 +1907,34 @@ class ChatDatabase:
     # -------------------------------------------------------------------------
 
     def get_memory_config(self) -> Optional[MemoryConfigModel]:
-        """Get memory system configuration from the database."""
-        with self._session() as session:
-            return session.get(MemoryConfigModel, 1)
+        """Get memory system configuration from the user config file."""
+        from suzent.core.user_config import UserConfigStore
+
+        config = UserConfigStore().get_memory_config()
+        if not config:
+            return None
+        return MemoryConfigModel(
+            id=1,
+            embedding_model=config.get("embedding_model"),
+            extraction_model=config.get("extraction_model"),
+            updated_at=self._parse_config_datetime(config.get("updated_at")),
+        )
 
     def save_memory_config(
         self,
         embedding_model: str = None,
         extraction_model: str = None,
     ) -> bool:
-        """Save memory system configuration to the database."""
-        now = datetime.now()
+        """Save memory system configuration to the user config file."""
+        from suzent.core.user_config import UserConfigStore
 
-        with self._session() as session:
-            config = session.get(MemoryConfigModel, 1)
-
-            if config:
-                # Update existing
-                if embedding_model is not None:
-                    config.embedding_model = embedding_model
-                if extraction_model is not None:
-                    config.extraction_model = extraction_model
-                config.updated_at = now
-            else:
-                # Create new
-                config = MemoryConfigModel(
-                    id=1,
-                    embedding_model=embedding_model,
-                    extraction_model=extraction_model,
-                    updated_at=now,
-                )
-
-            session.add(config)
-            session.commit()
-            return True
+        UserConfigStore().save_memory_config(
+            {
+                "embedding_model": embedding_model,
+                "extraction_model": extraction_model,
+            }
+        )
+        return True
 
     # -------------------------------------------------------------------------
     # MCP Server Operations
@@ -1955,41 +2176,45 @@ class ChatDatabase:
     # -------------------------------------------------------------------------
 
     def get_api_keys(self) -> Dict[str, str]:
-        """Get all API keys as a dictionary {KEY: value}."""
-        with self._session() as session:
-            statement = select(ApiKeyModel)
-            results = session.exec(statement).all()
-            return {item.key: item.value for item in results}
+        """Get non-secret config blobs formerly stored with API keys."""
+        from suzent.core.user_config import UserConfigStore
+
+        return UserConfigStore().get_config_blobs()
 
     def get_api_key(self, key: str) -> Optional[str]:
-        """Get a single API key value by key name."""
-        with self._session() as session:
-            item = session.get(ApiKeyModel, key)
-            return item.value if item else None
+        """Get a config blob or secret by key name."""
+        if key.startswith("_"):
+            from suzent.core.user_config import UserConfigStore
+
+            return UserConfigStore().get_config_blob(key)
+
+        from suzent.core.secrets import get_secret_manager
+
+        return get_secret_manager().get(key)
 
     def save_api_key(self, key: str, value: str) -> bool:
-        """Save or update an API key."""
-        now = datetime.now()
-        with self._session() as session:
-            item = session.get(ApiKeyModel, key)
-            if item:
-                item.value = value
-                item.updated_at = now
-            else:
-                item = ApiKeyModel(key=key, value=value, updated_at=now)
-            session.add(item)
-            session.commit()
-            return True
+        """Save a config blob or secret outside the runtime database."""
+        if key.startswith("_"):
+            from suzent.core.user_config import UserConfigStore
+
+            UserConfigStore().save_config_blob(key, value)
+        else:
+            from suzent.core.secrets import get_secret_manager
+
+            get_secret_manager().set_backend_only(key, value)
+        return True
 
     def delete_api_key(self, key: str) -> bool:
-        """Delete an API key."""
-        with self._session() as session:
-            item = session.get(ApiKeyModel, key)
-            if not item:
-                return False
-            session.delete(item)
-            session.commit()
-            return True
+        """Delete a config blob or secret outside the runtime database."""
+        if key.startswith("_"):
+            from suzent.core.user_config import UserConfigStore
+
+            UserConfigStore().delete_config_blob(key)
+        else:
+            from suzent.core.secrets import get_secret_manager
+
+            get_secret_manager().delete(key)
+        return True
 
 
 # Global database instance

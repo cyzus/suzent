@@ -5,13 +5,23 @@ import tempfile
 import uuid
 
 import pytest
+from cryptography.fernet import Fernet
 
 from suzent.database import ChatDatabase
 
 
 @pytest.fixture
-def temp_db():
+def temp_db(tmp_path, monkeypatch):
     """Create a temporary database for testing."""
+    monkeypatch.setenv("SUZENT_USER_CONFIG_PATH", str(tmp_path / "config.yaml"))
+    monkeypatch.setenv("SUZENT_SECRET_DB_PATH", str(tmp_path / "secrets.db"))
+    monkeypatch.setenv("SUZENT_SECRET_KEY", Fernet.generate_key().decode())
+    monkeypatch.setenv("SUZENT_SECRET_BACKEND", "encrypted_sqlite")
+
+    from suzent.core import secrets
+
+    secrets._instance = None
+
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
 

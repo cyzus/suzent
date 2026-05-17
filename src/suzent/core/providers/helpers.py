@@ -54,7 +54,7 @@ def resolve_api_key(
 
 
 def get_enabled_models_from_db() -> List[str]:
-    """Aggregate all enabled/available models from provider config stored in the database."""
+    """Aggregate all enabled/available models from user provider config."""
     import json
     from suzent.config import CONFIG
     from suzent.database import get_database
@@ -90,7 +90,7 @@ def get_enabled_models_from_db() -> List[str]:
 
 
 def get_effective_memory_config() -> Dict[str, str]:
-    """Get effective memory config, preferring user DB settings over CONFIG defaults."""
+    """Get effective memory config, preferring user settings over CONFIG defaults."""
     from suzent.config import CONFIG
     from suzent.database import get_database
 
@@ -109,7 +109,7 @@ def get_effective_memory_config() -> Dict[str, str]:
             else CONFIG.extraction_model
         )
     except Exception as e:
-        logger.warning(f"Failed to fetch memory config from DB, using defaults: {e}")
+        logger.warning(f"Failed to fetch memory config, using defaults: {e}")
         embedding_model = CONFIG.embedding_model
         extraction_model = CONFIG.extraction_model
 

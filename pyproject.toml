@@ -15,6 +15,7 @@ dependencies = [
     "starlette>=1.0.0,<2.0.0",
     "uvicorn",
     "python-dotenv",
+    "pyyaml>=6.0",
     "loguru>=0.7.0",
     "pydantic>=2.0",
     "markitdown[all]",

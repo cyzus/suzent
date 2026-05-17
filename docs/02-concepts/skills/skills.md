@@ -336,7 +336,7 @@ Skills can reference environment-specific information:
 
 The system is configured with:
 - Database: Check `/mnt/config/database.yml`
-- API Keys: Check `/mnt/config/.env`
+- API keys: Use the configured provider runtime; do not read secret files directly
 ```
 
 ### Skill Dependencies
