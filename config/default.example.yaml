@@ -66,11 +66,11 @@ EMBEDDING_DIMENSION: 3072
 CRON_PRESETS:
   - name: wiki-ingest-daily
     cron_expr: "0 2 * * *"
-    prompt: "Run the ingest skill for daily memory logs. Follow /mnt/skills/notebook/ingest.md exactly."
+    prompt: "Run the ingest skill for daily memory logs. Follow /mnt/skills/official/notebook/ingest.md exactly."
     delivery_mode: announce
   - name: wiki-lint-weekly
     cron_expr: "0 3 * * 0"
-    prompt: "Run the lint skill. Follow /mnt/skills/notebook/lint.md exactly."
+    prompt: "Run the lint skill. Follow /mnt/skills/official/notebook/lint.md exactly."
     delivery_mode: announce
   # Example — add your own presets:
   # - name: daily-summary

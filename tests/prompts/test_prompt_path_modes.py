@@ -21,7 +21,7 @@ def test_memory_context_host_mode_avoids_virtual_paths():
     assert "/mnt/notebook" not in text
     assert "/shared/memory/" not in text
     assert "${SHARED_PATH}/memory/MEMORY.md" in text
-    assert "${MOUNT_SKILLS}/notebook/ingest.md" in text
+    assert "${MOUNT_SKILLS}/official/notebook/ingest.md" in text
 
 
 def test_memory_context_sandbox_mode_keeps_virtual_paths():
@@ -29,7 +29,7 @@ def test_memory_context_sandbox_mode_keeps_virtual_paths():
 
     assert "/mnt/notebook" in text
     assert "/shared/memory/MEMORY.md" in text
-    assert "/mnt/skills/notebook/ingest.md" in text
+    assert "/mnt/skills/official/notebook/ingest.md" in text
 
 
 def test_skills_listing_host_mode_uses_host_locations():
@@ -56,9 +56,7 @@ def test_skill_content_host_mode_rewrites_virtual_paths():
 
 def test_prompt_assembly_host_mode_has_no_virtual_notebook_paths():
     memory_context = format_core_memory_section(_sample_blocks(), sandbox_enabled=False)
-    skills_context = (
-        "- notebook: Notebook operations (Location: ${MOUNT_SKILLS}/notebook/SKILL.md)"
-    )
+    skills_context = "- notebook: Notebook operations (Location: ${MOUNT_SKILLS}/official/notebook/SKILL.md)"
 
     prompt = "\n\n".join(
         [

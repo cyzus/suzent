@@ -46,11 +46,14 @@ Each skill is a directory containing a `SKILL.md` file and optional resource fol
 
 ```
 ~/.suzent/skills/
-├── my-skill/
-│   ├── SKILL.md          # Required: Main skill definition
-│   ├── scripts/          # Optional: Helper scripts
-│   ├── references/       # Optional: Reference documents
-│   └── assets/           # Optional: Images, data files
+├── official/             # Synced from the repo's built-in skills
+├── external/             # Synced from SKILLS_DIR, grouped by source
+└── user/
+    └── my-skill/
+        ├── SKILL.md      # Required: Main skill definition
+        ├── scripts/      # Optional: Helper scripts
+        ├── references/   # Optional: Reference documents
+        └── assets/       # Optional: Images, data files
 ```
 
 ### SKILL.md Format
@@ -110,29 +113,37 @@ When enabled, skills are available to agents through the `SkillTool`:
 
 ### Skill Mounting in Sandbox
 
-Skills are automatically mounted in the sandbox at `/mnt/skills/{skill-name}/`:
+Skills are automatically mounted in the sandbox under `/mnt/skills/`:
 
 ```
 /mnt/skills/
-├── filesystem-skill/
-│   └── SKILL.md
-└── notebook-skill/
-    └── SKILL.md
+├── official/
+│   ├── filesystem/
+│   │   └── SKILL.md
+│   └── notebook/
+│       └── SKILL.md
+├── external/
+│   └── my-pack-abc12345/
+│       └── custom-skill/
+│           └── SKILL.md
+└── user/
+    └── my-custom-skill/
+        └── SKILL.md
 ```
 
 ## Creating Custom Skills
 
 ### Step 1: Create Skill Directory
 
-Create a new directory in `~/.suzent/skills/`:
+Create a new directory in `~/.suzent/skills/user/`:
 
 ```bash
-mkdir -p ~/.suzent/skills/my-custom-skill
+mkdir -p ~/.suzent/skills/user/my-custom-skill
 ```
 
 ### Step 2: Create SKILL.md
 
-Create `~/.suzent/skills/my-custom-skill/SKILL.md`:
+Create `~/.suzent/skills/user/my-custom-skill/SKILL.md`:
 
 ```markdown
 ---
@@ -176,12 +187,12 @@ Add helper scripts, references, or assets:
 
 ```bash
 # Add a helper script
-mkdir ~/.suzent/skills/my-custom-skill/scripts
-echo "#!/bin/bash\necho 'Helper script'" > ~/.suzent/skills/my-custom-skill/scripts/helper.sh
+mkdir ~/.suzent/skills/user/my-custom-skill/scripts
+echo "#!/bin/bash\necho 'Helper script'" > ~/.suzent/skills/user/my-custom-skill/scripts/helper.sh
 
 # Add reference documentation
-mkdir ~/.suzent/skills/my-custom-skill/references
-cp ~/docs/api-reference.md ~/.suzent/skills/my-custom-skill/references/
+mkdir ~/.suzent/skills/user/my-custom-skill/references
+cp ~/docs/api-reference.md ~/.suzent/skills/user/my-custom-skill/references/
 ```
 
 ### Step 4: Enable the Skill
@@ -232,15 +243,16 @@ Add your skill to `~/.suzent/config/skills.json`:
 
 ### Configuration Location
 
-- **Built-in Skills Directory**: `./skills/`
-- **User Skills Directory**: `~/.suzent/skills/`
+- **Built-in Skills Directory**: `./skills/`, synced to `~/.suzent/skills/official/`
+- **User Skills Directory**: `~/.suzent/skills/user/`
+- **External Skills Directory**: `~/.suzent/skills/external/`
 - **Config File**: `~/.suzent/config/skills.json`
 - **Sandbox Mount**: `/mnt/skills/`
 
 ### Environment Variables
 
 ```bash
-# Advanced extra skills directory
+# Advanced extra skills directory, synced into ~/.suzent/skills/external/
 SKILLS_DIR=/path/to/custom/skills
 ```
 
@@ -253,10 +265,11 @@ Skills are loaded at startup. To reload:
 ### Skill Discovery
 
 The SkillManager automatically discovers skills by:
-1. Scanning built-in skills, user skills, and optional `SKILLS_DIR`
-2. Looking for `SKILL.md` files
-3. Parsing YAML frontmatter
-4. Validating required fields
+1. Syncing built-in skills to `official/` and optional `SKILLS_DIR` roots to `external/`
+2. Scanning official, external, and user skills in that order
+3. Looking for `SKILL.md` files
+4. Parsing YAML frontmatter
+5. Validating required fields
 
 ## Troubleshooting
 
@@ -298,7 +311,7 @@ The SkillManager automatically discovers skills by:
 1. Verify resource folders exist: `scripts/`, `references/`, `assets/`
 2. Check file permissions
 3. Ensure files are in the correct skill directory
-4. Resources are mounted at `/mnt/skills/{skill-name}/`
+4. Resources are mounted under the skill's listed location, such as `/mnt/skills/user/{skill-name}/`
 
 ## Advanced Topics
 

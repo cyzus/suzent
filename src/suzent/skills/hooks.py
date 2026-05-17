@@ -33,7 +33,7 @@ async def skills_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
         if sandbox_enabled:
             from suzent.tools.filesystem.path_resolver import PathResolver
 
-            location = PathResolver.get_skill_virtual_path(name)
+            location = skill.virtual_path or PathResolver.get_skill_virtual_path(name)
         else:
             location = str(skill.path.resolve())
         line = f"- {name}: {skill.metadata.description} (Location: {location})"

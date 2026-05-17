@@ -18,11 +18,15 @@ class Skill(BaseModel):
         body: The main instruction content of the skill (markdown).
         path: Absolute path to the SKILL.md file.
         dir: Absolute path to the skill directory containing SKILL.md and resources.
+        source: Source bucket for the skill (official, user, external, or custom).
+        virtual_path: Path to SKILL.md under the /mnt/skills mount.
     """
 
     metadata: SkillMetadata
     body: str
     path: Path
     dir: Path
+    source: str = "custom"
+    virtual_path: str | None = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)

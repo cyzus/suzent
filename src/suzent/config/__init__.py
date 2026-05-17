@@ -1,6 +1,8 @@
 import json
 import os
 import shutil
+import hashlib
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -104,35 +106,46 @@ _migrate_legacy_data_dir(PROJECT_DIR, DATA_DIR)
 RUNTIME_DIR = DATA_DIR / "runtime"
 CACHE_DIR = DATA_DIR / "cache"
 USER_CONFIG_DIR = DATA_DIR / "config"
-USER_SKILLS_DIR = DATA_DIR / "skills"
-MERGED_SKILLS_DIR = RUNTIME_DIR / "skills_merged"
+SKILLS_ROOT_DIR = DATA_DIR / "skills"
+OFFICIAL_SKILLS_DIR = SKILLS_ROOT_DIR / "official"
+USER_SKILLS_DIR = SKILLS_ROOT_DIR / "user"
+EXTERNAL_SKILLS_DIR = SKILLS_ROOT_DIR / "external"
 
-for _dir in (RUNTIME_DIR, CACHE_DIR, USER_CONFIG_DIR, USER_SKILLS_DIR):
+for _dir in (
+    RUNTIME_DIR,
+    CACHE_DIR,
+    USER_CONFIG_DIR,
+    SKILLS_ROOT_DIR,
+    OFFICIAL_SKILLS_DIR,
+    USER_SKILLS_DIR,
+    EXTERNAL_SKILLS_DIR,
+):
     _dir.mkdir(parents=True, exist_ok=True)
 
 
-def rebuild_merged_skills_dir() -> Path:
-    """Build the runtime skills view mounted into sandboxes."""
-    MERGED_SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+def _copy_skill_tree(source: Path, target: Path) -> None:
+    tmp_target = target.parent / f".{target.name}.tmp"
+    if tmp_target.exists():
+        shutil.rmtree(tmp_target)
+    shutil.copytree(source, tmp_target)
+    if target.exists():
+        shutil.rmtree(target)
+    tmp_target.replace(target)
 
+
+def _sync_skills_root(source_root: Path, target_root: Path) -> None:
+    """Mirror valid skill directories from one root into another root."""
+    target_root.mkdir(parents=True, exist_ok=True)
     expected_skills: set[str] = set()
-    for root in [PROJECT_DIR / "skills", USER_SKILLS_DIR]:
-        if not root.exists():
-            continue
-        for skill_dir in root.iterdir():
+
+    if source_root.exists():
+        for skill_dir in source_root.iterdir():
             if not skill_dir.is_dir() or not (skill_dir / "SKILL.md").exists():
                 continue
             expected_skills.add(skill_dir.name)
-            target = MERGED_SKILLS_DIR / skill_dir.name
-            tmp_target = MERGED_SKILLS_DIR / f".{skill_dir.name}.tmp"
-            if tmp_target.exists():
-                shutil.rmtree(tmp_target)
-            shutil.copytree(skill_dir, tmp_target)
-            if target.exists():
-                shutil.rmtree(target)
-            tmp_target.replace(target)
+            _copy_skill_tree(skill_dir, target_root / skill_dir.name)
 
-    for child in MERGED_SKILLS_DIR.iterdir():
+    for child in target_root.iterdir():
         if child.name.startswith(".") or child.name in expected_skills:
             continue
         if child.is_dir():
@@ -140,10 +153,78 @@ def rebuild_merged_skills_dir() -> Path:
         else:
             child.unlink()
 
-    return MERGED_SKILLS_DIR
+
+def _external_source_id(path: Path) -> str:
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", path.name.strip()).strip("-")
+    if not slug:
+        slug = "skills"
+    digest = hashlib.sha1(str(path.resolve()).encode("utf-8")).hexdigest()[:8]
+    return f"{slug}-{digest}"
 
 
-rebuild_merged_skills_dir()
+def get_external_skill_sources() -> list[tuple[Path, Path]]:
+    """Return configured external skill roots and their managed mirror roots."""
+    env_value = os.getenv("SKILLS_DIR", "").strip()
+    if not env_value:
+        return []
+
+    sources: list[tuple[Path, Path]] = []
+    seen: set[Path] = set()
+    for raw_path in env_value.split(os.pathsep):
+        if not raw_path.strip():
+            continue
+        source = Path(raw_path).expanduser().resolve()
+        if source in seen:
+            continue
+        seen.add(source)
+        sources.append((source, EXTERNAL_SKILLS_DIR / _external_source_id(source)))
+    return sources
+
+
+def migrate_legacy_user_skills_dir() -> None:
+    """Move legacy flat ~/.suzent/skills/<skill> entries into the user bucket."""
+    reserved = {"official", "user", "external"}
+    for child in SKILLS_ROOT_DIR.iterdir():
+        if (
+            not child.is_dir()
+            or child.name in reserved
+            or not (child / "SKILL.md").exists()
+        ):
+            continue
+
+        target = USER_SKILLS_DIR / child.name
+        if target.exists():
+            continue
+        child.replace(target)
+
+
+def sync_managed_skills_dirs() -> Path:
+    """Sync official and external skills into the unified skills mount root."""
+    migrate_legacy_user_skills_dir()
+    _sync_skills_root(PROJECT_DIR / "skills", OFFICIAL_SKILLS_DIR)
+
+    expected_external_roots: set[str] = set()
+    for source, target in get_external_skill_sources():
+        expected_external_roots.add(target.name)
+        _sync_skills_root(source, target)
+
+    for child in EXTERNAL_SKILLS_DIR.iterdir():
+        if child.name.startswith(".") or child.name in expected_external_roots:
+            continue
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+    return SKILLS_ROOT_DIR
+
+
+def rebuild_merged_skills_dir() -> Path:
+    """Backward-compatible alias for the unified skills sync."""
+    return sync_managed_skills_dirs()
+
+
+sync_managed_skills_dirs()
 
 
 def _normalize_keys(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -185,8 +266,8 @@ def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[st
         volumes.append(vol)
 
     if not any(v.endswith(":/mnt/skills") for v in volumes):
-        MERGED_SKILLS_DIR.mkdir(parents=True, exist_ok=True)
-        skills_resolved = str(MERGED_SKILLS_DIR.resolve())
+        SKILLS_ROOT_DIR.mkdir(parents=True, exist_ok=True)
+        skills_resolved = str(SKILLS_ROOT_DIR.resolve())
         volumes.append(f"{skills_resolved}:/mnt/skills")
 
     return volumes

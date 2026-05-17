@@ -54,8 +54,8 @@ def format_core_memory_section(
         )
         notebook_title = "## Notebook (/mnt/notebook/)"
         notebook_runbook = (
-            "To run ingest: follow `/mnt/skills/notebook/ingest.md`\n"
-            "To run lint: follow `/mnt/skills/notebook/lint.md`"
+            "To run ingest: follow `/mnt/skills/official/notebook/ingest.md`\n"
+            "To run lint: follow `/mnt/skills/official/notebook/lint.md`"
         )
         curated_memory_hint = "- Read `/shared/memory/MEMORY.md` for a curated summary of everything you know about the user"
     else:
@@ -73,13 +73,13 @@ def format_core_memory_section(
         notebook_title = "## Notebook (Host-Mounted Paths)"
         if _notebook:
             notebook_runbook = (
-                f"To run ingest: follow `{_skills}/notebook/ingest.md`\n"
-                f"To run lint: follow `{_skills}/notebook/lint.md`"
+                f"To run ingest: follow `{_skills}/official/notebook/ingest.md`\n"
+                f"To run lint: follow `{_skills}/official/notebook/lint.md`"
             )
         else:
             notebook_runbook = (
-                f"To run ingest: follow `{_skills}/notebook/ingest.md`\n"
-                f"To run lint: follow `{_skills}/notebook/lint.md`\n"
+                f"To run ingest: follow `{_skills}/official/notebook/ingest.md`\n"
+                f"To run lint: follow `{_skills}/official/notebook/lint.md`\n"
                 "If notebook is not configured in this session, skip notebook operations."
             )
         curated_memory_hint = f"- Read `{_shared}/memory/MEMORY.md` for a curated summary of everything you know about the user"

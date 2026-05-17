@@ -483,7 +483,10 @@ def ensure_app_data():
     from suzent.config import (
         CACHE_DIR,
         DATA_DIR,
+        EXTERNAL_SKILLS_DIR,
+        OFFICIAL_SKILLS_DIR,
         RUNTIME_DIR,
+        SKILLS_ROOT_DIR,
         USER_CONFIG_DIR,
         USER_SKILLS_DIR,
     )
@@ -494,7 +497,16 @@ def ensure_app_data():
 
     print("INFO: Starting App Data Verification...", flush=True)
 
-    for target in [DATA_DIR, RUNTIME_DIR, CACHE_DIR, USER_CONFIG_DIR, USER_SKILLS_DIR]:
+    for target in [
+        DATA_DIR,
+        RUNTIME_DIR,
+        CACHE_DIR,
+        USER_CONFIG_DIR,
+        SKILLS_ROOT_DIR,
+        OFFICIAL_SKILLS_DIR,
+        USER_SKILLS_DIR,
+        EXTERNAL_SKILLS_DIR,
+    ]:
         if target.exists():
             logger.debug(f"Directory exists: {target}")
         else:

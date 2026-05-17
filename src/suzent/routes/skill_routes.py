@@ -18,7 +18,9 @@ async def get_skills(request):
         {
             "name": skill.metadata.name,
             "description": skill.metadata.description,
-            "path": PathResolver.get_skill_virtual_path(skill.metadata.name),
+            "path": skill.virtual_path
+            or PathResolver.get_skill_virtual_path(skill.metadata.name),
+            "source": skill.source,
             "enabled": manager.is_skill_enabled(skill.metadata.name),
         }
         for skill in skills

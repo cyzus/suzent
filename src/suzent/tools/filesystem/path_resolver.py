@@ -109,7 +109,8 @@ class PathResolver:
     def get_skill_virtual_path(skill_name: str) -> str:
         """
         Get the virtual path for a skill's definition file.
-        e.g. /mnt/skills/{name}/SKILL.md
+        Fallback for legacy flat skill mounts; loaded Skill objects carry the
+        authoritative virtual_path for official/user/external buckets.
         """
         return f"/mnt/skills/{skill_name}/SKILL.md"
 

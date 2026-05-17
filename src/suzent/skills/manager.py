@@ -1,10 +1,11 @@
 from pathlib import Path
 from typing import Optional
 from suzent.config import (
-    PROJECT_DIR,
+    OFFICIAL_SKILLS_DIR,
     USER_CONFIG_DIR,
     USER_SKILLS_DIR,
-    rebuild_merged_skills_dir,
+    get_external_skill_sources,
+    sync_managed_skills_dirs,
 )
 from suzent.logger import get_logger
 from suzent.tools.filesystem.path_resolver import PathResolver
@@ -19,19 +20,34 @@ class SkillManager:
     def __init__(self, skills_dir: Optional[Path] = None):
         self.skills_dirs: list[Path]
         if skills_dir is None:
-            import os
-
-            self.skills_dirs = [PROJECT_DIR / "skills", USER_SKILLS_DIR]
-            env_path = os.getenv("SKILLS_DIR")
-            if env_path:
-                self.skills_dirs.append(Path(env_path).expanduser())
+            sync_managed_skills_dirs()
+            external_dirs = [target for _, target in get_external_skill_sources()]
+            self.skills_dirs = [OFFICIAL_SKILLS_DIR, *external_dirs, USER_SKILLS_DIR]
+            virtual_roots = {
+                OFFICIAL_SKILLS_DIR: "/mnt/skills/official",
+                USER_SKILLS_DIR: "/mnt/skills/user",
+            }
+            source_roots = {
+                OFFICIAL_SKILLS_DIR: "official",
+                USER_SKILLS_DIR: "user",
+            }
+            for external_dir in external_dirs:
+                virtual_roots[external_dir] = (
+                    f"/mnt/skills/external/{external_dir.name}"
+                )
+                source_roots[external_dir] = "external"
         else:
             self.skills_dirs = [skills_dir]
+            virtual_roots = {}
+            source_roots = {}
 
         self.skills_dir = self.skills_dirs[-1]
-        self.loader = SkillLoader(self.skills_dirs)
+        self.loader = SkillLoader(
+            self.skills_dirs,
+            virtual_roots=virtual_roots,
+            source_roots=source_roots,
+        )
         self.persistence_file = USER_CONFIG_DIR / "skills.json"
-        rebuild_merged_skills_dir()
 
         # Initialize enabled state
         self.enabled_skills = set()
@@ -98,8 +114,9 @@ class SkillManager:
 
     def reload(self):
         """Reload all skills from disk."""
+        if self.skills_dirs and self.skills_dirs[0] == OFFICIAL_SKILLS_DIR:
+            sync_managed_skills_dirs()
         self.loader.load_skills()
-        rebuild_merged_skills_dir()
         # Re-verify enabled skills exist?
         available = {s.metadata.name for s in self.loader.list_skills()}
         self.enabled_skills = self.enabled_skills.intersection(available)
@@ -132,7 +149,9 @@ class SkillManager:
             if not self.is_skill_enabled(skill.metadata.name):
                 continue
             if sandbox_enabled:
-                location = PathResolver.get_skill_virtual_path(skill.metadata.name)
+                location = skill.virtual_path or PathResolver.get_skill_virtual_path(
+                    skill.metadata.name
+                )
             else:
                 location = str(skill.path.resolve())
 
@@ -174,7 +193,12 @@ class SkillManager:
                     resources.append(f"{label}: {file_list}")
 
         if resources:
-            content += f"\n\n**Available resources in {skill.dir}:**\n"
+            resource_dir = (
+                skill.virtual_path.rsplit("/", 1)[0]
+                if sandbox_enabled and skill.virtual_path
+                else str(skill.dir)
+            )
+            content += f"\n\n**Available resources in {resource_dir}:**\n"
             content += "\n".join(f"- {r}" for r in resources)
 
         return content
