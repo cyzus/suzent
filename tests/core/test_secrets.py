@@ -3,8 +3,10 @@
 import os
 from unittest.mock import patch
 
+from cryptography.fernet import Fernet
+
 from suzent.core.secrets import (
-    DotEnvBackend,
+    EncryptedSQLiteBackend,
     SecretManager,
     SecretBackend,
 )
@@ -145,18 +147,19 @@ class TestSecretManager:
             assert os.environ["EXIST_KEY"] == "original_env_val"
 
 
-class TestDotEnvBackend:
-    """Tests for the sync-friendly .env backend."""
+class TestEncryptedSQLiteBackend:
+    """Tests for the encrypted SQLite fallback backend."""
 
-    def test_roundtrip(self, tmp_path):
-        env_file = tmp_path / ".env"
-        backend = DotEnvBackend(env_file)
+    def test_roundtrip(self, tmp_path, monkeypatch):
+        db_path = tmp_path / "secrets.db"
+        monkeypatch.setenv("SUZENT_SECRET_KEY", Fernet.generate_key().decode())
+        backend = EncryptedSQLiteBackend(db_path)
 
         backend.set("TEST_KEY", "my_secret_value")
 
         assert backend.get("TEST_KEY") == "my_secret_value"
         assert "TEST_KEY" in backend.list_keys()
-        assert "TEST_KEY='my_secret_value'" in env_file.read_text(encoding="utf-8")
+        assert b"my_secret_value" not in db_path.read_bytes()
 
         backend.delete("TEST_KEY")
 

@@ -4,6 +4,7 @@ import os
 import sqlite3
 
 import pytest
+from cryptography.fernet import Fernet
 from sqlalchemy import inspect
 
 from suzent.database import (
@@ -224,10 +225,10 @@ class TestUserPreferences:
     ):
         db_path = tmp_path / "legacy.db"
         config_path = tmp_path / "config.yaml"
-        env_path = tmp_path / ".env"
         monkeypatch.setenv("SUZENT_USER_CONFIG_PATH", str(config_path))
-        monkeypatch.setenv("SUZENT_ENV_FILE", str(env_path))
-        monkeypatch.setenv("SUZENT_SECRET_BACKEND", "dotenv")
+        monkeypatch.setenv("SUZENT_SECRET_DB_PATH", str(tmp_path / "secrets.db"))
+        monkeypatch.setenv("SUZENT_SECRET_KEY", Fernet.generate_key().decode())
+        monkeypatch.setenv("SUZENT_SECRET_BACKEND", "encrypted_sqlite")
 
         from suzent.core import secrets
 
@@ -317,10 +318,11 @@ class TestUserPreferences:
         self, tmp_path, monkeypatch
     ):
         db_path = tmp_path / "legacy-env.db"
-        env_path = tmp_path / ".env"
         monkeypatch.setenv("SUZENT_USER_CONFIG_PATH", str(tmp_path / "config.yaml"))
-        monkeypatch.setenv("SUZENT_ENV_FILE", str(env_path))
-        monkeypatch.setenv("SUZENT_SECRET_BACKEND", "dotenv")
+        secret_db_path = tmp_path / "secrets.db"
+        monkeypatch.setenv("SUZENT_SECRET_DB_PATH", str(secret_db_path))
+        monkeypatch.setenv("SUZENT_SECRET_KEY", Fernet.generate_key().decode())
+        monkeypatch.setenv("SUZENT_SECRET_BACKEND", "encrypted_sqlite")
         monkeypatch.setenv("OPENAI_API_KEY", "temporary-env-key")
 
         from suzent.core import secrets
@@ -350,7 +352,7 @@ class TestUserPreferences:
         assert "api_keys" not in set(inspect(db.engine).get_table_names())
         assert secret_manager.has_backend_value("OPENAI_API_KEY") is True
         assert secret_manager.get("OPENAI_API_KEY") == "persisted-db-key"
-        assert "persisted-db-key" in env_path.read_text(encoding="utf-8")
+        assert b"persisted-db-key" not in secret_db_path.read_bytes()
         assert os.environ["OPENAI_API_KEY"] == "temporary-env-key"
 
         db.engine.dispose()

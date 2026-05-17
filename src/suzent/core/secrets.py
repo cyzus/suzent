@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
@@ -54,7 +55,7 @@ class KeyringBackend(SecretBackend):
         except Exception as exc:
             raise RuntimeError(
                 f"OS keyring is not available: {exc}. "
-                "Set SUZENT_SECRET_BACKEND=dotenv to use a .env file instead."
+                "Set SUZENT_SECRET_BACKEND=encrypted_sqlite to use encrypted local storage."
             ) from exc
 
         self._meta_key = "__suzent_keys__"
@@ -99,70 +100,95 @@ class KeyringBackend(SecretBackend):
             pass
 
 
-class DotEnvBackend(SecretBackend):
-    """Stores secrets in Suzent's user-scoped .env file."""
+class EncryptedSQLiteBackend(SecretBackend):
+    """Stores Fernet-encrypted secrets in a SQLite DB separate from chats.db."""
 
     def __init__(self, path: Path | None = None) -> None:
+        from cryptography.fernet import Fernet
         from suzent.config import DATA_DIR
 
-        override = os.environ.get("SUZENT_ENV_FILE")
+        override = os.environ.get("SUZENT_SECRET_DB_PATH")
         self.path = path or (
-            Path(override).expanduser().resolve() if override else DATA_DIR / ".env"
+            Path(override).expanduser().resolve()
+            if override
+            else DATA_DIR / "secrets.db"
         )
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._meta_key = "SUZENT_SECRET_KEYS"
-        logger.info("SecretBackend: using dotenv file ({})", self.path)
+        self._fernet = Fernet(self._resolve_key())
+        self._init_db()
+        logger.info("SecretBackend: using encrypted SQLite ({})", self.path)
 
     def get(self, key: str) -> Optional[str]:
-        from dotenv import dotenv_values
-
-        value = dotenv_values(self.path).get(key)
-        return str(value) if value else None
+        with sqlite3.connect(self.path) as conn:
+            row = conn.execute(
+                "SELECT value FROM secrets WHERE key = ?", (key,)
+            ).fetchone()
+        if not row:
+            return None
+        try:
+            return self._fernet.decrypt(row[0].encode()).decode()
+        except Exception:
+            logger.warning("Failed to decrypt secret '{}'", key)
+            return None
 
     def set(self, key: str, value: str) -> None:
-        from dotenv import set_key
-
-        self.path.touch(exist_ok=True)
-        set_key(self.path, key, value)
-        self._track_key(key)
+        encrypted = self._fernet.encrypt(value.encode()).decode()
+        with sqlite3.connect(self.path) as conn:
+            conn.execute(
+                """
+                INSERT INTO secrets(key, value, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (key, encrypted),
+            )
         try:
             self.path.chmod(0o600)
         except OSError:
             pass
 
     def delete(self, key: str) -> None:
-        from dotenv import unset_key
-
-        if self.path.exists():
-            unset_key(self.path, key)
-        self._untrack_key(key)
+        with sqlite3.connect(self.path) as conn:
+            conn.execute("DELETE FROM secrets WHERE key = ?", (key,))
 
     def list_keys(self) -> list[str]:
-        from dotenv import dotenv_values
+        with sqlite3.connect(self.path) as conn:
+            rows = conn.execute("SELECT key FROM secrets ORDER BY key").fetchall()
+        return [row[0] for row in rows]
 
-        values = dotenv_values(self.path)
-        tracked = values.get(self._meta_key)
-        if tracked:
-            return [key for key in str(tracked).split(",") if key]
-        return [key for key in values if key and key != self._meta_key]
+    def _resolve_key(self) -> bytes:
+        from cryptography.fernet import Fernet
+        from suzent.config import DATA_DIR
 
-    def _track_key(self, key: str) -> None:
-        keys = set(self.list_keys())
-        keys.add(key)
-        self._write_tracked_keys(keys)
+        if env_key := os.environ.get("SUZENT_SECRET_KEY"):
+            return env_key.encode()
 
-    def _untrack_key(self, key: str) -> None:
-        keys = set(self.list_keys())
-        keys.discard(key)
-        self._write_tracked_keys(keys)
+        key_file = DATA_DIR / ".secret_key"
+        key_file.parent.mkdir(parents=True, exist_ok=True)
+        if key_file.exists():
+            return key_file.read_bytes().strip()
 
-    def _write_tracked_keys(self, keys: set[str]) -> None:
-        from dotenv import set_key, unset_key
+        key = Fernet.generate_key()
+        key_file.write_bytes(key)
+        try:
+            key_file.chmod(0o600)
+        except OSError:
+            pass
+        return key
 
-        if keys:
-            set_key(self.path, self._meta_key, ",".join(sorted(keys)))
-        elif self.path.exists():
-            unset_key(self.path, self._meta_key)
+    def _init_db(self) -> None:
+        with sqlite3.connect(self.path) as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS secrets (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
 
 
 class SecretManager:
@@ -228,16 +254,21 @@ def get_secret_manager() -> SecretManager:
 
     backend_name = os.environ.get("SUZENT_SECRET_BACKEND", "keyring").lower()
 
-    if backend_name in {"dotenv", "env"}:
-        backend: SecretBackend = DotEnvBackend()
+    if backend_name in {"encrypted_sqlite", "encrypted_db", "sqlite"}:
+        backend: SecretBackend = EncryptedSQLiteBackend()
+    elif backend_name in {"dotenv", "env"}:
+        logger.warning(
+            "Dotenv secret storage is no longer used; using encrypted SQLite instead"
+        )
+        backend = EncryptedSQLiteBackend()
     else:
         try:
             backend = KeyringBackend()
         except RuntimeError:
             logger.warning(
-                "OS keyring unavailable, falling back to dotenv secret backend"
+                "OS keyring unavailable, falling back to encrypted SQLite secret backend"
             )
-            backend = DotEnvBackend()
+            backend = EncryptedSQLiteBackend()
 
     _instance = SecretManager(backend)
     return _instance
