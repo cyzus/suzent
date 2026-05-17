@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Protocol
 
 from suzent.logger import get_logger
 
@@ -15,33 +14,21 @@ logger = get_logger(__name__)
 _SERVICE_NAME = "suzent"
 
 
-class SecretBackend(ABC):
-    """Protocol for pluggable secret storage."""
-
-    @abstractmethod
+class SecretBackend(Protocol):
     def get(self, key: str) -> Optional[str]:
-        """Retrieve a secret by key. Returns None if not stored."""
+        ...
 
-    @abstractmethod
     def set(self, key: str, value: str) -> None:
-        """Store or overwrite a secret."""
+        ...
 
-    @abstractmethod
     def delete(self, key: str) -> None:
-        """Remove a secret. No-op if it does not exist."""
+        ...
 
-    @abstractmethod
     def list_keys(self) -> list[str]:
-        """List all stored secret keys."""
-
-    @property
-    def backend_name(self) -> str:
-        return self.__class__.__name__
+        ...
 
 
 class KeyringBackend(SecretBackend):
-    """Stores secrets in the OS keyring."""
-
     def __init__(self) -> None:
         try:
             import keyring as _kr
@@ -83,11 +70,14 @@ class KeyringBackend(SecretBackend):
     def _track_key(self, key: str) -> None:
         keys = set(self.list_keys())
         keys.add(key)
-        self._kr.set_password(_SERVICE_NAME, self._meta_key, "\x00".join(sorted(keys)))
+        self._write_keys(keys)
 
     def _untrack_key(self, key: str) -> None:
         keys = set(self.list_keys())
         keys.discard(key)
+        self._write_keys(keys)
+
+    def _write_keys(self, keys: set[str]) -> None:
         if keys:
             self._kr.set_password(
                 _SERVICE_NAME, self._meta_key, "\x00".join(sorted(keys))
@@ -101,8 +91,6 @@ class KeyringBackend(SecretBackend):
 
 
 class EncryptedSQLiteBackend(SecretBackend):
-    """Stores Fernet-encrypted secrets in a SQLite DB separate from chats.db."""
-
     def __init__(self, path: Path | None = None) -> None:
         from cryptography.fernet import Fernet
         from suzent.config import DATA_DIR
@@ -123,10 +111,8 @@ class EncryptedSQLiteBackend(SecretBackend):
             row = conn.execute(
                 "SELECT value FROM secrets WHERE key = ?", (key,)
             ).fetchone()
-        if not row:
-            return None
         try:
-            return self._fernet.decrypt(row[0].encode()).decode()
+            return self._fernet.decrypt(row[0].encode()).decode() if row else None
         except Exception:
             logger.warning("Failed to decrypt secret '{}'", key)
             return None
@@ -192,27 +178,21 @@ class EncryptedSQLiteBackend(SecretBackend):
 
 
 class SecretManager:
-    """Unified secret access with backend storage plus env fallback."""
-
     def __init__(self, backend: SecretBackend) -> None:
         self._backend = backend
 
     @property
     def backend_name(self) -> str:
-        return self._backend.backend_name
+        return self._backend.__class__.__name__
 
     def get(self, key: str) -> Optional[str]:
-        val = self._backend.get(key)
-        if val:
-            return val
-        return os.environ.get(key)
+        return self._backend.get(key) or os.environ.get(key)
 
     def set(self, key: str, value: str) -> None:
         self._backend.set(key, value)
         os.environ[key] = value
 
     def set_backend_only(self, key: str, value: str) -> None:
-        """Persist a secret without changing the current process environment."""
         self._backend.set(key, value)
 
     def delete(self, key: str) -> None:
@@ -223,12 +203,11 @@ class SecretManager:
         return self._backend.list_keys()
 
     def has_backend_value(self, key: str) -> bool:
-        """Return True when the durable backend already stores this key."""
         return bool(self._backend.get(key))
 
     def get_source(self, key: str) -> str:
         if self.has_backend_value(key):
-            return self._backend.backend_name.lower()
+            return self.backend_name.lower()
         if os.environ.get(key):
             return "env"
         return "unset"
@@ -247,7 +226,6 @@ _instance: Optional[SecretManager] = None
 
 
 def get_secret_manager() -> SecretManager:
-    """Get or create the global SecretManager singleton."""
     global _instance
     if _instance is not None:
         return _instance

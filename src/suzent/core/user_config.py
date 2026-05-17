@@ -14,7 +14,6 @@ from suzent.config import DATA_DIR
 
 
 def get_user_config_path() -> Path:
-    """Return the path for user preferences and provider capability config."""
     override = os.getenv("SUZENT_USER_CONFIG_PATH")
     if override:
         return Path(override).expanduser().resolve()
@@ -22,8 +21,6 @@ def get_user_config_path() -> Path:
 
 
 class UserConfigStore:
-    """Plain-text YAML store for static user configuration."""
-
     def __init__(self, path: Path | None = None) -> None:
         self.path = path or get_user_config_path()
 
@@ -40,9 +37,7 @@ class UserConfigStore:
         self._update_section("memory_config", updates)
 
     def get_config_blobs(self) -> dict[str, str]:
-        blobs = self._get_section("config_blobs")
-        if not isinstance(blobs, dict):
-            return {}
+        blobs = self._get_section("config_blobs") or {}
         return {str(key): str(value) for key, value in blobs.items()}
 
     def get_config_blob(self, key: str) -> str | None:
@@ -50,10 +45,7 @@ class UserConfigStore:
 
     def save_config_blob(self, key: str, value: str) -> None:
         data = self._load()
-        blobs = data.setdefault("config_blobs", {})
-        if not isinstance(blobs, dict):
-            blobs = {}
-            data["config_blobs"] = blobs
+        blobs = self._ensure_section(data, "config_blobs")
         blobs[key] = value
         self._save(data)
 
@@ -70,16 +62,21 @@ class UserConfigStore:
 
     def _update_section(self, section: str, updates: dict[str, Any]) -> None:
         data = self._load()
-        current = data.setdefault(section, {})
-        if not isinstance(current, dict):
-            current = {}
-            data[section] = current
+        current = self._ensure_section(data, section)
 
         for key, value in updates.items():
             if value is not None:
                 current[key] = value
         current["updated_at"] = datetime.now().isoformat()
         self._save(data)
+
+    @staticmethod
+    def _ensure_section(data: dict[str, Any], section: str) -> dict[str, Any]:
+        value = data.get(section)
+        if isinstance(value, dict):
+            return value
+        data[section] = {}
+        return data[section]
 
     def _load(self) -> dict[str, Any]:
         if not self.path.exists():

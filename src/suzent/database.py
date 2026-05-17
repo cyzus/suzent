@@ -637,7 +637,6 @@ class ChatDatabase:
         return Session(self.engine)
 
     def _migrate_static_config_from_db(self) -> None:
-        """Move legacy static config tables into user config/keyring storage."""
         inspector = inspect(self.engine)
         tables = set(inspector.get_table_names())
         legacy_tables = {"user_preferences", "memory_config", "api_keys"} & tables
@@ -664,9 +663,7 @@ class ChatDatabase:
             if migrated:
                 from suzent.logger import logger
 
-                logger.info(
-                    "Migrated legacy static config from SQLite into user config storage"
-                )
+                logger.info("Migrated legacy static config out of SQLite")
         except Exception as exc:
             from suzent.logger import logger
 
@@ -753,8 +750,7 @@ class ChatDatabase:
                     store.save_config_blob(key, value)
                     migrated = True
                 continue
-            self._migrate_secret_to_backend(key, value)
-            migrated = True
+            migrated |= self._migrate_secret_to_backend(key, value)
         return migrated
 
     @staticmethod
@@ -788,13 +784,14 @@ class ChatDatabase:
                 pass
         return datetime.now()
 
-    def _migrate_secret_to_backend(self, key: str, value: str) -> None:
+    def _migrate_secret_to_backend(self, key: str, value: str) -> bool:
         from suzent.core.secrets import get_secret_manager
 
         secret_manager = get_secret_manager()
         if secret_manager.has_backend_value(key):
-            return
+            return False
         secret_manager.set_backend_only(key, self._decrypt_legacy_secret(value))
+        return True
 
     @staticmethod
     def _decrypt_legacy_secret(value: str) -> str:
