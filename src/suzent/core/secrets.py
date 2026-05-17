@@ -185,6 +185,10 @@ class SecretManager:
         self._backend.set(key, value)
         os.environ[key] = value
 
+    def set_backend_only(self, key: str, value: str) -> None:
+        """Persist a secret without changing the current process environment."""
+        self._backend.set(key, value)
+
     def delete(self, key: str) -> None:
         self._backend.delete(key)
         os.environ.pop(key, None)
@@ -192,8 +196,12 @@ class SecretManager:
     def list_keys(self) -> list[str]:
         return self._backend.list_keys()
 
+    def has_backend_value(self, key: str) -> bool:
+        """Return True when the durable backend already stores this key."""
+        return bool(self._backend.get(key))
+
     def get_source(self, key: str) -> str:
-        if self._backend.get(key):
+        if self.has_backend_value(key):
             return self._backend.backend_name.lower()
         if os.environ.get(key):
             return "env"

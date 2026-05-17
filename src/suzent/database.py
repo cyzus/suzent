@@ -792,9 +792,9 @@ class ChatDatabase:
         from suzent.core.secrets import get_secret_manager
 
         secret_manager = get_secret_manager()
-        if secret_manager.get_source(key) != "unset":
+        if secret_manager.has_backend_value(key):
             return
-        secret_manager.set(key, self._decrypt_legacy_secret(value))
+        secret_manager.set_backend_only(key, self._decrypt_legacy_secret(value))
 
     @staticmethod
     def _decrypt_legacy_secret(value: str) -> str:

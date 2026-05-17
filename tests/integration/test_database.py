@@ -1,5 +1,6 @@
 """Unit tests for SQLModel database layer."""
 
+import os
 import sqlite3
 
 import pytest
@@ -309,6 +310,48 @@ class TestUserPreferences:
             '{"openai":{"enabled_models":["openai/gpt-4"]}}'
         )
         assert secrets.get_secret_manager().get("OPENAI_API_KEY") == "sk-test"
+
+        db.engine.dispose()
+
+    def test_legacy_secret_migrates_even_when_env_var_is_set(
+        self, tmp_path, monkeypatch
+    ):
+        db_path = tmp_path / "legacy-env.db"
+        env_path = tmp_path / ".env"
+        monkeypatch.setenv("SUZENT_USER_CONFIG_PATH", str(tmp_path / "config.yaml"))
+        monkeypatch.setenv("SUZENT_ENV_FILE", str(env_path))
+        monkeypatch.setenv("SUZENT_SECRET_BACKEND", "dotenv")
+        monkeypatch.setenv("OPENAI_API_KEY", "temporary-env-key")
+
+        from suzent.core import secrets
+
+        secrets._instance = None
+
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                """
+                CREATE TABLE api_keys (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    updated_at DATETIME
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO api_keys
+                VALUES ('OPENAI_API_KEY', 'persisted-db-key', '2026-01-01T00:00:00')
+                """
+            )
+
+        db = ChatDatabase(str(db_path))
+        secret_manager = secrets.get_secret_manager()
+
+        assert "api_keys" not in set(inspect(db.engine).get_table_names())
+        assert secret_manager.has_backend_value("OPENAI_API_KEY") is True
+        assert secret_manager.get("OPENAI_API_KEY") == "persisted-db-key"
+        assert "persisted-db-key" in env_path.read_text(encoding="utf-8")
+        assert os.environ["OPENAI_API_KEY"] == "temporary-env-key"
 
         db.engine.dispose()
 

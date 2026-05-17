@@ -64,6 +64,17 @@ class TestSecretManager:
         # Cleanup
         os.environ.pop("TEST_SET_KEY", None)
 
+    def test_set_backend_only_does_not_override_env(self):
+        backend = InMemoryBackend()
+        sm = SecretManager(backend)
+
+        with patch.dict(os.environ, {"TEST_BACKEND_ONLY": "env_val"}):
+            sm.set_backend_only("TEST_BACKEND_ONLY", "backend_val")
+
+            assert backend.get("TEST_BACKEND_ONLY") == "backend_val"
+            assert os.environ["TEST_BACKEND_ONLY"] == "env_val"
+            assert sm.has_backend_value("TEST_BACKEND_ONLY") is True
+
     def test_delete_removes_from_both(self):
         backend = InMemoryBackend()
         sm = SecretManager(backend)
