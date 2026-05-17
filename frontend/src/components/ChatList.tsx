@@ -138,6 +138,20 @@ export const ChatList: React.FC = () => {
     .filter(c => !!c.platform)
     .reduce((sum, c) => sum + unreadMessages(c), 0);
 
+  const platformTone = (platform?: string | null) => {
+    switch (platform?.toLowerCase()) {
+      case 'telegram':
+      case 'cron':
+      default:
+        return 'bg-neutral-100 text-neutral-700 border-neutral-300 dark:bg-zinc-700 dark:text-neutral-200 dark:border-zinc-500';
+    }
+  };
+
+  const platformLabel = (platform?: string | null) => {
+    if (!platform) return null;
+    return platform.toLowerCase().replace(/^\w/, c => c.toUpperCase());
+  };
+
   if (loadingChats) {
     return (
       <div className="p-4">
@@ -284,18 +298,19 @@ export const ChatList: React.FC = () => {
                     switchToView('chat');
                   }
                 }}
-                className={`group relative overflow-hidden px-3 py-2.5 transition-colors border-b-2 last:border-b-0 
+                className={`group relative overflow-hidden px-3.5 py-3 transition-all border-b last:border-b-0 
                   ${confirmDeleteId ? (confirmDeleteId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : 'cursor-pointer'} 
                   ${currentChatId === chat.id
-                    ? 'bg-brutal-yellow border-transparent z-10'
-                    : 'border-neutral-200 dark:border-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-700/80 hover:border-neutral-300 dark:hover:border-zinc-600'
+                    ? 'bg-brutal-yellow/95 dark:bg-zinc-700 border-brutal-black dark:border-brutal-yellow z-10'
+                    : isUnread(chat)
+                      ? 'bg-white border-neutral-200 dark:bg-zinc-800 dark:border-zinc-700 shadow-[inset_4px_0_0_#000] dark:shadow-[inset_4px_0_0_var(--brutal-yellow)] hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
+                      : 'border-neutral-200 dark:border-zinc-700 hover:bg-neutral-50 dark:hover:bg-zinc-700/80 hover:border-neutral-300 dark:hover:border-zinc-600'
                   }`}
               >
                 {/* Active Indicator Overlay */}
                 {currentChatId === chat.id && (
                   <div
-                    className="absolute pointer-events-none inset-0 border-brutal-black border-x-[3px] border-b-[3px] transition-all"
-                    style={{ borderTopWidth: '3px' }}
+                    className="absolute pointer-events-none inset-0 border-2 border-brutal-black dark:border-brutal-yellow transition-all"
                   />
                 )}
 
@@ -311,53 +326,50 @@ export const ChatList: React.FC = () => {
                   />
                 )}
 
-                <div className="flex items-center gap-1.5 overflow-hidden">
-                  {/* Unread dot */}
-                  {isUnread(chat) && (
-                    (!!chat.platform || (chat.heartbeatEnabled && !chat.platform))
-                  ) && currentChatId !== chat.id && (
-                    <span className="w-2.5 h-2.5 rounded-full bg-brutal-red border border-brutal-black shrink-0 shadow-[1px_1px_0_0_rgba(0,0,0,1)]" aria-label="Unread" />
-                  )}
+                <div className="min-w-0 space-y-1 pr-8">
+                  <div className="flex items-start gap-2 overflow-hidden">
+                    {/* Title */}
+                    <h3 className={`font-extrabold text-sm leading-snug truncate flex-1 min-w-0 transition-colors ${currentChatId === chat.id ? 'text-brutal-black dark:text-white' : isUnread(chat) ? 'text-neutral-950 dark:text-white' : 'text-neutral-800 dark:text-neutral-100 group-hover:text-brutal-black dark:group-hover:text-white'}`}>
+                      {chat.title || t('chatList.untitled')}
+                    </h3>
 
-                  {/* Platform Badge */}
-                  {chat.platform && (
-                    <span className="text-[9px] font-extrabold uppercase px-1 py-0.5 bg-white dark:bg-zinc-800 text-brutal-black dark:text-white border-2 border-brutal-black shrink-0 shadow-[1px_1px_0_0_rgba(0,0,0,1)]">
-                      {chat.platform}
-                    </span>
-                  )}
+                    {/* Unread count badge */}
+                    {(() => {
+                      const count = currentChatId === chat.id ? 0 : unreadMessages(chat);
+                      if (count <= 0) return null;
+                      return (
+                        <span className="text-[10px] font-extrabold min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-sm bg-brutal-yellow text-brutal-black border-2 border-brutal-black leading-none shrink-0 shadow-[1px_1px_0_0_rgba(0,0,0,1)]">
+                          {count > 99 ? '99+' : count}
+                        </span>
+                      );
+                    })()}
+                  </div>
 
-                  {/* Title */}
-                  <h3 className={`font-extrabold text-xs truncate flex-1 min-w-0 transition-colors ${currentChatId === chat.id ? 'text-brutal-black' : 'text-neutral-800 dark:text-neutral-100 group-hover:text-brutal-black dark:group-hover:text-white'}`}>
-                    {chat.title || t('chatList.untitled')}
-                  </h3>
-
-                  {/* Unread count badge */}
-                  {(() => {
-                    const count = currentChatId === chat.id ? 0 : unreadMessages(chat);
-                    if (count <= 0) return null;
-                    return (
-                      <span className="text-[9px] font-extrabold min-w-[16px] h-[16px] px-0.5 flex items-center justify-center bg-brutal-yellow text-brutal-black border-[1.5px] border-brutal-black leading-none shrink-0">
-                        {count > 99 ? '99+' : count}
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    {/* Platform Badge */}
+                    {chat.platform && (
+                      <span className={`inline-flex items-center h-5 px-2 rounded-sm text-[10px] font-extrabold uppercase tracking-wide border shrink-0 ${currentChatId === chat.id ? 'bg-white/80 text-brutal-black border-brutal-black dark:bg-zinc-900 dark:text-brutal-yellow dark:border-brutal-yellow' : platformTone(chat.platform)}`}>
+                        {platformLabel(chat.platform)}
                       </span>
-                    );
-                  })()}
+                    )}
 
-                  {/* Heartbeat icon */}
-                  {chat.heartbeatEnabled && (
-                    <span
-                      className={`shrink-0 flex items-center justify-center px-1 py-0.5 border-2 ${currentChatId === chat.id ? 'bg-white text-brutal-black border-brutal-black shadow-[1px_1px_0_0_rgba(0,0,0,1)]' : 'bg-neutral-100 dark:bg-zinc-800 text-neutral-600 dark:text-neutral-300 border-neutral-400 dark:border-zinc-500 shadow-[1px_1px_0_0_rgba(163,163,163,0.5)] group-hover:border-brutal-black group-hover:shadow-[1px_1px_0_0_rgba(0,0,0,1)] group-hover:text-brutal-black transition-all'}`}
-                      title={t('chatWindow.heartbeatEnabled')}
-                    >
-                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square" strokeLinejoin="miter">
-                        <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-                      </svg>
+                    {/* Heartbeat icon */}
+                    {chat.heartbeatEnabled && (
+                      <span
+                        className={`shrink-0 flex items-center justify-center w-5 h-5 rounded-sm border ${currentChatId === chat.id ? 'bg-white/80 text-brutal-black border-brutal-black dark:bg-zinc-900 dark:text-brutal-yellow dark:border-brutal-yellow' : 'bg-neutral-100 dark:bg-zinc-800 text-neutral-500 dark:text-neutral-300 border-neutral-300 dark:border-zinc-600 group-hover:border-neutral-500 dark:group-hover:border-zinc-500 transition-all'}`}
+                        title={t('chatWindow.heartbeatEnabled')}
+                      >
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square" strokeLinejoin="miter">
+                          <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                        </svg>
+                      </span>
+                    )}
+
+                    {/* Date */}
+                    <span className={`text-[10px] font-bold uppercase shrink-0 ${currentChatId === chat.id ? 'text-brutal-black/70 dark:text-brutal-yellow' : 'text-neutral-400 dark:text-neutral-500'}`}>
+                      {formatDate(chat.updatedAt)}
                     </span>
-                  )}
-
-                  {/* Date */}
-                  <span className={`text-[9px] font-extrabold uppercase shrink-0 transition-opacity group-hover:opacity-0 ${currentChatId === chat.id ? 'text-brutal-black/70' : 'text-neutral-400 dark:text-neutral-500'}`}>
-                    {formatDate(chat.updatedAt)}
-                  </span>
+                  </div>
 
                   {/* Delete Button (Absolute Overlay) */}
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-end">
