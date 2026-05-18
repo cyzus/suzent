@@ -50,18 +50,23 @@ async def compact_chat(request: Request) -> StreamingResponse:
 
 async def _compact_stream(chat_id: str, focus: str | None):
     from suzent.config import CONFIG
-    from suzent.core.commands.base import CommandContext
-    from suzent.core.commands.compact import handle_compact
+    from suzent.core.commands.base import CommandContext, dispatch
 
     try:
         yield _sse(
             "compaction_progress",
             {"stage": "summarizing", "message": "Compacting context..."},
         )
-        args = focus.split() if focus else []
         ctx = CommandContext(chat_id=chat_id, user_id=CONFIG.user_id)
-        result = await handle_compact(ctx, "/compact", args)
-        yield _sse("compaction_complete", {"skipped": False, "message": result})
+        command_str = f"/compact -- {focus}" if focus else "/compact"
+        result = await dispatch(ctx, command_str)
+        if result is None:
+            yield _sse(
+                "compaction_error",
+                {"message": "Command dispatch failed or returned no result."},
+            )
+        else:
+            yield _sse("compaction_complete", {"skipped": False, "message": result})
     except Exception as e:
         logger.error(f"Compact route failed for {chat_id}: {e}")
         yield _sse("compaction_error", {"message": str(e)})
