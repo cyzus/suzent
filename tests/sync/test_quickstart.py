@@ -36,3 +36,24 @@ def test_quickstart_custom_repo_name(tmp_path: Path, monkeypatch: pytest.MonkeyP
     )
 
     assert result["repo_name"] == "custom-brain"
+
+
+def test_quickstart_uses_custom_remote_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    repo = tmp_path / "custom-sync"
+    monkeypatch.setattr(quickstart_module, "gh_is_authenticated", lambda: True)
+    monkeypatch.setattr(quickstart_module, "gh_current_username", lambda: "alice")
+    monkeypatch.setattr(quickstart_module, "gh_cli_available", lambda: True)
+
+    result = quickstart_github_sync(
+        repo_name="alice/custom-brain",
+        authenticate_github=False,
+        repo_path=repo,
+        remote="upstream",
+    )
+
+    assert result["remote"] == "upstream"
+    assert quickstart_module._git_in(repo, "remote", "get-url", "upstream").strip() == (
+        "https://github.com/alice/custom-brain.git"
+    )
+    with pytest.raises(RuntimeError):
+        quickstart_module._git_in(repo, "remote", "get-url", "origin")

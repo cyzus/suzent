@@ -24,17 +24,24 @@ class SyncConflictResolver:
 
         changed: list[str] = []
         chosen: dict[str, str] = {}
+        payload_root = payload_dir.resolve()
+        preview_root = payload_root / "_sync" / "conflict-previews"
         for rel in conflict.conflicting_paths:
             if _is_secret_path(rel):
                 continue
-            path = payload_dir / rel
+            resolved = _resolve_payload_path(payload_root, rel)
+            if resolved is None:
+                continue
+            safe_rel, path = resolved
             if path.exists() and path.is_file() and _is_text_path(path):
                 text = path.read_text(encoding="utf-8")
-                preview = payload_dir / "_sync" / "conflict-previews" / rel
+                preview = (preview_root / safe_rel).resolve()
+                preview.relative_to(preview_root)
                 preview.parent.mkdir(parents=True, exist_ok=True)
                 preview.write_text(text, encoding="utf-8")
-                chosen[rel] = text
-                changed.append(rel)
+                display_path = safe_rel.as_posix()
+                chosen[display_path] = text
+                changed.append(display_path)
 
         return ConflictResolutionResult(
             chosen_merge=chosen,
@@ -52,3 +59,17 @@ def _is_secret_path(path: str) -> bool:
 
 def _is_text_path(path: Path) -> bool:
     return path.suffix.lower() in {".md", ".json", ".yaml", ".yml", ".txt", ".toml"}
+
+
+def _resolve_payload_path(payload_root: Path, rel: str) -> tuple[Path, Path] | None:
+    raw = Path(rel)
+    if raw.is_absolute():
+        return None
+    try:
+        candidate = (payload_root / raw).resolve()
+        safe_rel = candidate.relative_to(payload_root)
+    except (OSError, ValueError):
+        return None
+    if not safe_rel.parts:
+        return None
+    return safe_rel, candidate
