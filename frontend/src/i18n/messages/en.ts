@@ -439,6 +439,12 @@ export const en = {
       deleting: 'Deleting...',
       buttonTitle: 'Delete chat',
     },
+    rename: {
+      buttonTitle: 'Rename chat',
+      placeholder: 'Chat name...',
+      confirm: 'OK',
+      cancel: 'Cancel',
+    },
     untitled: 'Untitled chat',
     messagesCount: '{count} MSG',
     loadMore: 'Load more ({count} remaining)',

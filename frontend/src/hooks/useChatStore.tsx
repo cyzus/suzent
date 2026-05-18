@@ -43,6 +43,7 @@ interface ChatCoreContextValue {
   finalSave: (chatId?: string | null) => Promise<void>;
   forceSaveNow: (chatId?: string | null) => Promise<void>;
   deleteChat: (chatId: string) => Promise<void>;
+  renameChat: (chatId: string, title: string) => Promise<void>;
   chatTotal: number;
   socialChatTotal: number;
   loadingMoreChats: boolean;
@@ -1261,6 +1262,22 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     }
   }, [beginNewChat, chats, currentChatId, loadChat, refreshChatListSilently]);
 
+  const renameChat = useCallback(async (chatId: string, title: string) => {
+    const prev = chats.find(c => c.id === chatId);
+    updateChatTitleLocally(chatId, title);
+    try {
+      const res = await fetch(`${getApiBase()}/chats/${chatId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      if (!res.ok) throw new Error(`Failed to rename chat: ${res.status}`);
+    } catch (error) {
+      console.error('Error renaming chat:', error);
+      if (prev) updateChatTitleLocally(chatId, prev.title ?? '');
+    }
+  }, [chats, updateChatTitleLocally]);
+
   const coreValue = useMemo<ChatCoreContextValue>(() => ({
       config,
       setConfig: optimizedSetConfig,
@@ -1292,6 +1309,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       finalSave,
       forceSaveNow,
       deleteChat,
+      renameChat,
       refreshChatList,
       refreshChatListSilently,
       loadMoreChats,
@@ -1333,6 +1351,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     finalSave,
     forceSaveNow,
     deleteChat,
+    renameChat,
     refreshChatList,
     refreshChatListSilently,
     loadMoreChats,

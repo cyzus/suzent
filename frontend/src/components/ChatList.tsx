@@ -21,6 +21,7 @@ export const ChatList: React.FC = () => {
     loadChat,
     beginNewChat,
     deleteChat,
+    renameChat,
     switchToView,
     refreshChatList,
     loadMoreChats,
@@ -28,6 +29,8 @@ export const ChatList: React.FC = () => {
 
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState<string>('');
   const [showRefreshIndicator, setShowRefreshIndicator] = useState(false);
   const [localSearchQuery, setLocalSearchQuery] = useState<string>('');
   const [viewMode, setViewMode] = useState<'personal' | 'social'>('personal');
@@ -110,6 +113,25 @@ export const ChatList: React.FC = () => {
   const handleCancelDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     setConfirmDeleteId(null);
+  };
+
+  const handleRenameClick = (chat: ChatSummary, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRenamingChatId(chat.id);
+    setRenameValue(chat.title || '');
+  };
+
+  const handleRenameSubmit = async (chatId: string, e: React.FormEvent | React.KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const trimmed = renameValue.trim();
+    if (trimmed) await renameChat(chatId, trimmed);
+    setRenamingChatId(null);
+  };
+
+  const handleRenameCancel = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation();
+    setRenamingChatId(null);
   };
 
   const formatDate = (dateString: string) => {
@@ -299,7 +321,7 @@ export const ChatList: React.FC = () => {
                   }
                 }}
                 className={`group relative overflow-hidden px-3.5 py-3 transition-all border-b last:border-b-0 
-                  ${confirmDeleteId ? (confirmDeleteId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : 'cursor-pointer'} 
+                  ${confirmDeleteId ? (confirmDeleteId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : renamingChatId ? (renamingChatId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : 'cursor-pointer'}
                   ${currentChatId === chat.id
                     ? 'bg-brutal-yellow/95 dark:bg-zinc-700 border-brutal-black dark:border-brutal-yellow z-10'
                     : isUnread(chat)
@@ -324,6 +346,31 @@ export const ChatList: React.FC = () => {
                     confirmText={t('chatList.delete.confirm')}
                     layout="horizontal"
                   />
+                )}
+
+                {/* Inline rename input overlay */}
+                {renamingChatId === chat.id && (
+                  <form
+                    className="absolute inset-0 z-20 flex items-center gap-1 px-2 bg-white dark:bg-zinc-800 border-2 border-brutal-black dark:border-brutal-yellow"
+                    onSubmit={(e) => handleRenameSubmit(chat.id, e)}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      autoFocus
+                      type="text"
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Escape') handleRenameCancel(e); }}
+                      className="flex-1 min-w-0 px-2 py-1 text-xs font-bold bg-neutral-50 dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
+                      placeholder={t('chatList.rename.placeholder')}
+                    />
+                    <button type="submit" className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-brutal-yellow hover:bg-yellow-300 text-brutal-black transition-colors shrink-0">
+                      {t('chatList.rename.confirm')}
+                    </button>
+                    <button type="button" onClick={handleRenameCancel} className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white hover:bg-neutral-100 transition-colors shrink-0">
+                      {t('chatList.rename.cancel')}
+                    </button>
+                  </form>
                 )}
 
                 <div className="min-w-0 space-y-1 pr-8">
@@ -371,8 +418,19 @@ export const ChatList: React.FC = () => {
                     </span>
                   </div>
 
-                  {/* Delete Button (Absolute Overlay) */}
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-end">
+                  {/* Action Buttons (Absolute Overlay) */}
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                    {/* Rename button */}
+                    <button
+                      type="button"
+                      onClick={(e) => handleRenameClick(chat, e)}
+                      title={t('chatList.rename.buttonTitle')}
+                      className={`p-1.5 border-2 border-brutal-black transition-all duration-200 hover:-translate-y-[1px] hover:shadow-brutal-sm active:translate-y-[1px] active:scale-95 active:shadow-none flex items-center justify-center text-neutral-500 hover:text-brutal-black dark:text-neutral-400 dark:hover:text-white scale-90 ${currentChatId === chat.id ? 'bg-white dark:bg-zinc-600 hover:bg-brutal-yellow dark:hover:bg-brutal-yellow' : 'bg-neutral-100 dark:bg-zinc-700 hover:bg-brutal-yellow dark:hover:bg-brutal-yellow'}`}
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
                     {deletingChatId === chat.id ? (
                       <div className="w-7 h-7 flex items-center justify-center animate-brutal-blink text-brutal-black font-bold text-xs bg-brutal-red border-2 border-brutal-black shadow-[2px_2px_0_0_rgba(0,0,0,1)]" title={t('chatList.delete.deleting')}>
                         X

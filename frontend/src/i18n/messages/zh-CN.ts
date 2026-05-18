@@ -366,6 +366,12 @@ export const zhCN = {
       deleting: '正在删除...',
       buttonTitle: '删除对话',
     },
+    rename: {
+      buttonTitle: '重命名对话',
+      placeholder: '对话名称...',
+      confirm: '确定',
+      cancel: '取消',
+    },
     untitled: '未命名对话',
     messagesCount: '{count} 条消息',
     loadMore: '加载更多（还有 {count} 条）',
