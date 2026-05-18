@@ -1,0 +1,8 @@
+{
+  "label": "GitHub Sync",
+  "position": 7,
+  "link": {
+    "type": "generated-index",
+    "description": "Sync your portable Suzent brain to a private GitHub repository, with optional encrypted API key sync via Shibboleth."
+  }
+}

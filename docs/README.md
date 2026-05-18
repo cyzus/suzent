@@ -20,6 +20,8 @@
 
 ### Automation & Connectivity
 - [Automation](02-concepts/automation/automation.md): Cron jobs and heartbeat monitoring
+- [GitHub Sync](02-concepts/github-sync/README.md): Sync portable brain data to a private GitHub repo
+- [Shibboleth (Passphrase)](02-concepts/github-sync/shibboleth.md): Optional encrypted API key sync for multi-device setups
 - [Social Messaging](02-concepts/social-messaging/README.md): Telegram, Discord, Slack, and Feishu integration
 - [Nodes](02-concepts/nodes/nodes.md): Connect and control companion devices remotely
 

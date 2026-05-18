@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 
 import { useI18n } from '../../i18n';
@@ -12,6 +12,7 @@ import {
   syncPull,
   syncPush,
 } from '../../lib/dataApi';
+import { GitHubSyncSection } from './GitHubSyncSection';
 
 type Notification = { text: string; isError: boolean };
 
@@ -32,6 +33,10 @@ export function DataTab(): React.ReactElement {
       setNotification({ text: t('settings.data.statusFailed'), isError: true });
     });
   }, []);
+
+  function notify(text: string, isError: boolean): void {
+    setNotification({ text, isError });
+  }
 
   async function handleExport(): Promise<void> {
     setBusy(true);
@@ -212,6 +217,9 @@ export function DataTab(): React.ReactElement {
           </div>
         </div>
       </div>
+
+
+      <GitHubSyncSection busy={busy} onBusyChange={setBusy} onNotify={notify} />
 
       {notification && (
         <div className={`border-4 border-brutal-black p-4 font-mono text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${notification.isError ? 'bg-red-100 text-brutal-black' : 'bg-green-100 text-brutal-black'}`}>

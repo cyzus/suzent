@@ -76,6 +76,28 @@ from suzent.routes.data_routes import (
     sync_pull_route,
     sync_push_route,
 )
+from suzent.routes.sync_routes import (
+    apply_manual_conflict,
+    approve_secret_device,
+    auto_sync,
+    create_sync_profile,
+    disable_secret_sync,
+    enable_secret_sync,
+    enroll_secret_device,
+    get_sync_profiles,
+    get_sync_quickstart_info,
+    get_sync_status,
+    quickstart_sync,
+    lock_shibboleth,
+    preview_sync_pull,
+    pull_sync,
+    push_sync,
+    resolve_conflicts_agent,
+    revoke_secret_device,
+    stop_conflict_resolution,
+    unlock_shibboleth,
+    validate_sync_profile,
+)
 from suzent.routes.plan_routes import get_plan, get_plans
 from suzent.routes.mcp_routes import (
     list_mcp_servers,
@@ -154,6 +176,8 @@ from suzent.nodes.manager import NodeManager
 from suzent.core.social_brain import SocialBrain
 from suzent.core.scheduler import SchedulerBrain
 from suzent.core.heartbeat import HeartbeatRunner
+from suzent.sync.automation import SyncAutomationRunner
+from suzent.sync.service import GitHubSyncService
 from suzent.config import PROJECT_DIR as _project_dir
 
 load_dotenv(_project_dir / ".env")
@@ -182,6 +206,7 @@ channel_manager: ChannelManager = None
 node_manager: NodeManager = None
 scheduler_brain: SchedulerBrain = None
 heartbeat_runner: HeartbeatRunner = None
+sync_automation_runner: SyncAutomationRunner = None
 
 
 _social_reload_lock = asyncio.Lock()
@@ -431,6 +456,15 @@ async def startup():
         except Exception as e:
             logger.error(f"Failed to start HeartbeatRunner: {e}")
 
+        global sync_automation_runner
+        try:
+            app.state.github_sync_service = GitHubSyncService()
+            sync_automation_runner = SyncAutomationRunner(app.state.github_sync_service)
+            app.state.sync_automation_runner = sync_automation_runner
+            await sync_automation_runner.start()
+        except Exception as e:
+            logger.error(f"Failed to start SyncAutomationRunner: {e}")
+
     global node_manager
     node_manager = NodeManager()
     app.state.node_manager = node_manager
@@ -530,13 +564,17 @@ async def shutdown():
         channel_manager, \
         node_manager, \
         scheduler_brain, \
-        heartbeat_runner
+        heartbeat_runner, \
+        sync_automation_runner
 
     # Cancel any pending ask_question futures so their tasks can exit cleanly
     pending_questions.cancel_all()
 
     if heartbeat_runner:
         await _stop(heartbeat_runner.stop(), "HeartbeatRunner")
+
+    if sync_automation_runner:
+        await _stop(sync_automation_runner.stop(), "SyncAutomationRunner")
 
     if scheduler_brain:
         await _stop(scheduler_brain.stop(), "SchedulerBrain")
@@ -654,6 +692,26 @@ app = Starlette(
         Route("/data/import", import_data_route, methods=["POST"]),
         Route("/data/sync/push", sync_push_route, methods=["POST"]),
         Route("/data/sync/pull", sync_pull_route, methods=["POST"]),
+        Route("/sync/status", get_sync_status, methods=["GET"]),
+        Route("/sync/quickstart/info", get_sync_quickstart_info, methods=["GET"]),
+        Route("/sync/quickstart", quickstart_sync, methods=["POST"]),
+        Route("/sync/profiles", get_sync_profiles, methods=["GET"]),
+        Route("/sync/profiles", create_sync_profile, methods=["POST"]),
+        Route("/sync/validate", validate_sync_profile, methods=["POST"]),
+        Route("/sync/preview-pull", preview_sync_pull, methods=["POST"]),
+        Route("/sync/pull", pull_sync, methods=["POST"]),
+        Route("/sync/push", push_sync, methods=["POST"]),
+        Route("/sync/auto", auto_sync, methods=["POST"]),
+        Route("/sync/conflicts/resolve-agent", resolve_conflicts_agent, methods=["POST"]),
+        Route("/sync/conflicts/stop", stop_conflict_resolution, methods=["POST"]),
+        Route("/sync/conflicts/apply-manual", apply_manual_conflict, methods=["POST"]),
+        Route("/sync/shibboleth/unlock", unlock_shibboleth, methods=["POST"]),
+        Route("/sync/shibboleth/lock", lock_shibboleth, methods=["POST"]),
+        Route("/sync/secrets/enable", enable_secret_sync, methods=["POST"]),
+        Route("/sync/secrets/disable", disable_secret_sync, methods=["POST"]),
+        Route("/sync/secrets/enroll-device", enroll_secret_device, methods=["POST"]),
+        Route("/sync/secrets/approve-device", approve_secret_device, methods=["POST"]),
+        Route("/sync/secrets/revoke-device", revoke_secret_device, methods=["POST"]),
         Route("/social/pairing", list_pairings, methods=["GET"]),
         Route("/social/pairing/approve", approve_pairing, methods=["POST"]),
         Route("/social/pairing/deny", deny_pairing, methods=["POST"]),

@@ -8,7 +8,7 @@ Suzent is a personal AI agent — Python backend (FastAPI + pydantic-ai) with a 
 
 Full documentation lives in `docs/`:
 - `docs/01-getting-started/` — intro and quickstart
-- `docs/02-concepts/` — memory, nodes, tools, skills, runtime, automation, social messaging
+- `docs/02-concepts/` — memory, nodes, tools, skills, runtime, automation, github-sync, social messaging
 - `docs/03-developing/` — development guide, desktop guide, Docker services, releasing
 
 ## General Principles
