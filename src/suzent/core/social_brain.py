@@ -199,6 +199,7 @@ class SocialBrain(BaseBrain):
         ctx = CommandContext(
             chat_id=default_chat_id,
             user_id="default-user",
+            surface="social",
             platform=message.platform,
             sender_id=message.sender_id,
             channel_manager=self.channel_manager,
