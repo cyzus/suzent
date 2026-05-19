@@ -91,7 +91,7 @@ const buildConfigFromPreferences = (
   prefs: ConfigOptions['userPreferences'],
   backendDefaults: ConfigOptions
 ): ChatConfig => ({
-  model: prefs?.model || backendDefaults.models[0] || '',
+  model: prefs?.model || backendDefaults.defaultModel || backendDefaults.models[0] || '',
   agent: prefs?.agent || backendDefaults.agents[0] || '',
   tools: prefs?.tools || backendDefaults.defaultTools || [],
   memory_enabled: prefs?.memory_enabled,
@@ -298,7 +298,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     // Fallback to backend defaults
     if (backendConfig) {
       return {
-        model: backendConfig.models[0] || '',
+        model: backendConfig.defaultModel || backendConfig.models[0] || '',
         agent: backendConfig.agents[0] || '',
         tools: backendConfig.defaultTools || [],
         sandbox_enabled: backendConfig.sandboxEnabled ?? true,
