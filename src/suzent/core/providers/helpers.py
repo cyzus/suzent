@@ -89,6 +89,78 @@ def get_enabled_models_from_db() -> List[str]:
     return sorted(set(all_models))
 
 
+def _load_user_provider_config() -> Dict[str, Any]:
+    """Load the user's saved provider config blob from the DB, or {}."""
+    import json
+
+    from suzent.database import get_database
+
+    db = get_database()
+    api_keys = db.get_api_keys() or {}
+    blob = api_keys.get("_PROVIDER_CONFIG_")
+    if not blob:
+        return {}
+    try:
+        parsed = json.loads(blob)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _provider_is_configured(spec) -> bool:
+    """Return True if ``spec`` has usable credentials.
+
+    For standard providers, this means an API key is resolvable. For the
+    ChatGPT subscription provider (no env keys, OAuth-based), it means the
+    cached access token is still valid.
+    """
+    if spec.env_keys:
+        return resolve_api_key(spec.id) is not None
+
+    if spec.api_type == "chatgpt_subscription":
+        # Avoid pulling the ChatGPT provider stack at module import time.
+        from suzent.core.providers.factory import ProviderFactory
+
+        try:
+            provider = ProviderFactory.get_provider(spec.id, {})
+        except Exception as exc:
+            logger.debug(
+                "ChatGPT provider unavailable while checking default model: {}", exc
+            )
+            return False
+        return bool(getattr(provider, "is_authenticated", lambda: False)())
+
+    return False
+
+
+def get_default_chat_model() -> Optional[str]:
+    """Return the default chat model id from the first configured provider.
+
+    Walks ``PROVIDER_REGISTRY`` in catalog order and returns the first model
+    available from a provider that has credentials. The user's
+    ``enabled_models`` list (from ``_PROVIDER_CONFIG_``) takes precedence over
+    the catalog ``default_models`` for the chosen provider.
+
+    Returns ``None`` if no provider is configured, so callers (UI / API) can
+    distinguish "no setup" from "first model in some list".
+    """
+    from suzent.core.providers.catalog import PROVIDER_REGISTRY
+
+    user_provider_config = _load_user_provider_config()
+
+    for spec in PROVIDER_REGISTRY:
+        if not _provider_is_configured(spec):
+            continue
+
+        enabled = user_provider_config.get(spec.id, {}).get("enabled_models") or []
+        if enabled:
+            return enabled[0]
+        if spec.default_models:
+            return spec.default_models[0]["id"]
+
+    return None
+
+
 def get_effective_memory_config() -> Dict[str, str]:
     """Get effective memory config, preferring user settings over CONFIG defaults."""
     from suzent.config import CONFIG

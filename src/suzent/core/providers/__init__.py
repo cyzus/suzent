@@ -14,6 +14,7 @@ from suzent.core.providers.catalog import (
 from suzent.core.providers.factory import ProviderFactory
 from suzent.core.providers.generic import GenericLiteLLMProvider
 from suzent.core.providers.helpers import (
+    get_default_chat_model,
     get_effective_memory_config,
     get_enabled_models_from_db,
     resolve_api_key,
@@ -49,5 +50,6 @@ __all__ = [
     "ProviderFactory",
     "resolve_api_key",
     "get_enabled_models_from_db",
+    "get_default_chat_model",
     "get_effective_memory_config",
 ]
