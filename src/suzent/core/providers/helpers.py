@@ -89,14 +89,84 @@ def get_enabled_models_from_db() -> List[str]:
     return sorted(set(all_models))
 
 
-def get_effective_enabled_models() -> List[str]:
-    """Return model IDs the agent can actually run after config fallbacks."""
-    from suzent.config import CONFIG
+def _load_user_provider_config() -> Dict[str, Any]:
+    """Return the _PROVIDER_CONFIG_ blob from the DB, or {} if absent/invalid."""
+    import json
 
-    enabled_models = get_enabled_models_from_db()
-    if enabled_models:
-        return enabled_models
-    return CONFIG.model_options.copy() if CONFIG.model_options else []
+    from suzent.database import get_database
+
+    blob = (get_database().get_api_keys() or {}).get("_PROVIDER_CONFIG_")
+    if not blob:
+        return {}
+    try:
+        parsed = json.loads(blob)
+        return parsed if isinstance(parsed, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def _provider_is_configured(spec) -> bool:
+    """Return True if the provider has usable credentials."""
+    if spec.env_keys:
+        return resolve_api_key(spec.id) is not None
+    if spec.api_type == "chatgpt_subscription":
+        from suzent.core.providers.factory import ProviderFactory
+
+        try:
+            provider = ProviderFactory.get_provider(spec.id, {})
+        except Exception as exc:
+            logger.debug(
+                "ChatGPT provider unavailable while checking default model: {}", exc
+            )
+            return False
+        return bool(getattr(provider, "is_authenticated", lambda: False)())
+    return False
+
+
+_UNSET = object()
+_default_model_cache: Any = _UNSET
+
+
+def invalidate_default_model_cache() -> None:
+    """Invalidate the cached default model (call after provider config changes)."""
+    global _default_model_cache
+    _default_model_cache = _UNSET
+
+
+def _compute_default_chat_model() -> Optional[str]:
+    from suzent.core.providers.catalog import PROVIDER_REGISTRY
+
+    user_config = _load_user_provider_config()
+    blob_present = bool(user_config)
+
+    for spec in PROVIDER_REGISTRY:
+        if not _provider_is_configured(spec):
+            continue
+        if blob_present:
+            enabled = user_config.get(spec.id, {}).get("enabled_models") or []
+            if enabled:
+                return enabled[0]
+        elif spec.default_models:
+            model_id = (
+                spec.default_models[0].get("id")
+                if isinstance(spec.default_models[0], dict)
+                else None
+            )
+            if model_id:
+                return model_id
+    return None
+
+
+def get_default_chat_model() -> Optional[str]:
+    """First model from the first configured provider, in catalog order.
+
+    Cached; call ``invalidate_default_model_cache`` after provider config changes.
+    Returns ``None`` when no provider has credentials.
+    """
+    global _default_model_cache
+    if _default_model_cache is _UNSET:
+        _default_model_cache = _compute_default_chat_model()
+    return _default_model_cache  # type: ignore[return-value]
 
 
 def get_effective_memory_config() -> Dict[str, str]:

@@ -19,6 +19,7 @@ from suzent.config import CONFIG
 from suzent.core.providers import (
     PROVIDER_REGISTRY,
     ProviderFactory,
+    get_default_chat_model,
     get_effective_memory_config,
     get_enabled_models_from_db,
 )
@@ -66,6 +67,7 @@ async def get_config(request: Request) -> JSONResponse:
     sandbox_enabled = getattr(CONFIG, "sandbox_enabled", False)
     sandbox_volumes = CONFIG.sandbox_volumes or []
     available_models = get_enabled_models_from_db()
+    default_model = get_default_chat_model()
 
     mem_config = get_effective_memory_config()
     embedding_model = mem_config["embedding_model"]
@@ -74,6 +76,7 @@ async def get_config(request: Request) -> JSONResponse:
     data: dict[str, Any] = {
         "title": CONFIG.title,
         "models": available_models,
+        "defaultModel": default_model,
         "agents": CONFIG.agent_options,
         "tools": [t for t in CONFIG.tool_options if t != "SkillTool"],
         "toolGroups": get_tool_groups(),
