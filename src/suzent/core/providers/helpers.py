@@ -134,26 +134,42 @@ def invalidate_default_model_cache() -> None:
 
 
 def _compute_default_chat_model() -> Optional[str]:
+    """Walks ``PROVIDER_REGISTRY`` in catalog order and returns the first model
+    available from a provider that has credentials.
+
+    Semantics must match ``get_enabled_models_from_db`` so the returned id is
+    always a member of ``/config.models``:
+
+    * **No ``_PROVIDER_CONFIG_`` blob saved** (fresh install): fall back to the
+      provider's catalog ``default_models[0]``.
+    * **Blob saved**: the blob is the source of truth. Honor each provider's
+      ``enabled_models`` strictly — an explicit empty list, or no entry at
+      all, means "this provider exposes no chat models" and we walk on. We do
+      *not* fall back to catalog defaults in this case, otherwise the helper
+      could return a model that the frontend cannot select.
+
+    Returns ``None`` if no provider is configured.
+    """
     from suzent.core.providers.catalog import PROVIDER_REGISTRY
 
-    user_config = _load_user_provider_config()
-    blob_present = bool(user_config)
+    user_provider_config = _load_user_provider_config()
+    blob_present = bool(user_provider_config)
 
     for spec in PROVIDER_REGISTRY:
         if not _provider_is_configured(spec):
             continue
+
         if blob_present:
-            enabled = user_config.get(spec.id, {}).get("enabled_models") or []
+            # Strictly honor the saved blob — matches get_enabled_models_from_db.
+            enabled = user_provider_config.get(spec.id, {}).get("enabled_models") or []
             if enabled:
                 return enabled[0]
-        elif spec.default_models:
-            model_id = (
-                spec.default_models[0].get("id")
-                if isinstance(spec.default_models[0], dict)
-                else None
-            )
-            if model_id:
-                return model_id
+            continue
+
+        # Fresh install: blob absent, fall back to catalog defaults.
+        if spec.default_models:
+            return spec.default_models[0]["id"]
+
     return None
 
 

@@ -90,13 +90,62 @@ def test_user_enabled_models_take_precedence_over_catalog_defaults(
     assert helpers.get_default_chat_model() == "openai/o3"
 
 
-def test_falls_back_to_catalog_default_when_user_enabled_is_empty(catalog, monkeypatch):
-    _set_configured(monkeypatch, {"openai"})
+def test_explicit_empty_enabled_models_skips_provider_when_blob_present(
+    catalog, monkeypatch
+):
+    """When the blob exists, an empty enabled_models means 'this provider
+    exposes no chat models' — must NOT fall back to catalog defaults, or
+    `defaultModel` would point at a model that's absent from /config.models.
+    Regression test for the case Scott flagged on PR #35.
+    """
+    _set_configured(monkeypatch, {"openai", "anthropic"})
     monkeypatch.setattr(
         helpers,
         "_load_user_provider_config",
-        lambda: {"openai": {"enabled_models": []}},
+        lambda: {
+            "openai": {"enabled_models": []},
+            "anthropic": {"enabled_models": ["anthropic/claude-haiku-4-5"]},
+        },
     )
+    assert helpers.get_default_chat_model() == "anthropic/claude-haiku-4-5"
+
+
+def test_provider_configured_but_missing_from_blob_is_skipped(catalog, monkeypatch):
+    """If the blob exists at all, it is the source of truth for which models
+    are surfaced. A provider with credentials but no blob entry contributes
+    no models to /config.models, so it must not yield a default either.
+    """
+    _set_configured(monkeypatch, {"openai", "anthropic"})
+    monkeypatch.setattr(
+        helpers,
+        "_load_user_provider_config",
+        lambda: {"anthropic": {"enabled_models": ["anthropic/claude-haiku-4-5"]}},
+    )
+    assert helpers.get_default_chat_model() == "anthropic/claude-haiku-4-5"
+
+
+def test_returns_none_when_blob_present_but_all_enabled_lists_empty(
+    catalog, monkeypatch
+):
+    _set_configured(monkeypatch, {"openai", "anthropic"})
+    monkeypatch.setattr(
+        helpers,
+        "_load_user_provider_config",
+        lambda: {
+            "openai": {"enabled_models": []},
+            "anthropic": {"enabled_models": []},
+        },
+    )
+    assert helpers.get_default_chat_model() is None
+
+
+def test_falls_back_to_catalog_default_only_when_blob_absent(catalog, monkeypatch):
+    """No _PROVIDER_CONFIG_ saved (fresh install) is the only case where we
+    use catalog default_models — matches get_enabled_models_from_db's
+    fresh-install branch.
+    """
+    _set_configured(monkeypatch, {"openai"})
+    monkeypatch.setattr(helpers, "_load_user_provider_config", lambda: {})
     assert helpers.get_default_chat_model() == "openai/gpt-4.1"
 
 
