@@ -8,10 +8,10 @@ This is separate from the **sync folder** feature on the same Settings → Data 
 
 | Included in GitHub sync (`suzent-sync/`) | Stays on this device only |
 |------------------------------------------|---------------------------|
-| User config (`config/`) | Chat history (`chats.db`) |
+| User config (`config/`, excluding device-local sync profiles) | Chat history (`chats.db`) |
 | User skills (`skills/`) | LanceDB / search indexes |
 | Markdown memory (`memory/`) | Runtime state, caches, sessions |
-| Sync manifest and device presence | Plaintext secrets and `.env` |
+| Sync manifest and device presence | Plaintext secrets, `.env`, and `sync_profiles.json` |
 | Encrypted API key bundles (optional) | `sync_secret.key` (legacy; never pushed) |
 
 Forbidden paths are rejected before push so databases and plaintext secrets cannot enter the repo by mistake.
@@ -51,7 +51,7 @@ github-sync/
     memory/
 ```
 
-Profiles are stored in `~/.suzent/config/sync_profiles.json`.
+Profiles are stored in `~/.suzent/config/sync_profiles.json`. This file is device-local control state and is not synced; each device keeps its own repo path, branch, remote, and unlock state.
 
 ## Requirements
 
@@ -100,9 +100,9 @@ Create a classic token with **repo** scope at [github.com/settings/tokens](https
 ### Second machine
 
 1. Install Suzent and sign in to GitHub (`gh` or token) on that machine.
-2. **Quick start** with the **same repository name** (or clone the repo and set the local path in Advanced).
-3. Click **Pull** and confirm — config, skills, and memory are restored locally.
-4. If encrypted API sync is enabled: **Unlock** Shibboleth with the **same passphrase**, then pull again if keys were not imported on the first pull.
+2. **Quick start** with the **same repository name**. If the GitHub repo already exists and the local sync folder is empty, Suzent clones the existing repo instead of creating a new unrelated Git history.
+3. Click **Pull** and confirm - config, skills, and memory are restored locally.
+4. If encrypted API bundles exist: **Unlock** Shibboleth with the **same passphrase**, then pull. Suzent requires the passphrase before importing API keys.
 
 ### Day-to-day
 
@@ -113,7 +113,7 @@ Create a classic token with **repo** scope at [github.com/settings/tokens](https
 | **Validate** | Check repo path, branch, and remote without syncing |
 | **Save profile** | Persist Advanced settings (path, branch, remote) |
 
-Pull replaces local portable config, skills, and markdown memory. A backup is not created for GitHub pull (unlike folder import); confirm before pulling.
+Pull replaces local portable config, skills, and markdown memory. It preserves device-local files such as `config/sync_profiles.json`. A backup is not created for GitHub pull (unlike folder import); confirm before pulling.
 
 ## Advanced options
 
@@ -183,13 +183,39 @@ The desktop app’s backend may have a narrower `PATH` than your shell. Use a **
 
 An old test profile may have pointed at a temporary directory. Run Quick start again after updating — ephemeral paths under `pytest-of` are ignored and reset to `~/.suzent/github-sync`.
 
-### “Unable to add remote origin”
+### "Unable to add remote origin"
 
 Usually means `origin` already exists while `gh repo create` tried to add it again. Update Suzent and retry Quick start; the repo may already be linked.
 
+### Fresh device gets "fetch first" or "diverging branches"
+
+Update Suzent and retry Quick start. Fresh devices clone an existing GitHub sync repo into an empty local sync folder instead of creating a separate initial commit. If you already created a broken temporary test folder, remove that local folder and run Quick start again.
+
+### Pull fails with another device's local path
+
+Older sync payloads may include `config/sync_profiles.json`, which stores device-local repo paths. Update Suzent and pull again: restore preserves the local sync profile and new pushes exclude it from the payload.
+
 ### Push/pull asks for Shibboleth
 
-Encrypted API sync is enabled. **Unlock** in Advanced with your passphrase, or disable encrypted API sync if you only need config/skills/memory.
+Encrypted API bundles exist in the repo or encrypted API sync is enabled locally. **Unlock** in Advanced with your passphrase before pull/push, or disable encrypted API sync if you only need config/skills/memory.
+
+## Common Q&A
+
+### Does GitHub Sync copy my API keys by default?
+
+No. Plaintext API keys, `.env` files, `secrets.db`, and `.secret_key` are excluded. API keys are only written to GitHub as ciphertext in `suzent-sync/_sync/secrets/bundles.json` after you enable Shibboleth.
+
+### Why is my provider key shown as ENV but not exported?
+
+Environment-only keys can be used by Suzent at runtime, but they are not owned by Suzent's secret store and are not listed for encrypted export. To sync a key, save it through Suzent's provider settings, then push with Shibboleth unlocked.
+
+### Can I pull normal config and memory without Shibboleth?
+
+Yes, if the repo has no encrypted API key bundles. If bundles exist, Suzent asks for Shibboleth so it does not silently skip or mishandle secret import.
+
+### Does each device use the same local Git path?
+
+No. `sync_profiles.json` is local to each device. The shared repo content lives under `suzent-sync/`; local repo paths and unlock state stay on each machine.
 
 ### Backend missing sync routes (404 on `/sync/quickstart/info`)
 

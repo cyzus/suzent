@@ -169,13 +169,13 @@ class GitHubSyncService:
             )
             git_output = await asyncio.to_thread(provider.pull_ff_only)
             payload_dir = Path(profile.repo_path) / PAYLOAD_DIR_NAME
+            phrase = self._require_shibboleth_for_pull(
+                profile, payload_dir, shibboleth
+            )
             restored = await asyncio.to_thread(
                 self.payload_builder.apply_to_local, payload_dir
             )
             imported_keys: list[str] = []
-            phrase = self._require_shibboleth_for_pull(
-                profile, payload_dir, shibboleth
-            )
             if phrase:
                 imported_keys = await asyncio.to_thread(
                     self._import_secret_bundles, payload_dir, phrase

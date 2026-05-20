@@ -45,9 +45,9 @@ Details of algorithms and file format are below.
 
 ## Second device
 
-1. Set up GitHub Sync and **Pull** portable data (config, skills, memory).
-2. Open Shibboleth → **Unlock** with the **same passphrase** as the first device.
-3. **Pull** again if keys were not imported on the first pull, or **Push** after local changes.
+1. Set up GitHub Sync with the same GitHub repo. Fresh devices clone the existing sync repo when the local sync folder is empty.
+2. Open Shibboleth and **Unlock** with the **same passphrase** as the first device.
+3. **Pull**. Config, skills, memory, and encrypted API key bundles are restored/imported.
 
 If the passphrase is wrong, unlock and import fail with an incorrect passphrase error. Suzent cannot recover the keys without it.
 
@@ -74,10 +74,10 @@ When `encrypted_secret_sync_enabled` is true on your profile:
 | Operation | Locked | Unlocked |
 |-----------|--------|----------|
 | **Push** | Fails (unlock required) | Exports keys from local secret manager → encrypts → commits `bundles.json` |
-| **Pull** | Restores config/skills/memory only | Also decrypts bundles → writes keys to local keyring |
+| **Pull** | Requires unlock when encrypted bundles exist | Restores config/skills/memory and decrypts bundles into the local keyring |
 | **Auto-sync** | Skips secret import/export (warning logged) | Includes secrets if unlocked |
 
-Config, skills, and memory sync do not require Shibboleth.
+Config, skills, and memory sync do not require Shibboleth when the repo has no encrypted API key bundles. If bundles exist, Suzent asks for Shibboleth before pull so secret import is explicit.
 
 ## What is stored on GitHub
 
@@ -159,6 +159,18 @@ No. GitHub authentication (`gh` or PAT) lets Suzent talk to GitHub. Shibboleth o
 ### Can I use GitHub Sync without Shibboleth?
 
 Yes. Most users only sync config, skills, and memory. Add Shibboleth only if you need API keys on multiple machines without re-entering them manually.
+
+### Why did Pull ask for Shibboleth on a new device?
+
+The repo contains encrypted API key bundles. Suzent can still store normal portable data in GitHub, but it requires your passphrase before importing the encrypted keys into the new device's local secret store.
+
+### My API key is set from ENV. Will Shibboleth sync it?
+
+No. Environment-only keys can be read at runtime, but they are not exported because Suzent does not own them in its secret store. Save the key through Suzent's provider settings, then push with Shibboleth unlocked.
+
+### Is `sync_profiles.json` shared between devices?
+
+No. `sync_profiles.json` contains local repo paths and device-local sync settings. It stays on each device and is excluded from the GitHub payload.
 
 ### Why “Shibboleth”?
 
