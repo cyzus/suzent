@@ -137,24 +137,38 @@ def get_default_chat_model() -> Optional[str]:
     """Return the default chat model id from the first configured provider.
 
     Walks ``PROVIDER_REGISTRY`` in catalog order and returns the first model
-    available from a provider that has credentials. The user's
-    ``enabled_models`` list (from ``_PROVIDER_CONFIG_``) takes precedence over
-    the catalog ``default_models`` for the chosen provider.
+    available from a provider that has credentials.
 
-    Returns ``None`` if no provider is configured, so callers (UI / API) can
-    distinguish "no setup" from "first model in some list".
+    Semantics must match ``get_enabled_models_from_db`` so the returned id is
+    always a member of ``/config.models``:
+
+    * **No ``_PROVIDER_CONFIG_`` blob saved** (fresh install): fall back to the
+      provider's catalog ``default_models[0]``.
+    * **Blob saved**: the blob is the source of truth. Honor each provider's
+      ``enabled_models`` strictly — an explicit empty list, or no entry at
+      all, means "this provider exposes no chat models" and we walk on. We do
+      *not* fall back to catalog defaults in this case, otherwise the helper
+      could return a model that the frontend cannot select.
+
+    Returns ``None`` if no provider is configured.
     """
     from suzent.core.providers.catalog import PROVIDER_REGISTRY
 
     user_provider_config = _load_user_provider_config()
+    blob_present = bool(user_provider_config)
 
     for spec in PROVIDER_REGISTRY:
         if not _provider_is_configured(spec):
             continue
 
-        enabled = user_provider_config.get(spec.id, {}).get("enabled_models") or []
-        if enabled:
-            return enabled[0]
+        if blob_present:
+            # Strictly honor the saved blob — matches get_enabled_models_from_db.
+            enabled = user_provider_config.get(spec.id, {}).get("enabled_models") or []
+            if enabled:
+                return enabled[0]
+            continue
+
+        # Fresh install: blob absent, fall back to catalog defaults.
         if spec.default_models:
             return spec.default_models[0]["id"]
 
