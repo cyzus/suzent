@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -65,6 +66,18 @@ def _run_git(cwd: Path, *args: str, extra_env: dict[str, str] | None = None) -> 
         env=extra_env,
     )
     if completed.returncode != 0:
-        detail = completed.stderr.strip() or completed.stdout.strip()
-        raise RuntimeError(f"git {' '.join(args)} failed: {detail}")
+        detail = _redact_git_credentials(
+            completed.stderr.strip() or completed.stdout.strip()
+        )
+        command = " ".join(_redact_git_credentials(arg) for arg in args)
+        raise RuntimeError(f"git {command} failed: {detail}")
     return completed.stdout
+
+
+_URL_CREDENTIAL_RE = re.compile(r"(https://)([^/@\s]+)@")
+_ACCESS_TOKEN_RE = re.compile(r"(x-access-token:)[^/@\s]+")
+
+
+def _redact_git_credentials(value: str) -> str:
+    redacted = _ACCESS_TOKEN_RE.sub(r"\1<redacted>", value)
+    return _URL_CREDENTIAL_RE.sub(r"\1<redacted>@", redacted)

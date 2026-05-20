@@ -173,8 +173,10 @@ class GitHubSyncService:
                 self.payload_builder.apply_to_local, payload_dir
             )
             imported_keys: list[str] = []
-            if profile.encrypted_secret_sync_enabled:
-                phrase = self._require_shibboleth(profile, shibboleth)
+            phrase = self._require_shibboleth_for_pull(
+                profile, payload_dir, shibboleth
+            )
+            if phrase:
                 imported_keys = await asyncio.to_thread(
                     self._import_secret_bundles, payload_dir, phrase
                 )
@@ -293,6 +295,15 @@ class GitHubSyncService:
             return explicit
         return self._shibboleth_unlocks.get(profile.id)
 
+    def _require_shibboleth_for_pull(
+        self, profile: SyncProfile, payload_dir: Path, explicit: str | None
+    ) -> str | None:
+        if not profile.encrypted_secret_sync_enabled and not self._has_secret_bundles(
+            payload_dir
+        ):
+            return None
+        return self._require_shibboleth(profile, explicit)
+
     def _write_secret_bundles(
         self,
         repo_path: Path,
@@ -331,6 +342,11 @@ class GitHubSyncService:
         if not secret_sync.verify_shibboleth(bundle_path, shibboleth):
             raise ValueError("Incorrect Shibboleth (passphrase)")
         return secret_sync.import_bundles(payload, shibboleth)
+
+    def _has_secret_bundles(self, payload_dir: Path) -> bool:
+        bundle_path = payload_dir / SECRET_BUNDLES_PATH
+        payload = EncryptedSecretSync().read_bundles_file(bundle_path)
+        return bool(payload and payload.bundles)
 
     def _load_profiles(self) -> dict[str, SyncProfile]:
         if not self.profiles_path.exists():

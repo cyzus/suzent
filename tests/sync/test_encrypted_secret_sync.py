@@ -142,6 +142,22 @@ def test_sync_secret_key_is_never_in_payload(tmp_path: Path):
     assert not builder.validate_no_forbidden_paths(payload_dir)
 
 
+def test_pull_requires_shibboleth_when_remote_has_secret_bundles(tmp_path: Path):
+    repo = tmp_path / "repo"
+    payload_dir = repo / PAYLOAD_DIR_NAME
+    payload_dir.mkdir(parents=True)
+    sync = EncryptedSecretSync(secret_manager=FakeSecretManager())
+    profile = SyncProfile(repo_path=str(repo), encrypted_secret_sync_enabled=True)
+    bundles_file = sync.export_bundles(profile, SHIBBOLETH)
+    sync.write_bundles_file(payload_dir / SECRET_BUNDLES_PATH, bundles_file)
+
+    service = GitHubSyncService(profiles_path=tmp_path / "profiles.json")
+    fresh_profile = SyncProfile(repo_path=str(repo), encrypted_secret_sync_enabled=False)
+
+    with pytest.raises(ValueError, match="Shibboleth"):
+        service._require_shibboleth_for_pull(fresh_profile, payload_dir, None)
+
+
 def test_shibboleth_too_short_raises(tmp_path: Path):
     sync = EncryptedSecretSync(secret_manager=FakeSecretManager())
     profile = SyncProfile(

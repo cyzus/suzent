@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import tempfile
 from pathlib import Path
 from uuid import uuid4
 
@@ -24,6 +25,7 @@ EXCLUDED_NAMES = {
     "secrets.db",
     "sessions",
     "sync_secret.key",
+    "sync_profiles.json",
 }
 EXCLUDED_SUFFIXES = {".db", ".sqlite", ".sqlite3"}
 
@@ -113,11 +115,38 @@ class SyncPayloadBuilder:
             source = payload_dir / name
             if not source.exists():
                 continue
-            if target.exists():
-                shutil.rmtree(target)
+            self._remove_tree_preserving_excluded(target)
             self._copy_tree(source, target)
             restored.append(name)
         return restored
+
+    def _remove_tree_preserving_excluded(self, target: Path) -> None:
+        if not target.exists():
+            return
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            preserved_root = Path(temp_dir)
+            preserved: list[tuple[Path, Path]] = []
+            for path in sorted(target.rglob("*")):
+                rel = path.relative_to(target)
+                if not any(_is_excluded_name(part) for part in rel.parts):
+                    continue
+                preserved_path = preserved_root / rel
+                preserved_path.parent.mkdir(parents=True, exist_ok=True)
+                if path.is_dir():
+                    shutil.copytree(path, preserved_path, dirs_exist_ok=True)
+                elif path.is_file():
+                    shutil.copy2(path, preserved_path)
+                preserved.append((rel, preserved_path))
+
+            shutil.rmtree(target)
+            for rel, preserved_path in preserved:
+                dest = target / rel
+                if preserved_path.is_dir():
+                    shutil.copytree(preserved_path, dest, dirs_exist_ok=True)
+                elif preserved_path.is_file():
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(preserved_path, dest)
 
     def _copy_tree(self, source: Path, target: Path) -> None:
         if not source.exists():

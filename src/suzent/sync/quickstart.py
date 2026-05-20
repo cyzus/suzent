@@ -19,7 +19,11 @@ from suzent.sync.github_api import (
     resolve_github_token,
     store_github_token,
 )
-from suzent.sync.github_token import git_push_with_token, authed_clone_url
+from suzent.sync.github_token import (
+    _redact_git_credentials,
+    authed_clone_url,
+    git_push_with_token,
+)
 from suzent.sync.models import SyncProfile
 from suzent.sync.provider import GitHubSyncProvider
 
@@ -218,18 +222,31 @@ def quickstart_github_sync(
         remote_url = public_clone_url(username, slug)
 
     if not (target / ".git").exists():
-        target.mkdir(parents=True, exist_ok=True)
-        _init_repo(target)
-        actions.append(f"Initialized Git repository at {target}")
-        readme = target / "README.md"
-        if not readme.exists():
-            readme.write_text(
-                "# Suzent sync\n\nPortable Suzent brain data is stored under `suzent-sync/`.\n",
-                encoding="utf-8",
+        if remote_url and username and _remote_repo_exists(
+            auth_method, token, username, slug
+        ):
+            _clone_existing_repo(
+                target,
+                remote_url,
+                remote,
+                token if auth_method == "token" else None,
+                actions,
             )
-            _git_in(target, "add", "README.md")
-            _git_in(target, "commit", "-m", "chore: initialize suzent sync repository")
-            actions.append("Created initial commit")
+        else:
+            target.mkdir(parents=True, exist_ok=True)
+            _init_repo(target)
+            actions.append(f"Initialized Git repository at {target}")
+            readme = target / "README.md"
+            if not readme.exists():
+                readme.write_text(
+                    "# Suzent sync\n\nPortable Suzent brain data is stored under `suzent-sync/`.\n",
+                    encoding="utf-8",
+                )
+                _git_in(target, "add", "README.md")
+                _git_in(
+                    target, "commit", "-m", "chore: initialize suzent sync repository"
+                )
+                actions.append("Created initial commit")
     else:
         actions.append(f"Using existing repository at {target}")
 
@@ -347,6 +364,48 @@ def _create_github_repo_api(
         return None
 
 
+def _remote_repo_exists(
+    auth_method: str,
+    token: str | None,
+    username: str,
+    repo_name: str,
+) -> bool:
+    if auth_method == "token" and token:
+        try:
+            return repo_exists(token, username, repo_name)
+        except GitHubApiError:
+            return False
+    if auth_method == "gh":
+        return _run_gh("repo", "view", f"{username}/{repo_name}").returncode == 0
+    return False
+
+
+def _clone_existing_repo(
+    target: Path,
+    remote_url: str,
+    remote: str,
+    token: str | None,
+    actions: list[str],
+) -> None:
+    if target.exists() and any(target.iterdir()):
+        raise ValueError(
+            f"Sync repo path already exists and is not empty: {target}. "
+            "Choose an empty folder or an existing Git repository."
+        )
+
+    clone_url = remote_url
+    if token:
+        owner_repo = remote_url.removeprefix("https://github.com/").removesuffix(".git")
+        if "/" in owner_repo:
+            owner, repo = owner_repo.split("/", 1)
+            clone_url = authed_clone_url(owner, repo, token)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    _run_git(None, "clone", "--origin", remote, clone_url, str(target))
+    _git_in(target, "remote", "set-url", remote, remote_url)
+    _ensure_local_git_identity(target)
+    actions.append(f"Cloned existing GitHub repository into {target}")
+
+
 def _create_github_repo(
     path: Path, username: str, repo_name: str, remote: str, warnings: list[str]
 ) -> str | None:
@@ -443,6 +502,9 @@ def _run_git(cwd: Path | None, *args: str) -> str:
         check=False,
     )
     if completed.returncode != 0:
-        detail = completed.stderr.strip() or completed.stdout.strip()
-        raise RuntimeError(f"git {' '.join(args)} failed: {detail}")
+        detail = _redact_git_credentials(
+            completed.stderr.strip() or completed.stdout.strip()
+        )
+        command = " ".join(_redact_git_credentials(arg) for arg in args)
+        raise RuntimeError(f"git {command} failed: {detail}")
     return completed.stdout
