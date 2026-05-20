@@ -20,6 +20,7 @@ export interface SubAgentSummary {
   chat_id: string;
   description: string;
   tools_allowed: string[];
+  model_override?: string | null;
   status: 'queued' | 'running' | 'completed' | 'failed';
   started_at: string | null;
 }
@@ -121,6 +122,7 @@ export function useSubAgentStatus(): SubAgentStatusState {
           chat_id: payload.chat_id,
           description: payload.description,
           tools_allowed: payload.tools_allowed,
+          model_override: payload.model_override ?? null,
           status: 'running',
           started_at: new Date().toISOString(),
         },

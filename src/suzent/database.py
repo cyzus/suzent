@@ -683,7 +683,9 @@ class ChatDatabase:
         except Exception as exc:
             from suzent.logger import logger
 
-            logger.warning("Failed to migrate legacy static config from SQLite: {}", exc)
+            logger.warning(
+                "Failed to migrate legacy static config from SQLite: {}", exc
+            )
 
     def _migrate_legacy_user_preferences(
         self, conn: Any, store: Any, legacy_tables: set[str]

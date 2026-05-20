@@ -147,6 +147,13 @@ BASE_INSTRUCTIONS_SECTION = """# Base Instructions
 {base_instructions}
 """
 
+ENABLED_MODELS_SECTION = """# Enabled Models
+These model IDs are enabled and can be assigned to sub-agents with `model_override`:
+{models_list}
+
+For multi-model council workflows, spawn 2+ background sub-agents in the same turn with different `model_override` values, prefer different providers when useful, and synthesize the final answer yourself.
+"""
+
 SKILLS_CONTEXT_SECTION = """# Available Skills
 You have a SkillTool that loads specialized knowledge. Use it IMMEDIATELY when the user's task matches a skill.
 
@@ -184,6 +191,7 @@ reply EXACTLY with 'HEARTBEAT_OK'. Do not narrate that you are idle.{extra_instr
 
 SUBAGENT_WAKEUP_SINGLE = """
 Sub-agent `{task_id}` has finished.
+Model: {model_override}
 Task: {description}
 
 Result:
@@ -194,9 +202,14 @@ SUBAGENT_WAKEUP_BATCH_HEADER = "{count} sub-agents finished simultaneously:"
 
 SUBAGENT_WAKEUP_BATCH_ITEM = """
 --- [{index}] `{task_id}` ---
+Model: {model_override}
 Task: {description}
 Result:
 {result_summary}
+"""
+
+SUBAGENT_WAKEUP_BATCH_FOOTER = """
+Council synthesis reminder: compare the sub-agent outputs, call out meaningful disagreements, and produce one synthesized answer for the user.
 """
 
 PLATFORM_CHAR_LIMITS = {
@@ -338,6 +351,34 @@ def build_base_instructions_section(base_instructions: str = "") -> str:
     return BASE_INSTRUCTIONS_SECTION.format(base_instructions=base_instructions)
 
 
+def _provider_hint_for_model(model_id: str) -> str:
+    provider_id = model_id.split("/", 1)[0] if "/" in model_id else ""
+    if not provider_id:
+        return "provider: unknown"
+
+    try:
+        from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID
+
+        provider = PROVIDER_REGISTRY_BY_ID.get(provider_id)
+        if provider:
+            return f"provider: {provider.label}"
+    except Exception:
+        pass
+
+    return f"provider: {provider_id}"
+
+
+def build_enabled_models_section(enabled_model_ids: list[str] | None = None) -> str:
+    if not enabled_model_ids:
+        return ""
+
+    models_list = "\n".join(
+        f"- `{model_id}` ({_provider_hint_for_model(model_id)})"
+        for model_id in enabled_model_ids
+    )
+    return ENABLED_MODELS_SECTION.format(models_list=models_list)
+
+
 def build_session_guidance_section(session_guidance_items: list[str] | None) -> str:
     if not session_guidance_items:
         return ""
@@ -374,6 +415,7 @@ def register_dynamic_instructions(
     base_instructions: str,
     memory_context: str | None,
     session_guidance_items: list[str] | None = None,
+    enabled_model_ids: list[str] | None = None,
 ) -> None:
     @agent.instructions
     def inject_date_context(_: Any) -> str:
@@ -400,6 +442,14 @@ def register_dynamic_instructions(
             ctx.deps,
             "base_instructions",
             lambda: build_base_instructions_section(base_instructions),
+        )
+
+    @agent.instructions
+    def inject_enabled_models(ctx: Any) -> str:
+        return resolve_prompt_section(
+            ctx.deps,
+            "enabled_models",
+            lambda: build_enabled_models_section(enabled_model_ids),
         )
 
     @agent.instructions

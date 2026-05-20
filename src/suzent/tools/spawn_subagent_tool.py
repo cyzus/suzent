@@ -68,6 +68,13 @@ class SpawnSubagentTool(Tool):
         "don't depend on each other, spawn them all in the SAME turn with run_in_background=True. "
         "You will be notified as each one finishes.\n"
         "\n"
+        "### Multi-model council pattern\n"
+        "For important decisions where model diversity matters, spawn 2+ background sub-agents "
+        "in the same turn, each with a different `model_override` from the enabled models list. "
+        "Use a focused opinion prompt, choose `tools_allowed=[]` for pure opinion-only tasks, "
+        "and own the final synthesis in the parent turn. Compare agreement, disagreements, assumptions, and practical recommendation "
+        "instead of pasting raw member outputs.\n"
+        "\n"
         "### Tool selection\n"
         "1. **subagent_type** (easiest): use a preset profile (explore / plan / write / verify / web)\n"
         "2. **tools_allowed**: explicit whitelist of tool class names\n"
@@ -140,7 +147,11 @@ class SpawnSubagentTool(Tool):
             Optional[str],
             Field(
                 default=None,
-                description="Optional model name to use for the sub-agent.",
+                description=(
+                    "Optional enabled model ID to use for the sub-agent, exactly as listed "
+                    "in the Enabled Models prompt section (for example 'openai/gpt-4.1'). "
+                    "Invalid or disabled IDs are rejected instead of silently falling back."
+                ),
             ),
         ] = None,
         inherit_context: Annotated[
@@ -210,12 +221,13 @@ class SpawnSubagentTool(Tool):
             run_in_background: True (default) = fire-and-forget, auto-wakeup on completion.
                 False = blocking, result returned inline.
             cwd: Working directory for bash commands inside the sub-agent.
-            model_override: Optional model name for the sub-agent.
+            model_override: Optional enabled model ID for the sub-agent.
             inherit_context: If True, sub-agent receives a snapshot of current conversation history.
             isolation: 'none' (default) or 'worktree' (git-isolated branch).
             isolation_target_path: Git repo root. Required when isolation='worktree'.
         """
         from suzent.core.subagent_runner import spawn_subagent, _resolve_tool_names
+        from suzent.core.providers.helpers import get_enabled_models_from_db
 
         parent_chat_id = ctx.deps.chat_id
 
@@ -239,6 +251,24 @@ class SpawnSubagentTool(Tool):
             )
 
         # ── Resolve effective tool list ───────────────────────────────────────
+        if model_override is not None:
+            model_override = model_override.strip() or None
+
+        if model_override:
+            enabled_models = get_enabled_models_from_db()
+            if model_override not in enabled_models:
+                return ToolResult.error_result(
+                    ToolErrorCode.INVALID_ARGUMENT,
+                    (
+                        f"model_override '{model_override}' is not enabled. "
+                        "Use one of the enabled model IDs."
+                    ),
+                    metadata={
+                        "model_override": model_override,
+                        "enabled_models": enabled_models,
+                    },
+                )
+
         if tools_allowed and tools_denied:
             return ToolResult.error_result(
                 ToolErrorCode.INVALID_ARGUMENT,
@@ -322,7 +352,12 @@ class SpawnSubagentTool(Tool):
             # Blocking mode: return the actual result so the parent LLM can act on it
             if task.status == "completed":
                 return ToolResult.success_result(
-                    f"Sub-agent {task.task_id} completed.\nTask: {description[:200]}\nTools: {tool_list}",
+                    (
+                        f"Sub-agent {task.task_id} completed.\n"
+                        f"Task: {description[:200]}\n"
+                        f"Model: {model_override or '(default)'}\n"
+                        f"Tools: {tool_list}"
+                    ),
                     metadata={**metadata, "result_summary": task.result_summary},
                 )
             return ToolResult.error_result(
@@ -336,6 +371,7 @@ class SpawnSubagentTool(Tool):
             (
                 f"Sub-agent spawned (ID: {task.task_id}).\n"
                 f"Task: {description[:200]}\n"
+                f"Model: {model_override or '(default)'}\n"
                 f"Tools: {tool_list}"
             ),
             metadata=metadata,

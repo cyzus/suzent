@@ -60,6 +60,7 @@ export interface SubAgentSpawnedPayload {
   chat_id: string;
   description: string;
   tools_allowed: string[];
+  model_override?: string | null;
 }
 
 export interface SubAgentProgressPayload {
@@ -70,11 +71,13 @@ export interface SubAgentProgressPayload {
 export interface SubAgentCompletedPayload {
   task_id: string;
   result_summary: string;
+  model_override?: string | null;
 }
 
 export interface SubAgentFailedPayload {
   task_id: string;
   error: string;
+  model_override?: string | null;
 }
 
 /**

@@ -35,6 +35,11 @@ def _task_to_dict(task) -> dict:
         "status": task.status,
         "result_summary": task.result_summary,
         "error": task.error,
+        "model_override": task.model_override,
+        "inherit_context": task.inherit_context,
+        "isolation": task.isolation,
+        "worktree_path": task.worktree_path,
+        "worktree_branch": task.worktree_branch,
         "started_at": task.started_at.isoformat() if task.started_at else None,
         "finished_at": task.finished_at.isoformat() if task.finished_at else None,
     }

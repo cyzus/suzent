@@ -6,6 +6,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getApiBase } from '../../lib/api';
 import { useSubAgentStatus, SubAgentSummary } from '../../hooks/useSubAgentStatus';
+import { useI18n } from '../../i18n';
 
 interface SubAgentListProps {
   chatId: string;
@@ -16,6 +17,7 @@ interface SubAgentListProps {
 // but are not yet in the shared type.
 interface SubAgentRow extends SubAgentSummary {
   finished_at?: string | null;
+  model_override?: string | null;
   inherit_context?: boolean;
   isolation?: string;
   worktree_branch?: string | null;
@@ -46,6 +48,7 @@ function formatDuration(startedAt: string | null | undefined, finishedAt: string
 }
 
 export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) => {
+  const { t } = useI18n();
   const [historicTasks, setHistoricTasks] = useState<SubAgentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const { activeTasks } = useSubAgentStatus();
@@ -152,6 +155,17 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
                       </span>
                     )}
                   </div>
+
+                  {task.model_override && (
+                    <div className="mt-1">
+                      <span
+                        className="inline-block text-[9px] text-neutral-500 dark:text-neutral-300 truncate max-w-full"
+                        title={`${t('subAgents.model')}: ${task.model_override}`}
+                      >
+                        {t('subAgents.model')}: {task.model_override}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Context / Isolation badges */}
                   {(hasContext || hasWorktree) && (

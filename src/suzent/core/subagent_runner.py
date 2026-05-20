@@ -100,6 +100,7 @@ class SubAgentTask:
     chat_id: str = ""  # isolated chat created for this sub-agent
     cwd: Optional[str] = None  # working directory override for bash execution
     subagent_type: Optional[str] = None  # profile name, used to select system prompt
+    model_override: Optional[str] = None  # enabled model ID selected for this task
     # Phase 2: context forking
     inherit_context: bool = False
     # Phase 3: git worktree isolation
@@ -158,6 +159,7 @@ def _task_to_sse_dict(task: SubAgentTask) -> dict:
         "finished_at": task.finished_at.isoformat() if task.finished_at else None,
         "result_summary": task.result_summary,
         "error": task.error,
+        "model_override": task.model_override,
         "inherit_context": task.inherit_context,
         "isolation": task.isolation,
         "worktree_path": task.worktree_path,
@@ -255,6 +257,7 @@ async def spawn_subagent(
         isolation=isolation,
         isolation_target_path=isolation_target_path,
         subagent_type=subagent_type,
+        model_override=model_override,
     )
 
     async with _tasks_lock:
@@ -283,6 +286,8 @@ async def _run_subagent(
     wakeup_parent: bool = True,
 ):
     """Execute the sub-agent in an isolated chat, then notify the parent."""
+    if model_override and not task.model_override:
+        task.model_override = model_override
     task.status = "running"
     task.started_at = datetime.now()
     _broadcast_task_update(task)
@@ -317,7 +322,11 @@ async def _run_subagent(
             await _notify_parent(
                 task,
                 "subagent_failed",
-                {"task_id": task.task_id, "error": error},
+                {
+                    "task_id": task.task_id,
+                    "error": error,
+                    "model_override": task.model_override,
+                },
             )
             return
 
@@ -331,6 +340,7 @@ async def _run_subagent(
             "chat_id": task.chat_id,
             "description": task.description,
             "tools_allowed": task.tools_allowed,
+            "model_override": task.model_override,
         },
     )
 
@@ -363,8 +373,8 @@ async def _run_subagent(
         }
         if parent_sandbox_volumes:
             base_config["sandbox_volumes"] = parent_sandbox_volumes
-        if model_override:
-            base_config["model"] = model_override
+        if task.model_override:
+            base_config["model"] = task.model_override
         if task.tools_allowed:
             base_config["tools"] = list(task.tools_allowed)
         if task.cwd:
@@ -391,6 +401,7 @@ async def _run_subagent(
             {
                 "task_id": task.task_id,
                 "result_summary": task.result_summary,
+                "model_override": task.model_override,
             },
         )
 
@@ -410,6 +421,7 @@ async def _run_subagent(
             {
                 "task_id": task.task_id,
                 "error": str(e),
+                "model_override": task.model_override,
             },
         )
     finally:
@@ -619,12 +631,14 @@ async def _wakeup_parent_batch(parent_chat_id: str, batch: List[SubAgentTask]) -
             SUBAGENT_WAKEUP_SINGLE,
             SUBAGENT_WAKEUP_BATCH_HEADER,
             SUBAGENT_WAKEUP_BATCH_ITEM,
+            SUBAGENT_WAKEUP_BATCH_FOOTER,
         )
 
         if len(batch) == 1:
             t = batch[0]
             wake_msg = SUBAGENT_WAKEUP_SINGLE.format(
                 task_id=t.task_id,
+                model_override=t.model_override or "(default)",
                 description=t.description[:300],
                 result_summary=t.result_summary,
             )
@@ -635,10 +649,12 @@ async def _wakeup_parent_batch(parent_chat_id: str, batch: List[SubAgentTask]) -
                     SUBAGENT_WAKEUP_BATCH_ITEM.format(
                         index=j,
                         task_id=t.task_id,
+                        model_override=t.model_override or "(default)",
                         description=t.description[:200],
                         result_summary=t.result_summary or "(no output)",
                     )
                 )
+            parts.append(SUBAGENT_WAKEUP_BATCH_FOOTER.strip())
             wake_msg = "\n\n".join(parts)
 
         logger.debug(

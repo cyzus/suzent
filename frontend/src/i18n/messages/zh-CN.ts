@@ -52,6 +52,9 @@ export const zhCN = {
     settings: '设置',
     settingsDesc: '',
   },
+  subAgents: {
+    model: '模型',
+  },
   titlebar: {
     minimize: '最小化',
     maximize: '最大化',
