@@ -316,6 +316,11 @@ class ConfigModel(BaseModel):
     memory_enabled: bool = False
     markdown_memory_enabled: bool = True
     extraction_model: Optional[str] = None
+    # Cosine-similarity threshold above which an extracted fact is treated as
+    # a near-duplicate of an existing memory. None → use MemoryManager default
+    # (0.85). Tune per embedding model: tighter values (e.g. 0.92) prevent
+    # over-merging short factual updates; looser values catch paraphrases.
+    memory_dedup_threshold: Optional[float] = None
 
     cron_presets: List[Dict[str, Any]] = []
     user_id: str = "default-user"

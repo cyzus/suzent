@@ -33,7 +33,10 @@ DEFAULT_IMPORTANCE = 0.5
 
 # Deduplication and extraction settings
 DEDUPLICATION_SEARCH_LIMIT = 3
-DEDUPLICATION_SIMILARITY_THRESHOLD = 0.85
+# Default cosine-similarity threshold above which a newly extracted fact is
+# treated as a near-duplicate of an existing memory. Embedding-model-dependent;
+# overridable per-instance via ``MemoryManager(dedup_threshold=...)``.
+DEFAULT_DEDUPLICATION_SIMILARITY_THRESHOLD = 0.85
 LLM_EXTRACTION_TEMPERATURE = 1.0
 
 
@@ -54,6 +57,7 @@ class MemoryManager:
         embedding_dimension: int = 0,
         llm_for_extraction: Optional[str] = None,
         markdown_store: Optional[MarkdownMemoryStore] = None,
+        dedup_threshold: Optional[float] = None,
     ):
         """Initialize memory manager.
 
@@ -63,6 +67,10 @@ class MemoryManager:
             embedding_dimension: Expected embedding dimension (0 = auto-detect)
             llm_for_extraction: LLM model for fact extraction (uses LLM if provided)
             markdown_store: Optional markdown-based memory store for human-readable persistence
+            dedup_threshold: Cosine-similarity threshold for treating an extracted
+                fact as a near-duplicate of an existing memory. Defaults to
+                ``DEFAULT_DEDUPLICATION_SIMILARITY_THRESHOLD``. Embedding-model
+                dependent — tune per model if recall/precision drifts.
         """
         self.store = store
         self.markdown_store = markdown_store
@@ -73,11 +81,17 @@ class MemoryManager:
         self.llm_client = (
             LLMClient(model=llm_for_extraction) if llm_for_extraction else None
         )
+        self.dedup_threshold: float = (
+            dedup_threshold
+            if dedup_threshold is not None
+            else DEFAULT_DEDUPLICATION_SIMILARITY_THRESHOLD
+        )
         self.wiki_manager: Optional["WikiManager"] = None
         logger.info(
             f"MemoryManager initialized with embedding model: {embedding_model}, "
             f"extraction model: {llm_for_extraction}, "
-            f"markdown: {'enabled' if markdown_store else 'disabled'}"
+            f"markdown: {'enabled' if markdown_store else 'disabled'}, "
+            f"dedup threshold: {self.dedup_threshold}"
         )
 
     # ===== Core Memory Blocks (File-based SSoT) =====
@@ -507,12 +521,34 @@ class MemoryManager:
                 use_hybrid=False,
             )
 
-            if (
-                similar
-                and similar[0].get("similarity", 0) > DEDUPLICATION_SIMILARITY_THRESHOLD
-            ):
-                # Very similar memory exists - update/skip
-                result.memories_updated.append(str(similar[0]["id"]))
+            if similar and similar[0].get("similarity", 0) > self.dedup_threshold:
+                # Near-duplicate exists: overwrite content + embedding so updates
+                # (e.g. "I work at Microsoft" replacing "I work at Google") aren't
+                # silently dropped. The newer fact represents current reality;
+                # the older row's timestamps are preserved by the store layer.
+                existing_id = str(similar[0]["id"])
+                embedding = await self.embedding_gen.generate(fact.content)
+                updated = await self.store.update_memory(
+                    memory_id=existing_id,
+                    content=fact.content,
+                    embedding=embedding,
+                    metadata=metadata,
+                    importance=fact.importance,
+                )
+                if updated:
+                    result.memories_updated.append(existing_id)
+                else:
+                    logger.warning(
+                        "Dedup update failed for memory {}; falling back to insert",
+                        existing_id,
+                    )
+                    memory_id = await self._add_memory_internal(
+                        content=fact.content,
+                        metadata=metadata,
+                        chat_id=None,
+                        user_id=user_id,
+                    )
+                    result.memories_created.append(memory_id)
             else:
                 # New fact - store it
                 memory_id = await self._add_memory_internal(

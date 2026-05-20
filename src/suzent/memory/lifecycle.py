@@ -204,6 +204,7 @@ async def init_memory_system() -> bool:
             embedding_dimension=CONFIG.embedding_dimension,
             llm_for_extraction=_extraction_model,
             markdown_store=markdown_store,
+            dedup_threshold=CONFIG.memory_dedup_threshold,
         )
 
         notebook_host_path = None
