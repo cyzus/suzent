@@ -142,7 +142,7 @@ class SpawnSubagentTool(Tool):
                 default=None,
                 description=(
                     "Optional enabled model ID to use for the sub-agent, exactly as listed "
-                    "in the Enabled Models prompt section (for example 'openai/gpt-4.1'). "
+                    "in the Models prompt section (for example 'openai/gpt-4.1'). "
                     "Invalid or disabled IDs are rejected instead of silently falling back."
                 ),
             ),
