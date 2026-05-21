@@ -347,23 +347,6 @@ def build_base_instructions_section(base_instructions: str = "") -> str:
     return BASE_INSTRUCTIONS_SECTION.format(base_instructions=base_instructions)
 
 
-def _provider_hint_for_model(model_id: str) -> str:
-    provider_id = model_id.split("/", 1)[0] if "/" in model_id else ""
-    if not provider_id:
-        return "provider: unknown"
-
-    try:
-        from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID
-
-        provider = PROVIDER_REGISTRY_BY_ID.get(provider_id)
-        if provider:
-            return f"provider: {provider.label}"
-    except Exception:
-        pass
-
-    return f"provider: {provider_id}"
-
-
 def build_enabled_models_section(
     enabled_model_ids: list[str] | None = None,
     current_model_id: str | None = None,
@@ -371,10 +354,7 @@ def build_enabled_models_section(
     if not enabled_model_ids:
         return ""
 
-    models_list = "\n".join(
-        f"- `{model_id}` ({_provider_hint_for_model(model_id)})"
-        for model_id in enabled_model_ids
-    )
+    models_list = "\n".join(f"- `{model_id}`" for model_id in enabled_model_ids)
     return ENABLED_MODELS_SECTION.format(
         current_model=current_model_id or "(not set)",
         models_list=models_list,

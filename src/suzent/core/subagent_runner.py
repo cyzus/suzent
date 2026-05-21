@@ -267,12 +267,12 @@ async def spawn_subagent(
     if run_in_background:
         # Fire-and-forget — parent chat keeps streaming
         asyncio.create_task(
-            _run_subagent(task, model_override=model_override, wakeup_parent=True),
+            _run_subagent(task, wakeup_parent=True),
             name=f"subagent_{task_id}",
         )
     else:
         # Blocking — parent awaits the child's completion
-        await _run_subagent(task, model_override=model_override, wakeup_parent=False)
+        await _run_subagent(task, wakeup_parent=False)
 
     return task
 
@@ -282,12 +282,9 @@ async def spawn_subagent(
 
 async def _run_subagent(
     task: SubAgentTask,
-    model_override: Optional[str] = None,
     wakeup_parent: bool = True,
 ):
     """Execute the sub-agent in an isolated chat, then notify the parent."""
-    if model_override and not task.model_override:
-        task.model_override = model_override
     task.status = "running"
     task.started_at = datetime.now()
     _broadcast_task_update(task)
@@ -325,7 +322,6 @@ async def _run_subagent(
                 {
                     "task_id": task.task_id,
                     "error": error,
-                    "model_override": task.model_override,
                 },
             )
             return
@@ -401,7 +397,6 @@ async def _run_subagent(
             {
                 "task_id": task.task_id,
                 "result_summary": task.result_summary,
-                "model_override": task.model_override,
             },
         )
 
@@ -421,7 +416,6 @@ async def _run_subagent(
             {
                 "task_id": task.task_id,
                 "error": str(e),
-                "model_override": task.model_override,
             },
         )
     finally:
