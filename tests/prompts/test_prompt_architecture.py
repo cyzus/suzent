@@ -127,14 +127,17 @@ def test_build_session_guidance_section_tool_aware_rules():
     assert "AskQuestionTool" in guidance
 
 
-def test_build_enabled_models_section_lists_model_override_ids():
-    section = build_enabled_models_section(["openai/gpt-4.1", "gemini/gemini-2.5-pro"])
+def test_build_enabled_models_section_lists_current_and_available_models():
+    section = build_enabled_models_section(
+        ["openai/gpt-4.1", "gemini/gemini-2.5-pro"],
+        current_model_id="openai/gpt-4.1",
+    )
 
-    assert "# Enabled Models" in section
+    assert "# Models" in section
+    assert "Current model: `openai/gpt-4.1`" in section
+    assert "Available models:" in section
     assert "`openai/gpt-4.1`" in section
     assert "`gemini/gemini-2.5-pro`" in section
-    assert "model_override" in section
-    assert "council" in section.lower()
 
 
 def test_format_session_guidance_debug_shows_order():

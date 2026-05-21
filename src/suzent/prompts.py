@@ -147,11 +147,11 @@ BASE_INSTRUCTIONS_SECTION = """# Base Instructions
 {base_instructions}
 """
 
-ENABLED_MODELS_SECTION = """# Enabled Models
-These model IDs are enabled and can be assigned to sub-agents with `model_override`:
-{models_list}
+ENABLED_MODELS_SECTION = """# Models
+Current model: `{current_model}`
 
-For multi-model council workflows, spawn 2+ background sub-agents in the same turn with different `model_override` values, prefer different providers when useful, and synthesize the final answer yourself.
+Available models:
+{models_list}
 """
 
 SKILLS_CONTEXT_SECTION = """# Available Skills
@@ -206,10 +206,6 @@ Model: {model_override}
 Task: {description}
 Result:
 {result_summary}
-"""
-
-SUBAGENT_WAKEUP_BATCH_FOOTER = """
-Council synthesis reminder: compare the sub-agent outputs, call out meaningful disagreements, and produce one synthesized answer for the user.
 """
 
 PLATFORM_CHAR_LIMITS = {
@@ -368,7 +364,10 @@ def _provider_hint_for_model(model_id: str) -> str:
     return f"provider: {provider_id}"
 
 
-def build_enabled_models_section(enabled_model_ids: list[str] | None = None) -> str:
+def build_enabled_models_section(
+    enabled_model_ids: list[str] | None = None,
+    current_model_id: str | None = None,
+) -> str:
     if not enabled_model_ids:
         return ""
 
@@ -376,7 +375,10 @@ def build_enabled_models_section(enabled_model_ids: list[str] | None = None) -> 
         f"- `{model_id}` ({_provider_hint_for_model(model_id)})"
         for model_id in enabled_model_ids
     )
-    return ENABLED_MODELS_SECTION.format(models_list=models_list)
+    return ENABLED_MODELS_SECTION.format(
+        current_model=current_model_id or "(not set)",
+        models_list=models_list,
+    )
 
 
 def build_session_guidance_section(session_guidance_items: list[str] | None) -> str:
@@ -416,6 +418,7 @@ def register_dynamic_instructions(
     memory_context: str | None,
     session_guidance_items: list[str] | None = None,
     enabled_model_ids: list[str] | None = None,
+    current_model_id: str | None = None,
 ) -> None:
     @agent.instructions
     def inject_date_context(_: Any) -> str:
@@ -449,7 +452,10 @@ def register_dynamic_instructions(
         return resolve_prompt_section(
             ctx.deps,
             "enabled_models",
-            lambda: build_enabled_models_section(enabled_model_ids),
+            lambda: build_enabled_models_section(
+                enabled_model_ids,
+                current_model_id=current_model_id,
+            ),
         )
 
     @agent.instructions

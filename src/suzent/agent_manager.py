@@ -234,6 +234,7 @@ def create_agent(
         memory_context=memory_context,
         session_guidance_items=session_guidance_items,
         enabled_model_ids=enabled_models,
+        current_model_id=model_id,
     )
 
     # --- Deferred toolset: injects agent-activated tools each LLM step ---

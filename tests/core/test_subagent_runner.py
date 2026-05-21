@@ -23,7 +23,7 @@ def test_task_to_sse_dict_includes_model_override():
 
 
 @pytest.mark.asyncio
-async def test_wakeup_batch_includes_models_and_synthesis_reminder(monkeypatch):
+async def test_wakeup_batch_includes_models(monkeypatch):
     captured = {}
 
     class FakeProcessor:
@@ -75,4 +75,3 @@ async def test_wakeup_batch_includes_models_and_synthesis_reminder(monkeypatch):
     reminder = captured["system_reminders"][0]
     assert "Model: openai/gpt-4.1" in reminder
     assert "Model: gemini/gemini-2.5-pro" in reminder
-    assert "Council synthesis reminder" in reminder

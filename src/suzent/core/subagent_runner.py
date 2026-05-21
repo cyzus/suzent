@@ -631,7 +631,6 @@ async def _wakeup_parent_batch(parent_chat_id: str, batch: List[SubAgentTask]) -
             SUBAGENT_WAKEUP_SINGLE,
             SUBAGENT_WAKEUP_BATCH_HEADER,
             SUBAGENT_WAKEUP_BATCH_ITEM,
-            SUBAGENT_WAKEUP_BATCH_FOOTER,
         )
 
         if len(batch) == 1:
@@ -654,7 +653,6 @@ async def _wakeup_parent_batch(parent_chat_id: str, batch: List[SubAgentTask]) -
                         result_summary=t.result_summary or "(no output)",
                     )
                 )
-            parts.append(SUBAGENT_WAKEUP_BATCH_FOOTER.strip())
             wake_msg = "\n\n".join(parts)
 
         logger.debug(

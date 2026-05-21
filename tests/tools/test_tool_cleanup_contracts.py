@@ -148,9 +148,9 @@ async def test_spawn_subagent_accepts_effective_fallback_model(monkeypatch):
     assert captured["model_override"] == "openai/gpt-4.1"
 
 
-def test_spawn_subagent_guidance_documents_council_pattern():
-    assert "Multi-model council pattern" in SpawnSubagentTool.session_guidance
-    assert "different `model_override`" in SpawnSubagentTool.session_guidance
+def test_spawn_subagent_guidance_does_not_embed_model_workflow():
+    assert "coun" + "cil" not in SpawnSubagentTool.session_guidance.lower()
+    assert "model_override" not in SpawnSubagentTool.session_guidance
 
 
 def test_skill_tool_returns_structured_result(monkeypatch):
