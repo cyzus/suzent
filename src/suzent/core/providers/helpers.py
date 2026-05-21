@@ -89,6 +89,16 @@ def get_enabled_models_from_db() -> List[str]:
     return sorted(set(all_models))
 
 
+def get_effective_enabled_models() -> List[str]:
+    """Return model IDs the agent can actually run after config fallbacks."""
+    from suzent.config import CONFIG
+
+    enabled_models = get_enabled_models_from_db()
+    if enabled_models:
+        return enabled_models
+    return CONFIG.model_options.copy() if CONFIG.model_options else []
+
+
 def get_effective_memory_config() -> Dict[str, str]:
     """Get effective memory config, preferring user settings over CONFIG defaults."""
     from suzent.config import CONFIG

@@ -82,7 +82,7 @@ async def test_spawn_subagent_rejects_unrecognized_tools(monkeypatch):
 @pytest.mark.asyncio
 async def test_spawn_subagent_rejects_disabled_model(monkeypatch):
     monkeypatch.setattr(
-        "suzent.core.providers.helpers.get_enabled_models_from_db",
+        "suzent.core.providers.helpers.get_effective_enabled_models",
         lambda: ["openai/gpt-4.1", "gemini/gemini-2.5-pro"],
     )
 
@@ -103,6 +103,49 @@ async def test_spawn_subagent_rejects_disabled_model(monkeypatch):
         "openai/gpt-4.1",
         "gemini/gemini-2.5-pro",
     ]
+
+
+@pytest.mark.asyncio
+async def test_spawn_subagent_accepts_effective_fallback_model(monkeypatch):
+    captured = {}
+
+    async def fake_spawn_subagent(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            task_id="sub_12345678",
+            status="queued",
+            result_summary=None,
+            error=None,
+            chat_id="subagent-sub_12345678",
+            parent_chat_id=kwargs["parent_chat_id"],
+            tools_allowed=[],
+        )
+
+    monkeypatch.setattr(
+        "suzent.core.providers.helpers.get_effective_enabled_models",
+        lambda: ["openai/gpt-4.1"],
+    )
+    monkeypatch.setattr(
+        "suzent.core.subagent_runner._resolve_tool_names",
+        lambda tools_allowed: ([], []),
+    )
+    monkeypatch.setattr(
+        "suzent.core.subagent_runner.spawn_subagent",
+        fake_spawn_subagent,
+    )
+
+    tool = SpawnSubagentTool()
+    ctx = SimpleNamespace(deps=SimpleNamespace(chat_id="chat-1"))
+
+    result = await tool.forward(
+        ctx,
+        description="Give an independent opinion",
+        tools_allowed=[],
+        model_override="openai/gpt-4.1",
+    )
+
+    assert result.success
+    assert captured["model_override"] == "openai/gpt-4.1"
 
 
 def test_spawn_subagent_guidance_documents_council_pattern():

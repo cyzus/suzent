@@ -227,7 +227,7 @@ class SpawnSubagentTool(Tool):
             isolation_target_path: Git repo root. Required when isolation='worktree'.
         """
         from suzent.core.subagent_runner import spawn_subagent, _resolve_tool_names
-        from suzent.core.providers.helpers import get_enabled_models_from_db
+        from suzent.core.providers.helpers import get_effective_enabled_models
 
         parent_chat_id = ctx.deps.chat_id
 
@@ -255,7 +255,7 @@ class SpawnSubagentTool(Tool):
             model_override = model_override.strip() or None
 
         if model_override:
-            enabled_models = get_enabled_models_from_db()
+            enabled_models = get_effective_enabled_models()
             if model_override not in enabled_models:
                 return ToolResult.error_result(
                     ToolErrorCode.INVALID_ARGUMENT,

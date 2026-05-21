@@ -15,6 +15,7 @@ from suzent.core.providers.factory import ProviderFactory
 from suzent.core.providers.generic import GenericLiteLLMProvider
 from suzent.core.providers.helpers import (
     get_effective_memory_config,
+    get_effective_enabled_models,
     get_enabled_models_from_db,
     resolve_api_key,
 )
@@ -48,6 +49,7 @@ __all__ = [
     # factory & helpers
     "ProviderFactory",
     "resolve_api_key",
+    "get_effective_enabled_models",
     "get_enabled_models_from_db",
     "get_effective_memory_config",
 ]
