@@ -525,7 +525,7 @@ class MemoryManager:
                 # Near-duplicate exists: overwrite content + embedding so updates
                 # (e.g. "I work at Microsoft" replacing "I work at Google") aren't
                 # silently dropped. The newer fact represents current reality;
-                # the older row's timestamps are preserved by the store layer.
+                # the store layer preserves created_at but refreshes updated_at.
                 existing_id = str(similar[0]["id"])
                 embedding = await self.embedding_gen.generate(fact.content)
                 updated = await self.store.update_memory(
