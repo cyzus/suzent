@@ -1,0 +1,24 @@
+{
+  "models": {
+    "mimo/mimo-v2.5-pro": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 131072,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_prompt_caching": true,
+      "input_cost_per_token": 4e-07,
+      "output_cost_per_token": 2e-06
+    },
+    "mimo/mimo-v2.5-omni": {
+      "mode": "chat",
+      "max_input_tokens": 256000,
+      "max_output_tokens": 8192,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_prompt_caching": false,
+      "input_cost_per_token": 2e-07,
+      "output_cost_per_token": 1e-06
+    }
+  }
+}

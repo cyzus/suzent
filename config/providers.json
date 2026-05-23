@@ -190,6 +190,22 @@
         {"key": "OLLAMA_API_KEY", "label": "API Key (Optional)", "placeholder": "...", "type": "secret"}
       ],
       "default_models": []
+    },
+    {
+      "id": "mimo",
+      "label": "Xiaomi MiMo",
+      "logo_url": "https://cdn.simpleicons.org/xiaomi",
+      "api_type": "openai",
+      "base_url": "https://api.xiaomimimo.com/v1",
+      "env_keys": ["MIMO_API_KEY"],
+      "fields": [
+        {"key": "MIMO_API_KEY", "label": "API Key", "placeholder": "sk-...", "type": "secret"},
+        {"key": "MIMO_BASE_URL", "label": "Base URL (Optional)", "placeholder": "https://api.xiaomimimo.com/v1", "type": "text"}
+      ],
+      "default_models": [
+        {"id": "mimo/mimo-v2.5-pro", "name": "MiMo-V2.5-Pro"},
+        {"id": "mimo/mimo-v2.5-omni", "name": "MiMo-V2.5-Omni"}
+      ]
     }
   ]
 }
