@@ -28,9 +28,21 @@ class ProviderFactory:
 
         # OpenAI-compatible providers: query /v1/models directly
         if provider_id in OPENAI_COMPAT_PROVIDERS:
-            return OpenAICompatProvider(
-                provider_id, config, OPENAI_COMPAT_PROVIDERS[provider_id]
-            )
+            # Allow user config to override the catalog base_url
+            user_base_url = None
+            if config:
+                # Find the env key for base url
+                from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID
+
+                spec = PROVIDER_REGISTRY_BY_ID.get(provider_id)
+                if spec:
+                    for field in spec.fields:
+                        if "BASE_URL" in field["key"]:
+                            user_base_url = config.get(field["key"])
+                            break
+
+            base_url = user_base_url or OPENAI_COMPAT_PROVIDERS[provider_id]
+            return OpenAICompatProvider(provider_id, config, base_url)
 
         # Everything else: try LiteLLM's get_valid_models (covers Anthropic, Gemini, Groq, Mistral, etc.)
         return GenericLiteLLMProvider(provider_id, config)
