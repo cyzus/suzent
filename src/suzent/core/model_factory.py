@@ -42,7 +42,22 @@ def _create_openai_model(model_name: str, api_key: str, spec: ProviderSpec) -> o
     from pydantic_ai.models.openai import OpenAIModel
     from pydantic_ai.providers.openai import OpenAIProvider
 
-    base_url = spec.base_url or os.environ.get("OPENAI_BASE_URL")
+    # Resolve base_url: Check SecretManager / Env for provider-specific base_url override
+    resolved_base_url = None
+    for field in spec.fields:
+        if "BASE_URL" in field.get("key", ""):
+            env_key = field["key"]
+            try:
+                from suzent.core.secrets import get_secret_manager
+
+                resolved_base_url = get_secret_manager().get(env_key)
+            except Exception:
+                pass
+            if not resolved_base_url:
+                resolved_base_url = os.environ.get(env_key)
+            break
+
+    base_url = resolved_base_url or spec.base_url or os.environ.get("OPENAI_BASE_URL")
     return OpenAIModel(
         model_name, provider=OpenAIProvider(api_key=api_key, base_url=base_url)
     )
