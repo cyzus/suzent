@@ -23,7 +23,7 @@ const PROVIDER_COLORS: Record<string, string> = {
     fireworks:    '9B59B6',
     sambanova:    'E34A34',
     bedrock:      'FF9900',
-    mimo:         'FF6900',
+    xiaomi_mimo:         'FF6900',
 };
 
 const API_TYPES = ['openai', 'anthropic', 'google', 'xai', 'openrouter', 'ollama', 'litellm_proxy', 'bedrock'] as const;
