@@ -28,17 +28,37 @@ class ProviderFactory:
 
         # OpenAI-compatible providers: query /v1/models directly
         if provider_id in OPENAI_COMPAT_PROVIDERS:
-            # Allow user config to override the catalog base_url
+            # Allow user config or SecretManager to override the catalog base_url
             user_base_url = None
-            if config:
-                # Find the env key for base url
-                from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID
 
-                spec = PROVIDER_REGISTRY_BY_ID.get(provider_id)
-                if spec:
-                    for field in spec.fields:
-                        if "BASE_URL" in field["key"]:
-                            user_base_url = config.get(field["key"])
+            from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID
+
+            spec = PROVIDER_REGISTRY_BY_ID.get(provider_id)
+            if spec:
+                for field in spec.fields:
+                    if "BASE_URL" in field["key"]:
+                        env_key = field["key"]
+                        # 1. Check explicit dict
+                        if config and env_key in config:
+                            user_base_url = config[env_key]
+                            break
+                        # 2. Check SecretManager (where API keys / URLs from frontend are saved)
+                        try:
+                            from suzent.core.secrets import get_secret_manager
+
+                            sm = get_secret_manager()
+                            val = sm.get(env_key)
+                            if val:
+                                user_base_url = val
+                                break
+                        except Exception:
+                            pass
+                        # 3. Check OS env
+                        import os
+
+                        val = os.environ.get(env_key)
+                        if val:
+                            user_base_url = val
                             break
 
             base_url = user_base_url or OPENAI_COMPAT_PROVIDERS[provider_id]
