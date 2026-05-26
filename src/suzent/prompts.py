@@ -147,6 +147,13 @@ BASE_INSTRUCTIONS_SECTION = """# Base Instructions
 {base_instructions}
 """
 
+ENABLED_MODELS_SECTION = """# Models
+Current model: `{current_model}`
+
+Available models (use these IDs for `model_override` when spawning sub-agents):
+{models_list}
+"""
+
 SKILLS_CONTEXT_SECTION = """# Available Skills
 You have a SkillTool that loads specialized knowledge. Use it IMMEDIATELY when the user's task matches a skill.
 
@@ -184,6 +191,7 @@ reply EXACTLY with 'HEARTBEAT_OK'. Do not narrate that you are idle.{extra_instr
 
 SUBAGENT_WAKEUP_SINGLE = """
 Sub-agent `{task_id}` has finished.
+Model: {model_override}
 Task: {description}
 
 Result:
@@ -194,6 +202,7 @@ SUBAGENT_WAKEUP_BATCH_HEADER = "{count} sub-agents finished simultaneously:"
 
 SUBAGENT_WAKEUP_BATCH_ITEM = """
 --- [{index}] `{task_id}` ---
+Model: {model_override}
 Task: {description}
 Result:
 {result_summary}
@@ -338,6 +347,20 @@ def build_base_instructions_section(base_instructions: str = "") -> str:
     return BASE_INSTRUCTIONS_SECTION.format(base_instructions=base_instructions)
 
 
+def build_enabled_models_section(
+    enabled_model_ids: list[str] | None = None,
+    current_model_id: str | None = None,
+) -> str:
+    if not enabled_model_ids:
+        return ""
+
+    models_list = "\n".join(f"- `{model_id}`" for model_id in enabled_model_ids)
+    return ENABLED_MODELS_SECTION.format(
+        current_model=current_model_id or "(not set)",
+        models_list=models_list,
+    )
+
+
 def build_session_guidance_section(session_guidance_items: list[str] | None) -> str:
     if not session_guidance_items:
         return ""
@@ -374,6 +397,8 @@ def register_dynamic_instructions(
     base_instructions: str,
     memory_context: str | None,
     session_guidance_items: list[str] | None = None,
+    enabled_model_ids: list[str] | None = None,
+    current_model_id: str | None = None,
 ) -> None:
     @agent.instructions
     def inject_date_context(_: Any) -> str:
@@ -400,6 +425,17 @@ def register_dynamic_instructions(
             ctx.deps,
             "base_instructions",
             lambda: build_base_instructions_section(base_instructions),
+        )
+
+    @agent.instructions
+    def inject_enabled_models(ctx: Any) -> str:
+        return resolve_prompt_section(
+            ctx.deps,
+            "enabled_models",
+            lambda: build_enabled_models_section(
+                enabled_model_ids,
+                current_model_id=current_model_id,
+            ),
         )
 
     @agent.instructions

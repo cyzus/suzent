@@ -18,7 +18,7 @@ from pydantic_ai.toolsets import FunctionToolset
 
 from suzent.core.agent_deps import AgentDeps
 from suzent.core.model_factory import create_pydantic_ai_model
-from suzent.core.providers import get_enabled_models_from_db
+from suzent.core.providers import get_effective_enabled_models
 
 from suzent.config import CONFIG
 from suzent.logger import get_logger
@@ -141,15 +141,12 @@ def create_agent(
         Configured pydantic-ai Agent instance.
     """
     # --- Validate model ---
-    enabled_models = get_enabled_models_from_db()
+    enabled_models = get_effective_enabled_models()
 
     if not enabled_models:
-        if CONFIG.model_options:
-            enabled_models = CONFIG.model_options
-        else:
-            raise ValueError(
-                "No LLM models are enabled. Please configure a provider in Settings."
-            )
+        raise ValueError(
+            "No LLM models are enabled. Please configure a provider in Settings."
+        )
 
     model_id = config.get("model")
 
@@ -236,6 +233,8 @@ def create_agent(
         base_instructions=base_instructions,
         memory_context=memory_context,
         session_guidance_items=session_guidance_items,
+        enabled_model_ids=enabled_models,
+        current_model_id=model_id,
     )
 
     # --- Deferred toolset: injects agent-activated tools each LLM step ---

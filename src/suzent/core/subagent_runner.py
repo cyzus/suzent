@@ -100,6 +100,9 @@ class SubAgentTask:
     chat_id: str = ""  # isolated chat created for this sub-agent
     cwd: Optional[str] = None  # working directory override for bash execution
     subagent_type: Optional[str] = None  # profile name, used to select system prompt
+    model_override: Optional[str] = (
+        None  # resolved model ID (override or default fallback)
+    )
     # Phase 2: context forking
     inherit_context: bool = False
     # Phase 3: git worktree isolation
@@ -158,6 +161,7 @@ def _task_to_sse_dict(task: SubAgentTask) -> dict:
         "finished_at": task.finished_at.isoformat() if task.finished_at else None,
         "result_summary": task.result_summary,
         "error": task.error,
+        "model_override": task.model_override,
         "inherit_context": task.inherit_context,
         "isolation": task.isolation,
         "worktree_path": task.worktree_path,
@@ -255,6 +259,7 @@ async def spawn_subagent(
         isolation=isolation,
         isolation_target_path=isolation_target_path,
         subagent_type=subagent_type,
+        model_override=model_override,
     )
 
     async with _tasks_lock:
@@ -264,12 +269,12 @@ async def spawn_subagent(
     if run_in_background:
         # Fire-and-forget — parent chat keeps streaming
         asyncio.create_task(
-            _run_subagent(task, model_override=model_override, wakeup_parent=True),
+            _run_subagent(task, wakeup_parent=True),
             name=f"subagent_{task_id}",
         )
     else:
         # Blocking — parent awaits the child's completion
-        await _run_subagent(task, model_override=model_override, wakeup_parent=False)
+        await _run_subagent(task, wakeup_parent=False)
 
     return task
 
@@ -279,10 +284,15 @@ async def spawn_subagent(
 
 async def _run_subagent(
     task: SubAgentTask,
-    model_override: Optional[str] = None,
     wakeup_parent: bool = True,
 ):
     """Execute the sub-agent in an isolated chat, then notify the parent."""
+    if not task.model_override:
+        from suzent.core.providers import get_effective_enabled_models
+
+        enabled_models = get_effective_enabled_models()
+        task.model_override = enabled_models[0] if enabled_models else None
+
     task.status = "running"
     task.started_at = datetime.now()
     _broadcast_task_update(task)
@@ -317,7 +327,10 @@ async def _run_subagent(
             await _notify_parent(
                 task,
                 "subagent_failed",
-                {"task_id": task.task_id, "error": error},
+                {
+                    "task_id": task.task_id,
+                    "error": error,
+                },
             )
             return
 
@@ -331,6 +344,7 @@ async def _run_subagent(
             "chat_id": task.chat_id,
             "description": task.description,
             "tools_allowed": task.tools_allowed,
+            "model_override": task.model_override,
         },
     )
 
@@ -363,8 +377,8 @@ async def _run_subagent(
         }
         if parent_sandbox_volumes:
             base_config["sandbox_volumes"] = parent_sandbox_volumes
-        if model_override:
-            base_config["model"] = model_override
+        if task.model_override:
+            base_config["model"] = task.model_override
         if task.tools_allowed:
             base_config["tools"] = list(task.tools_allowed)
         if task.cwd:
@@ -625,6 +639,7 @@ async def _wakeup_parent_batch(parent_chat_id: str, batch: List[SubAgentTask]) -
             t = batch[0]
             wake_msg = SUBAGENT_WAKEUP_SINGLE.format(
                 task_id=t.task_id,
+                model_override=t.model_override or "(default)",
                 description=t.description[:300],
                 result_summary=t.result_summary,
             )
@@ -635,6 +650,7 @@ async def _wakeup_parent_batch(parent_chat_id: str, batch: List[SubAgentTask]) -
                     SUBAGENT_WAKEUP_BATCH_ITEM.format(
                         index=j,
                         task_id=t.task_id,
+                        model_override=t.model_override or "(default)",
                         description=t.description[:200],
                         result_summary=t.result_summary or "(no output)",
                     )

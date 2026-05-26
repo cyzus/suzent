@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from suzent.prompts import (
     STATIC_INSTRUCTIONS,
+    build_enabled_models_section,
     build_custom_volumes_section,
     build_session_guidance_section,
     format_session_guidance_debug,
@@ -34,7 +35,7 @@ def test_register_dynamic_instructions_registers_all_sections():
         memory_context="",
     )
 
-    assert len(agent.functions) == 7
+    assert len(agent.functions) == 8
 
 
 def test_register_dynamic_instructions_environment_uses_host_paths():
@@ -124,6 +125,19 @@ def test_build_session_guidance_section_tool_aware_rules():
     assert "Read files with ReadFileTool" in guidance or "read_file" in guidance.lower()
     assert "use SkillTool early" in guidance
     assert "AskQuestionTool" in guidance
+
+
+def test_build_enabled_models_section_lists_current_and_available_models():
+    section = build_enabled_models_section(
+        ["openai/gpt-4.1", "gemini/gemini-2.5-pro"],
+        current_model_id="openai/gpt-4.1",
+    )
+
+    assert "# Models" in section
+    assert "Current model: `openai/gpt-4.1`" in section
+    assert "Available models" in section
+    assert "`openai/gpt-4.1`" in section
+    assert "`gemini/gemini-2.5-pro`" in section
 
 
 def test_format_session_guidance_debug_shows_order():

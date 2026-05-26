@@ -52,6 +52,9 @@ export const en = {
     settings: 'Settings',
     settingsDesc: '',
   },
+  subAgents: {
+    model: 'Model',
+  },
   titlebar: {
     minimize: 'Minimize',
     maximize: 'Maximize',

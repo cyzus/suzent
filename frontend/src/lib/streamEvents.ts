@@ -60,6 +60,7 @@ export interface SubAgentSpawnedPayload {
   chat_id: string;
   description: string;
   tools_allowed: string[];
+  model_override?: string | null;
 }
 
 export interface SubAgentProgressPayload {

@@ -25,6 +25,7 @@ from typing import Annotated, Literal, Optional
 from pydantic import Field
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
+from suzent.core.providers.helpers import get_effective_enabled_models
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 # ─── Pre-defined subagent profiles ───────────────────────────────────────────
@@ -140,7 +141,11 @@ class SpawnSubagentTool(Tool):
             Optional[str],
             Field(
                 default=None,
-                description="Optional model name to use for the sub-agent.",
+                description=(
+                    "Optional enabled model ID to use for the sub-agent, exactly as listed "
+                    "in the Models prompt section (for example 'openai/gpt-4.1'). "
+                    "Invalid or disabled IDs are rejected instead of silently falling back."
+                ),
             ),
         ] = None,
         inherit_context: Annotated[
@@ -210,7 +215,7 @@ class SpawnSubagentTool(Tool):
             run_in_background: True (default) = fire-and-forget, auto-wakeup on completion.
                 False = blocking, result returned inline.
             cwd: Working directory for bash commands inside the sub-agent.
-            model_override: Optional model name for the sub-agent.
+            model_override: Optional enabled model ID for the sub-agent.
             inherit_context: If True, sub-agent receives a snapshot of current conversation history.
             isolation: 'none' (default) or 'worktree' (git-isolated branch).
             isolation_target_path: Git repo root. Required when isolation='worktree'.
@@ -239,6 +244,25 @@ class SpawnSubagentTool(Tool):
             )
 
         # ── Resolve effective tool list ───────────────────────────────────────
+        if model_override is not None:
+            model_override = model_override.strip() or None
+
+        if model_override:
+            enabled_models = get_effective_enabled_models()
+            if model_override not in enabled_models:
+                models_list = ", ".join(f"'{m}'" for m in enabled_models)
+                return ToolResult.error_result(
+                    ToolErrorCode.INVALID_ARGUMENT,
+                    (
+                        f"model_override '{model_override}' is not enabled. "
+                        f"Enabled models: {models_list}."
+                    ),
+                    metadata={
+                        "model_override": model_override,
+                        "enabled_models": enabled_models,
+                    },
+                )
+
         if tools_allowed and tools_denied:
             return ToolResult.error_result(
                 ToolErrorCode.INVALID_ARGUMENT,
@@ -322,7 +346,12 @@ class SpawnSubagentTool(Tool):
             # Blocking mode: return the actual result so the parent LLM can act on it
             if task.status == "completed":
                 return ToolResult.success_result(
-                    f"Sub-agent {task.task_id} completed.\nTask: {description[:200]}\nTools: {tool_list}",
+                    (
+                        f"Sub-agent {task.task_id} completed.\n"
+                        f"Task: {description[:200]}\n"
+                        f"Model: {model_override or '(default)'}\n"
+                        f"Tools: {tool_list}"
+                    ),
                     metadata={**metadata, "result_summary": task.result_summary},
                 )
             return ToolResult.error_result(
@@ -336,6 +365,7 @@ class SpawnSubagentTool(Tool):
             (
                 f"Sub-agent spawned (ID: {task.task_id}).\n"
                 f"Task: {description[:200]}\n"
+                f"Model: {model_override or '(default)'}\n"
                 f"Tools: {tool_list}"
             ),
             metadata=metadata,
