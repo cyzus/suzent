@@ -1491,7 +1491,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onCloseSubAgent={() => setViewingSubAgentTaskId(null)}
         onSelectSubAgent={(taskId) => setViewingSubAgentTaskId(taskId)}
         currentChatId={currentChatId}
-        hasSubAgents={Object.keys(subAgentTasks).length > 0 || safeMessages.some(m => m.content?.includes('spawn_subagent'))}
+        hasSubAgents={Object.keys(subAgentTasks).length > 0 || safeMessages.some(m => m.content?.includes('agent'))}
         messages={safeMessages}
         forcedWebContextId={forcedWebContextId}
         onClearForcedWebContext={() => setForcedWebContextId(null)}

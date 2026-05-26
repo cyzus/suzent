@@ -4,7 +4,7 @@ import pytest
 
 from suzent.tools.base import ToolErrorCode, ToolResult
 from suzent.tools.skill_tool import SkillTool
-from suzent.tools.spawn_subagent_tool import SpawnSubagentTool
+from suzent.tools.agent_tool import AgentTool
 
 
 class _DummySkillManager:
@@ -40,7 +40,7 @@ async def test_spawn_subagent_returns_structured_background_result(monkeypatch):
         fake_spawn_subagent,
     )
 
-    tool = SpawnSubagentTool()
+    tool = AgentTool()
     ctx = SimpleNamespace(deps=SimpleNamespace(chat_id="chat-1"))
 
     result = await tool.forward(
@@ -65,7 +65,7 @@ async def test_spawn_subagent_rejects_unrecognized_tools(monkeypatch):
         lambda: ["BashTool", "ProcessTool"],
     )
 
-    tool = SpawnSubagentTool()
+    tool = AgentTool()
     ctx = SimpleNamespace(deps=SimpleNamespace(chat_id="chat-1"))
 
     result = await tool.forward(
@@ -82,11 +82,11 @@ async def test_spawn_subagent_rejects_unrecognized_tools(monkeypatch):
 @pytest.mark.asyncio
 async def test_spawn_subagent_rejects_disabled_model(monkeypatch):
     monkeypatch.setattr(
-        "suzent.tools.spawn_subagent_tool.get_effective_enabled_models",
+        "suzent.tools.agent_tool.get_effective_enabled_models",
         lambda: ["openai/gpt-4.1", "gemini/gemini-2.5-pro"],
     )
 
-    tool = SpawnSubagentTool()
+    tool = AgentTool()
     ctx = SimpleNamespace(deps=SimpleNamespace(chat_id="chat-1"))
 
     result = await tool.forward(
@@ -122,7 +122,7 @@ async def test_spawn_subagent_accepts_effective_fallback_model(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "suzent.tools.spawn_subagent_tool.get_effective_enabled_models",
+        "suzent.tools.agent_tool.get_effective_enabled_models",
         lambda: ["openai/gpt-4.1"],
     )
     monkeypatch.setattr(
@@ -134,7 +134,7 @@ async def test_spawn_subagent_accepts_effective_fallback_model(monkeypatch):
         fake_spawn_subagent,
     )
 
-    tool = SpawnSubagentTool()
+    tool = AgentTool()
     ctx = SimpleNamespace(deps=SimpleNamespace(chat_id="chat-1"))
 
     result = await tool.forward(
@@ -149,8 +149,8 @@ async def test_spawn_subagent_accepts_effective_fallback_model(monkeypatch):
 
 
 def test_spawn_subagent_guidance_does_not_embed_model_workflow():
-    assert "coun" + "cil" not in SpawnSubagentTool.session_guidance.lower()
-    assert "model_override" not in SpawnSubagentTool.session_guidance
+    assert "coun" + "cil" not in AgentTool.session_guidance.lower()
+    assert "model_override" not in AgentTool.session_guidance
 
 
 def test_skill_tool_returns_structured_result(monkeypatch):

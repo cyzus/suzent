@@ -10,7 +10,7 @@ describe('tool icon helpers', () => {
   it('maps tool names to the shared icon set', () => {
     expect(getToolIcon('web_search')).toBe('🔍');
     expect(getToolIcon('read_file')).toBe('📁');
-    expect(getToolIcon('spawn_subagent')).toBe('🔧');
+    expect(getToolIcon('agent')).toBe('🔧');
   });
 
   it('keeps the icon layout class consistent between collapsed and expanded states', () => {

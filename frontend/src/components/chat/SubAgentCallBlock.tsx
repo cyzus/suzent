@@ -1,5 +1,5 @@
 /**
- * SubAgentCallBlock — renders a spawn_subagent tool call as a special card
+ * SubAgentCallBlock — renders a agent tool call as a special card
  * showing live status, description, allowed tools, and a sidebar open button.
  */
 import React, { useState, useEffect, useRef } from 'react';

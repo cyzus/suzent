@@ -178,7 +178,7 @@ const AgentBadgeComponent: React.FC<AgentBadgeProps> = ({
         case 'edit_file':
           variant = 'workout'; // working out (writing/editing code)
           break;
-        case 'spawn_subagent':
+        case 'agent':
           variant = 'portal';  // spawning portal
           break;
         case 'skill_execute':

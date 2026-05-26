@@ -97,7 +97,7 @@ def _all_tool_classes() -> list:
     from suzent.tools.memory_tools import MemorySearchTool
     from suzent.tools.render_ui_tool import RenderUITool
     from suzent.tools.ask_question_tool import AskQuestionTool
-    from suzent.tools.spawn_subagent_tool import SpawnSubagentTool
+    from suzent.tools.agent_tool import AgentTool
 
     return [
         ReadFileTool,
@@ -119,7 +119,7 @@ def _all_tool_classes() -> list:
         SocialMessageTool,
         SkillTool,
         MemorySearchTool,
-        SpawnSubagentTool,
+        AgentTool,
     ]
 
 

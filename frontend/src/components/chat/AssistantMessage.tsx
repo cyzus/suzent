@@ -325,7 +325,7 @@ const StreamingContent: React.FC<{
   );
 };
 
-/** Extract sub-agent task_id from spawn_subagent tool output text. */
+/** Extract sub-agent task_id from agent tool output text. */
 function parseSubAgentTaskId(output: string | undefined): string | undefined {
   if (!output) return undefined;
   const m = output.match(/ID:\s*`?(sub_[a-z0-9]+)`?/);
@@ -370,7 +370,7 @@ const StaticContent: React.FC<{
           const isAutoApproved = toolApprovalPolicy?.[b.toolName || ''] === 'always_allow';
 
           // Sub-agent special rendering
-          if (b.toolName === 'spawn_subagent') {
+          if (b.toolName === 'agent') {
             const taskId = parseSubAgentTaskId(b.content || undefined);
             const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
             const args = b.toolArgs ? (() => { try { return JSON.parse(b.toolArgs!); } catch { return {}; } })() : {};
@@ -527,9 +527,9 @@ const AGUIPartsContent: React.FC<{
             };
           });
 
-          // Separate spawn_subagent calls from regular tool calls
-          const subAgentTools = tools.filter(t => t.toolName === 'spawn_subagent');
-          const regularTools = tools.filter(t => t.toolName !== 'spawn_subagent');
+          // Separate agent calls from regular tool calls
+          const subAgentTools = tools.filter(t => t.toolName === 'agent');
+          const regularTools = tools.filter(t => t.toolName !== 'agent');
 
           return (
             <div key={ci} className="pl-1 min-w-0 overflow-x-hidden">
@@ -846,9 +846,9 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     return null;
   }
 
-  // Detect tool-only messages — but spawn_subagent always needs StaticContent
+  // Detect tool-only messages — but agent tool always needs StaticContent
   // because it renders SubAgentCallBlock, not a step pill.
-  const hasSubAgentCall = blocks.some(b => b.type === 'toolCall' && b.toolName === 'spawn_subagent');
+  const hasSubAgentCall = blocks.some(b => b.type === 'toolCall' && b.toolName === 'agent');
   const toolOnly = !isStreamingThis && isToolOnlyMessage(blocks) && !hasSubAgentCall;
 
   if (toolOnly) {
@@ -944,8 +944,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
             }
 
             if (chunk.type === 'toolCall') {
-              const subAgentBlocks = chunk.blocks.filter(b => b.toolName === 'spawn_subagent');
-              const regularBlocks = chunk.blocks.filter(b => b.toolName !== 'spawn_subagent');
+              const subAgentBlocks = chunk.blocks.filter(b => b.toolName === 'agent');
+              const regularBlocks = chunk.blocks.filter(b => b.toolName !== 'agent');
               return (
                 <div key={idx} className="flex flex-col space-y-2">
                   {subAgentBlocks.length > 0 && (

@@ -1,5 +1,5 @@
 """
-SpawnSubagentTool: delegate a task to an isolated sub-agent.
+AgentTool: delegate a task to an isolated sub-agent.
 
 Supports two execution modes:
 - run_in_background=True (default): fire-and-forget; parent continues immediately.
@@ -13,7 +13,7 @@ Tool selection supports three mutually exclusive modes:
 - tools_allowed: explicit whitelist (can be combined with subagent_type)
 - tools_denied: denylist — start from all available tools, subtract listed ones
 
-SpawnSubagentTool is always stripped from the sub-agent's tool set to prevent
+AgentTool is always stripped from the sub-agent's tool set to prevent
 recursive spawning, regardless of which selection mode is used.
 
 The cwd parameter lets you pin the sub-agent's bash working directory to a
@@ -39,16 +39,16 @@ _SUBAGENT_PROFILES: dict[str, list[str]] = {
 }
 
 
-class SpawnSubagentTool(Tool):
+class AgentTool(Tool):
     """Spawn a sub-agent to handle a task, either blocking or in the background."""
 
-    name: str = "SpawnSubagentTool"
-    tool_name: str = "spawn_subagent"
+    name: str = "AgentTool"
+    tool_name: str = "agent"
     group: ToolGroup = ToolGroup.AGENT
     guidance_priority: int = 10
 
     session_guidance: str = (
-        "## SpawnSubagentTool — When and How to Delegate\n"
+        "## AgentTool — When and How to Delegate\n"
         "\n"
         "### When to spawn a sub-agent (use proactively)\n"
         "- **explore**: when you need to find files by pattern, search code for keywords, or answer "

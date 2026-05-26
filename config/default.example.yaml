@@ -23,7 +23,7 @@ DEFAULT_TOOLS:
   - "GrepTool"
   - "BashTool"
   - "SpeakTool"
-  - "SpawnSubagentTool"
+  - "AgentTool"
 
 MCP_URLS:
   # Simple format: just the URL

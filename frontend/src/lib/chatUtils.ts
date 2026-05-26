@@ -58,7 +58,7 @@ const IGNORED_TOOL_NAMES = ['final_answer', 'final answer'];
 /** Check if parsed blocks represent a tool-only message (no real prose/code content) */
 // Tool names that should NOT be collapsed into intermediate step pills —
 // they render as standalone interactive cards (e.g. SubAgentCallBlock).
-const PROMINENT_TOOL_NAMES = ['spawn_subagent'];
+const PROMINENT_TOOL_NAMES = ['agent'];
 
 export function isToolOnlyContent(content: string | undefined): boolean {
   if (!content?.trim()) return false;

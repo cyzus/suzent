@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 
 # Tools that sub-agents can never have, regardless of what the caller requests.
 # Prevents recursive sub-agent spawning.
-_ALWAYS_DENIED: frozenset[str] = frozenset({"SpawnSubagentTool"})
+_ALWAYS_DENIED: frozenset[str] = frozenset({"AgentTool"})
 
 # ─── Wakeup batching ──────────────────────────────────────────────────────────
 # When multiple sub-agents finish around the same time, we batch their results
