@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from typing import Any, Dict, List, Optional
 
@@ -53,24 +54,31 @@ def resolve_api_key(
     return None
 
 
-def get_enabled_models_from_db() -> List[str]:
-    """Aggregate all enabled/available models from user provider config."""
-    import json
-    from suzent.config import CONFIG
+def _load_user_provider_config() -> Optional[Dict[str, Any]]:
+    """Return the parsed _PROVIDER_CONFIG_ blob, or None if absent/invalid.
+
+    None means no blob has ever been saved (fresh install).
+    {} means an empty blob was explicitly saved.
+    """
     from suzent.database import get_database
 
-    db = get_database()
-    api_keys = db.get_api_keys() or {}
-    provider_config_blob = api_keys.get("_PROVIDER_CONFIG_")
+    blob = (get_database().get_api_keys() or {}).get("_PROVIDER_CONFIG_")
+    if blob is None:
+        return None
+    try:
+        parsed = json.loads(blob)
+        return parsed if isinstance(parsed, dict) else {}
+    except json.JSONDecodeError:
+        return {}
 
-    custom_config = {}
-    if provider_config_blob:
-        try:
-            custom_config = json.loads(provider_config_blob)
-        except json.JSONDecodeError:
-            pass
 
-    if not custom_config:
+def get_enabled_models_from_db() -> List[str]:
+    """Aggregate all enabled/available models from user provider config."""
+    from suzent.config import CONFIG
+
+    custom_config = _load_user_provider_config()
+
+    if custom_config is None:
         if CONFIG.model_options:
             return CONFIG.model_options
         from suzent.core.providers.catalog import PROVIDER_REGISTRY
@@ -89,14 +97,83 @@ def get_enabled_models_from_db() -> List[str]:
     return sorted(set(all_models))
 
 
-def get_effective_enabled_models() -> List[str]:
-    """Return model IDs the agent can actually run after config fallbacks."""
-    from suzent.config import CONFIG
+def _provider_is_configured(spec) -> bool:
+    """Return True if the provider has usable credentials."""
+    if spec.env_keys:
+        return resolve_api_key(spec.id) is not None
+    if spec.api_type == "chatgpt_subscription":
+        from suzent.core.providers.factory import ProviderFactory
 
-    enabled_models = get_enabled_models_from_db()
-    if enabled_models:
-        return enabled_models
-    return CONFIG.model_options.copy() if CONFIG.model_options else []
+        try:
+            provider = ProviderFactory.get_provider(spec.id, {})
+        except Exception as exc:
+            logger.debug(
+                "ChatGPT provider unavailable while checking default model: {}", exc
+            )
+            return False
+        return bool(getattr(provider, "is_authenticated", lambda: False)())
+    return False
+
+
+_UNSET = object()
+_default_model_cache: Any = _UNSET
+
+
+def invalidate_default_model_cache() -> None:
+    """Invalidate the cached default model (call after provider config changes)."""
+    global _default_model_cache
+    _default_model_cache = _UNSET
+
+
+def _compute_default_chat_model() -> Optional[str]:
+    """Walks ``PROVIDER_REGISTRY`` in catalog order and returns the first model
+    available from a provider that has credentials.
+
+    Semantics must match ``get_enabled_models_from_db`` so the returned id is
+    always a member of ``/config.models``:
+
+    * **No ``_PROVIDER_CONFIG_`` blob saved** (fresh install): fall back to the
+      provider's catalog ``default_models[0]``.
+    * **Blob saved**: the blob is the source of truth. Honor each provider's
+      ``enabled_models`` strictly — an explicit empty list, or no entry at
+      all, means "this provider exposes no chat models" and we walk on. We do
+      *not* fall back to catalog defaults in this case, otherwise the helper
+      could return a model that the frontend cannot select.
+
+    Returns ``None`` if no provider is configured.
+    """
+    from suzent.core.providers.catalog import PROVIDER_REGISTRY
+
+    user_provider_config = _load_user_provider_config()
+    blob_present = user_provider_config is not None
+
+    for spec in PROVIDER_REGISTRY:
+        if not _provider_is_configured(spec):
+            continue
+
+        if blob_present:
+            enabled = user_provider_config.get(spec.id, {}).get("enabled_models") or []
+            if enabled:
+                return enabled[0]
+            continue
+
+        # Fresh install: blob absent, fall back to catalog defaults.
+        if spec.default_models:
+            return spec.default_models[0]["id"]
+
+    return None
+
+
+def get_default_chat_model() -> Optional[str]:
+    """First model from the first configured provider, in catalog order.
+
+    Cached; call ``invalidate_default_model_cache`` after provider config changes.
+    Returns ``None`` when no provider has credentials.
+    """
+    global _default_model_cache
+    if _default_model_cache is _UNSET:
+        _default_model_cache = _compute_default_chat_model()
+    return _default_model_cache  # type: ignore[return-value]
 
 
 def get_effective_memory_config() -> Dict[str, str]:

@@ -19,8 +19,10 @@ from suzent.config import CONFIG
 from suzent.core.providers import (
     PROVIDER_REGISTRY,
     ProviderFactory,
+    get_default_chat_model,
     get_effective_memory_config,
     get_enabled_models_from_db,
+    invalidate_default_model_cache,
 )
 from suzent.tools.registry import get_tool_groups
 from suzent.database import get_database
@@ -66,6 +68,7 @@ async def get_config(request: Request) -> JSONResponse:
     sandbox_enabled = getattr(CONFIG, "sandbox_enabled", False)
     sandbox_volumes = CONFIG.sandbox_volumes or []
     available_models = get_enabled_models_from_db()
+    default_model = get_default_chat_model()
 
     mem_config = get_effective_memory_config()
     embedding_model = mem_config["embedding_model"]
@@ -74,6 +77,7 @@ async def get_config(request: Request) -> JSONResponse:
     data: dict[str, Any] = {
         "title": CONFIG.title,
         "models": available_models,
+        "defaultModel": default_model,
         "agents": CONFIG.agent_options,
         "tools": [t for t in CONFIG.tool_options if t != "SkillTool"],
         "toolGroups": get_tool_groups(),
@@ -386,6 +390,7 @@ async def save_api_keys(request: Request) -> JSONResponse:
             db.save_api_key("_PROVIDER_CONFIG_", updated_blob)
             os.environ["_PROVIDER_CONFIG_"] = updated_blob
             count += 1
+            invalidate_default_model_cache()
 
         return JSONResponse({"success": True, "updated": count})
     except Exception as e:
@@ -531,9 +536,6 @@ async def get_social_config(request: Request) -> JSONResponse:
         config_path = PROJECT_DIR / "config" / "social.json"
         if not config_path.exists():
             return JSONResponse({"config": {}})
-
-        with open(config_path, "r") as f:
-            config = json.load(f)
 
         with open(config_path, "r") as f:
             config = json.load(f)

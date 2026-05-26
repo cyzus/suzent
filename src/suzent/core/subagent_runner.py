@@ -311,10 +311,9 @@ async def _run_subagent(
 ):
     """Execute the sub-agent in an isolated chat, then notify the parent."""
     if not task.model_override:
-        from suzent.core.providers import get_effective_enabled_models
+        from suzent.core.providers import get_default_chat_model
 
-        enabled_models = get_effective_enabled_models()
-        task.model_override = enabled_models[0] if enabled_models else None
+        task.model_override = get_default_chat_model()
 
     task.status = "running"
     task.started_at = datetime.now()

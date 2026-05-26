@@ -25,7 +25,7 @@ from typing import Annotated, Literal, Optional
 from pydantic import Field
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
-from suzent.core.providers.helpers import get_effective_enabled_models
+from suzent.core.providers.helpers import get_enabled_models_from_db
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 # ─── Pre-defined subagent profiles ───────────────────────────────────────────
@@ -248,7 +248,7 @@ class AgentTool(Tool):
             model_override = model_override.strip() or None
 
         if model_override:
-            enabled_models = get_effective_enabled_models()
+            enabled_models = get_enabled_models_from_db()
             if model_override not in enabled_models:
                 models_list = ", ".join(f"'{m}'" for m in enabled_models)
                 return ToolResult.error_result(

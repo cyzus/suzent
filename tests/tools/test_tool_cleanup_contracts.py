@@ -82,7 +82,7 @@ async def test_spawn_subagent_rejects_unrecognized_tools(monkeypatch):
 @pytest.mark.asyncio
 async def test_spawn_subagent_rejects_disabled_model(monkeypatch):
     monkeypatch.setattr(
-        "suzent.tools.agent_tool.get_effective_enabled_models",
+        "suzent.tools.agent_tool.get_enabled_models_from_db",
         lambda: ["openai/gpt-4.1", "gemini/gemini-2.5-pro"],
     )
 
@@ -122,7 +122,7 @@ async def test_spawn_subagent_accepts_effective_fallback_model(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "suzent.tools.agent_tool.get_effective_enabled_models",
+        "suzent.tools.agent_tool.get_enabled_models_from_db",
         lambda: ["openai/gpt-4.1"],
     )
     monkeypatch.setattr(

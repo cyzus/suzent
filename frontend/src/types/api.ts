@@ -107,6 +107,7 @@ export interface Plan {
 export interface ConfigOptions {
   title: string;
   models: string[];
+  defaultModel?: string | null; // first model from a provider with credentials; null if none configured
   agents: string[];
   tools: string[];        // full list of tool options
   defaultTools: string[]; // default enabled tools

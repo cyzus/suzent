@@ -18,7 +18,7 @@ from pydantic_ai.toolsets import FunctionToolset
 
 from suzent.core.agent_deps import AgentDeps
 from suzent.core.model_factory import create_pydantic_ai_model
-from suzent.core.providers import get_effective_enabled_models
+from suzent.core.providers import get_enabled_models_from_db
 
 from suzent.config import CONFIG
 from suzent.logger import get_logger
@@ -141,7 +141,7 @@ def create_agent(
         Configured pydantic-ai Agent instance.
     """
     # --- Validate model ---
-    enabled_models = get_effective_enabled_models()
+    enabled_models = get_enabled_models_from_db()
 
     if not enabled_models:
         raise ValueError(
