@@ -25,6 +25,7 @@ from typing import Annotated, Literal, Optional
 from pydantic import Field
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
+from suzent.core.providers.helpers import get_effective_enabled_models
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 # ─── Pre-defined subagent profiles ───────────────────────────────────────────
@@ -220,7 +221,6 @@ class SpawnSubagentTool(Tool):
             isolation_target_path: Git repo root. Required when isolation='worktree'.
         """
         from suzent.core.subagent_runner import spawn_subagent, _resolve_tool_names
-        from suzent.core.providers.helpers import get_effective_enabled_models
 
         parent_chat_id = ctx.deps.chat_id
 
@@ -250,11 +250,12 @@ class SpawnSubagentTool(Tool):
         if model_override:
             enabled_models = get_effective_enabled_models()
             if model_override not in enabled_models:
+                models_list = ", ".join(f"'{m}'" for m in enabled_models)
                 return ToolResult.error_result(
                     ToolErrorCode.INVALID_ARGUMENT,
                     (
                         f"model_override '{model_override}' is not enabled. "
-                        "Use one of the enabled model IDs."
+                        f"Enabled models: {models_list}."
                     ),
                     metadata={
                         "model_override": model_override,

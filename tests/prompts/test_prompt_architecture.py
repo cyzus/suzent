@@ -135,7 +135,7 @@ def test_build_enabled_models_section_lists_current_and_available_models():
 
     assert "# Models" in section
     assert "Current model: `openai/gpt-4.1`" in section
-    assert "Available models:" in section
+    assert "Available models" in section
     assert "`openai/gpt-4.1`" in section
     assert "`gemini/gemini-2.5-pro`" in section
 

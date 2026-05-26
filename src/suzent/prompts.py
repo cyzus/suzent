@@ -150,7 +150,7 @@ BASE_INSTRUCTIONS_SECTION = """# Base Instructions
 ENABLED_MODELS_SECTION = """# Models
 Current model: `{current_model}`
 
-Available models:
+Available models (use these IDs for `model_override` when spawning sub-agents):
 {models_list}
 """
 
