@@ -5,6 +5,14 @@ from pydantic import Field
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 
+def __getattr__(name):
+    if name == "AsyncWebCrawler":
+        from crawl4ai import AsyncWebCrawler
+
+        return AsyncWebCrawler
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 class WebpageTool(Tool):
     """
     A tool for retrieving content from web pages.
@@ -16,9 +24,9 @@ class WebpageTool(Tool):
 
     async def _crawl_url(self, url: str) -> ToolResult:
         """Async helper to properly initialize and use the crawler."""
-        from crawl4ai import AsyncWebCrawler
+        import suzent.tools.webpage_tool as _self
 
-        async with AsyncWebCrawler() as crawler:
+        async with _self.AsyncWebCrawler() as crawler:
             result = await crawler.arun(url=url)
             if not result:
                 return ToolResult.error_result(
