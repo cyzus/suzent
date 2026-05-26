@@ -163,7 +163,11 @@ def generate_changelog_draft(version: str, root: Path) -> str:
             prefix = "refactor:" if msg.startswith("refactor:") else "perf:"
             groups[CHANGED].append(msg[len(prefix) :].strip())
 
-    group_headers = {ADDED: "### Added", CHANGED: "### Changed", FIXED: "### Fixed"}
+    group_headers = {
+        ADDED: "### 🚀 Added",
+        CHANGED: "### ⚡ Changed",
+        FIXED: "### 🐛 Fixed",
+    }
 
     today = __import__("datetime").date.today().isoformat()
     lines = [f"## [v{version}] - {today}", ""]
@@ -171,7 +175,7 @@ def generate_changelog_draft(version: str, root: Path) -> str:
         if items:
             lines.append(group_headers[group])
             for item in items:
-                lines.append(f"- {item[0].upper()}{item[1:]}")
+                lines.append(f"- **{item[0].upper()}{item[1:]}**")
             lines.append("")
 
     return "\n".join(lines)
