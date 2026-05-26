@@ -538,9 +538,6 @@ async def get_social_config(request: Request) -> JSONResponse:
         with open(config_path, "r") as f:
             config = json.load(f)
 
-        with open(config_path, "r") as f:
-            config = json.load(f)
-
         # Load defaults from example file to ensure all platforms are visible
         # This keeps it DRY by using the example file as the source of truth
         defaults_path = get_resource_path("config/social.example.json")

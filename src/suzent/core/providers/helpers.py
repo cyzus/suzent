@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from typing import Any, Dict, List, Optional
 
@@ -53,22 +54,25 @@ def resolve_api_key(
     return None
 
 
-def get_enabled_models_from_db() -> List[str]:
-    """Aggregate all enabled/available models from user provider config."""
-    import json
-    from suzent.config import CONFIG
+def _load_user_provider_config() -> Dict[str, Any]:
+    """Return the _PROVIDER_CONFIG_ blob from the DB, or {} if absent/invalid."""
     from suzent.database import get_database
 
-    db = get_database()
-    api_keys = db.get_api_keys() or {}
-    provider_config_blob = api_keys.get("_PROVIDER_CONFIG_")
+    blob = (get_database().get_api_keys() or {}).get("_PROVIDER_CONFIG_")
+    if not blob:
+        return {}
+    try:
+        parsed = json.loads(blob)
+        return parsed if isinstance(parsed, dict) else {}
+    except json.JSONDecodeError:
+        return {}
 
-    custom_config = {}
-    if provider_config_blob:
-        try:
-            custom_config = json.loads(provider_config_blob)
-        except json.JSONDecodeError:
-            pass
+
+def get_enabled_models_from_db() -> List[str]:
+    """Aggregate all enabled/available models from user provider config."""
+    from suzent.config import CONFIG
+
+    custom_config = _load_user_provider_config()
 
     if not custom_config:
         if CONFIG.model_options:
@@ -87,22 +91,6 @@ def get_enabled_models_from_db() -> List[str]:
     ]
 
     return sorted(set(all_models))
-
-
-def _load_user_provider_config() -> Dict[str, Any]:
-    """Return the _PROVIDER_CONFIG_ blob from the DB, or {} if absent/invalid."""
-    import json
-
-    from suzent.database import get_database
-
-    blob = (get_database().get_api_keys() or {}).get("_PROVIDER_CONFIG_")
-    if not blob:
-        return {}
-    try:
-        parsed = json.loads(blob)
-        return parsed if isinstance(parsed, dict) else {}
-    except json.JSONDecodeError:
-        return {}
 
 
 def _provider_is_configured(spec) -> bool:
@@ -160,7 +148,6 @@ def _compute_default_chat_model() -> Optional[str]:
             continue
 
         if blob_present:
-            # Strictly honor the saved blob — matches get_enabled_models_from_db.
             enabled = user_provider_config.get(spec.id, {}).get("enabled_models") or []
             if enabled:
                 return enabled[0]
