@@ -100,7 +100,9 @@ class SubAgentTask:
     chat_id: str = ""  # isolated chat created for this sub-agent
     cwd: Optional[str] = None  # working directory override for bash execution
     subagent_type: Optional[str] = None  # profile name, used to select system prompt
-    model_override: Optional[str] = None  # enabled model ID selected for this task
+    model_override: Optional[str] = (
+        None  # resolved model ID (override or default fallback)
+    )
     # Phase 2: context forking
     inherit_context: bool = False
     # Phase 3: git worktree isolation
@@ -285,6 +287,12 @@ async def _run_subagent(
     wakeup_parent: bool = True,
 ):
     """Execute the sub-agent in an isolated chat, then notify the parent."""
+    if not task.model_override:
+        from suzent.core.providers import get_effective_enabled_models
+
+        enabled_models = get_effective_enabled_models()
+        task.model_override = enabled_models[0] if enabled_models else None
+
     task.status = "running"
     task.started_at = datetime.now()
     _broadcast_task_update(task)

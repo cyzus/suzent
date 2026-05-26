@@ -159,10 +159,10 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
                   {task.model_override && (
                     <div className="mt-1">
                       <span
-                        className="inline-block text-[9px] text-neutral-500 dark:text-neutral-300 truncate max-w-full"
+                        className="inline-block text-[9px] text-neutral-400 dark:text-neutral-500 truncate max-w-full font-mono"
                         title={`${t('subAgents.model')}: ${task.model_override}`}
                       >
-                        {t('subAgents.model')}: {task.model_override}
+                        {task.model_override}
                       </span>
                     </div>
                   )}
