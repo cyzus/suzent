@@ -17,7 +17,6 @@ from suzent.core.base_brain import BaseBrain, get_active
 from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.core.stream_registry import stream_controls
-from suzent.core.chat_processor import ChatProcessor
 
 logger = get_logger(__name__)
 
@@ -332,6 +331,8 @@ class HeartbeatRunner(BaseBrain):
             self._last_error = str(e)
 
     async def _run_chat_turn(self, chat_id: str, instructions: str) -> str:
+        from suzent.core.chat_processor import ChatProcessor
+
         processor = ChatProcessor()
 
         # Read global heartbeat_allowed_tools to determine approval policy.

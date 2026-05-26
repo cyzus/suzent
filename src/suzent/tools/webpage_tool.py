@@ -1,7 +1,6 @@
 from typing import Annotated
 
 from pydantic import Field
-from crawl4ai import AsyncWebCrawler
 
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
@@ -17,6 +16,8 @@ class WebpageTool(Tool):
 
     async def _crawl_url(self, url: str) -> ToolResult:
         """Async helper to properly initialize and use the crawler."""
+        from crawl4ai import AsyncWebCrawler
+
         async with AsyncWebCrawler() as crawler:
             result = await crawler.arun(url=url)
             if not result:

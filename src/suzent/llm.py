@@ -7,7 +7,6 @@ Provides unified interface for:
 """
 
 from typing import List, Dict, Any, Optional, Type, TypeVar
-import litellm
 from pydantic import BaseModel
 
 from suzent.config import CONFIG
@@ -15,8 +14,13 @@ from suzent.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Drop unsupported parameters when calling APIs
-litellm.drop_params = True
+
+def _litellm():
+    import litellm as _ll
+
+    _ll.drop_params = True
+    return _ll
+
 
 # Type variable for Pydantic models
 T = TypeVar("T", bound=BaseModel)
@@ -55,7 +59,7 @@ class EmbeddingGenerator:
             return [0.0] * self.dimension
 
         try:
-            response = await litellm.aembedding(model=self.model, input=text)
+            response = await _litellm().aembedding(model=self.model, input=text)
 
             embedding = response.data[0]["embedding"]
 
@@ -96,7 +100,7 @@ class EmbeddingGenerator:
             batch = texts[i : i + batch_size]
 
             try:
-                response = await litellm.aembedding(model=self.model, input=batch)
+                response = await _litellm().aembedding(model=self.model, input=batch)
 
                 batch_embeddings = [item["embedding"] for item in response.data]
                 all_embeddings.extend(batch_embeddings)
@@ -133,7 +137,7 @@ class ImageGenerator:
             URL to the generated image
         """
         try:
-            response = await litellm.aimage_generation(
+            response = await _litellm().aimage_generation(
                 prompt=prompt, model=self.model, size=size
             )
 
@@ -189,7 +193,7 @@ class LLMClient:
         messages.append({"role": "user", "content": prompt})
 
         try:
-            response = await litellm.acompletion(
+            response = await _litellm().acompletion(
                 model=self.model,
                 messages=messages,
                 temperature=temperature,
@@ -236,7 +240,7 @@ class LLMClient:
         try:
             # Use Pydantic model directly as response_format
             # LiteLLM converts this to json_schema format automatically
-            response = await litellm.acompletion(
+            response = await _litellm().acompletion(
                 model=self.model,
                 messages=messages,
                 temperature=temperature,

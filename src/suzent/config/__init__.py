@@ -224,7 +224,14 @@ def rebuild_merged_skills_dir() -> Path:
     return sync_managed_skills_dirs()
 
 
-sync_managed_skills_dirs()
+_skills_synced = False
+
+
+def ensure_skills_synced() -> None:
+    global _skills_synced
+    if not _skills_synced:
+        _skills_synced = True
+        sync_managed_skills_dirs()
 
 
 def _normalize_keys(d: Dict[str, Any]) -> Dict[str, Any]:

@@ -167,7 +167,8 @@ async def init_memory_system() -> bool:
 
     try:
         # Import memory modules (local imports to avoid circular deps)
-        from suzent.memory import MemoryManager, LanceDBMemoryStore
+        from suzent.memory.manager import MemoryManager
+        from suzent.memory.lancedb_store import LanceDBMemoryStore
         from suzent.memory.markdown_store import MarkdownMemoryStore
 
         # Initialize LanceDB store (search index)
@@ -306,7 +307,7 @@ def create_memory_tools() -> list:
         return []
 
     try:
-        from suzent.memory import MemorySearchTool
+        from suzent.tools.memory_tools import MemorySearchTool
 
         search_tool = MemorySearchTool(memory_manager)
         search_tool._main_loop = main_event_loop

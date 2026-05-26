@@ -238,7 +238,7 @@ async def reindex_memories(request: Request) -> JSONResponse:
     """
     try:
         from suzent.memory.lifecycle import get_memory_manager
-        from suzent.memory import MarkdownIndexer
+        from suzent.memory.indexer import MarkdownIndexer
 
         manager = get_memory_manager()
         if not manager:
