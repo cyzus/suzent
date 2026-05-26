@@ -7,23 +7,25 @@ import { BrutalMultiSelect } from '../BrutalMultiSelect';
 
 // Brand colors keyed by provider id (hex without #). Kept in the frontend only.
 const PROVIDER_COLORS: Record<string, string> = {
-    openai:       '000000',
-    anthropic:    'D97757',
-    gemini:       '4285F4',
-    xai:          '1D1D1D',
-    deepseek:     '4D6BFE',
-    minimax:      '1F1E33',
-    moonshot:     '1C1C1E',
-    zhipuai:      '2B60D6',
-    openrouter:   '6467F2',
-    litellm_proxy:'7C3AED',
-    ollama:       '000000',
-    perplexity:   '20808D',
-    together:     'FF5733',
-    fireworks:    '9B59B6',
-    sambanova:    'E34A34',
-    bedrock:      'FF9900',
-    xiaomi_mimo:         'FF6900',
+    openai:        '000000',
+    chatgpt:       '74AA9C',
+    anthropic:     'D97757',
+    gemini:        '4285F4',
+    xai:           '000000',
+    dashscope:     'FF6A00',
+    deepseek:      '4D6BFE',
+    minimax:       '1F1E33',
+    moonshot:      '1C1C1E',
+    zhipuai:       '2B60D6',
+    openrouter:    '6467F2',
+    litellm_proxy: '7C3AED',
+    ollama:        '000000',
+    perplexity:    '20808D',
+    together:      'FF5733',
+    fireworks:     '9B59B6',
+    sambanova:     'E34A34',
+    bedrock:       'FF9900',
+    xiaomi_mimo:   'FF6900',
 };
 
 const API_TYPES = ['openai', 'anthropic', 'google', 'xai', 'openrouter', 'ollama', 'litellm_proxy', 'bedrock'] as const;
@@ -68,7 +70,6 @@ function ProviderIcon({ provider }: { provider: ApiProvider }) {
     const [imgFailed, setImgFailed] = useState(false);
     const color = PROVIDER_COLORS[provider.id] ?? (provider.user_defined ? '6B7280' : 'e5e5e5');
     const initials = provider.label.slice(0, 2).toUpperCase();
-
     return (
         <div
             className="w-9 h-9 border-2 border-brutal-black flex items-center justify-center flex-shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
@@ -76,7 +77,7 @@ function ProviderIcon({ provider }: { provider: ApiProvider }) {
         >
             {provider.logo_url && !imgFailed ? (
                 <img
-                    src={`${provider.logo_url}/ffffff`}
+                    src={provider.logo_url.includes('simpleicons.org') ? `${provider.logo_url}/ffffff` : provider.logo_url}
                     alt={provider.label}
                     className="w-5 h-5 object-contain"
                     onError={() => setImgFailed(true)}
@@ -342,7 +343,7 @@ function ChatGPTProviderCard({
                 <div className="flex items-center gap-3 min-w-0">
                     <ProviderIcon provider={provider} />
                     <div className="flex flex-col min-w-0">
-                        <span className="font-black uppercase text-xl tracking-wide truncate dark:text-white">{t('settings.providers.chatgpt.title')}</span>
+                        <span className={`font-black uppercase tracking-wide leading-tight dark:text-white ${provider.label.length > 14 ? 'text-sm' : provider.label.length > 10 ? 'text-base' : 'text-xl'}`}>{provider.label}</span>
                         <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">{t('settings.providers.chatgpt.subtitle')}</span>
                     </div>
                 </div>
@@ -592,7 +593,7 @@ export function ProvidersTab({
                                 <div className="flex items-center gap-3 min-w-0">
                                     <ProviderIcon provider={provider} />
                                     <div className="flex flex-col min-w-0">
-                                        <span className="font-black uppercase text-xl tracking-wide truncate dark:text-white">{provider.label}</span>
+                                        <span className={`font-black uppercase tracking-wide leading-tight dark:text-white ${provider.label.length > 14 ? 'text-sm' : provider.label.length > 10 ? 'text-base' : 'text-xl'}`}>{provider.label}</span>
                                         {provider.user_defined && (
                                             <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">custom</span>
                                         )}
@@ -651,13 +652,13 @@ export function ProvidersTab({
 
                                                     {isConfigured ? (
                                                         /* Locked/display state */
-                                                        <div className="flex gap-0">
-                                                            <div className="flex-1 flex items-center bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-black px-3 py-2">
+                                                        <div className="flex gap-0 min-w-0">
+                                                            <div className="flex-1 min-w-0 flex items-center bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-black px-3 py-2">
                                                                 <span className="font-mono text-xs text-neutral-500 dark:text-neutral-400 truncate">{val || '••••••••'}</span>
                                                             </div>
                                                             <button
                                                                 onClick={() => startEditing(field.key)}
-                                                                className="px-3 text-[10px] font-black uppercase border-2 border-l-0 border-brutal-black text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700 bg-white dark:bg-zinc-900 whitespace-nowrap"
+                                                                className="shrink-0 px-3 text-[10px] font-black uppercase border-2 border-l-0 border-brutal-black text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700 bg-white dark:bg-zinc-900 whitespace-nowrap"
                                                             >
                                                                 {t('settings.providers.changeKey')}
                                                             </button>

@@ -5,7 +5,7 @@
     {
       "id": "openai",
       "label": "OpenAI",
-      "logo_url": "https://cdn.simpleicons.org/openai",
+      "logo_url": "https://api.iconify.design/simple-icons:openai.svg?color=white",
       "api_type": "openai",
       "env_keys": ["OPENAI_API_KEY"],
       "fields": [
@@ -22,7 +22,7 @@
     {
       "id": "chatgpt",
       "label": "ChatGPT Subscription",
-      "logo_url": "https://cdn.simpleicons.org/openai",
+      "logo_url": "https://api.iconify.design/simple-icons:openai.svg?color=white",
       "api_type": "chatgpt_subscription",
       "env_keys": [],
       "fields": [],
@@ -69,6 +69,7 @@
     {
       "id": "xai",
       "label": "xAI (Grok)",
+      "logo_url": "https://api.iconify.design/bxl:grok.svg?color=white",
       "api_type": "xai",
       "env_keys": ["XAI_API_KEY"],
       "fields": [
@@ -82,7 +83,8 @@
     },
     {
       "id": "dashscope",
-      "label": "dashscope",
+      "label": "Dashscope",
+      "logo_url": "https://cdn.simpleicons.org/alibabacloud",
       "api_type": "openai",
       "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
       "env_keys": [
@@ -101,7 +103,7 @@
     {
       "id": "deepseek",
       "label": "DeepSeek",
-      "logo_url": "https://cdn.simpleicons.org/deepseek",
+      "logo_url": "https://api.iconify.design/simple-icons:deepseek.svg?color=white",
       "api_type": "openai",
       "native_provider": {"module": "pydantic_ai.providers.deepseek", "class": "DeepSeekProvider"},
       "env_keys": ["DEEPSEEK_API_KEY"],
@@ -116,6 +118,7 @@
     {
       "id": "minimax",
       "label": "MiniMax",
+      "logo_url": "https://cdn.simpleicons.org/minimax",
       "api_type": "openai",
       "base_url": "https://api.minimaxi.com/v1",
       "env_keys": ["MINIMAX_API_KEY"],
@@ -130,6 +133,7 @@
     {
       "id": "moonshot",
       "label": "Moonshot (Kimi)",
+      "logo_url": "https://cdn.simpleicons.org/moonshotai",
       "api_type": "openai",
       "base_url": "https://api.moonshot.cn/v1",
       "native_provider": {"module": "pydantic_ai.providers.moonshotai", "class": "MoonshotAIProvider"},
