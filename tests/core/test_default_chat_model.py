@@ -53,7 +53,7 @@ def _clear_cache():
 
 @pytest.fixture
 def no_user_config(monkeypatch):
-    monkeypatch.setattr(helpers, "_load_user_provider_config", lambda: {})
+    monkeypatch.setattr(helpers, "_load_user_provider_config", lambda: None)
 
 
 def _set_configured(monkeypatch, configured_ids: set[str]) -> None:
@@ -152,7 +152,7 @@ def test_falls_back_to_catalog_default_only_when_blob_absent(catalog, monkeypatc
     fresh-install branch.
     """
     _set_configured(monkeypatch, {"openai"})
-    monkeypatch.setattr(helpers, "_load_user_provider_config", lambda: {})
+    monkeypatch.setattr(helpers, "_load_user_provider_config", lambda: None)
     assert helpers.get_default_chat_model() == "openai/gpt-4.1"
 
 

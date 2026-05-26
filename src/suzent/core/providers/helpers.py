@@ -54,13 +54,17 @@ def resolve_api_key(
     return None
 
 
-def _load_user_provider_config() -> Dict[str, Any]:
-    """Return the _PROVIDER_CONFIG_ blob from the DB, or {} if absent/invalid."""
+def _load_user_provider_config() -> Optional[Dict[str, Any]]:
+    """Return the parsed _PROVIDER_CONFIG_ blob, or None if absent/invalid.
+
+    None means no blob has ever been saved (fresh install).
+    {} means an empty blob was explicitly saved.
+    """
     from suzent.database import get_database
 
     blob = (get_database().get_api_keys() or {}).get("_PROVIDER_CONFIG_")
-    if not blob:
-        return {}
+    if blob is None:
+        return None
     try:
         parsed = json.loads(blob)
         return parsed if isinstance(parsed, dict) else {}
@@ -74,7 +78,7 @@ def get_enabled_models_from_db() -> List[str]:
 
     custom_config = _load_user_provider_config()
 
-    if not custom_config:
+    if custom_config is None:
         if CONFIG.model_options:
             return CONFIG.model_options
         from suzent.core.providers.catalog import PROVIDER_REGISTRY
@@ -141,7 +145,7 @@ def _compute_default_chat_model() -> Optional[str]:
     from suzent.core.providers.catalog import PROVIDER_REGISTRY
 
     user_provider_config = _load_user_provider_config()
-    blob_present = bool(user_provider_config)
+    blob_present = user_provider_config is not None
 
     for spec in PROVIDER_REGISTRY:
         if not _provider_is_configured(spec):

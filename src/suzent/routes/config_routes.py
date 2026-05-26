@@ -22,6 +22,7 @@ from suzent.core.providers import (
     get_default_chat_model,
     get_effective_memory_config,
     get_enabled_models_from_db,
+    invalidate_default_model_cache,
 )
 from suzent.tools.registry import get_tool_groups
 from suzent.database import get_database
@@ -389,6 +390,7 @@ async def save_api_keys(request: Request) -> JSONResponse:
             db.save_api_key("_PROVIDER_CONFIG_", updated_blob)
             os.environ["_PROVIDER_CONFIG_"] = updated_blob
             count += 1
+            invalidate_default_model_cache()
 
         return JSONResponse({"success": True, "updated": count})
     except Exception as e:
