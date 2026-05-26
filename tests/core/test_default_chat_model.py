@@ -44,6 +44,13 @@ def catalog(monkeypatch):
     return registry
 
 
+@pytest.fixture(autouse=True)
+def _clear_cache():
+    helpers.invalidate_default_model_cache()
+    yield
+    helpers.invalidate_default_model_cache()
+
+
 @pytest.fixture
 def no_user_config(monkeypatch):
     monkeypatch.setattr(helpers, "_load_user_provider_config", lambda: {})
