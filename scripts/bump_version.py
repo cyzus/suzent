@@ -294,11 +294,33 @@ def main():
     except subprocess.CalledProcessError as e:
         print_subprocess_error("uv lock", e)
 
-    # Generate changelog draft
-    print("\nGenerating changelog draft...")
+    # Generate changelog and prepend to CHANGELOG.md
+    print("\nUpdating CHANGELOG.md...")
     draft = generate_changelog_draft(new_version, root)
-    print(draft)
-    print("\nDone! Paste the draft above into CHANGELOG.md, then commit and release:")
+    changelog_path = root / "CHANGELOG.md"
+    if changelog_path.exists():
+        existing = changelog_path.read_text(encoding="utf-8")
+        # Insert after the header block if present, otherwise prepend
+        if existing.startswith("# "):
+            header_end = existing.find("\n## ")
+            if header_end != -1:
+                new_content = (
+                    existing[:header_end]
+                    + "\n"
+                    + draft
+                    + "\n"
+                    + existing[header_end + 1 :]
+                )
+            else:
+                new_content = existing.rstrip() + "\n\n" + draft + "\n"
+        else:
+            new_content = draft + "\n" + existing
+    else:
+        new_content = "# Changelog\n\n" + draft + "\n"
+    changelog_path.write_text(new_content, encoding="utf-8")
+    print("  [OK] Updated CHANGELOG.md")
+
+    print("\nDone! Review CHANGELOG.md, then commit and release:")
     print("git add .")
     print(f'git commit -m "chore: release v{new_version}"')
     print(f"git tag v{new_version}")

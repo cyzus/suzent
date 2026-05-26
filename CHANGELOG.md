@@ -5,6 +5,86 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.6.3] - 2026-05-26
+
+### Added
+- Implement background turn locking and improve wakeup handling across chat streams
+- Rename SpawnSubagentTool to AgentTool and update references throughout the codebase
+- Add new Gemini and OpenRouter models with enhanced capabilities
+- Add Xiaomi MiMo provider support (#38)
+- Add Codex login session bridge (#23)
+- Implement stripDenyApprovalPolicies function and integrate it into Chat components for improved tool approval handling
+- Add Logo Standard documentation with component usage and sizing guidelines
+- Add interactive Suzent logo component and replace static SVG in Sidebar and AppInner
+- Enhance homepage styling and layout with new textures and features
+- Update CLI commands and add update functionality
+- Add chat file mentions (#22)
+- Enhance MarkdownRenderer with file URL handling and safe URL transformations
+- Add homepage-mode script to docusaurus.config.ts and refactor Root component to use useLayoutEffect
+- Add theme toggle button with icons and locale switch functionality
+- Revamp homepage layout and navigation
+- Implement custom Monaco editor themes and enhance FileDiffViewer functionality
+- Enhance tools documentation with details on AI-activated tools and tool_search functionality
+- Add agent-activated tools (ToolSearchTool) with deferred toolset
+- Update ChatProvider to accept enabled prop for conditional backend fetching
+- Enhance FileDiffViewer with preview configuration and improve arg handling in ToolCallBlock
+- Update package-lock.json and package.json for dependency version upgrades and overrides
+- Add process termination for running suzent.exe before upgrade to prevent access issues
+- Add BashCommandRenderer and BashOutputRenderer for enhanced bash command handling in ToolCallBlock
+- Update FileDiffViewerProps interface and enhance ToolCallBlock for improved metadata handling
+- Refactor ToolCallBlock to use TOOL_RENDERERS for custom file rendering
+- Enhance FileDiffViewer and ToolCallBlock for improved file editing experience with metadata updates
+- Implement FileDiffViewer component and integrate into ToolCallBlock to visualize file system modifications
+- Enhance chat offset management with refs for improved loading efficiency
+- Update moduleResolution to 'bundler' in tsconfig for improved compatibility
+- Add support for social chat platform in chat listing and loading logic
+- Add new models for Gemini, OpenAI, and xAI with chat mode support
+- Add WebSearchRenderer for web tools output display in ToolCallBlock
+- Remove user home data directory sync plan documentation
+- Enhance contributing and release documentation with changelog guidelines and version bump script updates
+- Add support for new OpenAI and ZhipuAI models in capabilities configuration
+- Add effect to close plan tab when invalid plan is detected in RightSidebar
+- Update AGUIPartsContent to conditionally render blinking indicator based on streaming state
+- Enhance ToolCallBlock display with formatted tool arguments and improved markdown styling
+- Implement truncation for display text in chat components and database queries
+- Enhance message structure with AG-UI parts for improved rendering and historical stability
+- Add context usage tracking to chat model and API responses
+- Enhance context usage tracking and management in chat components
+- Add zstandard dependency for social features
+
+### Changed
+- Improve imports and ensure skills synchronization in configuration
+- Simplify LocaleDropdownNavbarItem by removing unused state and effects
+
+### Fixed
+- Add surface parameter to CommandContext in SocialBrain class
+- Use dispatch for compact command to avoid TypeError (#27)
+- Add chat renaming functionality with UI support and localization
+- Streamline file upload handling in ChatWindow and update path resolver documentation
+- Update skill paths to reflect new directory structure and improve documentation
+- Enhance chat list UI with platform-specific styles and improved unread message indicators
+- Enhance error handling and timeout management for tool execution in streaming
+- Ignore Enter keypress while IME composition is active (#28)
+- Improve Markdown rendering with new Lite components and inline code handling
+- Enhance auto-scroll behavior with reset key and loading indicator
+- Optimize web history handling and improve sidebar animations
+- Enhance message loading behavior in ChatWindow component
+- Simplify loading animation class assignment in SandboxFiles component
+- Update string concatenation in helper functions for improved readability
+- Improve error message formatting for UI binary download failure
+- Suppress error output during git checkout in setup script
+- Suppress error output during git checkout in setup script
+- Implement stripDenyPolicies function to filter out always_deny entries from tool approval policy
+- Enhance approval state handling for tool calls and messages in Chat components
+- Refine tool state logic in message rebuilding for accurate execution tracking
+- Improve search_file_mentions logic to correctly handle virtual paths
+- Cursor position in ChatInputPanel
+- Update quickstart documentation to clarify UI launch details
+- Ensure eyes are visible when activated in HeroArt component
+- Add argsReplayPending property to processEvent for tool state management
+- Update import path for useChatStore to remove file extension
+- Enhance A2UI models and RenderUITool with new fields and validation, add tests for surface ID aliases and validation errors
+
 ## [Unreleased]
 
 ### 🚀 Added
