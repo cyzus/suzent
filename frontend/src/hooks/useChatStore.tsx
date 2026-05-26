@@ -1071,7 +1071,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           const mappedMessages: Message[] = [];
           
           let currentAssistant: Partial<Message> | null = null;
-          
+          // True while the currentAssistant had tool_calls but hasn't yet received
+          // a follow-up assistant message (the final-text continuation of that turn).
+          // Reset to false once the continuation arrives so the NEXT assistant is a
+          // new independent bubble (e.g. a wakeup turn).
+          let awaitingToolContinuation = false;
+
           for (const msg of serverMessages) {
             if (msg.role === 'user') {
               // Empty user rows are tool-resume continuations (system-reminder injected
@@ -1081,16 +1086,21 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                 continue;
               }
               if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
+              awaitingToolContinuation = false;
               mappedMessages.push(msg);
             } else if (msg.role === 'system_triggered' || msg.role === 'trigger') {
               // 'trigger' is the legacy name; normalize to 'system_triggered' so the
               // rest of the render pipeline only needs to handle one role.
               if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
+              awaitingToolContinuation = false;
               mappedMessages.push({ ...msg, role: 'system_triggered' } as Message);
             } else if (msg.role === 'assistant') {
               if (!currentAssistant) {
                 currentAssistant = { ...msg, content: msg.content || '' };
-              } else {
+                awaitingToolContinuation = false;
+              } else if (awaitingToolContinuation) {
+                // This assistant message is the final-text continuation of the
+                // preceding tool-call turn — merge it into the same bubble.
                 if (msg.content) {
                   currentAssistant.content = (currentAssistant.content ? currentAssistant.content + '\n\n' : '') + msg.content;
                 }
@@ -1100,6 +1110,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                     ...msg.parts,
                   ];
                 }
+                awaitingToolContinuation = false;
+              } else {
+                // Independent assistant turn (e.g. wakeup) — new bubble.
+                mappedMessages.push(currentAssistant as Message);
+                currentAssistant = { ...msg, content: msg.content || '' };
+                awaitingToolContinuation = false;
               }
               if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
                 msg.tool_calls.forEach((tc: any) => {
@@ -1108,14 +1124,17 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
                   const idAttr = tc.id ? ` data-approval-id="${escapeHtml(tc.id)}"` : '';
                   currentAssistant!.content += `\n<details data-tool-call-id="${escapeHtml(tc.id ?? '')}"${idAttr}${stateAttr}><summary>🔧 ${escapeHtml(tc.function.name)}</summary>\n<pre><code class="language-json">${args}</code></pre>\n</details>\n`;
                 });
+                awaitingToolContinuation = true;
               }
             } else if (msg.role === 'tool') {
               if (!currentAssistant) {
                 currentAssistant = { role: 'assistant', content: '' };
               }
               currentAssistant.content += `\n<details data-tool-call-id="${escapeHtml(msg.tool_call_id ?? '')}"><summary>📦 ${escapeHtml(msg.name ?? '')}</summary>\n<pre><code class="language-text">${escapeHtml(msg.content ?? '')}</code></pre>\n</details>\n`;
+              awaitingToolContinuation = true;
             } else {
               if (currentAssistant) { mappedMessages.push(currentAssistant as Message); currentAssistant = null; }
+              awaitingToolContinuation = false;
               mappedMessages.push(msg);
             }
           }

@@ -69,7 +69,15 @@ async def _schedule_wakeup(task: "SubAgentTask") -> None:
 
 
 async def _debounced_wakeup(parent_id: str) -> None:
-    """Wait briefly, then flush all pending completions as one wakeup turn."""
+    """Wait briefly, then flush all pending completions as one wakeup turn.
+
+    The per-chat background turn lock (in stream_registry) ensures only one
+    background turn runs at a time across wakeup, heartbeat, and cron.
+    Completions that arrive while a turn is in flight are buffered in
+    _pending_wakeups and delivered in a follow-up turn after the lock releases.
+    """
+    from suzent.core.stream_registry import get_background_turn_lock
+
     try:
         await asyncio.sleep(_WAKEUP_BATCH_DELAY)
     except asyncio.CancelledError:
@@ -79,8 +87,23 @@ async def _debounced_wakeup(parent_id: str) -> None:
         batch = _pending_wakeups.pop(parent_id, [])
         _wakeup_debounce_tasks.pop(parent_id, None)
 
-    if batch:
+    if not batch:
+        return
+
+    # The background turn lock is also held inside process_background_turn, so
+    # this outer acquire serializes the overflow drain loop against concurrent turns.
+    async with get_background_turn_lock(parent_id):
         await _wakeup_parent_batch(parent_id, batch)
+        # Drain any completions that arrived while this turn was running.
+        while True:
+            async with _wakeup_lock:
+                overflow = _pending_wakeups.pop(parent_id, [])
+                existing = _wakeup_debounce_tasks.pop(parent_id, None)
+                if existing and not existing.done():
+                    existing.cancel()
+            if not overflow:
+                break
+            await _wakeup_parent_batch(parent_id, overflow)
 
 
 # ─── In-memory task registry ─────────────────────────────────────────────────
@@ -609,21 +632,18 @@ async def _wakeup_parent_batch(parent_chat_id: str, batch: List[SubAgentTask]) -
     prevents results from being silently dropped when multiple sub-agents complete
     in quick succession and a wakeup turn is already in flight for an earlier batch.
     """
+    # Wait for the parent's active /chat stream to finish before injecting a
+    # wakeup turn — prevents the wakeup from racing with an in-progress user turn.
     control = stream_controls.get(parent_chat_id)
     if control is not None:
-        logger.debug(
-            f"Parent {parent_chat_id} is streaming; waiting before delivering "
-            f"batched wakeup for {[t.task_id for t in batch]}"
-        )
         try:
             await asyncio.wait_for(control.completed_event.wait(), timeout=120.0)
         except asyncio.TimeoutError:
             logger.warning(
-                f"Timed out waiting for parent {parent_chat_id} stream to finish; "
+                f"Timed out waiting for parent {parent_chat_id} to finish streaming; "
                 f"dropping wakeup for {[t.task_id for t in batch]}"
             )
             return
-        logger.debug(f"Parent {parent_chat_id} stream finished; proceeding with wakeup")
 
     try:
         from suzent.core.chat_processor import ChatProcessor
@@ -668,7 +688,7 @@ async def _wakeup_parent_batch(parent_chat_id: str, batch: List[SubAgentTask]) -
 
         # is_heartbeat=True → _persist_state(skip_messages=True) → only agent_state
         # is saved; chat.messages is left untouched by the rebuild step.
-        result_text = await ChatProcessor().process_background_turn(
+        await ChatProcessor().process_background_turn(
             chat_id=parent_chat_id,
             user_id=CONFIG.user_id,
             message_content="",
@@ -686,13 +706,26 @@ async def _wakeup_parent_batch(parent_chat_id: str, batch: List[SubAgentTask]) -
         except Exception:
             pass
 
-        if result_text:
+        # Rebuild the full display-message log from the finalized agent_state so
+        # that chat.messages always contains the complete conversation history
+        # (original user turn + all wakeup turns). The simple append approach was
+        # dropping the user message when the wakeup's snapshot incremented the
+        # revision and caused the user turn's finalize_state_if_revision_matches
+        # to be rejected as stale.
+        try:
+            from suzent.core.agent_serializer import deserialize_state
+            from suzent.core.chat_processor import _rebuild_display_messages
+
             db = get_database()
             parent = db.get_chat(parent_chat_id)
-            if parent is not None:
-                messages = list(parent.messages or [])
-                messages.append({"role": "assistant", "content": result_text})
-                db.update_chat(parent_chat_id, messages=messages)
+            if parent is not None and parent.agent_state:
+                state = deserialize_state(parent.agent_state)
+                if state and state.get("message_history"):
+                    rebuilt = _rebuild_display_messages(state["message_history"])
+                    if rebuilt:
+                        db.update_chat(parent_chat_id, messages=rebuilt)
+        except Exception as _e:
+            logger.warning(f"Failed to rebuild display messages for wakeup: {_e}")
 
         logger.debug(f"Batched wakeup turn completed for parent {parent_chat_id}")
     except Exception as e:

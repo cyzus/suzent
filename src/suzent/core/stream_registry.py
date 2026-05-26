@@ -35,6 +35,18 @@ class StreamControl:
 # Global registry of active streams: chat_id -> StreamControl
 stream_controls: Dict[str, StreamControl] = {}
 
+# Per-chat lock serializing background turns (heartbeat, wakeup, cron) so only
+# one process_background_turn runs at a time for a given chat_id.
+_background_turn_locks: Dict[str, asyncio.Lock] = {}
+
+
+def get_background_turn_lock(chat_id: str) -> asyncio.Lock:
+    """Return (creating if needed) the serialization lock for background turns on chat_id."""
+    if chat_id not in _background_turn_locks:
+        _background_turn_locks[chat_id] = asyncio.Lock()
+    return _background_turn_locks[chat_id]
+
+
 # Cache policy-decided approvals for suspended streams so resume payloads
 # can merge explicit user decisions with backend auto-decisions.
 pending_auto_approvals: Dict[str, Dict[str, bool]] = {}

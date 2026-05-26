@@ -527,6 +527,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const heartbeatInFlightRef = useRef(false);
   // Set to true while a live background stream is active — onFinish should skip addMessage/forceSaveNow.
   const isLiveStreamRef = useRef(false);
+  // Set to true when a stream_started arrives while a live/user stream is already in flight;
+  // tryConnect will retry once the current stream finishes.
+  const pendingConnectRef = useRef(false);
   // Captures the final AGUI parts from a live background stream so the cleanup path can
   // convert them to a persisted rich message (with tool-step HTML) after clearParts.
   const liveStreamPartsRef = useRef<AGUIPart[]>([]);
@@ -1005,8 +1008,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
     const tryConnect = async (): Promise<void> => {
       if (cancelled) return;
-      if (isLiveStreamRef.current) return;
-      if (streamingChatIdRef.current === chatIdAtMount) return;
+      // If a live stream or a user turn is already in progress, mark a pending
+      // connect so we retry immediately after it finishes rather than dropping it.
+      if (isLiveStreamRef.current || streamingChatIdRef.current === chatIdAtMount) {
+        pendingConnectRef.current = true;
+        return;
+      }
 
       const liveUrl = `${getApiBase()}/chat/live`;
 
@@ -1051,6 +1058,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (!isSocialStream && richMsg.content.trim()) {
         addMessage(richMsg, chatIdAtMount);
       }
+
+      // A stream_started arrived while we were busy — connect to it now.
+      if (pendingConnectRef.current) {
+        pendingConnectRef.current = false;
+        tryConnect();
+      }
     };
 
     // If a stream is already active when this chat is opened, connect immediately.
@@ -1064,6 +1077,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
     return () => {
       cancelled = true;
+      pendingConnectRef.current = false;
       unsubEvents();
       // Only stop the AG-UI connection if this effect started a background live stream.
       // Leave user-initiated /chat streams alone (they use a different code path).

@@ -39,7 +39,6 @@ from suzent.core.stream_parser import StreamParser, TextChunk, ErrorEvent
 from suzent.core.stream_registry import (
     pop_pending_auto_approvals,
     register_background_stream,
-    unregister_background_stream,
     emit_bus_event,
 )
 
@@ -1225,18 +1224,20 @@ class ChatProcessor:
         same "invisible background turn that the frontend can subscribe to" pattern.
         """
         stream_queue = register_background_stream(chat_id)
-        try:
-            return await self.process_turn_text(
-                chat_id=chat_id,
-                user_id=user_id,
-                message_content=message_content,
-                config_override=config_override,
-                is_heartbeat=is_heartbeat,
-                _stream_queue=stream_queue,
-                system_reminders=system_reminders,
-            )
-        finally:
-            unregister_background_stream(chat_id)
+        # Note: unregister_background_stream is NOT called here. The queue stays
+        # registered until /chat/live drains the None sentinel, so late-arriving
+        # frontend connections (e.g. after a fast wakeup turn) still find the queue.
+        # If no subscriber ever connects, the next register_background_stream call
+        # for the same chat_id replaces the stale queue.
+        return await self.process_turn_text(
+            chat_id=chat_id,
+            user_id=user_id,
+            message_content=message_content,
+            config_override=config_override,
+            is_heartbeat=is_heartbeat,
+            _stream_queue=stream_queue,
+            system_reminders=system_reminders,
+        )
 
     async def _process_upload_file(
         self, file_obj, host_path: Path, virtual_path_prefix: str

@@ -19,7 +19,11 @@ from suzent.config import CONFIG
 from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.streaming import stop_stream
-from suzent.core.stream_registry import get_background_queue, is_background_streaming
+from suzent.core.stream_registry import (
+    get_background_queue,
+    is_background_streaming,
+    unregister_background_stream,
+)
 
 logger = get_logger(__name__)
 
@@ -362,6 +366,7 @@ async def live_stream(request: Request) -> StreamingResponse:
                 yield ": keep-alive\n\n"
                 continue
             if chunk is None:
+                unregister_background_stream(chat_id)
                 return
             yield chunk
 
