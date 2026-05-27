@@ -26,12 +26,44 @@ def test_normalize_repo_name():
     assert normalize_repo_name("My-Brain") == "my-brain"
 
 
-def test_quickstart_initializes_local_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_quickstart_raises_without_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     repo = tmp_path / "github-sync"
     monkeypatch.setattr(quickstart_module, "DEFAULT_REPO_DIR", repo)
     monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.setattr(
+        quickstart_module, "resolve_github_token", lambda value=None: None
+    )
 
-    result = quickstart_github_sync(authenticate_github=False)
+    with pytest.raises(ValueError, match="Sign in with GitHub first"):
+        quickstart_github_sync()
+
+
+def test_quickstart_initializes_local_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    repo = tmp_path / "github-sync"
+    monkeypatch.setattr(quickstart_module, "DEFAULT_REPO_DIR", repo)
+    monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        quickstart_module, "resolve_github_token", lambda value=None: "fake-token"
+    )
+    monkeypatch.setattr(
+        quickstart_module, "get_authenticated_user", lambda token: "alice"
+    )
+    monkeypatch.setattr(
+        quickstart_module,
+        "_remote_repo_exists",
+        lambda token, username, repo_name: False,
+    )
+    monkeypatch.setattr(
+        quickstart_module, "_create_github_repo_api", lambda *a, **kw: None
+    )
+
+    result = quickstart_github_sync()
 
     assert result["success"] is True
     assert (repo / ".git").exists()
@@ -42,24 +74,47 @@ def test_quickstart_custom_repo_name(tmp_path: Path, monkeypatch: pytest.MonkeyP
     repo = tmp_path / "github-sync"
     monkeypatch.setattr(quickstart_module, "DEFAULT_REPO_DIR", repo)
     monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
-
-    result = quickstart_github_sync(
-        repo_name="custom-brain",
-        authenticate_github=False,
+    monkeypatch.setattr(
+        quickstart_module, "resolve_github_token", lambda value=None: "fake-token"
     )
+    monkeypatch.setattr(
+        quickstart_module, "get_authenticated_user", lambda token: "alice"
+    )
+    monkeypatch.setattr(
+        quickstart_module,
+        "_remote_repo_exists",
+        lambda token, username, repo_name: False,
+    )
+    monkeypatch.setattr(
+        quickstart_module, "_create_github_repo_api", lambda *a, **kw: None
+    )
+
+    result = quickstart_github_sync(repo_name="custom-brain")
 
     assert result["repo_name"] == "custom-brain"
 
 
-def test_quickstart_uses_custom_remote_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_quickstart_uses_custom_remote_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     repo = tmp_path / "custom-sync"
-    monkeypatch.setattr(quickstart_module, "gh_is_authenticated", lambda: True)
-    monkeypatch.setattr(quickstart_module, "gh_current_username", lambda: "alice")
-    monkeypatch.setattr(quickstart_module, "gh_cli_available", lambda: True)
+    monkeypatch.setattr(
+        quickstart_module, "resolve_github_token", lambda value=None: "fake-token"
+    )
+    monkeypatch.setattr(
+        quickstart_module, "get_authenticated_user", lambda token: "alice"
+    )
+    monkeypatch.setattr(
+        quickstart_module,
+        "_remote_repo_exists",
+        lambda token, username, repo_name: False,
+    )
+    monkeypatch.setattr(
+        quickstart_module, "_create_github_repo_api", lambda *a, **kw: None
+    )
 
     result = quickstart_github_sync(
         repo_name="alice/custom-brain",
-        authenticate_github=False,
         repo_path=repo,
         remote="upstream",
     )
@@ -90,11 +145,11 @@ def test_quickstart_clones_existing_remote_repo(
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("GH_TOKEN", raising=False)
     monkeypatch.setattr(
-        quickstart_module, "resolve_github_token", lambda value=None: None
+        quickstart_module, "resolve_github_token", lambda value=None: "fake-token"
     )
-    monkeypatch.setattr(quickstart_module, "gh_is_authenticated", lambda: True)
-    monkeypatch.setattr(quickstart_module, "gh_current_username", lambda: "alice")
-    monkeypatch.setattr(quickstart_module, "gh_cli_available", lambda: True)
+    monkeypatch.setattr(
+        quickstart_module, "get_authenticated_user", lambda token: "alice"
+    )
     monkeypatch.setattr(
         quickstart_module,
         "public_clone_url",
@@ -102,13 +157,17 @@ def test_quickstart_clones_existing_remote_repo(
     )
     monkeypatch.setattr(
         quickstart_module,
-        "_run_gh",
-        lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, "", ""),
+        "_remote_repo_exists",
+        lambda token, username, repo_name: True,
+    )
+    monkeypatch.setattr(
+        quickstart_module,
+        "authed_clone_url",
+        lambda owner, repo, token: str(remote),
     )
 
     result = quickstart_github_sync(
         repo_name="alice/custom-brain",
-        authenticate_github=False,
         repo_path=target,
     )
 

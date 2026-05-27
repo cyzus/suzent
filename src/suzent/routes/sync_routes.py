@@ -1,13 +1,41 @@
 from __future__ import annotations
 
+import secrets
+import time
 from pathlib import Path
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from suzent.sync.github_api import (
+    clear_github_token,
+    get_authenticated_user,
+    resolve_github_token,
+    store_github_token,
+)
+from suzent.sync.github_device_flow import (
+    DeviceFlowDenied,
+    DeviceFlowExpired,
+    DeviceFlowState,
+    poll,
+    start,
+)
 from suzent.sync.models import SyncConflict, SyncProfile
 from suzent.sync.payload import PAYLOAD_DIR_NAME
 from suzent.sync.service import GitHubSyncService
+
+_SESSION_TTL = 900
+
+_device_sessions: dict[str, DeviceFlowState] = {}
+
+
+def _prune_sessions() -> None:
+    now = time.monotonic()
+    stale = [
+        k for k, s in _device_sessions.items() if now - s.started_at > _SESSION_TTL
+    ]
+    for k in stale:
+        del _device_sessions[k]
 
 
 def _service(request: Request) -> GitHubSyncService:
@@ -35,8 +63,6 @@ async def quickstart_sync(request: Request) -> JSONResponse:
         return JSONResponse(
             service.quickstart(
                 repo_name=payload.get("repo_name"),
-                authenticate_github=bool(payload.get("authenticate_github", True)),
-                github_token=payload.get("github_token"),
                 repo_path=payload.get("repo_path"),
                 branch=payload.get("branch"),
                 remote=payload.get("remote"),
@@ -227,6 +253,72 @@ async def disable_secret_sync(request: Request) -> JSONResponse:
         return JSONResponse(profile.model_dump(mode="json"))
     except Exception as exc:
         return _error_response(str(exc), 400)
+
+
+async def start_github_auth(request: Request) -> JSONResponse:
+    _prune_sessions()
+    try:
+        state = start()
+    except Exception as exc:
+        return _error_response(str(exc), 502)
+    session_id = secrets.token_urlsafe(16)
+    _device_sessions[session_id] = state
+    return JSONResponse(
+        {
+            "session_id": session_id,
+            "user_code": state.user_code,
+            "verification_uri": state.verification_uri,
+            "expires_in": state.expires_in,
+            "interval": state.interval,
+        }
+    )
+
+
+async def poll_github_auth(request: Request) -> JSONResponse:
+    payload = await _json_payload(request)
+    session_id = payload.get("session_id", "")
+    state = _device_sessions.get(session_id)
+    if state is None:
+        return _error_response("Unknown or expired auth session", 404)
+    try:
+        token = poll(state)
+    except DeviceFlowExpired:
+        _device_sessions.pop(session_id, None)
+        return JSONResponse({"status": "expired"})
+    except DeviceFlowDenied:
+        _device_sessions.pop(session_id, None)
+        return JSONResponse({"status": "denied"})
+    except Exception as exc:
+        return _error_response(str(exc), 502)
+
+    if token:
+        store_github_token(token)
+        _device_sessions.pop(session_id, None)
+        username = None
+        try:
+            username = get_authenticated_user(token)
+        except Exception:
+            pass
+        return JSONResponse(
+            {"status": "complete", "username": username, "interval": state.interval}
+        )
+    return JSONResponse({"status": "pending", "interval": state.interval})
+
+
+async def get_github_auth_status(request: Request) -> JSONResponse:
+    token = resolve_github_token()
+    if not token:
+        return JSONResponse({"authenticated": False, "username": None})
+    try:
+        username = get_authenticated_user(token)
+    except Exception:
+        username = None
+    return JSONResponse({"authenticated": True, "username": username})
+
+
+async def logout_github_auth(request: Request) -> JSONResponse:
+    clear_github_token()
+    return JSONResponse({"success": True})
 
 
 async def _json_payload(request: Request) -> dict:

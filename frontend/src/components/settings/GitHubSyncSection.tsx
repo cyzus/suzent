@@ -1,14 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { useI18n } from '../../i18n';
 import {
+  fetchGitHubAuthStatus,
   fetchSyncQuickstartInfo,
   fetchSyncStatus,
   githubSyncPull,
   githubSyncPush,
+  logoutGitHub,
+  pollGitHubAuth,
   runSyncQuickstart,
   saveSyncAutoConfig,
   saveSyncProfile,
+  startGitHubAuth,
   SyncProfile,
   SyncStatus,
   validateGitHubSync,
@@ -16,6 +20,8 @@ import {
 import { ShibbolethPanel } from './ShibbolethPanel';
 
 type NotificationHandler = (text: string, isError: boolean) => void;
+
+type DeviceFlowPhase = 'idle' | 'polling' | 'expired' | 'denied';
 
 function errMsg(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -42,25 +48,35 @@ export function GitHubSyncSection({
   const [intervalHours, setIntervalHours] = useState(4);
   const [autoResolve, setAutoResolve] = useState(true);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [ghAvailable, setGhAvailable] = useState(false);
-  const [githubTokenConfigured, setGithubTokenConfigured] = useState(false);
-  const [githubToken, setGithubToken] = useState('');
   const [githubAuthenticated, setGithubAuthenticated] = useState(false);
+  const [githubUsername, setGithubUsername] = useState<string | null>(null);
   const [linkedRepo, setLinkedRepo] = useState<string | null>(null);
+
+  const [devicePhase, setDevicePhase] = useState<DeviceFlowPhase>('idle');
+  const [deviceCode, setDeviceCode] = useState('');
+  const [deviceUrl, setDeviceUrl] = useState('');
+  const [deviceSessionId, setDeviceSessionId] = useState('');
+  const [deviceInterval, setDeviceInterval] = useState(5);
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     refresh().catch(() => setSyncStatus(null));
     fetchSyncQuickstartInfo()
       .then((info) => {
-        setGhAvailable(info.gh_available);
-        setGithubTokenConfigured(info.github_token_configured ?? false);
         setGithubAuthenticated(info.github_authenticated ?? false);
         setRepoPath((current) => current || info.default_repo_path);
         if (!repoName) setRepoName(info.default_repo_name || 'suzent-brain');
       })
-      .catch(() => {
-        // Stale backend or network error — do not report as "gh missing"
-      });
+      .catch(() => {});
+    fetchGitHubAuthStatus()
+      .then((status) => {
+        setGithubAuthenticated(status.authenticated);
+        setGithubUsername(status.username);
+      })
+      .catch(() => {});
+    return () => {
+      if (pollTimer.current) clearTimeout(pollTimer.current);
+    };
   }, []);
 
   async function refresh(): Promise<void> {
@@ -85,25 +101,77 @@ export function GitHubSyncSection({
     return false;
   }
 
+  async function handleSignIn(): Promise<void> {
+    if (pollTimer.current) clearTimeout(pollTimer.current);
+    try {
+      const result = await startGitHubAuth();
+      setDeviceCode(result.user_code);
+      setDeviceUrl(result.verification_uri);
+      setDeviceSessionId(result.session_id);
+      setDeviceInterval(result.interval);
+      setDevicePhase('polling');
+      schedulePoll(result.session_id, result.interval);
+    } catch (error) {
+      onNotify(errMsg(error), true);
+    }
+  }
+
+  function schedulePoll(sessionId: string, interval: number): void {
+    pollTimer.current = setTimeout(() => runPoll(sessionId), interval * 1000);
+  }
+
+  async function runPoll(sessionId: string): Promise<void> {
+    try {
+      const result = await pollGitHubAuth(sessionId);
+      if (result.status === 'complete') {
+        setDevicePhase('idle');
+        setDeviceCode('');
+        setGithubAuthenticated(true);
+        setGithubUsername(result.username ?? null);
+        onNotify(
+          t('settings.data.githubSignInDone', { username: result.username ?? '' }),
+          false,
+        );
+      } else if (result.status === 'expired') {
+        setDevicePhase('expired');
+      } else if (result.status === 'denied') {
+        setDevicePhase('denied');
+      } else {
+        const nextInterval = result.interval ?? deviceInterval;
+        setDeviceInterval(nextInterval);
+        schedulePoll(sessionId, nextInterval);
+      }
+    } catch {
+      schedulePoll(sessionId, deviceInterval);
+    }
+  }
+
+  function handleCancelSignIn(): void {
+    if (pollTimer.current) clearTimeout(pollTimer.current);
+    setDevicePhase('idle');
+    setDeviceCode('');
+  }
+
+  async function handleSignOut(): Promise<void> {
+    try {
+      await logoutGitHub();
+      setGithubAuthenticated(false);
+      setGithubUsername(null);
+    } catch (error) {
+      onNotify(errMsg(error), true);
+    }
+  }
+
   async function handleQuickStart(): Promise<void> {
-    const token = githubToken.trim();
-    if (!ghAvailable && !token && !githubTokenConfigured) {
-      onNotify(t('settings.data.githubAuthRequired'), true);
-      setAdvancedOpen(true);
+    if (!githubAuthenticated) {
+      onNotify(t('settings.data.githubSignInDesc'), true);
       return;
     }
     onBusyChange(true);
-    onNotify(
-      ghAvailable && !token
-        ? t('settings.data.githubQuickStartAuth')
-        : t('settings.data.githubQuickStartRunning'),
-      false,
-    );
+    onNotify(t('settings.data.githubQuickStartRunning'), false);
     try {
       const result = await runSyncQuickstart({
         repo_name: repoName.trim() || 'suzent-brain',
-        authenticate_github: true,
-        github_token: token || undefined,
         repo_path: advancedOpen && repoPath.trim() ? repoPath.trim() : undefined,
         branch: branch.trim() || 'main',
         remote: remote.trim() || 'origin',
@@ -115,11 +183,6 @@ export function GitHubSyncSection({
       setRepoPath(result.repo_path);
       setBranch(result.branch || 'main');
       setLinkedRepo(result.github_repo ?? null);
-      setGithubAuthenticated(true);
-      if (token) {
-        setGithubTokenConfigured(true);
-        setGithubToken('');
-      }
       await refresh();
       const summary = result.actions.join(' · ');
       const warn = result.warnings.length ? ` ${result.warnings.join(' ')}` : '';
@@ -251,7 +314,7 @@ export function GitHubSyncSection({
         </div>
         <div className="flex-1">
           <h3 className="text-xl font-bold uppercase">{t('settings.data.githubTitle')}</h3>
-          <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{t('settings.data.githubQuickStartDesc')}</p>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{t('settings.data.githubDesc')}</p>
           <div className="flex flex-wrap gap-2 mt-3">
             {configured && (
               <span className="px-2 py-1 border-2 border-brutal-black text-[10px] font-bold uppercase bg-brutal-green">
@@ -260,7 +323,9 @@ export function GitHubSyncSection({
             )}
             {githubAuthenticated && (
               <span className="px-2 py-1 border-2 border-brutal-black text-[10px] font-bold uppercase bg-brutal-blue text-white">
-                {t('settings.data.githubSignedIn')}
+                {githubUsername
+                  ? t('settings.data.githubSignInDone', { username: githubUsername })
+                  : t('settings.data.githubSignedIn')}
               </span>
             )}
             {linkedRepo && (
@@ -272,6 +337,71 @@ export function GitHubSyncSection({
         </div>
       </div>
 
+      {/* GitHub sign-in / device flow */}
+      {!githubAuthenticated && devicePhase === 'idle' && (
+        <div className="mb-4">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={handleSignIn}
+            className="w-full px-4 py-3 bg-brutal-black border-2 border-brutal-black font-black uppercase text-sm text-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:brightness-110 disabled:opacity-50"
+          >
+            {t('settings.data.githubSignInButton')}
+          </button>
+        </div>
+      )}
+
+      {devicePhase === 'polling' && (
+        <div className="mb-4 border-2 border-brutal-black bg-brutal-blue/10 p-4 space-y-3">
+          <p className="text-xs font-bold uppercase">
+            {t('settings.data.githubSignInCode', { url: deviceUrl })}
+          </p>
+          <p className="font-mono text-2xl font-black tracking-widest text-center border-2 border-brutal-black py-3 bg-white dark:bg-zinc-900">
+            {deviceCode}
+          </p>
+          <p className="text-xs text-neutral-600 dark:text-neutral-400 text-center">
+            {t('settings.data.githubSignInWaiting')}
+          </p>
+          <button
+            type="button"
+            onClick={handleCancelSignIn}
+            className="w-full px-3 py-2 border-2 border-brutal-black font-bold uppercase text-xs bg-white dark:bg-zinc-700"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {(devicePhase === 'expired' || devicePhase === 'denied') && (
+        <div className="mb-4 border-2 border-brutal-black bg-red-50 dark:bg-red-900/20 p-4 space-y-3">
+          <p className="text-xs font-bold text-red-700 dark:text-red-400">
+            {devicePhase === 'expired'
+              ? t('settings.data.githubSignInExpired')
+              : t('settings.data.githubSignInDenied')}
+          </p>
+          <button
+            type="button"
+            onClick={() => { setDevicePhase('idle'); setDeviceCode(''); }}
+            className="px-3 py-2 border-2 border-brutal-black font-bold uppercase text-xs bg-white dark:bg-zinc-700"
+          >
+            {t('settings.data.githubSignInButton')}
+          </button>
+        </div>
+      )}
+
+      {githubAuthenticated && (
+        <div className="mb-4 flex justify-end">
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="px-3 py-1 border-2 border-brutal-black font-bold uppercase text-xs bg-white dark:bg-zinc-700 hover:bg-red-50"
+          >
+            {t('settings.data.githubSignOut')}
+          </button>
+        </div>
+      )}
+
+      {/* Quick start */}
       <div className="border-2 border-brutal-black bg-brutal-blue/10 p-4 space-y-4">
         <label className="block text-xs font-bold uppercase">
           {t('settings.data.githubRepoNameLabel')}
@@ -285,15 +415,12 @@ export function GitHubSyncSection({
         <p className="text-[11px] text-neutral-600 dark:text-neutral-400">{t('settings.data.githubRepoNameHint')}</p>
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || !githubAuthenticated}
           onClick={handleQuickStart}
           className="w-full px-4 py-3 bg-brutal-blue border-2 border-brutal-black font-black uppercase text-sm text-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:brightness-110 disabled:opacity-50"
         >
           {busy ? t('settings.data.working') : t('settings.data.githubQuickStartButton')}
         </button>
-        {!ghAvailable && !githubTokenConfigured && (
-          <p className="text-xs text-neutral-600 dark:text-neutral-400">{t('settings.data.githubTokenHint')}</p>
-        )}
       </div>
 
       {configured && (
@@ -318,18 +445,6 @@ export function GitHubSyncSection({
 
       {advancedOpen && (
         <div className="mt-3 space-y-4 border-2 border-brutal-black border-dashed p-4">
-          <label className="block text-xs font-bold uppercase">
-            {t('settings.data.githubTokenLabel')}
-            <input
-              type="password"
-              value={githubToken}
-              onChange={(e) => setGithubToken(e.target.value)}
-              placeholder={githubTokenConfigured ? t('settings.data.githubTokenConfigured') : t('settings.data.githubTokenPlaceholder')}
-              autoComplete="off"
-              className="mt-1 w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs dark:text-white"
-            />
-          </label>
-          <p className="text-[11px] text-neutral-600 dark:text-neutral-400">{t('settings.data.githubTokenHelp')}</p>
           <label className="block text-xs font-bold uppercase">
             {t('settings.data.githubRepoPlaceholder')}
             <input value={repoPath} onChange={(e) => setRepoPath(e.target.value)} className="mt-1 w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs dark:text-white" />

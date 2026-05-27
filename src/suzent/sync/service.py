@@ -13,7 +13,6 @@ from suzent.sync.provider import GitHubSyncProvider
 from suzent.sync.quickstart import (
     DEFAULT_REPO_NAME,
     default_repo_path,
-    gh_cli_available,
     quickstart_github_sync,
 )
 from suzent.sync.secrets import SECRET_BUNDLES_PATH, EncryptedSecretSync
@@ -97,7 +96,9 @@ class GitHubSyncService:
             "profile": profile.model_dump(mode="json"),
             "payload_dir": str(payload_dir),
             "payload_hashes": self.payload_builder.content_hashes(payload_dir),
-            "forbidden_paths": self.payload_builder.validate_no_forbidden_paths(payload_dir),
+            "forbidden_paths": self.payload_builder.validate_no_forbidden_paths(
+                payload_dir
+            ),
             "git": validation,
             "requires_shibboleth": profile.encrypted_secret_sync_enabled,
             "shibboleth_unlocked": self.is_shibboleth_unlocked(profile.id),
@@ -110,26 +111,18 @@ class GitHubSyncService:
         ).validate(require_clean=False)
 
     def quickstart_info(self) -> dict:
-        from suzent.sync.github_token import github_token_configured
-        from suzent.sync.quickstart import (
-            DEFAULT_REPO_NAME,
-            gh_is_authenticated,
-        )
+        from suzent.sync.github_api import resolve_github_token
 
         return {
             "default_repo_path": str(default_repo_path()),
             "default_repo_name": DEFAULT_REPO_NAME,
-            "gh_available": gh_cli_available(),
-            "github_authenticated": gh_is_authenticated() or github_token_configured(),
-            "github_token_configured": github_token_configured(),
+            "github_authenticated": bool(resolve_github_token()),
         }
 
     def quickstart(
         self,
         *,
         repo_name: str | None = None,
-        authenticate_github: bool = True,
-        github_token: str | None = None,
         repo_path: str | None = None,
         branch: str | None = None,
         remote: str | None = None,
@@ -139,8 +132,6 @@ class GitHubSyncService:
     ) -> dict:
         return quickstart_github_sync(
             repo_name=repo_name or DEFAULT_REPO_NAME,
-            authenticate_github=authenticate_github,
-            github_token=github_token,
             repo_path=Path(repo_path) if repo_path else None,
             branch=branch,
             remote=remote or "origin",
@@ -169,9 +160,7 @@ class GitHubSyncService:
             )
             git_output = await asyncio.to_thread(provider.pull_ff_only)
             payload_dir = Path(profile.repo_path) / PAYLOAD_DIR_NAME
-            phrase = self._require_shibboleth_for_pull(
-                profile, payload_dir, shibboleth
-            )
+            phrase = self._require_shibboleth_for_pull(profile, payload_dir, shibboleth)
             restored = await asyncio.to_thread(
                 self.payload_builder.apply_to_local, payload_dir
             )
@@ -290,7 +279,9 @@ class GitHubSyncService:
             "Shibboleth (passphrase) required. Unlock in Settings → Data before sync."
         )
 
-    def _optional_shibboleth(self, profile: SyncProfile, explicit: str | None) -> str | None:
+    def _optional_shibboleth(
+        self, profile: SyncProfile, explicit: str | None
+    ) -> str | None:
         if explicit:
             return explicit
         return self._shibboleth_unlocks.get(profile.id)

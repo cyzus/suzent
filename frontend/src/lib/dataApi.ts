@@ -104,9 +104,7 @@ export function syncPull(target: string): Promise<DataImportResult> {
 export interface SyncQuickstartInfo {
   default_repo_path: string;
   default_repo_name: string;
-  gh_available: boolean;
   github_authenticated?: boolean;
-  github_token_configured?: boolean;
 }
 
 export interface SyncQuickstartResult {
@@ -119,9 +117,27 @@ export interface SyncQuickstartResult {
   github_repo?: string | null;
   actions: string[];
   warnings: string[];
-  gh_available: boolean;
   github_authenticated?: boolean;
   git?: Record<string, unknown> | null;
+}
+
+export interface DeviceFlowStartResult {
+  session_id: string;
+  user_code: string;
+  verification_uri: string;
+  expires_in: number;
+  interval: number;
+}
+
+export interface DeviceFlowPollResult {
+  status: 'pending' | 'complete' | 'expired' | 'denied';
+  username?: string | null;
+  interval?: number;
+}
+
+export interface GitHubAuthStatus {
+  authenticated: boolean;
+  username: string | null;
 }
 
 export async function fetchSyncQuickstartInfo(): Promise<SyncQuickstartInfo> {
@@ -130,10 +146,26 @@ export async function fetchSyncQuickstartInfo(): Promise<SyncQuickstartInfo> {
   return res.json();
 }
 
+export function startGitHubAuth(): Promise<DeviceFlowStartResult> {
+  return postJson<DeviceFlowStartResult>('/sync/auth/start', {});
+}
+
+export function pollGitHubAuth(sessionId: string): Promise<DeviceFlowPollResult> {
+  return postJson<DeviceFlowPollResult>('/sync/auth/poll', { session_id: sessionId });
+}
+
+export async function fetchGitHubAuthStatus(): Promise<GitHubAuthStatus> {
+  const res = await fetch(`${getApiBase()}/sync/auth/status`);
+  if (!res.ok) throw new Error(`Failed to fetch GitHub auth status: ${res.statusText}`);
+  return res.json();
+}
+
+export function logoutGitHub(): Promise<{ success: boolean }> {
+  return postJson<{ success: boolean }>('/sync/auth/logout', {});
+}
+
 export function runSyncQuickstart(options?: {
   repo_name?: string;
-  authenticate_github?: boolean;
-  github_token?: string;
   repo_path?: string;
   branch?: string;
   remote?: string;
@@ -143,8 +175,6 @@ export function runSyncQuickstart(options?: {
 }): Promise<SyncQuickstartResult> {
   return postJson<SyncQuickstartResult>('/sync/quickstart', {
     repo_name: options?.repo_name?.trim() || undefined,
-    authenticate_github: options?.authenticate_github ?? true,
-    github_token: options?.github_token?.trim() || undefined,
     repo_path: options?.repo_path?.trim() || undefined,
     branch: options?.branch?.trim() || undefined,
     remote: options?.remote?.trim() || undefined,
