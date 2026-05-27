@@ -136,11 +136,11 @@ class GitHubSyncService:
         from suzent.sync.secrets import EncryptedSecretSync
 
         bundle_path = Path(profile.repo_path) / PAYLOAD_DIR_NAME / SECRET_BUNDLES_PATH
+        provider = GitHubSyncProvider(
+            Path(profile.repo_path), remote=profile.remote, branch=profile.branch
+        )
         if not bundle_path.exists():
             # Bundle is on the remote but not yet pulled — pull first
-            provider = GitHubSyncProvider(
-                Path(profile.repo_path), remote=profile.remote, branch=profile.branch
-            )
             await asyncio.to_thread(provider.pull_ff_only)
             await asyncio.to_thread(
                 self.payload_builder.apply_to_local,
@@ -154,6 +154,8 @@ class GitHubSyncService:
         secret_sync.write_bundles_file(bundle_path, updated)
         self._shibboleth_unlocks[profile.id] = mnemonic
         _store_mnemonic_in_keyring(profile.id, mnemonic)
+        # Push immediately so the bundle (with this device registered + re-encrypted) reaches remote
+        await self.push(profile.id)
 
     def status(self, profile_id: str | None = None) -> dict:
         try:
