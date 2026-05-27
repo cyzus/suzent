@@ -323,47 +323,6 @@ export function GitHubSyncSection({
     }
   }
 
-  async function handlePush(): Promise<void> {
-    if (!requireShibbolethUnlocked()) return;
-    onBusyChange(true);
-    try {
-      const profile =
-        syncStatus?.profile ||
-        (await saveSyncProfile({
-          repo_path: repoPath.trim(),
-          branch: branch.trim() || 'main',
-          remote: remote.trim() || 'origin',
-        }));
-      await githubSyncPush(profile.id);
-      setAhead(0);
-      await refresh();
-      onNotify(t('settings.data.githubPushed'), false);
-    } catch (error) {
-      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
-    } finally {
-      onBusyChange(false);
-    }
-  }
-
-  async function handlePull(): Promise<void> {
-    if (!requireShibbolethUnlocked()) return;
-    onBusyChange(true);
-    try {
-      const profile = syncStatus?.profile;
-      if (!profile) throw new Error('GitHub sync is not configured.');
-      const confirmed = window.confirm(t('settings.data.githubPullConfirm'));
-      if (!confirmed) return;
-      await githubSyncPull(profile.id);
-      setBehind(0);
-      await refresh();
-      onNotify(t('settings.data.githubPulled'), false);
-    } catch (error) {
-      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
-    } finally {
-      onBusyChange(false);
-    }
-  }
-
   const configured = Boolean(syncStatus?.configured && syncStatus.profile);
 
   return (
@@ -521,22 +480,6 @@ export function GitHubSyncSection({
                 {ahead === 0 && behind === 0 && <span className="text-neutral-400">up to date</span>}
                 {ahead === null && behind === null && <span className="text-neutral-400">sync</span>}
               </span>
-            </ActionBtn>
-
-            <div className="w-px bg-brutal-black/20 dark:bg-white/10" />
-
-            {/* Explicit pull */}
-            <ActionBtn onClick={handlePull} disabled={busy} title={t('settings.data.githubPull')}>
-              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 3v8M5 8l3 3 3-3M3 13h10" />
-              </svg>
-            </ActionBtn>
-
-            {/* Explicit push */}
-            <ActionBtn onClick={handlePush} disabled={busy} title={t('settings.data.githubPush')}>
-              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 13V5M5 8l3-3 3 3M3 3h10" />
-              </svg>
             </ActionBtn>
           </>
         ) : (
