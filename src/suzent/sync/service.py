@@ -140,7 +140,7 @@ class GitHubSyncService:
             Path(profile.repo_path), remote=profile.remote, branch=profile.branch
         )
         if not bundle_path.exists():
-            # Bundle is on the remote but not yet pulled — pull first
+            # Bundle not local — pull to get it from remote
             await asyncio.to_thread(provider.pull_ff_only)
             await asyncio.to_thread(
                 self.payload_builder.apply_to_local,
@@ -148,14 +148,18 @@ class GitHubSyncService:
             )
             await asyncio.to_thread(_reload_runtime)
         secret_sync = EncryptedSecretSync()
+        if not bundle_path.exists():
+            # Not on remote either — treat as fresh first-time setup
+            self.enable_mnemonic_secret_sync(profile, mnemonic)
+            return
         updated = await asyncio.to_thread(
             secret_sync.register_device, bundle_path, profile, mnemonic
         )
         secret_sync.write_bundles_file(bundle_path, updated)
         self._shibboleth_unlocks[profile.id] = mnemonic
         _store_mnemonic_in_keyring(profile.id, mnemonic)
-        # Push immediately so the bundle (with this device registered + re-encrypted) reaches remote
-        await self.push(profile.id)
+        profile.encrypted_secret_sync_enabled = True
+        self.save_profile(profile)
 
     def status(self, profile_id: str | None = None) -> dict:
         try:
