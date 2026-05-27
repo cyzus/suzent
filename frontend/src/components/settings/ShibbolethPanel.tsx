@@ -421,14 +421,6 @@ export function ShibbolethPanel({
           >
             Rotate words
           </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={handleLock}
-            className="px-3 py-1 border-2 border-brutal-black font-bold uppercase text-xs bg-white dark:bg-zinc-700 hover:bg-neutral-100 disabled:opacity-50"
-          >
-            {t('settings.data.shibbolethLockAction')}
-          </button>
         </div>
       )}
 

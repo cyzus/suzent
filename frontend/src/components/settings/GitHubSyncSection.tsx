@@ -336,18 +336,27 @@ export function GitHubSyncSection({
         <div className="flex-1">
           <h3 className="text-xl font-bold uppercase">{t('settings.data.githubTitle')}</h3>
           <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{t('settings.data.githubDesc')}</p>
-          <div className="flex flex-wrap gap-2 mt-3">
+          <div className="flex flex-wrap items-center gap-2 mt-3">
             {configured && (
               <span className="px-2 py-1 border-2 border-brutal-black text-[10px] font-bold uppercase bg-brutal-green">
                 {t('settings.data.githubConnected')}
               </span>
             )}
             {githubAuthenticated && (
-              <span className="px-2 py-1 border-2 border-brutal-black text-[10px] font-bold uppercase bg-brutal-blue text-white">
-                {githubUsername
-                  ? t('settings.data.githubSignInDone', { username: githubUsername })
-                  : t('settings.data.githubSignedIn')}
-              </span>
+              <>
+                <span className="px-2 py-1 border-2 border-brutal-black text-[10px] font-bold uppercase bg-brutal-blue text-white">
+                  {githubUsername
+                    ? t('settings.data.githubSignInDone', { username: githubUsername })
+                    : t('settings.data.githubSignedIn')}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="px-2 py-1 border-2 border-brutal-black font-bold uppercase text-[10px] bg-white dark:bg-zinc-700 hover:bg-red-50"
+                >
+                  {t('settings.data.githubSignOut')}
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -409,18 +418,6 @@ export function GitHubSyncSection({
             className="px-3 py-2 border-2 border-brutal-black font-bold uppercase text-xs bg-white dark:bg-zinc-700"
           >
             {t('settings.data.githubSignInButton')}
-          </button>
-        </div>
-      )}
-
-      {githubAuthenticated && (
-        <div className="mb-4 flex justify-end">
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="px-3 py-1 border-2 border-brutal-black font-bold uppercase text-xs bg-white dark:bg-zinc-700 hover:bg-red-50"
-          >
-            {t('settings.data.githubSignOut')}
           </button>
         </div>
       )}
