@@ -110,6 +110,15 @@ async def preview_sync_pull(request: Request) -> JSONResponse:
         return _error_response(str(exc), 400)
 
 
+async def get_sync_ahead_behind(request: Request) -> JSONResponse:
+    try:
+        profile_id = request.query_params.get("profile_id")
+        result = _service(request).preview_pull(profile_id)
+        return JSONResponse({"ahead": result["ahead"], "behind": result["behind"]})
+    except Exception as exc:
+        return _error_response(str(exc), 400)
+
+
 async def pull_sync(request: Request) -> JSONResponse:
     try:
         payload = await _json_payload(request)

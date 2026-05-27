@@ -53,19 +53,22 @@ class GitHubSyncProvider:
             "clean": self.is_clean(),
         }
 
-    def preview_pull(self) -> dict[str, str]:
+    def preview_pull(self) -> dict:
         self.validate(require_clean=False)
         output = self._fetch()
         local = self._git("rev-parse", "HEAD").strip()
-        remote = self._git("rev-parse", f"{self.remote}/{self.branch}").strip()
-        merge_base = self._git(
-            "merge-base", "HEAD", f"{self.remote}/{self.branch}"
-        ).strip()
+        remote_ref = f"{self.remote}/{self.branch}"
+        remote = self._git("rev-parse", remote_ref).strip()
+        merge_base = self._git("merge-base", "HEAD", remote_ref).strip()
+        ahead = len(self._git("rev-list", f"{remote_ref}..HEAD").splitlines())
+        behind = len(self._git("rev-list", f"HEAD..{remote_ref}").splitlines())
         return {
             "fetch": output,
             "local": local,
             "remote": remote,
             "merge_base": merge_base,
+            "ahead": ahead,
+            "behind": behind,
         }
 
     def pull_ff_only(self) -> str:

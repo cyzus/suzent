@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import {
   fetchGitHubAuthStatus,
+  fetchSyncAheadBehind,
   fetchSyncQuickstartInfo,
   fetchSyncStatus,
   githubSyncPull,
@@ -30,6 +31,36 @@ interface GitHubSyncSectionProps {
   busy: boolean;
   onBusyChange: (busy: boolean) => void;
   onNotify: NotificationHandler;
+}
+
+function ActionBtn({
+  children,
+  onClick,
+  disabled,
+  title,
+  primary,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  title?: string;
+  primary?: boolean;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className={`flex items-center gap-1.5 px-3 py-2 border-l-2 border-brutal-black font-bold uppercase text-xs disabled:opacity-40 hover:brightness-95 dark:hover:brightness-125 transition-all ${
+        primary
+          ? 'bg-brutal-blue text-white'
+          : 'bg-neutral-50 dark:bg-zinc-900 text-brutal-black dark:text-white'
+      }`}
+    >
+      {children}
+    </button>
+  );
 }
 
 export function GitHubSyncSection({
@@ -64,6 +95,8 @@ export function GitHubSyncSection({
   const [githubUsername, setGithubUsername] = useState<string | null>(null);
   const [linkedRepo, setLinkedRepo] = useState<string | null>(null);
   const [installUrl, setInstallUrl] = useState<string | null>(null);
+  const [ahead, setAhead] = useState<number | null>(null);
+  const [behind, setBehind] = useState<number | null>(null);
 
   const [devicePhase, setDevicePhase] = useState<DeviceFlowPhase>('idle');
   const [deviceCode, setDeviceCode] = useState('');
@@ -96,6 +129,19 @@ export function GitHubSyncSection({
     const next = await fetchSyncStatus();
     setSyncStatus(next);
     if (next.profile) applyProfile(next.profile);
+    if (next.configured && next.profile) {
+      refreshAheadBehind(next.profile.id).catch(() => {});
+    }
+  }
+
+  async function refreshAheadBehind(profileId?: string): Promise<void> {
+    try {
+      const counts = await fetchSyncAheadBehind(profileId);
+      setAhead(counts.ahead);
+      setBehind(counts.behind);
+    } catch {
+      // network error or repo not yet linked — leave counts null
+    }
   }
 
   function applyProfile(profile: SyncProfile): void {
@@ -242,6 +288,32 @@ export function GitHubSyncSection({
     }
   }
 
+  async function handleSync(): Promise<void> {
+    if (!requireShibbolethUnlocked()) return;
+    onBusyChange(true);
+    try {
+      const profile = syncStatus?.profile;
+      if (!profile) throw new Error('GitHub sync is not configured.');
+      if (behind && behind > 0) {
+        const confirmed = window.confirm(t('settings.data.githubPullConfirm'));
+        if (!confirmed) { onBusyChange(false); return; }
+        await githubSyncPull(profile.id);
+      }
+      if (ahead && ahead > 0) {
+        await githubSyncPush(profile.id);
+      }
+      if (!behind && !ahead) {
+        await githubSyncPush(profile.id);
+      }
+      await refresh();
+      onNotify(t('settings.data.githubPushed'), false);
+    } catch (error) {
+      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
+    } finally {
+      onBusyChange(false);
+    }
+  }
+
   async function handlePush(): Promise<void> {
     if (!requireShibbolethUnlocked()) return;
     onBusyChange(true);
@@ -305,11 +377,6 @@ export function GitHubSyncSection({
                 {githubUsername
                   ? t('settings.data.githubSignInDone', { username: githubUsername })
                   : t('settings.data.githubSignedIn')}
-              </span>
-            )}
-            {linkedRepo && (
-              <span className="px-2 py-1 border-2 border-brutal-black text-[10px] font-mono bg-neutral-100 dark:bg-zinc-900">
-                {linkedRepo}
               </span>
             )}
           </div>
@@ -408,38 +475,70 @@ export function GitHubSyncSection({
         </div>
       )}
 
-      {/* Quick start */}
-      <div className="border-2 border-brutal-black bg-brutal-blue/10 p-4 space-y-4">
-        <label className="block text-xs font-bold uppercase">
-          {t('settings.data.githubRepoNameLabel')}
-          <input
-            value={repoName}
-            onChange={(event) => setRepoName(event.target.value)}
-            placeholder="suzent-brain"
-            className="mt-1 w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-sm focus:outline-none dark:text-white"
-          />
-        </label>
-        <p className="text-[11px] text-neutral-600 dark:text-neutral-400">{t('settings.data.githubRepoNameHint')}</p>
-        <button
-          type="button"
-          disabled={busy || !githubAuthenticated}
-          onClick={handleQuickStart}
-          className="w-full px-4 py-3 bg-brutal-blue border-2 border-brutal-black font-black uppercase text-sm text-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:brightness-110 disabled:opacity-50"
-        >
-          {busy ? t('settings.data.working') : t('settings.data.githubQuickStartButton')}
-        </button>
-      </div>
-
-      {configured && (
-        <div className="flex flex-wrap gap-3 mt-4">
-          <button type="button" disabled={busy} onClick={handlePush} className="px-4 py-2 bg-brutal-blue border-2 border-brutal-black font-bold uppercase text-xs text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50">
-            {t('settings.data.githubPush')}
-          </button>
-          <button type="button" disabled={busy} onClick={handlePull} className="px-4 py-2 bg-white dark:bg-zinc-700 border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50">
-            {t('settings.data.githubPull')}
-          </button>
+      {/* Action bar */}
+      <div className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 flex items-stretch">
+        {/* Repo name / input */}
+        <div className="flex-1 flex items-center px-3 py-2 min-w-0">
+          {configured ? (
+            <span className="font-mono text-xs truncate text-neutral-600 dark:text-neutral-400">
+              {linkedRepo ?? repoName}
+            </span>
+          ) : (
+            <input
+              value={repoName}
+              onChange={(e) => setRepoName(e.target.value)}
+              placeholder="suzent-brain"
+              title={t('settings.data.githubRepoNameHint')}
+              className="w-full bg-transparent font-mono text-xs focus:outline-none dark:text-white placeholder:text-neutral-400"
+            />
+          )}
         </div>
-      )}
+
+        <div className="w-px bg-brutal-black/20 dark:bg-white/10" />
+
+        {configured ? (
+          <>
+            {/* Sync button — shows ↓n ↑n counts like VS Code */}
+            <ActionBtn onClick={handleSync} disabled={busy} title="Sync (pull then push)">
+              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 6l3-3 3 3M11 10l-3 3-3-3" />
+              </svg>
+              {(behind !== null || ahead !== null) && (
+                <span className="font-mono text-[11px] flex items-center gap-1">
+                  {behind !== null && behind > 0 && <span>↓{behind}</span>}
+                  {ahead !== null && ahead > 0 && <span>↑{ahead}</span>}
+                  {(behind === 0 && ahead === 0) && <span className="text-neutral-400">✓</span>}
+                </span>
+              )}
+            </ActionBtn>
+
+            <div className="w-px bg-brutal-black/20 dark:bg-white/10" />
+
+            {/* Explicit pull */}
+            <ActionBtn onClick={handlePull} disabled={busy} title={t('settings.data.githubPull')}>
+              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 3v8M5 8l3 3 3-3M3 13h10" />
+              </svg>
+            </ActionBtn>
+
+            {/* Explicit push */}
+            <ActionBtn onClick={handlePush} disabled={busy} title={t('settings.data.githubPush')}>
+              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 13V5M5 8l3-3 3 3M3 3h10" />
+              </svg>
+            </ActionBtn>
+          </>
+        ) : (
+          <ActionBtn onClick={handleQuickStart} disabled={busy || !githubAuthenticated} title={t('settings.data.githubQuickStartButton')} primary>
+            {busy
+              ? <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="M8 2a6 6 0 1 1-4.243 1.757" /></svg>
+              : <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M13 8A5 5 0 1 1 8 3" /><path strokeLinecap="round" strokeLinejoin="round" d="M13 3v4h-4" /></svg>
+            }
+            <span className="text-xs font-bold uppercase">{busy ? t('settings.data.working') : t('settings.data.githubQuickStartButton')}</span>
+          </ActionBtn>
+        )}
+      </div>
 
       <button
         type="button"

@@ -211,6 +211,13 @@ export function githubSyncPreviewPull(profileId?: string): Promise<Record<string
   return postJson<Record<string, unknown>>('/sync/preview-pull', profileId ? { profile_id: profileId } : {});
 }
 
+export async function fetchSyncAheadBehind(profileId?: string): Promise<{ ahead: number; behind: number }> {
+  const url = `${getApiBase()}/sync/ahead-behind${profileId ? `?profile_id=${encodeURIComponent(profileId)}` : ''}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`ahead-behind check failed: ${res.statusText}`);
+  return res.json();
+}
+
 export function githubSyncPull(
   profileId?: string,
   shibboleth?: string,
