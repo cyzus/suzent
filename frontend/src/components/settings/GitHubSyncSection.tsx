@@ -154,6 +154,16 @@ export function GitHubSyncSection({
     }
   }
 
+  async function saveAutoConfig(nextAutoSync: boolean, nextInterval: number): Promise<void> {
+    const profileId = syncStatus?.profile?.id;
+    if (!profileId) return;
+    try {
+      await saveSyncAutoConfig(profileId, nextAutoSync, nextInterval, autoResolve);
+    } catch {
+      // non-critical — ignore
+    }
+  }
+
   function applyProfile(profile: SyncProfile): void {
     setRepoPath(profile.repo_path);
     setBranch(profile.branch);
@@ -528,11 +538,11 @@ export function GitHubSyncSection({
           </div>
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 text-xs font-bold uppercase">
-              <input type="checkbox" checked={autoSync} onChange={(e) => setAutoSync(e.target.checked)} />
+              <input type="checkbox" checked={autoSync} onChange={(e) => { setAutoSync(e.target.checked); void saveAutoConfig(e.target.checked, intervalHours); }} />
               Auto-sync every
             </label>
             <label className="flex items-center gap-2 text-xs font-bold uppercase">
-              <input type="number" min={1} value={intervalHours} onChange={(e) => setIntervalHours(Number(e.target.value) || 4)} className="w-16 bg-white dark:bg-zinc-800 border-2 border-brutal-black px-2 py-1" />
+              <input type="number" min={1} value={intervalHours} onChange={(e) => { const v = Number(e.target.value) || 4; setIntervalHours(v); void saveAutoConfig(autoSync, v); }} className="w-16 bg-white dark:bg-zinc-800 border-2 border-brutal-black px-2 py-1" />
               hours
             </label>
           </div>
