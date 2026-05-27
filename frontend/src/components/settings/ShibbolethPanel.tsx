@@ -284,7 +284,7 @@ export function ShibbolethPanel({
           <button
             type="button"
             disabled={busy || !profile}
-            onClick={enabled ? handleDisable : startSetup}
+            onClick={enabled ? handleDisable : (syncStatus?.has_secret_bundles ? () => setMode('register') : startSetup)}
             title={enabled ? t('settings.data.shibbolethDisable') : t('settings.data.shibbolethSetup')}
             className={`relative w-10 h-5 border-2 border-brutal-black transition-colors disabled:opacity-40 ${enabled ? 'bg-brutal-green' : 'bg-neutral-200 dark:bg-zinc-700'}`}
           >
@@ -361,11 +361,12 @@ export function ShibbolethPanel({
         </div>
       )}
 
-      {/* Register device after rotation */}
+      {/* Register device after rotation — or first-time enable on a new device */}
       {mode === 'register' && (
         <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 p-3 space-y-2">
-          <p className="text-xs font-bold uppercase">Enter new recovery words</p>
-          <MnemonicInput value={inputPhrase} onChange={setInputPhrase} placeholder="Enter the new 12 recovery words" />
+          <p className="text-xs font-bold uppercase">Enter your recovery words</p>
+          <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-tight">Enter the 12 recovery words from the device where you originally set this up.</p>
+          <MnemonicInput value={inputPhrase} onChange={setInputPhrase} placeholder="Enter your 12 recovery words" />
           <div className="flex gap-2">
             <button
               type="button"
