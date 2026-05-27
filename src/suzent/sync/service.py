@@ -278,6 +278,10 @@ class GitHubSyncService:
                 imported_keys = await asyncio.to_thread(
                     self._import_secret_bundles, payload_dir, phrase
                 )
+                if imported_keys and not profile.encrypted_secret_sync_enabled:
+                    profile.encrypted_secret_sync_enabled = True
+                    profile.secret_sync_available = True
+                    self.save_profile(profile)
             await asyncio.to_thread(_reload_runtime)
             return {
                 "success": True,
@@ -337,12 +341,16 @@ class GitHubSyncService:
             payload_dir = Path(profile.repo_path) / PAYLOAD_DIR_NAME
             await asyncio.to_thread(self.payload_builder.apply_to_local, payload_dir)
             await asyncio.to_thread(_reload_runtime)
-            if profile.encrypted_secret_sync_enabled:
+            has_bundles = self._has_secret_bundles(payload_dir)
+            if profile.encrypted_secret_sync_enabled or has_bundles:
                 phrase = self._optional_shibboleth(profile, shibboleth)
                 if phrase:
-                    await asyncio.to_thread(
+                    imported = await asyncio.to_thread(
                         self._import_secret_bundles, payload_dir, phrase
                     )
+                    if imported and not profile.encrypted_secret_sync_enabled:
+                        profile.encrypted_secret_sync_enabled = True
+                        profile.secret_sync_available = True
                 else:
                     logger.warning(
                         "Skipping Shibboleth secret import on auto-sync: not unlocked"
@@ -399,15 +407,18 @@ class GitHubSyncService:
         return self._try_load_from_keyring(profile)
 
     def _try_load_from_keyring(self, profile: SyncProfile) -> str | None:
-        """Return the cached mnemonic, loading from the OS keyring if not yet in memory."""
+        """Return the cached mnemonic, loading from the OS keyring if not yet in memory.
+
+        Tries the keyring unconditionally — the second device may have registered
+        its mnemonic before encrypted_secret_sync_enabled was set on its local profile.
+        """
         cached = self._shibboleth_unlocks.get(profile.id)
         if cached:
             return cached
-        if profile.encrypted_secret_sync_enabled:
-            stored = _load_mnemonic_from_keyring(profile.id)
-            if stored:
-                self._shibboleth_unlocks[profile.id] = stored
-                return stored
+        stored = _load_mnemonic_from_keyring(profile.id)
+        if stored:
+            self._shibboleth_unlocks[profile.id] = stored
+            return stored
         return None
 
     def _require_shibboleth_for_pull(
