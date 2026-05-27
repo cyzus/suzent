@@ -512,19 +512,19 @@ export function GitHubSyncSection({
 
       {advancedOpen && (
         <div className="mt-3 space-y-4 border-2 border-brutal-black border-dashed p-4">
-          <label className="block text-xs font-bold uppercase">
+          <div className="block text-xs font-bold uppercase">
             {t('settings.data.githubRepoPlaceholder')}
-            <input value={repoPath} onChange={(e) => setRepoPath(e.target.value)} className="mt-1 w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs dark:text-white" />
-          </label>
+            <p className="mt-1 w-full bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-black/30 px-3 py-2 font-mono text-xs dark:text-neutral-400 text-neutral-500 select-all">{repoPath || '—'}</p>
+          </div>
           <div className="grid grid-cols-2 gap-3">
-            <label className="block text-xs font-bold uppercase">
+            <div className="block text-xs font-bold uppercase">
               {t('settings.data.githubBranch')}
-              <input value={branch} onChange={(e) => setBranch(e.target.value)} className="mt-1 w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs dark:text-white" />
-            </label>
-            <label className="block text-xs font-bold uppercase">
+              <p className="mt-1 w-full bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-black/30 px-3 py-2 font-mono text-xs dark:text-neutral-400 text-neutral-500">{branch || 'main'}</p>
+            </div>
+            <div className="block text-xs font-bold uppercase">
               {t('settings.data.githubRemote')}
-              <input value={remote} onChange={(e) => setRemote(e.target.value)} className="mt-1 w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs dark:text-white" />
-            </label>
+              <p className="mt-1 w-full bg-neutral-100 dark:bg-zinc-800 border-2 border-brutal-black/30 px-3 py-2 font-mono text-xs dark:text-neutral-400 text-neutral-500">{remote || 'origin'}</p>
+            </div>
           </div>
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 text-xs font-bold uppercase">
@@ -537,16 +537,11 @@ export function GitHubSyncSection({
             </label>
           </div>
           <ShibbolethPanel profile={syncStatus?.profile} syncStatus={syncStatus} busy={busy} onBusyChange={onBusyChange} onNotify={onNotify} onChanged={refresh} />
-          <div className="flex items-center justify-between">
-            <button type="button" disabled={busy || !repoPath.trim()} onClick={handleSave} className="px-4 py-2 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50">
-              {t('settings.data.githubSave')}
-            </button>
-            {syncStatus?.profile?.last_revision !== undefined && (
-              <p className="font-mono text-xs text-neutral-500 dark:text-neutral-400">
-                {t('settings.data.githubLastRevision')}: {syncStatus.profile.last_revision || t('settings.data.githubNone')}
-              </p>
-            )}
-          </div>
+          {syncStatus?.profile?.last_revision !== undefined && (
+            <p className="font-mono text-xs text-neutral-500 dark:text-neutral-400">
+              {t('settings.data.githubLastRevision')}: {syncStatus.profile.last_revision || t('settings.data.githubNone')}
+            </p>
+          )}
         </div>
       )}
     </div>
