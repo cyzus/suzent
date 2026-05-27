@@ -21,6 +21,7 @@ EXCLUDED_NAMES = {
     "cache",
     "chats.db",
     "exports",
+    "local.yaml",
     "runtime",
     "secrets.db",
     "sessions",
@@ -62,9 +63,7 @@ class SyncPayloadBuilder:
         )
         presence_path = payload_dir / PRESENCE_DIR / f"{profile.device_id}.json"
         presence_path.parent.mkdir(parents=True, exist_ok=True)
-        presence_path.write_text(
-            presence.model_dump_json(indent=2), encoding="utf-8"
-        )
+        presence_path.write_text(presence.model_dump_json(indent=2), encoding="utf-8")
 
         hashes = self.content_hashes(payload_dir)
         manifest = SyncManifest(
