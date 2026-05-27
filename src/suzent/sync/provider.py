@@ -79,8 +79,12 @@ class GitHubSyncProvider:
         self.validate(require_clean=False)
         self._ensure_no_unrelated_changes()
         self._git("add", PAYLOAD_DIR_NAME)
-        if not self._git("status", "--porcelain", "--", PAYLOAD_DIR_NAME).strip():
+        staged = self._git("status", "--porcelain", "--", PAYLOAD_DIR_NAME).strip()
+        if not staged:
             return "No sync payload changes to push."
+        if _only_metadata_changed(staged):
+            self._git("restore", "--staged", PAYLOAD_DIR_NAME)
+            return "No meaningful changes to push (only manifest/presence updated)."
         self._git("commit", "-m", f"sync: update suzent brain {revision_id}")
         return self._push()
 
@@ -160,3 +164,19 @@ def _status_path(line: str) -> str:
     if " -> " in value:
         value = value.split(" -> ", 1)[1]
     return value.strip().replace("\\", "/")
+
+
+# Paths that are always regenerated on every push and carry no meaningful content.
+_METADATA_PREFIXES = (
+    f"{PAYLOAD_DIR_NAME}/_sync/manifest.json",
+    f"{PAYLOAD_DIR_NAME}/_sync/presence/",
+)
+
+
+def _only_metadata_changed(porcelain_output: str) -> bool:
+    """Return True if every staged change is a manifest or presence file."""
+    for line in porcelain_output.splitlines():
+        path = _status_path(line).replace("\\", "/")
+        if not any(path.startswith(p) for p in _METADATA_PREFIXES):
+            return False
+    return True

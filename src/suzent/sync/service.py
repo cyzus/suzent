@@ -189,7 +189,7 @@ class GitHubSyncService:
         repo_path: str | None = None,
         branch: str | None = None,
         remote: str | None = None,
-        auto_sync_enabled: bool = False,
+        auto_sync_enabled: bool = True,
         auto_resolve_enabled: bool = True,
         interval_hours: int = 4,
     ) -> dict:

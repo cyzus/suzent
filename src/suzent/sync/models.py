@@ -17,7 +17,7 @@ class SyncProfile(BaseModel):
     branch: str = "main"
     remote: str = "origin"
     device_id: str = Field(default_factory=lambda: uuid4().hex)
-    auto_sync_enabled: bool = False
+    auto_sync_enabled: bool = True
     interval_hours: int = Field(default=4, ge=1)
     auto_resolve_enabled: bool = True
     encrypted_secret_sync_enabled: bool = False

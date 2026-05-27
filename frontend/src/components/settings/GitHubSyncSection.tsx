@@ -27,6 +27,16 @@ function errMsg(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function _relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 interface GitHubSyncSectionProps {
   busy: boolean;
   onBusyChange: (busy: boolean) => void;
@@ -87,7 +97,7 @@ export function GitHubSyncSection({
   const [repoPath, setRepoPath] = useState('');
   const [branch, setBranch] = useState('main');
   const [remote, setRemote] = useState('origin');
-  const [autoSync, setAutoSync] = useState(false);
+  const [autoSync, setAutoSync] = useState(true);
   const [intervalHours, setIntervalHours] = useState(4);
   const [autoResolve, setAutoResolve] = useState(true);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -498,19 +508,18 @@ export function GitHubSyncSection({
 
         {configured ? (
           <>
-            {/* Sync button — shows ↓n ↑n counts like VS Code */}
+            {/* Sync button */}
             <ActionBtn onClick={handleSync} disabled={busy} title="Sync (pull then push)">
               <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8z" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 6l3-3 3 3M11 10l-3 3-3-3" />
               </svg>
-              {(behind !== null || ahead !== null) && (
-                <span className="font-mono text-[11px] flex items-center gap-1">
-                  {behind !== null && behind > 0 && <span>↓{behind}</span>}
-                  {ahead !== null && ahead > 0 && <span>↑{ahead}</span>}
-                  {(behind === 0 && ahead === 0) && <span className="text-neutral-400">✓</span>}
-                </span>
-              )}
+              <span className="font-mono text-[11px] flex items-center gap-1">
+                {behind !== null && behind > 0 && <span>{behind} to pull</span>}
+                {ahead !== null && ahead > 0 && <span>{ahead} to push</span>}
+                {ahead === 0 && behind === 0 && <span className="text-neutral-400">up to date</span>}
+                {ahead === null && behind === null && <span className="text-neutral-400">sync</span>}
+              </span>
             </ActionBtn>
 
             <div className="w-px bg-brutal-black/20 dark:bg-white/10" />
@@ -539,6 +548,30 @@ export function GitHubSyncSection({
           </ActionBtn>
         )}
       </div>
+
+      {/* Status line below action bar */}
+      {configured && (
+        <div className="flex items-center justify-between px-1 mt-1">
+          <span className="text-[10px] text-neutral-400 dark:text-neutral-500">
+            {syncStatus?.profile?.last_sync_at
+              ? `Last synced ${_relativeTime(syncStatus.profile.last_sync_at)}`
+              : 'Never synced'}
+          </span>
+          {syncStatus?.requires_shibboleth && (
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen(true)}
+              className={`text-[10px] font-bold uppercase border px-1.5 py-0.5 ${
+                syncStatus.shibboleth_unlocked
+                  ? 'border-brutal-green text-brutal-green'
+                  : 'border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+              }`}
+            >
+              {syncStatus.shibboleth_unlocked ? 'Encryption unlocked' : 'Encryption locked — click to unlock'}
+            </button>
+          )}
+        </div>
+      )}
 
       <button
         type="button"

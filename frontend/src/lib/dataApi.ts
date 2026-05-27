@@ -186,7 +186,7 @@ export function runSyncQuickstart(options?: {
     repo_path: options?.repo_path?.trim() || undefined,
     branch: options?.branch?.trim() || undefined,
     remote: options?.remote?.trim() || undefined,
-    auto_sync_enabled: options?.auto_sync_enabled ?? false,
+    auto_sync_enabled: options?.auto_sync_enabled ?? true,
     auto_resolve_enabled: options?.auto_resolve_enabled ?? true,
     interval_hours: options?.interval_hours ?? 4,
   });

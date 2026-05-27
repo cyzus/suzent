@@ -66,7 +66,7 @@ async def quickstart_sync(request: Request) -> JSONResponse:
                 repo_path=payload.get("repo_path"),
                 branch=payload.get("branch"),
                 remote=payload.get("remote"),
-                auto_sync_enabled=bool(payload.get("auto_sync_enabled", False)),
+                auto_sync_enabled=bool(payload.get("auto_sync_enabled", True)),
                 auto_resolve_enabled=bool(payload.get("auto_resolve_enabled", True)),
                 interval_hours=int(payload.get("interval_hours", 4)),
             )
