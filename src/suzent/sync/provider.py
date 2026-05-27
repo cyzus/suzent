@@ -25,7 +25,7 @@ class GitHubSyncProvider:
         self.remote = remote
         self.branch = branch
 
-    def validate(self, *, require_clean: bool = True) -> dict[str, str | bool]:
+    def validate(self, *, require_clean: bool = False) -> dict[str, str | bool]:
         if not self.repo_path.exists():
             raise FileNotFoundError(str(self.repo_path))
         if not (self.repo_path / ".git").exists():
@@ -40,9 +40,6 @@ class GitHubSyncProvider:
             raise ValueError(
                 f"Expected branch '{self.branch}', currently on '{current_branch}'"
             )
-
-        if require_clean:
-            self._ensure_no_unrelated_changes()
 
         return {
             "valid": True,
@@ -73,7 +70,7 @@ class GitHubSyncProvider:
 
     def pull_ff_only(self) -> str:
         self._discard_payload_changes()
-        self.validate(require_clean=True)
+        self.validate(require_clean=False)
         return self._pull()
 
     def _discard_payload_changes(self) -> None:
@@ -88,8 +85,8 @@ class GitHubSyncProvider:
 
     def commit_and_push_payload(self, revision_id: str) -> str:
         self.validate(require_clean=False)
-        self._ensure_no_unrelated_changes()
         self._git("add", PAYLOAD_DIR_NAME)
+        self._ensure_no_unrelated_staged_changes()
         staged = self._git("status", "--porcelain", "--", PAYLOAD_DIR_NAME).strip()
         if not staged:
             return "No sync payload changes to push."
@@ -102,17 +99,17 @@ class GitHubSyncProvider:
     def is_clean(self) -> bool:
         return not self._git("status", "--porcelain").strip()
 
-    def _ensure_no_unrelated_changes(self) -> None:
-        status = self._git("status", "--porcelain")
+    def _ensure_no_unrelated_staged_changes(self) -> None:
+        """Fail if anything outside the payload dir is staged (would contaminate the commit)."""
+        # --cached shows only staged changes; index status is the first character.
+        status = self._git("status", "--porcelain", "--cached")
         unrelated = [
             line
             for line in status.splitlines()
             if not _status_path(line).startswith(f"{PAYLOAD_DIR_NAME}/")
         ]
         if unrelated:
-            raise ValueError(
-                "Repository has unrelated changes outside the sync payload"
-            )
+            raise ValueError("Repository has staged changes outside the sync payload")
 
     def _remote_url(self) -> str:
         return self._git("remote", "get-url", self.remote).strip()
