@@ -83,6 +83,11 @@ class GitHubSyncService:
             self._shibboleth_unlocks[profile.id] = mnemonic
             _store_mnemonic_in_keyring(profile.id, mnemonic)
             return
+        if payload.format_version != 2:
+            # Legacy format_version 1 bundle — accept the mnemonic and migrate on next push
+            self._shibboleth_unlocks[profile.id] = mnemonic
+            _store_mnemonic_in_keyring(profile.id, mnemonic)
+            return
         if not secret_sync.verify_mnemonic(payload, mnemonic):
             raise ValueError("Incorrect mnemonic phrase")
         self._shibboleth_unlocks[profile.id] = mnemonic
@@ -385,14 +390,13 @@ class GitHubSyncService:
         bundle_path = payload_dir / SECRET_BUNDLES_PATH
         secret_sync = EncryptedSecretSync()
         existing = secret_sync.read_bundles_file(bundle_path)
-        if existing is None or existing.format_version == 2:
-            bundles_file = secret_sync.export_bundles_mnemonic(
-                profile, shibboleth, existing_file=existing
-            )
-        else:
-            bundles_file = secret_sync.export_bundles(
-                profile, shibboleth, existing_file=existing
-            )
+        bundles_file = secret_sync.export_bundles_mnemonic(
+            profile,
+            shibboleth,
+            existing_file=existing
+            if existing and existing.format_version == 2
+            else None,
+        )
         secret_sync.write_bundles_file(bundle_path, bundles_file)
 
         hashes = self.payload_builder.content_hashes(payload_dir)
