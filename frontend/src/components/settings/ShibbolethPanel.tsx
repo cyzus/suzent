@@ -109,14 +109,20 @@ export function ShibbolethPanel({
   const autoStarted = useRef(false);
 
   useEffect(() => {
-    if (autoStarted.current || enabled || !profile) return;
+    if (!profile) return;
+    // Auto-open enter form when rotation is detected
+    if (rotation?.rotation_detected && mode === 'idle') {
+      setMode('enter');
+      return;
+    }
+    if (autoStarted.current || enabled) return;
     autoStarted.current = true;
     if (available) {
       setMode('enter');
     } else {
       void startSetup();
     }
-  }, [profile?.id]);
+  }, [profile?.id, rotation?.rotation_detected]);
 
   async function generateFromBackend(): Promise<string[]> {
     const res = await fetch(`${(await import('../../lib/api')).getApiBase()}/sync/secrets/generate-mnemonic`, { method: 'POST' });
@@ -244,25 +250,6 @@ export function ShibbolethPanel({
         </div>
       </div>
 
-      {/* Rotation banner */}
-      {needsNewWords && mode === 'idle' && (
-        <div className="border-2 border-brutal-yellow bg-brutal-yellow/20 p-3 space-y-2">
-          <p className="text-xs font-bold uppercase">Recovery words changed</p>
-          <p className="text-[11px] text-neutral-700 dark:text-neutral-300">
-            Words were rotated on <strong>{rotation!.rotated_by_device}</strong>
-            {rotation!.rotated_at ? ` on ${new Date(rotation!.rotated_at).toLocaleDateString()}` : ''}.
-            Enter your new words to continue syncing API keys.
-          </p>
-          <button
-            type="button"
-            onClick={() => setMode('enter')}
-            className="px-3 py-1.5 bg-brutal-black border-2 border-brutal-black font-bold uppercase text-xs text-white"
-          >
-            Enter new words
-          </button>
-        </div>
-      )}
-
       {/* Keyring unavailable — locked fallback */}
       {needsWords && mode === 'idle' && (
         <div className="flex items-center justify-between border-2 border-amber-400 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 gap-3">
@@ -319,7 +306,9 @@ export function ShibbolethPanel({
         <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 p-3 space-y-2">
           <p className="text-xs font-bold uppercase">Enter your recovery words</p>
           <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-tight">
-            Enter the 12 recovery words from the device where you originally set this up.
+            {rotation?.rotation_detected
+              ? `Words were rotated on ${rotation.rotated_by_device}${rotation.rotated_at ? ` on ${new Date(rotation.rotated_at).toLocaleDateString()}` : ''}. Enter the new words to continue syncing.`
+              : 'Enter the 12 recovery words from the device where you originally set this up.'}
           </p>
           <MnemonicInput value={inputPhrase} onChange={setInputPhrase} placeholder="Enter your 12 recovery words" />
           <div className="flex gap-2 flex-wrap">
