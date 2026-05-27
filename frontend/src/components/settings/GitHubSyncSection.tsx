@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useI18n } from '../../i18n';
 import {
@@ -39,6 +39,19 @@ export function GitHubSyncSection({
   onNotify,
 }: GitHubSyncSectionProps): React.ReactElement {
   const { t } = useI18n();
+
+  const openExternal = useCallback(async (url: string) => {
+    try {
+      if (window.__TAURI__) {
+        const { open } = await import('@tauri-apps/plugin-shell');
+        await open(url);
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } catch {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  }, []);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [repoName, setRepoName] = useState('suzent-brain');
   const [repoPath, setRepoPath] = useState('');
@@ -355,13 +368,21 @@ export function GitHubSyncSection({
 
       {devicePhase === 'polling' && (
         <div className="mb-4 border-2 border-brutal-black bg-brutal-blue/10 p-4 space-y-3">
-          <p className="text-xs font-bold uppercase">
-            {t('settings.data.githubSignInCode', { url: deviceUrl })}
+          <p className="text-xs font-bold uppercase text-neutral-700 dark:text-neutral-300">
+            {t('settings.data.githubSignInDesc')}
           </p>
-          <p className="font-mono text-2xl font-black tracking-widest text-center border-2 border-brutal-black py-3 bg-white dark:bg-zinc-900">
+          <span className="inline-flex w-full font-mono text-2xl font-black tracking-[0.22em] border-4 border-brutal-black px-3 py-2 dark:text-white select-all justify-center bg-white dark:bg-zinc-900">
             {deviceCode}
-          </p>
-          <p className="text-xs text-neutral-600 dark:text-neutral-400 text-center">
+          </span>
+          <button
+            type="button"
+            onClick={() => void openExternal(deviceUrl)}
+            className="w-full px-4 py-2 border-2 border-brutal-black font-bold uppercase text-xs bg-white dark:bg-zinc-700 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:brightness-110 text-left flex items-center justify-between"
+          >
+            <span className="font-mono text-[11px] truncate">{deviceUrl}</span>
+            <span className="ml-2 shrink-0">↗</span>
+          </button>
+          <p className="text-[10px] text-neutral-500 dark:text-neutral-400 uppercase font-bold animate-pulse text-center">
             {t('settings.data.githubSignInWaiting')}
           </p>
           <button
@@ -410,14 +431,13 @@ export function GitHubSyncSection({
           <p className="text-xs text-neutral-700 dark:text-neutral-300">
             The Suzent GitHub App needs to be installed on your account before it can create repositories.
           </p>
-          <a
-            href={installUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            type="button"
+            onClick={() => void openExternal(installUrl)}
             className="inline-block px-4 py-2 bg-brutal-black border-2 border-brutal-black font-bold uppercase text-xs text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:brightness-110"
           >
             Install Suzent on GitHub →
-          </a>
+          </button>
           <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
             After installing, click Quick start again.
           </p>
