@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { useI18n } from '../../i18n';
 import type { SyncProfile, SyncStatus } from '../../lib/dataApi';
@@ -105,6 +105,18 @@ export function ShibbolethPanel({
   const unlocked = syncStatus?.shibboleth_unlocked ?? false;
   const available = profile?.secret_sync_available ?? false;
   const rotation = syncStatus?.rotation_detected ?? null;
+
+  const autoStarted = useRef(false);
+
+  useEffect(() => {
+    if (autoStarted.current || enabled || !profile) return;
+    autoStarted.current = true;
+    if (available) {
+      setMode('enter');
+    } else {
+      void startSetup();
+    }
+  }, [profile?.id]);
 
   async function generateFromBackend(): Promise<string[]> {
     const res = await fetch(`${(await import('../../lib/api')).getApiBase()}/sync/secrets/generate-mnemonic`, { method: 'POST' });
@@ -224,16 +236,6 @@ export function ShibbolethPanel({
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {!enabled && mode === 'idle' && (
-            <button
-              type="button"
-              disabled={busy || !profile}
-              onClick={startSetup}
-              className="px-3 py-1 border-2 border-brutal-black font-bold uppercase text-xs bg-brutal-green shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-40 hover:brightness-95"
-            >
-              Set up
-            </button>
-          )}
           {enabled && (
             <span className={`text-[10px] font-bold uppercase ${unlocked ? 'text-brutal-green' : 'text-amber-600'}`}>
               {unlocked ? 'Active' : 'Locked'}
@@ -241,23 +243,6 @@ export function ShibbolethPanel({
           )}
         </div>
       </div>
-
-      {/* Auto-prompt: another device has set up sync, this device needs to enter words */}
-      {!enabled && available && mode === 'idle' && (
-        <div className="flex items-center justify-between border-2 border-brutal-blue bg-brutal-blue/10 px-3 py-2 gap-3">
-          <p className="text-[11px] text-neutral-700 dark:text-neutral-300">
-            API key sync is available — enter your recovery words to activate on this device.
-          </p>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setMode('enter')}
-            className="px-3 py-1.5 bg-brutal-blue border-2 border-brutal-black font-bold uppercase text-xs text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50 shrink-0"
-          >
-            Enter words
-          </button>
-        </div>
-      )}
 
       {/* Rotation banner */}
       {needsNewWords && mode === 'idle' && (
