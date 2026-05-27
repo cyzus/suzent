@@ -384,9 +384,12 @@ async def get_github_auth_status(request: Request) -> JSONResponse:
         return JSONResponse({"authenticated": False, "username": None})
     try:
         username = get_authenticated_user(token)
+        return JSONResponse({"authenticated": True, "username": username})
     except Exception:
-        username = None
-    return JSONResponse({"authenticated": True, "username": username})
+        # Token exists but is invalid/expired — report as unauthenticated
+        return JSONResponse(
+            {"authenticated": False, "username": None, "token_expired": True}
+        )
 
 
 async def logout_github_auth(request: Request) -> JSONResponse:

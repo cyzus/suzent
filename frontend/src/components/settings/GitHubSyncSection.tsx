@@ -104,6 +104,7 @@ export function GitHubSyncSection({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [githubAuthenticated, setGithubAuthenticated] = useState(false);
   const [githubUsername, setGithubUsername] = useState<string | null>(null);
+  const [githubTokenExpired, setGithubTokenExpired] = useState(false);
   const [linkedRepo, setLinkedRepo] = useState<string | null>(null);
   const [installUrl, setInstallUrl] = useState<string | null>(null);
   const [ahead, setAhead] = useState<number | null>(null);
@@ -128,7 +129,8 @@ export function GitHubSyncSection({
     fetchGitHubAuthStatus()
       .then((status) => {
         setGithubAuthenticated(status.authenticated);
-        setGithubUsername(status.username);
+        setGithubUsername(status.username ?? null);
+        setGithubTokenExpired(status.token_expired ?? false);
       })
       .catch(() => {});
     return () => {
@@ -208,6 +210,7 @@ export function GitHubSyncSection({
         setDeviceCode('');
         setGithubAuthenticated(true);
         setGithubUsername(result.username ?? null);
+        setGithubTokenExpired(false);
         onNotify(
           t('settings.data.githubSignInDone', { username: result.username ?? '' }),
           false,
@@ -237,6 +240,7 @@ export function GitHubSyncSection({
       await logoutGitHub();
       setGithubAuthenticated(false);
       setGithubUsername(null);
+      setGithubTokenExpired(false);
     } catch (error) {
       onNotify(errMsg(error), true);
     }
@@ -397,6 +401,15 @@ export function GitHubSyncSection({
       </div>
 
       {/* GitHub sign-in / device flow */}
+      {githubTokenExpired && devicePhase === 'idle' && (
+        <div className="mb-3 border-2 border-brutal-black bg-red-50 dark:bg-red-900/20 p-3 flex items-start gap-2">
+          <span className="text-red-600 dark:text-red-400 text-xs font-bold uppercase shrink-0">⚠</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-red-700 dark:text-red-400">GitHub token expired</p>
+            <p className="text-[10px] text-red-600 dark:text-red-400 mt-0.5">Sign in again to re-authenticate.</p>
+          </div>
+        </div>
+      )}
       {!githubAuthenticated && devicePhase === 'idle' && (
         <div className="mb-4">
           <button

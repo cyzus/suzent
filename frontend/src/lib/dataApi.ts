@@ -147,6 +147,7 @@ export interface DeviceFlowPollResult {
 export interface GitHubAuthStatus {
   authenticated: boolean;
   username: string | null;
+  token_expired?: boolean;
 }
 
 export async function fetchSyncQuickstartInfo(): Promise<SyncQuickstartInfo> {
