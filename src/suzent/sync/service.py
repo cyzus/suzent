@@ -385,9 +385,14 @@ class GitHubSyncService:
         bundle_path = payload_dir / SECRET_BUNDLES_PATH
         secret_sync = EncryptedSecretSync()
         existing = secret_sync.read_bundles_file(bundle_path)
-        bundles_file = secret_sync.export_bundles(
-            profile, shibboleth, existing_file=existing
-        )
+        if existing is None or existing.format_version == 2:
+            bundles_file = secret_sync.export_bundles_mnemonic(
+                profile, shibboleth, existing_file=existing
+            )
+        else:
+            bundles_file = secret_sync.export_bundles(
+                profile, shibboleth, existing_file=existing
+            )
         secret_sync.write_bundles_file(bundle_path, bundles_file)
 
         hashes = self.payload_builder.content_hashes(payload_dir)
@@ -409,6 +414,8 @@ class GitHubSyncService:
         payload = secret_sync.read_bundles_file(bundle_path)
         if payload is None or not payload.bundles:
             return []
+        if payload.format_version == 2:
+            return secret_sync.import_bundles_mnemonic(payload, shibboleth)
         if not secret_sync.verify_shibboleth(bundle_path, shibboleth):
             raise ValueError("Incorrect Shibboleth (passphrase)")
         return secret_sync.import_bundles(payload, shibboleth)
