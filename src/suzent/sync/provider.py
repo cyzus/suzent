@@ -72,8 +72,19 @@ class GitHubSyncProvider:
         }
 
     def pull_ff_only(self) -> str:
+        self._discard_payload_changes()
         self.validate(require_clean=True)
         return self._pull()
+
+    def _discard_payload_changes(self) -> None:
+        """Discard any uncommitted changes inside the payload directory before pulling.
+
+        The payload is always regenerated on push, so local dirty state is safe to drop.
+        """
+        try:
+            self._git("checkout", "--", PAYLOAD_DIR_NAME)
+        except RuntimeError:
+            pass  # no changes or directory doesn't exist yet — fine either way
 
     def commit_and_push_payload(self, revision_id: str) -> str:
         self.validate(require_clean=False)
