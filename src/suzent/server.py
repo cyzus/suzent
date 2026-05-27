@@ -407,6 +407,17 @@ async def startup():
     except Exception as e:
         logger.error(f"Failed to set browser session loop: {e}")
 
+    try:
+        from suzent.core.mcp_store import migrate_from_db
+
+        migrated = migrate_from_db()
+        if migrated:
+            logger.info(
+                f"Migrated {migrated} MCP servers from database to mcp_servers.json"
+            )
+    except Exception as e:
+        logger.warning(f"MCP store migration failed: {e}")
+
     db = get_database()
     try:
         # Load all stored secrets into os.environ via SecretManager
