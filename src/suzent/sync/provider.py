@@ -71,7 +71,28 @@ class GitHubSyncProvider:
     def pull_ff_only(self) -> str:
         self._discard_payload_changes()
         self.validate(require_clean=False)
-        return self._pull()
+        try:
+            return self._pull()
+        except RuntimeError as exc:
+            if (
+                "Not possible to fast-forward" not in str(exc)
+                and "diverging" not in str(exc).lower()
+            ):
+                raise
+            logger.info("ff-only pull failed (diverged) — rebasing local onto remote")
+        # Fetch remote state, then rebase any local commits on top of it
+        self._fetch()
+        remote_ref = f"{self.remote}/{self.branch}"
+        try:
+            self._git("rebase", remote_ref)
+        except RuntimeError:
+            # Rebase conflict: abandon local commits, reset to remote
+            try:
+                self._git("rebase", "--abort")
+            except RuntimeError:
+                pass
+            self._git("reset", "--hard", remote_ref)
+        return f"Rebased onto {remote_ref}"
 
     def _discard_payload_changes(self) -> None:
         """Discard any uncommitted changes inside the payload directory before pulling.
