@@ -277,8 +277,8 @@ export function ShibbolethPanel({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {enabled && (
-            <span className={`px-1.5 py-0.5 border border-brutal-black text-[10px] font-bold ${unlocked ? 'bg-brutal-green' : 'bg-amber-200'}`}>
-              {unlocked ? '🔓' : '🔒'}
+            <span className={`text-[10px] font-bold uppercase ${unlocked ? 'text-brutal-green' : 'text-amber-600'}`}>
+              {unlocked ? 'Active' : 'Locked'}
             </span>
           )}
           <button
@@ -432,16 +432,19 @@ export function ShibbolethPanel({
         </div>
       )}
 
-      {/* Locked: show unlock button */}
+      {/* Locked: show recovery unlock — only appears if keyring auto-unlock failed */}
       {enabled && !unlocked && mode === 'idle' && !rotation?.rotation_detected && (
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between border-2 border-amber-400 bg-amber-50 dark:bg-amber-900/20 px-3 py-2">
+          <p className="text-[11px] text-amber-700 dark:text-amber-400">
+            Recovery words needed — keyring unavailable on this device.
+          </p>
           <button
             type="button"
             disabled={busy}
             onClick={() => setMode('unlock')}
-            className="px-3 py-1.5 bg-brutal-blue border-2 border-brutal-black font-bold uppercase text-xs text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50"
+            className="px-3 py-1.5 bg-brutal-blue border-2 border-brutal-black font-bold uppercase text-xs text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50 shrink-0 ml-3"
           >
-            {t('settings.data.shibbolethUnlockAction')}
+            Enter words
           </button>
         </div>
       )}

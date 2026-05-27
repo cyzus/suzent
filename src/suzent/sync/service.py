@@ -62,7 +62,10 @@ class GitHubSyncService:
     def lock_shibboleth(self, profile_id: str | None = None) -> None:
         if profile_id:
             self._shibboleth_unlocks.pop(profile_id, None)
+            _clear_mnemonic_from_keyring(profile_id)
             return
+        for pid in list(self._shibboleth_unlocks):
+            _clear_mnemonic_from_keyring(pid)
         self._shibboleth_unlocks.clear()
 
     def unlock_shibboleth(self, profile: SyncProfile, shibboleth: str) -> None:
@@ -78,10 +81,12 @@ class GitHubSyncService:
         payload = secret_sync.read_bundles_file(bundle_path)
         if payload is None or not payload.bundles:
             self._shibboleth_unlocks[profile.id] = mnemonic
+            _store_mnemonic_in_keyring(profile.id, mnemonic)
             return
         if not secret_sync.verify_mnemonic(payload, mnemonic):
             raise ValueError("Incorrect mnemonic phrase")
         self._shibboleth_unlocks[profile.id] = mnemonic
+        _store_mnemonic_in_keyring(profile.id, mnemonic)
 
     def enable_mnemonic_secret_sync(
         self, profile: SyncProfile, mnemonic: str
@@ -96,6 +101,7 @@ class GitHubSyncService:
         )
         secret_sync.write_bundles_file(bundle_path, bundles_file)
         self._shibboleth_unlocks[profile.id] = mnemonic
+        _store_mnemonic_in_keyring(profile.id, mnemonic)
         profile.encrypted_secret_sync_enabled = True
         self.save_profile(profile)
         return profile, bundles_file
@@ -116,6 +122,7 @@ class GitHubSyncService:
         )
         secret_sync.write_bundles_file(bundle_path, bundles_file)
         self._shibboleth_unlocks[profile.id] = new_mnemonic
+        _store_mnemonic_in_keyring(profile.id, new_mnemonic)
         return bundles_file
 
     def register_device_mnemonic(self, profile: SyncProfile, mnemonic: str) -> None:
@@ -126,12 +133,21 @@ class GitHubSyncService:
         updated = secret_sync.register_device(bundle_path, profile, mnemonic)
         secret_sync.write_bundles_file(bundle_path, updated)
         self._shibboleth_unlocks[profile.id] = mnemonic
+        _store_mnemonic_in_keyring(profile.id, mnemonic)
 
     def status(self, profile_id: str | None = None) -> dict:
         try:
             profile = self.get_profile(profile_id)
         except ValueError:
             return {"configured": False, "profiles": []}
+
+        # Auto-unlock from OS keyring if not already unlocked this session
+        if profile.encrypted_secret_sync_enabled and not self.is_shibboleth_unlocked(
+            profile.id
+        ):
+            stored = _load_mnemonic_from_keyring(profile.id)
+            if stored:
+                self._shibboleth_unlocks[profile.id] = stored
 
         payload_dir = Path(profile.repo_path) / PAYLOAD_DIR_NAME
         provider = GitHubSyncProvider(
@@ -420,3 +436,33 @@ class GitHubSyncService:
         self.profiles_path.write_text(
             json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
         )
+
+
+_KEYRING_SERVICE = "suzent-sync-mnemonic"
+
+
+def _store_mnemonic_in_keyring(profile_id: str, mnemonic: str) -> None:
+    try:
+        import keyring
+
+        keyring.set_password(_KEYRING_SERVICE, profile_id, mnemonic)
+    except Exception:
+        pass  # keyring unavailable — user will be prompted on next session
+
+
+def _load_mnemonic_from_keyring(profile_id: str) -> str | None:
+    try:
+        import keyring
+
+        return keyring.get_password(_KEYRING_SERVICE, profile_id)
+    except Exception:
+        return None
+
+
+def _clear_mnemonic_from_keyring(profile_id: str) -> None:
+    try:
+        import keyring
+
+        keyring.delete_password(_KEYRING_SERVICE, profile_id)
+    except Exception:
+        pass

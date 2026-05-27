@@ -308,12 +308,11 @@ export function GitHubSyncSection({
         const confirmed = window.confirm(t('settings.data.githubPullConfirm'));
         if (!confirmed) { onBusyChange(false); return; }
         await githubSyncPull(profile.id);
+        setBehind(0);
       }
       if (ahead && ahead > 0) {
         await githubSyncPush(profile.id);
-      }
-      if (!behind && !ahead) {
-        await githubSyncPush(profile.id);
+        setAhead(0);
       }
       await refresh();
       onNotify(t('settings.data.githubPushed'), false);
@@ -336,6 +335,7 @@ export function GitHubSyncSection({
           remote: remote.trim() || 'origin',
         }));
       await githubSyncPush(profile.id);
+      setAhead(0);
       await refresh();
       onNotify(t('settings.data.githubPushed'), false);
     } catch (error) {
@@ -354,6 +354,7 @@ export function GitHubSyncSection({
       const confirmed = window.confirm(t('settings.data.githubPullConfirm'));
       if (!confirmed) return;
       await githubSyncPull(profile.id);
+      setBehind(0);
       await refresh();
       onNotify(t('settings.data.githubPulled'), false);
     } catch (error) {
@@ -551,25 +552,12 @@ export function GitHubSyncSection({
 
       {/* Status line below action bar */}
       {configured && (
-        <div className="flex items-center justify-between px-1 mt-1">
+        <div className="px-1 mt-1">
           <span className="text-[10px] text-neutral-400 dark:text-neutral-500">
             {syncStatus?.profile?.last_sync_at
               ? `Last synced ${_relativeTime(syncStatus.profile.last_sync_at)}`
               : 'Never synced'}
           </span>
-          {syncStatus?.requires_shibboleth && (
-            <button
-              type="button"
-              onClick={() => setAdvancedOpen(true)}
-              className={`text-[10px] font-bold uppercase border px-1.5 py-0.5 ${
-                syncStatus.shibboleth_unlocked
-                  ? 'border-brutal-green text-brutal-green'
-                  : 'border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20'
-              }`}
-            >
-              {syncStatus.shibboleth_unlocked ? 'Encryption unlocked' : 'Encryption locked — click to unlock'}
-            </button>
-          )}
         </div>
       )}
 
@@ -601,11 +589,11 @@ export function GitHubSyncSection({
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 text-xs font-bold uppercase">
               <input type="checkbox" checked={autoSync} onChange={(e) => setAutoSync(e.target.checked)} />
-              {t('settings.data.githubAutoSync')}
+              Auto-sync every
             </label>
             <label className="flex items-center gap-2 text-xs font-bold uppercase">
-              {t('settings.data.githubInterval')}
               <input type="number" min={1} value={intervalHours} onChange={(e) => setIntervalHours(Number(e.target.value) || 4)} className="w-16 bg-white dark:bg-zinc-800 border-2 border-brutal-black px-2 py-1" />
+              hours
             </label>
           </div>
           <ShibbolethPanel profile={syncStatus?.profile} syncStatus={syncStatus} busy={busy} onBusyChange={onBusyChange} onNotify={onNotify} onChanged={refresh} />
