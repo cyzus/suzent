@@ -15,7 +15,6 @@ import {
   startGitHubAuth,
   SyncProfile,
   SyncStatus,
-  validateGitHubSync,
 } from '../../lib/dataApi';
 import { ShibbolethPanel } from './ShibbolethPanel';
 
@@ -215,7 +214,7 @@ export function GitHubSyncSection({
     }
   }
 
-  async function handleSaveProfile(): Promise<void> {
+  async function handleSave(): Promise<void> {
     if (!repoPath.trim()) return;
     onBusyChange(true);
     try {
@@ -231,26 +230,11 @@ export function GitHubSyncSection({
           syncStatus?.profile?.encrypted_secret_sync_enabled ?? false,
       });
       applyProfile(profile);
+      if (syncStatus?.profile) {
+        await saveSyncAutoConfig(profile.id, autoSync, intervalHours, autoResolve);
+      }
       await refresh();
       onNotify(t('settings.data.githubSaved'), false);
-    } catch (error) {
-      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
-    } finally {
-      onBusyChange(false);
-    }
-  }
-
-  async function handleValidate(): Promise<void> {
-    if (!repoPath.trim()) return;
-    onBusyChange(true);
-    try {
-      await validateGitHubSync({
-        repo_path: repoPath.trim(),
-        branch: branch.trim() || 'main',
-        remote: remote.trim() || 'origin',
-      });
-      await refresh();
-      onNotify(t('settings.data.githubValid'), false);
     } catch (error) {
       onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
     } finally {
@@ -290,26 +274,6 @@ export function GitHubSyncSection({
       await githubSyncPull(profile.id);
       await refresh();
       onNotify(t('settings.data.githubPulled'), false);
-    } catch (error) {
-      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
-    } finally {
-      onBusyChange(false);
-    }
-  }
-
-  async function handleSaveAutomation(): Promise<void> {
-    const profile = syncStatus?.profile;
-    if (!profile) return;
-    onBusyChange(true);
-    try {
-      const updated = await saveSyncAutoConfig(
-        profile.id,
-        autoSync,
-        intervalHours,
-        autoResolve,
-      );
-      applyProfile(updated);
-      onNotify(t('settings.data.githubSaved'), false);
     } catch (error) {
       onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
     } finally {
@@ -502,31 +466,27 @@ export function GitHubSyncSection({
               <input value={remote} onChange={(e) => setRemote(e.target.value)} className="mt-1 w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs dark:text-white" />
             </label>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <label className="flex items-center gap-2 border-2 border-brutal-black px-3 py-2 text-xs font-bold uppercase bg-neutral-50 dark:bg-zinc-900">
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-xs font-bold uppercase">
               <input type="checkbox" checked={autoSync} onChange={(e) => setAutoSync(e.target.checked)} />
               {t('settings.data.githubAutoSync')}
             </label>
-            <label className="flex items-center gap-2 border-2 border-brutal-black px-3 py-2 text-xs font-bold uppercase bg-neutral-50 dark:bg-zinc-900">
-              <input type="checkbox" checked={autoResolve} onChange={(e) => setAutoResolve(e.target.checked)} />
-              {t('settings.data.githubAutoResolve')}
-            </label>
-            <label className="flex items-center gap-2 border-2 border-brutal-black px-3 py-2 text-xs font-bold uppercase bg-neutral-50 dark:bg-zinc-900">
+            <label className="flex items-center gap-2 text-xs font-bold uppercase">
               {t('settings.data.githubInterval')}
               <input type="number" min={1} value={intervalHours} onChange={(e) => setIntervalHours(Number(e.target.value) || 4)} className="w-16 bg-white dark:bg-zinc-800 border-2 border-brutal-black px-2 py-1" />
             </label>
           </div>
           <ShibbolethPanel profile={syncStatus?.profile} syncStatus={syncStatus} busy={busy} onBusyChange={onBusyChange} onNotify={onNotify} onChanged={refresh} />
-          <div className="flex flex-wrap gap-3">
-            <button type="button" disabled={busy || !repoPath.trim()} onClick={handleSaveProfile} className="px-4 py-2 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50">{t('settings.data.githubSave')}</button>
-            <button type="button" disabled={busy || !repoPath.trim()} onClick={handleValidate} className="px-4 py-2 bg-white dark:bg-zinc-700 border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50">{t('settings.data.githubValidate')}</button>
-            <button type="button" disabled={busy || !syncStatus?.profile} onClick={handleSaveAutomation} className="px-4 py-2 bg-white dark:bg-zinc-700 border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50">{t('settings.data.githubSaveAuto')}</button>
+          <div className="flex items-center justify-between">
+            <button type="button" disabled={busy || !repoPath.trim()} onClick={handleSave} className="px-4 py-2 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50">
+              {t('settings.data.githubSave')}
+            </button>
+            {syncStatus?.profile?.last_revision !== undefined && (
+              <p className="font-mono text-xs text-neutral-500 dark:text-neutral-400">
+                {t('settings.data.githubLastRevision')}: {syncStatus.profile.last_revision || t('settings.data.githubNone')}
+              </p>
+            )}
           </div>
-          {syncStatus?.profile?.last_revision !== undefined && (
-            <p className="font-mono text-xs text-neutral-600 dark:text-neutral-400">
-              {t('settings.data.githubLastRevision')}: {syncStatus.profile.last_revision || t('settings.data.githubNone')}
-            </p>
-          )}
         </div>
       )}
     </div>
