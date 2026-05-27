@@ -6,6 +6,8 @@ import {
   fetchSyncAheadBehind,
   fetchSyncQuickstartInfo,
   fetchSyncStatus,
+  githubSyncPull,
+  githubSyncPush,
   logoutGitHub,
   pollGitHubAuth,
   runSync,
@@ -323,6 +325,38 @@ export function GitHubSyncSection({
     }
   }
 
+  async function handlePull(): Promise<void> {
+    if (!requireShibbolethUnlocked()) return;
+    onBusyChange(true);
+    try {
+      const profile = syncStatus?.profile;
+      if (!profile) throw new Error('GitHub sync is not configured.');
+      await githubSyncPull(profile.id);
+      await refresh();
+      onNotify(t('settings.data.githubPulled'), false);
+    } catch (error) {
+      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
+    } finally {
+      onBusyChange(false);
+    }
+  }
+
+  async function handlePush(): Promise<void> {
+    if (!requireShibbolethUnlocked()) return;
+    onBusyChange(true);
+    try {
+      const profile = syncStatus?.profile;
+      if (!profile) throw new Error('GitHub sync is not configured.');
+      await githubSyncPush(profile.id);
+      await refresh();
+      onNotify(t('settings.data.githubPushed'), false);
+    } catch (error) {
+      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
+    } finally {
+      onBusyChange(false);
+    }
+  }
+
   const configured = Boolean(syncStatus?.configured && syncStatus.profile);
 
   return (
@@ -465,18 +499,33 @@ export function GitHubSyncSection({
 
         {configured ? (
           <>
+            {/* Pull button */}
+            <ActionBtn onClick={handlePull} disabled={busy} title="Pull from remote (overwrite local)">
+              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 2v9M5 8l3 3 3-3" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2 13h12" />
+              </svg>
+              <span className="text-xs font-bold uppercase">
+                {behind !== null && behind > 0 ? `Pull (${behind})` : 'Pull'}
+              </span>
+            </ActionBtn>
+            {/* Push button */}
+            <ActionBtn onClick={handlePush} disabled={busy} title="Push to remote (overwrite remote)">
+              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 14V5M5 8L8 5l3 3" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2 3h12" />
+              </svg>
+              <span className="text-xs font-bold uppercase">
+                {ahead !== null && ahead > 0 ? `Push (${ahead})` : 'Push'}
+              </span>
+            </ActionBtn>
             {/* Sync button */}
             <ActionBtn onClick={handleSync} disabled={busy} title="Sync (pull then push)">
               <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8z" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 6l3-3 3 3M11 10l-3 3-3-3" />
               </svg>
-              <span className="font-mono text-[11px] flex items-center gap-1">
-                {behind !== null && behind > 0 && <span>{behind} to pull</span>}
-                {ahead !== null && ahead > 0 && <span>{ahead} to push</span>}
-                {ahead === 0 && behind === 0 && <span className="text-neutral-400">up to date</span>}
-                {ahead === null && behind === null && <span className="text-neutral-400">sync</span>}
-              </span>
+              <span className="text-xs font-bold uppercase">Sync</span>
             </ActionBtn>
           </>
         ) : (
