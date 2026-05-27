@@ -169,13 +169,8 @@ class GitHubSyncService:
         except ValueError:
             return {"configured": False, "profiles": []}
 
-        # Auto-unlock from OS keyring if not already unlocked this session
-        if profile.encrypted_secret_sync_enabled and not self.is_shibboleth_unlocked(
-            profile.id
-        ):
-            stored = _load_mnemonic_from_keyring(profile.id)
-            if stored:
-                self._shibboleth_unlocks[profile.id] = stored
+        # Auto-unlock from OS keyring if not already in memory
+        self._try_load_from_keyring(profile)
 
         payload_dir = Path(profile.repo_path) / PAYLOAD_DIR_NAME
         provider = GitHubSyncProvider(
@@ -389,7 +384,7 @@ class GitHubSyncService:
     def _require_shibboleth(self, profile: SyncProfile, explicit: str | None) -> str:
         if explicit:
             return explicit
-        cached = self._shibboleth_unlocks.get(profile.id)
+        cached = self._try_load_from_keyring(profile)
         if cached:
             return cached
         raise ValueError(
@@ -401,7 +396,19 @@ class GitHubSyncService:
     ) -> str | None:
         if explicit:
             return explicit
-        return self._shibboleth_unlocks.get(profile.id)
+        return self._try_load_from_keyring(profile)
+
+    def _try_load_from_keyring(self, profile: SyncProfile) -> str | None:
+        """Return the cached mnemonic, loading from the OS keyring if not yet in memory."""
+        cached = self._shibboleth_unlocks.get(profile.id)
+        if cached:
+            return cached
+        if profile.encrypted_secret_sync_enabled:
+            stored = _load_mnemonic_from_keyring(profile.id)
+            if stored:
+                self._shibboleth_unlocks[profile.id] = stored
+                return stored
+        return None
 
     def _require_shibboleth_for_pull(
         self, profile: SyncProfile, payload_dir: Path, explicit: str | None
