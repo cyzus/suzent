@@ -253,6 +253,7 @@ class GitHubSyncService:
                 imported_keys = await asyncio.to_thread(
                     self._import_secret_bundles, payload_dir, phrase
                 )
+            await asyncio.to_thread(_reload_runtime)
             return {
                 "success": True,
                 "git": git_output,
@@ -309,6 +310,8 @@ class GitHubSyncService:
             )
             await asyncio.to_thread(provider.pull_ff_only)
             payload_dir = Path(profile.repo_path) / PAYLOAD_DIR_NAME
+            await asyncio.to_thread(self.payload_builder.apply_to_local, payload_dir)
+            await asyncio.to_thread(_reload_runtime)
             if profile.encrypted_secret_sync_enabled:
                 phrase = self._optional_shibboleth(profile, shibboleth)
                 if phrase:
@@ -447,6 +450,22 @@ class GitHubSyncService:
         self.profiles_path.write_text(
             json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
         )
+
+
+def _reload_runtime() -> None:
+    """Reload config and skills from disk after a pull so changes take effect immediately."""
+    try:
+        from suzent.config import CONFIG
+
+        CONFIG.reload()
+    except Exception:
+        pass
+    try:
+        from suzent.skills.manager import get_skill_manager
+
+        get_skill_manager().reload()
+    except Exception:
+        pass
 
 
 _KEYRING_SERVICE = "suzent-sync-mnemonic"
