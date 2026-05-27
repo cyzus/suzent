@@ -320,7 +320,7 @@ async def register_device_mnemonic(request: Request) -> JSONResponse:
             return _error_response("Mnemonic phrase is required", 400)
         service = _service(request)
         profile = service.get_profile(payload.get("profile_id"))
-        service.register_device_mnemonic(profile, mnemonic)
+        await service.register_device_mnemonic(profile, mnemonic)
         return JSONResponse(
             {"success": True, "shibboleth_unlocked": True, "profile_id": profile.id}
         )

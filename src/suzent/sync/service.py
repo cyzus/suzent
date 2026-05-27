@@ -130,12 +130,27 @@ class GitHubSyncService:
         _store_mnemonic_in_keyring(profile.id, new_mnemonic)
         return bundles_file
 
-    def register_device_mnemonic(self, profile: SyncProfile, mnemonic: str) -> None:
+    async def register_device_mnemonic(
+        self, profile: SyncProfile, mnemonic: str
+    ) -> None:
         from suzent.sync.secrets import EncryptedSecretSync
 
         bundle_path = Path(profile.repo_path) / PAYLOAD_DIR_NAME / SECRET_BUNDLES_PATH
+        if not bundle_path.exists():
+            # Bundle is on the remote but not yet pulled — pull first
+            provider = GitHubSyncProvider(
+                Path(profile.repo_path), remote=profile.remote, branch=profile.branch
+            )
+            await asyncio.to_thread(provider.pull_ff_only)
+            await asyncio.to_thread(
+                self.payload_builder.apply_to_local,
+                Path(profile.repo_path) / PAYLOAD_DIR_NAME,
+            )
+            await asyncio.to_thread(_reload_runtime)
         secret_sync = EncryptedSecretSync()
-        updated = secret_sync.register_device(bundle_path, profile, mnemonic)
+        updated = await asyncio.to_thread(
+            secret_sync.register_device, bundle_path, profile, mnemonic
+        )
         secret_sync.write_bundles_file(bundle_path, updated)
         self._shibboleth_unlocks[profile.id] = mnemonic
         _store_mnemonic_in_keyring(profile.id, mnemonic)
