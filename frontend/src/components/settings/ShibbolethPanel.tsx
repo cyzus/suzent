@@ -284,7 +284,7 @@ export function ShibbolethPanel({
           <button
             type="button"
             disabled={busy || !profile}
-            onClick={enabled ? handleDisable : (syncStatus?.has_secret_bundles ? () => setMode('register') : startSetup)}
+            onClick={enabled ? handleDisable : () => setMode('register')}
             title={enabled ? t('settings.data.shibbolethDisable') : t('settings.data.shibbolethSetup')}
             className={`relative w-10 h-5 border-2 border-brutal-black transition-colors disabled:opacity-40 ${enabled ? 'bg-brutal-green' : 'bg-neutral-200 dark:bg-zinc-700'}`}
           >
@@ -361,13 +361,15 @@ export function ShibbolethPanel({
         </div>
       )}
 
-      {/* Register device after rotation — or first-time enable on a new device */}
+      {/* Register device — enter existing words, or generate new if truly first time */}
       {mode === 'register' && (
         <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 p-3 space-y-2">
           <p className="text-xs font-bold uppercase">Enter your recovery words</p>
-          <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-tight">Enter the 12 recovery words from the device where you originally set this up.</p>
+          <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-tight">
+            Enter the 12 recovery words from the device where you originally set this up.
+          </p>
           <MnemonicInput value={inputPhrase} onChange={setInputPhrase} placeholder="Enter your 12 recovery words" />
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button
               type="button"
               disabled={busy}
@@ -380,6 +382,12 @@ export function ShibbolethPanel({
               Cancel
             </button>
           </div>
+          <p className="text-[10px] text-neutral-400 pt-1">
+            Setting up for the first time?{' '}
+            <button type="button" onClick={startSetup} className="underline font-bold hover:text-neutral-600">
+              Generate new words instead
+            </button>
+          </p>
         </div>
       )}
 
