@@ -5,10 +5,8 @@ import type { SyncProfile, SyncStatus } from '../../lib/dataApi';
 import {
   disableEncryptedSecretSync,
   enableEncryptedSecretSync,
-  lockShibboleth,
   registerDeviceMnemonic,
   rotateMnemonic,
-  unlockMnemonic,
 } from '../../lib/dataApi';
 
 type NotificationHandler = (text: string, isError: boolean) => void;
@@ -96,44 +94,28 @@ export function ShibbolethPanel({
 }: ShibbolethPanelProps): React.ReactElement {
   const { t } = useI18n();
 
-  type Mode = 'idle' | 'setup' | 'unlock' | 'rotate' | 'register';
+  type Mode = 'idle' | 'setup' | 'enter' | 'rotate';
   const [mode, setMode] = useState<Mode>('idle');
   const [generatedWords, setGeneratedWords] = useState<string[]>([]);
   const [confirmed, setConfirmed] = useState(false);
   const [inputPhrase, setInputPhrase] = useState('');
-  const [newPhrase, setNewPhrase] = useState('');
   const [newGenerated, setNewGenerated] = useState<string[]>([]);
 
   const enabled = profile?.encrypted_secret_sync_enabled ?? false;
   const unlocked = syncStatus?.shibboleth_unlocked ?? false;
+  const available = profile?.secret_sync_available ?? false;
   const rotation = syncStatus?.rotation_detected ?? null;
 
-  const generateWords = useCallback(async () => {
-    try {
-      const res = await fetch('/api/sync/secrets/generate-mnemonic', { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json() as { mnemonic: string };
-        return data.mnemonic.split(' ');
-      }
-    } catch {
-      // fall through to client-side generation
-    }
-    // client-side fallback using crypto
-    const arr = new Uint16Array(12);
-    crypto.getRandomValues(arr);
-    return Array.from(arr).map(v => `word${v % 2048}`);
-  }, []);
+  async function generateFromBackend(): Promise<string[]> {
+    const res = await fetch(`${(await import('../../lib/api')).getApiBase()}/sync/secrets/generate-mnemonic`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to generate recovery words');
+    const data = await res.json() as { mnemonic: string };
+    return data.mnemonic.split(' ');
+  }
 
   async function startSetup(): Promise<void> {
-    // Ask backend to generate a mnemonic
     try {
-      const res = await fetch(`${(await import('../../lib/api')).getApiBase()}/sync/secrets/generate-mnemonic`, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json() as { mnemonic: string };
-        setGeneratedWords(data.mnemonic.split(' '));
-      } else {
-        throw new Error('Failed to generate mnemonic');
-      }
+      setGeneratedWords(await generateFromBackend());
     } catch {
       onNotify('Failed to generate recovery words', true);
       return;
@@ -160,23 +142,7 @@ export function ShibbolethPanel({
     }
   }
 
-  async function handleUnlock(): Promise<void> {
-    if (!profile) return;
-    onBusyChange(true);
-    try {
-      await unlockMnemonic(profile.id, inputPhrase.trim());
-      setInputPhrase('');
-      setMode('idle');
-      await onChanged();
-      onNotify(t('settings.data.shibbolethUnlocked'), false);
-    } catch (e) {
-      onNotify(t('settings.data.githubFailed', { error: errMsg(e) }), true);
-    } finally {
-      onBusyChange(false);
-    }
-  }
-
-  async function handleRegister(): Promise<void> {
+  async function handleEnterWords(): Promise<void> {
     if (!profile) return;
     onBusyChange(true);
     try {
@@ -194,31 +160,25 @@ export function ShibbolethPanel({
 
   async function startRotate(): Promise<void> {
     try {
-      const res = await fetch(`${(await import('../../lib/api')).getApiBase()}/sync/secrets/generate-mnemonic`, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json() as { mnemonic: string };
-        setNewGenerated(data.mnemonic.split(' '));
-        setNewPhrase('');
-        setConfirmed(false);
-        setMode('rotate');
-        return;
-      }
-    } catch { /* fall through */ }
-    onNotify('Failed to generate new recovery words', true);
+      setNewGenerated(await generateFromBackend());
+      setConfirmed(false);
+      setMode('rotate');
+    } catch {
+      onNotify('Failed to generate new recovery words', true);
+    }
   }
 
   async function handleRotate(): Promise<void> {
     if (!profile || !confirmed) return;
-    const mnemonic = newGenerated.length > 0 ? newGenerated.join(' ') : newPhrase.trim();
+    const mnemonic = newGenerated.join(' ');
     onBusyChange(true);
     try {
       await rotateMnemonic(profile.id, mnemonic);
       setMode('idle');
       setNewGenerated([]);
-      setNewPhrase('');
       setConfirmed(false);
       await onChanged();
-      onNotify('Recovery words rotated. All other devices will be prompted to enter the new words.', false);
+      onNotify('Recovery words rotated. Other devices will be prompted to enter the new words.', false);
     } catch (e) {
       onNotify(t('settings.data.githubFailed', { error: errMsg(e) }), true);
     } finally {
@@ -241,70 +201,76 @@ export function ShibbolethPanel({
     }
   }
 
-  async function handleLock(): Promise<void> {
-    if (!profile) return;
-    onBusyChange(true);
-    try {
-      await lockShibboleth(profile.id);
-      setMode('idle');
-      await onChanged();
-      onNotify(t('settings.data.shibbolethLocked'), false);
-    } catch (e) {
-      onNotify(t('settings.data.githubFailed', { error: errMsg(e) }), true);
-    } finally {
-      onBusyChange(false);
-    }
-  }
-
   function cancel(): void {
     setMode('idle');
     setGeneratedWords([]);
     setInputPhrase('');
     setNewGenerated([]);
-    setNewPhrase('');
     setConfirmed(false);
   }
 
+  // Derive which state we're in
+  const needsWords = enabled && !unlocked && !rotation?.rotation_detected;
+  const needsNewWords = rotation?.rotation_detected;
+
   return (
     <div className="space-y-2">
-      {/* Toggle row */}
+      {/* Header row */}
       <div className="flex items-center justify-between gap-3 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2">
         <div className="flex-1 min-w-0">
-          <span className="text-xs font-bold uppercase">{t('settings.data.shibbolethTitle')}</span>
+          <span className="text-xs font-bold uppercase">Sync API keys</span>
           <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-tight">
             {t('settings.data.shibbolethHint')}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {!enabled && mode === 'idle' && (
+            <button
+              type="button"
+              disabled={busy || !profile}
+              onClick={startSetup}
+              className="px-3 py-1 border-2 border-brutal-black font-bold uppercase text-xs bg-brutal-green shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-40 hover:brightness-95"
+            >
+              Set up
+            </button>
+          )}
           {enabled && (
             <span className={`text-[10px] font-bold uppercase ${unlocked ? 'text-brutal-green' : 'text-amber-600'}`}>
               {unlocked ? 'Active' : 'Locked'}
             </span>
           )}
-          <button
-            type="button"
-            disabled={busy || !profile}
-            onClick={enabled ? handleDisable : (syncStatus?.has_secret_bundles ? () => setMode('register') : startSetup)}
-            title={enabled ? t('settings.data.shibbolethDisable') : t('settings.data.shibbolethSetup')}
-            className={`relative w-10 h-5 border-2 border-brutal-black transition-colors disabled:opacity-40 ${enabled ? 'bg-brutal-green' : 'bg-neutral-200 dark:bg-zinc-700'}`}
-          >
-            <span className={`absolute top-0.5 w-3 h-3 bg-brutal-black transition-all ${enabled ? 'left-[18px]' : 'left-0.5'}`} />
-          </button>
         </div>
       </div>
 
-      {/* Rotation detected banner */}
-      {rotation?.rotation_detected && mode === 'idle' && (
+      {/* Auto-prompt: another device has set up sync, this device needs to enter words */}
+      {!enabled && available && mode === 'idle' && (
+        <div className="flex items-center justify-between border-2 border-brutal-blue bg-brutal-blue/10 px-3 py-2 gap-3">
+          <p className="text-[11px] text-neutral-700 dark:text-neutral-300">
+            API key sync is available — enter your recovery words to activate on this device.
+          </p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setMode('enter')}
+            className="px-3 py-1.5 bg-brutal-blue border-2 border-brutal-black font-bold uppercase text-xs text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50 shrink-0"
+          >
+            Enter words
+          </button>
+        </div>
+      )}
+
+      {/* Rotation banner */}
+      {needsNewWords && mode === 'idle' && (
         <div className="border-2 border-brutal-yellow bg-brutal-yellow/20 p-3 space-y-2">
           <p className="text-xs font-bold uppercase">Recovery words changed</p>
           <p className="text-[11px] text-neutral-700 dark:text-neutral-300">
-            Recovery words were rotated on <strong>{rotation.rotated_by_device}</strong>
-            {rotation.rotated_at ? ` on ${new Date(rotation.rotated_at).toLocaleDateString()}` : ''}.
+            Words were rotated on <strong>{rotation!.rotated_by_device}</strong>
+            {rotation!.rotated_at ? ` on ${new Date(rotation!.rotated_at).toLocaleDateString()}` : ''}.
             Enter your new words to continue syncing API keys.
           </p>
           <button
             type="button"
-            onClick={() => setMode('register')}
+            onClick={() => setMode('enter')}
             className="px-3 py-1.5 bg-brutal-black border-2 border-brutal-black font-bold uppercase text-xs text-white"
           >
             Enter new words
@@ -312,7 +278,24 @@ export function ShibbolethPanel({
         </div>
       )}
 
-      {/* Setup: show generated words */}
+      {/* Keyring unavailable — locked fallback */}
+      {needsWords && mode === 'idle' && (
+        <div className="flex items-center justify-between border-2 border-amber-400 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 gap-3">
+          <p className="text-[11px] text-amber-700 dark:text-amber-400">
+            Recovery words needed — keyring unavailable on this device.
+          </p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setMode('enter')}
+            className="px-3 py-1.5 bg-brutal-blue border-2 border-brutal-black font-bold uppercase text-xs text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50 shrink-0"
+          >
+            Enter words
+          </button>
+        </div>
+      )}
+
+      {/* Setup: generate new words */}
       {mode === 'setup' && (
         <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 p-3 space-y-3">
           <p className="text-xs font-bold uppercase">Your recovery words</p>
@@ -324,7 +307,7 @@ export function ShibbolethPanel({
             <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} className="mt-0.5 shrink-0" />
             I have saved these words in a safe place
           </label>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button
               type="button"
               disabled={busy || !confirmed}
@@ -339,36 +322,15 @@ export function ShibbolethPanel({
           </div>
           <p className="text-[10px] text-neutral-400 pt-1">
             Already have recovery words?{' '}
-            <button type="button" onClick={() => setMode('register')} className="underline font-bold hover:text-neutral-600">
+            <button type="button" onClick={() => { cancel(); setMode('enter'); }} className="underline font-bold hover:text-neutral-600">
               Enter existing words instead
             </button>
           </p>
         </div>
       )}
 
-      {/* Unlock: enter existing words */}
-      {mode === 'unlock' && (
-        <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 p-3 space-y-2">
-          <p className="text-xs font-bold uppercase">Enter recovery words</p>
-          <MnemonicInput value={inputPhrase} onChange={setInputPhrase} />
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={handleUnlock}
-              className="px-3 py-1.5 bg-brutal-blue border-2 border-brutal-black font-bold uppercase text-xs text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50"
-            >
-              {t('settings.data.shibbolethUnlockAction')}
-            </button>
-            <button type="button" disabled={busy} onClick={cancel} className="px-3 py-1.5 bg-white dark:bg-zinc-700 border-2 border-brutal-black font-bold uppercase text-xs">
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Register device — enter existing words, or generate new if truly first time */}
-      {mode === 'register' && (
+      {/* Enter words: register device or fresh setup if no bundle exists */}
+      {mode === 'enter' && (
         <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 p-3 space-y-2">
           <p className="text-xs font-bold uppercase">Enter your recovery words</p>
           <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-tight">
@@ -379,7 +341,7 @@ export function ShibbolethPanel({
             <button
               type="button"
               disabled={busy}
-              onClick={handleRegister}
+              onClick={handleEnterWords}
               className="px-3 py-1.5 bg-brutal-blue border-2 border-brutal-black font-bold uppercase text-xs text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50"
             >
               Confirm
@@ -390,11 +352,10 @@ export function ShibbolethPanel({
           </div>
           <p className="text-[10px] text-neutral-400 pt-1">
             Setting up for the first time?{' '}
-            <button type="button" onClick={startSetup} className="underline font-bold hover:text-neutral-600">
+            <button type="button" onClick={() => { cancel(); void startSetup(); }} className="underline font-bold hover:text-neutral-600">
               Generate new words instead
             </button>
           </p>
-
         </div>
       )}
 
@@ -426,7 +387,7 @@ export function ShibbolethPanel({
         </div>
       )}
 
-      {/* Unlocked actions */}
+      {/* Active actions */}
       {enabled && unlocked && mode === 'idle' && (
         <div className="flex flex-wrap gap-2 justify-end">
           <button
@@ -437,22 +398,13 @@ export function ShibbolethPanel({
           >
             Rotate words
           </button>
-        </div>
-      )}
-
-      {/* Locked: show recovery unlock — only appears if keyring auto-unlock failed */}
-      {enabled && !unlocked && mode === 'idle' && !rotation?.rotation_detected && (
-        <div className="flex items-center justify-between border-2 border-amber-400 bg-amber-50 dark:bg-amber-900/20 px-3 py-2">
-          <p className="text-[11px] text-amber-700 dark:text-amber-400">
-            Recovery words needed — keyring unavailable on this device.
-          </p>
           <button
             type="button"
             disabled={busy}
-            onClick={() => setMode('unlock')}
-            className="px-3 py-1.5 bg-brutal-blue border-2 border-brutal-black font-bold uppercase text-xs text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50 shrink-0 ml-3"
+            onClick={handleDisable}
+            className="px-3 py-1 border-2 border-brutal-black font-bold uppercase text-xs bg-white dark:bg-zinc-700 hover:bg-red-50 disabled:opacity-50"
           >
-            Enter words
+            Disable
           </button>
         </div>
       )}

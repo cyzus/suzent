@@ -21,6 +21,7 @@ class SyncProfile(BaseModel):
     interval_hours: int = Field(default=4, ge=1)
     auto_resolve_enabled: bool = True
     encrypted_secret_sync_enabled: bool = False
+    secret_sync_available: bool = False
     last_revision: str | None = None
     last_sync_at: datetime | None = None
 

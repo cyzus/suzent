@@ -37,6 +37,7 @@ export interface SyncProfile {
   interval_hours: number;
   auto_resolve_enabled: boolean;
   encrypted_secret_sync_enabled: boolean;
+  secret_sync_available: boolean;
   last_revision?: string | null;
   last_sync_at?: string | null;
 }

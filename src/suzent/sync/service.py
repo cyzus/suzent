@@ -108,6 +108,7 @@ class GitHubSyncService:
         self._shibboleth_unlocks[profile.id] = mnemonic
         _store_mnemonic_in_keyring(profile.id, mnemonic)
         profile.encrypted_secret_sync_enabled = True
+        profile.secret_sync_available = True
         self.save_profile(profile)
         return profile, bundles_file
 
@@ -159,6 +160,7 @@ class GitHubSyncService:
         self._shibboleth_unlocks[profile.id] = mnemonic
         _store_mnemonic_in_keyring(profile.id, mnemonic)
         profile.encrypted_secret_sync_enabled = True
+        profile.secret_sync_available = True
         self.save_profile(profile)
 
     def status(self, profile_id: str | None = None) -> dict:
