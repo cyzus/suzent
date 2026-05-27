@@ -15,6 +15,7 @@ from suzent.sync.github_api import (
     repo_exists,
     resolve_github_token,
 )
+from suzent.sync.github_device_flow import GITHUB_APP_INSTALL_URL
 from suzent.sync.github_token import (
     _redact_git_credentials,
     authed_clone_url,
@@ -100,6 +101,7 @@ def quickstart_github_sync(
 ) -> dict:
     actions: list[str] = []
     warnings: list[str] = []
+    install_required: bool = False
     owner_override, repo_slug = parse_owner_repo(repo_name)
     slug = normalize_repo_name(repo_slug)
     target = _resolve_quickstart_target(repo_path)
@@ -140,7 +142,7 @@ def quickstart_github_sync(
 
     if remote_url and username:
         _ensure_remote(target, remote, remote_url, actions)
-        created = _create_github_repo_api(
+        created, install_required = _create_github_repo_api(
             target, token, username, slug, branch_name, warnings
         )
         if created:
@@ -181,6 +183,8 @@ def quickstart_github_sync(
         "github_repo": f"{username}/{slug}" if username else None,
         "actions": actions,
         "warnings": warnings,
+        "install_required": install_required,
+        "install_url": GITHUB_APP_INSTALL_URL if install_required else None,
         "git": git_status,
     }
 
@@ -218,7 +222,7 @@ def _create_github_repo_api(
     repo_name: str,
     branch: str,
     warnings: list[str],
-) -> str | None:
+) -> tuple[str | None, bool]:
     full_name = f"{username}/{repo_name}"
     try:
         if repo_exists(token, username, repo_name):
@@ -227,7 +231,7 @@ def _create_github_repo_api(
                 git_push_with_token(path, token, push_url, branch)
             except RuntimeError as exc:
                 warnings.append(str(exc))
-            return f"Linked to existing GitHub repository {full_name}"
+            return f"Linked to existing GitHub repository {full_name}", False
         create_private_repo(
             token,
             repo_name,
@@ -236,11 +240,17 @@ def _create_github_repo_api(
         push_url = authed_clone_url(username, repo_name, token)
         git_push_with_token(path, token, push_url, branch)
         return (
-            f"Created private GitHub repository {full_name} and pushed initial commit"
+            f"Created private GitHub repository {full_name} and pushed initial commit",
+            False,
         )
-    except (GitHubApiError, RuntimeError) as exc:
+    except GitHubApiError as exc:
+        if "403" in str(exc):
+            return None, True
         warnings.append(f"Could not create GitHub repository: {exc}")
-        return None
+        return None, False
+    except RuntimeError as exc:
+        warnings.append(f"Could not create GitHub repository: {exc}")
+        return None, False
 
 
 def _remote_repo_exists(token: str, username: str, repo_name: str) -> bool:

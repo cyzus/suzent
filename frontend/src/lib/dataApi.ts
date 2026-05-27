@@ -117,6 +117,8 @@ export interface SyncQuickstartResult {
   github_repo?: string | null;
   actions: string[];
   warnings: string[];
+  install_required?: boolean;
+  install_url?: string | null;
   github_authenticated?: boolean;
   git?: Record<string, unknown> | null;
 }

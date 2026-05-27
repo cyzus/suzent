@@ -51,6 +51,7 @@ export function GitHubSyncSection({
   const [githubAuthenticated, setGithubAuthenticated] = useState(false);
   const [githubUsername, setGithubUsername] = useState<string | null>(null);
   const [linkedRepo, setLinkedRepo] = useState<string | null>(null);
+  const [installUrl, setInstallUrl] = useState<string | null>(null);
 
   const [devicePhase, setDevicePhase] = useState<DeviceFlowPhase>('idle');
   const [deviceCode, setDeviceCode] = useState('');
@@ -183,6 +184,7 @@ export function GitHubSyncSection({
       setRepoPath(result.repo_path);
       setBranch(result.branch || 'main');
       setLinkedRepo(result.github_repo ?? null);
+      setInstallUrl(result.install_required ? (result.install_url ?? null) : null);
       await refresh();
       const summary = result.actions.join(' · ');
       const warn = result.warnings.length ? ` ${result.warnings.join(' ')}` : '';
@@ -398,6 +400,27 @@ export function GitHubSyncSection({
           >
             {t('settings.data.githubSignOut')}
           </button>
+        </div>
+      )}
+
+      {/* App install required banner */}
+      {installUrl && (
+        <div className="mb-4 border-2 border-brutal-yellow bg-brutal-yellow/20 p-4 space-y-2">
+          <p className="text-xs font-bold uppercase">GitHub App installation required</p>
+          <p className="text-xs text-neutral-700 dark:text-neutral-300">
+            The Suzent GitHub App needs to be installed on your account before it can create repositories.
+          </p>
+          <a
+            href={installUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block px-4 py-2 bg-brutal-black border-2 border-brutal-black font-bold uppercase text-xs text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:brightness-110"
+          >
+            Install Suzent on GitHub →
+          </a>
+          <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+            After installing, click Quick start again.
+          </p>
         </div>
       )}
 

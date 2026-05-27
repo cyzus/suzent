@@ -60,7 +60,7 @@ def test_quickstart_initializes_local_repo(
         lambda token, username, repo_name: False,
     )
     monkeypatch.setattr(
-        quickstart_module, "_create_github_repo_api", lambda *a, **kw: None
+        quickstart_module, "_create_github_repo_api", lambda *a, **kw: (None, False)
     )
 
     result = quickstart_github_sync()
@@ -86,7 +86,7 @@ def test_quickstart_custom_repo_name(tmp_path: Path, monkeypatch: pytest.MonkeyP
         lambda token, username, repo_name: False,
     )
     monkeypatch.setattr(
-        quickstart_module, "_create_github_repo_api", lambda *a, **kw: None
+        quickstart_module, "_create_github_repo_api", lambda *a, **kw: (None, False)
     )
 
     result = quickstart_github_sync(repo_name="custom-brain")
@@ -110,7 +110,7 @@ def test_quickstart_uses_custom_remote_name(
         lambda token, username, repo_name: False,
     )
     monkeypatch.setattr(
-        quickstart_module, "_create_github_repo_api", lambda *a, **kw: None
+        quickstart_module, "_create_github_repo_api", lambda *a, **kw: (None, False)
     )
 
     result = quickstart_github_sync(

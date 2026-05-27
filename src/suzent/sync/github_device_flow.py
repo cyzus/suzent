@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import httpx
 
 GITHUB_APP_CLIENT_ID = "Iv23li7x99E1YeSWhffQ"
+GITHUB_APP_SLUG = "suzent"
+GITHUB_APP_INSTALL_URL = f"https://github.com/apps/{GITHUB_APP_SLUG}/installations/new"
 
 _DEVICE_CODE_URL = "https://github.com/login/device/code"
 _TOKEN_URL = "https://github.com/login/oauth/access_token"
