@@ -101,12 +101,11 @@ class GitHubSyncProvider:
 
     def _ensure_no_unrelated_staged_changes(self) -> None:
         """Fail if anything outside the payload dir is staged (would contaminate the commit)."""
-        # --cached shows only staged changes; index status is the first character.
-        status = self._git("status", "--porcelain", "--cached")
+        staged_files = self._git("diff", "--cached", "--name-only").splitlines()
         unrelated = [
-            line
-            for line in status.splitlines()
-            if not _status_path(line).startswith(f"{PAYLOAD_DIR_NAME}/")
+            f
+            for f in staged_files
+            if not f.replace("\\", "/").startswith(f"{PAYLOAD_DIR_NAME}/")
         ]
         if unrelated:
             raise ValueError("Repository has staged changes outside the sync payload")
