@@ -197,9 +197,16 @@ class GitHubSyncService:
             else None
         )
 
+        profile_dict = profile.model_dump(mode="json")
+        # Derive secret_sync_available from whether the bundle file exists in the
+        # local payload dir — the stored flag is excluded from the sync payload so
+        # other devices would never see it set to True.
+        if has_secret_bundles:
+            profile_dict["secret_sync_available"] = True
+
         return {
             "configured": True,
-            "profile": profile.model_dump(mode="json"),
+            "profile": profile_dict,
             "payload_dir": str(payload_dir),
             "payload_hashes": self.payload_builder.content_hashes(payload_dir),
             "forbidden_paths": self.payload_builder.validate_no_forbidden_paths(
