@@ -243,6 +243,10 @@ export function githubSyncPush(
   return postJson<Record<string, unknown>>('/sync/push', body);
 }
 
+export function runSync(profileId?: string): Promise<Record<string, unknown>> {
+  return postJson<Record<string, unknown>>('/sync/auto/run', profileId ? { profile_id: profileId } : {});
+}
+
 export function unlockShibboleth(profileId: string, shibboleth: string): Promise<{ success: boolean }> {
   return postJson<{ success: boolean }>('/sync/shibboleth/unlock', {
     profile_id: profileId,

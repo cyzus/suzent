@@ -6,10 +6,9 @@ import {
   fetchSyncAheadBehind,
   fetchSyncQuickstartInfo,
   fetchSyncStatus,
-  githubSyncPull,
-  githubSyncPush,
   logoutGitHub,
   pollGitHubAuth,
+  runSync,
   runSyncQuickstart,
   saveSyncAutoConfig,
   saveSyncProfile,
@@ -314,16 +313,7 @@ export function GitHubSyncSection({
     try {
       const profile = syncStatus?.profile;
       if (!profile) throw new Error('GitHub sync is not configured.');
-      if (behind && behind > 0) {
-        const confirmed = window.confirm(t('settings.data.githubPullConfirm'));
-        if (!confirmed) { onBusyChange(false); return; }
-        await githubSyncPull(profile.id);
-        setBehind(0);
-      }
-      if (ahead && ahead > 0) {
-        await githubSyncPush(profile.id);
-        setAhead(0);
-      }
+      await runSync(profile.id);
       await refresh();
       onNotify(t('settings.data.githubPushed'), false);
     } catch (error) {
