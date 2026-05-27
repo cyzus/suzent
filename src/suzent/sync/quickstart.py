@@ -222,8 +222,10 @@ def quickstart_github_sync(
         remote_url = public_clone_url(username, slug)
 
     if not (target / ".git").exists():
-        if remote_url and username and _remote_repo_exists(
-            auth_method, token, username, slug
+        if (
+            remote_url
+            and username
+            and _remote_repo_exists(auth_method, token, username, slug)
         ):
             _clone_existing_repo(
                 target,
@@ -358,7 +360,9 @@ def _create_github_repo_api(
         )
         push_url = authed_clone_url(username, repo_name, token)
         git_push_with_token(path, token, push_url, branch)
-        return f"Created private GitHub repository {full_name} and pushed initial commit"
+        return (
+            f"Created private GitHub repository {full_name} and pushed initial commit"
+        )
     except (GitHubApiError, RuntimeError) as exc:
         warnings.append(f"Could not create GitHub repository: {exc}")
         return None
@@ -413,24 +417,23 @@ def _create_github_repo(
     view = _run_gh("repo", "view", full_name, cwd=path)
     if view.returncode == 0:
         branch = _detect_branch(path)
-        push = _run_gh("push", "-u", remote, branch, cwd=path)
-        if push.returncode != 0:
-            detail = push.stderr.strip() or push.stdout.strip()
-            warnings.append(f"Could not push to {full_name}: {detail}")
+        try:
+            _git_in(path, "push", "-u", remote, branch)
+        except RuntimeError as exc:
+            warnings.append(f"Could not push to {full_name}: {exc}")
         return f"Linked to existing GitHub repository {full_name}"
 
-    create_args = [
+    completed = _run_gh(
         "repo",
         "create",
         repo_name,
         "--private",
+        f"--remote={remote}",
         "--source=.",
         "--push",
         "--description=Suzent portable brain sync",
-    ]
-    if not _remote_exists(path, remote):
-        create_args.insert(-1, f"--remote={remote}")
-    completed = _run_gh(*create_args, cwd=path)
+        cwd=path,
+    )
     if completed.returncode != 0:
         detail = completed.stderr.strip() or completed.stdout.strip()
         warnings.append(f"Could not create GitHub repository: {detail}")
@@ -476,7 +479,9 @@ def _detect_branch(path: Path) -> str:
         return DEFAULT_BRANCH
 
 
-def _ensure_remote(path: Path, remote: str, remote_url: str, actions: list[str]) -> None:
+def _ensure_remote(
+    path: Path, remote: str, remote_url: str, actions: list[str]
+) -> None:
     try:
         current = _git_in(path, "remote", "get-url", remote).strip()
         if current != remote_url:
