@@ -13,25 +13,21 @@ def github_token_configured() -> bool:
 
 
 def git_push_with_token(cwd: Path, token: str, remote_url: str, branch: str) -> str:
-    return _run_git(cwd, "push", remote_url, branch, extra_env=_git_auth_env(token))
+    return _run_git(cwd, "push", remote_url, branch, extra_env=_git_auth_env())
 
 
-def git_fetch_with_token(
-    cwd: Path, token: str, remote_url: str, branch: str
-) -> str:
-    return _run_git(cwd, "fetch", remote_url, branch, extra_env=_git_auth_env(token))
+def git_fetch_with_token(cwd: Path, token: str, remote_url: str, branch: str) -> str:
+    return _run_git(cwd, "fetch", remote_url, branch, extra_env=_git_auth_env())
 
 
-def git_pull_with_token(
-    cwd: Path, token: str, remote_url: str, branch: str
-) -> str:
+def git_pull_with_token(cwd: Path, token: str, remote_url: str, branch: str) -> str:
     return _run_git(
         cwd,
         "pull",
         "--ff-only",
         remote_url,
         branch,
-        extra_env=_git_auth_env(token),
+        extra_env=_git_auth_env(),
     )
 
 
@@ -48,7 +44,7 @@ def authed_remote_for_push(public_remote_url: str, token: str | None) -> str:
     return authed_clone_url(owner, repo, token)
 
 
-def _git_auth_env(token: str) -> dict[str, str]:
+def _git_auth_env() -> dict[str, str]:
     env = os.environ.copy()
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GIT_ASKPASS"] = ""

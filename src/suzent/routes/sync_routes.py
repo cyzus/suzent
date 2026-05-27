@@ -7,7 +7,6 @@ from starlette.responses import JSONResponse
 
 from suzent.sync.models import SyncConflict, SyncProfile
 from suzent.sync.payload import PAYLOAD_DIR_NAME
-from suzent.sync.secrets import EncryptedSecretSync
 from suzent.sync.service import GitHubSyncService
 
 
@@ -20,7 +19,9 @@ def _service(request: Request) -> GitHubSyncService:
 
 
 async def get_sync_status(request: Request) -> JSONResponse:
-    return JSONResponse(_service(request).status(request.query_params.get("profile_id")))
+    return JSONResponse(
+        _service(request).status(request.query_params.get("profile_id"))
+    )
 
 
 async def get_sync_quickstart_info(request: Request) -> JSONResponse:
@@ -40,9 +41,7 @@ async def quickstart_sync(request: Request) -> JSONResponse:
                 branch=payload.get("branch"),
                 remote=payload.get("remote"),
                 auto_sync_enabled=bool(payload.get("auto_sync_enabled", False)),
-                auto_resolve_enabled=bool(
-                    payload.get("auto_resolve_enabled", True)
-                ),
+                auto_resolve_enabled=bool(payload.get("auto_resolve_enabled", True)),
                 interval_hours=int(payload.get("interval_hours", 4)),
             )
         )
@@ -113,19 +112,27 @@ async def push_sync(request: Request) -> JSONResponse:
         return _error_response(str(exc), 400)
 
 
-async def auto_sync(request: Request) -> JSONResponse:
+async def save_auto_config(request: Request) -> JSONResponse:
     try:
         payload = await _json_payload(request)
         service = _service(request)
+        profile = service.get_profile(payload.get("profile_id"))
         if "auto_sync_enabled" in payload:
-            profile = service.get_profile(payload.get("profile_id"))
             profile.auto_sync_enabled = bool(payload["auto_sync_enabled"])
-            if "interval_hours" in payload:
-                profile.interval_hours = int(payload["interval_hours"])
-            if "auto_resolve_enabled" in payload:
-                profile.auto_resolve_enabled = bool(payload["auto_resolve_enabled"])
-            service.save_profile(profile)
-            return JSONResponse(profile.model_dump(mode="json"))
+        if "interval_hours" in payload:
+            profile.interval_hours = int(payload["interval_hours"])
+        if "auto_resolve_enabled" in payload:
+            profile.auto_resolve_enabled = bool(payload["auto_resolve_enabled"])
+        service.save_profile(profile)
+        return JSONResponse(profile.model_dump(mode="json"))
+    except Exception as exc:
+        return _error_response(str(exc), 400)
+
+
+async def run_auto_sync(request: Request) -> JSONResponse:
+    try:
+        payload = await _json_payload(request)
+        service = _service(request)
         return JSONResponse(
             await service.auto_sync(
                 payload.get("profile_id"),
@@ -187,15 +194,7 @@ async def stop_conflict_resolution(request: Request) -> JSONResponse:
 
 
 async def apply_manual_conflict(request: Request) -> JSONResponse:
-    payload = await _json_payload(request)
-    changed_paths = payload.get("changed_paths", [])
-    return JSONResponse(
-        {
-            "success": True,
-            "status": "manual-applied",
-            "changed_paths": changed_paths if isinstance(changed_paths, list) else [],
-        }
-    )
+    return _error_response("Manual conflict apply is not yet implemented", 501)
 
 
 async def enable_secret_sync(request: Request) -> JSONResponse:
@@ -228,40 +227,6 @@ async def disable_secret_sync(request: Request) -> JSONResponse:
         return JSONResponse(profile.model_dump(mode="json"))
     except Exception as exc:
         return _error_response(str(exc), 400)
-
-
-async def enroll_secret_device(request: Request) -> JSONResponse:
-    try:
-        payload = await _json_payload(request)
-        shibboleth = _shibboleth_from_payload(payload)
-        if not shibboleth:
-            return _error_response("Shibboleth (passphrase) is required", 400)
-        service = _service(request)
-        profile = service.get_profile(payload.get("profile_id"))
-        bundles_file = EncryptedSecretSync().export_bundles(profile, shibboleth)
-        return JSONResponse(
-            {
-                "device_id": profile.device_id,
-                "bundles": [b.model_dump(mode="json") for b in bundles_file.bundles],
-                "kdf": bundles_file.kdf.model_dump(mode="json"),
-            }
-        )
-    except Exception as exc:
-        return _error_response(str(exc), 400)
-
-
-async def approve_secret_device(request: Request) -> JSONResponse:
-    payload = await _json_payload(request)
-    return JSONResponse(
-        {"success": True, "device_id": payload.get("device_id"), "approval_state": "approved"}
-    )
-
-
-async def revoke_secret_device(request: Request) -> JSONResponse:
-    payload = await _json_payload(request)
-    return JSONResponse(
-        {"success": True, "device_id": payload.get("device_id"), "approval_state": "revoked"}
-    )
 
 
 async def _json_payload(request: Request) -> dict:

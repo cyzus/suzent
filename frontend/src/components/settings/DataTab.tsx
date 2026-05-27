@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 
 import { useI18n } from '../../i18n';

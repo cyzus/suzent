@@ -6,6 +6,7 @@ from pathlib import Path
 from suzent.logger import get_logger
 from suzent.sync.github_api import resolve_github_token
 from suzent.sync.github_token import (
+    _redact_git_credentials,
     authed_remote_for_push,
     git_fetch_with_token,
     git_pull_with_token,
@@ -17,7 +18,9 @@ logger = get_logger(__name__)
 
 
 class GitHubSyncProvider:
-    def __init__(self, repo_path: Path, *, remote: str = "origin", branch: str = "main"):
+    def __init__(
+        self, repo_path: Path, *, remote: str = "origin", branch: str = "main"
+    ):
         self.repo_path = repo_path.expanduser().resolve()
         self.remote = remote
         self.branch = branch
@@ -55,8 +58,15 @@ class GitHubSyncProvider:
         output = self._fetch()
         local = self._git("rev-parse", "HEAD").strip()
         remote = self._git("rev-parse", f"{self.remote}/{self.branch}").strip()
-        merge_base = self._git("merge-base", "HEAD", f"{self.remote}/{self.branch}").strip()
-        return {"fetch": output, "local": local, "remote": remote, "merge_base": merge_base}
+        merge_base = self._git(
+            "merge-base", "HEAD", f"{self.remote}/{self.branch}"
+        ).strip()
+        return {
+            "fetch": output,
+            "local": local,
+            "remote": remote,
+            "merge_base": merge_base,
+        }
 
     def pull_ff_only(self) -> str:
         self.validate(require_clean=True)
@@ -82,7 +92,9 @@ class GitHubSyncProvider:
             if not _status_path(line).startswith(f"{PAYLOAD_DIR_NAME}/")
         ]
         if unrelated:
-            raise ValueError("Repository has unrelated changes outside the sync payload")
+            raise ValueError(
+                "Repository has unrelated changes outside the sync payload"
+            )
 
     def _remote_url(self) -> str:
         return self._git("remote", "get-url", self.remote).strip()
@@ -132,8 +144,11 @@ class GitHubSyncProvider:
             check=False,
         )
         if completed.returncode != 0:
-            detail = completed.stderr.strip() or completed.stdout.strip()
-            raise RuntimeError(f"git {' '.join(args)} failed: {detail}")
+            detail = _redact_git_credentials(
+                completed.stderr.strip() or completed.stdout.strip()
+            )
+            command = " ".join(_redact_git_credentials(arg) for arg in args)
+            raise RuntimeError(f"git {command} failed: {detail}")
         return completed.stdout
 
 

@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 
 import { useI18n } from '../../i18n';
 import type { SyncProfile, SyncStatus } from '../../lib/dataApi';

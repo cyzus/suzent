@@ -466,9 +466,6 @@
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
-    },
-    "gemini/antigravity-preview-05-2026": {
-      "mode": "chat"
     }
   }
 }
