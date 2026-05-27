@@ -57,6 +57,21 @@ class ShibbolethKdfParams(BaseModel):
     salt: str
 
 
+class MnemonicKdfParams(BaseModel):
+    algorithm: str = "scrypt"
+    salt: str
+    n: int = 1 << 17
+    r: int = 8
+    p: int = 1
+
+
+class DeviceRegistration(BaseModel):
+    device_id: str
+    device_name: str
+    registered_at: datetime = Field(default_factory=utc_now)
+    mnemonic_version: int = 1
+
+
 class EncryptedSecretBundle(BaseModel):
     provider: str
     key_name: str
@@ -69,8 +84,14 @@ class EncryptedSecretBundle(BaseModel):
 
 class SecretBundlesFile(BaseModel):
     format_version: int = 1
-    kdf: ShibbolethKdfParams
+    kdf: ShibbolethKdfParams | MnemonicKdfParams
     bundles: list[EncryptedSecretBundle] = Field(default_factory=list)
+    # format_version 2 fields
+    mnemonic_version: int = 1
+    mnemonic_fingerprint: str | None = None
+    rotated_by: str | None = None
+    rotated_at: datetime | None = None
+    devices: list[DeviceRegistration] = Field(default_factory=list)
 
 
 class SyncConflict(BaseModel):

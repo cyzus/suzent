@@ -235,18 +235,21 @@ async def apply_manual_conflict(request: Request) -> JSONResponse:
 async def enable_secret_sync(request: Request) -> JSONResponse:
     try:
         payload = await _json_payload(request)
-        shibboleth = _shibboleth_from_payload(payload)
-        if not shibboleth:
+        mnemonic = payload.get("mnemonic", "")
+        if not mnemonic:
             return _error_response(
-                "Shibboleth (passphrase) is required to enable encrypted API key sync",
-                400,
+                "Mnemonic phrase is required to enable encrypted API key sync", 400
             )
         service = _service(request)
         profile = service.get_profile(payload.get("profile_id"))
-        service.unlock_shibboleth(profile, shibboleth)
-        profile.encrypted_secret_sync_enabled = True
-        service.save_profile(profile)
-        return JSONResponse(profile.model_dump(mode="json"))
+        profile, bundles_file = service.enable_mnemonic_secret_sync(profile, mnemonic)
+        return JSONResponse(
+            {
+                **profile.model_dump(mode="json"),
+                "mnemonic_version": bundles_file.mnemonic_version,
+                "mnemonic_fingerprint": bundles_file.mnemonic_fingerprint,
+            }
+        )
     except Exception as exc:
         return _error_response(str(exc), 400)
 
@@ -260,6 +263,67 @@ async def disable_secret_sync(request: Request) -> JSONResponse:
         service.save_profile(profile)
         service.lock_shibboleth(profile.id)
         return JSONResponse(profile.model_dump(mode="json"))
+    except Exception as exc:
+        return _error_response(str(exc), 400)
+
+
+async def unlock_mnemonic(request: Request) -> JSONResponse:
+    try:
+        payload = await _json_payload(request)
+        mnemonic = payload.get("mnemonic", "")
+        if not mnemonic:
+            return _error_response("Mnemonic phrase is required", 400)
+        service = _service(request)
+        profile = service.get_profile(payload.get("profile_id"))
+        service.unlock_mnemonic(profile, mnemonic)
+        return JSONResponse(
+            {"success": True, "shibboleth_unlocked": True, "profile_id": profile.id}
+        )
+    except Exception as exc:
+        return _error_response(str(exc), 400)
+
+
+async def rotate_mnemonic(request: Request) -> JSONResponse:
+    try:
+        payload = await _json_payload(request)
+        new_mnemonic = payload.get("mnemonic", "")
+        if not new_mnemonic:
+            return _error_response("New mnemonic phrase is required", 400)
+        service = _service(request)
+        profile = service.get_profile(payload.get("profile_id"))
+        bundles_file = service.rotate_mnemonic(profile, new_mnemonic)
+        return JSONResponse(
+            {
+                "success": True,
+                "mnemonic_version": bundles_file.mnemonic_version,
+                "mnemonic_fingerprint": bundles_file.mnemonic_fingerprint,
+            }
+        )
+    except Exception as exc:
+        return _error_response(str(exc), 400)
+
+
+async def generate_mnemonic(request: Request) -> JSONResponse:
+    try:
+        from suzent.sync.mnemonic import generate_mnemonic as _gen
+
+        return JSONResponse({"mnemonic": _gen()})
+    except Exception as exc:
+        return _error_response(str(exc), 500)
+
+
+async def register_device_mnemonic(request: Request) -> JSONResponse:
+    try:
+        payload = await _json_payload(request)
+        mnemonic = payload.get("mnemonic", "")
+        if not mnemonic:
+            return _error_response("Mnemonic phrase is required", 400)
+        service = _service(request)
+        profile = service.get_profile(payload.get("profile_id"))
+        service.register_device_mnemonic(profile, mnemonic)
+        return JSONResponse(
+            {"success": True, "shibboleth_unlocked": True, "profile_id": profile.id}
+        )
     except Exception as exc:
         return _error_response(str(exc), 400)
 

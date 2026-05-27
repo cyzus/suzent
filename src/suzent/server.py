@@ -93,11 +93,15 @@ from suzent.routes.sync_routes import (
     pull_sync,
     push_sync,
     quickstart_sync,
+    generate_mnemonic,
+    register_device_mnemonic,
     resolve_conflicts_agent,
+    rotate_mnemonic,
     run_auto_sync,
     save_auto_config,
     start_github_auth,
     stop_conflict_resolution,
+    unlock_mnemonic,
     unlock_shibboleth,
     validate_sync_profile,
 )
@@ -716,6 +720,12 @@ app = Starlette(
         Route("/sync/shibboleth/lock", lock_shibboleth, methods=["POST"]),
         Route("/sync/secrets/enable", enable_secret_sync, methods=["POST"]),
         Route("/sync/secrets/disable", disable_secret_sync, methods=["POST"]),
+        Route("/sync/secrets/unlock", unlock_mnemonic, methods=["POST"]),
+        Route("/sync/secrets/rotate", rotate_mnemonic, methods=["POST"]),
+        Route(
+            "/sync/secrets/register-device", register_device_mnemonic, methods=["POST"]
+        ),
+        Route("/sync/secrets/generate-mnemonic", generate_mnemonic, methods=["POST"]),
         Route("/sync/auth/start", start_github_auth, methods=["POST"]),
         Route("/sync/auth/poll", poll_github_auth, methods=["POST"]),
         Route("/sync/auth/status", get_github_auth_status, methods=["GET"]),

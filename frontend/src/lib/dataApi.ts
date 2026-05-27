@@ -50,6 +50,12 @@ export interface SyncStatus {
   requires_shibboleth?: boolean;
   shibboleth_unlocked?: boolean;
   has_secret_bundles?: boolean;
+  rotation_detected?: {
+    rotation_detected: boolean;
+    mnemonic_version: number;
+    rotated_by_device: string;
+    rotated_at: string | null;
+  } | null;
 }
 
 async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
@@ -256,10 +262,22 @@ export function saveSyncAutoConfig(profileId: string, autoSyncEnabled: boolean, 
   });
 }
 
-export function enableEncryptedSecretSync(profileId: string, shibboleth: string): Promise<SyncProfile> {
-  return postJson<SyncProfile>('/sync/secrets/enable', { profile_id: profileId, shibboleth });
+export function enableEncryptedSecretSync(profileId: string, mnemonic: string): Promise<SyncProfile & { mnemonic_version?: number; mnemonic_fingerprint?: string }> {
+  return postJson('/sync/secrets/enable', { profile_id: profileId, mnemonic });
 }
 
 export function disableEncryptedSecretSync(profileId: string): Promise<SyncProfile> {
   return postJson<SyncProfile>('/sync/secrets/disable', { profile_id: profileId });
+}
+
+export function unlockMnemonic(profileId: string, mnemonic: string): Promise<{ success: boolean }> {
+  return postJson('/sync/secrets/unlock', { profile_id: profileId, mnemonic });
+}
+
+export function rotateMnemonic(profileId: string, mnemonic: string): Promise<{ success: boolean; mnemonic_version: number; mnemonic_fingerprint: string }> {
+  return postJson('/sync/secrets/rotate', { profile_id: profileId, mnemonic });
+}
+
+export function registerDeviceMnemonic(profileId: string, mnemonic: string): Promise<{ success: boolean }> {
+  return postJson('/sync/secrets/register-device', { profile_id: profileId, mnemonic });
 }

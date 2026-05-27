@@ -7,7 +7,7 @@ from pathlib import Path
 from suzent.config import USER_CONFIG_DIR
 from suzent.logger import get_logger
 from suzent.sync.conflicts import SyncConflictResolver
-from suzent.sync.models import SyncManifest, SyncProfile
+from suzent.sync.models import SecretBundlesFile, SyncManifest, SyncProfile
 from suzent.sync.payload import MANIFEST_PATH, PAYLOAD_DIR_NAME, SyncPayloadBuilder
 from suzent.sync.provider import GitHubSyncProvider
 from suzent.sync.quickstart import (
@@ -69,8 +69,63 @@ class GitHubSyncService:
         bundle_path = Path(profile.repo_path) / PAYLOAD_DIR_NAME / SECRET_BUNDLES_PATH
         secret_sync = EncryptedSecretSync()
         if not secret_sync.verify_shibboleth(bundle_path, shibboleth):
-            raise ValueError("Incorrect Shibboleth (passphrase)")
+            raise ValueError("Incorrect passphrase")
         self._shibboleth_unlocks[profile.id] = shibboleth
+
+    def unlock_mnemonic(self, profile: SyncProfile, mnemonic: str) -> None:
+        bundle_path = Path(profile.repo_path) / PAYLOAD_DIR_NAME / SECRET_BUNDLES_PATH
+        secret_sync = EncryptedSecretSync()
+        payload = secret_sync.read_bundles_file(bundle_path)
+        if payload is None or not payload.bundles:
+            self._shibboleth_unlocks[profile.id] = mnemonic
+            return
+        if not secret_sync.verify_mnemonic(payload, mnemonic):
+            raise ValueError("Incorrect mnemonic phrase")
+        self._shibboleth_unlocks[profile.id] = mnemonic
+
+    def enable_mnemonic_secret_sync(
+        self, profile: SyncProfile, mnemonic: str
+    ) -> tuple[SyncProfile, SecretBundlesFile]:
+        from suzent.sync.secrets import EncryptedSecretSync
+
+        bundle_path = Path(profile.repo_path) / PAYLOAD_DIR_NAME / SECRET_BUNDLES_PATH
+        secret_sync = EncryptedSecretSync()
+        existing = secret_sync.read_bundles_file(bundle_path)
+        bundles_file = secret_sync.export_bundles_mnemonic(
+            profile, mnemonic, existing_file=existing
+        )
+        secret_sync.write_bundles_file(bundle_path, bundles_file)
+        self._shibboleth_unlocks[profile.id] = mnemonic
+        profile.encrypted_secret_sync_enabled = True
+        self.save_profile(profile)
+        return profile, bundles_file
+
+    def rotate_mnemonic(
+        self, profile: SyncProfile, new_mnemonic: str
+    ) -> SecretBundlesFile:
+        from suzent.sync.secrets import EncryptedSecretSync
+
+        old_mnemonic = self._shibboleth_unlocks.get(profile.id)
+        if not old_mnemonic:
+            raise ValueError("Session must be unlocked before rotating the mnemonic")
+        bundle_path = Path(profile.repo_path) / PAYLOAD_DIR_NAME / SECRET_BUNDLES_PATH
+        secret_sync = EncryptedSecretSync()
+        existing = secret_sync.read_bundles_file(bundle_path)
+        bundles_file = secret_sync.export_bundles_mnemonic(
+            profile, new_mnemonic, existing_file=existing
+        )
+        secret_sync.write_bundles_file(bundle_path, bundles_file)
+        self._shibboleth_unlocks[profile.id] = new_mnemonic
+        return bundles_file
+
+    def register_device_mnemonic(self, profile: SyncProfile, mnemonic: str) -> None:
+        from suzent.sync.secrets import EncryptedSecretSync
+
+        bundle_path = Path(profile.repo_path) / PAYLOAD_DIR_NAME / SECRET_BUNDLES_PATH
+        secret_sync = EncryptedSecretSync()
+        updated = secret_sync.register_device(bundle_path, profile, mnemonic)
+        secret_sync.write_bundles_file(bundle_path, updated)
+        self._shibboleth_unlocks[profile.id] = mnemonic
 
     def status(self, profile_id: str | None = None) -> dict:
         try:
@@ -91,6 +146,13 @@ class GitHubSyncService:
         bundle_path = payload_dir / SECRET_BUNDLES_PATH
         has_secret_bundles = bundle_path.is_file()
 
+        secret_sync = EncryptedSecretSync()
+        rotation_info = (
+            secret_sync.rotation_detected(bundle_path, profile)
+            if has_secret_bundles
+            else None
+        )
+
         return {
             "configured": True,
             "profile": profile.model_dump(mode="json"),
@@ -103,6 +165,7 @@ class GitHubSyncService:
             "requires_shibboleth": profile.encrypted_secret_sync_enabled,
             "shibboleth_unlocked": self.is_shibboleth_unlocked(profile.id),
             "has_secret_bundles": has_secret_bundles,
+            "rotation_detected": rotation_info,
         }
 
     def validate(self, profile: SyncProfile) -> dict:
