@@ -85,7 +85,17 @@ def add(name: str, config: dict[str, Any], *, enabled: bool = True) -> bool:
     servers = _load()
     if name in servers:
         return False
-    upsert(name, config, enabled=enabled)
+    servers[name] = {
+        "name": name,
+        "type": config.get("type", "stdio"),
+        "url": config.get("url"),
+        "headers": config.get("headers"),
+        "command": config.get("command"),
+        "args": config.get("args"),
+        "env": config.get("env"),
+        "enabled": config.get("enabled", enabled),
+    }
+    _save(servers)
     return True
 
 

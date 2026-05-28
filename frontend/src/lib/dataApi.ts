@@ -200,23 +200,8 @@ export async function fetchSyncStatus(): Promise<SyncStatus> {
   return res.json();
 }
 
-export async function fetchSyncProfiles(): Promise<SyncProfile[]> {
-  const res = await fetch(`${getApiBase()}/sync/profiles`);
-  if (!res.ok) throw new Error(`Failed to fetch sync profiles: ${res.statusText}`);
-  const payload = await res.json();
-  return payload.profiles || [];
-}
-
 export function saveSyncProfile(profile: Partial<SyncProfile> & { repo_path: string }): Promise<SyncProfile> {
   return postJson<SyncProfile>('/sync/profiles', profile);
-}
-
-export function validateGitHubSync(profile: Partial<SyncProfile> & { repo_path: string }): Promise<Record<string, unknown>> {
-  return postJson<Record<string, unknown>>('/sync/validate', profile);
-}
-
-export function githubSyncPreviewPull(profileId?: string): Promise<Record<string, unknown>> {
-  return postJson<Record<string, unknown>>('/sync/preview-pull', profileId ? { profile_id: profileId } : {});
 }
 
 export async function fetchSyncAheadBehind(profileId?: string): Promise<{ ahead: number; behind: number }> {
@@ -246,17 +231,6 @@ export function githubSyncPush(
 
 export function runSync(profileId?: string): Promise<Record<string, unknown>> {
   return postJson<Record<string, unknown>>('/sync/auto/run', profileId ? { profile_id: profileId } : {});
-}
-
-export function unlockShibboleth(profileId: string, shibboleth: string): Promise<{ success: boolean }> {
-  return postJson<{ success: boolean }>('/sync/shibboleth/unlock', {
-    profile_id: profileId,
-    shibboleth,
-  });
-}
-
-export function lockShibboleth(profileId: string): Promise<{ success: boolean }> {
-  return postJson<{ success: boolean }>('/sync/shibboleth/lock', { profile_id: profileId });
 }
 
 export function saveSyncAutoConfig(profileId: string, autoSyncEnabled: boolean, intervalHours: number, autoResolveEnabled: boolean): Promise<SyncProfile> {

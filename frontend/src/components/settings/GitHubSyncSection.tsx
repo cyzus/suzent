@@ -121,18 +121,13 @@ export function GitHubSyncSection({
 
   useEffect(() => {
     refresh().catch(() => setSyncStatus(null));
-    fetchSyncQuickstartInfo()
-      .then((info) => {
-        setGithubAuthenticated(info.github_authenticated ?? false);
+    Promise.all([fetchSyncQuickstartInfo(), fetchGitHubAuthStatus()])
+      .then(([info, authStatus]) => {
         setRepoPath((current) => current || info.default_repo_path);
         if (!repoName) setRepoName(info.default_repo_name || 'suzent-brain');
-      })
-      .catch(() => {});
-    fetchGitHubAuthStatus()
-      .then((status) => {
-        setGithubAuthenticated(status.authenticated);
-        setGithubUsername(status.username ?? null);
-        setGithubTokenExpired(status.token_expired ?? false);
+        setGithubAuthenticated(authStatus.authenticated);
+        setGithubUsername(authStatus.username ?? null);
+        setGithubTokenExpired(authStatus.token_expired ?? false);
       })
       .catch(() => {});
     return () => {
@@ -315,55 +310,32 @@ export function GitHubSyncSection({
     }
   }
 
-  async function handleSync(): Promise<void> {
-    if (!requireShibbolethUnlocked()) return;
-    onBusyChange(true);
-    try {
-      const profile = syncStatus?.profile;
-      if (!profile) throw new Error('GitHub sync is not configured.');
-      await runSync(profile.id);
-      await refresh();
-      onNotify(t('settings.data.githubPushed'), false);
-      onSyncComplete?.();
-    } catch (error) {
-      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
-    } finally {
-      onBusyChange(false);
-    }
+  function makeSyncHandler(
+    apiFn: (profileId: string) => Promise<unknown>,
+    successKey: string,
+    notifyComplete = false,
+  ) {
+    return async function (): Promise<void> {
+      if (!requireShibbolethUnlocked()) return;
+      onBusyChange(true);
+      try {
+        const profile = syncStatus?.profile;
+        if (!profile) throw new Error('GitHub sync is not configured.');
+        await apiFn(profile.id);
+        await refresh();
+        onNotify(t(successKey), false);
+        if (notifyComplete) onSyncComplete?.();
+      } catch (error) {
+        onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
+      } finally {
+        onBusyChange(false);
+      }
+    };
   }
 
-  async function handlePull(): Promise<void> {
-    if (!requireShibbolethUnlocked()) return;
-    onBusyChange(true);
-    try {
-      const profile = syncStatus?.profile;
-      if (!profile) throw new Error('GitHub sync is not configured.');
-      await githubSyncPull(profile.id);
-      await refresh();
-      onNotify(t('settings.data.githubPulled'), false);
-      onSyncComplete?.();
-    } catch (error) {
-      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
-    } finally {
-      onBusyChange(false);
-    }
-  }
-
-  async function handlePush(): Promise<void> {
-    if (!requireShibbolethUnlocked()) return;
-    onBusyChange(true);
-    try {
-      const profile = syncStatus?.profile;
-      if (!profile) throw new Error('GitHub sync is not configured.');
-      await githubSyncPush(profile.id);
-      await refresh();
-      onNotify(t('settings.data.githubPushed'), false);
-    } catch (error) {
-      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
-    } finally {
-      onBusyChange(false);
-    }
-  }
+  const handleSync = makeSyncHandler(runSync, 'settings.data.githubPushed', true);
+  const handlePull = makeSyncHandler(githubSyncPull, 'settings.data.githubPulled', true);
+  const handlePush = makeSyncHandler(githubSyncPush, 'settings.data.githubPushed');
 
   const configured = Boolean(syncStatus?.configured && syncStatus.profile);
 

@@ -77,7 +77,6 @@ from suzent.routes.data_routes import (
     sync_push_route,
 )
 from suzent.routes.sync_routes import (
-    apply_manual_conflict,
     create_sync_profile,
     disable_secret_sync,
     enable_secret_sync,
@@ -726,7 +725,6 @@ app = Starlette(
             "/sync/conflicts/resolve-agent", resolve_conflicts_agent, methods=["POST"]
         ),
         Route("/sync/conflicts/stop", stop_conflict_resolution, methods=["POST"]),
-        Route("/sync/conflicts/apply-manual", apply_manual_conflict, methods=["POST"]),
         Route("/sync/shibboleth/unlock", unlock_shibboleth, methods=["POST"]),
         Route("/sync/shibboleth/lock", lock_shibboleth, methods=["POST"]),
         Route("/sync/secrets/enable", enable_secret_sync, methods=["POST"]),

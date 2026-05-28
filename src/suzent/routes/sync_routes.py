@@ -228,10 +228,6 @@ async def stop_conflict_resolution(request: Request) -> JSONResponse:
     return JSONResponse(_service(request).stop_conflict_resolution())
 
 
-async def apply_manual_conflict(request: Request) -> JSONResponse:
-    return _error_response("Manual conflict apply is not yet implemented", 501)
-
-
 async def enable_secret_sync(request: Request) -> JSONResponse:
     try:
         payload = await _json_payload(request)

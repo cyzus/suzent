@@ -96,11 +96,11 @@ class SyncPayloadBuilder:
         if not payload_dir.exists():
             return forbidden
         for path in payload_dir.rglob("*"):
-            rel_parts = path.relative_to(payload_dir).parts
-            if any(_is_excluded_name(part) for part in rel_parts):
-                forbidden.append(path.relative_to(payload_dir).as_posix())
+            rel = path.relative_to(payload_dir)
+            if any(_is_excluded_name(part) for part in rel.parts):
+                forbidden.append(rel.as_posix())
             elif path.is_file() and path.suffix.lower() in EXCLUDED_SUFFIXES:
-                forbidden.append(path.relative_to(payload_dir).as_posix())
+                forbidden.append(rel.as_posix())
         return sorted(set(forbidden))
 
     def apply_to_local(self, payload_dir: Path) -> list[str]:
