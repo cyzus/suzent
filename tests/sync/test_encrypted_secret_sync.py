@@ -9,6 +9,10 @@ from suzent.sync import service as sync_service
 from suzent.sync.service import GitHubSyncService
 
 SHIBBOLETH = "my-shibboleth-phrase"
+# Valid BIP39 12-word mnemonic for tests that use the mnemonic (format_version 2) API
+TEST_MNEMONIC = (
+    "monkey hazard provide target lazy fine peace danger asthma noodle annual game"
+)
 
 
 class FakeSecretManager:
@@ -78,11 +82,13 @@ def test_wrong_shibboleth_fails_verification(tmp_path: Path):
 
 def test_secret_sync_payload_file_contains_only_ciphertext(monkeypatch, tmp_path: Path):
     class FakeEncryptedSecretSync:
-        def export_bundles(self, profile: SyncProfile, shibboleth: str, **kwargs):
+        def export_bundles_mnemonic(
+            self, profile: SyncProfile, mnemonic: str, **kwargs
+        ):
             sync = EncryptedSecretSync(
                 secret_manager=FakeSecretManager(),
             )
-            return sync.export_bundles(profile, shibboleth, **kwargs)
+            return sync.export_bundles_mnemonic(profile, mnemonic, **kwargs)
 
         def read_bundles_file(self, bundle_path: Path):
             sync = EncryptedSecretSync(secret_manager=FakeSecretManager())
@@ -116,7 +122,7 @@ def test_secret_sync_payload_file_contains_only_ciphertext(monkeypatch, tmp_path
     )
     builder.build(repo, profile)
 
-    manifest = service._write_secret_bundles(repo, profile, "rev", SHIBBOLETH)
+    manifest = service._write_secret_bundles(repo, profile, "rev", TEST_MNEMONIC)
 
     bundle_file = repo / PAYLOAD_DIR_NAME / SECRET_BUNDLES_PATH
     content = bundle_file.read_text(encoding="utf-8")
@@ -134,7 +140,9 @@ def test_sync_secret_key_is_never_in_payload(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
 
-    builder = SyncPayloadBuilder(user_config_dir=config_dir, user_skills_dir=tmp_path / "skills")
+    builder = SyncPayloadBuilder(
+        user_config_dir=config_dir, user_skills_dir=tmp_path / "skills"
+    )
     builder.build(repo, SyncProfile(repo_path=str(repo)))
 
     payload_dir = repo / PAYLOAD_DIR_NAME
@@ -152,7 +160,9 @@ def test_pull_requires_shibboleth_when_remote_has_secret_bundles(tmp_path: Path)
     sync.write_bundles_file(payload_dir / SECRET_BUNDLES_PATH, bundles_file)
 
     service = GitHubSyncService(profiles_path=tmp_path / "profiles.json")
-    fresh_profile = SyncProfile(repo_path=str(repo), encrypted_secret_sync_enabled=False)
+    fresh_profile = SyncProfile(
+        repo_path=str(repo), encrypted_secret_sync_enabled=False
+    )
 
     with pytest.raises(ValueError, match="Shibboleth"):
         service._require_shibboleth_for_pull(fresh_profile, payload_dir, None)

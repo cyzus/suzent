@@ -25,7 +25,6 @@ def test_git_push_with_token_redacts_token_in_errors(
     with pytest.raises(RuntimeError) as exc_info:
         git_push_with_token(
             tmp_path,
-            "TOKEN_VALUE",
             "https://x-access-token:TOKEN_VALUE@github.com/alice/brain.git",
             "main",
         )
