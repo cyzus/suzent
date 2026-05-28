@@ -683,36 +683,6 @@
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_reasoning": true
-    },
-    "openrouter/google/gemini-3.1-flash-lite": {
-      "mode": "chat",
-      "max_input_tokens": 1048576,
-      "max_output_tokens": 65536,
-      "supports_vision": true,
-      "supports_function_calling": true,
-      "supports_response_schema": true,
-      "supports_reasoning": true,
-      "supports_prompt_caching": true
-    },
-    "openrouter/xiaomi/mimo-v2.5-pro": {
-      "mode": "chat",
-      "max_input_tokens": 1048576,
-      "max_output_tokens": 16384,
-      "supports_vision": false,
-      "supports_function_calling": true,
-      "supports_response_schema": true,
-      "supports_reasoning": true,
-      "supports_prompt_caching": true
-    },
-    "openrouter/xiaomi/mimo-v2.5": {
-      "mode": "chat",
-      "max_input_tokens": 1048576,
-      "max_output_tokens": 131072,
-      "supports_vision": true,
-      "supports_function_calling": true,
-      "supports_response_schema": true,
-      "supports_reasoning": true,
-      "supports_prompt_caching": true
     }
   }
 }
