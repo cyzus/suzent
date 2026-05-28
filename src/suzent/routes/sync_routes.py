@@ -8,6 +8,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from suzent.sync.github_api import (
+    GitHubApiError,
     clear_github_token,
     get_authenticated_user,
     resolve_github_token,
@@ -373,11 +374,16 @@ async def get_github_auth_status(request: Request) -> JSONResponse:
     try:
         username = get_authenticated_user(token)
         return JSONResponse({"authenticated": True, "username": username})
+    except GitHubApiError as exc:
+        # Only treat 401 as an actual expiry; other API errors leave auth state unknown
+        if "401" in str(exc):
+            return JSONResponse(
+                {"authenticated": False, "username": None, "token_expired": True}
+            )
+        return JSONResponse({"authenticated": True, "username": None})
     except Exception:
-        # Token exists but is invalid/expired — report as unauthenticated
-        return JSONResponse(
-            {"authenticated": False, "username": None, "token_expired": True}
-        )
+        # Network/timeout — token likely still valid, don't force re-login
+        return JSONResponse({"authenticated": True, "username": None})
 
 
 async def logout_github_auth(request: Request) -> JSONResponse:
