@@ -492,17 +492,18 @@ const ActivityRail: React.FC<{
         {hasPending && !expanded && (
           <span className="activity-rail-pending-badge">Pending</span>
         )}
-        <span className="ml-auto text-neutral-500 dark:text-neutral-400">
+        <span className="text-neutral-300 dark:text-neutral-600" aria-hidden="true">|</span>
+        <span className="text-neutral-500 dark:text-neutral-400">
           {itemCount} {itemCount === 1 ? 'step' : 'steps'}
         </span>
         <svg
-          className={`w-3 h-3 text-neutral-500 dark:text-neutral-400 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+          className={`w-3 h-3 text-neutral-500 dark:text-neutral-400 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
           strokeWidth={3}
         >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
       </button>
       <div className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
@@ -556,19 +557,19 @@ const ReasoningRailItem: React.FC<{
         <button
           type="button"
           onClick={() => setExpanded(value => !value)}
-          className="inline-flex items-center gap-1.5 px-2.5 cursor-pointer select-none min-w-0 max-w-full"
+          className="group/thought-header inline-flex items-center gap-1.5 px-2.5 cursor-pointer select-none min-w-0 max-w-full"
         >
           <span className="text-[10px] font-mono font-bold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 shrink-0">
             Thought
           </span>
           <svg
-            className={`w-3 h-3 text-neutral-400 transition-transform duration-200 shrink-0 ${expanded ? 'rotate-180' : ''}`}
+            className={`w-3 h-3 text-neutral-400 opacity-0 transition-all duration-150 shrink-0 group-hover/thought-header:opacity-100 ${expanded ? 'rotate-90' : ''}`}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
             strokeWidth={3}
           >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
         </button>
         <div className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
