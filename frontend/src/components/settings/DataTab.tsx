@@ -12,6 +12,7 @@ import {
   syncPull,
   syncPush,
 } from '../../lib/dataApi';
+import { GitHubSyncSection } from './GitHubSyncSection';
 
 type Notification = { text: string; isError: boolean };
 
@@ -19,7 +20,7 @@ function errMsg(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function DataTab(): React.ReactElement {
+export function DataTab({ onSyncComplete }: { onSyncComplete?: () => void }): React.ReactElement {
   const { t } = useI18n();
   const [status, setStatus] = useState<DataStatus | null>(null);
   const [syncTarget, setSyncTarget] = useState('');
@@ -32,6 +33,10 @@ export function DataTab(): React.ReactElement {
       setNotification({ text: t('settings.data.statusFailed'), isError: true });
     });
   }, []);
+
+  function notify(text: string, isError: boolean): void {
+    setNotification({ text, isError });
+  }
 
   async function handleExport(): Promise<void> {
     setBusy(true);
@@ -212,6 +217,9 @@ export function DataTab(): React.ReactElement {
           </div>
         </div>
       </div>
+
+
+      <GitHubSyncSection busy={busy} onBusyChange={setBusy} onNotify={notify} onSyncComplete={onSyncComplete} />
 
       {notification && (
         <div className={`border-4 border-brutal-black p-4 font-mono text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${notification.isError ? 'bg-red-100 text-brutal-black' : 'bg-green-100 text-brutal-black'}`}>

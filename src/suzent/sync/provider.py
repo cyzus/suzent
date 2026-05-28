@@ -1,0 +1,234 @@
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+from suzent.logger import get_logger
+from suzent.sync.github_api import resolve_github_token
+from suzent.sync.github_token import (
+    _redact_git_credentials,
+    authed_remote_for_push,
+    git_fetch_with_token,
+    git_pull_with_token,
+    git_push_with_token,
+)
+from suzent.sync.payload import PAYLOAD_DIR_NAME
+
+logger = get_logger(__name__)
+
+
+class GitHubSyncProvider:
+    def __init__(
+        self, repo_path: Path, *, remote: str = "origin", branch: str = "main"
+    ):
+        self.repo_path = repo_path.expanduser().resolve()
+        self.remote = remote
+        self.branch = branch
+
+    def validate(self, *, require_clean: bool = False) -> dict[str, str | bool]:
+        if not self.repo_path.exists():
+            raise FileNotFoundError(str(self.repo_path))
+        if not (self.repo_path / ".git").exists():
+            raise ValueError(f"{self.repo_path} is not a Git repository")
+
+        remote_url = self._git("remote", "get-url", self.remote).strip()
+        if "github.com" not in remote_url.lower() and not Path(remote_url).exists():
+            raise ValueError(f"Remote '{self.remote}' is not a GitHub remote")
+
+        current_branch = self._git("branch", "--show-current").strip()
+        if current_branch != self.branch:
+            raise ValueError(
+                f"Expected branch '{self.branch}', currently on '{current_branch}'"
+            )
+
+        return {
+            "valid": True,
+            "repo_path": str(self.repo_path),
+            "remote": self.remote,
+            "remote_url": remote_url,
+            "branch": current_branch,
+            "clean": self.is_clean(),
+        }
+
+    def preview_pull(self) -> dict:
+        self.validate(require_clean=False)
+        output = self._fetch()
+        local = self._git("rev-parse", "HEAD").strip()
+        remote_ref = f"{self.remote}/{self.branch}"
+        remote = self._git("rev-parse", remote_ref).strip()
+        merge_base = self._git("merge-base", "HEAD", remote_ref).strip()
+        ahead = len(self._git("rev-list", f"{remote_ref}..HEAD").splitlines())
+        behind = len(self._git("rev-list", f"HEAD..{remote_ref}").splitlines())
+        return {
+            "fetch": output,
+            "local": local,
+            "remote": remote,
+            "merge_base": merge_base,
+            "ahead": ahead,
+            "behind": behind,
+        }
+
+    def pull_ff_only(self) -> str:
+        self._discard_payload_changes()
+        self.validate(require_clean=False)
+        try:
+            return self._pull()
+        except RuntimeError as exc:
+            if (
+                "Not possible to fast-forward" not in str(exc)
+                and "diverging" not in str(exc).lower()
+            ):
+                raise
+            logger.info("ff-only pull failed (diverged) — rebasing local onto remote")
+        self._fetch()
+        remote_ref = f"{self.remote}/{self.branch}"
+        self._rebase_onto(remote_ref)
+        return f"Rebased onto {remote_ref}"
+
+    def _discard_payload_changes(self) -> None:
+        """Discard any uncommitted changes inside the payload directory before pulling.
+
+        The payload is always regenerated on push, so local dirty state is safe to drop.
+        """
+        try:
+            self._git("checkout", "--", PAYLOAD_DIR_NAME)
+        except RuntimeError:
+            pass  # no changes or directory doesn't exist yet — fine either way
+
+    def commit_and_push_payload(self, revision_id: str) -> str:
+        self.validate(require_clean=False)
+        self._git("add", PAYLOAD_DIR_NAME)
+        self._ensure_no_unrelated_staged_changes()
+        staged = self._git("status", "--porcelain", "--", PAYLOAD_DIR_NAME).strip()
+        if not staged:
+            return "No sync payload changes to push."
+        if _only_metadata_changed(staged):
+            self._git("restore", "--staged", PAYLOAD_DIR_NAME)
+            return "No meaningful changes to push (only manifest/presence updated)."
+        self._git("commit", "-m", f"sync: update suzent brain {revision_id}")
+        return self._push_with_rebase(revision_id)
+
+    def is_clean(self) -> bool:
+        return not self._git("status", "--porcelain").strip()
+
+    def _ensure_no_unrelated_staged_changes(self) -> None:
+        """Fail if anything outside the payload dir is staged (would contaminate the commit)."""
+        staged_files = self._git("diff", "--cached", "--name-only").splitlines()
+        unrelated = [
+            f
+            for f in staged_files
+            if not f.replace("\\", "/").startswith(f"{PAYLOAD_DIR_NAME}/")
+        ]
+        if unrelated:
+            raise ValueError("Repository has staged changes outside the sync payload")
+
+    def _remote_url(self) -> str:
+        return self._git("remote", "get-url", self.remote).strip()
+
+    def _fetch(self) -> str:
+        token = resolve_github_token()
+        remote_url = self._remote_url()
+        if token and "github.com" in remote_url:
+            return git_fetch_with_token(
+                self.repo_path,
+                authed_remote_for_push(remote_url, token),
+                self.branch,
+            )
+        return self._git("fetch", self.remote, self.branch)
+
+    def _pull(self) -> str:
+        token = resolve_github_token()
+        remote_url = self._remote_url()
+        if token and "github.com" in remote_url:
+            return git_pull_with_token(
+                self.repo_path,
+                authed_remote_for_push(remote_url, token),
+                self.branch,
+            )
+        return self._git("pull", "--ff-only", self.remote, self.branch)
+
+    def _push(self) -> str:
+        token = resolve_github_token()
+        remote_url = self._remote_url()
+        if token and "github.com" in remote_url:
+            return git_push_with_token(
+                self.repo_path,
+                authed_remote_for_push(remote_url, token),
+                self.branch,
+            )
+        return self._git("push", self.remote, self.branch)
+
+    def _rebase_onto(self, remote_ref: str) -> None:
+        """Rebase current branch onto remote_ref, hard-resetting on conflict."""
+        try:
+            self._git("rebase", remote_ref)
+        except RuntimeError:
+            try:
+                self._git("rebase", "--abort")
+            except RuntimeError:
+                pass
+            self._git("reset", "--hard", remote_ref)
+
+    def _push_with_rebase(self, revision_id: str) -> str:
+        """Push, rebasing on top of any remote commits that arrived since we committed."""
+        try:
+            return self._push()
+        except RuntimeError as exc:
+            if "non-fast-forward" not in str(exc) and "rejected" not in str(exc):
+                raise
+            logger.info("Push rejected (non-fast-forward) — fetching and rebasing")
+
+        self._fetch()
+        remote_ref = f"{self.remote}/{self.branch}"
+        before = self._git("rev-parse", "HEAD").strip()
+        self._rebase_onto(remote_ref)
+        after = self._git("rev-parse", "HEAD").strip()
+
+        if before == after:
+            # Hard-reset discarded our commit — re-stage and recommit the payload
+            self._git("add", PAYLOAD_DIR_NAME)
+            staged = self._git("status", "--porcelain", "--", PAYLOAD_DIR_NAME).strip()
+            if not staged or _only_metadata_changed(staged):
+                return "No meaningful changes after rebase — nothing to push."
+            self._git("commit", "-m", f"sync: update suzent brain {revision_id}")
+
+        return self._push()
+
+    def _git(self, *args: str) -> str:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=self.repo_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            detail = _redact_git_credentials(
+                completed.stderr.strip() or completed.stdout.strip()
+            )
+            command = " ".join(_redact_git_credentials(arg) for arg in args)
+            raise RuntimeError(f"git {command} failed: {detail}")
+        return completed.stdout
+
+
+def _status_path(line: str) -> str:
+    value = line[3:] if len(line) > 3 else line
+    if " -> " in value:
+        value = value.split(" -> ", 1)[1]
+    return value.strip().replace("\\", "/")
+
+
+# Paths that are always regenerated on every push and carry no meaningful content.
+_METADATA_PREFIXES = (
+    f"{PAYLOAD_DIR_NAME}/_sync/manifest.json",
+    f"{PAYLOAD_DIR_NAME}/_sync/presence/",
+)
+
+
+def _only_metadata_changed(porcelain_output: str) -> bool:
+    """Return True if every staged change is a manifest or presence file."""
+    for line in porcelain_output.splitlines():
+        path = _status_path(line).replace("\\", "/")
+        if not any(path.startswith(p) for p in _METADATA_PREFIXES):
+            return False
+    return True

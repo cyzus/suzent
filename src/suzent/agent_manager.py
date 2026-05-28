@@ -72,15 +72,17 @@ def _build_mcp_servers(config: Dict[str, Any]) -> List:
     Returns a list of MCPServerStreamableHTTP / MCPServerStdio instances
     that can be passed as ``toolsets`` to a pydantic-ai Agent.
     """
-    mcp_enabled = config.get("mcp_enabled")
-    if mcp_enabled is None:
-        mcp_enabled = CONFIG.mcp_enabled or {}
+    from suzent.core import mcp_store as _mcp_store
 
-    raw_mcp_urls = config.get("mcp_urls", CONFIG.mcp_urls)
-    mcp_headers = config.get("mcp_headers", {})
-    mcp_stdio_params = config.get("mcp_stdio_params", CONFIG.mcp_stdio_params)
+    # JSON file is the source of truth; config dict can override for special callers
+    _defaults = _mcp_store.as_agent_config()
+    mcp_enabled = config.get("mcp_enabled") or _defaults["mcp_enabled"]
+    mcp_headers = config.get("mcp_headers") or _defaults["mcp_headers"]
+    mcp_stdio_params = config.get("mcp_stdio_params") or _defaults["mcp_stdio_params"]
 
-    # Parse mcp_urls to handle both simple and nested formats
+    raw_mcp_urls = config.get("mcp_urls") or _defaults["mcp_urls"]
+
+    # Parse mcp_urls to handle both simple and nested formats (legacy config.yaml support)
     mcp_urls = {}
 
     if isinstance(raw_mcp_urls, list):

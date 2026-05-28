@@ -25,25 +25,27 @@ DEFAULT_TOOLS:
   - "SpeakTool"
   - "AgentTool"
 
-MCP_URLS:
-  # Simple format: just the URL
-  "HF Space MCP": "https://evalstate-hf-mcp-server.hf.space/mcp"
-  # Nested format with headers
-  # "Authenticated MCP":
-  #   url: "https://api.example.com/mcp"
-  #   headers:
-  #     Authorization: "Bearer your-api-key"
-  #     X-Custom-Header: "custom-value"
-
-MCP_STDIO_PARAMS:
-  mcp-arxiv:
-    command: "uv"
-    args:
-      - "tool"
-      - "run"
-      - "arxiv-mcp-server"
-      - "--storage-path"
-      - "./data/papers"
+# MCP Servers
+# MCP server configuration is no longer done in this file.
+# Servers are stored in ~/.suzent/config/mcp_servers.json and managed
+# through Settings → MCP in the UI, or by editing the JSON directly.
+#
+# JSON schema for each entry:
+#   {
+#     "my-server-name": {
+#       "type": "url",                          # "url" or "stdio"
+#       "url": "https://my-server.example/mcp", # required for type "url"
+#       "headers": { "Authorization": "..." },  # optional, for type "url"
+#       "enabled": true
+#     },
+#     "my-stdio-server": {
+#       "type": "stdio",
+#       "command": "uv",
+#       "args": ["tool", "run", "my-mcp-server"],
+#       "env": { "MY_VAR": "value" },           # optional extra env vars
+#       "enabled": false
+#     }
+#   }
 
 INSTRUCTIONS: ""
 ADDITIONAL_AUTHORIZED_IMPORTS: []

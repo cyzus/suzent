@@ -302,10 +302,6 @@ class ConfigModel(BaseModel):
     ]
     tool_options: Optional[List[str]] = None
 
-    mcp_urls: Dict[str, Any] = {}
-    mcp_stdio_params: Dict[str, Any] = {}
-    mcp_enabled: Dict[str, bool] = {}
-
     instructions: str = ""
     additional_authorized_imports: List[str] = []
 
@@ -368,10 +364,14 @@ class ConfigModel(BaseModel):
         example_path = cfg_dir / "default.example.yaml"
         default_path = cfg_dir / "default.yaml"
         user_default_path = user_cfg_dir / "default.yaml"
+        # Machine-specific overrides — never synced across devices.
+        # Put sandbox_volumes, sandbox_data_path, workspace_root, lancedb_uri etc. here.
+        user_local_path = user_cfg_dir / "local.yaml"
 
         example_data: Dict[str, Any] = {}
         default_data: Dict[str, Any] = {}
         user_data: Dict[str, Any] = {}
+        local_data: Dict[str, Any] = {}
         loaded_files: List[Path] = []
 
         def _read_file(p: Path) -> Dict[str, Any]:
@@ -408,7 +408,13 @@ class ConfigModel(BaseModel):
                 user_data = _normalize_keys(raw_user)
                 loaded_files.append(user_default_path)
 
-        data = {**example_data, **default_data, **user_data}
+        if user_local_path.exists():
+            raw_local = _read_file(user_local_path)
+            if isinstance(raw_local, dict):
+                local_data = _normalize_keys(raw_local)
+                loaded_files.append(user_local_path)
+
+        data = {**example_data, **default_data, **user_data, **local_data}
 
         try:
             permission_overrides = load_permission_overrides(

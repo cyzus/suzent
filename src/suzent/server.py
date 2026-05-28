@@ -76,6 +76,34 @@ from suzent.routes.data_routes import (
     sync_pull_route,
     sync_push_route,
 )
+from suzent.routes.sync_routes import (
+    create_sync_profile,
+    disable_secret_sync,
+    enable_secret_sync,
+    get_github_auth_status,
+    get_sync_ahead_behind,
+    get_sync_profiles,
+    get_sync_quickstart_info,
+    get_sync_status,
+    lock_shibboleth,
+    logout_github_auth,
+    poll_github_auth,
+    preview_sync_pull,
+    pull_sync,
+    push_sync,
+    quickstart_sync,
+    generate_mnemonic,
+    register_device_mnemonic,
+    resolve_conflicts_agent,
+    rotate_mnemonic,
+    run_auto_sync,
+    save_auto_config,
+    start_github_auth,
+    stop_conflict_resolution,
+    unlock_mnemonic,
+    unlock_shibboleth,
+    validate_sync_profile,
+)
 from suzent.routes.plan_routes import get_plan, get_plans
 from suzent.routes.mcp_routes import (
     list_mcp_servers,
@@ -154,6 +182,8 @@ from suzent.nodes.manager import NodeManager
 from suzent.core.social_brain import SocialBrain
 from suzent.core.scheduler import SchedulerBrain
 from suzent.core.heartbeat import HeartbeatRunner
+from suzent.sync.automation import SyncAutomationRunner
+from suzent.sync.service import GitHubSyncService
 from suzent.config import PROJECT_DIR as _project_dir
 
 load_dotenv(_project_dir / ".env")
@@ -182,6 +212,7 @@ channel_manager: ChannelManager = None
 node_manager: NodeManager = None
 scheduler_brain: SchedulerBrain = None
 heartbeat_runner: HeartbeatRunner = None
+sync_automation_runner: SyncAutomationRunner = None
 
 
 _social_reload_lock = asyncio.Lock()
@@ -375,6 +406,17 @@ async def startup():
     except Exception as e:
         logger.error(f"Failed to set browser session loop: {e}")
 
+    try:
+        from suzent.core.mcp_store import migrate_from_db
+
+        migrated = migrate_from_db()
+        if migrated:
+            logger.info(
+                f"Migrated {migrated} MCP servers from database to mcp_servers.json"
+            )
+    except Exception as e:
+        logger.warning(f"MCP store migration failed: {e}")
+
     db = get_database()
     try:
         # Load all stored secrets into os.environ via SecretManager
@@ -430,6 +472,15 @@ async def startup():
             await heartbeat_runner.start()
         except Exception as e:
             logger.error(f"Failed to start HeartbeatRunner: {e}")
+
+        global sync_automation_runner
+        try:
+            app.state.github_sync_service = GitHubSyncService()
+            sync_automation_runner = SyncAutomationRunner(app.state.github_sync_service)
+            app.state.sync_automation_runner = sync_automation_runner
+            await sync_automation_runner.start()
+        except Exception as e:
+            logger.error(f"Failed to start SyncAutomationRunner: {e}")
 
     global node_manager
     node_manager = NodeManager()
@@ -542,13 +593,17 @@ async def shutdown():
         channel_manager, \
         node_manager, \
         scheduler_brain, \
-        heartbeat_runner
+        heartbeat_runner, \
+        sync_automation_runner
 
     # Cancel any pending ask_question futures so their tasks can exit cleanly
     pending_questions.cancel_all()
 
     if heartbeat_runner:
         await _stop(heartbeat_runner.stop(), "HeartbeatRunner")
+
+    if sync_automation_runner:
+        await _stop(sync_automation_runner.stop(), "SyncAutomationRunner")
 
     if scheduler_brain:
         await _stop(scheduler_brain.stop(), "SchedulerBrain")
@@ -666,6 +721,36 @@ app = Starlette(
         Route("/data/import", import_data_route, methods=["POST"]),
         Route("/data/sync/push", sync_push_route, methods=["POST"]),
         Route("/data/sync/pull", sync_pull_route, methods=["POST"]),
+        Route("/sync/status", get_sync_status, methods=["GET"]),
+        Route("/sync/quickstart/info", get_sync_quickstart_info, methods=["GET"]),
+        Route("/sync/quickstart", quickstart_sync, methods=["POST"]),
+        Route("/sync/profiles", get_sync_profiles, methods=["GET"]),
+        Route("/sync/profiles", create_sync_profile, methods=["POST"]),
+        Route("/sync/validate", validate_sync_profile, methods=["POST"]),
+        Route("/sync/preview-pull", preview_sync_pull, methods=["POST"]),
+        Route("/sync/ahead-behind", get_sync_ahead_behind, methods=["GET"]),
+        Route("/sync/pull", pull_sync, methods=["POST"]),
+        Route("/sync/push", push_sync, methods=["POST"]),
+        Route("/sync/auto", save_auto_config, methods=["POST"]),
+        Route("/sync/auto/run", run_auto_sync, methods=["POST"]),
+        Route(
+            "/sync/conflicts/resolve-agent", resolve_conflicts_agent, methods=["POST"]
+        ),
+        Route("/sync/conflicts/stop", stop_conflict_resolution, methods=["POST"]),
+        Route("/sync/shibboleth/unlock", unlock_shibboleth, methods=["POST"]),
+        Route("/sync/shibboleth/lock", lock_shibboleth, methods=["POST"]),
+        Route("/sync/secrets/enable", enable_secret_sync, methods=["POST"]),
+        Route("/sync/secrets/disable", disable_secret_sync, methods=["POST"]),
+        Route("/sync/secrets/unlock", unlock_mnemonic, methods=["POST"]),
+        Route("/sync/secrets/rotate", rotate_mnemonic, methods=["POST"]),
+        Route(
+            "/sync/secrets/register-device", register_device_mnemonic, methods=["POST"]
+        ),
+        Route("/sync/secrets/generate-mnemonic", generate_mnemonic, methods=["POST"]),
+        Route("/sync/auth/start", start_github_auth, methods=["POST"]),
+        Route("/sync/auth/poll", poll_github_auth, methods=["POST"]),
+        Route("/sync/auth/status", get_github_auth_status, methods=["GET"]),
+        Route("/sync/auth/logout", logout_github_auth, methods=["POST"]),
         Route("/social/pairing", list_pairings, methods=["GET"]),
         Route("/social/pairing/approve", approve_pairing, methods=["POST"]),
         Route("/social/pairing/deny", deny_pairing, methods=["POST"]),

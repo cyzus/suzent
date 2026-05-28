@@ -13,6 +13,16 @@ import yaml
 from suzent.config import USER_CONFIG_DIR
 
 
+_LOCAL_KEYS: frozenset[str] = frozenset(
+    {
+        "sandbox_volumes",
+        "sandbox_data_path",
+        "workspace_root",
+        "lancedb_uri",
+    }
+)
+
+
 def get_user_config_path() -> Path:
     override = os.getenv("SUZENT_USER_CONFIG_PATH")
     if override:
@@ -20,15 +30,28 @@ def get_user_config_path() -> Path:
     return USER_CONFIG_DIR / "config.yaml"
 
 
+def get_local_config_path() -> Path:
+    return USER_CONFIG_DIR / "local.yaml"
+
+
 class UserConfigStore:
     def __init__(self, path: Path | None = None) -> None:
         self.path = path or get_user_config_path()
+        self.local_path = get_local_config_path()
 
     def get_user_preferences(self) -> dict[str, Any] | None:
-        return self._get_section("user_preferences")
+        prefs = self._get_section("user_preferences") or {}
+        # Merge local-only keys on top so callers see the full picture.
+        local_prefs = self._get_section_from(self.local_path, "user_preferences") or {}
+        return {**prefs, **local_prefs} if (prefs or local_prefs) else None
 
     def save_user_preferences(self, updates: dict[str, Any]) -> None:
-        self._update_section("user_preferences", updates)
+        portable = {k: v for k, v in updates.items() if k not in _LOCAL_KEYS}
+        local = {k: v for k, v in updates.items() if k in _LOCAL_KEYS}
+        if portable:
+            self._update_section("user_preferences", portable)
+        if local:
+            self._update_section_in(self.local_path, "user_preferences", local)
 
     def get_memory_config(self) -> dict[str, Any] | None:
         return self._get_section("memory_config")
@@ -60,15 +83,44 @@ class UserConfigStore:
         value = self._load().get(section)
         return value if isinstance(value, dict) else None
 
+    def _get_section_from(self, path: Path, section: str) -> dict[str, Any] | None:
+        if not path.exists():
+            return None
+        with path.open("r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+        value = data.get(section) if isinstance(data, dict) else None
+        return value if isinstance(value, dict) else None
+
     def _update_section(self, section: str, updates: dict[str, Any]) -> None:
         data = self._load()
         current = self._ensure_section(data, section)
-
         for key, value in updates.items():
             if value is not None:
                 current[key] = value
         current["updated_at"] = datetime.now().isoformat()
         self._save(data)
+
+    def _update_section_in(
+        self, path: Path, section: str, updates: dict[str, Any]
+    ) -> None:
+        if path.exists():
+            with path.open("r", encoding="utf-8") as fh:
+                data = yaml.safe_load(fh) or {}
+            if not isinstance(data, dict):
+                data = {}
+        else:
+            data = {}
+        current = self._ensure_section(data, section)
+        for key, value in updates.items():
+            if value is not None:
+                current[key] = value
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            "w", dir=path.parent, delete=False, suffix=".tmp", encoding="utf-8"
+        ) as tmp:
+            yaml.safe_dump(data, tmp, sort_keys=False, allow_unicode=True)
+            tmp_path = Path(tmp.name)
+        tmp_path.replace(path)
 
     @staticmethod
     def _ensure_section(data: dict[str, Any], section: str) -> dict[str, Any]:
