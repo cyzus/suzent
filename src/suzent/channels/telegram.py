@@ -13,6 +13,7 @@ from suzent.channels.base import SocialChannel, UnifiedMessage
 try:
     from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
     from telegram.constants import ParseMode
+    from telegram.error import Conflict as TelegramConflict
     from telegram.error import TelegramError
     from telegram.ext import (
         ApplicationBuilder,
@@ -201,10 +202,16 @@ class TelegramChannel(SocialChannel):
             except Exception as e:
                 logger.warning(f"Failed to register Telegram commands: {e}")
 
+            await self.app.bot.delete_webhook(drop_pending_updates=True)
             await self.app.updater.start_polling(drop_pending_updates=True)
             self._running = True
             logger.info("Telegram polling started.")
 
+        except TelegramConflict:
+            logger.warning(
+                "Telegram bot is already running on another device or process. "
+                "Only one instance can poll per bot token — Telegram channel disabled on this device."
+            )
         except Exception as e:
             logger.error(f"Failed to connect to Telegram: {e}")
             raise
