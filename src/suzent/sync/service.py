@@ -62,10 +62,7 @@ class GitHubSyncService:
     def lock_shibboleth(self, profile_id: str | None = None) -> None:
         if profile_id:
             self._shibboleth_unlocks.pop(profile_id, None)
-            _clear_mnemonic_from_keyring(profile_id)
             return
-        for pid in list(self._shibboleth_unlocks):
-            _clear_mnemonic_from_keyring(pid)
         self._shibboleth_unlocks.clear()
 
     def unlock_shibboleth(self, profile: SyncProfile, shibboleth: str) -> None:
