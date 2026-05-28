@@ -42,6 +42,7 @@ interface GitHubSyncSectionProps {
   busy: boolean;
   onBusyChange: (busy: boolean) => void;
   onNotify: NotificationHandler;
+  onSyncComplete?: () => void;
 }
 
 function ActionBtn({
@@ -78,6 +79,7 @@ export function GitHubSyncSection({
   busy,
   onBusyChange,
   onNotify,
+  onSyncComplete,
 }: GitHubSyncSectionProps): React.ReactElement {
   const { t } = useI18n();
 
@@ -322,6 +324,7 @@ export function GitHubSyncSection({
       await runSync(profile.id);
       await refresh();
       onNotify(t('settings.data.githubPushed'), false);
+      onSyncComplete?.();
     } catch (error) {
       onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
     } finally {
@@ -338,6 +341,7 @@ export function GitHubSyncSection({
       await githubSyncPull(profile.id);
       await refresh();
       onNotify(t('settings.data.githubPulled'), false);
+      onSyncComplete?.();
     } catch (error) {
       onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
     } finally {

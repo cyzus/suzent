@@ -69,6 +69,24 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
   // MCP Server Management State
   const [mcpServerList, setMcpServerList] = useState<MCPServer[]>([]);
 
+  function refreshProviders(): void {
+    fetchApiKeys().then(data => {
+      if (!data?.providers) return;
+      setProviders(data.providers);
+      const keys: Record<string, string> = {};
+      const configs: Record<string, UserConfig> = {};
+      for (const provider of data.providers) {
+        for (const field of provider.fields) {
+          if (field.value) keys[field.key] = field.value;
+        }
+        configs[provider.id] = provider.user_config || { enabled_models: [], custom_models: [] };
+      }
+      setApiKeys(keys);
+      setOriginalDisplayValues({ ...keys });
+      setUserConfigs(configs);
+    });
+  }
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -449,7 +467,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
                   )}
 
                   {activeCategory === 'data' && (
-                    <DataTab />
+                    <DataTab onSyncComplete={refreshProviders} />
                   )}
 
                   {activeCategory === 'appearance' && (
