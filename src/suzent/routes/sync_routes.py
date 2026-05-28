@@ -102,14 +102,6 @@ async def validate_sync_profile(request: Request) -> JSONResponse:
         return _error_response(str(exc), 400)
 
 
-async def preview_sync_pull(request: Request) -> JSONResponse:
-    try:
-        payload = await _json_payload(request)
-        return JSONResponse(_service(request).preview_pull(payload.get("profile_id")))
-    except Exception as exc:
-        return _error_response(str(exc), 400)
-
-
 async def get_sync_ahead_behind(request: Request) -> JSONResponse:
     try:
         profile_id = request.query_params.get("profile_id")

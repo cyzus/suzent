@@ -12,7 +12,6 @@ import typer
 
 from suzent.cli.agent import agent_app
 from suzent.cli.config import config_app
-from suzent.cli.data import data_app
 from suzent.cli.main import (
     register_commands,
     configure_logging,
@@ -48,7 +47,6 @@ register_commands(app)
 app.add_typer(node_app, name="nodes")
 app.add_typer(agent_app, name="agent")
 app.add_typer(config_app, name="config")
-app.add_typer(data_app, name="data")
 app.add_typer(cron_app, name="cron")
 app.add_typer(heartbeat_app, name="heartbeat")
 app.add_typer(pair_app, name="pair")
