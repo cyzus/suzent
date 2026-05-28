@@ -1,20 +1,36 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Message } from '../../types/api';
 import type { AGUIPart, ApprovalRememberScope } from '../../hooks/useAGUI';
-import { splitAssistantContent, generateBlockKey, ContentBlock, formatMessageTime } from '../../lib/chatUtils';
-import { useTypewriter } from '../../hooks/useTypewriter';
+import { splitAssistantContent, ContentBlock, formatMessageTime } from '../../lib/chatUtils';
 import { ThinkingAnimation, AgentBadge, RobotIcon } from './ThinkingAnimation';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { LogBlock } from './LogBlock';
 import { ToolCallBlock } from './ToolCallBlock';
 import { SubAgentCallBlock } from './SubAgentCallBlock';
 import type { SubAgentStatus } from './SubAgentCallBlock';
-import { ToolGroupIcon } from './toolGroupIcon';
-import { CodeBlockComponent } from './CodeBlockComponent';
 import { CopyButton } from './CopyButton';
-import { RobotAvatar } from './RobotAvatar';
 import { A2UIRenderer } from '../a2ui/A2UIRenderer';
 import type { A2UISurface } from '../../types/a2ui';
+import {
+  StaticContent,
+  StepPills,
+  StreamingContent,
+  ToolSequenceGroup,
+  parseSubAgentTaskId,
+} from './AssistantContent';
+import {
+  ActivityRail,
+  ActivityRailItem,
+  ReasoningRailItem,
+  countActivityItems,
+  getActivityGroupOrdinal,
+  getAguiActivityLabel,
+  getLegacyActivityLabel,
+  getReasoningHeader,
+  getTimestampDeltaSeconds,
+  groupActivityChunks,
+  hasAguiPendingApproval,
+  hasLegacyPendingApproval,
+} from './ActivityRail';
 
 interface AssistantMessageProps {
   message: Message;
@@ -76,592 +92,7 @@ function isToolOnlyMessage(blocks: ContentBlock[]): boolean {
   return blocks.length > 0 && blocks.every(b => b.type === 'toolCall' || b.type === 'codeStep');
 }
 
-// Renders a group of tool calls, potentially collapsed if many
-const ToolSequenceGroup: React.FC<{
-  tools: Array<{
-    toolCallId?: string;
-    toolName: string;
-    toolArgs?: string;
-    output?: string;
-    approvalState?: 'pending' | 'denied' | undefined;
-    onApprove?: (remember: ApprovalRememberScope) => void;
-    onDeny?: () => void;
-  }>;
-  isStreaming?: boolean;
-  toolApprovalPolicy?: Record<string, string>;
-  onRemoveApprovalPolicy?: (toolName: string) => void;
-  onForceWebContext?: (contextId: string) => void;
-}> = ({ tools, isStreaming, toolApprovalPolicy, onRemoveApprovalPolicy, onForceWebContext }) => {
-  const hasPending = tools.some(t => t.approvalState === 'pending');
-  const isAnyRunning = isStreaming && tools.some(t => !t.output);
-  // Use a ref to track if we've already auto-expanded for this set of tools
-  // or just rely on state + effect/memo. For simplicity, we force expanded if hasPending.
-  const [expanded, setExpanded] = useState(hasPending);
-
-  // Sync expanded state if a new pending tool arrives
-  useEffect(() => {
-    if (hasPending) {
-      setExpanded(true);
-    }
-  }, [hasPending]);
-
-  const shouldGroup = tools.length > 2;
-
-  if (!shouldGroup) {
-    return (
-      <div className="flex flex-col space-y-1">
-        {tools.map((t, i) => {
-          const isAutoApproved = toolApprovalPolicy?.[t.toolName] === 'always_allow';
-          return (
-            <ToolCallBlock
-              key={t.toolCallId || i}
-              toolName={t.toolName}
-              toolArgs={t.toolArgs}
-              output={t.output}
-              defaultCollapsed={t.approvalState !== 'pending'}
-              approvalState={t.approvalState}
-              isStreaming={isStreaming}
-              onApprove={t.onApprove}
-              onDeny={t.onDeny}
-              isAutoApproved={isAutoApproved}
-              onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy ? () => onRemoveApprovalPolicy(t.toolName) : undefined}
-              onForceWebContext={onForceWebContext}
-              toolCallId={t.toolCallId}
-            />
-          );
-        })}
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col space-y-1">
-      {/* Unified Header Toggle */}
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className={`tool-group-summary group/tools transition-all ${
-          hasPending ? 'active-approval' : ''
-        } ${
-          isAnyRunning ? 'brutal-running-mono border-2 !border-brutal-black dark:!border-white' : 'border-2 border-transparent'
-        }`}
-      >
-        <div className={`flex items-center gap-2 w-full ${isAnyRunning ? 'text-brutal-black dark:text-white' : 'text-neutral-500 dark:text-neutral-400 group-hover/tools:text-brutal-black dark:group-hover/tools:text-white transition-colors'}`}>
-          {!expanded ? (
-            <>
-              <div className="tool-group-icons">
-                {tools.map((t, i) => {
-                  if (i > 3) return null;
-                  return (
-                    <ToolGroupIcon
-                      key={i}
-                      toolName={t.toolName}
-                      approvalState={t.approvalState}
-                      isStreaming={isStreaming && !t.output}
-                      hasOutput={Boolean(t.output)}
-                    />
-                  );
-                })}
-                {tools.length > 4 && (
-                  <span className="text-[10px] font-mono font-bold ml-1">+{tools.length - 4}</span>
-                )}
-              </div>
-              <span className="text-[10px] font-mono font-bold uppercase tracking-tight">
-                {isAnyRunning ? 'Running' : tools.length} Steps
-              </span>
-            </>
-          ) : (
-            <span className="text-[10px] font-mono font-bold uppercase tracking-tight">
-              {isAnyRunning ? 'Running' : 'Hide'} {tools.length} Steps
-            </span>
-          )}
-          <svg
-            className={`w-3 h-3 transition-transform duration-200 ml-auto ${expanded ? 'rotate-180' : ''}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={3}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </div>
-      </button>
-
-      {/* Expanded Tools List */}
-      <div className={`
-        grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden w-full
-        ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}
-      `}>
-        <div className="overflow-hidden min-h-0 min-w-0 w-full ml-1 pl-1.5 space-y-1">
-          {tools.map((t, i) => {
-            const isAutoApproved = toolApprovalPolicy?.[t.toolName] === 'always_allow';
-            return (
-              <ToolCallBlock
-                key={t.toolCallId || i}
-                toolName={t.toolName}
-                toolArgs={t.toolArgs}
-                output={t.output}
-                defaultCollapsed={t.approvalState !== 'pending'}
-                approvalState={t.approvalState}
-                isStreaming={isStreaming && !t.output}
-                onApprove={t.onApprove}
-                onDeny={t.onDeny}
-                isAutoApproved={isAutoApproved}
-                onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy ? () => onRemoveApprovalPolicy(t.toolName) : undefined}
-                onForceWebContext={onForceWebContext}
-                toolCallId={t.toolCallId}
-              />
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Renders just the tool call / code step pills (no box wrapper)
-const StepPills: React.FC<{
-  blocks: ContentBlock[];
-  messageIndex: number;
-  isStreaming?: boolean;
-  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string) => void;
-  toolApprovalPolicy?: Record<string, string>;
-  onRemoveApprovalPolicy?: (toolName: string) => void;
-  onForceWebContext?: (contextId: string) => void;
-}> = ({ blocks, messageIndex, isStreaming, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onForceWebContext }) => {
-  const tools = blocks
-    .filter(b => b.type === 'toolCall')
-    .map((b, bi) => {
-      const hasOutput = !!(b.content);
-      // A tool is actionably pending only if: it has no output yet, has an approvalId
-      // we can act on, and the message is currently streaming (live approval dialog).
-      // Historical pending-without-output tools were skipped/denied — show as denied.
-      const isActionablyPending = b.approvalState === 'pending' && !hasOutput && !!b.approvalId && !!isStreaming;
-      const effectiveApprovalState = isActionablyPending
-        ? 'pending'
-        : (b.approvalState === 'denied' || (b.approvalState === 'pending' && !hasOutput))
-          ? 'denied'
-          : undefined;
-      return {
-        toolCallId: b.toolCallId || `historical-${bi}`,
-        toolName: b.toolName || 'unknown',
-        toolArgs: b.toolArgs,
-        output: b.content || undefined,
-        approvalState: effectiveApprovalState as 'pending' | 'denied' | undefined,
-        onApprove: (isActionablyPending && b.approvalId && onToolApproval)
-          ? (remember: ApprovalRememberScope) => onToolApproval(b.approvalId!, b.toolCallId || '', true, remember, b.toolName)
-          : undefined,
-        onDeny: (isActionablyPending && b.approvalId && onToolApproval)
-          ? () => onToolApproval(b.approvalId!, b.toolCallId || '', false, null, b.toolName)
-          : undefined,
-      };
-    });
-
-  if (tools.length === 0) return null;
-  return <ToolSequenceGroup tools={tools} isStreaming={isStreaming} toolApprovalPolicy={toolApprovalPolicy} onRemoveApprovalPolicy={onRemoveApprovalPolicy} onForceWebContext={onForceWebContext} />;
-};
-
-const StreamingMarkdownBlock: React.FC<{
-  content: string;
-  isLastBlock: boolean;
-  showCursor: boolean;
-  onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-}> = ({ content, isLastBlock, showCursor, onFileClick }) => {
-  const typedContent = useTypewriter(content, 10, isLastBlock);
-  const renderedContent = isLastBlock ? typedContent : content;
-
-  return (
-    <>
-      <MarkdownRenderer content={renderedContent} onFileClick={onFileClick} streamingLite={isLastBlock} />
-      {isLastBlock && showCursor && <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1" />}
-    </>
-  );
-};
-
-// Streaming content with typewriter effect
-const StreamingContent: React.FC<{
-  blocks: ContentBlock[];
-  messageIndex: number;
-  showCursor?: boolean;
-  onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-}> = ({ blocks, messageIndex, showCursor = true, onFileClick }) => {
-  return (
-    <>
-      {blocks.map((b, bi) => {
-        const blockKey = generateBlockKey(b, bi, messageIndex);
-        const isLastBlock = bi === blocks.length - 1;
-
-        if (b.type === 'markdown') {
-          return (
-            <StreamingMarkdownBlock
-              key={blockKey}
-              content={b.content}
-              isLastBlock={isLastBlock}
-              showCursor={showCursor}
-              onFileClick={onFileClick}
-            />
-          );
-        } else if (b.type === 'log') {
-          return <LogBlock key={blockKey} title={b.title} content={b.content} />;
-        } else if (b.type === 'toolCall') {
-          return null; // Handled outside in StepPills
-        } else if (b.type === 'code') {
-          // During live streaming, fenced blocks can be incomplete.
-          // Always keep code rendering in lightweight preview mode here.
-          return (
-            <div key={blockKey} className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900/70">
-              <div className="px-3 py-1 border-b-2 border-brutal-black text-[10px] font-mono font-bold uppercase text-neutral-600 dark:text-neutral-300 bg-white dark:bg-zinc-800">
-                {(b as any).lang || 'text'}
-              </div>
-              <pre className="p-3 text-xs font-mono leading-relaxed whitespace-pre-wrap break-all overflow-x-auto max-h-[48vh]">
-                <code>{b.content}</code>
-                {isLastBlock && showCursor && <span className="animate-brutal-blink inline-block w-2 h-4 bg-neutral-700 dark:bg-neutral-300 align-middle ml-1" />}
-              </pre>
-            </div>
-          );
-        } else {
-          return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} isStreaming={isLastBlock} />;
-        }
-      })}
-    </>
-  );
-};
-
-/** Extract sub-agent task_id from agent tool output text. */
-function parseSubAgentTaskId(output: string | undefined): string | undefined {
-  if (!output) return undefined;
-  const m = output.match(/ID:\s*`?(sub_[a-z0-9]+)`?/);
-  return m ? m[1] : undefined;
-}
-
-// Static content (non-streaming)
-const StaticContent: React.FC<{
-  blocks: ContentBlock[];
-  messageIndex: number;
-  onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string) => void;
-  toolApprovalPolicy?: Record<string, string>;
-  onRemoveApprovalPolicy?: (toolName: string) => void;
-  onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
-  subAgentTasks?: Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>;
-  onOpenSubAgentSidebar?: (taskId: string) => void;
-  onStopSubAgent?: (taskId: string) => void;
-  onForceWebContext?: (contextId: string) => void;
-  inActivityRail?: boolean;
-}> = ({ blocks, messageIndex, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext, inActivityRail }) => {
-  return (
-    <>
-      {blocks.map((b, bi) => {
-        const blockKey = generateBlockKey(b, bi, messageIndex);
-        if (b.type === 'markdown') {
-          return <MarkdownRenderer key={blockKey} content={b.content} onFileClick={onFileClick} />;
-        } else if (b.type === 'log') {
-          return <LogBlock key={blockKey} title={b.title} content={b.content} />;
-        } else if (b.type === 'a2ui' && b.a2uiSurface) {
-          const surface = b.a2uiSurface as A2UISurface;
-          return (
-            <div key={blockKey} className="my-2">
-              <A2UIRenderer
-                component={surface.component}
-                onAction={(action, context) => onInlineAction?.(surface.id, action, context ?? {})}
-              />
-            </div>
-          );
-        } else if (b.type === 'toolCall') {
-          const isPending = b.approvalState === 'pending' && !b.content;
-          const effectiveApprovalState = (isPending ? 'pending' : b.approvalState === 'denied' ? 'denied' : undefined) as 'pending' | 'denied' | undefined;
-          const isAutoApproved = toolApprovalPolicy?.[b.toolName || ''] === 'always_allow';
-
-          // Sub-agent special rendering
-          if (b.toolName === 'agent') {
-            const taskId = parseSubAgentTaskId(b.content || undefined);
-            const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
-            const args = b.toolArgs ? (() => { try { return JSON.parse(b.toolArgs!); } catch { return {}; } })() : {};
-            // If the tool already has output, the call returned a result — it's done.
-            // Default to 'completed' so linear (synchronous) subagents don't stay stuck
-            // on 'running' forever. Polling in SubAgentCallBlock will correct to the
-            // real backend status if needed (e.g. background agents still in-flight).
-            const defaultStatus = b.content ? 'completed' : 'running';
-            return (
-              <SubAgentCallBlock
-                key={blockKey}
-                taskId={taskId}
-                description={args.description}
-                toolsAllowed={args.tools_allowed}
-                status={taskState?.status ?? defaultStatus}
-                resultSummary={taskState?.resultSummary}
-                error={taskState?.error}
-                onOpenSidebar={onOpenSubAgentSidebar}
-                onStop={onStopSubAgent}
-              />
-            );
-          }
-
-          return (
-            <ToolCallBlock
-              key={blockKey}
-              toolName={b.toolName || 'unknown'}
-              toolArgs={b.toolArgs}
-              output={b.content || undefined}
-              approvalState={effectiveApprovalState}
-              onApprove={(isPending && b.approvalId && onToolApproval)
-                ? (remember) => onToolApproval(b.approvalId!, b.toolCallId || '', true, remember, b.toolName)
-                : undefined}
-              onDeny={(isPending && b.approvalId && onToolApproval)
-                ? () => onToolApproval(b.approvalId!, b.toolCallId || '', false, null, b.toolName)
-                : undefined}
-              defaultCollapsed={!isPending}
-              isAutoApproved={isAutoApproved}
-              onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy && b.toolName ? () => onRemoveApprovalPolicy(b.toolName!) : undefined}
-              onForceWebContext={onForceWebContext}
-              toolCallId={b.toolCallId}
-              inActivityRail={inActivityRail}
-            />
-          );
-        } else {
-          return <CodeBlockComponent key={blockKey} lang={(b as any).lang} content={b.content} />;
-        }
-      })}
-    </>
-  );
-};
-
 // ── AG-UI Parts-based rendering (for streaming messages) ────────────
-
-// Helper to extract the first line of reasoning for the header
-const getReasoningHeader = (text: string, isStreaming: boolean = false) => {
-  const firstLine = text.trim().split('\n')[0].replace(/^[#*>-\s]+/, '').replace(/\*\*/g, '').trim();
-  const summary = firstLine.length > 80 ? firstLine.substring(0, 77) + '...' : firstLine || 'Processing...';
-  const prefix = isStreaming ? 'Thinking' : 'Thought';
-  return `${prefix}: ${summary}`;
-};
-
-const ActivityRail: React.FC<{
-  children: React.ReactNode;
-  itemCount: number;
-  durationSeconds?: number;
-  showDuration?: boolean;
-  defaultExpanded?: boolean;
-  isActive?: boolean;
-  hasPending?: boolean;
-  currentLabel?: string;
-}> = ({ children, itemCount, durationSeconds, showDuration = true, defaultExpanded = false, isActive = false, hasPending = false, currentLabel }) => {
-  const [expanded, setExpanded] = useState(defaultExpanded);
-  const startedAtRef = React.useRef(Date.now());
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-
-  useEffect(() => {
-    if (defaultExpanded) {
-      setExpanded(true);
-    }
-  }, [defaultExpanded]);
-
-  useEffect(() => {
-    if (!isActive) return undefined;
-    const updateElapsed = () => {
-      setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAtRef.current) / 1000)));
-    };
-    updateElapsed();
-    const timer = window.setInterval(updateElapsed, 1000);
-    return () => window.clearInterval(timer);
-  }, [isActive]);
-
-  const displayedSeconds = durationSeconds ?? elapsedSeconds;
-  const durationLabel = `Worked for ${formatActivityDuration(displayedSeconds)}`;
-  const headerLabel = showDuration || isActive
-    ? durationLabel
-    : currentLabel ?? 'Activity';
-
-  return (
-    <div className="activity-rail-shell min-w-0 w-full">
-      <button
-        type="button"
-        onClick={() => setExpanded(value => !value)}
-        className={`activity-rail-header ${
-          hasPending && !expanded
-            ? 'activity-rail-header-pending'
-            : isActive && !expanded
-              ? 'activity-rail-header-active'
-              : ''
-        }`}
-      >
-        <span className="truncate min-w-0">
-          {hasPending && !expanded
-            ? currentLabel ?? 'Approval needed'
-            : headerLabel}
-        </span>
-        {hasPending && !expanded && (
-          <span className="activity-rail-pending-badge">Pending</span>
-        )}
-        <span className="text-neutral-300 dark:text-neutral-600" aria-hidden="true">|</span>
-        <span className="text-neutral-500 dark:text-neutral-400">
-          {itemCount} {itemCount === 1 ? 'step' : 'steps'}
-        </span>
-        <svg
-          className={`w-3 h-3 text-neutral-500 dark:text-neutral-400 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={3}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
-      <div className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-        <div className="min-h-0 overflow-hidden">
-          <div className="activity-rail min-w-0 w-full">
-            {children}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const ActivityRailItem: React.FC<{
-  state?: 'active' | 'done' | 'neutral' | 'pending';
-  children: React.ReactNode;
-}> = ({ state = 'neutral', children }) => (
-  <div className="activity-rail-item min-w-0">
-    <span
-      className={`activity-rail-dot ${
-        state === 'pending'
-          ? 'activity-rail-dot-pending'
-          : state === 'active'
-          ? 'activity-rail-dot-active'
-          : state === 'done'
-            ? 'activity-rail-dot-done'
-            : ''
-      }`}
-    />
-    <div className={`activity-rail-card ${
-      state === 'pending'
-        ? 'activity-rail-card-pending'
-        : state === 'active'
-          ? 'activity-rail-card-active'
-          : ''
-    }`}>
-      {children}
-    </div>
-  </div>
-);
-
-const ReasoningRailItem: React.FC<{
-  text: string;
-  isStreaming?: boolean;
-  onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-}> = ({ text, isStreaming, onFileClick }) => {
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <ActivityRailItem state={isStreaming ? 'active' : 'done'}>
-      <div className="min-w-0">
-        <button
-          type="button"
-          onClick={() => setExpanded(value => !value)}
-          className="group/thought-header inline-flex items-center gap-1.5 px-2.5 cursor-pointer select-none min-w-0 max-w-full"
-        >
-          <span className="text-[10px] font-mono font-bold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 shrink-0">
-            Thought
-          </span>
-          <svg
-            className={`w-3 h-3 text-neutral-400 opacity-0 transition-all duration-150 shrink-0 group-hover/thought-header:opacity-100 ${expanded ? 'rotate-90' : ''}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={3}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-        <div className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-          <div className="min-h-0 overflow-hidden">
-            <div className="mt-2 pt-1">
-              <div className="text-[13px] md:text-sm text-brutal-black/85 dark:text-neutral-300 leading-relaxed break-words opacity-90">
-                <MarkdownRenderer content={text} onFileClick={onFileClick} streamingLite={isStreaming} />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </ActivityRailItem>
-  );
-};
-
-function countActivityItems(chunks: Array<{ chunk: { type: string; items?: unknown[]; blocks?: unknown[] } }>): number {
-  return chunks.reduce((total, { chunk }) => {
-    if (chunk.type === 'reasoning') return total + 1;
-    if (chunk.type === 'tool') return total + (chunk.items?.length ?? 0);
-    if (chunk.type === 'toolCall') return total + (chunk.blocks?.length ?? 0);
-    return total;
-  }, 0);
-}
-
-function formatActivityToolName(toolName: string | undefined): string {
-  return toolName ? toolName.replace(/_/g, ' ') : 'unknown tool';
-}
-
-function formatActivityDuration(totalSeconds: number): string {
-  if (totalSeconds < 60) return `${totalSeconds}s`;
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
-}
-
-function getTimestampDeltaSeconds(previousTimestamp?: string, currentTimestamp?: string): number | undefined {
-  if (!previousTimestamp || !currentTimestamp) return undefined;
-  const previousTime = new Date(previousTimestamp).getTime();
-  const currentTime = new Date(currentTimestamp).getTime();
-  if (!Number.isFinite(previousTime) || !Number.isFinite(currentTime)) return undefined;
-  const deltaSeconds = Math.floor((currentTime - previousTime) / 1000);
-  return deltaSeconds >= 0 ? deltaSeconds : undefined;
-}
-
-function getAguiActivityLabel(chunks: Array<{ chunk: { type: string; items?: AGUIPart[] } }>, isStreaming: boolean): string | undefined {
-  for (let i = chunks.length - 1; i >= 0; i -= 1) {
-    const chunk = chunks[i].chunk;
-    if (chunk.type === 'tool') {
-      const pendingTool = [...(chunk.items ?? [])].reverse().find(part => part.state === 'approval-requested' && !part.output);
-      if (pendingTool) return `Approval needed: ${formatActivityToolName(pendingTool.toolName)}`;
-      const tool = [...(chunk.items ?? [])].reverse().find(part => !part.output || part.state === 'approval-requested');
-      if (tool) return `Using ${formatActivityToolName(tool.toolName)}`;
-    }
-    if (chunk.type === 'reasoning') {
-      const text = (chunk.items ?? []).map(part => part.text || '').join('').trim();
-      if (text) return getReasoningHeader(text, isStreaming);
-    }
-  }
-  return undefined;
-}
-
-function hasAguiPendingApproval(chunks: Array<{ chunk: { type: string; items?: AGUIPart[] } }>): boolean {
-  return chunks.some(({ chunk }) => (
-    chunk.type === 'tool'
-    && (chunk.items ?? []).some(part => part.state === 'approval-requested' && !part.output)
-  ));
-}
-
-function getLegacyActivityLabel(chunks: Array<{ chunk: { type: string; blocks?: ContentBlock[] } }>, isStreaming: boolean): string | undefined {
-  for (let i = chunks.length - 1; i >= 0; i -= 1) {
-    const chunk = chunks[i].chunk;
-    if (chunk.type === 'toolCall') {
-      const pendingTool = [...(chunk.blocks ?? [])].reverse().find(block => block.approvalState === 'pending' && !block.content);
-      if (pendingTool) return `Approval needed: ${formatActivityToolName(pendingTool.toolName)}`;
-      const tool = [...(chunk.blocks ?? [])].reverse().find(block => !block.content || block.approvalState === 'pending');
-      if (tool) return `Using ${formatActivityToolName(tool.toolName)}`;
-    }
-    if (chunk.type === 'reasoning') {
-      const text = (chunk.blocks ?? []).map(block => block.content).join('\n').trim();
-      if (text) return getReasoningHeader(text, isStreaming);
-    }
-  }
-  return undefined;
-}
-
-function hasLegacyPendingApproval(chunks: Array<{ chunk: { type: string; blocks?: ContentBlock[] } }>): boolean {
-  return chunks.some(({ chunk }) => (
-    chunk.type === 'toolCall'
-    && (chunk.blocks ?? []).some(block => block.approvalState === 'pending' && !block.content)
-  ));
-}
 
 const AGUIPartsContent: React.FC<{
   parts: AGUIPart[];
@@ -732,37 +163,16 @@ const AGUIPartsContent: React.FC<{
     chunks.push({ type: currentType, items: current });
   }
 
-  const renderGroups: Array<
-    | { type: 'activity'; chunks: Array<{ chunk: typeof chunks[number]; index: number }> }
-    | { type: 'single'; chunk: typeof chunks[number]; index: number }
-  > = [];
-
-  let activityChunks: Array<{ chunk: typeof chunks[number]; index: number }> = [];
-  chunks.forEach((chunk, index) => {
-    if (chunk.type === 'tool' || chunk.type === 'reasoning') {
-      activityChunks.push({ chunk, index });
-      return;
-    }
-
-    if (activityChunks.length > 0) {
-      renderGroups.push({ type: 'activity', chunks: activityChunks });
-      activityChunks = [];
-    }
-    renderGroups.push({ type: 'single', chunk, index });
-  });
-
-  if (activityChunks.length > 0) {
-    renderGroups.push({ type: 'activity', chunks: activityChunks });
-  }
+  const renderGroups = groupActivityChunks(
+    chunks,
+    chunk => chunk.type === 'tool' || chunk.type === 'reasoning',
+  );
 
   return (
     <>
       {renderGroups.map((group, gi) => {
         if (group.type === 'activity') {
-          const activityGroupOrdinal = renderGroups
-            .slice(0, gi)
-            .filter(renderGroup => renderGroup.type === 'activity')
-            .length;
+          const activityGroupOrdinal = getActivityGroupOrdinal(renderGroups, gi);
           return (
             <ActivityRail
               key={`activity-${gi}`}
@@ -1281,28 +691,10 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     return null;
   }
 
-  const legacyRenderGroups: Array<
-    | { type: 'activity'; chunks: Array<{ chunk: typeof validChunks[number]; index: number }> }
-    | { type: 'single'; chunk: typeof validChunks[number]; index: number }
-  > = [];
-
-  let legacyActivityChunks: Array<{ chunk: typeof validChunks[number]; index: number }> = [];
-  validChunks.forEach((chunk, index) => {
-    if (chunk.type === 'reasoning' || chunk.type === 'toolCall') {
-      legacyActivityChunks.push({ chunk, index });
-      return;
-    }
-
-    if (legacyActivityChunks.length > 0) {
-      legacyRenderGroups.push({ type: 'activity', chunks: legacyActivityChunks });
-      legacyActivityChunks = [];
-    }
-    legacyRenderGroups.push({ type: 'single', chunk, index });
-  });
-
-  if (legacyActivityChunks.length > 0) {
-    legacyRenderGroups.push({ type: 'activity', chunks: legacyActivityChunks });
-  }
+  const legacyRenderGroups = groupActivityChunks(
+    validChunks,
+    chunk => chunk.type === 'reasoning' || chunk.type === 'toolCall',
+  );
 
   return (
     <div className="group w-full max-w-4xl break-all overflow-x-hidden text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
@@ -1313,10 +705,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
         <div className="overflow-hidden min-h-0 flex flex-col space-y-3 pr-2 pb-2">
           {legacyRenderGroups.map((group, groupIndex) => {
             if (group.type === 'activity') {
-              const activityGroupOrdinal = legacyRenderGroups
-                .slice(0, groupIndex)
-                .filter(renderGroup => renderGroup.type === 'activity')
-                .length;
+              const activityGroupOrdinal = getActivityGroupOrdinal(legacyRenderGroups, groupIndex);
               return (
                 <ActivityRail
                   key={`legacy-activity-${groupIndex}`}
