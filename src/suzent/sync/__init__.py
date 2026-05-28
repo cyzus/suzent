@@ -3,7 +3,6 @@
 from suzent.sync.models import (
     ConflictResolutionResult,
     DevicePresence,
-    DeviceTrust,
     EncryptedSecretBundle,
     SyncConflict,
     SyncManifest,
@@ -14,7 +13,6 @@ from suzent.sync.service import GitHubSyncService
 __all__ = [
     "ConflictResolutionResult",
     "DevicePresence",
-    "DeviceTrust",
     "EncryptedSecretBundle",
     "GitHubSyncService",
     "SyncConflict",

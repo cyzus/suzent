@@ -5,24 +5,20 @@ import re
 import subprocess
 from pathlib import Path
 
-from suzent.sync.github_api import authed_clone_url, resolve_github_token
+from suzent.sync.github_api import authed_clone_url
 
 
-def github_token_configured() -> bool:
-    return resolve_github_token() is not None
-
-
-def git_push_with_token(cwd: Path, token: str, remote_url: str, branch: str) -> str:
+def git_push_with_token(cwd: Path, remote_url: str, branch: str) -> str:
     return _run_git(cwd, "push", remote_url, branch, extra_env=_git_auth_env())
 
 
-def git_fetch_with_token(cwd: Path, token: str, remote_url: str, branch: str) -> str:
+def git_fetch_with_token(cwd: Path, remote_url: str, branch: str) -> str:
     # Use refspec to update the remote-tracking ref (origin/branch), not just FETCH_HEAD
     refspec = f"{branch}:refs/remotes/origin/{branch}"
     return _run_git(cwd, "fetch", remote_url, refspec, extra_env=_git_auth_env())
 
 
-def git_pull_with_token(cwd: Path, token: str, remote_url: str, branch: str) -> str:
+def git_pull_with_token(cwd: Path, remote_url: str, branch: str) -> str:
     return _run_git(
         cwd,
         "pull",

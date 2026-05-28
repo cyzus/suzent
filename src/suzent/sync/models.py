@@ -45,13 +45,6 @@ class DevicePresence(BaseModel):
     last_sync_revision: str | None = None
 
 
-class DeviceTrust(BaseModel):
-    device_id: str
-    public_key: str
-    approval_state: Literal["pending", "approved", "revoked"] = "pending"
-    verified_identity: dict[str, str] = Field(default_factory=dict)
-
-
 class ShibbolethKdfParams(BaseModel):
     algorithm: str = "pbkdf2-sha256"
     iterations: int = 600_000

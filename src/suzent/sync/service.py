@@ -341,9 +341,9 @@ class GitHubSyncService:
             payload_dir = Path(profile.repo_path) / PAYLOAD_DIR_NAME
             await asyncio.to_thread(self.payload_builder.apply_to_local, payload_dir)
             await asyncio.to_thread(_reload_runtime)
+            phrase = self._optional_shibboleth(profile, shibboleth)
             has_bundles = self._has_secret_bundles(payload_dir)
             if profile.encrypted_secret_sync_enabled or has_bundles:
-                phrase = self._optional_shibboleth(profile, shibboleth)
                 if phrase:
                     imported = await asyncio.to_thread(
                         self._import_secret_bundles, payload_dir, phrase
@@ -359,7 +359,6 @@ class GitHubSyncService:
                 self.payload_builder.build, Path(profile.repo_path), profile
             )
             if profile.encrypted_secret_sync_enabled:
-                phrase = self._optional_shibboleth(profile, shibboleth)
                 if phrase:
                     manifest = await asyncio.to_thread(
                         self._write_secret_bundles,

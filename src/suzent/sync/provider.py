@@ -80,18 +80,9 @@ class GitHubSyncProvider:
             ):
                 raise
             logger.info("ff-only pull failed (diverged) — rebasing local onto remote")
-        # Fetch remote state, then rebase any local commits on top of it
         self._fetch()
         remote_ref = f"{self.remote}/{self.branch}"
-        try:
-            self._git("rebase", remote_ref)
-        except RuntimeError:
-            # Rebase conflict: abandon local commits, reset to remote
-            try:
-                self._git("rebase", "--abort")
-            except RuntimeError:
-                pass
-            self._git("reset", "--hard", remote_ref)
+        self._rebase_onto(remote_ref)
         return f"Rebased onto {remote_ref}"
 
     def _discard_payload_changes(self) -> None:
@@ -140,7 +131,6 @@ class GitHubSyncProvider:
         if token and "github.com" in remote_url:
             return git_fetch_with_token(
                 self.repo_path,
-                token,
                 authed_remote_for_push(remote_url, token),
                 self.branch,
             )
@@ -152,7 +142,6 @@ class GitHubSyncProvider:
         if token and "github.com" in remote_url:
             return git_pull_with_token(
                 self.repo_path,
-                token,
                 authed_remote_for_push(remote_url, token),
                 self.branch,
             )
@@ -164,24 +153,24 @@ class GitHubSyncProvider:
         if token and "github.com" in remote_url:
             return git_push_with_token(
                 self.repo_path,
-                token,
                 authed_remote_for_push(remote_url, token),
                 self.branch,
             )
         return self._git("push", self.remote, self.branch)
 
-    def _push_with_rebase(self, revision_id: str) -> str:
-        """Push, rebasing on top of any remote commits that arrived since we fetched.
+    def _rebase_onto(self, remote_ref: str) -> None:
+        """Rebase current branch onto remote_ref, hard-resetting on conflict."""
+        try:
+            self._git("rebase", remote_ref)
+        except RuntimeError:
+            try:
+                self._git("rebase", "--abort")
+            except RuntimeError:
+                pass
+            self._git("reset", "--hard", remote_ref)
 
-        Flow:
-          1. Try a normal push.
-          2. If rejected (non-fast-forward), fetch remote and rebase our sync commit
-             on top of the remote tip.
-          3. If the rebase itself conflicts (two devices pushed payload files
-             simultaneously), abort, hard-reset to remote, re-stage the payload
-             and commit fresh on top, then push.
-          4. Push the rebased/replayed commit.
-        """
+    def _push_with_rebase(self, revision_id: str) -> str:
+        """Push, rebasing on top of any remote commits that arrived since we committed."""
         try:
             return self._push()
         except RuntimeError as exc:
@@ -189,26 +178,19 @@ class GitHubSyncProvider:
                 raise
             logger.info("Push rejected (non-fast-forward) — fetching and rebasing")
 
-        # Step 2: fetch latest remote state
         self._fetch()
-
         remote_ref = f"{self.remote}/{self.branch}"
-        try:
-            self._git("rebase", remote_ref)
-        except RuntimeError:
-            # Step 3: rebase conflict — abort and replay on top of remote
-            try:
-                self._git("rebase", "--abort")
-            except RuntimeError:
-                pass
-            self._git("reset", "--hard", remote_ref)
-            # Re-add the payload (which was already written to disk by the caller)
+        before = self._git("rev-parse", "HEAD").strip()
+        self._rebase_onto(remote_ref)
+        after = self._git("rev-parse", "HEAD").strip()
+
+        if before == after:
+            # Hard-reset discarded our commit — re-stage and recommit the payload
             self._git("add", PAYLOAD_DIR_NAME)
             staged = self._git("status", "--porcelain", "--", PAYLOAD_DIR_NAME).strip()
-            if staged and not _only_metadata_changed(staged):
-                self._git("commit", "-m", f"sync: update suzent brain {revision_id}")
-            else:
+            if not staged or _only_metadata_changed(staged):
                 return "No meaningful changes after rebase — nothing to push."
+            self._git("commit", "-m", f"sync: update suzent brain {revision_id}")
 
         return self._push()
 

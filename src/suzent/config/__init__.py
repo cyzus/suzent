@@ -214,10 +214,6 @@ class ConfigModel(BaseModel):
     ]
     tool_options: Optional[List[str]] = None
 
-    mcp_urls: Dict[str, Any] = {}
-    mcp_stdio_params: Dict[str, Any] = {}
-    mcp_enabled: Dict[str, bool] = {}
-
     instructions: str = ""
     additional_authorized_imports: List[str] = []
 
