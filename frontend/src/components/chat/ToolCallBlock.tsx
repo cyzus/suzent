@@ -127,6 +127,7 @@ interface ToolCallBlockProps {
   onRemovePolicy?: () => void;
   toolCallId?: string;
   onForceWebContext?: (contextId: string) => void;
+  inActivityRail?: boolean;
 }
 
 export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
@@ -142,6 +143,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   onRemovePolicy,
   toolCallId,
   onForceWebContext,
+  inActivityRail = false,
 }) => {
   const [expanded, setExpanded] = useState(!defaultCollapsed);
   const { t } = useI18n();
@@ -214,14 +216,36 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
     return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact;
   })();
 
+  const headerClassName = [
+    'inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm transition-colors select-none',
+    hasDetails ? 'cursor-pointer hover:bg-neutral-100 dark:hover:bg-zinc-700' : 'cursor-default',
+    expanded ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white' : 'bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white',
+    isPending && inActivityRail
+      ? 'tool-call-header-pending'
+      : isStreaming && !hasOutput
+        ? 'brutal-running-mono !text-brutal-black dark:!text-white border-2 !border-brutal-black dark:!border-white'
+        : 'border-2 border-transparent',
+  ].join(' ');
+
+  const approveButtonClass = inActivityRail
+    ? 'inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-brutal-black text-white dark:bg-white dark:text-brutal-black border-2 border-brutal-black dark:border-white rounded-sm hover:-translate-y-[1px] hover:shadow-[3px_3px_0_#000] dark:hover:shadow-[3px_3px_0_#fff] active:translate-y-[1px] active:shadow-none transition-all'
+    : 'inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-green-50 text-green-700 border-2 border-green-600 rounded-sm hover:bg-green-100 transition-colors';
+  const rememberSessionButtonClass = inActivityRail
+    ? 'inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-white dark:bg-zinc-900 text-brutal-black dark:text-white border-2 border-brutal-black dark:border-white rounded-sm hover:bg-neutral-100 dark:hover:bg-zinc-800 transition-colors'
+    : 'inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-blue-50 text-blue-700 border-2 border-blue-600 rounded-sm hover:bg-blue-100 transition-colors';
+  const rememberGlobalButtonClass = inActivityRail
+    ? 'inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-white dark:bg-zinc-900 text-brutal-black dark:text-white border-2 border-brutal-black dark:border-white rounded-sm hover:bg-neutral-100 dark:hover:bg-zinc-800 transition-colors'
+    : 'inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-violet-50 text-violet-700 border-2 border-violet-600 rounded-sm hover:bg-violet-100 transition-colors';
+  const denyButtonClass = inActivityRail
+    ? 'inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-white dark:bg-zinc-900 text-red-700 dark:text-red-300 border-2 border-red-700 dark:border-red-300 rounded-sm hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors'
+    : 'inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-red-50 text-red-700 border-2 border-red-600 rounded-sm hover:bg-red-100 transition-colors';
+
   return (
-    <div className="my-1.5 min-w-0 w-full overflow-x-hidden">
+    <div className={`${inActivityRail ? 'my-0' : 'my-1.5'} min-w-0 w-full overflow-x-hidden`}>
       {/* Compact pill header */}
       <button
         onClick={() => hasDetails && setExpanded(!expanded)}
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm transition-colors select-none ${hasDetails ? 'cursor-pointer hover:bg-neutral-100 dark:hover:bg-zinc-700' : 'cursor-default'
-          } ${expanded ? 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white' : 'bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white'
-          } ${isStreaming && !hasOutput ? 'brutal-running-mono !text-brutal-black dark:!text-white border-2 !border-brutal-black dark:!border-white' : 'border-2 border-transparent'}`}
+        className={headerClassName}
       >
         {/* Icon */}
         <ToolGroupIcon
@@ -291,17 +315,21 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
         ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}
       `}>
         <div className="overflow-hidden min-h-0 min-w-0 w-full">
-          <div className="ml-2 pl-3 pr-2 border-l-2 border-neutral-200 dark:border-zinc-700 mt-1 mb-2 space-y-3 min-w-0 overflow-x-hidden">
+          <div className={`${inActivityRail ? 'ml-0 pl-0 pr-0 border-l-0' : 'ml-2 pl-3 pr-2 border-l-2 border-neutral-200 dark:border-zinc-700'} mt-1 mb-2 space-y-3 min-w-0 overflow-x-hidden`}>
             {/* Arguments or Running status */}
             {(toolArgs || (isStreaming && !output)) && !(OutputRenderer && hasOutput && !ArgsRenderer) && (
               <div className="min-w-0 w-full overflow-hidden">
                 <div className="text-[10px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase mb-1.5 flex items-center gap-2 tracking-wide">
-                  {isStreaming && !output ? (
-                    <>
-                      <span className="text-brutal-black dark:text-neutral-300 animate-pulse">Running {displayName}...</span>
-                      <div className="h-[2px] flex-1 bg-neutral-100 dark:bg-zinc-700 overflow-hidden rounded-full">
-                        <div className="h-full bg-brutal-black dark:bg-neutral-400 w-1/3 animate-neo-scan" />
-                      </div>
+            {isStreaming && !output ? (
+              <>
+                      <span className="text-brutal-black dark:text-neutral-300 animate-pulse">
+                        {isPending ? 'Approval needed' : `Running ${displayName}...`}
+                      </span>
+                      {!isPending && (
+                        <div className="h-[2px] flex-1 bg-neutral-100 dark:bg-zinc-700 overflow-hidden rounded-full">
+                          <div className="h-full bg-brutal-black dark:bg-neutral-400 w-1/3 animate-neo-scan" />
+                        </div>
+                      )}
                     </>
                   ) : (
                     t('toolCallBlock.arguments')
@@ -332,11 +360,11 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
             )}
 
             {isPending && descriptionText && (
-              <div className="w-full min-w-0 rounded-sm border-2 border-solid border-amber-500 bg-amber-50 px-2.5 py-2 overflow-hidden">
-                <div className="text-[10px] font-mono font-bold uppercase tracking-wide text-amber-700">
+              <div className={`${inActivityRail ? 'border-brutal-black bg-white dark:bg-zinc-900 text-brutal-black dark:text-neutral-100' : 'border-amber-500 bg-amber-50 text-amber-900'} w-full min-w-0 rounded-sm border-2 border-solid px-2.5 py-2 overflow-hidden`}>
+                <div className={`${inActivityRail ? 'text-brutal-black dark:text-neutral-300' : 'text-amber-700'} text-[10px] font-mono font-bold uppercase tracking-wide`}>
                   Requested Action
                 </div>
-                <div className="mt-1 text-[12px] leading-relaxed text-amber-900 break-words whitespace-pre-wrap">
+                <div className="mt-1 text-[12px] leading-relaxed break-words whitespace-pre-wrap">
                   {descriptionText}
                 </div>
               </div>
@@ -348,7 +376,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                 <div className="flex items-center gap-2 py-2">
                   <button
                     onClick={() => onApprove(null)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-green-50 text-green-700 border-2 border-green-600 rounded-sm hover:bg-green-100 transition-colors"
+                    className={approveButtonClass}
                   >
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -358,7 +386,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                   <>
                     <button
                       onClick={() => onApprove('session')}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-blue-50 text-blue-700 border-2 border-blue-600 rounded-sm hover:bg-blue-100 transition-colors"
+                      className={rememberSessionButtonClass}
                       title={
                         isBashTool
                           ? (previewRememberedCommand
@@ -374,7 +402,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                     </button>
                     <button
                       onClick={() => onApprove('global')}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-violet-50 text-violet-700 border-2 border-violet-600 rounded-sm hover:bg-violet-100 transition-colors"
+                      className={rememberGlobalButtonClass}
                       title={
                         isBashTool
                           ? (previewRememberedCommand
@@ -391,7 +419,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
                   </>
                   <button
                     onClick={() => onDeny()}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide bg-red-50 text-red-700 border-2 border-red-600 rounded-sm hover:bg-red-100 transition-colors"
+                    className={denyButtonClass}
                   >
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

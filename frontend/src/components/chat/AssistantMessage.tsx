@@ -18,6 +18,7 @@ import type { A2UISurface } from '../../types/a2ui';
 
 interface AssistantMessageProps {
   message: Message;
+  previousMessageTimestamp?: string;
   messageIndex: number;
   isStreaming: boolean;
   isLastMessage: boolean;
@@ -345,7 +346,8 @@ const StaticContent: React.FC<{
   onOpenSubAgentSidebar?: (taskId: string) => void;
   onStopSubAgent?: (taskId: string) => void;
   onForceWebContext?: (contextId: string) => void;
-}> = ({ blocks, messageIndex, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext }) => {
+  inActivityRail?: boolean;
+}> = ({ blocks, messageIndex, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext, inActivityRail }) => {
   return (
     <>
       {blocks.map((b, bi) => {
@@ -412,6 +414,7 @@ const StaticContent: React.FC<{
               onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy && b.toolName ? () => onRemoveApprovalPolicy(b.toolName!) : undefined}
               onForceWebContext={onForceWebContext}
               toolCallId={b.toolCallId}
+              inActivityRail={inActivityRail}
             />
           );
         } else {
@@ -432,9 +435,235 @@ const getReasoningHeader = (text: string, isStreaming: boolean = false) => {
   return `${prefix}: ${summary}`;
 };
 
+const ActivityRail: React.FC<{
+  children: React.ReactNode;
+  itemCount: number;
+  durationSeconds?: number;
+  showDuration?: boolean;
+  defaultExpanded?: boolean;
+  isActive?: boolean;
+  hasPending?: boolean;
+  currentLabel?: string;
+}> = ({ children, itemCount, durationSeconds, showDuration = true, defaultExpanded = false, isActive = false, hasPending = false, currentLabel }) => {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const startedAtRef = React.useRef(Date.now());
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (defaultExpanded) {
+      setExpanded(true);
+    }
+  }, [defaultExpanded]);
+
+  useEffect(() => {
+    if (!isActive) return undefined;
+    const updateElapsed = () => {
+      setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAtRef.current) / 1000)));
+    };
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timer);
+  }, [isActive]);
+
+  const displayedSeconds = durationSeconds ?? elapsedSeconds;
+  const durationLabel = `Worked for ${formatActivityDuration(displayedSeconds)}`;
+  const headerLabel = showDuration || isActive
+    ? durationLabel
+    : currentLabel ?? 'Activity';
+
+  return (
+    <div className="activity-rail-shell min-w-0 w-full">
+      <button
+        type="button"
+        onClick={() => setExpanded(value => !value)}
+        className={`activity-rail-header ${
+          hasPending && !expanded
+            ? 'activity-rail-header-pending'
+            : isActive && !expanded
+              ? 'activity-rail-header-active'
+              : ''
+        }`}
+      >
+        <span className="truncate min-w-0">
+          {hasPending && !expanded
+            ? currentLabel ?? 'Approval needed'
+            : headerLabel}
+        </span>
+        {hasPending && !expanded && (
+          <span className="activity-rail-pending-badge">Pending</span>
+        )}
+        <span className="ml-auto text-neutral-500 dark:text-neutral-400">
+          {itemCount} {itemCount === 1 ? 'step' : 'steps'}
+        </span>
+        <svg
+          className={`w-3 h-3 text-neutral-500 dark:text-neutral-400 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={3}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {expanded && (
+        <div className="activity-rail min-w-0 w-full">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ActivityRailItem: React.FC<{
+  state?: 'active' | 'done' | 'neutral' | 'pending';
+  children: React.ReactNode;
+}> = ({ state = 'neutral', children }) => (
+  <div className="activity-rail-item min-w-0">
+    <span
+      className={`activity-rail-dot ${
+        state === 'pending'
+          ? 'activity-rail-dot-pending'
+          : state === 'active'
+          ? 'activity-rail-dot-active'
+          : state === 'done'
+            ? 'activity-rail-dot-done'
+            : ''
+      }`}
+    />
+    <div className={`activity-rail-card ${
+      state === 'pending'
+        ? 'activity-rail-card-pending'
+        : state === 'active'
+          ? 'activity-rail-card-active'
+          : ''
+    }`}>
+      {children}
+    </div>
+  </div>
+);
+
+const ReasoningRailItem: React.FC<{
+  text: string;
+  isStreaming?: boolean;
+  onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
+}> = ({ text, isStreaming, onFileClick }) => {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <ActivityRailItem state={isStreaming ? 'active' : 'done'}>
+      <div className="min-w-0">
+        <button
+          type="button"
+          onClick={() => setExpanded(value => !value)}
+          className="inline-flex items-center gap-1.5 px-2.5 cursor-pointer select-none min-w-0 max-w-full"
+        >
+          <span className="text-[10px] font-mono font-bold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 shrink-0">
+            Thought
+          </span>
+          <svg
+            className={`w-3 h-3 text-neutral-400 transition-transform duration-200 shrink-0 ${expanded ? 'rotate-180' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={3}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        <div className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+          <div className="min-h-0 overflow-hidden">
+            <div className="mt-2 pt-1">
+              <div className="text-[13px] md:text-sm text-brutal-black/85 dark:text-neutral-300 leading-relaxed break-words opacity-90">
+                <MarkdownRenderer content={text} onFileClick={onFileClick} streamingLite={isStreaming} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </ActivityRailItem>
+  );
+};
+
+function countActivityItems(chunks: Array<{ chunk: { type: string; items?: unknown[]; blocks?: unknown[] } }>): number {
+  return chunks.reduce((total, { chunk }) => {
+    if (chunk.type === 'reasoning') return total + 1;
+    if (chunk.type === 'tool') return total + (chunk.items?.length ?? 0);
+    if (chunk.type === 'toolCall') return total + (chunk.blocks?.length ?? 0);
+    return total;
+  }, 0);
+}
+
+function formatActivityToolName(toolName: string | undefined): string {
+  return toolName ? toolName.replace(/_/g, ' ') : 'unknown tool';
+}
+
+function formatActivityDuration(totalSeconds: number): string {
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+}
+
+function getTimestampDeltaSeconds(previousTimestamp?: string, currentTimestamp?: string): number | undefined {
+  if (!previousTimestamp || !currentTimestamp) return undefined;
+  const previousTime = new Date(previousTimestamp).getTime();
+  const currentTime = new Date(currentTimestamp).getTime();
+  if (!Number.isFinite(previousTime) || !Number.isFinite(currentTime)) return undefined;
+  const deltaSeconds = Math.floor((currentTime - previousTime) / 1000);
+  return deltaSeconds >= 0 ? deltaSeconds : undefined;
+}
+
+function getAguiActivityLabel(chunks: Array<{ chunk: { type: string; items?: AGUIPart[] } }>, isStreaming: boolean): string | undefined {
+  for (let i = chunks.length - 1; i >= 0; i -= 1) {
+    const chunk = chunks[i].chunk;
+    if (chunk.type === 'tool') {
+      const pendingTool = [...(chunk.items ?? [])].reverse().find(part => part.state === 'approval-requested' && !part.output);
+      if (pendingTool) return `Approval needed: ${formatActivityToolName(pendingTool.toolName)}`;
+      const tool = [...(chunk.items ?? [])].reverse().find(part => !part.output || part.state === 'approval-requested');
+      if (tool) return `Using ${formatActivityToolName(tool.toolName)}`;
+    }
+    if (chunk.type === 'reasoning') {
+      const text = (chunk.items ?? []).map(part => part.text || '').join('').trim();
+      if (text) return getReasoningHeader(text, isStreaming);
+    }
+  }
+  return undefined;
+}
+
+function hasAguiPendingApproval(chunks: Array<{ chunk: { type: string; items?: AGUIPart[] } }>): boolean {
+  return chunks.some(({ chunk }) => (
+    chunk.type === 'tool'
+    && (chunk.items ?? []).some(part => part.state === 'approval-requested' && !part.output)
+  ));
+}
+
+function getLegacyActivityLabel(chunks: Array<{ chunk: { type: string; blocks?: ContentBlock[] } }>, isStreaming: boolean): string | undefined {
+  for (let i = chunks.length - 1; i >= 0; i -= 1) {
+    const chunk = chunks[i].chunk;
+    if (chunk.type === 'toolCall') {
+      const pendingTool = [...(chunk.blocks ?? [])].reverse().find(block => block.approvalState === 'pending' && !block.content);
+      if (pendingTool) return `Approval needed: ${formatActivityToolName(pendingTool.toolName)}`;
+      const tool = [...(chunk.blocks ?? [])].reverse().find(block => !block.content || block.approvalState === 'pending');
+      if (tool) return `Using ${formatActivityToolName(tool.toolName)}`;
+    }
+    if (chunk.type === 'reasoning') {
+      const text = (chunk.blocks ?? []).map(block => block.content).join('\n').trim();
+      if (text) return getReasoningHeader(text, isStreaming);
+    }
+  }
+  return undefined;
+}
+
+function hasLegacyPendingApproval(chunks: Array<{ chunk: { type: string; blocks?: ContentBlock[] } }>): boolean {
+  return chunks.some(({ chunk }) => (
+    chunk.type === 'toolCall'
+    && (chunk.blocks ?? []).some(block => block.approvalState === 'pending' && !block.content)
+  ));
+}
+
 const AGUIPartsContent: React.FC<{
   parts: AGUIPart[];
   messageIndex: number;
+  workedDurationSeconds?: number;
   isStreaming?: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
   onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string) => void;
@@ -445,7 +674,7 @@ const AGUIPartsContent: React.FC<{
   onOpenSubAgentSidebar?: (taskId: string) => void;
   onStopSubAgent?: (taskId: string) => void;
   onForceWebContext?: (contextId: string) => void;
-}> = ({ parts, messageIndex, isStreaming, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext }) => {
+}> = ({ parts, messageIndex, workedDurationSeconds, isStreaming, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext }) => {
   // Normalize tool parts: when resume/recovery emits another tool part with the
   // same toolCallId later in the stream, merge it into the first occurrence so
   // output stays under the initial tool call instead of rendering a split block.
@@ -500,9 +729,145 @@ const AGUIPartsContent: React.FC<{
     chunks.push({ type: currentType, items: current });
   }
 
+  const renderGroups: Array<
+    | { type: 'activity'; chunks: Array<{ chunk: typeof chunks[number]; index: number }> }
+    | { type: 'single'; chunk: typeof chunks[number]; index: number }
+  > = [];
+
+  let activityChunks: Array<{ chunk: typeof chunks[number]; index: number }> = [];
+  chunks.forEach((chunk, index) => {
+    if (chunk.type === 'tool' || chunk.type === 'reasoning') {
+      activityChunks.push({ chunk, index });
+      return;
+    }
+
+    if (activityChunks.length > 0) {
+      renderGroups.push({ type: 'activity', chunks: activityChunks });
+      activityChunks = [];
+    }
+    renderGroups.push({ type: 'single', chunk, index });
+  });
+
+  if (activityChunks.length > 0) {
+    renderGroups.push({ type: 'activity', chunks: activityChunks });
+  }
+
   return (
     <>
-      {chunks.map((chunk, ci) => {
+      {renderGroups.map((group, gi) => {
+        if (group.type === 'activity') {
+          const activityGroupOrdinal = renderGroups
+            .slice(0, gi)
+            .filter(renderGroup => renderGroup.type === 'activity')
+            .length;
+          return (
+            <ActivityRail
+              key={`activity-${gi}`}
+              itemCount={countActivityItems(group.chunks)}
+              durationSeconds={workedDurationSeconds}
+              showDuration={activityGroupOrdinal === 0}
+              defaultExpanded={Boolean(isStreaming)}
+              isActive={Boolean(isStreaming)}
+              hasPending={hasAguiPendingApproval(group.chunks)}
+              currentLabel={getAguiActivityLabel(group.chunks, Boolean(isStreaming))}
+            >
+              {group.chunks.map(({ chunk, index: ci }) => {
+                if (chunk.type === 'reasoning') {
+                  const reasoningText = chunk.items.map(p => p.text || '').join('');
+                  if (!reasoningText.trim()) return null;
+                  const isChunkStreaming = isStreaming && ci === chunks.length - 1;
+                  return (
+                    <ReasoningRailItem
+                      key={`reasoning-${ci}`}
+                      text={reasoningText}
+                      isStreaming={isChunkStreaming}
+                      onFileClick={onFileClick}
+                    />
+                  );
+                }
+
+                const tools = chunk.items.map((tp, ti) => {
+                  // Pending = approval-requested with no output AND an actionable approvalId (live stream).
+                  // approval-requested with no output but no approvalId = was skipped/denied historically → show denied.
+                  const isActionablyPending = tp.state === 'approval-requested' && !tp.output && !!tp.approvalId && !!isStreaming;
+                  const approvalState = isActionablyPending ? 'pending' as const
+                    : (tp.state === 'error' || (tp.state === 'approval-requested' && !tp.output)) ? 'denied' as const
+                      : undefined;
+
+                  return {
+                    toolCallId: tp.toolCallId || `tool-${ci}-${ti}`,
+                    toolName: tp.toolName || 'unknown',
+                    toolArgs: tp.args || undefined,
+                    output: tp.output || undefined,
+                    approvalState,
+                    onApprove: (isActionablyPending && tp.approvalId && onToolApproval)
+                      ? (remember: ApprovalRememberScope) => onToolApproval(tp.approvalId!, tp.toolCallId || '', true, remember, tp.toolName)
+                      : undefined,
+                    onDeny: (isActionablyPending && tp.approvalId && onToolApproval)
+                      ? () => onToolApproval(tp.approvalId!, tp.toolCallId || '', false, null, tp.toolName)
+                      : undefined,
+                  };
+                });
+
+                return tools.map((t, i) => {
+                  const itemState = t.approvalState === 'pending'
+                    ? 'pending' as const
+                    : isStreaming && !t.output
+                      ? 'active' as const
+                      : t.output || t.approvalState === 'denied'
+                      ? 'done' as const
+                      : 'neutral' as const;
+
+                  if (t.toolName === 'agent') {
+                    const taskId = parseSubAgentTaskId(t.output);
+                    const taskState = taskId ? subAgentTasks?.[taskId] : undefined;
+                    const args = t.toolArgs ? (() => { try { return JSON.parse(t.toolArgs!); } catch { return {}; } })() : {};
+                    const defaultStatus = t.approvalState === 'pending' ? 'queued'
+                      : t.output ? 'completed'
+                      : 'running';
+                    return (
+                      <ActivityRailItem key={t.toolCallId || `sa-${ci}-${i}`} state={itemState}>
+                        <SubAgentCallBlock
+                          taskId={taskId}
+                          description={args.description}
+                          toolsAllowed={args.tools_allowed}
+                          status={taskState?.status ?? defaultStatus}
+                          resultSummary={taskState?.resultSummary}
+                          error={taskState?.error}
+                          onOpenSidebar={onOpenSubAgentSidebar}
+                          onStop={onStopSubAgent}
+                        />
+                      </ActivityRailItem>
+                    );
+                  }
+
+                  const isAutoApproved = toolApprovalPolicy?.[t.toolName] === 'always_allow';
+                  return (
+                    <ActivityRailItem key={t.toolCallId || `tool-${ci}-${i}`} state={itemState}>
+                      <ToolCallBlock
+                        toolName={t.toolName}
+                        toolArgs={t.toolArgs}
+                        output={t.output}
+                        defaultCollapsed={t.approvalState !== 'pending'}
+                        approvalState={t.approvalState}
+                        isStreaming={isStreaming && !t.output}
+                        onApprove={t.onApprove}
+                        onDeny={t.onDeny}
+                        isAutoApproved={isAutoApproved}
+                        onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy ? () => onRemoveApprovalPolicy(t.toolName) : undefined}
+                        onForceWebContext={onForceWebContext}
+                        toolCallId={t.toolCallId}
+                        inActivityRail
+                      />
+                    </ActivityRailItem>
+                  );
+                });
+              })}
+            </ActivityRail>
+          );
+        }
+
+        const { chunk, index: ci } = group;
         if (chunk.type === 'tool') {
           const tools = chunk.items.map((tp, ti) => {
             // Pending = approval-requested with no output AND an actionable approvalId (live stream).
@@ -666,6 +1031,7 @@ const RetryButton: React.FC<{ onClick: () => void; className?: string }> = ({ on
 
 export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   message,
+  previousMessageTimestamp,
   messageIndex,
   isStreaming,
   isLastMessage,
@@ -686,6 +1052,10 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   const effectiveParts = aguiParts ?? message.parts;
   const hasParts = effectiveParts && effectiveParts.length > 0;
   const isThinking = isStreamingThis && !message.content && !hasParts;
+  const workedDurationSeconds = useMemo(
+    () => getTimestampDeltaSeconds(previousMessageTimestamp, message.timestamp),
+    [previousMessageTimestamp, message.timestamp],
+  );
 
   // Suppress the streaming cursor during the assembly→reveal animation.
   // Delay showing the cursor so it doesn't flash while the box is still opening.
@@ -801,6 +1171,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               <AGUIPartsContent
                 parts={effectiveParts}
                 messageIndex={messageIndex}
+                workedDurationSeconds={workedDurationSeconds}
                 isStreaming={isStreamingThis}
                 onFileClick={onFileClick}
                 onToolApproval={onToolApproval}
@@ -907,6 +1278,29 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     return null;
   }
 
+  const legacyRenderGroups: Array<
+    | { type: 'activity'; chunks: Array<{ chunk: typeof validChunks[number]; index: number }> }
+    | { type: 'single'; chunk: typeof validChunks[number]; index: number }
+  > = [];
+
+  let legacyActivityChunks: Array<{ chunk: typeof validChunks[number]; index: number }> = [];
+  validChunks.forEach((chunk, index) => {
+    if (chunk.type === 'reasoning' || chunk.type === 'toolCall') {
+      legacyActivityChunks.push({ chunk, index });
+      return;
+    }
+
+    if (legacyActivityChunks.length > 0) {
+      legacyRenderGroups.push({ type: 'activity', chunks: legacyActivityChunks });
+      legacyActivityChunks = [];
+    }
+    legacyRenderGroups.push({ type: 'single', chunk, index });
+  });
+
+  if (legacyActivityChunks.length > 0) {
+    legacyRenderGroups.push({ type: 'activity', chunks: legacyActivityChunks });
+  }
+
   return (
     <div className="group w-full max-w-4xl break-all overflow-x-hidden text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
       {/* Badge/Assembly Container is rendered at the top of the entire message timeline */}
@@ -914,7 +1308,68 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
 
       <div className={`grid transition-[grid-template-rows] duration-500 ease-out ${isThinking ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
         <div className="overflow-hidden min-h-0 flex flex-col space-y-3 pr-2 pb-2">
-          {validChunks.map((chunk, idx) => {
+          {legacyRenderGroups.map((group, groupIndex) => {
+            if (group.type === 'activity') {
+              const activityGroupOrdinal = legacyRenderGroups
+                .slice(0, groupIndex)
+                .filter(renderGroup => renderGroup.type === 'activity')
+                .length;
+              return (
+                <ActivityRail
+                  key={`legacy-activity-${groupIndex}`}
+                  itemCount={countActivityItems(group.chunks)}
+                  durationSeconds={workedDurationSeconds}
+                  showDuration={activityGroupOrdinal === 0}
+                  defaultExpanded={isStreamingThis}
+                  isActive={isStreamingThis}
+                  hasPending={hasLegacyPendingApproval(group.chunks)}
+                  currentLabel={getLegacyActivityLabel(group.chunks, isStreamingThis)}
+                >
+                  {group.chunks.map(({ chunk, index: idx }) => {
+                    if (chunk.type === 'reasoning') {
+                      const isChunkStreaming = isStreamingThis && idx === validChunks.length - 1;
+                      return chunk.blocks.map((rb, ri) => (
+                        <ReasoningRailItem
+                          key={`legacy-reasoning-${idx}-${ri}`}
+                          text={rb.content}
+                          isStreaming={isChunkStreaming && ri === chunk.blocks.length - 1}
+                          onFileClick={onFileClick}
+                        />
+                      ));
+                    }
+
+                    return chunk.blocks.map((b, bi) => {
+                      const isPending = b.approvalState === 'pending' && !b.content;
+                      const isActive = isStreamingThis && !b.content;
+                      const isDone = Boolean(b.content) || b.approvalState === 'denied';
+                      return (
+                        <ActivityRailItem
+                          key={`legacy-tool-${idx}-${bi}`}
+                          state={isPending ? 'pending' : isActive ? 'active' : isDone ? 'done' : 'neutral'}
+                        >
+                          <StaticContent
+                            blocks={[b]}
+                            messageIndex={messageIndex}
+                            onFileClick={onFileClick}
+                            onToolApproval={onToolApproval}
+                            toolApprovalPolicy={toolApprovalPolicy}
+                            onRemoveApprovalPolicy={onRemoveApprovalPolicy}
+                            onInlineAction={onInlineAction}
+                            subAgentTasks={subAgentTasks}
+                            onOpenSubAgentSidebar={onOpenSubAgentSidebar}
+                            onStopSubAgent={onStopSubAgent}
+                            onForceWebContext={onForceWebContext}
+                            inActivityRail
+                          />
+                        </ActivityRailItem>
+                      );
+                    });
+                  })}
+                </ActivityRail>
+              );
+            }
+
+            const { chunk, index: idx } = group;
             if (chunk.type === 'reasoning') {
               const isChunkStreaming = isStreamingThis && idx === validChunks.length - 1;
               return (

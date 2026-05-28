@@ -38,6 +38,13 @@ const INITIAL_VISIBLE_MESSAGES = 80;
 const LOAD_MORE_MESSAGES = 60;
 const LOAD_MORE_SCROLL_THRESHOLD_PX = 96;
 
+function getLastMessageTimestamp(messages: Message[]): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i].timestamp) return messages[i].timestamp;
+  }
+  return undefined;
+}
+
 // ── AGUIPart[] → Store Message conversion ────────────────────────────
 function escapeHtmlForStore(unsafe: string): string {
   return unsafe
@@ -295,6 +302,13 @@ const MessageList: React.FC<{
     return -1;
   }, [messages, skipIndices]);
 
+  const getPreviousMessageTimestamp = (index: number): string | undefined => {
+    for (let i = index - 1; i >= 0; i -= 1) {
+      if (messages[i].timestamp) return messages[i].timestamp;
+    }
+    return undefined;
+  };
+
   return (
     <div className="space-y-6">
       {messages.map((m, idx) => {
@@ -319,6 +333,7 @@ const MessageList: React.FC<{
               <div className="flex justify-start w-full">
                 <AssistantMessage
                   message={groupedMessage}
+                  previousMessageTimestamp={getPreviousMessageTimestamp(idx)}
                   messageIndex={globalIdx}
                   isStreaming={false}
                   isLastMessage={false}
@@ -382,6 +397,7 @@ const MessageList: React.FC<{
               ) : (
                 <AssistantMessage
                   message={m}
+                  previousMessageTimestamp={getPreviousMessageTimestamp(idx)}
                   messageIndex={globalIdx}
                   isStreaming={streamingForCurrentChat}
                   isLastMessage={isLastMessage}
@@ -1410,6 +1426,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                         ) : (
                           <AssistantMessage
                             message={{ role: 'assistant', content: '' }}
+                            previousMessageTimestamp={getLastMessageTimestamp(safeMessages)}
                             messageIndex={safeMessages.length}
                             isStreaming={streamingForCurrentChat}
                             isLastMessage={true}
