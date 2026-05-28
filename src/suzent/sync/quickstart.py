@@ -228,7 +228,7 @@ def _create_github_repo_api(
         if repo_exists(token, username, repo_name):
             push_url = authed_clone_url(username, repo_name, token)
             try:
-                git_push_with_token(path, token, push_url, branch)
+                git_push_with_token(path, push_url, branch)
             except RuntimeError as exc:
                 warnings.append(str(exc))
             return f"Linked to existing GitHub repository {full_name}", False
@@ -238,7 +238,7 @@ def _create_github_repo_api(
             description="Suzent portable brain sync",
         )
         push_url = authed_clone_url(username, repo_name, token)
-        git_push_with_token(path, token, push_url, branch)
+        git_push_with_token(path, push_url, branch)
         return (
             f"Created private GitHub repository {full_name} and pushed initial commit",
             False,
