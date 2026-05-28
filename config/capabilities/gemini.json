@@ -476,6 +476,12 @@
     },
     "gemini/antigravity-preview-05-2026": {
       "mode": "chat"
+    },
+    "gemini/gemini-3-pro-image": {
+      "mode": "chat"
+    },
+    "gemini/gemini-3.1-flash-image": {
+      "mode": "chat"
     }
   }
 }

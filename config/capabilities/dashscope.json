@@ -871,6 +871,30 @@
     },
     "dashscope/qwen-max-0107": {
       "mode": "chat"
+    },
+    "dashscope/qwen3.7-max-2026-05-17": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.7-max-preview": {
+      "mode": "chat"
+    },
+    "dashscope/ZHIPU/GLM-5": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.7-max-2026-05-20": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.7-max": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-livetranslate-flash-realtime-2026-05-19": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-livetranslate-flash-realtime": {
+      "mode": "chat"
+    },
+    "dashscope/ZHIPU/GLM-5.1": {
+      "mode": "chat"
     }
   }
 }
