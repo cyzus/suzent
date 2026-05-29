@@ -16,6 +16,7 @@ import { SkillsView } from './components/skills/SkillsView';
 import { StatusBar } from './components/StatusBar';
 import { ChatProvider, useChatCoreStore } from './hooks/useChatStore';
 import { PlanProvider, usePlan } from './hooks/usePlan';
+import { ProjectProvider } from './hooks/useProjects';
 import { useStatusStore } from './hooks/useStatusStore';
 import { useTheme } from './hooks/useTheme';
 import { drainCronNotifications, fetchHeartbeatStatus } from './lib/api';
@@ -768,15 +769,17 @@ export default function App() {
   return (
     <I18nProvider>
       <ErrorBoundary>
-        <ChatProvider enabled={backendReady && !backendError}>
-          {!backendReady || backendError ? (
-            <BackendLoadingScreen error={backendError} />
-          ) : (
-            <PlanProvider>
-              <AppInner />
-            </PlanProvider>
-          )}
-        </ChatProvider>
+        <ProjectProvider>
+          <ChatProvider enabled={backendReady && !backendError}>
+            {!backendReady || backendError ? (
+              <BackendLoadingScreen error={backendError} />
+            ) : (
+              <PlanProvider>
+                <AppInner />
+              </PlanProvider>
+            )}
+          </ChatProvider>
+        </ProjectProvider>
       </ErrorBoundary>
     </I18nProvider>
   );

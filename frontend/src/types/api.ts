@@ -76,6 +76,18 @@ export interface ChatSummary {
   lastResultAt?: string;
   isRunning?: boolean;
   unreadCount?: number;
+  projectId?: string | null;
+  projectSlug?: string | null;
+  projectName?: string | null;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  archived: boolean;
+  chatCount: number;
 }
 
 export type PlanPhaseStatus = 'pending' | 'in_progress' | 'completed';

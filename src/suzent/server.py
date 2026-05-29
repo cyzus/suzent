@@ -47,6 +47,13 @@ from suzent.routes.chatgpt_routes import (
     start_chatgpt_login,
 )
 from suzent.routes.commands_routes import get_commands
+from suzent.routes.project_routes import (
+    create_project,
+    delete_project,
+    list_projects,
+    move_chat_to_project,
+    update_project,
+)
 from suzent.routes.config_routes import (
     get_api_keys_status,
     get_config,
@@ -672,9 +679,14 @@ app = Starlette(
         Route("/chats", get_chats, methods=["GET"]),
         Route("/chats", create_chat, methods=["POST"]),
         Route("/chats/{chat_id}/mark-read", mark_chat_read, methods=["POST"]),
+        Route("/chats/{chat_id}/project", move_chat_to_project, methods=["POST"]),
         Route("/chats/{chat_id}", get_chat, methods=["GET"]),
         Route("/chats/{chat_id}", update_chat, methods=["PUT"]),
         Route("/chats/{chat_id}", delete_chat, methods=["DELETE"]),
+        Route("/projects", list_projects, methods=["GET"]),
+        Route("/projects", create_project, methods=["POST"]),
+        Route("/projects/{project_id}", update_project, methods=["PATCH"]),
+        Route("/projects/{project_id}", delete_project, methods=["DELETE"]),
         Route("/plans", get_plans, methods=["GET"]),
         Route("/plan", get_plan, methods=["GET"]),
         Route("/config", get_config, methods=["GET"]),

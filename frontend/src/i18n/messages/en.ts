@@ -459,19 +459,30 @@ export const en = {
     placeholder: 'Type a message...',
   },
   chatList: {
-    searchSocialPlaceholder: 'Search social chats...',
     searchChatsPlaceholder: 'Search chats...',
     clearSearch: 'Clear search',
     newChat: 'New chat',
-    view: {
-      desktop: 'Desktop',
-      social: 'Social',
+    newProject: 'New project',
+    newProjectPlaceholder: 'Project name...',
+    moveToProject: 'Move to project',
+    currentLabel: 'Current',
+    filter: {
+      in: 'In',
+      all: 'All projects',
+      recentAll: 'Recent across all projects',
+      recentIn: 'Recent in {name}',
+    },
+    menu: {
+      title: 'Actions',
+      rename: 'Rename',
+      moveToProject: 'Move to project',
+      delete: 'Delete',
+      deleteDisabledHasChats: 'Move {count} chat(s) out first',
+      deleteFailed: 'Could not delete project',
     },
     empty: {
       noResultsTitle: 'No results found',
       noResultsDesc: 'Try a different search term',
-      noSocialTitle: 'No social chats',
-      noSocialDesc: 'Connect Telegram/Slack to see social chats here',
       noChatsTitle: 'No chats yet',
       noChatsDesc: 'Start a new conversation to get started',
     },
@@ -526,6 +537,7 @@ export const en = {
     showToolCalls: 'Expand Tools',
   },
   newChat: {
+    creatingIn: 'Creating in',
     greetings: {
       nightOwl: 'Night owl?',
       goodMorning: 'Good morning.',

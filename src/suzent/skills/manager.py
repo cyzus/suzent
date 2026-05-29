@@ -211,7 +211,7 @@ class SkillManager:
             ("/mnt/skills", "${MOUNT_SKILLS}"),
             ("/shared/memory", "${SHARED_PATH}/memory"),
             ("/shared", "${SHARED_PATH}"),
-            ("/persistence", "${PERSISTENCE_PATH}"),
+            ("/workspace", "${PROJECT_PATH}"),
         ]
 
         adapted = content

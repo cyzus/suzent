@@ -73,10 +73,34 @@ async def get_heartbeat_status(request: Request) -> JSONResponse:
 
 
 async def enable_heartbeat(request: Request) -> JSONResponse:
-    """Enable the heartbeat system for a chat."""
+    """Enable the heartbeat system for a chat.
+
+    Heartbeat is project-scoped: at most one chat per project may have heartbeat
+    enabled at a time, since they would otherwise both run against the same
+    ``projects/{slug}/heartbeat.md`` file from different chat contexts.
+    """
     body = await request.json()
     chat_id = body.get("chat_id")
     if chat_id:
+        db = get_database()
+        project_id = db.get_chat_project_id(chat_id)
+        if project_id:
+            existing = db.find_heartbeat_enabled_chat_in_project(
+                project_id, exclude_chat_id=chat_id
+            )
+            if existing is not None:
+                return JSONResponse(
+                    {
+                        "error": (
+                            f"Heartbeat is already enabled on chat '{existing.title}' "
+                            f"in this project. Disable it there first."
+                        ),
+                        "conflicting_chat_id": existing.id,
+                        "conflicting_chat_title": existing.title,
+                    },
+                    status_code=409,
+                )
+
         ok = _update_chat_config(chat_id, {"heartbeat_enabled": True})
         if not ok:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
@@ -119,7 +143,7 @@ async def get_heartbeat_md(request: Request) -> JSONResponse:
     """Get heartbeat instructions for a chat."""
     chat_id = request.query_params.get("chat_id")
     if chat_id:
-        hb_path = Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
+        hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
         if hb_path.exists():
             try:
                 content = hb_path.read_text(encoding="utf-8")
@@ -138,7 +162,7 @@ async def save_heartbeat_md(request: Request) -> JSONResponse:
     if not chat_id:
         return JSONResponse({"error": "chat_id required"}, status_code=400)
 
-    hb_path = Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
+    hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
     try:
         hb_path.parent.mkdir(parents=True, exist_ok=True)
         hb_path.write_text(content, encoding="utf-8")

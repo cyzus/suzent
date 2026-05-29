@@ -706,8 +706,8 @@ async def upload_files(request: Request) -> JSONResponse:
         # Create resolver for this chat session
         resolver = _get_resolver_for_request(chat_id)
 
-        # Resolve /persistence/uploads/ to host path
-        uploads_virtual_path = "/persistence/uploads"
+        # Resolve /uploads/ to host path (chat-scoped, inside project)
+        uploads_virtual_path = "/uploads"
         uploads_host_path = resolver.resolve(uploads_virtual_path)
 
         # Create uploads directory if it doesn't exist

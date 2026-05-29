@@ -20,20 +20,24 @@ class PathResolver:
     Unified path resolution for sandbox and non-sandbox contexts.
 
     In sandbox mode:
-      - /persistence/* → data/sandbox-data/sessions/{chat_id}/*
-      - /shared/*      → data/sandbox-data/shared/*
-      - /uploads/*     → data/sandbox-data/sessions/{chat_id}/uploads/*
+      - project cwd → data/sandbox-data/projects/{slug}/  (mounted at /workspace)
+      - /shared/*   → data/sandbox-data/shared/*           (mounted at /shared)
+      - /uploads/*  → data/sandbox-data/projects/{slug}/uploads/*
       - [Custom Mounts] → mapped host paths
 
     In non-sandbox mode:
-      - Virtual /persistence, /shared, and /uploads paths use the same host dirs
-      - Absolute paths are allowed if within allowed directories
+      - The same project directories back virtual /shared and /uploads.
+      - Absolute paths are allowed if within allowed directories.
+
+    All chat-related files (heartbeat.md, context.md, plan.md, images/, uploads/)
+    live in the project directory and are shared across all chats in the project.
     """
 
     def __init__(
         self,
         chat_id: str,
         sandbox_enabled: bool,
+        project_slug: Optional[str] = None,
         sandbox_data_path: Optional[str] = None,
         uploads_path: Optional[str] = None,
         custom_volumes: Optional[List[str]] = None,
@@ -45,8 +49,10 @@ class PathResolver:
         Args:
             chat_id: The chat session identifier
             sandbox_enabled: Whether sandbox mode is active
+            project_slug: The slug of the project this chat belongs to. If None,
+                resolved from chat_id via the database (defaulting to the default project).
             sandbox_data_path: Base path for sandbox data (default: from CONFIG)
-            uploads_path: Deprecated; uploads live under each session directory
+            uploads_path: Deprecated; uploads live under each chat directory
             custom_volumes: List of "host:container" volume mapping strings
             workspace_root: Root directory for host mode execution (default: from CONFIG)
         """
@@ -63,12 +69,33 @@ class PathResolver:
         self.workspace_root = Path(workspace_root or CONFIG.workspace_root).resolve()
         self.custom_mounts: Dict[str, Path] = {}  # container_path -> host_path
 
+        # Resolve project slug if not supplied
+        if project_slug is None:
+            project_slug = self._resolve_project_slug(chat_id)
+        self.project_slug = project_slug
+        self.project_dir = (
+            self.sandbox_data_path / "projects" / project_slug
+        ).resolve()
+
         # Parse custom volumes (supported in both modes for consistency)
         if custom_volumes:
             self._parse_custom_volumes(custom_volumes)
 
         # Ensure directories exist
         self._ensure_directories()
+
+    @staticmethod
+    def _resolve_project_slug(chat_id: str) -> str:
+        """Resolve a chat's project slug via the database, falling back to default."""
+        try:
+            from suzent.database import get_database
+
+            return get_database().get_chat_project_slug(chat_id)
+        except Exception as e:
+            logger.debug(f"Could not resolve project slug for chat {chat_id}: {e}")
+            from suzent.database import ChatDatabase
+
+            return ChatDatabase.DEFAULT_PROJECT_SLUG
 
     @staticmethod
     def parse_volume_string(vol: str) -> Optional[Tuple[str, str]]:
@@ -151,26 +178,14 @@ class PathResolver:
         """Create necessary directories if they don't exist."""
 
         try:
-            # Always use the consistent sandbox-style structure
-            (self.sandbox_data_path / "sessions" / self.chat_id).mkdir(
-                parents=True, exist_ok=True
-            )
+            self.project_dir.mkdir(parents=True, exist_ok=True)
             (self.sandbox_data_path / "shared").mkdir(parents=True, exist_ok=True)
-
-            # In legacy mode, we might still want to ensure uploads path exists if used,
-            # but for unification we prefer the sandbox structure.
-            # We'll leave uploads_path unused to enforce the new standard.
         except Exception as e:
             logger.warning(f"Could not create directories: {e}")
 
     def get_working_dir(self) -> Path:
-        """
-        Get the working directory for this context.
-
-        Returns:
-            Path to the working directory
-        """
-        return self.sandbox_data_path / "sessions" / self.chat_id
+        """Project directory — the agent's cwd, shared across all chats in the project."""
+        return self.project_dir
 
     def resolve(self, virtual_path: str) -> Path:
         """
@@ -233,7 +248,7 @@ class PathResolver:
             is_windows_absolute = len(virtual_path) > 1 and virtual_path[1] == ":"
             is_unix_absolute = virtual_path.startswith("/") and not any(
                 virtual_path.startswith(prefix)
-                for prefix in ["/persistence", "/shared", "/uploads", "/mnt"]
+                for prefix in ["/shared", "/uploads", "/mnt", "/workspace"]
             )
             if is_windows_absolute or is_unix_absolute:
                 resolved = Path(virtual_path).resolve()
@@ -248,19 +263,22 @@ class PathResolver:
 
     def _resolve_virtual_path(self, path: str) -> Path:
         """
-        Resolve virtual paths like /persistence, /shared, /uploads.
-        Used by both sandbox and host modes.
+        Resolve virtual paths into host filesystem paths.
 
-        Args:
-            path: Virtual path to resolve
-
-        Returns:
-            Resolved Path on host filesystem
+        Mapping:
+          /workspace/*  → project_dir/*  (project cwd inside sandbox)
+          /shared/*     → sandbox_data_path/shared/*
+          /uploads/*    → chat_dir/uploads/*
+          /mnt/*        → custom mount (must be registered)
+          other paths   → resolved relative to project_dir
         """
-        if path.startswith("/persistence/") or path == "/persistence":
-            rel_path = path[len("/persistence") :].lstrip("/")
-            base = self.sandbox_data_path / "sessions" / self.chat_id
-            return (base / rel_path).resolve() if rel_path else base.resolve()
+        if path.startswith("/workspace/") or path == "/workspace":
+            rel_path = path[len("/workspace") :].lstrip("/")
+            return (
+                (self.project_dir / rel_path).resolve()
+                if rel_path
+                else self.project_dir
+            )
 
         if path.startswith("/shared/") or path == "/shared":
             rel_path = path[len("/shared") :].lstrip("/")
@@ -269,7 +287,7 @@ class PathResolver:
 
         if path.startswith("/uploads/") or path == "/uploads":
             rel_path = path[len("/uploads") :].lstrip("/")
-            base = self.sandbox_data_path / "sessions" / self.chat_id / "uploads"
+            base = self.project_dir / "uploads"
             base.mkdir(parents=True, exist_ok=True)
             return (base / rel_path).resolve() if rel_path else base.resolve()
 
@@ -282,14 +300,12 @@ class PathResolver:
             )
 
         if path.startswith("/"):
-            # Absolute paths default to /persistence if no other match
+            # Absolute paths default to project_dir if no other match
             rel_path = path.lstrip("/")
-            base = self.sandbox_data_path / "sessions" / self.chat_id
-            return (base / rel_path).resolve()
+            return (self.project_dir / rel_path).resolve()
 
-        # Relative paths are relative to /persistence
-        base = self.sandbox_data_path / "sessions" / self.chat_id
-        return (base / path).resolve()
+        # Relative paths are relative to project_dir (the agent's cwd)
+        return (self.project_dir / path).resolve()
 
     def _validate_within_workspace(self, resolved: Path) -> Path:
         """
@@ -315,8 +331,7 @@ class PathResolver:
 
         # Check if within sandbox data directories (same validation as sandbox mode)
         allowed_sandbox_roots = [
-            self.sandbox_data_path / "sessions" / self.chat_id,
-            self.sandbox_data_path / "sessions" / self.chat_id / "uploads",
+            self.project_dir,
             self.sandbox_data_path / "shared",
         ]
         for root in allowed_sandbox_roots:
@@ -341,10 +356,9 @@ class PathResolver:
 
     def _validate_path(self, resolved: Path) -> None:
         """Validate that path is within allowed directories."""
-        # Allowed roots include standard dirs AND all custom volume host paths
+        # Allowed roots: project_dir (covers /workspace, /uploads, chat_dir), shared, custom mounts
         allowed_roots = [
-            self.sandbox_data_path / "sessions" / self.chat_id,
-            self.sandbox_data_path / "sessions" / self.chat_id / "uploads",
+            self.project_dir,
             self.sandbox_data_path / "shared",
         ]
         allowed_roots.extend(self.custom_mounts.values())
@@ -382,14 +396,12 @@ class PathResolver:
 
         Returns:
             List of (virtual_path, host_path) tuples.
-            e.g. [("/persistence", D:/.../sessions/123), ("/mnt/skills", D:/skills), ...]
+            e.g. [("/workspace", D:/.../projects/default), ("/mnt/skills", D:/skills), ...]
         """
         roots = []
 
         # 1. Standard Roots
-        roots.append(
-            ("/persistence", self.sandbox_data_path / "sessions" / self.chat_id)
-        )
+        roots.append(("/workspace", self.project_dir))
         roots.append(("/shared", self.sandbox_data_path / "shared"))
 
         # 2. Custom Mounts
@@ -441,12 +453,7 @@ class PathResolver:
         ]
 
         # Add standard roots
-        potential_parents.append(
-            (
-                (self.sandbox_data_path / "sessions" / self.chat_id).resolve(),
-                "/persistence",
-            )
-        )
+        potential_parents.append((self.project_dir.resolve(), "/workspace"))
         potential_parents.append(
             ((self.sandbox_data_path / "shared").resolve(), "/shared")
         )

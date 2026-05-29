@@ -1031,6 +1031,7 @@ class SocialBrain(BaseBrain):
             else:
                 title = f"Chat with {message.sender_name} ({message.platform})"
             logger.info(f"Creating new social chat: {title} ({chat_id})")
+            social_project = db.get_project_by_slug(db.SOCIAL_PROJECT_SLUG)
             db.create_chat(
                 title=title,
                 config={
@@ -1039,4 +1040,5 @@ class SocialBrain(BaseBrain):
                     "target_id": target_id,
                 },
                 chat_id=chat_id,
+                project_id=social_project.id if social_project else None,
             )

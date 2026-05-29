@@ -386,19 +386,30 @@ export const zhCN = {
     placeholder: '输入消息...',
   },
   chatList: {
-    searchSocialPlaceholder: '搜索社交对话…',
     searchChatsPlaceholder: '搜索对话…',
     clearSearch: '清空搜索',
     newChat: '新对话',
-    view: {
-      desktop: '桌面端',
-      social: '社交入口',
+    newProject: '新建项目',
+    newProjectPlaceholder: '项目名称…',
+    moveToProject: '移动到项目',
+    currentLabel: '当前',
+    filter: {
+      in: '位于',
+      all: '所有项目',
+      recentAll: '所有项目近期对话',
+      recentIn: '{name} 近期对话',
+    },
+    menu: {
+      title: '操作',
+      rename: '重命名',
+      moveToProject: '移动到项目',
+      delete: '删除',
+      deleteDisabledHasChats: '请先移走该项目中的 {count} 个对话',
+      deleteFailed: '无法删除项目',
     },
     empty: {
       noResultsTitle: '未找到结果',
       noResultsDesc: '试试换一个关键词',
-      noSocialTitle: '暂无社交对话',
-      noSocialDesc: '连接 Telegram/Slack 后会在这里显示对话',
       noChatsTitle: '暂无对话',
       noChatsDesc: '开始一个新对话以继续',
     },
@@ -453,6 +464,7 @@ export const zhCN = {
     showToolCalls: '展开工具',
   },
   newChat: {
+    creatingIn: '将创建于',
     greetings: {
       nightOwl: '夜猫子？',
       goodMorning: '早上好。',

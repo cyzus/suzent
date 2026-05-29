@@ -13,7 +13,6 @@ import traceback
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
-from pathlib import Path
 
 from suzent.config import CONFIG
 from suzent.database import get_database
@@ -146,14 +145,8 @@ async def chat(request: Request) -> StreamingResponse:
                     HEARTBEAT_BASE_INSTRUCTIONS,
                     HEARTBEAT_PROMPT_TEMPLATE,
                 )
-                from pathlib import Path
 
-                hb_path = (
-                    Path(CONFIG.sandbox_data_path)
-                    / "sessions"
-                    / chat_id
-                    / "heartbeat.md"
-                )
+                hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
                 custom = (
                     hb_path.read_text(encoding="utf-8").strip()
                     if hb_path.exists()
@@ -383,20 +376,33 @@ async def live_stream(request: Request) -> StreamingResponse:
 
 
 async def get_chats(request: Request) -> JSONResponse:
-    """Return list of chat summaries with pagination and optional search."""
+    """Return list of chat summaries with pagination and optional search.
+
+    Query params:
+        limit, offset: pagination
+        search: substring match on title or message body
+        project_id: filter to chats in this project
+        platform: legacy filter; prefer ``project_id`` going forward
+    """
     try:
         db = get_database()
 
-        # Parse query parameters
         limit = int(request.query_params.get("limit", 50))
         offset = int(request.query_params.get("offset", 0))
         search = request.query_params.get("search", "").strip() or None
         platform = request.query_params.get("platform", "").strip() or None
+        project_id = request.query_params.get("project_id", "").strip() or None
 
         chats = db.list_chats(
-            limit=limit, offset=offset, search=search, platform=platform
+            limit=limit,
+            offset=offset,
+            search=search,
+            platform=platform,
+            project_id=project_id,
         )
-        total = db.get_chat_count(search=search, platform=platform)
+        total = db.get_chat_count(
+            search=search, platform=platform, project_id=project_id
+        )
 
         # Convert Pydantic models to dicts, annotating live background streams
         chats_data = [
@@ -414,6 +420,7 @@ async def get_chats(request: Request) -> JSONResponse:
                 "limit": limit,
                 "offset": offset,
                 "search": search,
+                "projectId": project_id,
             }
         )
     except Exception as e:
@@ -455,7 +462,7 @@ async def get_chat(request: Request) -> JSONResponse:
         if context_usage:
             response_chat["contextUsage"] = context_usage
 
-        hb_path = Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
+        hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
         if hb_path.exists():
             try:
                 if "config" not in response_chat:
@@ -474,7 +481,7 @@ async def get_chat(request: Request) -> JSONResponse:
 
 
 async def create_chat(request: Request) -> JSONResponse:
-    """Create a new chat."""
+    """Create a new chat. Optional ``project_id`` body field assigns to a project."""
     try:
         data = await request.json()
         title = data.get("title", "New Chat")
@@ -485,14 +492,13 @@ async def create_chat(request: Request) -> JSONResponse:
             else None
         )
         messages = data.get("messages", [])
+        project_id = data.get("project_id") or data.get("projectId")
 
         db = get_database()
-        chat_id = db.create_chat(title, config, messages)
+        chat_id = db.create_chat(title, config, messages, project_id=project_id)
 
         if instructions is not None:
-            hb_path = (
-                Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
-            )
+            hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
             try:
                 hb_path.parent.mkdir(parents=True, exist_ok=True)
                 hb_path.write_text(instructions, encoding="utf-8")
@@ -539,9 +545,7 @@ async def update_chat(request: Request) -> JSONResponse:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
 
         if instructions is not None:
-            hb_path = (
-                Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
-            )
+            hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
             try:
                 hb_path.parent.mkdir(parents=True, exist_ok=True)
                 hb_path.write_text(instructions, encoding="utf-8")
@@ -558,7 +562,7 @@ async def update_chat(request: Request) -> JSONResponse:
             mode="json", by_alias=True, exclude={"agent_state"}
         )
 
-        hb_path = Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
+        hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
         if hb_path.exists():
             try:
                 if "config" not in response_chat:
