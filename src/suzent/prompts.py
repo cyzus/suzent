@@ -134,6 +134,7 @@ The following directories are mapped and available for your use:
 
 EXECUTION_MODE_SECTION_SANDBOX = """# Environment: Sandbox
 You are in a sandbox environment. Your current working directory is the project workspace at `/workspace` (shared across all chats in this project). Other available mounts: `/shared` (global), `/mnt/...` (custom volumes). Host paths are inaccessible.
+Env vars available: PROJECT_PATH=/workspace, SHARED_PATH=/shared, PROJECT_SLUG, and CHAT_ID.
 """
 
 EXECUTION_MODE_SECTION_HOST = """# Environment: Host

@@ -329,6 +329,10 @@ class DockerSession:
             pass
 
         env["SUZENT_BASE_URL"] = base_url
+        env["CHAT_ID"] = self.session_id
+        env["PROJECT_SLUG"] = self.project_slug
+        env["PROJECT_PATH"] = Defaults.WORKSPACE_MOUNT
+        env["SHARED_PATH"] = Defaults.SHARED_MOUNT
         return env
 
     # -------------------------------------------------------------------------
@@ -348,6 +352,7 @@ class DockerSession:
             "volumes": sorted(self.custom_volumes),
             "setup_command": self.setup_command,
             "env_keys": sorted(self.env.keys()),
+            "runtime_env_schema": 2,
         }
         return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()[
             :16

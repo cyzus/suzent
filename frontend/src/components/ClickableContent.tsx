@@ -9,7 +9,7 @@ interface ClickableContentProps {
 
 /**
  * Minimal fallback for clickable file paths in user messages.
- * Only detects absolute paths with extensions (e.g., /persistence/file.txt).
+ * Only detects absolute paths with extensions (e.g., /workspace/file.txt).
  * Agent messages should use markdown links with file:// protocol instead.
  */
 export const ClickableContent: React.FC<ClickableContentProps> = ({ content, onFileClick }) => {
@@ -18,8 +18,8 @@ export const ClickableContent: React.FC<ClickableContentProps> = ({ content, onF
         if (!content || !onFileClick) return [];
 
         // Minimal regex: only known sandbox filesystem paths with extensions
-        // Example: /persistence/file.txt or /mnt/data/report.pdf
-        const pathRegex = /\/(persistence|mnt)\/[\w\-./]+\.\w{2,5}\b/g;
+        // Example: /workspace/file.txt or /shared/report.pdf
+        const pathRegex = /\/(workspace|shared|mnt)\/[\w\-./]+\.\w{2,5}\b/g;
 
         const parts: Array<{ type: 'text' | 'path'; value: string; path: string }> = [];
         let lastIndex = 0;

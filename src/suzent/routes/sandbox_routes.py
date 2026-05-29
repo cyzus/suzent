@@ -152,7 +152,7 @@ def _get_resolver_for_request(
     if override_volumes is not None and "sandbox_enabled" not in locals():
         sandbox_enabled = CONFIG.sandbox_enabled
 
-    # Create resolver (sandbox_enabled=True implies sandbox paths /persistence etc)
+    # Create resolver for virtual paths such as /workspace, /shared, and custom mounts.
     return PathResolver(
         chat_id=chat_id, sandbox_enabled=sandbox_enabled, custom_volumes=custom_volumes
     )
@@ -225,18 +225,18 @@ async def list_sandbox_files(request: Request) -> JSONResponse:
         # 2. Actual file listing
         # Try to resolve to a real path.
         # Note: If we are at "/" or "/mnt" which are purely virtual (no mapped host path yet),
-        # resolver.resolve() might fail or default to persistence.
+        # resolver.resolve() might fail or default to the project workspace.
         # We only want to list REAL files if the path corresponds to a valid mount or inside one.
 
         try:
             # We use a slightly different check here.
             # We want to know if there is a real directory backing this path.
             # resolver.resolve() raises ValueError if path is invalid/traversal
-            # It maps "/" to /persistence usually, or custom logic.
+            # It maps unknown absolute paths into the project workspace.
 
             # Let's see if we are inside a mount.
-            # PathResolver.resolve maps unknown paths relative to session_dir.
-            # But if request_path is just a virtual parent (like "/mnt"), it shouldn't map to persistence!
+            # PathResolver.resolve maps unknown paths relative to the project workspace.
+            # But if request_path is just a virtual parent (like "/mnt"), it shouldn't map to workspace.
 
             # Check if this path IS a mount point or INSIDE one
             best_match = None
@@ -281,28 +281,21 @@ async def list_sandbox_files(request: Request) -> JSONResponse:
             else:
                 # If we are NOT in a mount (e.g. "/mnt" where only "/mnt/data" exists),
                 # then we only show virtual children (which we already did).
-                # Unless... "/" defaults to persistence?
-                # PathResolver defaults "/" to persistence.
-                # But if we treat "/" as purely virtual root for mounts, we might hide persistence if not explicit?
-                # Actually, get_virtual_roots includes /persistence.
-                # So if we are at "/", /persistence is a child.
-
-                # Wait, PathResolver says:
-                # roots.append(("/persistence", ...))
+                # Unless... "/" defaults to workspace?
+                # PathResolver defaults "/" to the project workspace.
+                # But if we treat "/" as purely virtual root for mounts, we might hide workspace if not explicit.
+                # get_virtual_roots includes /workspace, so if we are at "/", /workspace is a child.
                 # roots.append(("/shared", ...))
 
-                # So if I am at "/", "persistence" and "shared" will be in virtual_children.
-                # Accessing "/" directly doesn't list contents of persistence unless mapped to "/".
-                # The current frontend expects "persistence" folder to show up?
-                # Or does it expect "/" to SHOW the contents of persistence?
+                # So if I am at "/", "workspace" and "shared" will be in virtual_children.
+                # Accessing "/" directly doesn't list contents of workspace unless mapped to "/".
 
                 # SandboxFiles.tsx default path is "/".
                 # Old logic:
-                # mounts["/persistence"] = ...
-                # if request_path == "/": virtual_children adds "persistence", "shared".
+                # if request_path == "/": virtual_children adds "workspace", "shared".
 
-                # So yes, at "/" we just show the folders "persistence", "shared", "mnt" etc.
-                # We do NOT list files inside persistence at root.
+                # So yes, at "/" we just show the folders "workspace", "shared", "mnt" etc.
+                # We do NOT list files inside workspace at root.
                 pass
 
         except Exception:
@@ -658,7 +651,7 @@ async def serve_sandbox_file_wildcard(request: Request):
 
         # FIX: Ensure path is treated as absolute virtual path (relative to sandbox root)
         # The frontend strips the leading slash to avoid double-slashes in the URL,
-        # but the resolver needs it to differentiate "/persistence" (virtual root) from "persistence" (folder in session).
+        # but the resolver needs it to differentiate "/workspace" (virtual root) from "workspace" (folder in project).
         if not raw_path.startswith("/"):
             raw_path = "/" + raw_path
 
@@ -683,7 +676,7 @@ async def serve_sandbox_file_wildcard(request: Request):
 
 async def upload_files(request: Request) -> JSONResponse:
     """
-    Upload files to sandbox /persistence/uploads/ directory.
+    Upload files to sandbox /uploads/ directory.
     Route: POST /api/sandbox/upload?chat_id={chat_id}
 
     Accepts multipart form-data with 'files' field (multiple files).

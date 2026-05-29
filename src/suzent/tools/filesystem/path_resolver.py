@@ -212,7 +212,7 @@ class PathResolver:
         return self._resolve_path(virtual_path)
 
     def _resolve_path(self, virtual_path: str) -> Path:
-        """Resolve path using unified logic (custom mounts, persistence, shared)."""
+        """Resolve path using unified logic (custom mounts, workspace, shared)."""
         # 1. Check custom mounts first (works in both sandbox and host modes)
         # Check for longest matching prefix to handle nested mounts correctly
         best_match = None

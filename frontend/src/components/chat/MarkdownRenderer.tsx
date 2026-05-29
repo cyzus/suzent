@@ -56,7 +56,7 @@ function suzentSessionFileUrlToServeUrl(url: string): string | null {
   const [, chatId, relativePath] = match;
   if (!chatId || !relativePath || relativePath.includes('..')) return null;
 
-  return `${getApiBase()}/sandbox/serve/${encodeURIComponent(chatId)}/persistence/${encodePathSegments(relativePath)}`;
+  return `${getApiBase()}/sandbox/serve/${encodeURIComponent(chatId)}/workspace/${encodePathSegments(relativePath)}`;
 }
 
 function normalizeMarkdownUrl(url: string): string {
@@ -432,8 +432,8 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
                 return <FileButton path={path} displayName={displayName} onFileClick={onFileClick} />;
               }
 
-              // Pattern 2: Plain absolute path in backticks: `/persistence/file.txt`
-              const absolutePathMatch = codeContent.match(/^\/(persistence|mnt)\/[\w\-./]+\.\w{2,5}$/);
+              // Pattern 2: Plain absolute path in backticks: `/workspace/file.txt`
+              const absolutePathMatch = codeContent.match(/^\/(workspace|shared|mnt)\/[\w\-./]+\.\w{2,5}$/);
               if (absolutePathMatch) {
                 const path = codeContent.trim();
                 return <FileButton path={path} displayName={path} onFileClick={onFileClick} />;
@@ -464,7 +464,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
             const hrefStr = href || '';
 
             // Handle file:// links and absolute paths as clickable file buttons
-            if (onFileClick && (hrefStr.startsWith('file://') || hrefStr.startsWith('/persistence/') || hrefStr.startsWith('/mnt/'))) {
+            if (onFileClick && (hrefStr.startsWith('file://') || hrefStr.startsWith('/workspace/') || hrefStr.startsWith('/shared/') || hrefStr.startsWith('/mnt/'))) {
               const path = hrefStr.startsWith('file://') ? hrefStr.replace('file://', '') : hrefStr;
               return <FileButton path={path} displayName={String(children)} onFileClick={onFileClick} />;
             }

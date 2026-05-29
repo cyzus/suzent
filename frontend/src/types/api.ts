@@ -12,7 +12,7 @@ export interface ImageAttachment {
 export interface FileAttachment {
   id: string;
   filename: string;
-  path: string;           // Virtual path: /persistence/uploads/filename
+  path: string;           // Virtual path: /uploads/filename
   size: number;           // Bytes
   mime_type: string;
   uploaded_at?: string;

@@ -801,6 +801,7 @@ class BashTool(Tool):
         if self.chat_id:
             env["CHAT_ID"] = self.chat_id
             project_slug = get_database().get_chat_project_slug(self.chat_id)
+            env["PROJECT_SLUG"] = project_slug
             env["PROJECT_PATH"] = str(sandbox_data_path / "projects" / project_slug)
         env["SHARED_PATH"] = str(sandbox_data_path / "shared")
 
