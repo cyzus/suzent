@@ -95,6 +95,36 @@ function HeaderTitle({ text, onUnlock }: HeaderTitleProps): React.ReactElement {
   );
 }
 
+interface MacTrafficLightsProps {
+  isMaximized: boolean;
+  onMaximize: () => void;
+}
+
+function MacTrafficLights({ isMaximized, onMaximize }: MacTrafficLightsProps): React.ReactElement {
+  const { t } = useI18n();
+  const appWindow = window.__TAURI__?.window.getCurrentWindow();
+
+  return (
+    <div className="mr-3 flex h-10 shrink-0 items-center gap-2" aria-label={t('app.title')}>
+      <button
+        onClick={() => appWindow?.close()}
+        className="h-3 w-3 rounded-full border border-[#e0443e] bg-[#ff5f57] transition-opacity hover:opacity-90"
+        title={t('titlebar.close')}
+      />
+      <button
+        onClick={() => appWindow?.minimize()}
+        className="h-3 w-3 rounded-full border border-[#dfa123] bg-[#febc2e] transition-opacity hover:opacity-90"
+        title={t('titlebar.minimize')}
+      />
+      <button
+        onClick={onMaximize}
+        className="h-3 w-3 rounded-full border border-[#1ea833] bg-[#28c840] transition-opacity hover:opacity-90"
+        title={isMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
+      />
+    </div>
+  );
+}
+
 type MainView = 'chat' | 'memory' | 'skills' | 'emotes';
 
 interface UpdateStatus {
@@ -242,14 +272,15 @@ function AppInner(): React.ReactElement {
   const setChatHeartbeatStatus = useHeartbeatRunning(s => s.setChatStatus);
   const { theme, toggleTheme } = useTheme();
   const { t } = useI18n();
-  const [isWindowsMaximized, setIsWindowsMaximized] = useState(false);
+  const [isWindowMaximized, setIsWindowMaximized] = useState(false);
 
   const desktopPlatform = React.useMemo(
     () => detectDesktopPlatform(navigator.userAgent, navigator.platform),
     [],
   );
-  const showStandaloneTitleBar = desktopPlatform !== 'windows';
+  const showStandaloneTitleBar = desktopPlatform !== 'windows' && desktopPlatform !== 'macos';
   const showWindowsWindowControls = desktopPlatform === 'windows';
+  const showMacWindowControls = !!window.__TAURI__ && desktopPlatform === 'macos';
   const appWindow = window.__TAURI__?.window.getCurrentWindow();
 
   // Use refs so the interval callback always sees the latest values without re-creating the interval.
@@ -331,13 +362,13 @@ function AppInner(): React.ReactElement {
     });
   }
 
-  async function toggleWindowsMaximize(): Promise<void> {
+  async function toggleWindowMaximize(): Promise<void> {
     await appWindow?.toggleMaximize();
-    setIsWindowsMaximized(prev => !prev);
+    setIsWindowMaximized(prev => !prev);
   }
 
-  function handleWindowsHeaderMouseDown(event: React.MouseEvent<HTMLElement>): void {
-    if (!showWindowsWindowControls) {
+  function handleHeaderMouseDown(event: React.MouseEvent<HTMLElement>): void {
+    if (!showWindowsWindowControls && !showMacWindowControls) {
       return;
     }
 
@@ -428,33 +459,39 @@ function AppInner(): React.ReactElement {
           isOpen={isLeftSidebarOpen}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onClose={() => setIsLeftSidebarOpen(false)}
+          titlebarControls={
+            showMacWindowControls && isLeftSidebarOpen ? (
+              <MacTrafficLights isMaximized={isWindowMaximized} onMaximize={toggleWindowMaximize} />
+            ) : null
+          }
         />
         <div className="flex-1 flex flex-col overflow-hidden w-full">
           <header
             className="relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12"
-            onMouseDown={handleWindowsHeaderMouseDown}
+            onMouseDown={handleHeaderMouseDown}
           >
             <div className="flex items-center gap-2 md:gap-0">
+              {showMacWindowControls && !isLeftSidebarOpen ? (
+                <MacTrafficLights isMaximized={isWindowMaximized} onMaximize={toggleWindowMaximize} />
+              ) : null}
               {isLeftSidebarOpen ? (
                 <div className="h-10 w-10 mr-3" aria-hidden="true" />
               ) : (
                 <div
-                  className="mr-3 group cursor-pointer"
+                  className="mr-3 group h-10 w-10 cursor-pointer rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-zinc-700"
                   onClick={toggleLeftSidebar}
                   role="button"
                   aria-label={t('sidebar.open')}
                   title={t('sidebar.open')}
                 >
-                  <div className="group-hover:hidden">
+                  <div className="flex h-full w-full items-center justify-center group-hover:hidden">
                     <SuzentLogo className="h-7 w-7" interactive />
                   </div>
-                  <div className="hidden group-hover:block">
-                    <div className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-brutal-black dark:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <rect x="4" y="4" width="16" height="16" rx="2" />
-                        <line x1="9" y1="4" x2="9" y2="20" />
-                      </svg>
-                    </div>
+                  <div className="hidden h-full w-full items-center justify-center group-hover:flex">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-brutal-black dark:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <rect x="4" y="4" width="16" height="16" rx="2" />
+                      <line x1="9" y1="4" x2="9" y2="20" />
+                    </svg>
                   </div>
                 </div>
               )}
@@ -524,11 +561,11 @@ function AppInner(): React.ReactElement {
                     </svg>
                   </button>
                   <button
-                    onClick={toggleWindowsMaximize}
+                    onClick={toggleWindowMaximize}
                     className="h-full w-9 flex items-center justify-center hover:bg-brutal-black dark:hover:bg-zinc-600 hover:text-brutal-white transition-colors"
-                    title={isWindowsMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
+                    title={isWindowMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
                   >
-                    {isWindowsMaximized ? (
+                    {isWindowMaximized ? (
                       <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2">
                         <rect x="2" y="0" width="8" height="8" rx="0" />
                         <rect x="0" y="2" width="8" height="8" rx="0" />
@@ -781,11 +818,6 @@ export default function App() {
     </I18nProvider>
   );
 }
-
-
-
-
-
 
 
 
