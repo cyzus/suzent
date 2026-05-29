@@ -7,9 +7,13 @@ Provides unified interface for:
 """
 
 from typing import List, Dict, Any, Optional, Type, TypeVar
+import os
+
 from pydantic import BaseModel
 
 from suzent.config import CONFIG
+from suzent.core.providers.catalog import PROVIDER_REGISTRY_BY_ID
+from suzent.core.providers.helpers import resolve_api_key
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -20,6 +24,50 @@ def _litellm():
 
     _ll.drop_params = True
     return _ll
+
+
+def _litellm_model_and_kwargs(
+    model: Optional[str],
+) -> tuple[Optional[str], Dict[str, str]]:
+    """Return LiteLLM model/auth args matching the provider registry."""
+    if not model:
+        return model, {}
+
+    provider, _, _model_name = model.partition("/")
+    if not provider:
+        return model, {}
+
+    kwargs: Dict[str, str] = {}
+    api_key = resolve_api_key(provider)
+    if api_key:
+        kwargs["api_key"] = api_key
+
+    spec = PROVIDER_REGISTRY_BY_ID.get(provider)
+    litellm_model = model
+    if spec:
+        base_url = None
+        for field in spec.fields:
+            env_key = field.get("key", "")
+            if "BASE_URL" not in env_key:
+                continue
+            try:
+                from suzent.core.secrets import get_secret_manager
+
+                base_url = get_secret_manager().get(env_key)
+            except Exception:
+                base_url = None
+            if not base_url:
+                base_url = os.environ.get(env_key)
+            break
+
+        base_url = base_url or spec.base_url
+        if base_url:
+            kwargs["api_base"] = base_url
+
+        if spec.base_url and spec.api_type == "openai" and _model_name:
+            litellm_model = f"openai/{_model_name}"
+
+    return litellm_model, kwargs
 
 
 # Type variable for Pydantic models
@@ -59,7 +107,12 @@ class EmbeddingGenerator:
             return [0.0] * self.dimension
 
         try:
-            response = await _litellm().aembedding(model=self.model, input=text)
+            model, auth_kwargs = _litellm_model_and_kwargs(self.model)
+            response = await _litellm().aembedding(
+                model=model,
+                input=text,
+                **auth_kwargs,
+            )
 
             embedding = response.data[0]["embedding"]
 
@@ -100,7 +153,12 @@ class EmbeddingGenerator:
             batch = texts[i : i + batch_size]
 
             try:
-                response = await _litellm().aembedding(model=self.model, input=batch)
+                model, auth_kwargs = _litellm_model_and_kwargs(self.model)
+                response = await _litellm().aembedding(
+                    model=model,
+                    input=batch,
+                    **auth_kwargs,
+                )
 
                 batch_embeddings = [item["embedding"] for item in response.data]
                 all_embeddings.extend(batch_embeddings)
@@ -137,8 +195,12 @@ class ImageGenerator:
             URL to the generated image
         """
         try:
+            model, auth_kwargs = _litellm_model_and_kwargs(self.model)
             response = await _litellm().aimage_generation(
-                prompt=prompt, model=self.model, size=size
+                prompt=prompt,
+                model=model,
+                size=size,
+                **auth_kwargs,
             )
 
             data = response.data[0]
@@ -193,12 +255,14 @@ class LLMClient:
         messages.append({"role": "user", "content": prompt})
 
         try:
+            model, auth_kwargs = _litellm_model_and_kwargs(self.model)
             response = await _litellm().acompletion(
-                model=self.model,
+                model=model,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 response_format=response_format,
+                **auth_kwargs,
             )
 
             return response.choices[0].message.content
@@ -238,13 +302,15 @@ class LLMClient:
         messages.append({"role": "user", "content": prompt})
 
         try:
+            model, auth_kwargs = _litellm_model_and_kwargs(self.model)
             # Use Pydantic model directly as response_format
             # LiteLLM converts this to json_schema format automatically
             response = await _litellm().acompletion(
-                model=self.model,
+                model=model,
                 messages=messages,
                 temperature=temperature,
                 response_format=response_model,
+                **auth_kwargs,
             )
 
             content = response.choices[0].message.content

@@ -3,6 +3,22 @@
 from loguru import logger
 
 
+async def _generate_title_with_model(model: str, user_content: str) -> str | None:
+    from suzent.llm import LLMClient
+
+    client = LLMClient(model=model)
+    title = await client.complete(
+        prompt=user_content[:500],
+        system=(
+            "Generate a short title (3-6 words, no punctuation, no quotes) "
+            "that captures what this message is about. Reply with only the title."
+        ),
+        temperature=0.3,
+        max_tokens=20,
+    )
+    return title.strip().strip("\"'").strip() if title else None
+
+
 async def generate_auto_title(
     chat_id: str, user_content: str, fallback_model: str | None = None
 ) -> str | None:
@@ -12,9 +28,8 @@ async def generate_auto_title(
     to legacy config if no role is configured.
     """
     try:
-        from suzent.llm import LLMClient
         from suzent.core.role_router import get_role_router
-        from suzent.database import get_database
+        from suzent.database import generate_chat_title, get_database
 
         router = get_role_router()
         model = router.get_model_id("cheap")
@@ -29,24 +44,49 @@ async def generate_auto_title(
             logger.warning(f"Auto-title skipped for {chat_id}: no model configured")
             return None
 
-        client = LLMClient(model=model)
-        title = await client.complete(
-            prompt=user_content[:500],
-            system=(
-                "Generate a short title (3-6 words, no punctuation, no quotes) "
-                "that captures what this message is about. Reply with only the title."
-            ),
-            temperature=0.3,
-            max_tokens=20,
-        )
-        if not title:
-            return None
-        title = title.strip().strip("\"'").strip()
-        if title:
+        candidate_models = [model]
+        if fallback_model and fallback_model not in candidate_models:
+            candidate_models.append(fallback_model)
+
+        for candidate_model in candidate_models:
+            try:
+                title = await _generate_title_with_model(candidate_model, user_content)
+            except Exception as e:
+                logger.warning(
+                    f"Auto-title model failed for {chat_id} "
+                    f"(model={candidate_model!r}): {e}"
+                )
+                continue
+
+            if not title:
+                logger.warning(
+                    f"Auto-title model returned empty title for {chat_id} "
+                    f"(model={candidate_model!r})"
+                )
+                continue
+
             db = get_database()
-            db.update_chat(chat_id, title=title)
+            if not db.update_chat(chat_id, title=title):
+                logger.warning(f"Auto-title update failed for missing chat {chat_id}")
+                return None
+
             logger.info(f"Auto-title set for {chat_id}: {title!r}")
             return title
+
+        title = generate_chat_title(user_content)
+        if title == "New Chat":
+            logger.warning(f"Auto-title fallback skipped for {chat_id}: no user text")
+            return None
+
+        db = get_database()
+        if not db.update_chat(chat_id, title=title):
+            logger.warning(
+                f"Auto-title fallback update failed for missing chat {chat_id}"
+            )
+            return None
+
+        logger.info(f"Auto-title fallback set for {chat_id}: {title!r}")
+        return title
     except Exception as e:
         logger.warning(f"Auto-title generation failed for {chat_id}: {e}")
     return None
