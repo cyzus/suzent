@@ -22,6 +22,7 @@ from suzent.streaming import stop_stream
 from suzent.core.stream_registry import (
     get_background_queue,
     is_background_streaming,
+    register_background_stream,
     unregister_background_stream,
 )
 
@@ -215,6 +216,67 @@ async def chat(request: Request) -> StreamingResponse:
     except Exception as e:
         logger.error(f"Error handling chat request: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+async def chat_send(request: Request) -> JSONResponse:
+    """
+    POST /chat/send — Start a user chat turn as a background stream.
+
+    Returns 202 immediately. The response streams through /chat/live
+    and is observable via /events/stream, enabling the frontend to
+    watch other chats while this one processes.
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    chat_id = data.get("chat_id")
+    message = data.get("message", "").strip()
+    config = data.get("config", {})
+    files_list = data.get("files", [])
+    file_mentions = data.get("file_mentions", [])
+
+    if not chat_id:
+        return JSONResponse({"error": "chat_id is required"}, status_code=400)
+    if not message and not files_list:
+        return JSONResponse({"error": "Empty message"}, status_code=400)
+    if is_background_streaming(chat_id):
+        return JSONResponse({"error": "Chat is already streaming"}, status_code=409)
+
+    from suzent.core.chat_processor import ChatProcessor
+    from suzent.agent_manager import build_agent_config
+
+    processor = ChatProcessor()
+    config_override = build_agent_config(config, require_social_tool=False)
+    stream_queue = register_background_stream(chat_id)
+
+    async def _run() -> None:
+        try:
+            generator = processor.process_turn(
+                chat_id=chat_id,
+                user_id=CONFIG.user_id,
+                message_content=message,
+                files=files_list,
+                file_mentions=file_mentions,
+                config_override=config_override,
+            )
+            async for chunk in generator:
+                await stream_queue.put(chunk)
+        except Exception as exc:
+            logger.error(f"[chat_send] Background turn error for {chat_id}: {exc}")
+            error_payload = (
+                f'data: {{"type":"RUN_ERROR","message":{json.dumps(str(exc))}}}\n\n'
+            )
+            try:
+                await stream_queue.put(error_payload)
+            except Exception:
+                pass
+        finally:
+            await stream_queue.put(None)
+
+    asyncio.create_task(_run())
+    return JSONResponse({"chat_id": chat_id}, status_code=202)
 
 
 async def retry_chat(request: Request) -> StreamingResponse:

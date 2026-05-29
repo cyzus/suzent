@@ -20,7 +20,6 @@ interface ChatInputPanelProps {
     isUploading?: boolean;
     fileError?: string | null;
     send: () => void;
-    isStreaming: boolean;
     config: ChatConfig;
     setConfig: React.Dispatch<React.SetStateAction<ChatConfig>>;
     backendConfig: ConfigOptions | null;
@@ -141,7 +140,6 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     isUploading = false,
     fileError = null,
     send,
-    isStreaming,
     config,
     setConfig,
     backendConfig,
@@ -589,7 +587,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         onMount={handleMountFolder}
                         activeVolumes={config.sandbox_volumes || []}
                         onRemoveVolume={removeVolume}
-                        disabled={!configReady || isStreaming || isUploading}
+                        disabled={!configReady || streamingForCurrentChat || isUploading}
                         dropUp={modelSelectDropUp}
                     />
 
@@ -607,7 +605,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         onClick={() => fileInputRef.current?.click()}
                         className="text-brutal-black hover:text-brutal-blue transition-colors disabled:opacity-40 shrink-0"
                         title={t('chatInput.attachFiles')}
-                        disabled={!configReady || isStreaming || isUploading}
+                        disabled={!configReady || streamingForCurrentChat || isUploading}
                     >
                         <PaperClipIcon className="w-6 h-6" />
                     </button>
@@ -655,7 +653,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         <button
                             type="submit"
                             className="h-9 border-2 border-brutal-black shadow-[2px_2px_0_0_#000] brutal-btn duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase ml-1 shrink-0 bg-brutal-blue"
-                            disabled={isStreaming || !configReady}
+                            disabled={streamingForCurrentChat || !configReady}
                             title={t('chatInput.sendMessage')}
                         >
                             {t('chatInput.send').toUpperCase()}

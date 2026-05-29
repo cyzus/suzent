@@ -14,7 +14,6 @@ interface NewChatViewProps {
     isUploading?: boolean;
     fileError?: string | null;
     send: () => void;
-    isStreaming: boolean;
     config: ChatConfig;
     setConfig: React.Dispatch<React.SetStateAction<ChatConfig>>;
     backendConfig: ConfigOptions | null;
@@ -74,7 +73,6 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
     isUploading,
     fileError,
     send,
-    isStreaming,
     config,
     setConfig,
     backendConfig,
@@ -103,7 +101,6 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
                     isUploading={isUploading}
                     fileError={fileError}
                     send={send}
-                    isStreaming={isStreaming}
                     config={config}
                     setConfig={setConfig}
                     backendConfig={backendConfig}
