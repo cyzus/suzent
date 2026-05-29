@@ -676,7 +676,7 @@ async def serve_sandbox_file_wildcard(request: Request):
 
 async def upload_files(request: Request) -> JSONResponse:
     """
-    Upload files to sandbox /uploads/ directory.
+    Upload files to sandbox /workspace/uploads/ directory.
     Route: POST /api/sandbox/upload?chat_id={chat_id}
 
     Accepts multipart form-data with 'files' field (multiple files).
@@ -699,8 +699,9 @@ async def upload_files(request: Request) -> JSONResponse:
         # Create resolver for this chat session
         resolver = _get_resolver_for_request(chat_id)
 
-        # Resolve /uploads/ to host path (chat-scoped, inside project)
-        uploads_virtual_path = "/uploads"
+        # Resolve uploads under the project workspace. The resolver still accepts
+        # /uploads as a legacy alias, but new metadata should use /workspace.
+        uploads_virtual_path = "/workspace/uploads"
         uploads_host_path = resolver.resolve(uploads_virtual_path)
 
         # Create uploads directory if it doesn't exist

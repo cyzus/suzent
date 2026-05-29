@@ -22,11 +22,11 @@ class PathResolver:
     In sandbox mode:
       - project cwd → data/sandbox-data/projects/{slug}/  (mounted at /workspace)
       - /shared/*   → data/sandbox-data/shared/*           (mounted at /shared)
-      - /uploads/*  → data/sandbox-data/projects/{slug}/uploads/*
+      - /workspace/uploads/* → data/sandbox-data/projects/{slug}/uploads/*
       - [Custom Mounts] → mapped host paths
 
     In non-sandbox mode:
-      - The same project directories back virtual /shared and /uploads.
+      - The same project directories back virtual /workspace and /shared.
       - Absolute paths are allowed if within allowed directories.
 
     All chat-related files (heartbeat.md, context.md, plan.md, images/, uploads/)
@@ -52,7 +52,7 @@ class PathResolver:
             project_slug: The slug of the project this chat belongs to. If None,
                 resolved from chat_id via the database (defaulting to the default project).
             sandbox_data_path: Base path for sandbox data (default: from CONFIG)
-            uploads_path: Deprecated; uploads live under each chat directory
+            uploads_path: Deprecated; uploads live under the project workspace
             custom_volumes: List of "host:container" volume mapping strings
             workspace_root: Root directory for host mode execution (default: from CONFIG)
         """
@@ -268,7 +268,7 @@ class PathResolver:
         Mapping:
           /workspace/*  → project_dir/*  (project cwd inside sandbox)
           /shared/*     → sandbox_data_path/shared/*
-          /uploads/*    → chat_dir/uploads/*
+          /uploads/*    → project_dir/uploads/* (legacy alias)
           /mnt/*        → custom mount (must be registered)
           other paths   → resolved relative to project_dir
         """
@@ -356,7 +356,7 @@ class PathResolver:
 
     def _validate_path(self, resolved: Path) -> None:
         """Validate that path is within allowed directories."""
-        # Allowed roots: project_dir (covers /workspace, /uploads, chat_dir), shared, custom mounts
+        # Allowed roots: project_dir (covers /workspace and legacy /uploads), shared, custom mounts
         allowed_roots = [
             self.project_dir,
             self.sandbox_data_path / "shared",

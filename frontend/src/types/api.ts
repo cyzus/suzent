@@ -12,7 +12,7 @@ export interface ImageAttachment {
 export interface FileAttachment {
   id: string;
   filename: string;
-  path: string;           // Virtual path: /uploads/filename
+  path: string;           // Virtual path: /workspace/uploads/filename
   size: number;           // Bytes
   mime_type: string;
   uploaded_at?: string;
