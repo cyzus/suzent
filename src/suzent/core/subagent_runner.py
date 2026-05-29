@@ -321,8 +321,13 @@ async def _run_subagent(
 
     db = get_database()
 
-    # Ensure isolated chat record exists
+    # Ensure isolated chat record exists. Subagents inherit the parent chat's
+    # project so they share the project's plan, heartbeat, uploads, and cwd —
+    # the parent's whole working context.
     if not db.get_chat(task.chat_id):
+        parent_project_id = (
+            db.get_chat_project_id(task.parent_chat_id) if task.parent_chat_id else None
+        )
         db.create_chat(
             title=f"Sub-agent: {task.description[:60]}",
             config={
@@ -332,6 +337,7 @@ async def _run_subagent(
                 "auto_approve_tools": True,
             },
             chat_id=task.chat_id,
+            project_id=parent_project_id,
         )
 
     # Phase 2: inject parent conversation history into child chat

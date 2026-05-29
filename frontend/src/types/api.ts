@@ -12,7 +12,7 @@ export interface ImageAttachment {
 export interface FileAttachment {
   id: string;
   filename: string;
-  path: string;           // Virtual path: /persistence/uploads/filename
+  path: string;           // Virtual path: /workspace/uploads/filename
   size: number;           // Bytes
   mime_type: string;
   uploaded_at?: string;
@@ -76,6 +76,18 @@ export interface ChatSummary {
   lastResultAt?: string;
   isRunning?: boolean;
   unreadCount?: number;
+  projectId?: string | null;
+  projectSlug?: string | null;
+  projectName?: string | null;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  archived: boolean;
+  chatCount: number;
 }
 
 export type PlanPhaseStatus = 'pending' | 'in_progress' | 'completed';

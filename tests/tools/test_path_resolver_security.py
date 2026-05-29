@@ -31,19 +31,58 @@ def test_resolve_allows_workspace_relative_paths(tmp_path):
     assert str(resolved).endswith("notes.txt")
 
 
-def test_resolve_persistence_uploads_uses_session_directory_in_host_mode(tmp_path):
+def test_resolve_workspace_uploads_uses_project_directory_in_host_mode(tmp_path):
     resolver = PathResolver(
         chat_id="test-chat",
         sandbox_enabled=False,
+        project_slug="default",
         sandbox_data_path=str(tmp_path / "sandbox"),
         workspace_root=str(tmp_path / "workspace"),
     )
 
-    resolved = resolver.resolve("/persistence/uploads/example.txt")
+    resolved = resolver.resolve("/workspace/uploads/example.txt")
 
     assert (
         resolved
         == (
-            tmp_path / "sandbox" / "sessions" / "test-chat" / "uploads" / "example.txt"
+            tmp_path / "sandbox" / "projects" / "default" / "uploads" / "example.txt"
+        ).resolve()
+    )
+
+
+def test_resolve_uploads_alias_keeps_legacy_paths_working(tmp_path):
+    resolver = PathResolver(
+        chat_id="test-chat",
+        sandbox_enabled=False,
+        project_slug="default",
+        sandbox_data_path=str(tmp_path / "sandbox"),
+        workspace_root=str(tmp_path / "workspace"),
+    )
+
+    resolved = resolver.resolve("/uploads/example.txt")
+
+    assert (
+        resolved
+        == (
+            tmp_path / "sandbox" / "projects" / "default" / "uploads" / "example.txt"
+        ).resolve()
+    )
+
+
+def test_resolve_persistence_alias_keeps_legacy_paths_working(tmp_path):
+    resolver = PathResolver(
+        chat_id="test-chat",
+        sandbox_enabled=False,
+        project_slug="default",
+        sandbox_data_path=str(tmp_path / "sandbox"),
+        workspace_root=str(tmp_path / "workspace"),
+    )
+
+    resolved = resolver.resolve("/persistence/notes/example.txt")
+
+    assert (
+        resolved
+        == (
+            tmp_path / "sandbox" / "projects" / "default" / "notes" / "example.txt"
         ).resolve()
     )

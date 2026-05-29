@@ -9,7 +9,6 @@ import asyncio
 import time
 from datetime import datetime, timezone
 import dateutil.parser
-from pathlib import Path
 from typing import Callable, Dict, Optional
 
 from suzent.config import CONFIG
@@ -123,9 +122,7 @@ class HeartbeatRunner(BaseBrain):
             cfg = chat.config or {}
 
             # Read physical file
-            hb_path = (
-                Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
-            )
+            hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
             instructions = ""
             if hb_path.exists():
                 try:
@@ -196,9 +193,7 @@ class HeartbeatRunner(BaseBrain):
                 continue
 
             # Run if due
-            hb_path = (
-                Path(CONFIG.sandbox_data_path) / "sessions" / chat.id / "heartbeat.md"
-            )
+            hb_path = get_database().get_project_dir(chat.id) / "heartbeat.md"
             instructions = ""
             if hb_path.exists():
                 try:
@@ -251,9 +246,7 @@ class HeartbeatRunner(BaseBrain):
         db = get_database()
         chat = db.get_chat(chat_id)
         if chat:
-            hb_path = (
-                Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
-            )
+            hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
             instructions = ""
             if hb_path.exists():
                 try:

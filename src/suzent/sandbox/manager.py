@@ -5,7 +5,7 @@ Sandbox Manager Module
 Docker-based isolated sandbox for code execution.
 
 Each chat session gets its own container:
-- Private storage at /persistence (isolated per session, bind-mounted from host)
+- Project workspace at /workspace (the agent's cwd; shared across all chats in the project)
 - Shared storage at /shared (accessible by all sessions, bind-mounted from host)
 
 Data persists on the host filesystem independent of container lifecycle.
@@ -57,7 +57,7 @@ class Defaults:
     HOT_WINDOW_SECONDS = 300  # don't recreate containers used within this window
 
     # Mount points inside container
-    PERSISTENCE_MOUNT = "/persistence"
+    WORKSPACE_MOUNT = "/workspace"
     SHARED_MOUNT = "/shared"
 
     # Error patterns that trigger auto-healing (container-level errors)
@@ -212,8 +212,8 @@ class DockerSession:
 
     Container is created on first use and kept running with 'sleep infinity'.
     Commands are exec'd into it, preserving state between calls.
-    Data at /persistence and /shared is bind-mounted from the host, so it
-    survives container stop/remove.
+    The project directory is bind-mounted at /workspace (cwd) and the shared
+    directory at /shared, so data survives container stop/remove.
     """
 
     def __init__(
@@ -225,6 +225,7 @@ class DockerSession:
         memory_mb: int,
         cpus: int,
         network: str,
+        project_slug: str,
         setup_command: str = "",
         env: Optional[Dict[str, str]] = None,
         custom_volumes: Optional[List[str]] = None,
@@ -236,6 +237,7 @@ class DockerSession:
         self.memory_mb = memory_mb
         self.cpus = cpus
         self.network = network
+        self.project_slug = project_slug
         self.setup_command = setup_command.strip()
         self.env = _filter_env_vars(env or {})
         self.custom_volumes = custom_volumes or []
@@ -252,8 +254,9 @@ class DockerSession:
         return f"suzent-sandbox-{safe_id}"
 
     @property
-    def session_dir(self) -> Path:
-        return Path(self.data_path) / "sessions" / self.session_id
+    def project_dir(self) -> Path:
+        """Host path bind-mounted at /workspace inside the container."""
+        return Path(self.data_path) / "projects" / self.project_slug
 
     @property
     def is_running(self) -> bool:
@@ -326,6 +329,10 @@ class DockerSession:
             pass
 
         env["SUZENT_BASE_URL"] = base_url
+        env["CHAT_ID"] = self.session_id
+        env["PROJECT_SLUG"] = self.project_slug
+        env["PROJECT_PATH"] = Defaults.WORKSPACE_MOUNT
+        env["SHARED_PATH"] = Defaults.SHARED_MOUNT
         return env
 
     # -------------------------------------------------------------------------
@@ -345,6 +352,7 @@ class DockerSession:
             "volumes": sorted(self.custom_volumes),
             "setup_command": self.setup_command,
             "env_keys": sorted(self.env.keys()),
+            "runtime_env_schema": 2,
         }
         return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()[
             :16
@@ -356,13 +364,13 @@ class DockerSession:
 
     def _build_volumes(self) -> dict:
         """Build Docker volume mount dict from host paths, with security validation."""
-        self.session_dir.mkdir(parents=True, exist_ok=True)
+        self.project_dir.mkdir(parents=True, exist_ok=True)
         shared_dir = Path(self.data_path) / "shared"
         shared_dir.mkdir(parents=True, exist_ok=True)
 
         volumes: dict = {
-            str(self.session_dir.resolve()): {
-                "bind": Defaults.PERSISTENCE_MOUNT,
+            str(self.project_dir.resolve()): {
+                "bind": Defaults.WORKSPACE_MOUNT,
                 "mode": "rw",
             },
             str(shared_dir.resolve()): {
@@ -463,7 +471,7 @@ class DockerSession:
                     cap_drop=["ALL"],
                     security_opt=["no-new-privileges"],
                     network_mode=self.network,
-                    working_dir=Defaults.PERSISTENCE_MOUNT,
+                    working_dir=Defaults.WORKSPACE_MOUNT,
                     environment=self._build_env(),
                     # Allow host.docker.internal to resolve on Linux (no-op on Docker Desktop)
                     extra_hosts={"host.docker.internal": "host-gateway"},
@@ -488,7 +496,7 @@ class DockerSession:
                     )
                     result = container.exec_run(
                         ["sh", "-lc", self.setup_command],
-                        workdir=Defaults.PERSISTENCE_MOUNT,
+                        workdir=Defaults.WORKSPACE_MOUNT,
                     )
                     if result.exit_code != 0:
                         output = result.output.decode("utf-8", errors="replace").strip()
@@ -647,7 +655,7 @@ with open(log_path, "wb", buffering=0) as log:
 """
         self._container.exec_run(
             ["python3", "-c", supervisor],
-            workdir=Defaults.PERSISTENCE_MOUNT,
+            workdir=Defaults.WORKSPACE_MOUNT,
             detach=True,
         )
         return proc_id
@@ -733,7 +741,7 @@ else:
             try:
                 result_holder[0] = self._container.exec_run(
                     cmd,
-                    workdir=Defaults.PERSISTENCE_MOUNT,
+                    workdir=Defaults.WORKSPACE_MOUNT,
                     demux=True,
                     environment=environment or {},
                 )
@@ -905,6 +913,9 @@ class SandboxManager:
         self.cleanup_all()
 
     def _create_session(self, session_id: str) -> DockerSession:
+        # Resolve the project slug for this chat so the container mounts the
+        # right project directory at /workspace.
+        project_slug = self._resolve_project_slug(session_id)
         return DockerSession(
             session_id=session_id,
             client=self._client,
@@ -913,15 +924,49 @@ class SandboxManager:
             memory_mb=self.memory_mb,
             cpus=self.cpus,
             network=self.network,
+            project_slug=project_slug,
             setup_command=self.setup_command,
             env=self.env,
             custom_volumes=self.custom_volumes,
         )
 
+    @staticmethod
+    def _resolve_project_slug(session_id: str) -> str:
+        try:
+            from suzent.database import get_database
+
+            return get_database().get_chat_project_slug(session_id)
+        except Exception as e:
+            logger.debug(
+                f"Could not resolve project slug for session {session_id}: {e}"
+            )
+            from suzent.database import ChatDatabase
+
+            return ChatDatabase.DEFAULT_PROJECT_SLUG
+
     def get_session(self, session_id: str) -> DockerSession:
         if session_id not in self._sessions:
             self._sessions[session_id] = self._create_session(session_id)
         return self._sessions[session_id]
+
+    @classmethod
+    def invalidate_session(cls, session_id: str) -> None:
+        """Remove a cached session from all manager singletons.
+
+        Used when metadata that affects the container mount, such as a chat's
+        project, changes. This avoids reusing a DockerSession whose /workspace
+        still points at the previous project directory.
+        """
+        with _manager_singletons_lock:
+            managers = list(_manager_singletons.values())
+
+        for manager in managers:
+            if not getattr(manager, "_initialized", False):
+                continue
+            try:
+                manager.remove_session(session_id)
+            except Exception as e:
+                logger.debug(f"Could not invalidate sandbox session {session_id}: {e}")
 
     def execute(
         self,

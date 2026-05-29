@@ -356,7 +356,7 @@ class ChatProcessor:
                     custom_volumes=custom_volumes,
                 )
 
-                uploads_virtual_path = "/persistence/uploads"
+                uploads_virtual_path = "/workspace/uploads"
                 uploads_host_path = resolver.resolve(uploads_virtual_path)
                 uploads_host_path.mkdir(parents=True, exist_ok=True)
 

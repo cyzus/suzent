@@ -50,6 +50,9 @@ _SKIP_CONTAINER_PATHS = {"/mnt/skills"}
 
 
 def _session_dir(chat_id: str) -> Path:
+    # Legacy: pre-FileTracker checkpoint snapshots lived under sessions/{chat_id}.
+    # Kept only for the directory-restore fallback in apply_checkpoint(). New
+    # checkpoints use FileTracker which records per-file paths instead.
     from suzent.config import CONFIG
 
     return Path(CONFIG.sandbox_data_path) / "sessions" / chat_id

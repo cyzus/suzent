@@ -77,6 +77,23 @@ class ChatSummaryModel(BaseModel):
     heartbeatEnabled: bool = False
     lastResultAt: Optional[str] = None
     unreadCount: int = 0
+    projectId: Optional[str] = None
+    projectSlug: Optional[str] = None
+    projectName: Optional[str] = None
+
+
+class ProjectModel(SQLModel, table=True):
+    """Project groups multiple chat sessions and owns a shared plan."""
+
+    __tablename__ = "projects"
+
+    id: str = Field(primary_key=True, default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    slug: str = Field(unique=True, index=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    archived: bool = Field(default=False)
+
+    chats: List["ChatModel"] = Relationship(back_populates="project")
 
 
 class ChatModel(SQLModel, table=True):
@@ -108,6 +125,12 @@ class ChatModel(SQLModel, table=True):
 
     # Working directory binding (S2O Phase 1)
     working_directory: Optional[str] = None
+
+    # Project association
+    project_id: Optional[str] = Field(
+        default=None, foreign_key="projects.id", index=True
+    )
+    project: Optional[ProjectModel] = Relationship(back_populates="chats")
 
     plans: List["PlanModel"] = Relationship(
         back_populates="chat",
@@ -450,6 +473,8 @@ class ChatDatabase:
         # Run migrations for new columns
         self._run_migrations()
         self._migrate_static_config_from_db()
+        self._ensure_default_project()
+        self._migrate_legacy_session_dirs()
 
     def _run_migrations(self):
         """Run database migrations for new columns."""
@@ -633,6 +658,25 @@ class ChatDatabase:
                     )
                 conn.commit()
 
+        # Migration: Add projects table and chats.project_id FK.
+        # projects table is created by SQLModel.metadata.create_all() above,
+        # but chats.project_id needs an explicit ALTER on existing databases.
+        if "chats" in inspector.get_table_names():
+            columns = [col["name"] for col in inspector.get_columns("chats")]
+            if "project_id" not in columns:
+                with self.engine.connect() as conn:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE chats ADD COLUMN project_id TEXT REFERENCES projects(id)"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "CREATE INDEX IF NOT EXISTS ix_chats_project_id ON chats(project_id)"
+                        )
+                    )
+                    conn.commit()
+
     def _session(self) -> Session:
         """Create a new database session."""
         return Session(self.engine)
@@ -683,7 +727,9 @@ class ChatDatabase:
         except Exception as exc:
             from suzent.logger import logger
 
-            logger.warning("Failed to migrate legacy static config from SQLite: {}", exc)
+            logger.warning(
+                "Failed to migrate legacy static config from SQLite: {}", exc
+            )
 
     def _migrate_legacy_user_preferences(
         self, conn: Any, store: Any, legacy_tables: set[str]
@@ -886,6 +932,534 @@ class ChatDatabase:
         return bool(token) and token[0] == 0x80
 
     # -------------------------------------------------------------------------
+    # Project Operations
+    # -------------------------------------------------------------------------
+
+    DEFAULT_PROJECT_SLUG = "default"
+    DEFAULT_PROJECT_NAME = "Default"
+    SOCIAL_PROJECT_SLUG = "social"
+    SOCIAL_PROJECT_NAME = "Social"
+    SYSTEM_PROJECT_SLUGS = {"default", "social"}
+
+    # Platforms that route a chat into the ``social`` project by default.
+    # Internal platforms like ``subagent`` (lives with parent) and ``cron``
+    # (scheduled task runner) are deliberately excluded — subagents inherit
+    # their parent's project explicitly and cron chats stay in default.
+    SOCIAL_PLATFORMS = {"telegram", "slack", "discord", "wechat", "whatsapp"}
+
+    @classmethod
+    def _is_social_platform(cls, config: Optional[Dict[str, Any]]) -> bool:
+        if not config:
+            return False
+        platform = config.get("platform")
+        if not platform:
+            return False
+        return platform.lower() in cls.SOCIAL_PLATFORMS
+
+    def _migrate_legacy_session_dirs(self) -> None:
+        """Flatten legacy per-chat directories into the project root.
+
+        Handles three legacy shapes:
+
+        1. ``sandbox_data_path/sessions/{chat_id}/...`` (pre-project layout)
+        2. ``sandbox_data_path/projects/{slug}/chats/{chat_id}/...``
+           (intermediate layout — earlier migration step)
+        3. ``sandbox_data_path/shared/memory/sessions/{chat_id[:32]}/context.md``
+           (legacy memory context location)
+
+        After migration the project directory contains a flat layout::
+
+            projects/{slug}/
+              heartbeat.md
+              context.md
+              uploads/<files, prefixed with {chat_id[:8]}_ on collision>
+              images/<files, prefixed with {chat_id[:8]}_ on collision>
+
+        Each chat's files are merged into the project. On filename collision
+        within ``uploads/`` or ``images/`` the moved file is prefixed with the
+        short chat id so nothing is silently dropped. Single-file artifacts
+        (heartbeat.md, context.md) follow first-wins: the first chat's file
+        becomes the project's; subsequent chats' files are kept on disk under
+        a ``.from-chat-{chat_id[:8]}`` suffix so they can be reviewed.
+
+        Runs once per startup. Failures are logged but do not abort startup.
+        """
+        from suzent.logger import logger
+
+        try:
+            from suzent.config import CONFIG
+        except Exception:
+            return
+
+        import shutil
+
+        sandbox_root = Path(CONFIG.sandbox_data_path)
+        projects_root = sandbox_root / "projects"
+
+        # Phase 1: collect (chat_id, source_dir) pairs from legacy layouts.
+        sources: List[tuple[str, Path]] = []
+
+        # Legacy shape 1: sessions/{chat_id}/
+        sessions_root = sandbox_root / "sessions"
+        if sessions_root.exists() and sessions_root.is_dir():
+            for d in sessions_root.iterdir():
+                if d.is_dir():
+                    sources.append((d.name, d))
+
+        # Legacy shape 2: projects/{slug}/chats/{chat_id}/
+        if projects_root.exists():
+            for project_dir in projects_root.iterdir():
+                chats_dir = project_dir / "chats"
+                if chats_dir.exists() and chats_dir.is_dir():
+                    for d in chats_dir.iterdir():
+                        if d.is_dir():
+                            sources.append((d.name, d))
+
+        moved_chats = 0
+        for chat_id, source_dir in sources:
+            try:
+                if self._flatten_chat_dir_into_project(chat_id, source_dir):
+                    moved_chats += 1
+            except Exception as e:
+                logger.warning("Failed to flatten chat dir {}: {}", source_dir, e)
+
+        if moved_chats:
+            logger.info(
+                "Flattened {} legacy chat dir(s) into project roots", moved_chats
+            )
+
+        # Legacy shape 3: shared/memory/sessions/{chat_id[:32]}/context.md
+        mem_sessions = sandbox_root / "shared" / "memory" / "sessions"
+        if mem_sessions.exists() and mem_sessions.is_dir():
+            moved_ctx = 0
+            for d in mem_sessions.iterdir():
+                if not d.is_dir():
+                    continue
+                ctx = d / "context.md"
+                if not ctx.exists():
+                    continue
+                # d.name is chat_id[:32] — find a chat whose id starts with it
+                short_id = d.name
+                chat_id = self._find_chat_id_by_prefix(short_id)
+                if not chat_id:
+                    logger.debug(
+                        "No chat matches legacy memory dir {}; leaving in place",
+                        short_id,
+                    )
+                    continue
+                slug = self.get_chat_project_slug(chat_id)
+                project_dir = projects_root / slug
+                project_dir.mkdir(parents=True, exist_ok=True)
+                dest = project_dir / "context.md"
+                if dest.exists():
+                    # First-wins; keep this chat's context under a backup name
+                    backup = project_dir / f"context.from-chat-{chat_id[:8]}.md"
+                    if not backup.exists():
+                        shutil.move(str(ctx), str(backup))
+                else:
+                    shutil.move(str(ctx), str(dest))
+                # Clean up the empty legacy dir
+                try:
+                    if not any(d.iterdir()):
+                        d.rmdir()
+                except Exception:
+                    pass
+                moved_ctx += 1
+            if moved_ctx:
+                logger.info("Migrated {} legacy memory context file(s)", moved_ctx)
+            # Drop the empty sessions root
+            try:
+                if mem_sessions.exists() and not any(mem_sessions.iterdir()):
+                    mem_sessions.rmdir()
+            except Exception:
+                pass
+
+        # Drop empty top-level legacy dirs
+        for empty_root in (sessions_root,):
+            try:
+                if empty_root.exists() and not any(empty_root.iterdir()):
+                    empty_root.rmdir()
+            except Exception:
+                pass
+
+        # Drop empty projects/{slug}/chats/ directories
+        if projects_root.exists():
+            for project_dir in projects_root.iterdir():
+                chats_dir = project_dir / "chats"
+                try:
+                    if chats_dir.exists() and not any(chats_dir.iterdir()):
+                        chats_dir.rmdir()
+                except Exception:
+                    pass
+
+    def _flatten_chat_dir_into_project(self, chat_id: str, source_dir: Path) -> bool:
+        """Move the contents of a legacy chat directory into its project root.
+
+        Returns True if at least one file was moved. See _migrate_legacy_session_dirs
+        for the collision/merge rules.
+        """
+        import shutil
+        from suzent.logger import logger
+
+        if not source_dir.exists():
+            return False
+
+        slug = self.get_chat_project_slug(chat_id)
+        from suzent.config import CONFIG
+
+        project_dir = Path(CONFIG.sandbox_data_path) / "projects" / slug
+        project_dir.mkdir(parents=True, exist_ok=True)
+
+        short = chat_id[:8]
+        moved_any = False
+
+        for entry in list(source_dir.iterdir()):
+            try:
+                if entry.is_dir() and entry.name in ("uploads", "images"):
+                    # Merge contents file-by-file, prefixing collisions with chat id
+                    dest_dir = project_dir / entry.name
+                    dest_dir.mkdir(parents=True, exist_ok=True)
+                    for f in list(entry.iterdir()):
+                        target = dest_dir / f.name
+                        if target.exists():
+                            target = dest_dir / f"{short}_{f.name}"
+                        if target.exists():
+                            # Even the prefixed name exists; skip to avoid clobber
+                            logger.debug(
+                                "Skipping {} for chat {}: collision even after prefix",
+                                f,
+                                short,
+                            )
+                            continue
+                        shutil.move(str(f), str(target))
+                        moved_any = True
+                    # Remove the empty source subdir
+                    try:
+                        if not any(entry.iterdir()):
+                            entry.rmdir()
+                    except Exception:
+                        pass
+                elif entry.is_file() and entry.name in ("heartbeat.md", "context.md"):
+                    # Single-file artifacts: first-wins, keep extras as backup
+                    dest = project_dir / entry.name
+                    if dest.exists():
+                        backup = (
+                            project_dir
+                            / f"{entry.stem}.from-chat-{short}{entry.suffix}"
+                        )
+                        if not backup.exists():
+                            shutil.move(str(entry), str(backup))
+                            moved_any = True
+                    else:
+                        shutil.move(str(entry), str(dest))
+                        moved_any = True
+                else:
+                    # Unknown file/dir — move with prefix on collision
+                    target = project_dir / entry.name
+                    if target.exists():
+                        target = project_dir / f"{short}_{entry.name}"
+                    if not target.exists():
+                        shutil.move(str(entry), str(target))
+                        moved_any = True
+            except Exception as e:
+                logger.warning("Failed migrating {} from chat {}: {}", entry, short, e)
+
+        # Remove the now-empty source dir
+        try:
+            if source_dir.exists() and not any(source_dir.iterdir()):
+                source_dir.rmdir()
+        except Exception:
+            pass
+
+        return moved_any
+
+    def _find_chat_id_by_prefix(self, prefix: str) -> Optional[str]:
+        """Resolve a chat id from its first 32 chars (used by legacy memory dirs)."""
+        with self._session() as session:
+            for chat in session.exec(
+                select(ChatModel).where(ChatModel.id.startswith(prefix))
+            ).all():
+                return chat.id
+        return None
+
+    def _ensure_default_project(self) -> None:
+        """Create system projects (default + social) and backfill chats.
+
+        - ``default``: catches chats with no platform set.
+        - ``social``: catches chats with ``config.platform`` set (Telegram, etc.).
+
+        Both system projects are created on first launch and any unassigned
+        chats are routed to the appropriate one. Existing chats already in
+        ``default`` that have a ``config.platform`` set are also moved to
+        ``social`` (one-time migration).
+        """
+        from suzent.logger import logger
+
+        with self._session() as session:
+            # System projects
+            default = session.exec(
+                select(ProjectModel).where(
+                    ProjectModel.slug == self.DEFAULT_PROJECT_SLUG
+                )
+            ).first()
+            if not default:
+                default = ProjectModel(
+                    name=self.DEFAULT_PROJECT_NAME,
+                    slug=self.DEFAULT_PROJECT_SLUG,
+                )
+                session.add(default)
+                session.flush()
+                logger.info(
+                    "Created default project (slug='{}')", self.DEFAULT_PROJECT_SLUG
+                )
+
+            social = session.exec(
+                select(ProjectModel).where(
+                    ProjectModel.slug == self.SOCIAL_PROJECT_SLUG
+                )
+            ).first()
+            if not social:
+                social = ProjectModel(
+                    name=self.SOCIAL_PROJECT_NAME,
+                    slug=self.SOCIAL_PROJECT_SLUG,
+                )
+                session.add(social)
+                session.flush()
+                logger.info(
+                    "Created social project (slug='{}')", self.SOCIAL_PROJECT_SLUG
+                )
+
+            # Backfill unassigned chats: route by config.platform presence
+            unassigned = session.exec(
+                select(ChatModel).where(ChatModel.project_id == None)  # noqa: E711
+            ).all()
+            backfilled_default = 0
+            backfilled_social = 0
+            for chat in unassigned:
+                if self._is_social_platform(chat.config):
+                    chat.project_id = social.id
+                    backfilled_social += 1
+                else:
+                    chat.project_id = default.id
+                    backfilled_default += 1
+            if backfilled_default:
+                logger.info(
+                    "Backfilled {} chat(s) to default project", backfilled_default
+                )
+            if backfilled_social:
+                logger.info(
+                    "Backfilled {} chat(s) to social project", backfilled_social
+                )
+
+            # One-time migration: chats already in default that have a social
+            # platform tag were placed there before the social project existed.
+            # Subagent/cron chats are excluded — they stay where they were.
+            misplaced = session.exec(
+                select(ChatModel).where(ChatModel.project_id == default.id)
+            ).all()
+            moved_to_social = 0
+            for chat in misplaced:
+                if self._is_social_platform(chat.config):
+                    chat.project_id = social.id
+                    moved_to_social += 1
+
+            # One-time rescue: subagent/cron chats that landed in social in a
+            # prior migration step need to move out. Subagents follow their
+            # parent's project (falling back to default if parent is unknown);
+            # cron chats go to default.
+            misclassified = session.exec(
+                select(ChatModel).where(ChatModel.project_id == social.id)
+            ).all()
+            rescued_subagent = 0
+            rescued_cron = 0
+            for chat in misclassified:
+                if not chat.config:
+                    continue
+                platform = (chat.config.get("platform") or "").lower()
+                if platform == "subagent":
+                    parent_id = chat.config.get("parent_chat_id")
+                    target_project_id = default.id
+                    if parent_id:
+                        parent = session.get(ChatModel, parent_id)
+                        if parent and parent.project_id:
+                            target_project_id = parent.project_id
+                    chat.project_id = target_project_id
+                    rescued_subagent += 1
+                elif platform == "cron":
+                    chat.project_id = default.id
+                    rescued_cron += 1
+            if rescued_subagent:
+                logger.info(
+                    "Moved {} subagent chat(s) out of social into parent project",
+                    rescued_subagent,
+                )
+            if rescued_cron:
+                logger.info(
+                    "Moved {} cron chat(s) out of social into default", rescued_cron
+                )
+            if moved_to_social:
+                logger.info(
+                    "Migrated {} platform-tagged chat(s) from default to social",
+                    moved_to_social,
+                )
+
+            session.commit()
+
+    def create_project(self, name: str, slug: str) -> str:
+        """Create a new project and return its id."""
+        project = ProjectModel(name=name, slug=slug)
+        with self._session() as session:
+            session.add(project)
+            session.commit()
+            session.refresh(project)
+            return project.id
+
+    def get_project(self, project_id: str) -> Optional[ProjectModel]:
+        """Return a project by id, or None if not found."""
+        with self._session() as session:
+            return session.get(ProjectModel, project_id)
+
+    def get_project_by_slug(self, slug: str) -> Optional[ProjectModel]:
+        """Return a project by slug, or None if not found."""
+        with self._session() as session:
+            return session.exec(
+                select(ProjectModel).where(ProjectModel.slug == slug)
+            ).first()
+
+    def list_projects(self, include_archived: bool = False) -> List[ProjectModel]:
+        """Return all projects ordered by creation time."""
+        with self._session() as session:
+            stmt = select(ProjectModel)
+            if not include_archived:
+                stmt = stmt.where(ProjectModel.archived == False)  # noqa: E712
+            stmt = stmt.order_by(ProjectModel.created_at)
+            return list(session.exec(stmt).all())
+
+    def link_chat_to_project(self, chat_id: str, project_id: str) -> bool:
+        """Move a chat to a different project. Returns True if the chat was found."""
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if not chat:
+                return False
+            chat.project_id = project_id
+            session.add(chat)
+            session.commit()
+            return True
+
+    def move_all_chats(self, from_project_id: str, to_project_id: str) -> int:
+        """Reassign every chat from one project to another. Returns moved count."""
+        with self._session() as session:
+            chats = session.exec(
+                select(ChatModel).where(ChatModel.project_id == from_project_id)
+            ).all()
+            for chat in chats:
+                chat.project_id = to_project_id
+                session.add(chat)
+            session.commit()
+            return len(chats)
+
+    def get_chat_ids_in_project(self, project_id: str) -> List[str]:
+        """Return chat ids currently assigned to a project."""
+        with self._session() as session:
+            return list(
+                session.exec(
+                    select(ChatModel.id).where(ChatModel.project_id == project_id)
+                ).all()
+            )
+
+    def update_project(
+        self,
+        project_id: str,
+        name: Optional[str] = None,
+        archived: Optional[bool] = None,
+    ) -> Optional[ProjectModel]:
+        """Update a project's name and/or archived flag."""
+        with self._session() as session:
+            project = session.get(ProjectModel, project_id)
+            if not project:
+                return None
+            if name is not None:
+                project.name = name
+            if archived is not None:
+                project.archived = archived
+            session.add(project)
+            session.commit()
+            session.refresh(project)
+            return project
+
+    def delete_project(self, project_id: str) -> tuple[bool, str]:
+        """Delete a project. Refuses to delete system projects or non-empty projects.
+
+        Returns ``(success, error_message)``. On success error_message is empty.
+        """
+        with self._session() as session:
+            project = session.get(ProjectModel, project_id)
+            if not project:
+                return False, "Project not found"
+            if project.slug in self.SYSTEM_PROJECT_SLUGS:
+                return False, f"Cannot delete system project '{project.slug}'"
+            chat_count = session.exec(
+                select(func.count())
+                .select_from(ChatModel)
+                .where(ChatModel.project_id == project_id)
+            ).one()
+            if chat_count > 0:
+                return (
+                    False,
+                    f"Project has {chat_count} chat(s); move them out first",
+                )
+            session.delete(project)
+            session.commit()
+            return True, ""
+
+    def get_chat_project_id(self, chat_id: str) -> Optional[str]:
+        """Return the project_id for a chat, or None if not found."""
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            return chat.project_id if chat else None
+
+    def get_chat_project_slug(self, chat_id: str) -> str:
+        """Return the project slug for a chat, falling back to the default project slug.
+
+        Used by path resolution to map a chat to its on-disk project directory.
+        """
+        project_id = self.get_chat_project_id(chat_id)
+        if project_id:
+            project = self.get_project(project_id)
+            if project:
+                return project.slug
+        return self.DEFAULT_PROJECT_SLUG
+
+    def get_project_dir(self, chat_id: str) -> Path:
+        """Host path for the project a chat belongs to.
+
+        This directory is the agent's cwd and contains all project-scoped state:
+        heartbeat.md, context.md, plan.md, uploads/, images/, plus any files
+        the agent creates. Shared across all chats in the project.
+        """
+        from suzent.config import CONFIG
+
+        slug = self.get_chat_project_slug(chat_id)
+        return Path(CONFIG.sandbox_data_path) / "projects" / slug
+
+    def find_heartbeat_enabled_chat_in_project(
+        self, project_id: str, exclude_chat_id: Optional[str] = None
+    ) -> Optional["ChatModel"]:
+        """Return the chat in this project that already has heartbeat enabled.
+
+        Used to enforce one-heartbeat-per-project. Returns None if no other chat
+        in the project has heartbeat enabled.
+        """
+        with self._session() as session:
+            stmt = select(ChatModel).where(ChatModel.project_id == project_id)
+            if exclude_chat_id is not None:
+                stmt = stmt.where(ChatModel.id != exclude_chat_id)
+            for chat in session.exec(stmt).all():
+                if chat.config and chat.config.get("heartbeat_enabled"):
+                    return chat
+            return None
+
+    # -------------------------------------------------------------------------
     # Chat Operations
     # -------------------------------------------------------------------------
 
@@ -898,10 +1472,18 @@ class ChatDatabase:
         chat_id: str = None,
         working_directory: str = None,
         context_usage: Dict[str, Any] = None,
+        project_id: str = None,
     ) -> str:
         """Create a new chat and return its ID."""
         now = datetime.now()
         chat_id = chat_id or str(uuid.uuid4())
+
+        # Default to the default project if none specified
+        if project_id is None:
+            default = self.get_project_by_slug(self.DEFAULT_PROJECT_SLUG)
+            if default:
+                project_id = default.id
+
         chat = ChatModel(
             id=chat_id,
             title=title,
@@ -912,6 +1494,7 @@ class ChatDatabase:
             context_usage=context_usage or {},
             agent_state=agent_state,
             working_directory=working_directory,
+            project_id=project_id,
         )
 
         with self._session() as session:
@@ -1080,8 +1663,16 @@ class ChatDatabase:
         offset: int = 0,
         search: str = None,
         platform: str = None,
+        project_id: str = None,
     ) -> List[ChatSummaryModel]:
-        """List chat summaries ordered by last updated."""
+        """List chat summaries ordered by last updated.
+
+        Args:
+            project_id: Optional filter — only return chats in this project.
+            platform: Optional ``"social"`` / ``"personal"`` filter on the legacy
+                ``config.platform`` field. Retained for backward compatibility;
+                new code should prefer ``project_id``.
+        """
         with self._session() as session:
             statement = (
                 select(
@@ -1092,6 +1683,7 @@ class ChatDatabase:
                     ChatModel.config,
                     ChatModel.messages,
                     ChatModel.last_result_at,
+                    ChatModel.project_id,
                 )
                 .order_by(ChatModel.updated_at.desc())
                 .offset(offset)
@@ -1106,6 +1698,9 @@ class ChatDatabase:
                     )
                 )
 
+            if project_id is not None:
+                statement = statement.where(ChatModel.project_id == project_id)
+
             if platform == "social":
                 statement = statement.where(
                     text("json_extract(config, '$.platform') IS NOT NULL")
@@ -1114,6 +1709,12 @@ class ChatDatabase:
                 statement = statement.where(
                     text("json_extract(config, '$.platform') IS NULL")
                 )
+
+            # Build a slug/name lookup so each summary row can carry project info
+            # without a per-row query.
+            project_lookup: Dict[str, ProjectModel] = {
+                p.id: p for p in session.exec(select(ProjectModel)).all()
+            }
 
             results = []
             import re
@@ -1127,6 +1728,7 @@ class ChatDatabase:
                     config,
                     messages,
                     last_result_at,
+                    row_project_id,
                 ) = row
                 messages = messages or []
                 last_message = None
@@ -1172,6 +1774,7 @@ class ChatDatabase:
                     and isinstance(m.get("content"), str)
                     and m["content"].strip()
                 )
+                project = project_lookup.get(row_project_id) if row_project_id else None
                 results.append(
                     ChatSummaryModel(
                         id=chat_id,
@@ -1186,12 +1789,17 @@ class ChatDatabase:
                         if last_result_at
                         else None,
                         unreadCount=config.get("unread_count", 0),
+                        projectId=row_project_id,
+                        projectSlug=project.slug if project else None,
+                        projectName=project.name if project else None,
                     )
                 )
 
             return results
 
-    def get_chat_count(self, search: str = None, platform: str = None) -> int:
+    def get_chat_count(
+        self, search: str = None, platform: str = None, project_id: str = None
+    ) -> int:
         """Get total number of chats."""
         with self._session() as session:
             statement = select(func.count()).select_from(ChatModel)
@@ -1202,6 +1810,8 @@ class ChatDatabase:
                         _messages_search_filter(search),
                     )
                 )
+            if project_id is not None:
+                statement = statement.where(ChatModel.project_id == project_id)
             if platform == "social":
                 statement = statement.where(
                     text("json_extract(config, '$.platform') IS NOT NULL")
@@ -1211,6 +1821,15 @@ class ChatDatabase:
                     text("json_extract(config, '$.platform') IS NULL")
                 )
             return session.exec(statement).one()
+
+    def count_chats_in_project(self, project_id: str) -> int:
+        """Return the number of chats currently in this project."""
+        with self._session() as session:
+            return session.exec(
+                select(func.count())
+                .select_from(ChatModel)
+                .where(ChatModel.project_id == project_id)
+            ).one()
 
     def reassign_plan_chat(self, old_chat_id: str, new_chat_id: str) -> int:
         """Reassign all plans from one chat_id to another."""
