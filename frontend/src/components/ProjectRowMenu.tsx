@@ -4,9 +4,8 @@ import { useI18n } from '../i18n';
 
 interface ProjectRowMenuProps {
   anchor: { x: number; y: number } | { rect: DOMRect };
-  canDelete: boolean;
-  /** When canDelete is false, optional reason shown as a tooltip on the disabled item. */
-  deleteDisabledReason?: string;
+  /** Extra data-* attributes stamped on the floating panel (e.g. for outside-click whitelisting). */
+  rootDataAttrs?: Record<string, string>;
   onRename: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -18,8 +17,7 @@ interface ProjectRowMenuProps {
  */
 export const ProjectRowMenu: React.FC<ProjectRowMenuProps> = ({
   anchor,
-  canDelete,
-  deleteDisabledReason,
+  rootDataAttrs,
   onRename,
   onDelete,
   onClose,
@@ -81,6 +79,7 @@ export const ProjectRowMenu: React.FC<ProjectRowMenuProps> = ({
       }}
       className={`min-w-[200px] ${surface} py-0.5`}
       onClick={(e) => e.stopPropagation()}
+      {...(rootDataAttrs || {})}
     >
       <button
         type="button"
@@ -99,14 +98,8 @@ export const ProjectRowMenu: React.FC<ProjectRowMenuProps> = ({
       <button
         type="button"
         role="menuitem"
-        title={!canDelete ? deleteDisabledReason : undefined}
-        disabled={!canDelete}
         onClick={() => { onDelete(); onClose(); }}
-        className={`${itemBase} ${
-          canDelete
-            ? 'text-brutal-red hover:bg-brutal-red hover:text-white'
-            : 'text-neutral-300 dark:text-neutral-600 cursor-not-allowed'
-        }`}
+        className={`${itemBase} text-brutal-red hover:bg-brutal-red hover:text-white`}
       >
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />

@@ -404,8 +404,10 @@ export const zhCN = {
       rename: '重命名',
       moveToProject: '移动到项目',
       delete: '删除',
-      deleteDisabledHasChats: '请先移走该项目中的 {count} 个对话',
       deleteFailed: '无法删除项目',
+      deleteConfirmTitle: '删除 {name}？',
+      deleteConfirmEmpty: '该项目没有对话，删除后无法恢复。',
+      deleteConfirmWithChats: '该项目有 {count} 个对话，将被移动到 {target}，然后删除该项目。',
     },
     empty: {
       noResultsTitle: '未找到结果',

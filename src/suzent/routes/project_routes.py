@@ -149,6 +149,49 @@ async def delete_project(request: Request) -> JSONResponse:
     return JSONResponse({"success": True})
 
 
+async def move_all_chats(request: Request) -> JSONResponse:
+    """Reassign every chat in a project to another project.
+
+    Body: ``{target_project_id}``. Used by the frontend before deleting a
+    non-empty project so its chats land somewhere instead of vanishing.
+    """
+    project_id = request.path_params.get("project_id")
+    if not project_id:
+        return JSONResponse({"error": "project_id required"}, status_code=400)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    target = body.get("target_project_id") or body.get("targetProjectId")
+    if not target:
+        return JSONResponse(
+            {"error": "'target_project_id' is required"}, status_code=400
+        )
+    if target == project_id:
+        return JSONResponse(
+            {"error": "target_project_id must differ from source"}, status_code=400
+        )
+
+    db = get_database()
+    if not db.get_project(project_id):
+        return JSONResponse({"error": "Source project not found"}, status_code=404)
+    target_project = db.get_project(target)
+    if not target_project:
+        return JSONResponse({"error": "Target project not found"}, status_code=404)
+
+    moved = db.move_all_chats(project_id, target)
+    return JSONResponse(
+        {
+            "success": True,
+            "moved": moved,
+            "targetProjectId": target,
+            "targetProjectName": target_project.name,
+        }
+    )
+
+
 # ---------------------------------------------------------------------------
 # Move chat between projects
 # ---------------------------------------------------------------------------

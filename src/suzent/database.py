@@ -1346,6 +1346,18 @@ class ChatDatabase:
             session.commit()
             return True
 
+    def move_all_chats(self, from_project_id: str, to_project_id: str) -> int:
+        """Reassign every chat from one project to another. Returns moved count."""
+        with self._session() as session:
+            chats = session.exec(
+                select(ChatModel).where(ChatModel.project_id == from_project_id)
+            ).all()
+            for chat in chats:
+                chat.project_id = to_project_id
+                session.add(chat)
+            session.commit()
+            return len(chats)
+
     def update_project(
         self,
         project_id: str,

@@ -477,8 +477,10 @@ export const en = {
       rename: 'Rename',
       moveToProject: 'Move to project',
       delete: 'Delete',
-      deleteDisabledHasChats: 'Move {count} chat(s) out first',
       deleteFailed: 'Could not delete project',
+      deleteConfirmTitle: 'Delete {name}?',
+      deleteConfirmEmpty: 'This project has no chats. This cannot be undone.',
+      deleteConfirmWithChats: 'This project has {count} chat(s). They will be moved to {target}, then the project will be deleted.',
     },
     empty: {
       noResultsTitle: 'No results found',

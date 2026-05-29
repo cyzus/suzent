@@ -8,6 +8,7 @@ import { useI18n } from '../i18n';
 import { markChatRead } from '../lib/api';
 import { ChatRowMenu } from './ChatRowMenu';
 import { ProjectRowMenu } from './ProjectRowMenu';
+import { BrutalDialog } from './BrutalDialog';
 
 const ALL_PROJECTS_FILTER = '__all__';
 
@@ -32,12 +33,12 @@ export const ChatList: React.FC = () => {
 
   const {
     projects,
-    currentProjectId,
     setCurrentProjectId,
     createProject,
     renameProject,
     deleteProject,
     moveChat,
+    moveAllChats,
     refresh: refreshProjects,
   } = useProjects();
 
@@ -62,6 +63,14 @@ export const ChatList: React.FC = () => {
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
   const [projectRenameValue, setProjectRenameValue] = useState('');
 
+  // Dialog state — replaces window.alert / window.confirm so we keep
+  // brutalist styling and never get blocked by browser dialog rendering.
+  const [dialog, setDialog] = useState<{
+    title?: string;
+    message: React.ReactNode;
+    actions: { label: string; tone?: 'default' | 'primary' | 'danger'; onClick?: () => void | Promise<void>; preventDismiss?: boolean }[];
+  } | null>(null);
+
   // Filter pill state
   const [filterId, setFilterId] = useState<string>(ALL_PROJECTS_FILTER);
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
@@ -74,6 +83,13 @@ export const ChatList: React.FC = () => {
 
   const chatsRef = useRef(chats);
   useEffect(() => { chatsRef.current = chats; }, [chats]);
+
+  // Whenever the chat list changes (create / delete / move), the server-side
+  // project chat counts may be stale. Refresh them so the dropdown shows
+  // accurate numbers without the user having to do anything.
+  useEffect(() => {
+    void refreshProjects();
+  }, [chats.length, refreshProjects]);
 
   const markRead = useCallback((chatId: string) => {
     const chat = chatsRef.current.find(c => c.id === chatId);
@@ -120,17 +136,29 @@ export const ChatList: React.FC = () => {
     };
   }, [refreshingChats]);
 
-  // Close filter menu on outside click
+  // Whenever the filter dropdown closes, also dismiss any project-row menu
+  // and abandon an inline project rename so we don't leave orphan UI behind.
+  useEffect(() => {
+    if (filterMenuOpen) return;
+    setProjectMenu(null);
+    setRenamingProjectId(null);
+    setCreatingProjectInline(false);
+  }, [filterMenuOpen]);
+
+  // Close filter menu on outside click. Clicks inside the kebab popover or
+  // the modal dialog (which live in portals at document.body) are treated as
+  // inside, since they were spawned from the dropdown.
   useEffect(() => {
     if (!filterMenuOpen) return;
     const handler = (e: MouseEvent) => {
-      if (
-        filterMenuRef.current && !filterMenuRef.current.contains(e.target as Node) &&
-        filterPillRef.current && !filterPillRef.current.contains(e.target as Node)
-      ) {
-        setFilterMenuOpen(false);
-        setCreatingProjectInline(false);
-      }
+      const target = e.target as Element | null;
+      if (!target) return;
+      const insidePill = filterPillRef.current?.contains(target);
+      const insideMenu = filterMenuRef.current?.contains(target);
+      const insidePortal = !!target.closest?.('[data-popover-source="project-filter"]');
+      if (insidePill || insideMenu || insidePortal) return;
+      setFilterMenuOpen(false);
+      setCreatingProjectInline(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -231,7 +259,7 @@ export const ChatList: React.FC = () => {
   const handleMoveChatToProject = async (chatId: string, projectId: string) => {
     const chat = chatsRef.current.find(c => c.id === chatId);
     if (!chat || chat.projectId === projectId) return;
-    const ok = await moveChat(chatId, projectId);
+    const ok = await moveChat(chatId, projectId, chat.projectId);
     if (ok) {
       await Promise.all([refreshChatList(undefined, true), refreshProjects()]);
     }
@@ -465,14 +493,24 @@ export const ChatList: React.FC = () => {
               className="absolute left-0 right-0 top-full mt-1 z-30 bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-[3px_3px_0_0_#000] max-h-[60vh] overflow-hidden flex flex-col"
             >
               <div className="overflow-y-auto flex-1">
-                <button
-                  type="button"
-                  onClick={() => handleSelectFilter(ALL_PROJECTS_FILTER)}
-                  className={`w-full text-left px-3 py-2 text-xs font-bold flex items-center justify-between gap-2 border-b border-neutral-200 dark:border-zinc-700 ${filterId === ALL_PROJECTS_FILTER ? 'bg-brutal-yellow text-brutal-black' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700 dark:text-white'}`}
+                <div
+                  className={`flex items-stretch border-b border-neutral-200 dark:border-zinc-700 ${
+                    filterId === ALL_PROJECTS_FILTER ? 'bg-brutal-yellow text-brutal-black' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700 dark:text-white'
+                  }`}
                 >
-                  <span className="truncate uppercase tracking-wider">{t('chatList.filter.all')}</span>
-                  <span className="text-[10px] font-bold tabular-nums opacity-70">{chatTotal}</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectFilter(ALL_PROJECTS_FILTER)}
+                    className="flex-1 min-w-0 text-left px-3 py-2 text-xs font-bold flex items-center justify-between gap-2"
+                  >
+                    <span className="truncate uppercase tracking-wider">{t('chatList.filter.all')}</span>
+                    <span className="text-[10px] font-bold tabular-nums opacity-70">{chatTotal}</span>
+                  </button>
+                  {/* Spacer to align with kebab column on user-project rows */}
+                  <span aria-hidden="true" className="px-2 flex items-center shrink-0">
+                    <span className="w-4" />
+                  </span>
+                </div>
                 {projects.map(p => {
                   const isSystem = p.slug === 'default' || p.slug === 'social';
                   const isRenaming = renamingProjectId === p.id;
@@ -516,7 +554,7 @@ export const ChatList: React.FC = () => {
                             <span className="truncate">{p.name}</span>
                             <span className="text-[10px] font-bold tabular-nums opacity-70">{p.chatCount}</span>
                           </button>
-                          {!isSystem && (
+                          {!isSystem ? (
                             <button
                               type="button"
                               aria-label={t('chatList.menu.title')}
@@ -526,7 +564,7 @@ export const ChatList: React.FC = () => {
                                 const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
                                 setProjectMenu({ projectId: p.id, anchor: { rect } });
                               }}
-                              className={`px-2 transition-opacity flex items-center justify-center ${
+                              className={`px-2 transition-opacity flex items-center justify-center shrink-0 ${
                                 projectMenu?.projectId === p.id
                                   ? 'opacity-100'
                                   : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'
@@ -538,6 +576,12 @@ export const ChatList: React.FC = () => {
                                 <circle cx="12" cy="19" r="1.6" />
                               </svg>
                             </button>
+                          ) : (
+                            // Spacer so the chat-count column stays aligned across
+                            // rows whether or not a kebab button is rendered.
+                            <span aria-hidden="true" className="px-2 flex items-center shrink-0">
+                              <span className="w-4" />
+                            </span>
                           )}
                         </>
                       )}
@@ -634,32 +678,93 @@ export const ChatList: React.FC = () => {
         );
       })()}
 
+      {/* Modal dialog (replaces window.alert / window.confirm) */}
+      <BrutalDialog
+        open={dialog !== null}
+        title={dialog?.title}
+        message={dialog?.message ?? ''}
+        actions={dialog?.actions ?? []}
+        onClose={() => setDialog(null)}
+        rootDataAttrs={{ 'data-popover-source': 'project-filter' }}
+      />
+
       {/* Floating project menu (kebab inside the filter dropdown) */}
       {projectMenu && (() => {
         const p = projects.find(pr => pr.id === projectMenu.projectId);
         if (!p) return null;
-        const canDelete = p.chatCount === 0;
         return (
           <ProjectRowMenu
             anchor={projectMenu.anchor}
-            canDelete={canDelete}
-            deleteDisabledReason={
-              !canDelete
-                ? t('chatList.menu.deleteDisabledHasChats', { count: p.chatCount })
-                : undefined
-            }
+            rootDataAttrs={{ 'data-popover-source': 'project-filter' }}
             onRename={() => {
               setProjectRenameValue(p.name);
               setRenamingProjectId(p.id);
             }}
-            onDelete={async () => {
-              const result = await deleteProject(p.id);
-              if (!result.success) {
-                alert(result.error || t('chatList.menu.deleteFailed'));
-              } else if (filterId === p.id) {
-                // We were filtering by this project — fall back to "All"
-                setFilterId(ALL_PROJECTS_FILTER);
+            onDelete={() => {
+              // Always allow delete. If the project has chats, prompt the user
+              // to confirm — chats will be moved to the default project first.
+              const fallback = projects.find(pr => pr.slug === 'default');
+              const finalizeDelete = async () => {
+                const result = await deleteProject(p.id);
+                if (!result.success) {
+                  setDialog({
+                    title: p.name,
+                    message: result.error || t('chatList.menu.deleteFailed'),
+                    actions: [{ label: t('common.ok'), tone: 'primary' }],
+                  });
+                  return;
+                }
+                if (filterId === p.id) setFilterId(ALL_PROJECTS_FILTER);
+                await Promise.all([refreshChatList(undefined, true), refreshProjects()]);
+              };
+
+              if (p.chatCount === 0) {
+                setDialog({
+                  title: t('chatList.menu.deleteConfirmTitle', { name: p.name }),
+                  message: t('chatList.menu.deleteConfirmEmpty'),
+                  actions: [
+                    { label: t('common.cancel') },
+                    { label: t('chatList.menu.delete'), tone: 'danger', onClick: finalizeDelete },
+                  ],
+                });
+                return;
               }
+
+              if (!fallback) {
+                setDialog({
+                  title: p.name,
+                  message: t('chatList.menu.deleteFailed'),
+                  actions: [{ label: t('common.ok'), tone: 'primary' }],
+                });
+                return;
+              }
+
+              setDialog({
+                title: t('chatList.menu.deleteConfirmTitle', { name: p.name }),
+                message: t('chatList.menu.deleteConfirmWithChats', {
+                  count: p.chatCount,
+                  target: fallback.name,
+                }),
+                actions: [
+                  { label: t('common.cancel') },
+                  {
+                    label: t('chatList.menu.delete'),
+                    tone: 'danger',
+                    onClick: async () => {
+                      const moveResult = await moveAllChats(p.id, fallback.id);
+                      if (!moveResult.success) {
+                        setDialog({
+                          title: p.name,
+                          message: moveResult.error || t('chatList.menu.deleteFailed'),
+                          actions: [{ label: t('common.ok'), tone: 'primary' }],
+                        });
+                        return;
+                      }
+                      await finalizeDelete();
+                    },
+                  },
+                ],
+              });
             }}
             onClose={() => setProjectMenu(null)}
           />

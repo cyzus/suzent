@@ -51,6 +51,7 @@ from suzent.routes.project_routes import (
     create_project,
     delete_project,
     list_projects,
+    move_all_chats,
     move_chat_to_project,
     update_project,
 )
@@ -687,6 +688,7 @@ app = Starlette(
         Route("/projects", create_project, methods=["POST"]),
         Route("/projects/{project_id}", update_project, methods=["PATCH"]),
         Route("/projects/{project_id}", delete_project, methods=["DELETE"]),
+        Route("/projects/{project_id}/move-chats", move_all_chats, methods=["POST"]),
         Route("/plans", get_plans, methods=["GET"]),
         Route("/plan", get_plan, methods=["GET"]),
         Route("/config", get_config, methods=["GET"]),

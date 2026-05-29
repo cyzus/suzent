@@ -18,7 +18,8 @@ interface ProjectContextValue {
   renameProject: (id: string, name: string) => Promise<void>;
   archiveProject: (id: string, archived: boolean) => Promise<void>;
   deleteProject: (id: string) => Promise<{ success: boolean; error?: string }>;
-  moveChat: (chatId: string, projectId: string) => Promise<boolean>;
+  moveChat: (chatId: string, projectId: string, fromProjectId?: string | null) => Promise<boolean>;
+  moveAllChats: (fromProjectId: string, toProjectId: string) => Promise<{ success: boolean; moved?: number; error?: string }>;
   getProject: (id: string | null | undefined) => Project | undefined;
   getProjectBySlug: (slug: string) => Project | undefined;
 }
@@ -146,7 +147,26 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, []);
 
-  const moveChat = useCallback(async (chatId: string, projectId: string): Promise<boolean> => {
+  const moveAllChats = useCallback(async (fromProjectId: string, toProjectId: string) => {
+    try {
+      const res = await fetch(`${getApiBase()}/projects/${fromProjectId}/move-chats`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_project_id: toProjectId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        return { success: false, error: err.error || `HTTP ${res.status}` };
+      }
+      const data = await res.json();
+      await refresh();
+      return { success: true, moved: data.moved };
+    } catch (e: any) {
+      return { success: false, error: String(e) };
+    }
+  }, [refresh]);
+
+  const moveChat = useCallback(async (chatId: string, projectId: string, fromProjectId?: string | null): Promise<boolean> => {
     try {
       const res = await fetch(`${getApiBase()}/chats/${chatId}/project`, {
         method: 'POST',
@@ -154,19 +174,25 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         body: JSON.stringify({ project_id: projectId }),
       });
       if (!res.ok) return false;
-      // Bump chat counts optimistically
+      // Optimistic update: +1 destination, -1 source. Authoritative counts come
+      // from refresh() right after — but the optimistic step prevents flicker.
       setProjects((prev) =>
         prev.map((p) => {
           if (p.id === projectId) return { ...p, chatCount: p.chatCount + 1 };
+          if (fromProjectId && p.id === fromProjectId) {
+            return { ...p, chatCount: Math.max(0, p.chatCount - 1) };
+          }
           return p;
         }),
       );
+      // Re-fetch authoritative counts from the server.
+      refresh();
       return true;
     } catch (e) {
       console.warn('moveChat error:', e);
       return false;
     }
-  }, []);
+  }, [refresh]);
 
   const getProject = useCallback(
     (id: string | null | undefined) => projects.find((p) => p.id === id),
@@ -190,6 +216,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       archiveProject,
       deleteProject,
       moveChat,
+      moveAllChats,
       getProject,
       getProjectBySlug,
     }),
@@ -204,6 +231,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       archiveProject,
       deleteProject,
       moveChat,
+      moveAllChats,
       getProject,
       getProjectBySlug,
     ],
