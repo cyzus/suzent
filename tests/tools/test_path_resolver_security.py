@@ -67,3 +67,22 @@ def test_resolve_uploads_alias_keeps_legacy_paths_working(tmp_path):
             tmp_path / "sandbox" / "projects" / "default" / "uploads" / "example.txt"
         ).resolve()
     )
+
+
+def test_resolve_persistence_alias_keeps_legacy_paths_working(tmp_path):
+    resolver = PathResolver(
+        chat_id="test-chat",
+        sandbox_enabled=False,
+        project_slug="default",
+        sandbox_data_path=str(tmp_path / "sandbox"),
+        workspace_root=str(tmp_path / "workspace"),
+    )
+
+    resolved = resolver.resolve("/persistence/notes/example.txt")
+
+    assert (
+        resolved
+        == (
+            tmp_path / "sandbox" / "projects" / "default" / "notes" / "example.txt"
+        ).resolve()
+    )

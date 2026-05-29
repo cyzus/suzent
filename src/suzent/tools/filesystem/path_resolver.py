@@ -23,6 +23,7 @@ class PathResolver:
       - project cwd → data/sandbox-data/projects/{slug}/  (mounted at /workspace)
       - /shared/*   → data/sandbox-data/shared/*           (mounted at /shared)
       - /workspace/uploads/* → data/sandbox-data/projects/{slug}/uploads/*
+      - /persistence/* → data/sandbox-data/projects/{slug}/* (legacy alias)
       - [Custom Mounts] → mapped host paths
 
     In non-sandbox mode:
@@ -248,7 +249,13 @@ class PathResolver:
             is_windows_absolute = len(virtual_path) > 1 and virtual_path[1] == ":"
             is_unix_absolute = virtual_path.startswith("/") and not any(
                 virtual_path.startswith(prefix)
-                for prefix in ["/shared", "/uploads", "/mnt", "/workspace"]
+                for prefix in [
+                    "/shared",
+                    "/uploads",
+                    "/mnt",
+                    "/workspace",
+                    "/persistence",
+                ]
             )
             if is_windows_absolute or is_unix_absolute:
                 resolved = Path(virtual_path).resolve()
@@ -269,11 +276,18 @@ class PathResolver:
           /workspace/*  → project_dir/*  (project cwd inside sandbox)
           /shared/*     → sandbox_data_path/shared/*
           /uploads/*    → project_dir/uploads/* (legacy alias)
+          /persistence/* → project_dir/* (legacy alias)
           /mnt/*        → custom mount (must be registered)
           other paths   → resolved relative to project_dir
         """
-        if path.startswith("/workspace/") or path == "/workspace":
-            rel_path = path[len("/workspace") :].lstrip("/")
+        if (
+            path.startswith("/workspace/")
+            or path == "/workspace"
+            or path.startswith("/persistence/")
+            or path == "/persistence"
+        ):
+            prefix = "/persistence" if path.startswith("/persistence") else "/workspace"
+            rel_path = path[len(prefix) :].lstrip("/")
             return (
                 (self.project_dir / rel_path).resolve()
                 if rel_path

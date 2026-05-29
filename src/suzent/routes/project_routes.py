@@ -36,6 +36,12 @@ def _slugify(name: str) -> str:
     return slug or "project"
 
 
+def _normalize_slug(value: object, fallback_name: str) -> str:
+    """Normalize a caller-provided slug to the same safe shape as generated slugs."""
+    raw = str(value or "").strip()
+    return _slugify(raw or fallback_name)
+
+
 def _project_to_dict(project, chat_count: int) -> dict:
     return {
         "id": project.id,
@@ -55,6 +61,21 @@ def _invalidate_sandbox_sessions(chat_ids: list[str]) -> None:
             SandboxManager.invalidate_session(chat_id)
     except Exception as e:
         logger.debug(f"Failed to invalidate sandbox sessions for moved chats: {e}")
+
+
+def _chat_has_heartbeat_enabled(chat) -> bool:
+    return bool(chat and chat.config and chat.config.get("heartbeat_enabled"))
+
+
+def _heartbeat_conflict_payload(existing) -> dict:
+    return {
+        "error": (
+            f"Heartbeat is already enabled on chat '{existing.title}' "
+            "in the target project. Disable it there first."
+        ),
+        "conflicting_chat_id": existing.id,
+        "conflicting_chat_title": existing.title,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +111,7 @@ async def create_project(request: Request) -> JSONResponse:
     if not name:
         return JSONResponse({"error": "'name' is required"}, status_code=400)
 
-    slug = (body.get("slug") or "").strip().lower() or _slugify(name)
+    slug = _normalize_slug(body.get("slug"), name)
 
     db = get_database()
     if db.get_project_by_slug(slug):
@@ -191,6 +212,14 @@ async def move_all_chats(request: Request) -> JSONResponse:
     if not target_project:
         return JSONResponse({"error": "Target project not found"}, status_code=404)
 
+    source_heartbeat = db.find_heartbeat_enabled_chat_in_project(project_id)
+    target_heartbeat = db.find_heartbeat_enabled_chat_in_project(target)
+    if source_heartbeat is not None and target_heartbeat is not None:
+        return JSONResponse(
+            _heartbeat_conflict_payload(target_heartbeat),
+            status_code=409,
+        )
+
     moved_chat_ids = db.get_chat_ids_in_project(project_id)
     moved = db.move_all_chats(project_id, target)
     _invalidate_sandbox_sessions(moved_chat_ids)
@@ -228,6 +257,20 @@ async def move_chat_to_project(request: Request) -> JSONResponse:
     target = db.get_project(project_id)
     if not target:
         return JSONResponse({"error": "Target project not found"}, status_code=404)
+
+    chat = db.get_chat(chat_id)
+    if not chat:
+        return JSONResponse({"error": "Chat not found"}, status_code=404)
+
+    if _chat_has_heartbeat_enabled(chat):
+        existing = db.find_heartbeat_enabled_chat_in_project(
+            project_id, exclude_chat_id=chat_id
+        )
+        if existing is not None:
+            return JSONResponse(
+                _heartbeat_conflict_payload(existing),
+                status_code=409,
+            )
 
     if not db.link_chat_to_project(chat_id, project_id):
         return JSONResponse({"error": "Chat not found"}, status_code=404)

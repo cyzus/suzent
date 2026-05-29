@@ -160,7 +160,12 @@ export const ChatList: React.FC = () => {
     const offset = options?.offset ?? 0;
     const append = !!options?.append;
     if (append) setLoadingMoreProjectChats(true);
-    else setLoadingProjectChats(true);
+    else {
+      setLoadingProjectChats(true);
+      setProjectChats([]);
+      setProjectChatTotal(0);
+      setProjectChatOffset(0);
+    }
 
     try {
       const params = new URLSearchParams({
@@ -503,14 +508,20 @@ export const ChatList: React.FC = () => {
     );
   };
 
-  if (loadingChats || loadingProjectChats) {
+  const renderListSkeleton = () => (
+    <div className="p-4 bg-white dark:bg-zinc-800">
+      <div className="space-y-3">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="h-16 bg-neutral-300 border-3 border-brutal-black animate-brutal-blink"></div>
+        ))}
+      </div>
+    </div>
+  );
+
+  if (loadingChats) {
     return (
       <div className="p-4">
-        <div className="space-y-3">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="h-16 bg-neutral-300 border-3 border-brutal-black animate-brutal-blink"></div>
-          ))}
-        </div>
+        {renderListSkeleton()}
       </div>
     );
   }
@@ -722,7 +733,9 @@ export const ChatList: React.FC = () => {
 
       {/* Chat list */}
       <div className="flex-1 overflow-y-auto scrollbar-thin min-h-0">
-        {filteredChats.length === 0 ? (
+        {loadingProjectChats ? (
+          renderListSkeleton()
+        ) : filteredChats.length === 0 ? (
           <div className="flex flex-col bg-white dark:bg-zinc-800">
             <div className="p-8 text-center">
               <div className="w-16 h-16 mx-auto mb-3">
