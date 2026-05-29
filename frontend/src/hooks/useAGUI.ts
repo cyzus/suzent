@@ -24,12 +24,16 @@ interface UseAGUIReturn {
   parts: AGUIPart[];
   status: AGUIStatus;
   error: string | undefined;
-  sendMessage: (body: Record<string, unknown>, opts?: { formData?: FormData; urlOverride?: string; onStreamStart?: () => void }) => Promise<boolean>;
+  sendMessage: (body: Record<string, unknown>, opts?: { formData?: FormData; urlOverride?: string; onStreamStart?: () => void; seedParts?: AGUIPart[] }) => Promise<boolean>;
   /** Resume a stream after approval without clearing existing parts */
   resumeStream: (body: Record<string, unknown>) => Promise<void>;
   /** Interrupt the current stream and redirect the agent with a new message */
   steerStream: (body: Record<string, unknown>) => Promise<void>;
   stop: () => void;
+  /** Abort the active stream without triggering onFinish (used on chat switch) */
+  stopSilently: () => void;
+  /** Read the current parts synchronously (e.g. to snapshot before switching chats) */
+  getParts: () => AGUIPart[];
   clearParts: () => void;
   /** Remove an inline A2UI surface part by surface id (e.g. after ask_question is answered) */
   removeInlineSurface: (surfaceId: string) => void;
@@ -396,6 +400,11 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   const abortRef = useRef<AbortController | null>(null);
   // Set to true while steerStream is running so abort-triggered onFinish is suppressed
   const isSteeringRef = useRef(false);
+  // Set to true by stopSilently() so the next abort skips onFinish entirely.
+  // Used when abandoning a live background stream on chat switch — the backend
+  // persists the content, so the frontend must NOT addMessage (which would
+  // misroute the parts to whatever chat is now being viewed).
+  const suppressFinishRef = useRef(false);
   // Keep a ref to latest parts so onFinish gets the final value
   const partsRef = useRef<AGUIPart[]>([]);
   partsRef.current = parts;
@@ -444,6 +453,17 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   const stop = useCallback(() => {
     abortRef.current?.abort();
   }, []);
+
+  // Abort the active stream WITHOUT triggering onFinish. Used when navigating
+  // away from a live background stream — the backend keeps producing and
+  // persists the result, so the frontend discards its transient parts instead
+  // of finalizing them into the (now different) currently-viewed chat.
+  const stopSilently = useCallback(() => {
+    suppressFinishRef.current = true;
+    abortRef.current?.abort();
+  }, []);
+
+  const getParts = useCallback(() => partsRef.current, []);
 
   // Optimistically update a tool part's state when user approves/denies
   // so buttons disappear instantly (no waiting for backend round-trip)
@@ -723,7 +743,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
   const sendMessage = useCallback(async (
     body: Record<string, unknown>,
-    opts?: { formData?: FormData; urlOverride?: string; onStreamStart?: () => void },
+    opts?: { formData?: FormData; urlOverride?: string; onStreamStart?: () => void; seedParts?: AGUIPart[] },
   ): Promise<boolean> => {
     const { url, onFinish, onCustomEvent, onMarkDeferred, onError } = optionsRef.current;
     const targetUrl = opts?.urlOverride ?? url;
@@ -774,8 +794,14 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
       if (isProbe) {
         // Stream confirmed active — reset state now (not on every silent 204 probe).
-        setParts([]);
-        partsRef.current = [];
+        // Seed with prior parts when reconnecting to a stream we abandoned on a
+        // chat switch, so previously-shown steps (and in-flight tool states)
+        // are preserved instead of resetting. The background queue is
+        // consume-once, so it only replays chunks from the reconnect point —
+        // the seed supplies everything before it.
+        const seed = opts?.seedParts ?? [];
+        setParts(seed);
+        partsRef.current = seed;
         setError(undefined);
         setStatus('submitted');
         resetApprovalTracking();
@@ -837,9 +863,13 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
-        // If the abort was triggered by steerStream, do nothing here —
-        // steerStream owns the status and will call onFinish when done.
-        if (!isSteeringRef.current) {
+        // Silent stop (chat switch): discard parts, never finalize.
+        if (suppressFinishRef.current) {
+          suppressFinishRef.current = false;
+          setStatus('idle');
+        } else if (!isSteeringRef.current) {
+          // If the abort was triggered by steerStream, do nothing here —
+          // steerStream owns the status and will call onFinish when done.
           setStatus('idle');
           onFinish?.(partsRef.current);
         }
@@ -853,5 +883,5 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     }
   }, [resetApprovalTracking, setPendingApprovalCountSync]);
 
-  return { parts, status, error, sendMessage, resumeStream, steerStream, stop, clearParts, removeInlineSurface, resolveApproval, pendingApprovalCount, addApprovalDecision, consumeApprovalDecisions };
+  return { parts, status, error, sendMessage, resumeStream, steerStream, stop, stopSilently, getParts, clearParts, removeInlineSurface, resolveApproval, pendingApprovalCount, addApprovalDecision, consumeApprovalDecisions };
 }

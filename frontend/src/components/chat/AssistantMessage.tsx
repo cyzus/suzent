@@ -43,6 +43,8 @@ interface AssistantMessageProps {
   usage?: any;
   /** When provided, renders from AG-UI streaming parts instead of legacy HTML parsing */
   aguiParts?: AGUIPart[];
+  /** Wall-clock start time (ms) of the active stream, so the activity timer resumes across reconnects */
+  streamStartedAtMs?: number;
   /** HITL approval handler: (approvalId, toolCallId, approved, remember?, toolName?) */
   onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string) => void;
   /** Tool approval policy for showing auto-approval badges */
@@ -98,6 +100,7 @@ const AGUIPartsContent: React.FC<{
   parts: AGUIPart[];
   messageIndex: number;
   workedDurationSeconds?: number;
+  streamStartedAtMs?: number;
   isStreaming?: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
   onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string) => void;
@@ -108,7 +111,7 @@ const AGUIPartsContent: React.FC<{
   onOpenSubAgentSidebar?: (taskId: string) => void;
   onStopSubAgent?: (taskId: string) => void;
   onForceWebContext?: (contextId: string) => void;
-}> = ({ parts, messageIndex, workedDurationSeconds, isStreaming, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext }) => {
+}> = ({ parts, messageIndex, workedDurationSeconds, streamStartedAtMs, isStreaming, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext }) => {
   // Normalize tool parts: when resume/recovery emits another tool part with the
   // same toolCallId later in the stream, merge it into the first occurrence so
   // output stays under the initial tool call instead of rendering a split block.
@@ -178,6 +181,7 @@ const AGUIPartsContent: React.FC<{
               key={`activity-${gi}`}
               itemCount={countActivityItems(group.chunks)}
               durationSeconds={workedDurationSeconds}
+              startedAtMs={activityGroupOrdinal === 0 ? streamStartedAtMs : undefined}
               showDuration={activityGroupOrdinal === 0}
               defaultExpanded={Boolean(isStreaming)}
               isActive={Boolean(isStreaming)}
@@ -450,6 +454,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   isLastMessage,
   onFileClick,
   aguiParts,
+  streamStartedAtMs,
   onToolApproval,
   usage,
   toolApprovalPolicy,
@@ -585,6 +590,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                 parts={effectiveParts}
                 messageIndex={messageIndex}
                 workedDurationSeconds={workedDurationSeconds}
+                streamStartedAtMs={streamStartedAtMs}
                 isStreaming={isStreamingThis}
                 onFileClick={onFileClick}
                 onToolApproval={onToolApproval}

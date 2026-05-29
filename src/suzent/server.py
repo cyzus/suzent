@@ -28,6 +28,7 @@ from suzent.logger import get_logger, setup_logging
 from suzent.routes.chat_routes import (
     approve_tool,
     chat,
+    chat_send,
     create_chat,
     deactivate_tool,
     delete_chat,
@@ -661,6 +662,7 @@ app = Starlette(
     lifespan=lifespan,
     routes=[
         Route("/chat", chat, methods=["POST"]),
+        Route("/chat/send", chat_send, methods=["POST"]),
         Route("/chat/live", live_stream, methods=["POST"]),
         Route("/chat/stop", stop_chat, methods=["POST"]),
         Route("/chat/steer", steer_chat, methods=["POST"]),

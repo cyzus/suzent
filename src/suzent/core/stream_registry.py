@@ -169,17 +169,25 @@ class _BusStreamQueue:
     else delegates to the inner asyncio.Queue.
     """
 
-    def __init__(self, chat_id: str, maxsize: int = 2000):
+    def __init__(self, chat_id: str, maxsize: int = 0):
         self.chat_id = chat_id
         self._q: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
+        # Cleared when the None sentinel is put so is_background_streaming()
+        # returns False as soon as the producer finishes, even if a late
+        # /chat/live client hasn't drained the queue yet.
+        self.producer_active: bool = True
 
     # --- write side ---
 
     async def put(self, item) -> None:
+        if item is None:
+            self.producer_active = False
         await self._q.put(item)
         _fan_chunk_to_bus(self.chat_id, item)
 
     def put_nowait(self, item) -> None:
+        if item is None:
+            self.producer_active = False
         self._q.put_nowait(item)
         _fan_chunk_to_bus(self.chat_id, item)
 
@@ -217,8 +225,20 @@ def register_background_stream(chat_id: str) -> _BusStreamQueue:
     return q
 
 
-def unregister_background_stream(chat_id: str) -> None:
+def try_register_background_stream(chat_id: str) -> Optional[_BusStreamQueue]:
+    """Register a background SSE queue unless a producer is already active."""
+    existing = background_queues.get(chat_id)
+    if existing is not None and existing.producer_active:
+        return None
+    return register_background_stream(chat_id)
+
+
+def unregister_background_stream(
+    chat_id: str, queue: Optional[_BusStreamQueue] = None
+) -> None:
     """Remove the background queue for a chat (signals no active stream)."""
+    if queue is not None and background_queues.get(chat_id) is not queue:
+        return
     background_queues.pop(chat_id, None)
     # stream_ended is already emitted by the None sentinel put_nowait in _BusStreamQueue
 
@@ -229,8 +249,13 @@ def get_background_queue(chat_id: str) -> Optional[_BusStreamQueue]:
 
 
 def is_background_streaming(chat_id: str) -> bool:
-    """Return True if a background stream is currently active for this chat."""
-    return chat_id in background_queues
+    """Return True if a background stream producer is still active for this chat.
+
+    Returns False as soon as the producer puts the None sentinel, even if the
+    queue still exists for late-arriving /chat/live consumers to drain.
+    """
+    q = background_queues.get(chat_id)
+    return q is not None and q.producer_active
 
 
 async def push_custom_event(chat_id: str, event_name: str, data: Any) -> None:
