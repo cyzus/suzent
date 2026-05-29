@@ -106,32 +106,42 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const renameProject = useCallback(async (id: string, name: string) => {
+    const previousProjects = projects;
     setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, name } : p)));
     try {
-      await fetch(`${getApiBase()}/projects/${id}`, {
+      const res = await fetch(`${getApiBase()}/projects/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
     } catch (e) {
       console.warn('renameProject error:', e);
+      setProjects(previousProjects);
       await refresh();
     }
-  }, [refresh]);
+  }, [projects, refresh]);
 
   const archiveProject = useCallback(async (id: string, archived: boolean) => {
+    const previousProjects = projects;
     setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, archived } : p)));
     try {
-      await fetch(`${getApiBase()}/projects/${id}`, {
+      const res = await fetch(`${getApiBase()}/projects/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ archived }),
       });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
     } catch (e) {
       console.warn('archiveProject error:', e);
+      setProjects(previousProjects);
       await refresh();
     }
-  }, [refresh]);
+  }, [projects, refresh]);
 
   const deleteProject = useCallback(async (id: string): Promise<{ success: boolean; error?: string }> => {
     try {

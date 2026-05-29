@@ -949,6 +949,25 @@ class SandboxManager:
             self._sessions[session_id] = self._create_session(session_id)
         return self._sessions[session_id]
 
+    @classmethod
+    def invalidate_session(cls, session_id: str) -> None:
+        """Remove a cached session from all manager singletons.
+
+        Used when metadata that affects the container mount, such as a chat's
+        project, changes. This avoids reusing a DockerSession whose /workspace
+        still points at the previous project directory.
+        """
+        with _manager_singletons_lock:
+            managers = list(_manager_singletons.values())
+
+        for manager in managers:
+            if not getattr(manager, "_initialized", False):
+                continue
+            try:
+                manager.remove_session(session_id)
+            except Exception as e:
+                logger.debug(f"Could not invalidate sandbox session {session_id}: {e}")
+
     def execute(
         self,
         session_id: str,

@@ -5,7 +5,7 @@ import { ChatSummary, Project } from '../types/api';
 import { RobotAvatar } from './chat/RobotAvatar';
 import { BrutalDeleteOverlay } from './BrutalDeleteOverlay';
 import { useI18n } from '../i18n';
-import { markChatRead } from '../lib/api';
+import { getApiBase, markChatRead } from '../lib/api';
 import { ChatRowMenu } from './ChatRowMenu';
 import { ProjectRowMenu } from './ProjectRowMenu';
 import { BrutalDialog } from './BrutalDialog';
@@ -78,11 +78,18 @@ export const ChatList: React.FC = () => {
   const [newProjectName, setNewProjectName] = useState('');
   const filterMenuRef = useRef<HTMLDivElement | null>(null);
   const filterPillRef = useRef<HTMLButtonElement | null>(null);
+  const [projectChats, setProjectChats] = useState<ChatSummary[]>([]);
+  const [projectChatTotal, setProjectChatTotal] = useState(0);
+  const [projectChatOffset, setProjectChatOffset] = useState(0);
+  const [loadingProjectChats, setLoadingProjectChats] = useState(false);
+  const [loadingMoreProjectChats, setLoadingMoreProjectChats] = useState(false);
 
   const { t } = useI18n();
 
   const chatsRef = useRef(chats);
   useEffect(() => { chatsRef.current = chats; }, [chats]);
+  const projectChatsRef = useRef(projectChats);
+  useEffect(() => { projectChatsRef.current = projectChats; }, [projectChats]);
 
   // Whenever the chat list changes (create / delete / move), the server-side
   // project chat counts may be stale. Refresh them so the dropdown shows
@@ -145,6 +152,60 @@ export const ChatList: React.FC = () => {
     setCreatingProjectInline(false);
   }, [filterMenuOpen]);
 
+  const fetchProjectChats = useCallback(async (
+    projectId: string,
+    options?: { offset?: number; append?: boolean },
+  ) => {
+    const offset = options?.offset ?? 0;
+    const append = !!options?.append;
+    if (append) setLoadingMoreProjectChats(true);
+    else setLoadingProjectChats(true);
+
+    try {
+      const params = new URLSearchParams({
+        limit: '50',
+        offset: String(offset),
+        project_id: projectId,
+      });
+      const search = searchQuery.trim();
+      if (search) params.set('search', search);
+
+      const res = await fetch(`${getApiBase()}/chats?${params.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+      const nextChats: ChatSummary[] = data.chats || [];
+      setProjectChatTotal(data.total ?? nextChats.length);
+      setProjectChatOffset(offset);
+      setProjectChats(prev => {
+        if (!append) return nextChats;
+        const existingIds = new Set(prev.map(c => c.id));
+        const appended = nextChats.filter(c => !existingIds.has(c.id));
+        return [...prev, ...appended];
+      });
+    } catch (error) {
+      console.error('Error fetching project chats:', error);
+      if (!append) {
+        setProjectChats([]);
+        setProjectChatTotal(0);
+        setProjectChatOffset(0);
+      }
+    } finally {
+      if (append) setLoadingMoreProjectChats(false);
+      else setLoadingProjectChats(false);
+    }
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (filterId === ALL_PROJECTS_FILTER) {
+      setProjectChats([]);
+      setProjectChatTotal(0);
+      setProjectChatOffset(0);
+      return;
+    }
+    void fetchProjectChats(filterId);
+  }, [filterId, fetchProjectChats]);
+
   // Close filter menu on outside click. Clicks inside the kebab popover or
   // the modal dialog (which live in portals at document.body) are treated as
   // inside, since they were spawned from the dropdown.
@@ -173,15 +234,26 @@ export const ChatList: React.FC = () => {
 
   const filteredChats = useMemo(() => {
     if (filterId === ALL_PROJECTS_FILTER) return chats;
-    return chats.filter(c => c.projectId === filterId);
-  }, [chats, filterId]);
+    return projectChats;
+  }, [chats, filterId, projectChats]);
 
   // Total used for the load-more remainder. We approximate: when filtering by
   // project we use that project's chatCount; otherwise the global total.
   const filteredTotal = useMemo(() => {
     if (filterId === ALL_PROJECTS_FILTER) return chatTotal;
-    return projects.find(p => p.id === filterId)?.chatCount ?? filteredChats.length;
-  }, [filterId, chatTotal, projects, filteredChats]);
+    return projectChatTotal;
+  }, [filterId, chatTotal, projectChatTotal]);
+
+  const handleLoadMore = useCallback(async () => {
+    if (filterId === ALL_PROJECTS_FILTER) {
+      await loadMoreChats();
+      return;
+    }
+    await fetchProjectChats(filterId, {
+      offset: projectChatOffset + 50,
+      append: true,
+    });
+  }, [fetchProjectChats, filterId, loadMoreChats, projectChatOffset]);
 
   // ── Chat actions ──
 
@@ -257,11 +329,17 @@ export const ChatList: React.FC = () => {
   // ── Move chat to project ──
 
   const handleMoveChatToProject = async (chatId: string, projectId: string) => {
-    const chat = chatsRef.current.find(c => c.id === chatId);
+    const chat =
+      chatsRef.current.find(c => c.id === chatId) ??
+      projectChatsRef.current.find(c => c.id === chatId);
     if (!chat || chat.projectId === projectId) return;
     const ok = await moveChat(chatId, projectId, chat.projectId);
     if (ok) {
-      await Promise.all([refreshChatList(undefined, true), refreshProjects()]);
+      await Promise.all([
+        refreshChatList(undefined, true),
+        refreshProjects(),
+        filterId !== ALL_PROJECTS_FILTER ? fetchProjectChats(filterId) : undefined,
+      ]);
     }
   };
 
@@ -409,7 +487,7 @@ export const ChatList: React.FC = () => {
     );
   };
 
-  if (loadingChats) {
+  if (loadingChats || loadingProjectChats) {
     return (
       <div className="p-4">
         <div className="space-y-3">
@@ -645,13 +723,13 @@ export const ChatList: React.FC = () => {
         ) : (
           <div className="flex flex-col bg-white dark:bg-zinc-800">
             {filteredChats.map(renderChatRow)}
-            {remaining > 0 && filterId === ALL_PROJECTS_FILTER && (
+            {remaining > 0 && (
               <button
-                onClick={loadMoreChats}
-                disabled={loadingMoreChats}
+                onClick={handleLoadMore}
+                disabled={loadingMoreChats || loadingMoreProjectChats}
                 className="w-full py-2.5 text-[10px] font-bold uppercase border-t-2 border-brutal-black bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loadingMoreChats ? t('chatList.loadingMore') : t('chatList.loadMore', { count: remaining })}
+                {loadingMoreChats || loadingMoreProjectChats ? t('chatList.loadingMore') : t('chatList.loadMore', { count: remaining })}
               </button>
             )}
           </div>
@@ -660,7 +738,9 @@ export const ChatList: React.FC = () => {
 
       {/* Floating row menu (portalled, never clipped) */}
       {openMenu && (() => {
-        const chat = chatsRef.current.find(c => c.id === openMenu.chatId);
+        const chat =
+          chatsRef.current.find(c => c.id === openMenu.chatId) ??
+          projectChatsRef.current.find(c => c.id === openMenu.chatId);
         if (!chat) return null;
         return (
           <ChatRowMenu

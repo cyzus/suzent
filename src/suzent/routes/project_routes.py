@@ -47,6 +47,16 @@ def _project_to_dict(project, chat_count: int) -> dict:
     }
 
 
+def _invalidate_sandbox_sessions(chat_ids: list[str]) -> None:
+    try:
+        from suzent.sandbox import SandboxManager
+
+        for chat_id in chat_ids:
+            SandboxManager.invalidate_session(chat_id)
+    except Exception as e:
+        logger.debug(f"Failed to invalidate sandbox sessions for moved chats: {e}")
+
+
 # ---------------------------------------------------------------------------
 # /projects
 # ---------------------------------------------------------------------------
@@ -181,7 +191,9 @@ async def move_all_chats(request: Request) -> JSONResponse:
     if not target_project:
         return JSONResponse({"error": "Target project not found"}, status_code=404)
 
+    moved_chat_ids = db.get_chat_ids_in_project(project_id)
     moved = db.move_all_chats(project_id, target)
+    _invalidate_sandbox_sessions(moved_chat_ids)
     return JSONResponse(
         {
             "success": True,
@@ -219,6 +231,8 @@ async def move_chat_to_project(request: Request) -> JSONResponse:
 
     if not db.link_chat_to_project(chat_id, project_id):
         return JSONResponse({"error": "Chat not found"}, status_code=404)
+
+    _invalidate_sandbox_sessions([chat_id])
 
     return JSONResponse(
         {

@@ -1358,6 +1358,15 @@ class ChatDatabase:
             session.commit()
             return len(chats)
 
+    def get_chat_ids_in_project(self, project_id: str) -> List[str]:
+        """Return chat ids currently assigned to a project."""
+        with self._session() as session:
+            return list(
+                session.exec(
+                    select(ChatModel.id).where(ChatModel.project_id == project_id)
+                ).all()
+            )
+
     def update_project(
         self,
         project_id: str,
