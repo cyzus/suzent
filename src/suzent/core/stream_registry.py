@@ -169,7 +169,7 @@ class _BusStreamQueue:
     else delegates to the inner asyncio.Queue.
     """
 
-    def __init__(self, chat_id: str, maxsize: int = 2000):
+    def __init__(self, chat_id: str, maxsize: int = 0):
         self.chat_id = chat_id
         self._q: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
         # Cleared when the None sentinel is put so is_background_streaming()
@@ -225,8 +225,20 @@ def register_background_stream(chat_id: str) -> _BusStreamQueue:
     return q
 
 
-def unregister_background_stream(chat_id: str) -> None:
+def try_register_background_stream(chat_id: str) -> Optional[_BusStreamQueue]:
+    """Register a background SSE queue unless a producer is already active."""
+    existing = background_queues.get(chat_id)
+    if existing is not None and existing.producer_active:
+        return None
+    return register_background_stream(chat_id)
+
+
+def unregister_background_stream(
+    chat_id: str, queue: Optional[_BusStreamQueue] = None
+) -> None:
     """Remove the background queue for a chat (signals no active stream)."""
+    if queue is not None and background_queues.get(chat_id) is not queue:
+        return
     background_queues.pop(chat_id, None)
     # stream_ended is already emitted by the None sentinel put_nowait in _BusStreamQueue
 

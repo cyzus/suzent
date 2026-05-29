@@ -1271,6 +1271,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     clearParts();
     streamStartByChatRef.current.set(chatIdForSend, Date.now());
     setIsStreaming(true, chatIdForSend);
+    const clearPartsIfStillViewingSendChat = () => {
+      if (activeChatIdRef.current === chatIdForSend) {
+        clearParts();
+      }
+    };
 
     const mentionsToSend = extractSelectedFileMentions(prompt, fileMentions);
     const payload: Record<string, unknown> = {
@@ -1294,12 +1299,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         const msg = resp.status === 409 ? 'Chat is already responding' : `Send failed (${resp.status})`;
         setStatusBar(msg, 'error', 4000);
         setIsStreaming(false, chatIdForSend);
-        clearParts();
+        clearPartsIfStillViewingSendChat();
       }
     }).catch(err => {
       console.error('[send] /chat/send failed:', err);
       setIsStreaming(false, chatIdForSend);
-      clearParts();
+      clearPartsIfStillViewingSendChat();
     });
   };
 

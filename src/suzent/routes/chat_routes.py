@@ -22,11 +22,12 @@ from suzent.streaming import stop_stream
 from suzent.core.stream_registry import (
     get_background_queue,
     is_background_streaming,
-    register_background_stream,
+    try_register_background_stream,
     unregister_background_stream,
 )
 
 logger = get_logger(__name__)
+_chat_send_tasks: set[asyncio.Task[None]] = set()
 
 
 async def chat(request: Request) -> StreamingResponse:
@@ -241,15 +242,14 @@ async def chat_send(request: Request) -> JSONResponse:
         return JSONResponse({"error": "chat_id is required"}, status_code=400)
     if not message and not files_list:
         return JSONResponse({"error": "Empty message"}, status_code=400)
-    if is_background_streaming(chat_id):
-        return JSONResponse({"error": "Chat is already streaming"}, status_code=409)
-
     from suzent.core.chat_processor import ChatProcessor
     from suzent.agent_manager import build_agent_config
 
     processor = ChatProcessor()
     config_override = build_agent_config(config, require_social_tool=False)
-    stream_queue = register_background_stream(chat_id)
+    stream_queue = try_register_background_stream(chat_id)
+    if stream_queue is None:
+        return JSONResponse({"error": "Chat is already streaming"}, status_code=409)
 
     async def _run() -> None:
         try:
@@ -275,7 +275,9 @@ async def chat_send(request: Request) -> JSONResponse:
         finally:
             await stream_queue.put(None)
 
-    asyncio.create_task(_run())
+    task = asyncio.create_task(_run())
+    _chat_send_tasks.add(task)
+    task.add_done_callback(_chat_send_tasks.discard)
     return JSONResponse({"chat_id": chat_id}, status_code=202)
 
 
@@ -428,7 +430,7 @@ async def live_stream(request: Request) -> StreamingResponse:
                 yield ": keep-alive\n\n"
                 continue
             if chunk is None:
-                unregister_background_stream(chat_id)
+                unregister_background_stream(chat_id, q)
                 return
             yield chunk
 
