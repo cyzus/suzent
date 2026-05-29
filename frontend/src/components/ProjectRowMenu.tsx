@@ -4,6 +4,8 @@ import { useI18n } from '../i18n';
 
 interface ProjectRowMenuProps {
   anchor: { x: number; y: number } | { rect: DOMRect };
+  /** Optional screen-space bounds the menu should stay inside. */
+  boundary?: DOMRect | null;
   /** Extra data-* attributes stamped on the floating panel (e.g. for outside-click whitelisting). */
   rootDataAttrs?: Record<string, string>;
   onRename: () => void;
@@ -17,6 +19,7 @@ interface ProjectRowMenuProps {
  */
 export const ProjectRowMenu: React.FC<ProjectRowMenuProps> = ({
   anchor,
+  boundary,
   rootDataAttrs,
   onRename,
   onDelete,
@@ -36,29 +39,38 @@ export const ProjectRowMenu: React.FC<ProjectRowMenuProps> = ({
     const menuW = menuRef.current.offsetWidth || 200;
     const menuH = menuRef.current.offsetHeight || 100;
     const margin = 8;
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    const bounds = boundary ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+    const minLeft = bounds.left + margin;
+    const maxLeft = Math.max(minLeft, bounds.right - menuW - margin);
+    const minTop = Math.max(margin, bounds.top + margin);
+    const maxTop = Math.max(minTop, Math.min(window.innerHeight - menuH - margin, bounds.bottom - menuH - margin));
     let left = anchorPoint.x;
     let top = anchorPoint.y;
-    if (left + menuW + margin > vw) left = Math.max(margin, anchorPoint.x - menuW);
-    if (top + menuH + margin > vh) top = Math.max(margin, anchorPoint.y - menuH);
+    if (left > maxLeft) left = maxLeft;
+    if (left < minLeft) left = minLeft;
+    if (top > maxTop) top = maxTop;
+    if (top < minTop) top = minTop;
     setPosition({ left, top });
-  }, [anchorPoint]);
+  }, [anchorPoint, boundary]);
 
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
+    };
+    const onContextMenu = (e: MouseEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) e.preventDefault();
+      else onClose();
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('mousedown', onMouseDown);
     document.addEventListener('keydown', onKey);
-    document.addEventListener('contextmenu', onMouseDown);
+    document.addEventListener('contextmenu', onContextMenu);
     return () => {
       document.removeEventListener('mousedown', onMouseDown);
       document.removeEventListener('keydown', onKey);
-      document.removeEventListener('contextmenu', onMouseDown);
+      document.removeEventListener('contextmenu', onContextMenu);
     };
   }, [onClose]);
 
@@ -79,6 +91,10 @@ export const ProjectRowMenu: React.FC<ProjectRowMenuProps> = ({
       }}
       className={`min-w-[200px] ${surface} py-0.5`}
       onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
       {...(rootDataAttrs || {})}
     >
       <button

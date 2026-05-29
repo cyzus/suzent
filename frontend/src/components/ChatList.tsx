@@ -78,6 +78,7 @@ export const ChatList: React.FC = () => {
   const [newProjectName, setNewProjectName] = useState('');
   const filterMenuRef = useRef<HTMLDivElement | null>(null);
   const filterPillRef = useRef<HTMLButtonElement | null>(null);
+  const sidebarBoundsRef = useRef<HTMLDivElement | null>(null);
   const [projectChats, setProjectChats] = useState<ChatSummary[]>([]);
   const [projectChatTotal, setProjectChatTotal] = useState(0);
   const [projectChatOffset, setProjectChatOffset] = useState(0);
@@ -350,6 +351,13 @@ export const ChatList: React.FC = () => {
     return platform.toLowerCase().replace(/^\w/, c => c.toUpperCase());
   };
 
+  const openChatMenu = (
+    chatId: string,
+    anchor: { x: number; y: number } | { rect: DOMRect },
+  ) => {
+    setOpenMenu({ chatId, anchor });
+  };
+
   const renderChatRow = (chat: ChatSummary) => {
     const unread = unreadMessages(chat);
     const showUnread = currentChatId !== chat.id && unread > 0;
@@ -365,7 +373,8 @@ export const ChatList: React.FC = () => {
         onContextMenu={(e) => {
           if (confirmDeleteId || renamingChatId) return;
           e.preventDefault();
-          setOpenMenu({ chatId: chat.id, anchor: { x: e.clientX, y: e.clientY } });
+          e.stopPropagation();
+          openChatMenu(chat.id, { x: e.clientX, y: e.clientY });
         }}
         className={`group relative px-3.5 py-3 transition-all border-b last:border-b-0
           ${confirmDeleteId ? (confirmDeleteId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : renamingChatId ? (renamingChatId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : 'cursor-pointer'}
@@ -469,7 +478,14 @@ export const ChatList: React.FC = () => {
           onClick={(e) => {
             e.stopPropagation();
             const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-            setOpenMenu({ chatId: chat.id, anchor: { rect } });
+            openChatMenu(chat.id, { rect });
+          }}
+          onContextMenu={(e) => {
+            if (confirmDeleteId || renamingChatId) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+            openChatMenu(chat.id, { rect });
           }}
           className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 transition-opacity flex items-center justify-center text-neutral-500 hover:text-brutal-black dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-200 dark:hover:bg-zinc-600 ${
             openMenu?.chatId === chat.id
@@ -502,7 +518,7 @@ export const ChatList: React.FC = () => {
   const remaining = Math.max(0, filteredTotal - filteredChats.length);
 
   return (
-    <div className="flex flex-col h-full relative">
+    <div ref={sidebarBoundsRef} className="flex flex-col h-full relative">
       {showRefreshIndicator && (
         <div className="absolute top-0 left-0 right-0 z-20 pointer-events-none">
           <div className="h-1 bg-brutal-blue animate-brutal-blink"></div>
@@ -745,6 +761,7 @@ export const ChatList: React.FC = () => {
         return (
           <ChatRowMenu
             anchor={openMenu.anchor}
+            boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
             projects={projects}
             currentProjectId={chat.projectId ?? undefined}
             onRename={() => {
@@ -775,6 +792,7 @@ export const ChatList: React.FC = () => {
         return (
           <ProjectRowMenu
             anchor={projectMenu.anchor}
+            boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
             rootDataAttrs={{ 'data-popover-source': 'project-filter' }}
             onRename={() => {
               setProjectRenameValue(p.name);
