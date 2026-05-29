@@ -43,6 +43,77 @@ class TestChatOperations:
         assert len(chat.messages) == 1
         assert chat.messages[0]["content"] == "Hello"
 
+    def test_link_chat_to_project_moves_direct_subagents(self, db):
+        source = db.get_project_by_slug(ChatDatabase.DEFAULT_PROJECT_SLUG)
+        target_id = db.create_project("Target", "target")
+        parent_id = db.create_chat("Parent", {}, project_id=source.id)
+        child_id = db.create_chat(
+            "Sub-agent",
+            {"platform": "subagent", "parent_chat_id": parent_id},
+            chat_id="subagent-sub_test",
+            project_id=source.id,
+        )
+
+        assert db.link_chat_to_project(parent_id, target_id) is True
+
+        assert db.get_chat(parent_id).project_id == target_id
+        assert db.get_chat(child_id).project_id == target_id
+        assert db.get_subagent_chat_ids_for_parent_chat(parent_id) == [child_id]
+
+    def test_move_all_chats_moves_stale_direct_subagents(self, db):
+        source = db.get_project_by_slug(ChatDatabase.DEFAULT_PROJECT_SLUG)
+        target_id = db.create_project("Target", "target")
+        stale_id = db.create_project("Stale", "stale")
+        parent_id = db.create_chat("Parent", {}, project_id=source.id)
+        child_id = db.create_chat(
+            "Sub-agent",
+            {"platform": "subagent", "parent_chat_id": parent_id},
+            chat_id="subagent-sub_stale",
+            project_id=stale_id,
+        )
+
+        moved = db.move_all_chats(source.id, target_id)
+
+        assert moved == 2
+        assert db.get_chat(parent_id).project_id == target_id
+        assert db.get_chat(child_id).project_id == target_id
+
+    def test_list_subagent_task_records_includes_selected_child_chat(self, db):
+        parent_id = db.create_chat("Parent", {})
+        child_id = db.create_chat(
+            "Sub-agent: inspect files",
+            {
+                "platform": "subagent",
+                "parent_chat_id": parent_id,
+                "subagent_task_id": "sub_12345678",
+                "model": "test-model",
+            },
+            chat_id="subagent-sub_12345678",
+        )
+
+        by_parent = db.list_subagent_task_records(parent_chat_id=parent_id)
+        by_child = db.list_subagent_task_records(parent_chat_id=child_id)
+
+        assert by_parent == by_child
+        assert by_child[0]["task_id"] == "sub_12345678"
+        assert by_child[0]["parent_chat_id"] == parent_id
+        assert by_child[0]["chat_id"] == child_id
+        assert by_child[0]["description"] == "inspect files"
+
+    def test_list_subagent_task_records_handles_legacy_child_metadata(self, db):
+        child_id = db.create_chat(
+            "Analyzing Claude Code and Suzent",
+            {"platform": "subagent"},
+            chat_id="subagent-sub_legacy",
+        )
+
+        by_child = db.list_subagent_task_records(parent_chat_id=child_id)
+
+        assert by_child[0]["task_id"] == "sub_legacy"
+        assert by_child[0]["parent_chat_id"] == ""
+        assert by_child[0]["chat_id"] == child_id
+        assert by_child[0]["description"] == "Analyzing Claude Code and Suzent"
+
     def test_update_chat(self, db):
         chat_id = db.create_chat("Original Title", {})
 

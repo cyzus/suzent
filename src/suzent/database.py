@@ -1335,37 +1335,142 @@ class ChatDatabase:
             stmt = stmt.order_by(ProjectModel.created_at)
             return list(session.exec(stmt).all())
 
+    @staticmethod
+    def _is_subagent_child(chat: ChatModel, parent_chat_ids: set[str]) -> bool:
+        """Return whether a chat is a direct subagent child of one of the parents."""
+        config = chat.config or {}
+        return (
+            config.get("platform") == "subagent"
+            and config.get("parent_chat_id") in parent_chat_ids
+        )
+
+    def get_subagent_chat_ids_for_parent_chat(self, chat_id: str) -> List[str]:
+        """Return direct subagent chat ids whose parent is the given chat."""
+        with self._session() as session:
+            chats = session.exec(select(ChatModel)).all()
+            return [
+                chat.id for chat in chats if self._is_subagent_child(chat, {chat_id})
+            ]
+
+    def list_subagent_task_records(
+        self, parent_chat_id: Optional[str] = None
+    ) -> List[dict]:
+        """Return persisted subagent task records reconstructed from chat rows.
+
+        Subagent runtime tasks are in memory, but their isolated chat rows are
+        persisted. This lets the UI show historical subagents after restart and
+        when the currently selected chat is the subagent chat itself.
+        """
+        with self._session() as session:
+            chats = session.exec(select(ChatModel)).all()
+
+        records = []
+        for chat in chats:
+            config = chat.config or {}
+            if config.get("platform") != "subagent":
+                continue
+
+            task_id = config.get("subagent_task_id")
+            if not task_id and chat.id.startswith("subagent-"):
+                task_id = chat.id[len("subagent-") :]
+
+            parent_id = config.get("parent_chat_id")
+
+            if parent_chat_id and parent_chat_id not in {parent_id, chat.id}:
+                continue
+
+            description = chat.title
+            prefix = "Sub-agent:"
+            if description.startswith(prefix):
+                description = description[len(prefix) :].strip()
+
+            records.append(
+                {
+                    "task_id": task_id,
+                    "parent_chat_id": parent_id or "",
+                    "chat_id": chat.id,
+                    "description": description,
+                    "tools_allowed": config.get("tools") or [],
+                    "status": "completed",
+                    "result_summary": None,
+                    "error": None,
+                    "model_override": config.get("model"),
+                    "started_at": chat.created_at.isoformat()
+                    if chat.created_at
+                    else None,
+                    "finished_at": chat.last_result_at.isoformat()
+                    if chat.last_result_at
+                    else chat.updated_at.isoformat()
+                    if chat.updated_at
+                    else None,
+                    "inherit_context": config.get("inherit_context", False),
+                    "isolation": config.get("isolation", "none"),
+                    "worktree_path": config.get("worktree_path"),
+                    "worktree_branch": config.get("worktree_branch"),
+                }
+            )
+
+        return sorted(
+            records,
+            key=lambda record: record.get("finished_at")
+            or record.get("started_at")
+            or "",
+            reverse=True,
+        )
+
     def link_chat_to_project(self, chat_id: str, project_id: str) -> bool:
-        """Move a chat to a different project. Returns True if the chat was found."""
+        """Move a chat and its direct subagent chats to a different project."""
         with self._session() as session:
             chat = session.get(ChatModel, chat_id)
             if not chat:
                 return False
-            chat.project_id = project_id
-            session.add(chat)
+            chats = session.exec(select(ChatModel)).all()
+            moved_chats = [
+                candidate
+                for candidate in chats
+                if candidate.id == chat_id
+                or self._is_subagent_child(candidate, {chat_id})
+            ]
+            for moved_chat in moved_chats:
+                moved_chat.project_id = project_id
+                session.add(moved_chat)
             session.commit()
             return True
 
     def move_all_chats(self, from_project_id: str, to_project_id: str) -> int:
-        """Reassign every chat from one project to another. Returns moved count."""
+        """Reassign every chat from one project plus their subagents."""
         with self._session() as session:
-            chats = session.exec(
+            project_chats = session.exec(
                 select(ChatModel).where(ChatModel.project_id == from_project_id)
             ).all()
-            for chat in chats:
+            project_chat_ids = {chat.id for chat in project_chats}
+            all_chats = session.exec(select(ChatModel)).all()
+            moved_chats = [
+                chat
+                for chat in all_chats
+                if chat.id in project_chat_ids
+                or self._is_subagent_child(chat, project_chat_ids)
+            ]
+            for chat in moved_chats:
                 chat.project_id = to_project_id
                 session.add(chat)
             session.commit()
-            return len(chats)
+            return len(moved_chats)
 
     def get_chat_ids_in_project(self, project_id: str) -> List[str]:
-        """Return chat ids currently assigned to a project."""
+        """Return chat ids assigned to a project plus direct subagents of those chats."""
         with self._session() as session:
-            return list(
-                session.exec(
-                    select(ChatModel.id).where(ChatModel.project_id == project_id)
-                ).all()
-            )
+            project_chats = session.exec(
+                select(ChatModel).where(ChatModel.project_id == project_id)
+            ).all()
+            project_chat_ids = {chat.id for chat in project_chats}
+            all_chats = session.exec(select(ChatModel)).all()
+            return [
+                chat.id
+                for chat in all_chats
+                if chat.id in project_chat_ids
+                or self._is_subagent_child(chat, project_chat_ids)
+            ]
 
     def update_project(
         self,
@@ -1443,17 +1548,24 @@ class ChatDatabase:
         return Path(CONFIG.sandbox_data_path) / "projects" / slug
 
     def find_heartbeat_enabled_chat_in_project(
-        self, project_id: str, exclude_chat_id: Optional[str] = None
+        self,
+        project_id: str,
+        exclude_chat_id: Optional[str] = None,
+        exclude_chat_ids: Optional[set[str]] = None,
     ) -> Optional["ChatModel"]:
         """Return the chat in this project that already has heartbeat enabled.
 
         Used to enforce one-heartbeat-per-project. Returns None if no other chat
         in the project has heartbeat enabled.
         """
+        excluded = set(exclude_chat_ids or set())
+        if exclude_chat_id is not None:
+            excluded.add(exclude_chat_id)
+
         with self._session() as session:
             stmt = select(ChatModel).where(ChatModel.project_id == project_id)
-            if exclude_chat_id is not None:
-                stmt = stmt.where(ChatModel.id != exclude_chat_id)
+            if excluded:
+                stmt = stmt.where(ChatModel.id.not_in(excluded))
             for chat in session.exec(stmt).all():
                 if chat.config and chat.config.get("heartbeat_enabled"):
                     return chat

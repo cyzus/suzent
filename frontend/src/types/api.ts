@@ -42,6 +42,7 @@ export interface ChatConfig {
   heartbeat_interval_minutes?: number;
   heartbeat_instructions?: string;
   heartbeat_last_run_at?: string;
+  platform?: string;
 }
 
 export interface Chat {

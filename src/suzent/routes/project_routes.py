@@ -67,6 +67,12 @@ def _chat_has_heartbeat_enabled(chat) -> bool:
     return bool(chat and chat.config and chat.config.get("heartbeat_enabled"))
 
 
+def _any_chat_has_heartbeat_enabled(db, chat_ids: list[str]) -> bool:
+    return any(
+        _chat_has_heartbeat_enabled(db.get_chat(chat_id)) for chat_id in chat_ids
+    )
+
+
 def _heartbeat_conflict_payload(existing) -> dict:
     return {
         "error": (
@@ -262,9 +268,11 @@ async def move_chat_to_project(request: Request) -> JSONResponse:
     if not chat:
         return JSONResponse({"error": "Chat not found"}, status_code=404)
 
-    if _chat_has_heartbeat_enabled(chat):
+    moved_chat_ids = [chat_id, *db.get_subagent_chat_ids_for_parent_chat(chat_id)]
+
+    if _any_chat_has_heartbeat_enabled(db, moved_chat_ids):
         existing = db.find_heartbeat_enabled_chat_in_project(
-            project_id, exclude_chat_id=chat_id
+            project_id, exclude_chat_ids=set(moved_chat_ids)
         )
         if existing is not None:
             return JSONResponse(
@@ -275,7 +283,7 @@ async def move_chat_to_project(request: Request) -> JSONResponse:
     if not db.link_chat_to_project(chat_id, project_id):
         return JSONResponse({"error": "Chat not found"}, status_code=404)
 
-    _invalidate_sandbox_sessions([chat_id])
+    _invalidate_sandbox_sessions(moved_chat_ids)
 
     return JSONResponse(
         {

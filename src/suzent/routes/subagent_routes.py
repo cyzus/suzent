@@ -23,6 +23,7 @@ from suzent.core.subagent_runner import (
     unregister_sse_subscriber,
     _task_to_sse_dict,
 )
+from suzent.database import get_database
 
 
 def _task_to_dict(task) -> dict:
@@ -80,16 +81,37 @@ async def stream_subagents(request: Request) -> StreamingResponse:
 
 async def list_subagents(request: Request) -> JSONResponse:
     parent_chat_id = request.query_params.get("parent_chat_id")
-    tasks = list_all_tasks(parent_chat_id=parent_chat_id)
-    return JSONResponse({"tasks": [_task_to_dict(t) for t in tasks]})
+    runtime_tasks = [
+        _task_to_dict(t) for t in list_all_tasks(parent_chat_id=parent_chat_id)
+    ]
+    persisted_tasks = get_database().list_subagent_task_records(
+        parent_chat_id=parent_chat_id
+    )
+
+    seen = set()
+    tasks = []
+    for task in [*runtime_tasks, *persisted_tasks]:
+        task_id = task.get("task_id")
+        if not task_id or task_id in seen:
+            continue
+        seen.add(task_id)
+        tasks.append(task)
+
+    return JSONResponse({"tasks": tasks})
 
 
 async def get_subagent(request: Request) -> JSONResponse:
     task_id = request.path_params["task_id"]
     task = get_task(task_id)
-    if not task:
-        return JSONResponse({"error": "Task not found"}, status_code=404)
-    return JSONResponse({"task": _task_to_dict(task)})
+    if task:
+        return JSONResponse({"task": _task_to_dict(task)})
+
+    persisted = get_database().list_subagent_task_records()
+    for record in persisted:
+        if record.get("task_id") == task_id:
+            return JSONResponse({"task": record})
+
+    return JSONResponse({"error": "Task not found"}, status_code=404)
 
 
 async def stop_subagent_route(request: Request) -> JSONResponse:
