@@ -504,6 +504,7 @@ export const en = {
       confirm: 'Delete',
       deleting: 'Deleting...',
       buttonTitle: 'Delete chat',
+      confirmMessage: 'This will permanently delete the chat and its messages.',
       cascadeMessage: 'This chat has sub-agents. Do you want to delete them too?',
       cascadeYes: 'Delete with sub-agents',
       cascadeNo: 'Delete chat only',

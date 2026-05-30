@@ -3,7 +3,6 @@ import { useChatStore } from '../hooks/useChatStore';
 import { useProjects } from '../hooks/useProjects';
 import { ChatSummary, Project } from '../types/api';
 import { RobotAvatar } from './chat/RobotAvatar';
-import { BrutalDeleteOverlay } from './BrutalDeleteOverlay';
 import { useI18n } from '../i18n';
 import { getApiBase, markChatRead } from '../lib/api';
 import { ChatRowMenu } from './ChatRowMenu';
@@ -44,8 +43,6 @@ export const ChatList: React.FC = () => {
     refresh: refreshProjects,
   } = useProjects();
 
-  const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState<string>('');
   const [showRefreshIndicator, setShowRefreshIndicator] = useState(false);
@@ -358,60 +355,36 @@ export const ChatList: React.FC = () => {
 
   // ── Chat actions ──
 
-  const handleDeleteChat = async (chatId: string, e: React.MouseEvent, cascade = false) => {
-    e.stopPropagation();
-
-    // If this chat has subagents and the user hasn't decided yet, ask first.
+  const handleRequestDelete = (chatId: string) => {
     const hasSubagents = (subagentsByParent.get(chatId)?.length ?? 0) > 0;
-    if (hasSubagents && !cascade) {
-      setConfirmDeleteId(null);
+    const doDelete = async (cascade: boolean) => {
+      setProjectChats(prev => {
+        const filtered = prev.filter(c => c.id !== chatId);
+        return cascade ? filtered.filter(c => c.parentChatId !== chatId) : filtered;
+      });
+      try { await deleteChat(chatId, { cascade }); } catch { /* ignore */ }
+    };
+
+    if (hasSubagents) {
       setDialog({
         title: t('chatList.delete.confirmTitle'),
         message: t('chatList.delete.cascadeMessage'),
         actions: [
           { label: t('common.cancel'), tone: 'default' },
-          {
-            label: t('chatList.delete.cascadeNo'),
-            tone: 'default',
-            onClick: async () => {
-              setDeletingChatId(chatId);
-              setProjectChats(prev => prev.filter(c => c.id !== chatId));
-              try { await deleteChat(chatId); } catch { /* ignore */ } finally { setDeletingChatId(null); }
-            },
-          },
-          {
-            label: t('chatList.delete.cascadeYes'),
-            tone: 'danger',
-            onClick: async () => {
-              setDeletingChatId(chatId);
-              setProjectChats(prev => prev.filter(c => c.id !== chatId && c.parentChatId !== chatId));
-              try { await deleteChat(chatId, { cascade: true }); } catch { /* ignore */ } finally { setDeletingChatId(null); }
-            },
-          },
+          { label: t('chatList.delete.cascadeNo'), tone: 'default', onClick: () => doDelete(false) },
+          { label: t('chatList.delete.cascadeYes'), tone: 'danger', onClick: () => doDelete(true) },
         ],
       });
-      return;
+    } else {
+      setDialog({
+        title: t('chatList.delete.confirmTitle'),
+        message: t('chatList.delete.confirmMessage'),
+        actions: [
+          { label: t('common.cancel'), tone: 'default' },
+          { label: t('chatList.delete.confirm'), tone: 'danger', onClick: () => doDelete(false) },
+        ],
+      });
     }
-
-    setDeletingChatId(chatId);
-    // Optimistically remove from projectChats (separate state from global chats list).
-    setProjectChats(prev => {
-      const filtered = prev.filter(c => c.id !== chatId);
-      return cascade ? filtered.filter(c => c.parentChatId !== chatId) : filtered;
-    });
-    try {
-      await deleteChat(chatId, { cascade });
-      setConfirmDeleteId(null);
-    } catch (error) {
-      console.error('Error deleting chat:', error);
-    } finally {
-      setDeletingChatId(null);
-    }
-  };
-
-  const handleCancelDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setConfirmDeleteId(null);
   };
 
   const handleRenameSubmit = async (chatId: string, e: React.FormEvent | React.KeyboardEvent) => {
@@ -522,20 +495,20 @@ export const ChatList: React.FC = () => {
       <div
         key={chat.id}
         onClick={() => {
-          if (confirmDeleteId) return;
+          if (renamingChatId) return;
           markRead(chat.id);
           loadChat(chat.id);
           if (switchToView) switchToView('chat');
         }}
         onContextMenu={(e) => {
-          if (confirmDeleteId || renamingChatId) return;
+          if (renamingChatId) return;
           e.preventDefault();
           e.stopPropagation();
           openChatMenu(chat.id, { x: e.clientX, y: e.clientY });
         }}
         className={`group relative py-3 transition-all border-b last:border-b-0
           ${chatKind === 'subagent' ? 'pl-8 pr-3.5' : 'px-3.5'}
-          ${confirmDeleteId ? (confirmDeleteId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : renamingChatId ? (renamingChatId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : 'cursor-pointer'}
+          ${renamingChatId ? (renamingChatId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : 'cursor-pointer'}
           ${rowSurface}`}
       >
         {chatKind === 'subagent' && (
@@ -545,16 +518,6 @@ export const ChatList: React.FC = () => {
           <div className="absolute pointer-events-none inset-0 border-2 border-brutal-black dark:border-brutal-yellow transition-all" />
         )}
 
-        {confirmDeleteId === chat.id && (
-          <BrutalDeleteOverlay
-            onConfirm={(e: any) => handleDeleteChat(chat.id, e)}
-            onCancel={handleCancelDelete}
-            isDeleting={deletingChatId === chat.id}
-            title={t('chatList.delete.confirmTitle')}
-            confirmText={t('chatList.delete.confirm')}
-            layout="horizontal"
-          />
-        )}
 
         {renamingChatId === chat.id && (
           <form
@@ -666,7 +629,7 @@ export const ChatList: React.FC = () => {
             openChatMenu(chat.id, { rect });
           }}
           onContextMenu={(e) => {
-            if (confirmDeleteId || renamingChatId) return;
+            if (renamingChatId) return;
             e.preventDefault();
             e.stopPropagation();
             const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
@@ -982,7 +945,7 @@ export const ChatList: React.FC = () => {
               setRenamingChatId(chat.id);
               setRenameValue(chat.title || '');
             }}
-            onDelete={() => setConfirmDeleteId(chat.id)}
+            onDelete={() => { setOpenMenu(null); handleRequestDelete(chat.id); }}
             onMoveToProject={(pid) => handleMoveChatToProject(chat.id, pid)}
             onClose={() => setOpenMenu(null)}
           />

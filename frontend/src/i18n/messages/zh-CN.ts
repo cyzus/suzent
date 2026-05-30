@@ -431,6 +431,7 @@ export const zhCN = {
       confirm: '删除',
       deleting: '正在删除...',
       buttonTitle: '删除对话',
+      confirmMessage: '此操作将永久删除该对话及其所有消息。',
       cascadeMessage: '此对话包含子 Agent。是否一并删除？',
       cascadeYes: '连同子 Agent 一起删除',
       cascadeNo: '仅删除此对话',
