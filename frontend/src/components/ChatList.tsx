@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
 import { useProjects } from '../hooks/useProjects';
-import { ChatSummary, Project } from '../types/api';
+import type { ChatKindCounts, ChatSummary, Project } from '../types/api';
 import { RobotAvatar } from './chat/RobotAvatar';
 import { useI18n } from '../i18n';
 import { getApiBase, markChatRead } from '../lib/api';
@@ -17,6 +17,7 @@ export const ChatList: React.FC = () => {
   const {
     chats,
     chatTotal,
+    chatKindTotals,
     loadingChats,
     loadingMoreChats,
     refreshingChats,
@@ -83,7 +84,7 @@ export const ChatList: React.FC = () => {
   const filterPillRef = useRef<HTMLButtonElement | null>(null);
   const sidebarBoundsRef = useRef<HTMLDivElement | null>(null);
   const [projectChats, setProjectChats] = useState<ChatSummary[]>([]);
-  const [projectChatTotal, setProjectChatTotal] = useState(0);
+  const [projectChatKindTotals, setProjectChatKindTotals] = useState<ChatKindCounts>({ you: 0, scheduled: 0, all: 0 });
   const [projectChatOffset, setProjectChatOffset] = useState(0);
   const [loadingProjectChats, setLoadingProjectChats] = useState(false);
   const [loadingMoreProjectChats, setLoadingMoreProjectChats] = useState(false);
@@ -166,7 +167,7 @@ export const ChatList: React.FC = () => {
     else {
       setLoadingProjectChats(true);
       setProjectChats([]);
-      setProjectChatTotal(0);
+      setProjectChatKindTotals({ you: 0, scheduled: 0, all: 0 });
       setProjectChatOffset(0);
     }
 
@@ -184,7 +185,11 @@ export const ChatList: React.FC = () => {
 
       const data = await res.json();
       const nextChats: ChatSummary[] = data.chats || [];
-      setProjectChatTotal(data.total ?? nextChats.length);
+      setProjectChatKindTotals(data.kindCounts ?? {
+        you: nextChats.filter(chat => (chat.platform || '').toLowerCase() !== 'cron').length,
+        scheduled: nextChats.filter(chat => (chat.platform || '').toLowerCase() === 'cron').length,
+        all: data.total ?? nextChats.length,
+      });
       setProjectChatOffset(offset);
       setProjectChats(prev => {
         if (!append) return nextChats;
@@ -196,7 +201,7 @@ export const ChatList: React.FC = () => {
       console.error('Error fetching project chats:', error);
       if (!append) {
         setProjectChats([]);
-        setProjectChatTotal(0);
+        setProjectChatKindTotals({ you: 0, scheduled: 0, all: 0 });
         setProjectChatOffset(0);
       }
     } finally {
@@ -208,7 +213,7 @@ export const ChatList: React.FC = () => {
   useEffect(() => {
     if (filterId === ALL_PROJECTS_FILTER) {
       setProjectChats([]);
-      setProjectChatTotal(0);
+      setProjectChatKindTotals({ you: 0, scheduled: 0, all: 0 });
       setProjectChatOffset(0);
       return;
     }
@@ -246,12 +251,10 @@ export const ChatList: React.FC = () => {
     return projectChats;
   }, [chats, filterId, projectChats]);
 
-  // Total used for the load-more remainder. We approximate: when filtering by
-  // project we use that project's chatCount; otherwise the global total.
-  const filteredTotal = useMemo(() => {
-    if (filterId === ALL_PROJECTS_FILTER) return chatTotal;
-    return projectChatTotal;
-  }, [filterId, chatTotal, projectChatTotal]);
+  const filteredKindTotals = useMemo(() => {
+    if (filterId === ALL_PROJECTS_FILTER) return chatKindTotals;
+    return projectChatKindTotals;
+  }, [chatKindTotals, filterId, projectChatKindTotals]);
 
   const getChatKind = (chat: ChatSummary): ChatKind => {
     const platform = (chat.platform || '').toLowerCase();
@@ -259,20 +262,6 @@ export const ChatList: React.FC = () => {
     if (platform === 'cron') return 'scheduled';
     return 'you';
   };
-
-  const kindCounts = useMemo(() => {
-    const counts: Record<ChatKindFilter, number> = {
-      you: 0,
-      scheduled: 0,
-      all: filteredChats.length,
-    };
-    for (const chat of filteredChats) {
-      const kind = getChatKind(chat);
-      if (kind === 'scheduled') counts.scheduled += 1;
-      else counts.you += 1;
-    }
-    return counts;
-  }, [filteredChats]);
 
   const subagentsByParent = useMemo(() => {
     const childrenByParent = new Map<string, ChatSummary[]>();
@@ -669,7 +658,14 @@ export const ChatList: React.FC = () => {
     );
   }
 
-  const remaining = Math.max(0, filteredTotal - filteredChats.length);
+  const loadedKindCount = kindFilter === 'all'
+    ? filteredChats.length
+    : filteredChats.filter(chat => {
+      const kind = getChatKind(chat);
+      if (kindFilter === 'scheduled') return kind === 'scheduled';
+      return kind !== 'scheduled';
+    }).length;
+  const remaining = Math.max(0, filteredKindTotals[kindFilter] - loadedKindCount);
 
   return (
     <div ref={sidebarBoundsRef} className="flex flex-col h-full relative">

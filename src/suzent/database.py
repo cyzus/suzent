@@ -1942,6 +1942,54 @@ class ChatDatabase:
                 )
             return session.exec(statement).one()
 
+    def get_chat_kind_counts(
+        self, search: str = None, platform: str = None, project_id: str = None
+    ) -> Dict[str, int]:
+        """Get chat totals for the sidebar kind tabs."""
+
+        def apply_common_filters(statement):
+            if search:
+                statement = statement.where(
+                    or_(
+                        ChatModel.title.contains(search),
+                        _messages_search_filter(search),
+                    )
+                )
+            if project_id is not None:
+                statement = statement.where(ChatModel.project_id == project_id)
+            if platform == "social":
+                statement = statement.where(
+                    text("json_extract(config, '$.platform') IS NOT NULL")
+                )
+            elif platform == "personal":
+                statement = statement.where(
+                    text("json_extract(config, '$.platform') IS NULL")
+                )
+            return statement
+
+        def count(extra_filter=None) -> int:
+            statement = select(func.count()).select_from(ChatModel)
+            statement = apply_common_filters(statement)
+            if extra_filter is not None:
+                statement = statement.where(extra_filter)
+            return session.exec(statement).one()
+
+        with self._session() as session:
+            scheduled_filter = text(
+                "lower(json_extract(config, '$.platform')) = 'cron'"
+            )
+            you_filter = text(
+                "(json_extract(config, '$.platform') IS NULL "
+                "OR lower(json_extract(config, '$.platform')) != 'cron')"
+            )
+            total = count()
+            scheduled = count(scheduled_filter)
+            return {
+                "you": count(you_filter),
+                "scheduled": scheduled,
+                "all": total,
+            }
+
     def count_chats_in_project(self, project_id: str) -> int:
         """Return the number of chats currently in this project."""
         with self._session() as session:

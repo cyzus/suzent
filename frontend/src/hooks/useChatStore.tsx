@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Message, ChatConfig, ConfigOptions, Chat, ChatSummary } from '../types/api';
+import type { Message, ChatConfig, ConfigOptions, Chat, ChatSummary, ChatKindCounts } from '../types/api';
 import { getApiBase } from '../lib/api';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import { shouldKeepLocalAssistantContent } from '../lib/chatSyncGuards';
@@ -46,6 +46,7 @@ interface ChatCoreContextValue {
   deleteChat: (chatId: string, options?: { cascade?: boolean }) => Promise<void>;
   renameChat: (chatId: string, title: string) => Promise<void>;
   chatTotal: number;
+  chatKindTotals: ChatKindCounts;
   loadingMoreChats: boolean;
   refreshChatList: (searchQuery?: string, force?: boolean) => Promise<void>;
   refreshChatListSilently: (searchQuery?: string) => Promise<void>;
@@ -63,6 +64,8 @@ type ChatContextValue = ChatCoreContextValue & ChatStreamingContextValue;
 
 const ChatCoreContext = createContext<ChatCoreContextValue | null>(null);
 const ChatStreamingContext = createContext<ChatStreamingContextValue | null>(null);
+
+const emptyChatKindCounts: ChatKindCounts = { you: 0, scheduled: 0, all: 0 };
 
 const defaultConfig: ChatConfig = {
   model: '',
@@ -210,6 +213,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   const [currentChatTitle, setCurrentChatTitle] = useState<string>('New Chat');
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [chatTotal, setChatTotal] = useState<number>(0);
+  const [chatKindTotals, setChatKindTotals] = useState<ChatKindCounts>(emptyChatKindCounts);
   const [chatOffset, setChatOffset] = useState<number>(0);
   const chatOffsetRef = useRef<number>(0);
   // Keep refs in sync so refresh callbacks always see the latest offset values
@@ -465,6 +469,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         const data = await res.json();
         const serverList: ChatSummary[] = data.chats || [];
         setChatTotal(data.total ?? serverList.length);
+        setChatKindTotals(data.kindCounts ?? {
+          you: serverList.filter(chat => (chat.platform || '').toLowerCase() !== 'cron').length,
+          scheduled: serverList.filter(chat => (chat.platform || '').toLowerCase() === 'cron').length,
+          all: data.total ?? serverList.length,
+        });
 
         // Merge server list with local state, preserving local updates
         setChats(prev => {
@@ -553,6 +562,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         const data = await res.json();
         const newChats: ChatSummary[] = data.chats || [];
         if (data.total != null) setChatTotal(data.total);
+        if (data.kindCounts) setChatKindTotals(data.kindCounts);
         setChatOffset(nextOffset);
         setChats(prev => {
           const existingIds = new Set(prev.map(c => c.id));
@@ -1310,6 +1320,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       currentChatId,
       chats,
       chatTotal,
+      chatKindTotals,
       loadingChats,
       loadingMoreChats,
       refreshingChats,
@@ -1351,6 +1362,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     currentChatId,
     chats,
     chatTotal,
+    chatKindTotals,
     loadingChats,
     loadingMoreChats,
     refreshingChats,

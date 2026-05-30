@@ -83,6 +83,12 @@ export interface ChatSummary {
   parentChatId?: string | null;
 }
 
+export interface ChatKindCounts {
+  you: number;
+  scheduled: number;
+  all: number;
+}
+
 export interface Project {
   id: string;
   name: string;

@@ -467,6 +467,9 @@ async def get_chats(request: Request) -> JSONResponse:
         total = db.get_chat_count(
             search=search, platform=platform, project_id=project_id
         )
+        kind_counts = db.get_chat_kind_counts(
+            search=search, platform=platform, project_id=project_id
+        )
 
         # Convert Pydantic models to dicts, annotating live background streams
         chats_data = [
@@ -481,6 +484,7 @@ async def get_chats(request: Request) -> JSONResponse:
             {
                 "chats": chats_data,
                 "total": total,
+                "kindCounts": kind_counts,
                 "limit": limit,
                 "offset": offset,
                 "search": search,
