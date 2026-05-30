@@ -11,6 +11,7 @@ import { RobotShowcase } from './components/chat/RobotShowcase';
 import { MemoryView } from './components/memory/MemoryView';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { ConfigView } from './components/sidebar/ConfigView';
+import { BrutalSegmentedTabs } from './components/BrutalSegmentedTabs';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { SkillsView } from './components/skills/SkillsView';
 import { StatusBar } from './components/StatusBar';
@@ -137,57 +138,16 @@ interface UpdateStatus {
 
 function NavTabs({ mainView, setMainView }: { mainView: MainView; setMainView: (v: MainView) => void }): React.ReactElement {
   const { t } = useI18n();
-  const [sliderStyle, setSliderStyle] = React.useState({ left: 3, width: 0 });
-  const navRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    if (navRef.current) {
-      const timeout = setTimeout(() => {
-        if (!navRef.current) return;
-        const activeBtn = navRef.current.querySelector<HTMLButtonElement>(`button[data-view="${mainView}"]`);
-        if (activeBtn) {
-          setSliderStyle({ left: activeBtn.offsetLeft, width: activeBtn.offsetWidth });
-        }
-      }, 10);
-      return () => clearTimeout(timeout);
-    }
-  }, [mainView, t]);
-
   return (
-    <div
-      ref={navRef}
-      className="relative flex items-center p-0.5 border-3 border-brutal-black bg-neutral-100 dark:bg-zinc-800 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-    >
-      {/* Background Slider */}
-      <div
-        className="absolute top-0.5 bottom-0.5 bg-brutal-black dark:bg-brutal-yellow transition-all duration-300 ease-out pointer-events-none"
-        style={{
-          left: sliderStyle.left,
-          width: sliderStyle.width,
-        }}
-      />
-
-      {[
-        { id: 'chat' as MainView, label: t('nav.chat') },
-        { id: 'memory' as MainView, label: t('nav.memory') },
-        { id: 'skills' as MainView, label: t('nav.skills') }
-      ].map((view) => (
-        <button
-          key={view.id}
-          data-view={view.id}
-          onClick={() => setMainView(view.id)}
-          className={`
-            relative z-10 px-2 py-0.5 font-bold uppercase text-[10px] md:text-sm transition-colors whitespace-nowrap
-            ${mainView === view.id
-              ? 'text-white dark:text-brutal-black'
-              : 'text-brutal-black dark:text-white hover:bg-black/5 dark:hover:bg-white/5'
-            }
-          `}
-        >
-          {view.label}
-        </button>
-      ))}
-    </div>
+    <BrutalSegmentedTabs
+      value={mainView}
+      onChange={setMainView}
+      tabs={[
+        { id: 'chat', label: t('nav.chat') },
+        { id: 'memory', label: t('nav.memory') },
+        { id: 'skills', label: t('nav.skills') },
+      ]}
+    />
   );
 }
 

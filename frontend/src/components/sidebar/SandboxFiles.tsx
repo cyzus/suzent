@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { getApiBase } from '../../lib/api';
 import { useI18n } from '../../i18n';
 import { BrutalButton } from '../BrutalButton';
+import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
 import { useChatStore } from '../../hooks/useChatStore';
 import { FilePreview } from './FilePreview';
 import { isBinaryServedFile, isImageFile, isMarkdownFile, isCodeFile } from '../../lib/fileUtils';
@@ -446,22 +447,19 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                         <span className="block truncate">{activeRoot}</span>
                     </div>
                 </div>
-                <div className="mt-2 grid grid-cols-3 gap-1">
-                    {FILE_ROOTS.map(root => (
-                        <button
-                            key={root.path}
-                            type="button"
-                            onClick={() => handleRootChange(root.path)}
-                            title={root.path}
-                            className={`min-w-0 border-2 border-brutal-black px-1.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider transition-colors ${activeRoot === root.path
-                                ? 'bg-brutal-yellow text-brutal-black shadow-none translate-y-[1px]'
-                                : 'bg-white text-brutal-black shadow-[2px_2px_0_0_#000] hover:bg-neutral-100 dark:bg-zinc-700 dark:text-white dark:hover:bg-zinc-600'
-                                }`}
-                        >
-                            <span className="block truncate">{t(root.labelKey)}</span>
-                        </button>
-                    ))}
-                </div>
+                <BrutalSegmentedTabs
+                    className="mt-2"
+                    value={activeRoot}
+                    onChange={handleRootChange}
+                    containerClassName="border-2 border-brutal-black bg-white dark:bg-zinc-700"
+                    inactiveTextClassName="text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600"
+                    tabClassName="flex-1 min-w-0 px-1.5 py-1.5 font-mono text-[10px] font-bold"
+                    tabs={FILE_ROOTS.map(root => ({
+                        id: root.path,
+                        label: t(root.labelKey),
+                        title: root.path,
+                    }))}
+                />
             </div>
 
             {/* Tree */}

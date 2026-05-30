@@ -8,6 +8,7 @@ import { getApiBase, markChatRead } from '../lib/api';
 import { ChatRowMenu } from './ChatRowMenu';
 import { ProjectRowMenu } from './ProjectRowMenu';
 import { BrutalDialog } from './BrutalDialog';
+import { BrutalSegmentedTabs } from './BrutalSegmentedTabs';
 
 const ALL_PROJECTS_FILTER = '__all__';
 type ChatKind = 'you' | 'subagent' | 'scheduled';
@@ -868,27 +869,18 @@ export const ChatList: React.FC = () => {
             ? t('chatList.filter.recentAll')
             : t('chatList.filter.recentIn', { name: filterLabel })}
         </div>
-        <div className="flex items-center gap-1 border-2 border-brutal-black bg-white dark:bg-zinc-700 p-0.5">
-          {([
-            ['you', t('chatList.kind.you')],
-            ['scheduled', t('chatList.kind.scheduled')],
-            ['all', t('chatList.kind.all')],
-          ] as const).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setKindFilter(id)}
-              className={`flex-1 min-w-0 h-6 px-1 text-[9px] font-extrabold uppercase tracking-wide flex items-center justify-center gap-1 transition-colors ${
-                kindFilter === id
-                  ? 'bg-brutal-yellow text-brutal-black shadow-[inset_0_0_0_2px_#000]'
-                  : 'text-neutral-500 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-zinc-600'
-              }`}
-              title={label}
-            >
-              <span className="truncate">{label}</span>
-            </button>
-          ))}
-        </div>
+        <BrutalSegmentedTabs
+          value={kindFilter}
+          onChange={setKindFilter}
+          containerClassName="border-2 border-brutal-black bg-white dark:bg-zinc-700"
+          inactiveTextClassName="text-neutral-500 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-zinc-600"
+          tabClassName="flex-1 min-w-0 h-6 px-1 text-[9px] font-extrabold"
+          tabs={[
+            { id: 'you', label: t('chatList.kind.you') },
+            { id: 'scheduled', label: t('chatList.kind.scheduled') },
+            { id: 'all', label: t('chatList.kind.all') },
+          ]}
+        />
       </div>
 
       {/* Chat list */}
