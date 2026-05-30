@@ -160,6 +160,8 @@ class PostprocessOperationsMixin:
             job.status = (
                 PostProcessStatus.SUCCESS
                 if outcome == PostProcessOutcome.SUCCESS
+                else PostProcessStatus.SKIPPED_STALE
+                if outcome == PostProcessOutcome.SKIPPED_STALE
                 else PostProcessStatus.FAILED
             )
             job.outcome = outcome

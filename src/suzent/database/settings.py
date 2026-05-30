@@ -279,3 +279,4 @@ class SettingsOperationsMixin:
             from suzent.core.secrets import get_secret_manager
 
             get_secret_manager().delete(key)
+        return True
