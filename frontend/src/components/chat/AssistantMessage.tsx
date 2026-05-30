@@ -32,6 +32,8 @@ import {
   hasLegacyPendingApproval,
 } from './ActivityRail';
 
+const LARGE_MARKDOWN_RENDER_THRESHOLD = 12000;
+
 interface AssistantMessageProps {
   message: Message;
   previousMessageTimestamp?: string;
@@ -474,6 +476,10 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     () => getTimestampDeltaSeconds(previousMessageTimestamp, message.timestamp),
     [previousMessageTimestamp, message.timestamp],
   );
+  const legacyBlocks = useMemo(
+    () => (effectiveParts === undefined ? filterBlocks(splitAssistantContent(message.content || '')) : []),
+    [effectiveParts, message.content],
+  );
 
   // Suppress the streaming cursor during the assembly→reveal animation.
   // Delay showing the cursor so it doesn't flash while the box is still opening.
@@ -499,14 +505,13 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
         .join('')
         .trim();
     } else {
-      const parsedBlocks = filterBlocks(splitAssistantContent(message.content || ''));
-      return parsedBlocks
+      return legacyBlocks
         .filter(b => b.type !== 'log' && b.type !== 'reasoning' && b.type !== 'toolCall' && b.type !== 'a2ui')
         .map(b => (b.type === 'code' ? '```' + (b.lang || '') + '\n' + b.content + '\n```' : b.content))
         .join('\n\n')
         .trim();
     }
-  }, [effectiveParts, message.content]);
+  }, [effectiveParts, legacyBlocks]);
 
   // 1. 抓取当前正在跑的 Tool 和 错误状态
   let currentToolName: string | undefined = undefined;
@@ -530,8 +535,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     }
   } else {
     // For legacy blocks, check if there's a pending tool call
-    const blocks = splitAssistantContent(message.content || '');
-    isPendingApproval = blocks.some(b => b.type === 'toolCall' && b.approvalState === 'pending');
+    isPendingApproval = legacyBlocks.some(b => b.type === 'toolCall' && b.approvalState === 'pending');
   }
 
   // 2. 核心动画容器 (丝滑形变 UI)
@@ -629,7 +633,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     return null;
   }
 
-  const blocks = filterBlocks(splitAssistantContent(message.content));
+  const blocks = legacyBlocks;
 
   // If after filtering there are no blocks (e.g. only final_answer tool call), don't render
   if (!isStreamingThis && blocks.length === 0) {
@@ -786,7 +790,11 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                         </summary>
                         <div className="mt-1.5 p-4 bg-neutral-50 dark:bg-zinc-900 border-2 rounded-sm border-brutal-black dark:border-white w-full overflow-x-hidden shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff]">
                           <div className="text-[13px] md:text-sm text-brutal-black/90 dark:text-neutral-300 leading-relaxed break-words opacity-90">
-                            <MarkdownRenderer content={rb.content} onFileClick={onFileClick} streamingLite={isChunkStreaming && ri === chunk.blocks.length - 1} />
+                            <MarkdownRenderer
+                              content={rb.content}
+                              onFileClick={onFileClick}
+                              streamingLite={(isChunkStreaming && ri === chunk.blocks.length - 1) || rb.content.length > LARGE_MARKDOWN_RENDER_THRESHOLD}
+                            />
                           </div>
                         </div>
                       </details>

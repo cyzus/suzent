@@ -34,7 +34,7 @@ import type {
   SubAgentFailedPayload,
 } from '../lib/streamEvents';
 
-const INITIAL_VISIBLE_MESSAGES = 80;
+const INITIAL_VISIBLE_MESSAGES = 30;
 const LOAD_MORE_MESSAGES = 60;
 const LOAD_MORE_SCROLL_THRESHOLD_PX = 96;
 
@@ -601,7 +601,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         setCurrentUsage(null);
         setCurrentStreamDisplayRole('assistant');
         // Reload chat from DB to reflect rolled-back state.
-        setTimeout(() => { try { loadChat(chatId!); } catch { } }, 300);
+        setTimeout(() => { try { loadChat(chatId!, { force: true }); } catch { } }, 300);
         return;
       }
 
@@ -668,7 +668,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // results before we reload. An immediate reload risks getting stale
       // approval-requested state that the guards may not catch in all edge cases.
       const _syncChatId = chatId!;
-      setTimeout(() => { try { loadChat(_syncChatId); } catch { } }, 800);
+      setTimeout(() => { try { loadChat(_syncChatId, { force: true }); } catch { } }, 800);
 
       try { loadCoreMemory(); loadStats(); } catch { }
     },
@@ -1044,7 +1044,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         abandonedPartsRef.current.delete(chatIdAtMount);
         streamStartByChatRef.current.delete(chatIdAtMount);
       }
-      loadChat(chatIdAtMount).catch(() => {});
+      loadChat(chatIdAtMount, { force: true }).catch(() => {});
     }
 
     const tryConnect = async (): Promise<void> => {
@@ -1077,7 +1077,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             streamStartByChatRef.current.set(chatIdAtMount, Date.now());
           }
           setIsStreaming(true, chatIdAtMount);
-          loadChat(chatIdAtMount).catch(() => {});
+          loadChat(chatIdAtMount, { force: true }).catch(() => {});
         },
       });
 
@@ -1103,7 +1103,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       if (isSocialStream) {
         if (richMsg.content.trim()) addMessage(richMsg, chatIdAtMount);
-        try { await loadChat(chatIdAtMount); } catch { /* ignore */ }
+        try { await loadChat(chatIdAtMount, { force: true }); } catch { /* ignore */ }
       }
 
       clearParts();

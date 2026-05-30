@@ -39,7 +39,7 @@ interface ChatCoreContextValue {
   setSearchQuery: (query: string) => void;
   beginNewChat: () => void;
   createNewChat: () => Promise<string | null>;
-  loadChat: (chatId: string) => Promise<void>;
+  loadChat: (chatId: string, options?: { force?: boolean }) => Promise<void>;
   saveCurrentChat: (skipRefresh?: boolean) => Promise<void>;
   finalSave: (chatId?: string | null) => Promise<void>;
   forceSaveNow: (chatId?: string | null) => Promise<void>;
@@ -1026,13 +1026,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     return result;
   }, [currentChatId, messagesByChat, configByChat, computeDefaultConfig, refreshChatListInternal, clearScheduledSave]);
 
-  const loadChat = useCallback(async (chatId: string) => {
+  const loadChat = useCallback(async (chatId: string, options?: { force?: boolean }) => {
+    const force = !!options?.force;
     // Clear any pending saves for the previous chat before switching
     if (currentChatId && currentChatId !== chatId) {
       clearScheduledSave(currentChatId);
     }
 
     const key = keyForChat(chatId);
+    const cachedMessages = messagesByChatRef.current[key];
     setCurrentChatId(chatId);
     setShouldResetNext(false);
 
@@ -1050,6 +1052,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       } catch (e) {
         console.warn('Failed to save config to localStorage:', e);
       }
+    }
+
+    if (!force && cachedMessages) {
+      return;
     }
 
     try {
@@ -1311,7 +1317,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       }
       if (wasCurrent) {
         // Try to restore the previously selected chat after rollback.
-        try { await loadChat(chatId); } catch { /* ignore */ }
+        try { await loadChat(chatId, { force: true }); } catch { /* ignore */ }
       }
     }
   }, [beginNewChat, chats, currentChatId, loadChat, refreshChatListSilently]);

@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+import re
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import func, or_, text
@@ -14,6 +15,9 @@ from .models import (
     _postprocess_metrics,
     messages_search_filter,
 )
+
+SUMMARY_LAST_MESSAGE_KEY = "_summary_last_message"
+SUMMARY_VISIBLE_COUNT_KEY = "_summary_visible_assistant_count"
 
 
 def _apply_chat_filters(statement, search, platform, project_id):
@@ -34,6 +38,73 @@ def _apply_chat_filters(statement, search, platform, project_id):
     elif platform == "personal":
         statement = statement.where(text("json_extract(config, '$.platform') IS NULL"))
     return statement
+
+
+def _message_content_text(content: Any) -> str:
+    if isinstance(content, list):
+        text_parts = []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                text_parts.append(part.get("text", ""))
+            elif isinstance(part, str):
+                text_parts.append(part)
+        return " ".join(text_parts)
+    if isinstance(content, str):
+        return content
+    return str(content) if content is not None else ""
+
+
+def _clean_message_preview(content: Any) -> str:
+    text_content = _message_content_text(content)
+    clean_content = re.sub(
+        r"<details\b[^>]*>.*?</details>", "", text_content, flags=re.DOTALL
+    )
+    return re.sub(r"<[^>]+>", "", clean_content).strip()
+
+
+def _summarize_messages(
+    messages: Optional[List[Dict[str, Any]]],
+) -> tuple[int, Optional[str]]:
+    """Return sidebar summary data without leaking tool detail blocks."""
+    safe_messages = messages or []
+    last_message = None
+    if safe_messages:
+        last_msg = safe_messages[-1]
+        content = last_msg.get("content") if isinstance(last_msg, dict) else last_msg
+        clean_content = _clean_message_preview(content)
+        last_message = clean_content[:100] if clean_content else None
+        if last_message and len(clean_content) > 100:
+            last_message += "..."
+
+    visible_count = sum(
+        1
+        for message in safe_messages
+        if isinstance(message, dict)
+        and message.get("role") == "assistant"
+        and isinstance(message.get("content"), str)
+        and message["content"].strip()
+    )
+    return visible_count, last_message
+
+
+def _with_message_summary(
+    config: Optional[Dict[str, Any]],
+    messages: Optional[List[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    next_config = dict(config or {})
+    visible_count, last_message = _summarize_messages(messages)
+    next_config[SUMMARY_VISIBLE_COUNT_KEY] = visible_count
+    next_config[SUMMARY_LAST_MESSAGE_KEY] = last_message
+    return next_config
+
+
+def _copy_summary_keys(
+    target: Dict[str, Any], source: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
+    for key in (SUMMARY_VISIBLE_COUNT_KEY, SUMMARY_LAST_MESSAGE_KEY):
+        if key not in target and source and key in source:
+            target[key] = source[key]
+    return target
 
 
 class ChatOperationsMixin:
@@ -63,7 +134,7 @@ class ChatOperationsMixin:
             title=title,
             created_at=now,
             updated_at=now,
-            config=config,
+            config=_with_message_summary(config, messages),
             messages=messages or [],
             context_usage=context_usage or {},
             agent_state=agent_state,
@@ -105,12 +176,17 @@ class ChatOperationsMixin:
                 should_update_timestamp = True
 
             if config is not None:
-                chat.config = config
+                next_config = dict(config)
+                if messages is None:
+                    next_config = _copy_summary_keys(next_config, chat.config)
+                chat.config = next_config
                 flag_modified(chat, "config")
 
             if messages is not None:
                 chat.messages = messages
+                chat.config = _with_message_summary(chat.config, messages)
                 should_update_timestamp = True
+                flag_modified(chat, "config")
 
             if context_usage is not None:
                 chat.context_usage = context_usage
@@ -182,6 +258,8 @@ class ChatOperationsMixin:
             chat.agent_state = agent_state
             if messages is not None:
                 chat.messages = messages
+                chat.config = _with_message_summary(chat.config, messages)
+                flag_modified(chat, "config")
             chat.finalized_revision = expected_revision
             chat.state_stage = "finalized"
             chat.state_updated_at = now
@@ -261,7 +339,6 @@ class ChatOperationsMixin:
                     ChatModel.created_at,
                     ChatModel.updated_at,
                     ChatModel.config,
-                    ChatModel.messages,
                     ChatModel.last_result_at,
                     ChatModel.project_id,
                 )
@@ -279,7 +356,7 @@ class ChatOperationsMixin:
             }
 
             results = []
-            import re
+            summaries_backfilled = False
 
             for row in session.exec(statement).all():
                 (
@@ -288,54 +365,22 @@ class ChatOperationsMixin:
                     created_at,
                     updated_at,
                     config,
-                    messages,
                     last_result_at,
                     row_project_id,
                 ) = row
-                messages = messages or []
-                last_message = None
-                if messages:
-                    last_msg = messages[-1]
-                    if isinstance(last_msg, dict):
-                        content = last_msg.get("content") or ""
-                    else:
-                        content = str(last_msg)
-
-                    if isinstance(content, list):
-                        # Extract text from list of dicts (e.g. OpenAI vision)
-                        text_parts = []
-                        for part in content:
-                            if isinstance(part, dict) and part.get("type") == "text":
-                                text_parts.append(part.get("text", ""))
-                            elif isinstance(part, str):
-                                text_parts.append(part)
-                        content = " ".join(text_parts)
-                    elif not isinstance(content, str):
-                        content = str(content)
-
-                    # 1. completely eradicate any <details> tool blocks (including inner text)
-                    clean_content = re.sub(
-                        r"<details\b[^>]*>.*?</details>", "", content, flags=re.DOTALL
-                    )
-                    # 2. Strip remaining raw HTML tags
-                    clean_content = re.sub(r"<[^>]+>", "", clean_content).strip()
-
-                    last_message = clean_content[:100]
-                    if len(clean_content) > 100:
-                        last_message += "..."
-
                 config = config or {}
-                # Count only assistant messages that carry visible text.
-                # Pure tool-call turns have role="assistant" but no text content,
-                # so we exclude them to avoid inflating the unread badge.
-                visible_count = sum(
-                    1
-                    for m in messages
-                    if isinstance(m, dict)
-                    and m.get("role") == "assistant"
-                    and isinstance(m.get("content"), str)
-                    and m["content"].strip()
-                )
+                visible_count = config.get(SUMMARY_VISIBLE_COUNT_KEY)
+                last_message = config.get(SUMMARY_LAST_MESSAGE_KEY)
+                if visible_count is None or SUMMARY_LAST_MESSAGE_KEY not in config:
+                    chat = session.get(ChatModel, chat_id)
+                    messages = chat.messages if chat else []
+                    visible_count, last_message = _summarize_messages(messages)
+                    if chat:
+                        chat.config = _with_message_summary(chat.config, messages)
+                        flag_modified(chat, "config")
+                        session.add(chat)
+                        summaries_backfilled = True
+
                 project = project_lookup.get(row_project_id) if row_project_id else None
                 results.append(
                     ChatSummaryModel(
@@ -343,7 +388,7 @@ class ChatOperationsMixin:
                         title=title,
                         createdAt=created_at.isoformat(),
                         updatedAt=updated_at.isoformat(),
-                        messageCount=visible_count,
+                        messageCount=int(visible_count or 0),
                         lastMessage=last_message,
                         platform=config.get("platform"),
                         heartbeatEnabled=config.get("heartbeat_enabled", False),
@@ -357,6 +402,9 @@ class ChatOperationsMixin:
                         parentChatId=config.get("parent_chat_id"),
                     )
                 )
+
+            if summaries_backfilled:
+                session.commit()
 
             return results
 

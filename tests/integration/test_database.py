@@ -141,6 +141,38 @@ class TestChatOperations:
         # ChatSummaryModel uses camelCase for frontend compat
         assert isinstance(chats[0], ChatSummaryModel)
 
+    def test_list_chats_uses_cached_message_summary(self, db):
+        chat_id = db.create_chat(
+            "Summary Chat",
+            {},
+            [
+                {"role": "user", "content": "Hello"},
+                {
+                    "role": "assistant",
+                    "content": "Visible answer <details><summary>tool</summary>secret</details>",
+                },
+            ],
+        )
+
+        chats = db.list_chats()
+        summary = next(chat for chat in chats if chat.id == chat_id)
+        assert summary.messageCount == 1
+        assert summary.lastMessage == "Visible answer"
+
+        db.update_chat(
+            chat_id,
+            messages=[
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "First answer"},
+                {"role": "assistant", "content": "Second answer"},
+            ],
+        )
+
+        chats = db.list_chats()
+        summary = next(chat for chat in chats if chat.id == chat_id)
+        assert summary.messageCount == 2
+        assert summary.lastMessage == "Second answer"
+
     def test_get_chat_count(self, db):
         db.create_chat("Chat 1", {})
         db.create_chat("Chat 2", {})

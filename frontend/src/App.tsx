@@ -289,7 +289,7 @@ function AppInner(): React.ReactElement {
       }
 
       if (chatId && (openChat?.platform || openChat?.heartbeatEnabled) && !openChat?.isRunning) {
-        loadChatRef.current(chatId);
+        loadChatRef.current(chatId, { force: true });
       }
     }, 8000);
     return () => clearInterval(interval);

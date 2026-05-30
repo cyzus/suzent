@@ -90,8 +90,30 @@ export function isIntermediateStepContent(content: string | undefined, stepInfo?
 }
 
 
+const SPLIT_CACHE_LIMIT = 80;
+const splitAssistantContentCache = new Map<string, ContentBlock[]>();
+
 // Helper to split assistant content into markdown + code + log + toolCall + a2ui blocks
 export function splitAssistantContent(content: string): ContentBlock[] {
+  const cached = splitAssistantContentCache.get(content);
+  if (cached) {
+    splitAssistantContentCache.delete(content);
+    splitAssistantContentCache.set(content, cached);
+    return cached;
+  }
+
+  const parsed = parseAssistantContent(content);
+  splitAssistantContentCache.set(content, parsed);
+  if (splitAssistantContentCache.size > SPLIT_CACHE_LIMIT) {
+    const oldestKey = splitAssistantContentCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      splitAssistantContentCache.delete(oldestKey);
+    }
+  }
+  return parsed;
+}
+
+function parseAssistantContent(content: string): ContentBlock[] {
   const blocks: ContentBlock[] = [];
 
   // Pre-pass: extract inline A2UI surfaces, replace with stable placeholders

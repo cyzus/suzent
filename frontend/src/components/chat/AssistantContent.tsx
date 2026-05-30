@@ -11,6 +11,8 @@ import { SubAgentCallBlock, type SubAgentStatus } from './SubAgentCallBlock';
 import { ToolCallBlock } from './ToolCallBlock';
 import { ToolGroupIcon } from './toolGroupIcon';
 
+const LARGE_MARKDOWN_RENDER_THRESHOLD = 12000;
+
 /** Extract sub-agent task_id from agent tool output text. */
 export function parseSubAgentTaskId(output: string | undefined): string | undefined {
   if (!output) return undefined;
@@ -274,7 +276,14 @@ export const StaticContent: React.FC<{
       {blocks.map((b, bi) => {
         const blockKey = generateBlockKey(b, bi, messageIndex);
         if (b.type === 'markdown') {
-          return <MarkdownRenderer key={blockKey} content={b.content} onFileClick={onFileClick} />;
+          return (
+            <MarkdownRenderer
+              key={blockKey}
+              content={b.content}
+              onFileClick={onFileClick}
+              streamingLite={b.content.length > LARGE_MARKDOWN_RENDER_THRESHOLD}
+            />
+          );
         } else if (b.type === 'log') {
           return <LogBlock key={blockKey} title={b.title} content={b.content} />;
         } else if (b.type === 'a2ui' && b.a2uiSurface) {
