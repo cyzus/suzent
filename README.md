@@ -1,7 +1,7 @@
 
 <div align="center">
 
-![Suzent Banner](docs/assets/banner.svg)
+![Suzent Banner](docs/assets/banner_v2.png)
 
 # **SUZENT: SUMMON A SOVEREIGN GEIST**
 
