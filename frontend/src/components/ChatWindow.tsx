@@ -1592,7 +1592,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         currentChatId={currentChatId}
         hasSubAgents={
           Object.keys(subAgentTasks).length > 0 ||
-          safeMessages.some(m => m.content?.includes('agent')) ||
           currentChatSummary?.platform === 'subagent' ||
           safeConfig?.platform === 'subagent'
         }
