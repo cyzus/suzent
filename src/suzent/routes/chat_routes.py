@@ -645,19 +645,30 @@ async def update_chat(request: Request) -> JSONResponse:
 
 
 async def delete_chat(request: Request) -> JSONResponse:
-    """Delete a chat."""
+    """Delete a chat. Pass ?cascade=true to also delete subagent children."""
     try:
         chat_id = request.path_params["chat_id"]
+        cascade = request.query_params.get("cascade", "false").lower() == "true"
         db = get_database()
 
-        success = db.delete_chat(chat_id)
+        # Collect subagent child IDs before deletion (for tool cleanup)
+        child_ids = db.get_subagent_chat_ids_for_parent_chat(chat_id) if cascade else []
+
+        success = db.delete_chat(chat_id, cascade_subagents=cascade)
         if not success:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
 
         from suzent.agent_manager import clear_unlocked_tools
 
         clear_unlocked_tools(chat_id)
-        return JSONResponse({"message": "Chat deleted successfully"})
+        for child_id in child_ids:
+            clear_unlocked_tools(child_id)
+        return JSONResponse(
+            {
+                "message": "Chat deleted successfully",
+                "deleted_subagents": len(child_ids),
+            }
+        )
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 

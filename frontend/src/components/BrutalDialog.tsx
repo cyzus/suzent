@@ -67,12 +67,12 @@ export const BrutalDialog: React.FC<BrutalDialogProps> = ({
   const toneClass = (tone: BrutalDialogAction['tone']) => {
     switch (tone) {
       case 'primary':
-        return 'bg-brutal-black text-white hover:bg-brutal-blue';
+        return 'bg-brutal-black text-white hover:bg-neutral-800 dark:bg-brutal-yellow dark:text-brutal-black dark:hover:bg-yellow-300';
       case 'danger':
-        return 'bg-brutal-red text-white hover:bg-red-700';
+        return 'bg-brutal-red text-white hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500';
       case 'default':
       default:
-        return 'bg-white dark:bg-zinc-700 dark:text-white text-brutal-black hover:bg-brutal-yellow dark:hover:bg-brutal-yellow dark:hover:text-brutal-black';
+        return 'bg-white text-brutal-black hover:bg-neutral-100 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700';
     }
   };
 
@@ -89,7 +89,6 @@ export const BrutalDialog: React.FC<BrutalDialogProps> = ({
       className="fixed inset-0 z-[9998] flex items-center justify-center p-4 animate-brutal-drop"
       style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
       onMouseDown={(e) => {
-        // Click outside the card dismisses, unless hideClose is set.
         if (e.target === e.currentTarget && !hideClose) onClose();
       }}
       {...(rootDataAttrs || {})}
@@ -99,15 +98,15 @@ export const BrutalDialog: React.FC<BrutalDialogProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? 'brutal-dialog-title' : undefined}
-        className="relative w-full max-w-md bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-[6px_6px_0_0_#000]"
+        className="relative w-full max-w-sm bg-white dark:bg-zinc-900 border-2 border-brutal-black dark:border-zinc-500 shadow-[5px_5px_0_0_#000] dark:shadow-[5px_5px_0_0_rgba(255,255,255,0.15)]"
       >
         {/* Header */}
         {(title || !hideClose) && (
-          <div className="flex items-start gap-2 px-4 py-3 border-b-2 border-brutal-black">
+          <div className="flex items-center gap-2 px-4 py-3 border-b-2 border-brutal-black dark:border-zinc-500">
             {title && (
               <h2
                 id="brutal-dialog-title"
-                className="flex-1 text-sm font-extrabold uppercase tracking-wider text-brutal-black dark:text-white truncate"
+                className="flex-1 text-sm font-extrabold uppercase tracking-wider text-brutal-black dark:text-white"
               >
                 {title}
               </h2>
@@ -117,9 +116,9 @@ export const BrutalDialog: React.FC<BrutalDialogProps> = ({
                 type="button"
                 aria-label="Close"
                 onClick={onClose}
-                className="ml-auto p-1 hover:bg-brutal-black/10 dark:hover:bg-white/10 text-brutal-black dark:text-white"
+                className="ml-auto p-1 text-brutal-black dark:text-white hover:bg-brutal-black/10 dark:hover:bg-white/10 transition-colors"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -128,26 +127,23 @@ export const BrutalDialog: React.FC<BrutalDialogProps> = ({
         )}
 
         {/* Body */}
-        <div className="px-4 py-4 text-sm leading-relaxed text-brutal-black dark:text-white">
+        <div className="px-4 py-4 text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">
           {message}
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900">
-          {actions.map((action, i) => {
-            const isPrimary = i === actions.length - 1;
-            return (
-              <button
-                key={action.label + i}
-                type="button"
-                data-primary={isPrimary ? 'true' : undefined}
-                onClick={() => handleActionClick(action)}
-                className={`px-3 py-1.5 border-2 border-brutal-black text-xs font-extrabold uppercase tracking-wider shadow-[2px_2px_0_0_#000] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[1px_1px_0_0_#000] active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all ${toneClass(action.tone)}`}
-              >
-                {action.label}
-              </button>
-            );
-          })}
+        {/* Actions — cancel leftmost, destructive rightmost */}
+        <div className="flex items-stretch border-t-2 border-brutal-black dark:border-zinc-500">
+          {actions.map((action, i) => (
+            <button
+              key={action.label + i}
+              type="button"
+              data-primary={action.tone === 'primary' || action.tone === 'danger' ? 'true' : undefined}
+              onClick={() => handleActionClick(action)}
+              className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide transition-colors ${i > 0 ? 'border-l-2 border-brutal-black dark:border-zinc-500' : ''} ${toneClass(action.tone)}`}
+            >
+              {action.label}
+            </button>
+          ))}
         </div>
       </div>
     </div>

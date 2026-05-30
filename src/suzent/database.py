@@ -80,6 +80,7 @@ class ChatSummaryModel(BaseModel):
     projectId: Optional[str] = None
     projectSlug: Optional[str] = None
     projectName: Optional[str] = None
+    parentChatId: Optional[str] = None
 
 
 class ProjectModel(SQLModel, table=True):
@@ -1737,12 +1738,18 @@ class ChatDatabase:
             session.commit()
             return True
 
-    def delete_chat(self, chat_id: str) -> bool:
-        """Delete a chat by ID."""
+    def delete_chat(self, chat_id: str, cascade_subagents: bool = False) -> bool:
+        """Delete a chat by ID. Optionally cascade-delete subagent children."""
         with self._session() as session:
             chat = session.get(ChatModel, chat_id)
             if not chat:
                 return False
+
+            if cascade_subagents:
+                all_chats = session.exec(select(ChatModel)).all()
+                for c in all_chats:
+                    if self._is_subagent_child(c, {chat_id}):
+                        session.delete(c)
 
             session.delete(chat)
             session.commit()
@@ -1904,6 +1911,7 @@ class ChatDatabase:
                         projectId=row_project_id,
                         projectSlug=project.slug if project else None,
                         projectName=project.name if project else None,
+                        parentChatId=config.get("parent_chat_id"),
                     )
                 )
 

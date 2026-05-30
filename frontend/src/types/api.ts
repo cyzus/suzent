@@ -80,6 +80,7 @@ export interface ChatSummary {
   projectId?: string | null;
   projectSlug?: string | null;
   projectName?: string | null;
+  parentChatId?: string | null;
 }
 
 export interface Project {

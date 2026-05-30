@@ -43,7 +43,7 @@ interface ChatCoreContextValue {
   saveCurrentChat: (skipRefresh?: boolean) => Promise<void>;
   finalSave: (chatId?: string | null) => Promise<void>;
   forceSaveNow: (chatId?: string | null) => Promise<void>;
-  deleteChat: (chatId: string) => Promise<void>;
+  deleteChat: (chatId: string, options?: { cascade?: boolean }) => Promise<void>;
   renameChat: (chatId: string, title: string) => Promise<void>;
   chatTotal: number;
   loadingMoreChats: boolean;
@@ -1206,7 +1206,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     }
   }, [chats, configByChat, currentChatId, clearScheduledSave]);
 
-  const deleteChat = useCallback(async (chatId: string) => {
+  const deleteChat = useCallback(async (chatId: string, { cascade = false }: { cascade?: boolean } = {}) => {
     const key = keyForChat(chatId);
     const deletedSummary = chats.find(c => c.id === chatId);
     const deletedIndex = chats.findIndex(c => c.id === chatId);
@@ -1215,7 +1215,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     const wasCurrent = currentChatId === chatId;
 
     // Optimistic UI: remove immediately so delete feels instant.
-    setChats(prev => prev.filter(c => c.id !== chatId));
+    // When cascading, also remove subagent children from the local chats list.
+    setChats(prev => {
+      if (!cascade) return prev.filter(c => c.id !== chatId);
+      return prev.filter(c => {
+        if (c.id === chatId) return false;
+        const config = (c as any).config;
+        const parentId = (c as any).parentChatId;
+        return !(parentId === chatId);
+      });
+    });
     setMessagesByChat(prev => {
       const next = { ...prev };
       delete next[key];
@@ -1231,7 +1240,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     }
 
     try {
-      const res = await fetch(`${getApiBase()}/chats/${chatId}`, { method: 'DELETE' });
+      const url = cascade
+        ? `${getApiBase()}/chats/${chatId}?cascade=true`
+        : `${getApiBase()}/chats/${chatId}`;
+      const res = await fetch(url, { method: 'DELETE' });
       if (!res.ok) {
         throw new Error(`Failed to delete chat: ${res.status} ${res.statusText}`);
       }

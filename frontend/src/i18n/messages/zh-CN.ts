@@ -399,6 +399,17 @@ export const zhCN = {
       recentAll: '所有项目近期对话',
       recentIn: '{name} 近期对话',
     },
+    kind: {
+      you: '你',
+      subagents: '子智能体',
+      scheduled: '计划任务',
+      all: '全部',
+    },
+    labels: {
+      heartbeat: '心跳',
+      subagentOf: '隶属于 {name}',
+      subagentsCount: '{count} 个子智能体',
+    },
     menu: {
       title: '操作',
       rename: '重命名',
@@ -420,6 +431,9 @@ export const zhCN = {
       confirm: '删除',
       deleting: '正在删除...',
       buttonTitle: '删除对话',
+      cascadeMessage: '此对话包含子 Agent。是否一并删除？',
+      cascadeYes: '连同子 Agent 一起删除',
+      cascadeNo: '仅删除此对话',
     },
     rename: {
       buttonTitle: '重命名对话',

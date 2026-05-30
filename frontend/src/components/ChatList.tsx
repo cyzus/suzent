@@ -11,6 +11,8 @@ import { ProjectRowMenu } from './ProjectRowMenu';
 import { BrutalDialog } from './BrutalDialog';
 
 const ALL_PROJECTS_FILTER = '__all__';
+type ChatKind = 'you' | 'subagent' | 'scheduled';
+type ChatKindFilter = 'you' | 'scheduled' | 'all';
 
 export const ChatList: React.FC = () => {
   const {
@@ -73,6 +75,10 @@ export const ChatList: React.FC = () => {
 
   // Filter pill state
   const [filterId, setFilterId] = useState<string>(ALL_PROJECTS_FILTER);
+  const [kindFilter, setKindFilter] = useState<ChatKindFilter>('you');
+  const [expandedSubagentParents, setExpandedSubagentParents] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const [creatingProjectInline, setCreatingProjectInline] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -250,6 +256,95 @@ export const ChatList: React.FC = () => {
     return projectChatTotal;
   }, [filterId, chatTotal, projectChatTotal]);
 
+  const getChatKind = (chat: ChatSummary): ChatKind => {
+    const platform = (chat.platform || '').toLowerCase();
+    if (platform === 'subagent') return 'subagent';
+    if (platform === 'cron') return 'scheduled';
+    return 'you';
+  };
+
+  const kindCounts = useMemo(() => {
+    const counts: Record<ChatKindFilter, number> = {
+      you: 0,
+      scheduled: 0,
+      all: filteredChats.length,
+    };
+    for (const chat of filteredChats) {
+      const kind = getChatKind(chat);
+      if (kind === 'scheduled') counts.scheduled += 1;
+      else counts.you += 1;
+    }
+    return counts;
+  }, [filteredChats]);
+
+  const subagentsByParent = useMemo(() => {
+    const childrenByParent = new Map<string, ChatSummary[]>();
+    for (const chat of filteredChats) {
+      if (getChatKind(chat) !== 'subagent' || !chat.parentChatId) continue;
+      const list = childrenByParent.get(chat.parentChatId) ?? [];
+      list.push(chat);
+      childrenByParent.set(chat.parentChatId, list);
+    }
+    return childrenByParent;
+  }, [filteredChats]);
+
+  useEffect(() => {
+    const selected = filteredChats.find(chat => chat.id === currentChatId);
+    if (!selected?.parentChatId) return;
+    setExpandedSubagentParents(prev => {
+      if (prev.has(selected.parentChatId!)) return prev;
+      const next = new Set(prev);
+      next.add(selected.parentChatId!);
+      return next;
+    });
+  }, [currentChatId, filteredChats]);
+
+  const toggleSubagentParent = (chatId: string) => {
+    setExpandedSubagentParents(prev => {
+      const next = new Set(prev);
+      if (next.has(chatId)) next.delete(chatId);
+      else next.add(chatId);
+      return next;
+    });
+  };
+
+  const visibleChats = useMemo(() => {
+    const source = filteredChats.filter(chat => {
+      const kind = getChatKind(chat);
+      if (kindFilter === 'scheduled') return kind === 'scheduled';
+      if (kindFilter === 'you') return kind !== 'scheduled';
+      return true;
+    });
+
+    const childIds = new Set<string>();
+    for (const chat of source) {
+      if (getChatKind(chat) === 'subagent' && chat.parentChatId) {
+        childIds.add(chat.id);
+      }
+    }
+
+    const arranged: ChatSummary[] = [];
+    for (const chat of source) {
+      if (childIds.has(chat.id)) continue;
+      arranged.push(chat);
+      const childChats = subagentsByParent.get(chat.id);
+      if (childChats && expandedSubagentParents.has(chat.id)) {
+        arranged.push(...childChats);
+      }
+    }
+
+    for (const chat of source) {
+      if (childIds.has(chat.id) && !arranged.some(item => item.id === chat.id)) {
+        const parentId = chat.parentChatId;
+        const parentInSource = parentId ? source.some(p => p.id === parentId) : false;
+        if (!parentInSource) {
+          arranged.push(chat);
+        }
+      }
+    }
+    return arranged;
+  }, [expandedSubagentParents, filteredChats, kindFilter, subagentsByParent]);
+
   const handleLoadMore = useCallback(async () => {
     if (filterId === ALL_PROJECTS_FILTER) {
       await loadMoreChats();
@@ -263,11 +358,49 @@ export const ChatList: React.FC = () => {
 
   // ── Chat actions ──
 
-  const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
+  const handleDeleteChat = async (chatId: string, e: React.MouseEvent, cascade = false) => {
     e.stopPropagation();
+
+    // If this chat has subagents and the user hasn't decided yet, ask first.
+    const hasSubagents = (subagentsByParent.get(chatId)?.length ?? 0) > 0;
+    if (hasSubagents && !cascade) {
+      setConfirmDeleteId(null);
+      setDialog({
+        title: t('chatList.delete.confirmTitle'),
+        message: t('chatList.delete.cascadeMessage'),
+        actions: [
+          { label: t('common.cancel'), tone: 'default' },
+          {
+            label: t('chatList.delete.cascadeNo'),
+            tone: 'default',
+            onClick: async () => {
+              setDeletingChatId(chatId);
+              setProjectChats(prev => prev.filter(c => c.id !== chatId));
+              try { await deleteChat(chatId); } catch { /* ignore */ } finally { setDeletingChatId(null); }
+            },
+          },
+          {
+            label: t('chatList.delete.cascadeYes'),
+            tone: 'danger',
+            onClick: async () => {
+              setDeletingChatId(chatId);
+              setProjectChats(prev => prev.filter(c => c.id !== chatId && c.parentChatId !== chatId));
+              try { await deleteChat(chatId, { cascade: true }); } catch { /* ignore */ } finally { setDeletingChatId(null); }
+            },
+          },
+        ],
+      });
+      return;
+    }
+
     setDeletingChatId(chatId);
+    // Optimistically remove from projectChats (separate state from global chats list).
+    setProjectChats(prev => {
+      const filtered = prev.filter(c => c.id !== chatId);
+      return cascade ? filtered.filter(c => c.parentChatId !== chatId) : filtered;
+    });
     try {
-      await deleteChat(chatId);
+      await deleteChat(chatId, { cascade });
       setConfirmDeleteId(null);
     } catch (error) {
       console.error('Error deleting chat:', error);
@@ -353,6 +486,7 @@ export const ChatList: React.FC = () => {
 
   const platformLabel = (platform?: string | null) => {
     if (!platform) return null;
+    if (platform.toLowerCase() === 'cron') return t('chatList.kind.scheduled');
     return platform.toLowerCase().replace(/^\w/, c => c.toUpperCase());
   };
 
@@ -366,6 +500,24 @@ export const ChatList: React.FC = () => {
   const renderChatRow = (chat: ChatSummary) => {
     const unread = unreadMessages(chat);
     const showUnread = currentChatId !== chat.id && unread > 0;
+    const chatKind = getChatKind(chat);
+    const parentTitle = chat.parentChatId
+      ? filteredChats.find(item => item.id === chat.parentChatId)?.title
+      : null;
+    const childSubagents = subagentsByParent.get(chat.id) ?? [];
+    const hasCollapsedChildren = childSubagents.length > 0;
+    const childrenExpanded = expandedSubagentParents.has(chat.id);
+    const rowSurface = currentChatId === chat.id
+      ? 'bg-brutal-yellow/95 dark:bg-zinc-700 border-brutal-black dark:border-brutal-yellow z-10'
+      : chat.heartbeatEnabled
+        ? 'bg-yellow-50 border-neutral-200 dark:bg-zinc-800 dark:border-zinc-700 shadow-[inset_4px_0_0_var(--brutal-yellow)] hover:bg-yellow-100/70 dark:hover:bg-zinc-700/80'
+        : chatKind === 'subagent'
+          ? 'bg-neutral-50 border-neutral-200 dark:bg-zinc-800/80 dark:border-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-700/80'
+          : chatKind === 'scheduled'
+            ? 'border-neutral-200 dark:border-zinc-700 hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
+            : isUnread(chat)
+              ? 'bg-white border-neutral-200 dark:bg-zinc-800 dark:border-zinc-700 shadow-[inset_4px_0_0_#000] dark:shadow-[inset_4px_0_0_var(--brutal-yellow)] hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
+              : 'border-neutral-200 dark:border-zinc-700 hover:bg-neutral-50 dark:hover:bg-zinc-700/80 hover:border-neutral-300 dark:hover:border-zinc-600';
     return (
       <div
         key={chat.id}
@@ -381,15 +533,14 @@ export const ChatList: React.FC = () => {
           e.stopPropagation();
           openChatMenu(chat.id, { x: e.clientX, y: e.clientY });
         }}
-        className={`group relative px-3.5 py-3 transition-all border-b last:border-b-0
+        className={`group relative py-3 transition-all border-b last:border-b-0
+          ${chatKind === 'subagent' ? 'pl-8 pr-3.5' : 'px-3.5'}
           ${confirmDeleteId ? (confirmDeleteId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : renamingChatId ? (renamingChatId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : 'cursor-pointer'}
-          ${currentChatId === chat.id
-            ? 'bg-brutal-yellow/95 dark:bg-zinc-700 border-brutal-black dark:border-brutal-yellow z-10'
-            : isUnread(chat)
-              ? 'bg-white border-neutral-200 dark:bg-zinc-800 dark:border-zinc-700 shadow-[inset_4px_0_0_#000] dark:shadow-[inset_4px_0_0_var(--brutal-yellow)] hover:bg-neutral-50 dark:hover:bg-zinc-700/80'
-              : 'border-neutral-200 dark:border-zinc-700 hover:bg-neutral-50 dark:hover:bg-zinc-700/80 hover:border-neutral-300 dark:hover:border-zinc-600'
-          }`}
+          ${rowSurface}`}
       >
+        {chatKind === 'subagent' && (
+          <div className="absolute left-3 top-0 bottom-0 w-3 border-l-2 border-b-2 border-neutral-300 dark:border-zinc-600 rounded-bl-sm" />
+        )}
         {currentChatId === chat.id && (
           <div className="absolute pointer-events-none inset-0 border-2 border-brutal-black dark:border-brutal-yellow transition-all" />
         )}
@@ -431,9 +582,32 @@ export const ChatList: React.FC = () => {
 
         <div className="min-w-0 space-y-1 pr-8">
           <div className="flex items-start gap-2 overflow-hidden">
+            {hasCollapsedChildren && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleSubagentParent(chat.id);
+                }}
+                className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center border border-neutral-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-neutral-400 dark:text-zinc-500 hover:border-neutral-500 dark:hover:border-zinc-400 hover:text-neutral-600 dark:hover:text-zinc-300 transition-all ${
+                  childrenExpanded ? 'rotate-90' : ''
+                }`}
+                title={t('chatList.labels.subagentsCount', { count: childSubagents.length })}
+                aria-label={t('chatList.labels.subagentsCount', { count: childSubagents.length })}
+              >
+                <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            )}
             <h3 className={`font-extrabold text-sm leading-snug truncate flex-1 min-w-0 transition-colors ${currentChatId === chat.id ? 'text-brutal-black dark:text-white' : isUnread(chat) ? 'text-neutral-950 dark:text-white' : 'text-neutral-800 dark:text-neutral-100 group-hover:text-brutal-black dark:group-hover:text-white'}`}>
               {chat.title || t('chatList.untitled')}
             </h3>
+            {hasCollapsedChildren && (
+              <span className="mt-0.5 flex h-4 min-w-[16px] shrink-0 items-center justify-center rounded-full bg-neutral-200 dark:bg-zinc-700 px-1 text-[9px] font-semibold text-neutral-500 dark:text-zinc-400">
+                {childSubagents.length}
+              </span>
+            )}
             {showUnread && (
               <span className="text-[10px] font-extrabold min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-sm bg-brutal-yellow text-brutal-black border-2 border-brutal-black leading-none shrink-0 shadow-[1px_1px_0_0_rgba(0,0,0,1)]">
                 {unread > 99 ? '99+' : unread}
@@ -461,12 +635,18 @@ export const ChatList: React.FC = () => {
             )}
             {chat.heartbeatEnabled && (
               <span
-                className={`shrink-0 flex items-center justify-center w-5 h-5 rounded-sm border ${currentChatId === chat.id ? 'bg-white/80 text-brutal-black border-brutal-black dark:bg-zinc-900 dark:text-brutal-yellow dark:border-brutal-yellow' : 'bg-neutral-100 dark:bg-zinc-800 text-neutral-500 dark:text-neutral-300 border-neutral-300 dark:border-zinc-600 group-hover:border-neutral-500 dark:group-hover:border-zinc-500 transition-all'}`}
+                className={`shrink-0 flex items-center gap-1 h-5 px-1.5 rounded-sm border text-[9px] font-extrabold uppercase tracking-wide ${currentChatId === chat.id ? 'bg-white/80 text-brutal-black border-brutal-black dark:bg-zinc-900 dark:text-brutal-yellow dark:border-brutal-yellow' : 'bg-brutal-yellow text-brutal-black border-brutal-black transition-all'}`}
                 title={t('chatWindow.heartbeatEnabled')}
               >
                 <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square" strokeLinejoin="miter">
                   <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
                 </svg>
+                <span>{t('chatList.labels.heartbeat')}</span>
+              </span>
+            )}
+            {chatKind === 'subagent' && parentTitle && (
+              <span className="text-[9px] font-bold uppercase text-neutral-400 dark:text-neutral-500 truncate">
+                {t('chatList.labels.subagentOf', { name: parentTitle })}
               </span>
             )}
             <span className={`text-[10px] font-bold uppercase ml-auto shrink-0 ${currentChatId === chat.id ? 'text-brutal-black/70 dark:text-brutal-yellow' : 'text-neutral-400 dark:text-neutral-500'}`}>
@@ -729,13 +909,34 @@ export const ChatList: React.FC = () => {
             ? t('chatList.filter.recentAll')
             : t('chatList.filter.recentIn', { name: filterLabel })}
         </div>
+        <div className="flex items-center gap-1 border-2 border-brutal-black bg-white dark:bg-zinc-700 p-0.5">
+          {([
+            ['you', t('chatList.kind.you')],
+            ['scheduled', t('chatList.kind.scheduled')],
+            ['all', t('chatList.kind.all')],
+          ] as const).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setKindFilter(id)}
+              className={`flex-1 min-w-0 h-6 px-1 text-[9px] font-extrabold uppercase tracking-wide flex items-center justify-center gap-1 transition-colors ${
+                kindFilter === id
+                  ? 'bg-brutal-yellow text-brutal-black shadow-[inset_0_0_0_2px_#000]'
+                  : 'text-neutral-500 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-zinc-600'
+              }`}
+              title={label}
+            >
+              <span className="truncate">{label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Chat list */}
       <div className="flex-1 overflow-y-auto scrollbar-thin min-h-0">
         {loadingProjectChats ? (
           renderListSkeleton()
-        ) : filteredChats.length === 0 ? (
+        ) : visibleChats.length === 0 ? (
           <div className="flex flex-col bg-white dark:bg-zinc-800">
             <div className="p-8 text-center">
               <div className="w-16 h-16 mx-auto mb-3">
@@ -751,7 +952,7 @@ export const ChatList: React.FC = () => {
           </div>
         ) : (
           <div className="flex flex-col bg-white dark:bg-zinc-800">
-            {filteredChats.map(renderChatRow)}
+            {visibleChats.map(renderChatRow)}
             {remaining > 0 && (
               <button
                 onClick={handleLoadMore}

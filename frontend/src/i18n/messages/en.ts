@@ -472,6 +472,17 @@ export const en = {
       recentAll: 'Recent across all projects',
       recentIn: 'Recent in {name}',
     },
+    kind: {
+      you: 'You',
+      subagents: 'Subagents',
+      scheduled: 'Scheduled',
+      all: 'All',
+    },
+    labels: {
+      heartbeat: 'Heartbeat',
+      subagentOf: 'Under {name}',
+      subagentsCount: '{count} subagents',
+    },
     menu: {
       title: 'Actions',
       rename: 'Rename',
@@ -493,6 +504,9 @@ export const en = {
       confirm: 'Delete',
       deleting: 'Deleting...',
       buttonTitle: 'Delete chat',
+      cascadeMessage: 'This chat has sub-agents. Do you want to delete them too?',
+      cascadeYes: 'Delete with sub-agents',
+      cascadeNo: 'Delete chat only',
     },
     rename: {
       buttonTitle: 'Rename chat',
