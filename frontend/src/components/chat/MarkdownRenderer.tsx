@@ -15,6 +15,19 @@ const ALLOWED_LANGUAGES = new Set([
   'fortran', 'cobol', 'assembly', 'asm', 'text', 'plain'
 ]);
 
+export function sanitizeMarkdownCodeFenceLanguages(markdown: string): string {
+  const repairedLooseUrlFences = markdown.replace(
+    /^([ \t]{0,3})`{1,2}(https?:\/\/[^\n`]+)\n[ \t]*`{1,2}[ \t]*$/gm,
+    '$1```\n$2\n$1```',
+  );
+
+  return repairedLooseUrlFences.replace(/^([ \t]{0,3}```)[ \t]*([^\n`]*)/gm, (_m, fence, info) => {
+    const token = String(info || '').trim().split(/\s+/)[0] || '';
+    const clean = token.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+    return ALLOWED_LANGUAGES.has(clean) ? `${fence}${clean}` : fence;
+  });
+}
+
 interface MarkdownRendererProps {
   content: string;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
@@ -102,6 +115,16 @@ const FileButton: React.FC<{
     </span>
   );
 };
+
+function extractCodeText(children: React.ReactNode): string {
+  if (typeof children === 'string') return children;
+  if (Array.isArray(children)) return children.map(extractCodeText).join('');
+  if (React.isValidElement(children)) {
+    const props = children.props as { children?: React.ReactNode };
+    if (props.children) return extractCodeText(props.children);
+  }
+  return children == null ? '' : String(children);
+}
 
 function renderLiteInline(text: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
@@ -336,11 +359,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
     .replace(/\n+$/, '');
 
   // Sanitize code block languages
-  const sanitized = normalized.replace(/```\s*([^\n`]*)/g, (_m, info) => {
-    const token = String(info || '').trim().split(/\s+/)[0] || '';
-    const clean = token.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
-    return ALLOWED_LANGUAGES.has(clean) ? `\`\`\`${clean}` : '```';
-  });
+  const sanitized = sanitizeMarkdownCodeFenceLanguages(normalized);
 
   if (streamingLite) {
     return <LiteMarkdownRenderer content={sanitized} />;
@@ -383,7 +402,14 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
         components={{
           pre: (p: any) => {
             if (p.node?.children?.length === 1 && p.node.children[0].tagName === 'code') {
-              return <>{p.children}</>;
+              const child = React.Children.toArray(p.children)[0];
+              const className = React.isValidElement(child)
+                ? String((child.props as { className?: string }).className || '')
+                : '';
+              const match = /language-([a-zA-Z0-9_-]+)/.exec(className);
+              const codeContent = extractCodeText(p.children).replace(/\n$/, '');
+
+              return <CodeBlockComponent lang={match?.[1] || 'text'} content={codeContent} />;
             }
             return (
               <div className="bg-neutral-50 dark:bg-zinc-800 p-4 overflow-x-auto">
@@ -419,10 +445,6 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
             const isMultilineInlineCode = !lang && codeContent.includes('\n');
             const isInline = inline !== false && !lang && !isMultilineInlineCode;
 
-            const isText = !lang || lang === 'text';
-            const isSingleLine = !codeContent.includes('\n');
-            const isShort = codeContent.length < 60;
-
             // Check if inline code contains a file path pattern
             if (isInline && onFileClick) {
               // Pattern 1: Markdown file:// link in backticks: `[text](file:///path)`
@@ -440,7 +462,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
               }
             }
 
-            if (isMultilineInlineCode || (!isInline && !(isText && isSingleLine && isShort))) {
+            if (isMultilineInlineCode || !isInline) {
               if (streamingLite) {
                 return (
                   <pre className="bg-neutral-50 dark:bg-zinc-900 border border-neutral-300 dark:border-zinc-700 px-3 py-2.5 overflow-x-auto font-mono text-[12px] text-neutral-800 dark:text-neutral-200 leading-5 whitespace-pre-wrap break-all">
