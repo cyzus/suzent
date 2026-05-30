@@ -80,13 +80,22 @@ const UNSAVED_CHAT_KEY = '__unsaved__';
 const LAST_CONFIG_KEY = 'suzent_last_config';
 const keyForChat = (chatId: string | null) => chatId ?? UNSAVED_CHAT_KEY;
 
-/**
- * Strip tool_approval_policy from config before saving to localStorage.
- * Approval policies should only persist per-chat in the database, not leak to new chats.
- */
-const stripApprovalPolicy = (config: ChatConfig): ChatConfig => {
-  const { tool_approval_policy, ...rest } = config;
-  return rest;
+const stripReusableConfig = (config: ChatConfig): ChatConfig => {
+  const reusable = { ...config } as Record<string, unknown>;
+  [
+    'tool_approval_policy',
+    'permission_policies',
+    'heartbeat_enabled',
+    'heartbeat_interval_minutes',
+    'heartbeat_instructions',
+    'heartbeat_last_run_at',
+    'platform',
+    'sender_id',
+    'target_id',
+    'cron_job_id',
+    'parent_chat_id',
+  ].forEach(key => delete reusable[key]);
+  return reusable as unknown as ChatConfig;
 };
 
 /** Build a ChatConfig from user preferences and backend defaults. */
@@ -103,6 +112,25 @@ const buildConfigFromPreferences = (
   mcp_urls: [],
   mcp_enabled: {}
 });
+
+const hydrateChatConfig = (
+  chatConfig: ChatConfig | undefined,
+  fallbackConfig: ChatConfig
+): ChatConfig => {
+  const savedConfig: Partial<ChatConfig> = chatConfig ?? {};
+  return {
+    ...fallbackConfig,
+    ...savedConfig,
+    model: savedConfig.model || fallbackConfig.model,
+    agent: savedConfig.agent || fallbackConfig.agent,
+    tools: savedConfig.tools ?? fallbackConfig.tools,
+    memory_enabled: savedConfig.memory_enabled ?? fallbackConfig.memory_enabled,
+    sandbox_enabled: savedConfig.sandbox_enabled ?? fallbackConfig.sandbox_enabled,
+    sandbox_volumes: savedConfig.sandbox_volumes ?? fallbackConfig.sandbox_volumes,
+    mcp_urls: savedConfig.mcp_urls ?? fallbackConfig.mcp_urls,
+    mcp_enabled: savedConfig.mcp_enabled ?? fallbackConfig.mcp_enabled,
+  };
+};
 
 /** Extract the preference fields we track for dirty-checking. */
 const extractSavedPreferences = (prefs: ConfigOptions['userPreferences']) => ({
@@ -290,9 +318,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           const isModelValid = backendConfig.models.includes(parsed.model);
           const isAgentValid = backendConfig.agents.includes(parsed.agent);
           if (isModelValid && isAgentValid) {
-            // Ensure tool_approval_policy is never inherited from localStorage
-            // (it should be chat-scoped, not global)
-            return stripApprovalPolicy(parsed);
+            // Ensure chat-scoped state is never inherited from localStorage.
+            return stripReusableConfig(parsed);
           }
         }
       }
@@ -693,9 +720,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     setConfigState(resolved);
     setConfigByChat(prevConfigs => ({ ...prevConfigs, [key]: resolved }));
 
-    // Save to localStorage to remember for next new chat (but strip approval policy)
+    // Save reusable preferences for the next new chat without chat-scoped state.
     try {
-      localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripApprovalPolicy(resolved)));
+      localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripReusableConfig(resolved)));
     } catch (e) {
       console.warn('Failed to save config to localStorage:', e);
     }
@@ -1017,9 +1044,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     const cachedConfig = configByChat[key];
     if (cachedConfig) {
       setConfigState(cachedConfig);
-      // Save to localStorage to remember for next new chat (but strip approval policy)
+      // Save reusable preferences for the next new chat without chat-scoped state.
       try {
-        localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripApprovalPolicy(cachedConfig)));
+        localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripReusableConfig(cachedConfig)));
       } catch (e) {
         console.warn('Failed to save config to localStorage:', e);
       }
@@ -1047,12 +1074,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             details: serverUsage?.details ?? existingUsage?.details,
           });
         }
-        const loadedConfig = stripDenyApprovalPolicies(chat.config);
+        const loadedConfig = hydrateChatConfig(
+          stripDenyApprovalPolicies(chat.config),
+          computeDefaultConfig(),
+        );
         setConfigByChat(prev => ({ ...prev, [key]: loadedConfig }));
         setConfigState(loadedConfig);
-        // Save to localStorage to remember for next new chat (but strip approval policy)
+        // Save reusable preferences for the next new chat without chat-scoped state.
         try {
-          localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripApprovalPolicy(chat.config)));
+          localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripReusableConfig(loadedConfig)));
         } catch (e) {
           console.warn('Failed to save config to localStorage:', e);
         }
