@@ -1529,17 +1529,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         {/* Input Panel (shown when messages exist) */}
         {safeMessages.length > 0 && (
           <div className="p-4 flex flex-col gap-3 bg-neutral-50 dark:bg-zinc-900 relative z-10 shrink-0">
-            {!isRightSidebarOpen && (
-              <PlanProgress
-                plan={plan}
-                isDocked={false}
-                onToggleDock={() => onRightSidebarToggle(!isRightSidebarOpen)}
-                isExpanded={isPlanExpanded}
-                onToggleExpand={() => setIsPlanExpanded(!isPlanExpanded)}
-                isSidebarOpen={isRightSidebarOpen}
-              />
-            )}
-
             <ChatInputPanel
               input={input}
               setInput={setInput}
