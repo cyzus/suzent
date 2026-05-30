@@ -197,12 +197,11 @@ function UpdateButton(): React.ReactElement | null {
     <button
       onClick={handleUpdate}
       disabled={isStartingUpdate}
-      className="h-8 min-w-8 px-2 flex items-center justify-center gap-1.5 border-2 border-brutal-black bg-brutal-yellow text-brutal-black font-brutal text-[10px] uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 disabled:opacity-60 disabled:cursor-wait disabled:hover:translate-x-0 disabled:hover:translate-y-0 transition-all"
+      className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors text-brutal-black dark:text-white disabled:opacity-50 disabled:cursor-wait"
       aria-label={t('updates.available')}
       title={t('updates.availableTitle', { version: updateStatus.latest_version || t('updates.latestVersion') })}
     >
-      <ArrowPathIcon className={`h-4 w-4 flex-shrink-0 stroke-[2.5] ${isStartingUpdate ? 'animate-spin' : ''}`} />
-      <span className="hidden 2xl:inline">{isStartingUpdate ? t('updates.starting') : t('updates.updateNow')}</span>
+      <ArrowPathIcon className={`h-5 w-5 ${isStartingUpdate ? 'animate-spin' : ''}`} />
     </button>
   );
 }
