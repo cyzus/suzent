@@ -348,7 +348,9 @@ function AppInner(): React.ReactElement {
   }, [setViewSwitcher, setMainView]);
 
   React.useEffect(() => {
-    const chat = currentChatId ? chats.find(c => c.id === currentChatId) : null;
+    // Use chatsRef (not chats) so this effect only re-runs on chat selection change,
+    // not on every chat list update (which would cause spurious re-renders mid-stream).
+    const chat = currentChatId ? chatsRef.current.find(c => c.id === currentChatId) : null;
     const projectId = chat?.projectId ?? null;
     refreshGoalTasks(projectId, currentChatId ?? null);
     refreshKanban(projectId);
@@ -361,7 +363,7 @@ function AppInner(): React.ReactElement {
     if (window.innerWidth < DESKTOP_BREAKPOINT_PX) {
       setIsLeftSidebarOpen(false);
     }
-  }, [currentChatId, refreshGoalTasks, refreshKanban, chats]);
+  }, [currentChatId, refreshGoalTasks, refreshKanban]); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
     if (!isLeftSidebarOpen || !isRightSidebarOpen) {
