@@ -108,6 +108,10 @@ class GitHubSyncProvider:
         self._git("commit", "-m", f"sync: update suzent brain {revision_id}")
         return self._push_with_rebase(revision_id)
 
+    def has_meaningful_payload_changes(self) -> bool:
+        status = self._git("status", "--porcelain", "--", PAYLOAD_DIR_NAME).strip()
+        return bool(status and not _only_metadata_changed(status))
+
     def is_clean(self) -> bool:
         return not self._git("status", "--porcelain").strip()
 

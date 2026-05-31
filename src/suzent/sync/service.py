@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
+import tempfile
 from pathlib import Path
 
 from suzent.config import USER_CONFIG_DIR
@@ -331,35 +333,21 @@ class GitHubSyncService:
     ) -> dict:
         profile = self.get_profile(profile_id)
         async with self._lock(profile):
+            repo_path = Path(profile.repo_path)
+            payload_dir = repo_path / PAYLOAD_DIR_NAME
             provider = GitHubSyncProvider(
-                Path(profile.repo_path), remote=profile.remote, branch=profile.branch
+                repo_path, remote=profile.remote, branch=profile.branch
             )
-            await asyncio.to_thread(provider.pull_ff_only)
-            payload_dir = Path(profile.repo_path) / PAYLOAD_DIR_NAME
-            await asyncio.to_thread(self.payload_builder.apply_to_local, payload_dir)
-            await asyncio.to_thread(_reload_runtime)
             phrase = self._optional_shibboleth(profile, shibboleth)
-            has_bundles = self._has_secret_bundles(payload_dir)
-            if profile.encrypted_secret_sync_enabled or has_bundles:
-                if phrase:
-                    imported = await asyncio.to_thread(
-                        self._import_secret_bundles, payload_dir, phrase
-                    )
-                    if imported and not profile.encrypted_secret_sync_enabled:
-                        profile.encrypted_secret_sync_enabled = True
-                        profile.secret_sync_available = True
-                else:
-                    logger.warning(
-                        "Skipping Shibboleth secret import on auto-sync: not unlocked"
-                    )
+
             manifest = await asyncio.to_thread(
-                self.payload_builder.build, Path(profile.repo_path), profile
+                self.payload_builder.build, repo_path, profile
             )
             if profile.encrypted_secret_sync_enabled:
                 if phrase:
                     manifest = await asyncio.to_thread(
                         self._write_secret_bundles,
-                        Path(profile.repo_path),
+                        repo_path,
                         profile,
                         manifest.revision_id,
                         phrase,
@@ -368,13 +356,58 @@ class GitHubSyncService:
                     logger.warning(
                         "Skipping Shibboleth secret export on auto-sync: not unlocked"
                     )
-            await asyncio.to_thread(
-                provider.commit_and_push_payload, manifest.revision_id
+
+            forbidden = self.payload_builder.validate_no_forbidden_paths(payload_dir)
+            if forbidden:
+                raise ValueError(f"Sync payload contains forbidden paths: {forbidden}")
+
+            restored: list[str] = []
+            imported: list[str] = []
+            local_payload_changed = await asyncio.to_thread(
+                provider.has_meaningful_payload_changes
             )
+
+            if local_payload_changed:
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    snapshot_dir = Path(temp_dir) / PAYLOAD_DIR_NAME
+                    await asyncio.to_thread(shutil.copytree, payload_dir, snapshot_dir)
+                    await asyncio.to_thread(provider.pull_ff_only)
+                    await asyncio.to_thread(_replace_tree, snapshot_dir, payload_dir)
+                git_output = await asyncio.to_thread(
+                    provider.commit_and_push_payload, manifest.revision_id
+                )
+            else:
+                git_output = "No sync payload changes to push."
+                await asyncio.to_thread(provider.pull_ff_only)
+                restored = await asyncio.to_thread(
+                    self.payload_builder.apply_to_local, payload_dir
+                )
+                await asyncio.to_thread(_reload_runtime)
+
+                has_bundles = self._has_secret_bundles(payload_dir)
+                if profile.encrypted_secret_sync_enabled or has_bundles:
+                    if phrase:
+                        imported = await asyncio.to_thread(
+                            self._import_secret_bundles, payload_dir, phrase
+                        )
+                        if imported and not profile.encrypted_secret_sync_enabled:
+                            profile.encrypted_secret_sync_enabled = True
+                            profile.secret_sync_available = True
+                    else:
+                        logger.warning(
+                            "Skipping Shibboleth secret import on auto-sync: not unlocked"
+                        )
+
             profile.last_revision = manifest.revision_id
             profile.last_sync_at = manifest.created_at
             self.save_profile(profile)
-            return {"success": True, "manifest": manifest.model_dump(mode="json")}
+            return {
+                "success": True,
+                "git": git_output,
+                "restored": restored,
+                "imported_secret_keys": imported,
+                "manifest": manifest.model_dump(mode="json"),
+            }
 
     def stop_conflict_resolution(self) -> dict:
         self.conflict_resolver.reset()
@@ -510,6 +543,12 @@ def _reload_runtime() -> None:
         get_skill_manager().reload()
     except Exception:
         pass
+
+
+def _replace_tree(source: Path, target: Path) -> None:
+    if target.exists():
+        shutil.rmtree(target)
+    shutil.copytree(source, target)
 
 
 _KEYRING_SERVICE = "suzent-sync-mnemonic"
