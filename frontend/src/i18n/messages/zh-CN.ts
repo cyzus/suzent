@@ -537,6 +537,8 @@ export const zhCN = {
     title: '项目看板',
     noTasks: '本项目暂无任务。',
     noGoals: '暂无活跃目标。',
+    taskCount: '个项目任务',
+    open: '打开看板',
   },
   archival: {
     title: '归档记忆',

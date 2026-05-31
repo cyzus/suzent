@@ -610,6 +610,8 @@ export const en = {
     title: 'Project Board',
     noTasks: 'No tasks in this project.',
     noGoals: 'No active goals.',
+    taskCount: 'tasks in project',
+    open: 'Open Board',
   },
   archival: {
     title: 'Archival memory',

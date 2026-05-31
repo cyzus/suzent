@@ -375,7 +375,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             )}
           </div>
           <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'plan' ? 'flex' : 'hidden'}`}>
-            <GoalTaskView goal={goal} tasks={tasks} onOpenBoard={onProjectBoardChange ? () => onProjectBoardChange(true) : undefined} />
+            <GoalTaskView
+              goal={goal}
+              tasks={tasks}
+              onOpenBoard={onProjectBoardChange ? () => onProjectBoardChange(true) : undefined}
+              projectTaskCount={kanban?.tasks.length}
+            />
           </div>
         </div>
       </div>

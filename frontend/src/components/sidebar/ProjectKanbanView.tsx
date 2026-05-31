@@ -3,6 +3,7 @@ import type { Task, TaskStatus } from '../../types/api';
 import type { KanbanData } from '../../hooks/useGoalTasks';
 import { useGoalTasks } from '../../hooks/useGoalTasks';
 import { useI18n } from '../../i18n';
+import { BrutalButton } from '../BrutalButton';
 
 interface ProjectKanbanViewProps {
   projectName?: string | null;
@@ -12,7 +13,6 @@ interface ProjectKanbanViewProps {
   chatTitles?: Record<string, string>;
 }
 
-// Status cycle order for click-to-advance
 const STATUS_CYCLE: TaskStatus[] = ['pending', 'in_progress', 'completed'];
 const NEXT_STATUS: Record<string, TaskStatus> = {
   pending: 'in_progress',
@@ -28,8 +28,6 @@ const COLUMNS: { id: TaskStatus | 'blocked'; label: string }[] = [
   { id: 'completed',   label: 'Done'   },
 ];
 
-// Deterministic shape index from chat_id for the dot (no colours — just shapes/patterns)
-// We use 4 patterns to differentiate sessions: filled, ring, cross, half
 const DOT_PATTERNS = ['●', '○', '◆', '◇'] as const;
 function dotPattern(chatId: string | null | undefined): string {
   if (!chatId) return '□';
@@ -50,16 +48,10 @@ const AssigneeChip: React.FC<AssigneeChipProps> = ({ chatId, chatTitle }) => {
 
   return (
     <span className="inline-flex items-center gap-1 border-2 border-brutal-black bg-white dark:bg-zinc-800 pl-1 pr-2 py-0.5 max-w-[140px]">
-      <span className="text-[10px] font-black text-brutal-black dark:text-white shrink-0 leading-none">
-        {pattern}
-      </span>
-      <span className="text-[8px] font-black text-brutal-black dark:text-white truncate font-mono">
-        {title}
-      </span>
+      <span className="text-[10px] font-black text-brutal-black dark:text-white shrink-0 leading-none">{pattern}</span>
+      <span className="text-[8px] font-black text-brutal-black dark:text-white truncate font-mono">{title}</span>
       {chatId && (
-        <span className="text-[7px] font-mono text-neutral-400 dark:text-zinc-500 shrink-0">
-          {short}
-        </span>
+        <span className="text-[7px] font-mono text-neutral-400 dark:text-zinc-500 shrink-0">{short}</span>
       )}
     </span>
   );
@@ -79,25 +71,19 @@ const AddCardForm: React.FC<AddCardFormProps> = ({ onAdd, onCancel }) => {
         value={value}
         onChange={e => setValue(e.target.value)}
         onKeyDown={e => {
-          if (e.key === 'Enter' && value.trim()) { onAdd(value.trim()); }
+          if (e.key === 'Enter' && value.trim()) onAdd(value.trim());
           if (e.key === 'Escape') onCancel();
         }}
         placeholder="Task title…"
         className="w-full border-2 border-brutal-black px-2 py-1 text-xs font-bold font-mono bg-white dark:bg-zinc-700 dark:text-white outline-none mb-2"
       />
       <div className="flex gap-1">
-        <button
-          onClick={() => value.trim() && onAdd(value.trim())}
-          className="border-2 border-brutal-black bg-brutal-black text-white text-[8px] font-black px-2 py-1 uppercase tracking-wider"
-        >
+        <BrutalButton variant="dark" size="sm" onClick={() => value.trim() && onAdd(value.trim())}>
           Add
-        </button>
-        <button
-          onClick={onCancel}
-          className="border-2 border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[8px] font-black px-2 py-1 uppercase tracking-wider"
-        >
+        </BrutalButton>
+        <BrutalButton size="sm" onClick={onCancel}>
           Cancel
-        </button>
+        </BrutalButton>
       </div>
     </div>
   );
@@ -127,23 +113,24 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ task, chatTitle, onStatusCycle,
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Hover actions */}
       {hovered && (
         <div className="absolute top-1.5 right-1.5 flex gap-1 z-10">
-          <button
+          <BrutalButton
+            size="icon"
             onClick={onStatusCycle}
             title={`Move to ${NEXT_STATUS[task.status]}`}
-            className="border-2 border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[9px] font-black px-1.5 py-0.5 leading-none"
+            className="px-1.5 py-0.5 text-[9px] leading-none"
           >
             {isDone ? '↺' : '→'}
-          </button>
-          <button
+          </BrutalButton>
+          <BrutalButton
+            size="icon"
             onClick={onDelete}
             title="Delete"
-            className="border-2 border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[9px] font-black px-1.5 py-0.5 leading-none"
+            className="px-1.5 py-0.5 text-[9px] leading-none"
           >
             ✕
-          </button>
+          </BrutalButton>
         </div>
       )}
 
@@ -171,7 +158,7 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
 }) => {
   const { t } = useI18n();
   const { updateTask, createTask, deleteTask } = useGoalTasks();
-  const [addingIn, setAddingIn] = useState<string | null>(null); // column id
+  const [addingIn, setAddingIn] = useState<string | null>(null);
 
   if (!kanban) {
     return (
@@ -183,18 +170,10 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
 
   const { goals, tasks } = kanban;
 
-  const tasksByCol: Record<string, Task[]> = {
-    pending: tasks.filter(t => t.status === 'pending' && !t.blockedBy?.length),
-    blocked: tasks.filter(t => t.status === 'blocked' || (t.status === 'pending' && t.blockedBy?.length > 0)),
+  const colTasks: Record<string, Task[]> = {
+    pending: tasks.filter(t => t.status === 'pending' || t.status === 'blocked'),
     in_progress: tasks.filter(t => t.status === 'in_progress'),
     completed: tasks.filter(t => t.status === 'completed'),
-  };
-
-  // Merge blocked into todo column for display
-  const colTasks: Record<string, Task[]> = {
-    pending: [...tasksByCol.pending, ...tasksByCol.blocked],
-    in_progress: tasksByCol.in_progress,
-    completed: tasksByCol.completed,
   };
 
   const handleStatusCycle = async (task: Task) => {
@@ -211,33 +190,27 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
   return (
     <div className="flex flex-col h-full min-h-0">
 
-      {/* ── Header ─────────────────────────────────────────── */}
+      {/* ── Header ── */}
       <div className="shrink-0 bg-brutal-black text-white px-3 py-2 border-b-3 border-brutal-black">
-        <div className="text-[9px] font-black uppercase tracking-widest opacity-50">
-          {t('projectBoard.title')}
-        </div>
+        <div className="text-[9px] font-black uppercase tracking-widest opacity-50">{t('projectBoard.title')}</div>
         {projectName && (
-          <div className="text-base font-black tracking-tight uppercase leading-tight">
-            {projectName}
-          </div>
+          <div className="text-base font-black tracking-tight uppercase leading-tight">{projectName}</div>
         )}
       </div>
 
-      {/* ── Goal chips ─────────────────────────────────────── */}
+      {/* ── Goal chips ── */}
       {goals.length > 0 && (
         <div className="shrink-0 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 px-3 py-2 flex flex-wrap gap-1.5">
           {goals.map(goal => (
             <span key={goal.id} className="inline-flex items-center gap-1.5 border-2 border-brutal-black bg-white dark:bg-zinc-700 px-2 py-0.5 shadow-[2px_2px_0_0_#000]">
               <span className="text-[9px] font-black text-brutal-black dark:text-white">◆</span>
-              <span className="text-[9px] font-black text-brutal-black dark:text-white truncate max-w-[140px]">
-                {goal.objective}
-              </span>
+              <span className="text-[9px] font-black text-brutal-black dark:text-white truncate max-w-[140px]">{goal.objective}</span>
             </span>
           ))}
         </div>
       )}
 
-      {/* ── Kanban columns ─────────────────────────────────── */}
+      {/* ── Kanban columns ── */}
       <div className="flex-1 flex overflow-hidden min-h-0">
         {COLUMNS.map((col, colIdx) => {
           const colItems = colTasks[col.id] || [];
@@ -255,13 +228,14 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
                   <span className={`text-[9px] font-black font-mono px-1.5 border-2 border-brutal-black ${col.id === 'completed' ? 'bg-brutal-green text-brutal-black' : 'bg-white dark:bg-zinc-700 text-brutal-black dark:text-white'}`}>
                     {colItems.length}
                   </span>
-                  <button
+                  <BrutalButton
+                    size="icon"
                     onClick={() => setAddingIn(addingIn === col.id ? null : col.id)}
-                    className="border-2 border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[9px] font-black px-1 leading-none py-0.5"
                     title="Add task"
+                    className="px-1 py-0.5 text-[9px] leading-none"
                   >
                     ＋
-                  </button>
+                  </BrutalButton>
                 </div>
               </div>
 
@@ -285,12 +259,14 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
                 )}
 
                 {colItems.length === 0 && addingIn !== col.id && (
-                  <button
+                  <BrutalButton
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setAddingIn(col.id)}
-                    className="border-2 border-dashed border-brutal-black bg-transparent text-brutal-black dark:text-white text-[9px] font-black uppercase tracking-wider py-2 opacity-20 hover:opacity-60 w-full"
+                    className="border-dashed w-full justify-center py-2 opacity-20 hover:opacity-60"
                   >
                     ＋ Add task
-                  </button>
+                  </BrutalButton>
                 )}
               </div>
             </div>
