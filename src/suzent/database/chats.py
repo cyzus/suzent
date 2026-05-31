@@ -10,7 +10,6 @@ from sqlmodel import select
 from .models import (
     ChatModel,
     ChatSummaryModel,
-    PlanModel,
     ProjectModel,
     _postprocess_metrics,
     messages_search_filter,
@@ -453,23 +452,6 @@ class ChatOperationsMixin:
                 .select_from(ChatModel)
                 .where(ChatModel.project_id == project_id)
             ).one()
-
-    def reassign_plan_chat(self, old_chat_id: str, new_chat_id: str) -> int:
-        """Reassign all plans from one chat_id to another."""
-        if old_chat_id == new_chat_id:
-            return 0
-
-        with self._session() as session:
-            statement = select(PlanModel).where(PlanModel.chat_id == old_chat_id)
-            plans = session.exec(statement).all()
-
-            for plan in plans:
-                plan.chat_id = new_chat_id
-                plan.updated_at = datetime.now()
-                session.add(plan)
-
-            session.commit()
-            return len(plans)
 
     def get_active_heartbeats(self) -> List[ChatModel]:
         """Get all chats that have heartbeat enabled in their config."""

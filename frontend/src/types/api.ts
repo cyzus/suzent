@@ -98,29 +98,38 @@ export interface Project {
   chatCount: number;
 }
 
-export type PlanPhaseStatus = 'pending' | 'in_progress' | 'completed';
+export type GoalStatus = 'active' | 'paused' | 'completed' | 'cancelled';
+// 'blocked' is derived on the backend from blockedBy being non-empty — not stored as a DB status
+export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'blocked' | 'cancelled';
 
-export interface PlanPhase {
-  id?: number;
-  number: number;
-  title: string;
-  description: string;
-  status: PlanPhaseStatus;
-  note?: string;
-  capabilities?: Record<string, any>;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface Plan {
-  id?: number;
+export interface Goal {
+  id: number;
+  projectId: string;
   chatId?: string | null;
   objective: string;
-  title?: string;
-  phases: PlanPhase[];
+  status: GoalStatus;
+  subgoals: string[];
+  maxTurns?: number | null;
+  turnsElapsed: number;
   createdAt?: string;
   updatedAt?: string;
-  versionKey: string;
+  completedAt?: string | null;
+}
+
+export interface Task {
+  id: number;
+  projectId: string;
+  chatId?: string | null;
+  title: string;
+  description: string;
+  activeForm?: string | null;
+  status: TaskStatus;
+  assignee?: string | null;
+  blocks: number[];
+  blockedBy: number[];
+  createdAt?: string;
+  updatedAt?: string;
+  completedAt?: string | null;
 }
 
 // Added: configuration options exposed by backend (derived from suzent.config.Config)

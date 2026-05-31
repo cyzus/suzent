@@ -10,7 +10,6 @@ from sqlalchemy import inspect
 from suzent.database import (
     ChatDatabase,
     ChatSummaryModel,
-    PlanModel,
     UserPreferencesModel,
 )
 
@@ -221,63 +220,6 @@ class TestChatOperations:
         assert chat.state_revision == 2
         assert chat.finalized_revision == 1
         assert chat.agent_state == b"state-2"
-
-
-class TestPlanOperations:
-    """Tests for plan and task CRUD operations."""
-
-    def test_create_plan(self, db):
-        chat_id = db.create_chat("Test Chat", {})
-
-        plan_id = db.create_plan(
-            chat_id,
-            "Test Objective",
-            [{"number": 1, "description": "Step 1", "status": "pending"}],
-        )
-        assert plan_id is not None
-
-    def test_get_plan(self, db):
-        chat_id = db.create_chat("Test Chat", {})
-        db.create_plan(
-            chat_id,
-            "My Objective",
-            [
-                {"number": 1, "description": "First step"},
-                {"number": 2, "description": "Second step"},
-            ],
-        )
-
-        plan = db.get_plan(chat_id)
-        assert plan is not None
-        assert isinstance(plan, PlanModel)
-        assert plan.objective == "My Objective"
-        assert len(plan.tasks) == 2
-        assert plan.tasks[0].description == "First step"
-
-    def test_update_task_status(self, db):
-        chat_id = db.create_chat("Test Chat", {})
-        db.create_plan(
-            chat_id,
-            "Objective",
-            [{"number": 1, "description": "Step 1", "status": "pending"}],
-        )
-
-        result = db.update_task_status(chat_id, 1, "completed", note="Done!")
-        assert result is True
-
-        plan = db.get_plan(chat_id)
-        assert plan.tasks[0].status == "completed"
-        assert plan.tasks[0].note == "Done!"
-
-    def test_delete_plan(self, db):
-        chat_id = db.create_chat("Test Chat", {})
-        db.create_plan(chat_id, "Objective", [])
-
-        assert db.get_plan(chat_id) is not None
-
-        result = db.delete_plan(chat_id)
-        assert result is True
-        assert db.get_plan(chat_id) is None
 
 
 class TestUserPreferences:

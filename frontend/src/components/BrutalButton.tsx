@@ -1,7 +1,7 @@
 import React from 'react';
 import { useMemo } from 'react';
 
-type ButtonVariant = 'default' | 'primary' | 'danger' | 'warning' | 'ghost';
+type ButtonVariant = 'default' | 'primary' | 'danger' | 'warning' | 'ghost' | 'dark';
 type ButtonSize = 'sm' | 'md' | 'icon';
 
 interface BrutalButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -31,6 +31,8 @@ export const BrutalButton: React.FC<BrutalButtonProps> = ({
                 return "bg-brutal-yellow text-brutal-black hover:bg-yellow-400 shadow-[2px_2px_0_0_#000] brutal-btn";
             case 'ghost':
                 return "bg-transparent border-transparent hover:bg-neutral-100 dark:hover:bg-zinc-700 shadow-none active:translate-y-0";
+            case 'dark':
+                return "bg-brutal-black text-white hover:opacity-80 shadow-[2px_2px_0_0_#555] brutal-btn";
             case 'default':
             default:
                 return `bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700 ${isActive ? 'bg-neutral-200 dark:bg-zinc-700 shadow-none translate-y-[2px]' : 'shadow-[2px_2px_0_0_#000] brutal-btn'}`;
