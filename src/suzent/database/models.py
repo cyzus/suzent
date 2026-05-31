@@ -68,6 +68,14 @@ class ProjectModel(SQLModel, table=True):
     archived: bool = Field(default=False)
 
     chats: List["ChatModel"] = Relationship(back_populates="project")
+    goals: List["GoalModel"] = Relationship(
+        back_populates="project",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    tasks: List["TaskModel"] = Relationship(
+        back_populates="project",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
 
 
 class ChatModel(SQLModel, table=True):
@@ -106,11 +114,6 @@ class ChatModel(SQLModel, table=True):
     )
     project: Optional[ProjectModel] = Relationship(back_populates="chats")
 
-    plans: List["PlanModel"] = Relationship(
-        back_populates="chat",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
-    )
-
 
 class RetryCheckpointModel(SQLModel, table=True):
     """Stores the last retry checkpoint for a chat session (one row per chat)."""
@@ -129,40 +132,47 @@ class RetryCheckpointModel(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class PlanModel(SQLModel, table=True):
-    """Execution plan associated with a chat session."""
+class GoalModel(SQLModel, table=True):
+    """Project-level persistent goal for Agent's Ralph Loop."""
 
-    __tablename__ = "plans"
+    __tablename__ = "goals"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    chat_id: str = Field(foreign_key="chats.id", index=True)
+    project_id: str = Field(foreign_key="projects.id", index=True)
+    chat_id: Optional[str] = Field(default=None, index=True)  # owning chat session
     objective: str
-    created_at: datetime = Field(serialization_alias="createdAt")
-    updated_at: datetime = Field(serialization_alias="updatedAt")
+    status: str = Field(default="active")  # active | paused | completed | cancelled
+    subgoals: list = Field(default_factory=list, sa_column=Column(JSON))
+    max_turns: Optional[int] = None
+    turns_elapsed: int = Field(default=0)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: Optional[datetime] = None
 
-    chat: Optional[ChatModel] = Relationship(back_populates="plans")
-    tasks: List["TaskModel"] = Relationship(
-        back_populates="plan",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
-    )
+    project: Optional[ProjectModel] = Relationship(back_populates="goals")
 
 
 class TaskModel(SQLModel, table=True):
-    """Individual task within a plan."""
+    """Project-level task supporting multi-agent collaboration."""
 
     __tablename__ = "tasks"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    plan_id: int = Field(foreign_key="plans.id", index=True)
-    number: int = Field(index=True)
+    project_id: str = Field(foreign_key="projects.id", index=True)
+    chat_id: Optional[str] = Field(default=None, index=True)  # owning chat session
+    title: str
     description: str
-    status: str = Field(default="pending")
-    note: Optional[str] = None
-    capabilities: Optional[str] = None
-    created_at: datetime = Field(serialization_alias="createdAt")
-    updated_at: datetime = Field(serialization_alias="updatedAt")
+    status: str = Field(
+        default="pending"
+    )  # pending | in_progress | completed | blocked | cancelled
+    assignee: Optional[str] = None
+    blocks: list = Field(default_factory=list, sa_column=Column(JSON))
+    blocked_by: list = Field(default_factory=list, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: Optional[datetime] = None
 
-    plan: Optional[PlanModel] = Relationship(back_populates="tasks")
+    project: Optional[ProjectModel] = Relationship(back_populates="tasks")
 
 
 class UserPreferencesModel(SQLModel):

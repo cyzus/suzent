@@ -6,14 +6,13 @@ import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import type { Message, FileAttachment } from '../types/api';
 import type { ContentBlock } from '../lib/chatUtils';
 import { buildMessageRenderPlan } from '../lib/messageRenderPlan';
-import { usePlan } from '../hooks/usePlan';
+import { useGoalTasks } from '../hooks/useGoalTasks';
 import { useMemory } from '../hooks/useMemory';
 import { useCanvas } from '../hooks/useCanvas';
 import type { A2UISurface } from '../types/a2ui';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useUnifiedFileUpload } from '../hooks/useUnifiedFileUpload';
 import { useToolApproval } from '../hooks/chat/useToolApproval';
-import { PlanProgress } from './PlanProgress';
 import { NewChatView } from './NewChatView';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
 import { ImageViewer } from './ImageViewer';
@@ -474,7 +473,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     updateChatTitleLocally,
   } = useChatStore();
 
-  const { refresh: refreshPlan, applySnapshot: applyPlanSnapshot, plan } = usePlan();
+  const { refresh: refreshGoalTasks, goal, tasks, kanban } = useGoalTasks();
   const { loadCoreMemory, loadStats } = useMemory();
   const canvas = useCanvas(currentChatId);
   const { t } = useI18n();
@@ -482,7 +481,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Local state
   const [input, setInput] = useState('');
-  const [isPlanExpanded, setIsPlanExpanded] = useState(true);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [viewingFile, setViewingFile] = useState<{ path: string; name: string } | null>(null);
   const [sidebarFilePreview, setSidebarFilePreview] = useState<{ path: string; name: string } | null>(null);
@@ -688,9 +686,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         if (titleChatId && title) updateChatTitleLocally(titleChatId, title);
         return;
       } else if (name === 'plan_refresh') {
-        const chatId = streamingChatIdRef.current || activeChatIdRef.current;
-        applyPlanSnapshot(value as any);
-        refreshPlan(chatId);
+        // Legacy event — trigger goal/task refresh
+        refreshGoalTasks();
       } else if (name === 'usage_update') {
         setCurrentUsage(value);
         const chatId = streamingChatIdRef.current || activeChatIdRef.current;
@@ -1012,11 +1009,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     prependScrollSnapshotRef.current = null;
   }, [visibleMessages.length, scrollContainerRef]);
 
-  // Refresh plan when chat changes
-  useEffect(() => {
-    refreshPlan(currentChatId);
-  }, [currentChatId, refreshPlan]);
-
   // Background stream subscription: connect to /chat/live the moment the event bus
   // fires stream_started for this chat. Works for all chat types (heartbeat, cron,
   // social, and regular chats receiving a subagent wakeup).
@@ -1167,7 +1159,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       textarea.style.height = 'auto';
       textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
     }
-  }, [input, isRightSidebarOpen, isPlanExpanded]);
+  }, [input, isRightSidebarOpen]);
 
   // Send message handler (also handles steering when streaming)
   const send = async () => {
@@ -1568,9 +1560,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         maxWidthPx={rightSidebarMaxWidthPx}
         viewportWidthPx={viewportWidthPx}
         forceFullView={rightSidebarForceFullView}
-        plan={plan}
-        isPlanExpanded={isPlanExpanded}
-        onTogglePlanExpand={() => setIsPlanExpanded(!isPlanExpanded)}
+        goal={goal}
+        tasks={tasks}
+        kanban={kanban}
+        currentProjectName={chats.find(c => c.id === currentChatId)?.projectName ?? null}
         fileToPreview={sidebarFilePreview}
         onMaximizeFile={handleMaximizeFile}
         canvas={canvas}

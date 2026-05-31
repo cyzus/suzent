@@ -16,7 +16,7 @@ import { Sidebar } from './components/sidebar/Sidebar';
 import { SkillsView } from './components/skills/SkillsView';
 import { StatusBar } from './components/StatusBar';
 import { ChatProvider, useChatCoreStore } from './hooks/useChatStore';
-import { PlanProvider, usePlan } from './hooks/usePlan';
+import { GoalTasksProvider, useGoalTasks } from './hooks/useGoalTasks';
 import { ProjectProvider } from './hooks/useProjects';
 import { useStatusStore } from './hooks/useStatusStore';
 import { useTheme } from './hooks/useTheme';
@@ -225,7 +225,7 @@ function AppInner(): React.ReactElement {
     isLeftSidebarOpen ? LEFT_SIDEBAR_WIDTH_PX : 0,
   );
 
-  const { refresh } = usePlan();
+  const { refresh: refreshGoalTasks, refreshKanban } = useGoalTasks();
   const { currentChatId, setViewSwitcher, refreshChatList, refreshChatListSilently, chats, loadChat } = useChatCoreStore();
   const setStatusMsg = useStatusStore(s => s.setStatus);
   const setHeartbeatStatus = useHeartbeatRunning(s => s.setStatus);
@@ -348,8 +348,10 @@ function AppInner(): React.ReactElement {
   }, [setViewSwitcher, setMainView]);
 
   React.useEffect(() => {
-    console.log('Loading plan for chat:', currentChatId);
-    refresh(currentChatId);
+    const chat = currentChatId ? chats.find(c => c.id === currentChatId) : null;
+    const projectId = chat?.projectId ?? null;
+    refreshGoalTasks(projectId, currentChatId ?? null);
+    refreshKanban(projectId);
 
     // Auto-collapse right sidebar on new chat
     if (!currentChatId) {
@@ -359,7 +361,7 @@ function AppInner(): React.ReactElement {
     if (window.innerWidth < DESKTOP_BREAKPOINT_PX) {
       setIsLeftSidebarOpen(false);
     }
-  }, [currentChatId, refresh]);
+  }, [currentChatId, refreshGoalTasks, refreshKanban, chats]);
 
   React.useEffect(() => {
     if (!isLeftSidebarOpen || !isRightSidebarOpen) {
@@ -770,9 +772,9 @@ export default function App() {
             {!backendReady || backendError ? (
               <BackendLoadingScreen error={backendError} />
             ) : (
-              <PlanProvider>
+              <GoalTasksProvider>
                 <AppInner />
-              </PlanProvider>
+              </GoalTasksProvider>
             )}
           </ChatProvider>
         </ProjectProvider>

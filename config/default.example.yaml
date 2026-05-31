@@ -15,7 +15,10 @@
 DEFAULT_TOOLS:
   - "WebSearchTool"
   - "WebpageTool"
-  - "PlanningTool"
+  - "GoalTool"
+  - "TaskCreateTool"
+  - "TaskUpdateTool"
+  - "TaskListTool"
   - "ReadFileTool"
   - "WriteFileTool"
   - "EditFileTool"

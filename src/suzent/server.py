@@ -103,7 +103,11 @@ from suzent.routes.sync_routes import (
     unlock_shibboleth,
     validate_sync_profile,
 )
-from suzent.routes.plan_routes import get_plan, get_plans
+from suzent.routes.goal_task_routes import (
+    get_project_goal,
+    get_project_tasks,
+    get_project_kanban,
+)
 from suzent.routes.mcp_routes import (
     list_mcp_servers,
     add_mcp_server,
@@ -691,8 +695,9 @@ app = Starlette(
         Route("/projects/{project_id}", update_project, methods=["PATCH"]),
         Route("/projects/{project_id}", delete_project, methods=["DELETE"]),
         Route("/projects/{project_id}/move-chats", move_all_chats, methods=["POST"]),
-        Route("/plans", get_plans, methods=["GET"]),
-        Route("/plan", get_plan, methods=["GET"]),
+        Route("/project/goal", get_project_goal, methods=["GET"]),
+        Route("/project/tasks", get_project_tasks, methods=["GET"]),
+        Route("/project/kanban", get_project_kanban, methods=["GET"]),
         Route("/config", get_config, methods=["GET"]),
         Route("/chatgpt/status", get_chatgpt_status, methods=["GET"]),
         Route("/chatgpt/login", start_chatgpt_login, methods=["POST"]),

@@ -41,7 +41,6 @@ from suzent.core.stream_registry import (
     register_active_stream,
     unregister_active_stream,
 )
-from suzent.plan import read_plan_from_database, plan_to_dict, auto_complete_current
 from loguru import logger
 
 
@@ -259,19 +258,6 @@ def _bash_baseline_decision(tc: Any, deps: "AgentDeps") -> "bool | None":
         return None  # on error, fall through to user dialog
 
 
-def _plan_snapshot(chat_id: Optional[str] = None) -> dict:
-    """Get a snapshot of the current plan state."""
-    try:
-        if not chat_id:
-            return {"objective": "", "phases": []}
-        plan = read_plan_from_database(chat_id)
-        if not plan:
-            return {"objective": "", "phases": []}
-        return plan_to_dict(plan) or {"objective": "", "phases": []}
-    except Exception:
-        return {"objective": "", "phases": []}
-
-
 def _safe_args_preview(args: Any, max_len: int = 500) -> dict:
     """Truncate large arg values for the approval dialog."""
     if not isinstance(args, dict):
@@ -369,47 +355,6 @@ async def stream_agent_responses(
 
     sse_queue: asyncio.Queue = asyncio.Queue()
     deps.cancel_event = control.cancel_event
-
-    # Plan watcher task
-    plan_queue: asyncio.Queue = asyncio.Queue()
-    stop_plan_watcher = asyncio.Event()
-
-    async def plan_watcher(interval: float = 2.0) -> None:
-        """
-        Watch for plan changes and emit updates.
-
-        Args:
-            interval: Polling interval in seconds. Lower = more responsive
-                     but higher database load. Default 2.0s is a good
-                     balance between responsiveness and efficiency.
-        """
-        last_snapshot = None
-        try:
-            while not stop_plan_watcher.is_set():
-                await asyncio.sleep(interval)
-                if control.cancel_event.is_set():
-                    break
-                try:
-                    snapshot = _plan_snapshot(chat_id)
-                    if snapshot != last_snapshot:
-                        last_snapshot = snapshot
-                        await plan_queue.put(snapshot)
-                        logger.debug(f"Plan updated for {chat_id}")
-                except Exception as e:
-                    logger.debug(f"Plan watcher error: {e}")
-        except asyncio.CancelledError:
-            logger.debug("Plan watcher cancelled")
-            pass
-
-    # Start plan watcher with configured interval
-    from suzent.config import CONFIG
-
-    watcher_interval = getattr(CONFIG, "plan_watcher_interval", 2.0)
-    watcher_task = (
-        asyncio.create_task(plan_watcher(interval=watcher_interval))
-        if chat_id
-        else None
-    )
 
     # Auto-title: kick off in parallel for the first turn using only the user message
     # Extract text content for title generation
@@ -703,16 +648,6 @@ async def stream_agent_responses(
 
     # --- Native stream generator that feeds AGUIEventStream ---
     async def native_stream_generator() -> AsyncGenerator[Any, None]:
-        async def _drain_plan_updates() -> None:
-            while not plan_queue.empty():
-                try:
-                    snapshot = plan_queue.get_nowait()
-                    await out_queue.put(
-                        ("chunk", _encode_custom("plan_refresh", snapshot))
-                    )
-                except asyncio.QueueEmpty:
-                    break
-
         async def _drain_a2ui_events() -> None:
             a2ui_queue = getattr(deps, "a2ui_queue", None)
             while a2ui_queue and not a2ui_queue.empty():
@@ -749,8 +684,7 @@ async def stream_agent_responses(
                     break
 
         while True:
-            # Drain plan/canvas updates before waiting for stream events.
-            await _drain_plan_updates()
+            # Drain canvas/a2ui updates before waiting for stream events.
             await _drain_a2ui_events()
 
             try:
@@ -879,9 +813,7 @@ async def stream_agent_responses(
                     await _queue_custom_event(out_queue, "heartbeat_ok", {})
 
                 elif msg_type == "done":
-                    # Final flush to avoid dropping last-moment plan/canvas updates
-                    # that can be queued right before completion.
-                    await _drain_plan_updates()
+                    # Final flush to avoid dropping last-moment canvas/a2ui updates.
                     await _drain_a2ui_events()
                     break
 
@@ -939,8 +871,6 @@ async def stream_agent_responses(
                 break
 
         # --- After stream completes ---
-        if not control.cancel_event.is_set() and chat_id:
-            yield _encode_custom("plan_refresh", _plan_snapshot(chat_id))
 
         # Deliver auto-title (runs in parallel, should already be done by now)
         if title_task is not None and not control.cancel_event.is_set():
@@ -977,24 +907,10 @@ async def stream_agent_responses(
             except Exception as e:
                 logger.error(f"Failed to reconstruct partial history: {e}")
 
-        stop_plan_watcher.set()
-        if watcher_task:
-            watcher_task.cancel()
-            try:
-                await watcher_task
-            except (asyncio.CancelledError, Exception):
-                pass
-
         if chat_id:
             if not getattr(deps, "is_suspended", False):
                 # Stream ended (not paused for approvals), drop any stale cache.
                 pop_pending_auto_approvals(chat_id)
-
-            if not control.cancel_event.is_set():
-                try:
-                    auto_complete_current(chat_id)
-                except Exception as e:
-                    logger.debug(f"Failed to auto-complete plan: {e}")
 
             existing = stream_controls.get(chat_id)
             if existing is control:

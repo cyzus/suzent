@@ -215,6 +215,57 @@ class DatabaseMigrationMixin:
                     )
                     conn.commit()
 
+        # Migration: PlanningTool v2 — drop legacy plans/tasks tables and recreate
+        # with new schema (tasks gets project_id FK; goals table is new).
+        # create_all() already ran before _run_migrations(), so we call it again
+        # after dropping to let SQLModel create the new table definitions.
+        table_names = set(inspector.get_table_names())
+        needs_recreate = False
+        with self.engine.connect() as conn:
+            if "plans" in table_names:
+                conn.execute(text("DROP TABLE plans"))
+                conn.commit()
+                needs_recreate = True
+            if "tasks" in table_names:
+                task_cols = [col["name"] for col in inspector.get_columns("tasks")]
+                if "project_id" not in task_cols:
+                    conn.execute(text("DROP TABLE tasks"))
+                    conn.commit()
+                    needs_recreate = True
+        if needs_recreate:
+            from sqlmodel import SQLModel
+
+            SQLModel.metadata.create_all(self.engine)
+
+        # Migration: add chat_id column to goals and tasks (Option C ownership)
+        refreshed_tables = set(inspect(self.engine).get_table_names())
+        if "goals" in refreshed_tables:
+            goal_cols = [
+                col["name"] for col in inspect(self.engine).get_columns("goals")
+            ]
+            if "chat_id" not in goal_cols:
+                with self.engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE goals ADD COLUMN chat_id TEXT"))
+                    conn.execute(
+                        text(
+                            "CREATE INDEX IF NOT EXISTS ix_goals_chat_id ON goals(chat_id)"
+                        )
+                    )
+                    conn.commit()
+        if "tasks" in refreshed_tables:
+            task_cols = [
+                col["name"] for col in inspect(self.engine).get_columns("tasks")
+            ]
+            if "chat_id" not in task_cols:
+                with self.engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE tasks ADD COLUMN chat_id TEXT"))
+                    conn.execute(
+                        text(
+                            "CREATE INDEX IF NOT EXISTS ix_tasks_chat_id ON tasks(chat_id)"
+                        )
+                    )
+                    conn.commit()
+
     def _migrate_static_config_from_db(self) -> None:
         inspector = inspect(self.engine)
         tables = set(inspector.get_table_names())

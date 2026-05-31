@@ -3,19 +3,21 @@
 from .base import ChatDatabaseBase
 from .chats import ChatOperationsMixin
 from .cron import CronOperationsMixin
+from .goals import GoalOperationsMixin
 from .migrations import DatabaseMigrationMixin
-from .plans import PlanOperationsMixin
 from .postprocess import PostprocessOperationsMixin
 from .projects import ProjectOperationsMixin
 from .settings import SettingsOperationsMixin
+from .tasks import TaskOperationsMixin
 
 
 class ChatDatabase(
     DatabaseMigrationMixin,
     ProjectOperationsMixin,
+    GoalOperationsMixin,
+    TaskOperationsMixin,
     ChatOperationsMixin,
     PostprocessOperationsMixin,
-    PlanOperationsMixin,
     SettingsOperationsMixin,
     CronOperationsMixin,
     ChatDatabaseBase,

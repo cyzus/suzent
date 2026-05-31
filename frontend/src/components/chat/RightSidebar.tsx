@@ -1,12 +1,14 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useI18n } from '../../i18n';
-import { PlanProgress } from '../PlanProgress';
+import { GoalTaskView } from '../sidebar/GoalTaskView';
+import { ProjectKanbanView } from '../sidebar/ProjectKanbanView';
 import { SandboxFiles } from '../sidebar/SandboxFiles';
 import { WebActivitiesView } from '../sidebar/WebActivitiesView';
 import { CanvasView } from '../sidebar/CanvasView';
 import { SubAgentView } from '../sidebar/SubAgentView';
 import { SubAgentList } from '../sidebar/SubAgentList';
-import type { Message, Plan } from '../../types/api';
+import type { Message, Goal, Task } from '../../types/api';
+import type { KanbanData } from '../../hooks/useGoalTasks';
 import type { CanvasState } from '../../hooks/useCanvas';
 import { useWebHistory } from '../../hooks/useWebHistory';
 import {
@@ -20,12 +22,13 @@ import {
   PencilSquareIcon,
   CpuChipIcon,
   ClipboardDocumentListIcon,
+  RectangleGroupIcon,
 } from '@heroicons/react/24/outline';
 
 // Icon strip width in px — keep in sync with w-11 (2.75rem = 44px)
 const ICON_STRIP_WIDTH = 44;
 
-type TabId = 'files' | 'browser' | 'canvas' | 'agents' | 'plan';
+type TabId = 'files' | 'browser' | 'canvas' | 'agents' | 'plan' | 'project';
 
 interface RightSidebarProps {
   isOpen: boolean;
@@ -35,9 +38,10 @@ interface RightSidebarProps {
   maxWidthPx?: number;
   viewportWidthPx?: number;
   forceFullView?: boolean;
-  plan: Plan | null;
-  isPlanExpanded: boolean;
-  onTogglePlanExpand: () => void;
+  goal: Goal | null;
+  tasks: Task[];
+  kanban: KanbanData | null;
+  currentProjectName?: string | null;
   fileToPreview?: { path: string; name: string } | null;
   onMaximizeFile?: (filePath: string, fileName: string) => void;
   canvas?: CanvasState;
@@ -70,9 +74,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   maxWidthPx,
   viewportWidthPx,
   forceFullView = false,
-  plan,
-  isPlanExpanded,
-  onTogglePlanExpand,
+  goal,
+  tasks,
+  kanban,
+  currentProjectName,
   fileToPreview,
   onMaximizeFile,
   canvas,
@@ -113,7 +118,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       message.content.includes('web_search') || message.content.includes('webpage_fetch')
     ),
   ));
-  const hasValidPlan = Boolean(plan && plan.phases && plan.phases.length > 0);
+  // plan tab: only show when this chat owns a goal or tasks
+  const hasGoalContent = Boolean(goal !== null || tasks.length > 0);
+  // project tab: show whenever there's any project kanban data
+  const hasKanbanContent = Boolean(kanban && (kanban.goals.length > 0 || kanban.tasks.length > 0));
 
   // ── Tab definitions ─────────────────────────────────────────────────
   const tabs: TabConfig[] = [
@@ -156,10 +164,18 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       id: 'plan',
       icon: ClipboardDocumentListIcon,
       labelKey: 'sidebar.tabs.plan',
-      fallbackLabel: 'Plan',
-      hasContent: hasValidPlan,
-      hasActivity: hasValidPlan,
+      fallbackLabel: 'Goal',
+      hasContent: hasGoalContent,
+      hasActivity: hasGoalContent,
       activityClass: 'bg-brutal-yellow',
+    },
+    {
+      id: 'project',
+      icon: RectangleGroupIcon,
+      labelKey: 'sidebar.tabs.project',
+      fallbackLabel: 'Board',
+      hasContent: hasKanbanContent,
+      hasActivity: false,
     },
   ];
 
@@ -177,8 +193,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   }, [viewingSubAgentTaskId]);
 
   useEffect(() => {
-    if (hasValidPlan) setActiveTab('plan');
-  }, [hasValidPlan]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (hasGoalContent) setActiveTab('plan');
+  }, [hasGoalContent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Open sidebar automatically when content arrives ─────────────────
   useEffect(() => {
@@ -194,15 +210,19 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   }, [viewingSubAgentTaskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (hasValidPlan && !isOpen) onOpen();
-  }, [hasValidPlan]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (hasGoalContent && !isOpen) onOpen();
+  }, [hasGoalContent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (isOpen && activeTab === 'plan' && !hasValidPlan) {
-      onClose();
-      setActiveTab('browser');
+    if (isOpen && activeTab === 'plan' && !hasGoalContent) {
+      if (hasKanbanContent) {
+        setActiveTab('project');
+      } else {
+        onClose();
+        setActiveTab('browser');
+      }
     }
-  }, [isOpen, activeTab, hasValidPlan, onClose]);
+  }, [isOpen, activeTab, hasGoalContent, hasKanbanContent, onClose]);
 
   // ── Icon strip click: toggle panel or switch tab ───────────────────
   const handleTabClick = useCallback((tabId: TabId) => {
@@ -371,14 +391,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             )}
           </div>
           <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'plan' ? 'flex' : 'hidden'}`}>
-            <PlanProgress
-              plan={plan}
-              isDocked={true}
-              onToggleDock={onClose}
-              isExpanded={isPlanExpanded}
-              onToggleExpand={onTogglePlanExpand}
-              isSidebarOpen={true}
-            />
+            <GoalTaskView goal={goal} tasks={tasks} />
+          </div>
+          <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'project' ? 'flex' : 'hidden'}`}>
+            <ProjectKanbanView kanban={kanban} projectName={currentProjectName} />
           </div>
         </div>
       </div>
