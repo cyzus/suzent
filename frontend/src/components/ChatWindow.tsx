@@ -512,6 +512,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     activeChatIdRef.current = currentChatId;
     setVisibleMessageCount(INITIAL_VISIBLE_MESSAGES);
+    setIsBoardFullscreen(false);
     prependScrollSnapshotRef.current = null;
     clearActivatedTools();
     if (!currentChatId) {
