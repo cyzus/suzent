@@ -18,9 +18,6 @@ class TaskInput(BaseModel):
         default=None,
         description="Present-continuous display text shown while in progress, e.g. 'Setting up environment'",
     )
-    assignee: Optional[str] = Field(
-        default=None, description="Agent ID or 'main' (default)"
-    )
     blocks: Optional[List[int]] = Field(
         default=None, description="Task IDs this task blocks"
     )
@@ -65,7 +62,7 @@ class TaskCreateTool(Tool):
                 title=t.title,
                 description=t.description,
                 active_form=t.active_form,
-                assignee=t.assignee or "main",
+                assignee=ctx.deps.chat_id or "human",
                 blocks=t.blocks or [],
                 blocked_by=t.blocked_by or [],
             )
