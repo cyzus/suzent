@@ -3,14 +3,13 @@ import type { Task, TaskStatus } from '../../types/api';
 import type { KanbanData } from '../../hooks/useGoalTasks';
 import { useGoalTasks } from '../../hooks/useGoalTasks';
 import { useI18n } from '../../i18n';
-import { BrutalButton } from '../BrutalButton';
 
 interface ProjectKanbanViewProps {
   projectName?: string | null;
   projectId?: string | null;
   kanban: KanbanData | null;
-  /** Map of chatId → chat title for assignee chip lookup */
   chatTitles?: Record<string, string>;
+  onClose?: () => void;
 }
 
 const STATUS_CYCLE: TaskStatus[] = ['pending', 'in_progress', 'completed'];
@@ -78,12 +77,18 @@ const AddCardForm: React.FC<AddCardFormProps> = ({ onAdd, onCancel }) => {
         className="w-full border-2 border-brutal-black px-2 py-1 text-xs font-bold font-mono bg-white dark:bg-zinc-700 dark:text-white outline-none mb-2"
       />
       <div className="flex gap-1">
-        <BrutalButton variant="dark" size="sm" onClick={() => value.trim() && onAdd(value.trim())}>
+        <button
+          onClick={() => value.trim() && onAdd(value.trim())}
+          className="border border-brutal-black bg-brutal-black text-white text-[8px] font-black uppercase tracking-wider px-2 py-1 font-mono hover:opacity-80 transition-opacity"
+        >
           Add
-        </BrutalButton>
-        <BrutalButton size="sm" onClick={onCancel}>
+        </button>
+        <button
+          onClick={onCancel}
+          className="border border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[8px] font-black uppercase tracking-wider px-2 py-1 font-mono hover:bg-neutral-100 dark:hover:bg-zinc-600 transition-colors"
+        >
           Cancel
-        </BrutalButton>
+        </button>
       </div>
     </div>
   );
@@ -115,22 +120,20 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ task, chatTitle, onStatusCycle,
     >
       {hovered && (
         <div className="absolute top-1.5 right-1.5 flex gap-1 z-10">
-          <BrutalButton
-            size="icon"
+          <button
             onClick={onStatusCycle}
             title={`Move to ${NEXT_STATUS[task.status]}`}
-            className="px-1.5 py-0.5 text-[9px] leading-none"
+            className="border border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[9px] font-black px-1.5 py-0.5 leading-none font-mono hover:bg-neutral-100 transition-colors"
           >
             {isDone ? '↺' : '→'}
-          </BrutalButton>
-          <BrutalButton
-            size="icon"
+          </button>
+          <button
             onClick={onDelete}
             title="Delete"
-            className="px-1.5 py-0.5 text-[9px] leading-none"
+            className="border border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[9px] font-black px-1.5 py-0.5 leading-none font-mono hover:bg-neutral-100 transition-colors"
           >
             ✕
-          </BrutalButton>
+          </button>
         </div>
       )}
 
@@ -155,6 +158,7 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
   projectId,
   kanban,
   chatTitles = {},
+  onClose,
 }) => {
   const { t } = useI18n();
   const { updateTask, createTask, deleteTask } = useGoalTasks();
@@ -191,10 +195,20 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
     <div className="flex flex-col h-full min-h-0">
 
       {/* ── Header ── */}
-      <div className="shrink-0 bg-brutal-black text-white px-3 py-2 border-b-3 border-brutal-black">
-        <div className="text-[9px] font-black uppercase tracking-widest opacity-50">{t('projectBoard.title')}</div>
-        {projectName && (
-          <div className="text-base font-black tracking-tight uppercase leading-tight">{projectName}</div>
+      <div className="shrink-0 bg-brutal-black text-white px-3 py-2 border-b-3 border-brutal-black flex items-center justify-between gap-4">
+        <div>
+          <div className="text-[9px] font-black uppercase tracking-widest opacity-50">{t('projectBoard.title')}</div>
+          {projectName && (
+            <div className="text-base font-black tracking-tight uppercase leading-tight">{projectName}</div>
+          )}
+        </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="shrink-0 border border-white/30 text-white text-[8px] font-black uppercase tracking-wider px-2 py-1 hover:bg-white/10 transition-colors font-mono"
+          >
+            ✕ Close
+          </button>
         )}
       </div>
 
@@ -220,23 +234,13 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
               className={`flex flex-col flex-1 overflow-hidden ${colIdx < COLUMNS.length - 1 ? 'border-r-2 border-brutal-black' : ''}`}
             >
               {/* Column header */}
-              <div className="shrink-0 px-2 py-1.5 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 flex items-center justify-between">
+              <div className="shrink-0 px-3 py-3 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 flex items-center justify-between">
                 <span className="text-[9px] font-black uppercase tracking-widest text-brutal-black dark:text-white">
                   {col.label}
                 </span>
-                <div className="flex items-center gap-1">
-                  <span className={`text-[9px] font-black font-mono px-1.5 border-2 border-brutal-black ${col.id === 'completed' ? 'bg-brutal-green text-brutal-black' : 'bg-white dark:bg-zinc-700 text-brutal-black dark:text-white'}`}>
-                    {colItems.length}
-                  </span>
-                  <BrutalButton
-                    size="icon"
-                    onClick={() => setAddingIn(addingIn === col.id ? null : col.id)}
-                    title="Add task"
-                    className="px-1 py-0.5 text-[9px] leading-none"
-                  >
-                    ＋
-                  </BrutalButton>
-                </div>
+                <span className={`text-[9px] font-black font-mono px-1.5 border border-brutal-black leading-snug ${col.id === 'completed' ? 'bg-brutal-green text-brutal-black' : 'bg-white dark:bg-zinc-700 text-brutal-black dark:text-white'}`}>
+                  {colItems.length}
+                </span>
               </div>
 
               {/* Cards */}
@@ -258,15 +262,13 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
                   />
                 )}
 
-                {colItems.length === 0 && addingIn !== col.id && (
-                  <BrutalButton
-                    variant="ghost"
-                    size="sm"
+                {col.id === 'pending' && addingIn !== col.id && (
+                  <button
                     onClick={() => setAddingIn(col.id)}
-                    className="border-dashed w-full justify-center py-2 opacity-20 hover:opacity-60"
+                    className="border border-dashed border-brutal-black bg-transparent text-brutal-black dark:text-white text-[9px] font-black uppercase tracking-wider py-2 opacity-20 hover:opacity-60 w-full font-mono transition-opacity"
                   >
-                    ＋ Add task
-                  </BrutalButton>
+                    + Add task
+                  </button>
                 )}
               </div>
             </div>
