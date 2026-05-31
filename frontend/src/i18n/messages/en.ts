@@ -594,6 +594,7 @@ export const en = {
   task: {
     title: 'Tasks',
     noTasks: 'No tasks.',
+    noTasksForChat: 'No tasks assigned to this chat.',
     assignee: '{name}',
     blocks: 'blocks {ids}',
     blockedBy: 'blocked by {ids}',

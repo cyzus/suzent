@@ -1,7 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useI18n } from '../../i18n';
 import { GoalTaskView } from '../sidebar/GoalTaskView';
-import { ProjectKanbanView } from '../sidebar/ProjectKanbanView';
 import { SandboxFiles } from '../sidebar/SandboxFiles';
 import { WebActivitiesView } from '../sidebar/WebActivitiesView';
 import { CanvasView } from '../sidebar/CanvasView';
@@ -22,7 +21,6 @@ import {
   PencilSquareIcon,
   CpuChipIcon,
   ClipboardDocumentListIcon,
-  RectangleGroupIcon,
 } from '@heroicons/react/24/outline';
 
 // Icon strip width in px — keep in sync with w-11 (2.75rem = 44px)
@@ -42,6 +40,9 @@ interface RightSidebarProps {
   tasks: Task[];
   kanban: KanbanData | null;
   currentProjectName?: string | null;
+  currentProjectId?: string | null;
+  chatTitles?: Record<string, string>;
+  onProjectBoardChange?: (open: boolean) => void;
   fileToPreview?: { path: string; name: string } | null;
   onMaximizeFile?: (filePath: string, fileName: string) => void;
   canvas?: CanvasState;
@@ -78,6 +79,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   tasks,
   kanban,
   currentProjectName,
+  currentProjectId,
+  chatTitles = {},
+  onProjectBoardChange,
   fileToPreview,
   onMaximizeFile,
   canvas,
@@ -118,10 +122,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       message.content.includes('web_search') || message.content.includes('webpage_fetch')
     ),
   ));
-  // plan tab: only show when this chat owns a goal or tasks
   const hasGoalContent = Boolean(goal !== null || tasks.length > 0);
-  // project tab: show whenever there's any project kanban data
-  const hasKanbanContent = Boolean(kanban && (kanban.goals.length > 0 || kanban.tasks.length > 0));
+  const hasKanbanContent = Boolean(onProjectBoardChange);
 
   // ── Tab definitions ─────────────────────────────────────────────────
   const tabs: TabConfig[] = [
@@ -165,17 +167,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       icon: ClipboardDocumentListIcon,
       labelKey: 'sidebar.tabs.plan',
       fallbackLabel: 'Goal',
-      hasContent: hasGoalContent,
+      hasContent: true,  // always accessible — shows empty state + board button
       hasActivity: hasGoalContent,
       activityClass: 'bg-brutal-yellow',
-    },
-    {
-      id: 'project',
-      icon: RectangleGroupIcon,
-      labelKey: 'sidebar.tabs.project',
-      fallbackLabel: 'Board',
-      hasContent: hasKanbanContent,
-      hasActivity: false,
     },
   ];
 
@@ -213,22 +207,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     if (hasGoalContent && !isOpen) onOpen();
   }, [hasGoalContent]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (isOpen && activeTab === 'plan' && !hasGoalContent) {
-      if (hasKanbanContent) {
-        setActiveTab('project');
-      } else {
-        onClose();
-        setActiveTab('browser');
-      }
-    }
-  }, [isOpen, activeTab, hasGoalContent, hasKanbanContent, onClose]);
 
   // ── Icon strip click: toggle panel or switch tab ───────────────────
   const handleTabClick = useCallback((tabId: TabId) => {
     const targetTab = tabs.find(tab => tab.id === tabId);
     if (!targetTab) return;
-    if (targetTab.id !== 'files' && !targetTab.hasContent) {
+    if (targetTab.id !== 'files' && targetTab.id !== 'plan' && !targetTab.hasContent) {
       return;
     }
 
@@ -391,10 +375,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             )}
           </div>
           <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'plan' ? 'flex' : 'hidden'}`}>
-            <GoalTaskView goal={goal} tasks={tasks} />
-          </div>
-          <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'project' ? 'flex' : 'hidden'}`}>
-            <ProjectKanbanView kanban={kanban} projectName={currentProjectName} />
+            <GoalTaskView goal={goal} tasks={tasks} onOpenBoard={onProjectBoardChange ? () => onProjectBoardChange(true) : undefined} />
           </div>
         </div>
       </div>

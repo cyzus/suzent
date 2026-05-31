@@ -1,4 +1,4 @@
-"""Goal and Task API routes for frontend polling."""
+"""Goal and Task API routes for frontend polling and human-operated board."""
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -123,5 +123,65 @@ async def get_project_kanban(request: Request) -> JSONResponse:
                 "tasks": [_task_to_dict(t) for t in tasks],
             }
         )
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def create_project_task(request: Request) -> JSONResponse:
+    """Create a task on a project (human-operated board).
+
+    Body JSON: { project_id, title, description?, status?, chat_id? }
+    """
+    try:
+        body = await request.json()
+        project_id = body.get("project_id")
+        title = (body.get("title") or "").strip()
+        if not project_id or not title:
+            return JSONResponse(
+                {"error": "project_id and title are required"}, status_code=400
+            )
+        db = get_database()
+        task = db.create_task(
+            project_id=project_id,
+            title=title,
+            description=body.get("description") or "",
+            chat_id=body.get("chat_id"),
+            assignee=body.get("chat_id") or "human",
+        )
+        return JSONResponse(_task_to_dict(task), status_code=201)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def update_project_task(request: Request) -> JSONResponse:
+    """Update a task status/title/description (human-operated board).
+
+    Path param: task_id
+    Body JSON: any subset of { status, title, description }
+    """
+    try:
+        task_id = int(request.path_params["task_id"])
+        body = await request.json()
+        db = get_database()
+        task = db.get_task(task_id)
+        if not task:
+            return JSONResponse({"error": "Task not found"}, status_code=404)
+        updates = {k: body[k] for k in ("status", "title", "description") if k in body}
+        if updates:
+            task = db.update_task(task_id, **updates)
+        return JSONResponse(_task_to_dict(task))
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def delete_project_task(request: Request) -> JSONResponse:
+    """Delete a task (human-operated board)."""
+    try:
+        task_id = int(request.path_params["task_id"])
+        db = get_database()
+        deleted = db.delete_task(task_id)
+        if not deleted:
+            return JSONResponse({"error": "Task not found"}, status_code=404)
+        return JSONResponse({"ok": True})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

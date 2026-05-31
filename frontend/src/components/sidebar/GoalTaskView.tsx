@@ -5,6 +5,7 @@ import { useI18n } from '../../i18n';
 interface GoalTaskViewProps {
   goal: Goal | null;
   tasks: Task[];
+  onOpenBoard?: () => void;
 }
 
 const GOAL_BADGE: Record<GoalStatus, string> = {
@@ -57,7 +58,7 @@ function TaskCheck({ status }: { status: TaskStatus }) {
   return <div className="w-4 h-4 shrink-0 border-2 border-brutal-black bg-white dark:bg-zinc-700" />;
 }
 
-export const GoalTaskView: React.FC<GoalTaskViewProps> = ({ goal, tasks }) => {
+export const GoalTaskView: React.FC<GoalTaskViewProps> = ({ goal, tasks, onOpenBoard }) => {
   const { t } = useI18n();
   const [subgoalsExpanded, setSubgoalsExpanded] = React.useState(true);
 
@@ -140,11 +141,23 @@ export const GoalTaskView: React.FC<GoalTaskViewProps> = ({ goal, tasks }) => {
       </div>
 
       {/* ── Tasks section header ─────────────────────────────────── */}
-      {activeTasks.length > 0 && (
-        <div className="shrink-0 px-3 py-1.5 border-b-2 border-brutal-black bg-white dark:bg-zinc-800">
+      {(activeTasks.length > 0 || onOpenBoard) && (
+        <div className="shrink-0 px-3 py-1.5 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 flex items-center justify-between">
           <span className="text-[9px] font-black uppercase tracking-widest font-mono text-brutal-black dark:text-white">
-            {t('task.title')}
+            {activeTasks.length > 0 ? t('task.title') : ''}
           </span>
+          {onOpenBoard && (
+            <button
+              onClick={onOpenBoard}
+              title="Open full project board"
+              className="flex items-center gap-1 border-2 border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[8px] font-black uppercase tracking-wider px-2 py-0.5 shadow-[1px_1px_0_0_#000] hover:shadow-none hover:translate-x-px hover:translate-y-px transition-all"
+            >
+              <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+              </svg>
+              Board
+            </button>
+          )}
         </div>
       )}
 
@@ -152,7 +165,7 @@ export const GoalTaskView: React.FC<GoalTaskViewProps> = ({ goal, tasks }) => {
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black bg-neutral-50 dark:bg-zinc-900 p-2 space-y-2 min-h-0">
         {activeTasks.length === 0 ? (
           <div className="text-[10px] font-black uppercase tracking-widest font-mono text-brutal-black dark:text-white opacity-30 text-center pt-4">
-            {t('task.noTasks')}
+            {onOpenBoard ? t('task.noTasksForChat') : t('task.noTasks')}
           </div>
         ) : (
           activeTasks.map(task => (

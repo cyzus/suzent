@@ -521,6 +521,7 @@ export const zhCN = {
   task: {
     title: '任务',
     noTasks: '暂无任务。',
+    noTasksForChat: '本对话暂无分配任务。',
     assignee: '{name}',
     blocks: '阻塞 {ids}',
     blockedBy: '被 {ids} 阻塞',

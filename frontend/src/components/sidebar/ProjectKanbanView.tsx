@@ -1,159 +1,301 @@
-import React from 'react';
-import type { Goal, Task, TaskStatus } from '../../types/api';
+import React, { useState } from 'react';
+import type { Task, TaskStatus } from '../../types/api';
 import type { KanbanData } from '../../hooks/useGoalTasks';
+import { useGoalTasks } from '../../hooks/useGoalTasks';
 import { useI18n } from '../../i18n';
 
 interface ProjectKanbanViewProps {
   projectName?: string | null;
+  projectId?: string | null;
   kanban: KanbanData | null;
+  /** Map of chatId → chat title for assignee chip lookup */
+  chatTitles?: Record<string, string>;
 }
 
-const COLUMN_ORDER: TaskStatus[] = ['in_progress', 'pending', 'blocked', 'completed'];
-
-const COLUMN_LABELS: Record<TaskStatus, string> = {
-  in_progress: 'Active',
-  pending: 'Todo',
-  blocked: 'Blocked',
-  completed: 'Done',
-  cancelled: 'Cancelled',
+// Status cycle order for click-to-advance
+const STATUS_CYCLE: TaskStatus[] = ['pending', 'in_progress', 'completed'];
+const NEXT_STATUS: Record<string, TaskStatus> = {
+  pending: 'in_progress',
+  in_progress: 'completed',
+  completed: 'pending',
+  blocked: 'in_progress',
+  cancelled: 'pending',
 };
 
-const COLUMN_COLORS: Record<TaskStatus, string> = {
-  in_progress: 'border-brutal-blue',
-  pending: 'border-brutal-black',
-  blocked: 'border-brutal-yellow',
-  completed: 'border-brutal-green',
-  cancelled: 'border-neutral-300',
+const COLUMNS: { id: TaskStatus | 'blocked'; label: string }[] = [
+  { id: 'pending',     label: 'Todo'   },
+  { id: 'in_progress', label: 'Active' },
+  { id: 'completed',   label: 'Done'   },
+];
+
+// Deterministic shape index from chat_id for the dot (no colours — just shapes/patterns)
+// We use 4 patterns to differentiate sessions: filled, ring, cross, half
+const DOT_PATTERNS = ['●', '○', '◆', '◇'] as const;
+function dotPattern(chatId: string | null | undefined): string {
+  if (!chatId) return '□';
+  let h = 0;
+  for (let i = 0; i < chatId.length; i++) h = (h * 31 + chatId.charCodeAt(i)) >>> 0;
+  return DOT_PATTERNS[h % DOT_PATTERNS.length];
+}
+
+interface AssigneeChipProps {
+  chatId: string | null | undefined;
+  chatTitle?: string;
+}
+
+const AssigneeChip: React.FC<AssigneeChipProps> = ({ chatId, chatTitle }) => {
+  const short = chatId ? chatId.slice(0, 8) : null;
+  const title = chatTitle || (chatId ? `${short}…` : 'human');
+  const pattern = dotPattern(chatId);
+
+  return (
+    <span className="inline-flex items-center gap-1 border-2 border-brutal-black bg-white dark:bg-zinc-800 pl-1 pr-2 py-0.5 max-w-[140px]">
+      <span className="text-[10px] font-black text-brutal-black dark:text-white shrink-0 leading-none">
+        {pattern}
+      </span>
+      <span className="text-[8px] font-black text-brutal-black dark:text-white truncate font-mono">
+        {title}
+      </span>
+      {chatId && (
+        <span className="text-[7px] font-mono text-neutral-400 dark:text-zinc-500 shrink-0">
+          {short}
+        </span>
+      )}
+    </span>
+  );
 };
 
-const CARD_COLORS: Record<TaskStatus, string> = {
-  in_progress: 'bg-white dark:bg-zinc-700 shadow-[2px_2px_0_0_#3b82f6]',
-  pending: 'bg-white dark:bg-zinc-800',
-  blocked: 'bg-brutal-yellow/10 dark:bg-zinc-800',
-  completed: 'bg-brutal-green/10 dark:bg-zinc-800 opacity-60',
-  cancelled: 'bg-neutral-100 dark:bg-zinc-900 opacity-40',
+interface AddCardFormProps {
+  onAdd: (title: string) => void;
+  onCancel: () => void;
+}
+
+const AddCardForm: React.FC<AddCardFormProps> = ({ onAdd, onCancel }) => {
+  const [value, setValue] = useState('');
+  return (
+    <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 p-2 shadow-[2px_2px_0_0_#000]">
+      <input
+        autoFocus
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && value.trim()) { onAdd(value.trim()); }
+          if (e.key === 'Escape') onCancel();
+        }}
+        placeholder="Task title…"
+        className="w-full border-2 border-brutal-black px-2 py-1 text-xs font-bold font-mono bg-white dark:bg-zinc-700 dark:text-white outline-none mb-2"
+      />
+      <div className="flex gap-1">
+        <button
+          onClick={() => value.trim() && onAdd(value.trim())}
+          className="border-2 border-brutal-black bg-brutal-black text-white text-[8px] font-black px-2 py-1 uppercase tracking-wider"
+        >
+          Add
+        </button>
+        <button
+          onClick={onCancel}
+          className="border-2 border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[8px] font-black px-2 py-1 uppercase tracking-wider"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
 };
 
-const BADGE_COLORS: Record<TaskStatus, string> = {
-  in_progress: 'bg-brutal-blue text-white',
-  pending: 'bg-white dark:bg-zinc-700 text-brutal-black dark:text-white',
-  blocked: 'bg-brutal-yellow text-brutal-black',
-  completed: 'bg-brutal-green text-brutal-black',
-  cancelled: 'bg-neutral-200 text-neutral-500',
+interface KanbanCardProps {
+  task: Task;
+  chatTitle?: string;
+  onStatusCycle: () => void;
+  onDelete: () => void;
+}
+
+const KanbanCard: React.FC<KanbanCardProps> = ({ task, chatTitle, onStatusCycle, onDelete }) => {
+  const [hovered, setHovered] = useState(false);
+  const isActive = task.status === 'in_progress';
+  const isDone = task.status === 'completed';
+  const isBlocked = task.status === 'blocked';
+
+  return (
+    <div
+      className={[
+        'border-2 border-brutal-black bg-white dark:bg-zinc-800 p-2 relative',
+        isActive ? 'shadow-[3px_3px_0_0_#000]' : '',
+        isBlocked ? 'bg-brutal-yellow/10 dark:bg-zinc-800' : '',
+        isDone ? 'opacity-50' : '',
+      ].join(' ')}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Hover actions */}
+      {hovered && (
+        <div className="absolute top-1.5 right-1.5 flex gap-1 z-10">
+          <button
+            onClick={onStatusCycle}
+            title={`Move to ${NEXT_STATUS[task.status]}`}
+            className="border-2 border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[9px] font-black px-1.5 py-0.5 leading-none"
+          >
+            {isDone ? '↺' : '→'}
+          </button>
+          <button
+            onClick={onDelete}
+            title="Delete"
+            className="border-2 border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[9px] font-black px-1.5 py-0.5 leading-none"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      <div className="text-[7px] font-mono font-black opacity-25 mb-1">#{task.id}</div>
+      <div className={`text-xs font-black leading-snug text-brutal-black dark:text-white mb-2 ${hovered ? 'pr-10' : ''} ${isDone ? 'line-through' : ''}`}>
+        {isActive && task.activeForm ? task.activeForm : task.title}
+      </div>
+      <div className="flex items-center justify-between gap-1 flex-wrap">
+        <AssigneeChip chatId={task.assignee} chatTitle={chatTitle} />
+        {isBlocked && task.blockedBy.length > 0 && (
+          <span className="text-[7px] font-black border border-brutal-black bg-brutal-yellow px-1 py-0.5 text-brutal-black">
+            blocked by {task.blockedBy.map(b => `#${b}`).join(', ')}
+          </span>
+        )}
+      </div>
+    </div>
+  );
 };
 
-export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({ projectName, kanban }) => {
+export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({
+  projectName,
+  projectId,
+  kanban,
+  chatTitles = {},
+}) => {
   const { t } = useI18n();
+  const { updateTask, createTask, deleteTask } = useGoalTasks();
+  const [addingIn, setAddingIn] = useState<string | null>(null); // column id
 
   if (!kanban) {
     return (
-      <div className="flex items-center justify-center h-full text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-400 dark:text-neutral-500">
-        No project data.
+      <div className="flex items-center justify-center h-full text-[10px] font-black uppercase tracking-widest font-mono text-brutal-black dark:text-white opacity-25">
+        {t('projectBoard.noTasks')}
       </div>
     );
   }
 
   const { goals, tasks } = kanban;
 
-  const tasksByStatus: Partial<Record<TaskStatus, Task[]>> = {};
-  for (const status of COLUMN_ORDER) {
-    const bucket = tasks.filter(t => t.status === status);
-    if (bucket.length > 0) tasksByStatus[status] = bucket;
-  }
+  const tasksByCol: Record<string, Task[]> = {
+    pending: tasks.filter(t => t.status === 'pending' && !t.blockedBy?.length),
+    blocked: tasks.filter(t => t.status === 'blocked' || (t.status === 'pending' && t.blockedBy?.length > 0)),
+    in_progress: tasks.filter(t => t.status === 'in_progress'),
+    completed: tasks.filter(t => t.status === 'completed'),
+  };
 
-  const visibleColumns = COLUMN_ORDER.filter(s => tasksByStatus[s]?.length);
+  // Merge blocked into todo column for display
+  const colTasks: Record<string, Task[]> = {
+    pending: [...tasksByCol.pending, ...tasksByCol.blocked],
+    in_progress: tasksByCol.in_progress,
+    completed: tasksByCol.completed,
+  };
+
+  const handleStatusCycle = async (task: Task) => {
+    await updateTask(task.id, { status: NEXT_STATUS[task.status] });
+  };
+
+  const handleAdd = async (colId: string, title: string) => {
+    if (!projectId) return;
+    const status = colId === 'in_progress' ? 'in_progress' : colId === 'completed' ? 'completed' : 'pending';
+    await createTask(projectId, title, status);
+    setAddingIn(null);
+  };
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Header */}
-      <div className="shrink-0 px-3 py-2 border-b-3 border-brutal-black bg-white dark:bg-zinc-800">
-        <div className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400">
+
+      {/* ── Header ─────────────────────────────────────────── */}
+      <div className="shrink-0 bg-brutal-black text-white px-3 py-2 border-b-3 border-brutal-black">
+        <div className="text-[9px] font-black uppercase tracking-widest opacity-50">
           {t('projectBoard.title')}
         </div>
         {projectName && (
-          <div className="text-xs font-bold text-brutal-black dark:text-white mt-0.5 truncate">
+          <div className="text-base font-black tracking-tight uppercase leading-tight">
             {projectName}
           </div>
         )}
       </div>
 
-      {/* Goals summary — compact chips */}
+      {/* ── Goal chips ─────────────────────────────────────── */}
       {goals.length > 0 && (
-        <div className="shrink-0 px-3 py-2 border-b border-neutral-200 dark:border-zinc-700 flex flex-wrap gap-1.5">
+        <div className="shrink-0 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 px-3 py-2 flex flex-wrap gap-1.5">
           {goals.map(goal => (
-            <div key={goal.id} className="flex items-center gap-1 bg-brutal-blue/10 dark:bg-brutal-blue/20 border border-brutal-blue/40 px-2 py-0.5 max-w-full">
-              <div className="w-1.5 h-1.5 rounded-full bg-brutal-blue shrink-0 animate-pulse" />
-              <span className="text-[9px] font-bold text-brutal-black dark:text-white truncate">
+            <span key={goal.id} className="inline-flex items-center gap-1.5 border-2 border-brutal-black bg-white dark:bg-zinc-700 px-2 py-0.5 shadow-[2px_2px_0_0_#000]">
+              <span className="text-[9px] font-black text-brutal-black dark:text-white">◆</span>
+              <span className="text-[9px] font-black text-brutal-black dark:text-white truncate max-w-[140px]">
                 {goal.objective}
               </span>
-            </div>
+            </span>
           ))}
         </div>
       )}
 
-      {/* Kanban columns */}
-      <div className="flex-1 overflow-y-auto min-h-0 p-2">
-        {tasks.length === 0 ? (
-          <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-400 dark:text-neutral-500 text-center pt-6">
-            {t('projectBoard.noTasks')}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {visibleColumns.map(status => (
-              <div key={status}>
-                <div className={`text-[9px] font-bold uppercase tracking-wider font-mono mb-1.5 pb-1 border-b-2 ${COLUMN_COLORS[status]} text-neutral-500 dark:text-neutral-400`}>
-                  {COLUMN_LABELS[status]} ({tasksByStatus[status]!.length})
-                </div>
-                <div className="space-y-1.5">
-                  {tasksByStatus[status]!.map(task => (
-                    <div
-                      key={task.id}
-                      className={`border-2 border-brutal-black p-2 ${CARD_COLORS[task.status]}`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-start gap-1.5 min-w-0">
-                          <span className="text-[8px] font-mono font-bold text-neutral-400 shrink-0 mt-0.5">
-                            #{task.id}
-                          </span>
-                          <span className="text-[11px] font-bold text-brutal-black dark:text-white leading-snug">
-                            {task.status === 'in_progress' && task.activeForm
-                              ? task.activeForm
-                              : task.title}
-                          </span>
-                        </div>
-                        <span className={`text-[8px] font-bold px-1 py-0.5 border border-brutal-black shrink-0 ${BADGE_COLORS[task.status]}`}>
-                          {COLUMN_LABELS[task.status]}
-                        </span>
-                      </div>
-                      <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
-                        {task.assignee && (
-                          <span className="text-[8px] font-mono text-neutral-500 dark:text-neutral-400">
-                            {task.assignee}
-                          </span>
-                        )}
-                        {task.chatId && (
-                          <span className="text-[8px] font-mono text-neutral-400">
-                            {task.chatId.slice(0, 8)}…
-                          </span>
-                        )}
-                        {task.blocks.length > 0 && (
-                          <span className="text-[8px] font-mono text-neutral-400">
-                            blocks {task.blocks.map(b => `#${b}`).join(', ')}
-                          </span>
-                        )}
-                        {task.blockedBy.length > 0 && (
-                          <span className="text-[8px] font-mono text-brutal-yellow">
-                            blocked by {task.blockedBy.map(b => `#${b}`).join(', ')}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+      {/* ── Kanban columns ─────────────────────────────────── */}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {COLUMNS.map((col, colIdx) => {
+          const colItems = colTasks[col.id] || [];
+          return (
+            <div
+              key={col.id}
+              className={`flex flex-col flex-1 overflow-hidden ${colIdx < COLUMNS.length - 1 ? 'border-r-2 border-brutal-black' : ''}`}
+            >
+              {/* Column header */}
+              <div className="shrink-0 px-2 py-1.5 border-b-2 border-brutal-black bg-white dark:bg-zinc-800 flex items-center justify-between">
+                <span className="text-[9px] font-black uppercase tracking-widest text-brutal-black dark:text-white">
+                  {col.label}
+                </span>
+                <div className="flex items-center gap-1">
+                  <span className={`text-[9px] font-black font-mono px-1.5 border-2 border-brutal-black ${col.id === 'completed' ? 'bg-brutal-green text-brutal-black' : 'bg-white dark:bg-zinc-700 text-brutal-black dark:text-white'}`}>
+                    {colItems.length}
+                  </span>
+                  <button
+                    onClick={() => setAddingIn(addingIn === col.id ? null : col.id)}
+                    className="border-2 border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[9px] font-black px-1 leading-none py-0.5"
+                    title="Add task"
+                  >
+                    ＋
+                  </button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+
+              {/* Cards */}
+              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black bg-neutral-100 dark:bg-zinc-900 p-1.5 flex flex-col gap-1.5">
+                {colItems.map(task => (
+                  <KanbanCard
+                    key={task.id}
+                    task={task}
+                    chatTitle={task.assignee ? chatTitles[task.assignee] : undefined}
+                    onStatusCycle={() => handleStatusCycle(task)}
+                    onDelete={() => deleteTask(task.id)}
+                  />
+                ))}
+
+                {addingIn === col.id && (
+                  <AddCardForm
+                    onAdd={title => handleAdd(col.id, title)}
+                    onCancel={() => setAddingIn(null)}
+                  />
+                )}
+
+                {colItems.length === 0 && addingIn !== col.id && (
+                  <button
+                    onClick={() => setAddingIn(col.id)}
+                    className="border-2 border-dashed border-brutal-black bg-transparent text-brutal-black dark:text-white text-[9px] font-black uppercase tracking-wider py-2 opacity-20 hover:opacity-60 w-full"
+                  >
+                    ＋ Add task
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

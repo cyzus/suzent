@@ -21,6 +21,7 @@ import { UserMessage, AssistantMessage, RightSidebar, MarkdownRenderer } from '.
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 import { SubAgentView } from './sidebar/SubAgentView';
+import { ProjectKanbanView } from './sidebar/ProjectKanbanView';
 import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
 import { useEventBus, isBusStreaming, subscribeToStreamEvents } from '../hooks/useEventBus';
 import { useStatusStore } from '../hooks/useStatusStore';
@@ -495,6 +496,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [subAgentTasks, setSubAgentTasks] = useState<Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>>({});
   const [viewingSubAgentTaskId, setViewingSubAgentTaskId] = useState<string | null>(null);
   const [forcedWebContextId, setForcedWebContextId] = useState<string | null>(null);
+  const [isBoardFullscreen, setIsBoardFullscreen] = useState(false);
   const [fileMentions, setFileMentions] = useState<FileMentionSelection[]>([]);
   const [visibleMessageCount, setVisibleMessageCount] = useState(INITIAL_VISIBLE_MESSAGES);
   const prependScrollSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
@@ -1424,6 +1426,27 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {/* Main Chat Column */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
+        {/* Project board full-screen overlay */}
+        {isBoardFullscreen && (
+          <div className="absolute inset-0 z-20 bg-neutral-50 dark:bg-zinc-900 overflow-hidden flex flex-col">
+            <div className="shrink-0 flex justify-end px-2 py-1 border-b-2 border-brutal-black bg-white dark:bg-zinc-800">
+              <button
+                onClick={() => setIsBoardFullscreen(false)}
+                className="border-2 border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[9px] font-black uppercase tracking-wider px-2 py-1 shadow-[1px_1px_0_0_#000] hover:shadow-none hover:translate-x-px hover:translate-y-px transition-all"
+              >
+                ✕ Close Board
+              </button>
+            </div>
+            <div className="flex-1 min-h-0">
+              <ProjectKanbanView
+                projectName={chats.find(c => c.id === currentChatId)?.projectName ?? null}
+                projectId={chats.find(c => c.id === currentChatId)?.projectId ?? null}
+                kanban={kanban}
+                chatTitles={Object.fromEntries(chats.map(c => [c.id, c.title]))}
+              />
+            </div>
+          </div>
+        )}
         <div className="relative flex-1 min-h-0">
           <div
             ref={scrollContainerRef}
@@ -1566,6 +1589,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         tasks={tasks}
         kanban={kanban}
         currentProjectName={chats.find(c => c.id === currentChatId)?.projectName ?? null}
+        currentProjectId={chats.find(c => c.id === currentChatId)?.projectId ?? null}
+        chatTitles={Object.fromEntries(chats.map(c => [c.id, c.title]))}
+        onProjectBoardChange={setIsBoardFullscreen}
         fileToPreview={sidebarFilePreview}
         onMaximizeFile={handleMaximizeFile}
         canvas={canvas}
