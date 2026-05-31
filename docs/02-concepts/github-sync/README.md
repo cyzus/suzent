@@ -247,6 +247,6 @@ No. This version replaces both with GitHub's Device Flow. If you have an existin
 ## See also
 
 - [Mnemonic (Encrypted API Sync)](./shibboleth.md) — BIP39 mnemonic, crypto details, multi-device setup
-- [Memory](../memory/README.md) — what markdown memory contains
+- [Memory](/docs/concepts/memory) — what markdown memory contains
 - [Skills](../skills/skills.md) — user skills layout
-- [Filesystem & Sandbox](../filesystem.md) — data directory layout
+- [Filesystem & Sandbox](/docs/concepts/filesystem) — data directory layout
