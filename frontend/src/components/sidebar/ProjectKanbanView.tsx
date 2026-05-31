@@ -68,7 +68,7 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({ projectNam
       {/* Header */}
       <div className="shrink-0 px-3 py-2 border-b-3 border-brutal-black bg-white dark:bg-zinc-800">
         <div className="text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-500 dark:text-neutral-400">
-          Project Board
+          {t('projectBoard.title')}
         </div>
         {projectName && (
           <div className="text-xs font-bold text-brutal-black dark:text-white mt-0.5 truncate">
@@ -77,24 +77,15 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({ projectNam
         )}
       </div>
 
-      {/* Goals summary */}
+      {/* Goals summary — compact chips */}
       {goals.length > 0 && (
-        <div className="shrink-0 px-3 py-2 border-b-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 space-y-1">
+        <div className="shrink-0 px-3 py-2 border-b border-neutral-200 dark:border-zinc-700 flex flex-wrap gap-1.5">
           {goals.map(goal => (
-            <div key={goal.id} className="flex items-start gap-2">
-              <span className="text-[9px] font-bold px-1.5 py-0.5 border border-brutal-black bg-brutal-blue text-white shrink-0 mt-0.5">
-                GOAL
+            <div key={goal.id} className="flex items-center gap-1 bg-brutal-blue/10 dark:bg-brutal-blue/20 border border-brutal-blue/40 px-2 py-0.5 max-w-full">
+              <div className="w-1.5 h-1.5 rounded-full bg-brutal-blue shrink-0 animate-pulse" />
+              <span className="text-[9px] font-bold text-brutal-black dark:text-white truncate">
+                {goal.objective}
               </span>
-              <div className="min-w-0">
-                <div className="text-[10px] font-bold text-brutal-black dark:text-white truncate">
-                  {goal.objective}
-                </div>
-                {goal.chatId && (
-                  <div className="text-[8px] font-mono text-neutral-400">
-                    chat: {goal.chatId.slice(0, 8)}…
-                  </div>
-                )}
-              </div>
             </div>
           ))}
         </div>
@@ -104,7 +95,7 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({ projectNam
       <div className="flex-1 overflow-y-auto min-h-0 p-2">
         {tasks.length === 0 ? (
           <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-400 dark:text-neutral-500 text-center pt-6">
-            {t('task.noTasks')}
+            {t('projectBoard.noTasks')}
           </div>
         ) : (
           <div className="space-y-3">
