@@ -1584,6 +1584,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         currentProjectId={chats.find(c => c.id === currentChatId)?.projectId ?? null}
         chatTitles={Object.fromEntries(chats.map(c => [c.id, c.title]))}
         onProjectBoardChange={setIsBoardFullscreen}
+        isNewChat={safeMessages.length === 0 && !showTransientAssistant && !isProbablyLoadingChatMessages}
         fileToPreview={sidebarFilePreview}
         onMaximizeFile={handleMaximizeFile}
         canvas={canvas}
