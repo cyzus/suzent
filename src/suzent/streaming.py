@@ -872,6 +872,10 @@ async def stream_agent_responses(
 
         # --- After stream completes ---
 
+        # Signal frontend to refresh goal/task sidebar.
+        if not control.cancel_event.is_set() and chat_id:
+            yield _encode_custom("plan_refresh", {})
+
         # Deliver auto-title (runs in parallel, should already be done by now)
         if title_task is not None and not control.cancel_event.is_set():
             try:

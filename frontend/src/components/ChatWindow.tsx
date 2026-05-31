@@ -473,7 +473,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     updateChatTitleLocally,
   } = useChatStore();
 
-  const { refresh: refreshGoalTasks, goal, tasks, kanban } = useGoalTasks();
+  const { refresh: refreshGoalTasks, refreshKanban, goal, tasks, kanban } = useGoalTasks();
   const { loadCoreMemory, loadStats } = useMemory();
   const canvas = useCanvas(currentChatId);
   const { t } = useI18n();
@@ -669,6 +669,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       setTimeout(() => { try { loadChat(_syncChatId, { force: true }); } catch { } }, 800);
 
       try { loadCoreMemory(); loadStats(); } catch { }
+      try { refreshGoalTasks(); refreshKanban(); } catch { }
     },
     onMarkDeferred: (surfaceId) => {
       canvas.markDeferred(surfaceId);
@@ -686,8 +687,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         if (titleChatId && title) updateChatTitleLocally(titleChatId, title);
         return;
       } else if (name === 'plan_refresh') {
-        // Legacy event — trigger goal/task refresh
+        // Refresh goal/task sidebar after agent tool calls or stream end
         refreshGoalTasks();
+        refreshKanban();
       } else if (name === 'usage_update') {
         setCurrentUsage(value);
         const chatId = streamingChatIdRef.current || activeChatIdRef.current;

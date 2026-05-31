@@ -41,6 +41,7 @@ class TaskListTool(Tool):
         db = get_database()
         tasks = db.list_tasks(
             project_id=project_id,
+            chat_id=ctx.deps.chat_id,
             status=status,
             assignee=assignee,
             include_completed=include_completed,
@@ -49,7 +50,7 @@ class TaskListTool(Tool):
         if not tasks:
             return ToolResult.success_result("No tasks found.")
 
-        lines = [f"Tasks for project [{project_id}]:"]
+        lines = ["Tasks:"]
         for task in tasks:
             assignee_str = f" ({task.assignee})" if task.assignee else ""
             blocks_str = (

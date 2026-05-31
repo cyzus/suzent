@@ -1,6 +1,6 @@
 from typing import Annotated, List, Optional
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 from pydantic_ai import RunContext
 
 from suzent.core.agent_deps import AgentDeps
@@ -11,28 +11,34 @@ from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 logger = get_logger(__name__)
 
 
+class TaskInput(BaseModel):
+    title: str = Field(description="Short task title")
+    description: str = Field(description="Detailed task description")
+    assignee: Optional[str] = Field(
+        default=None, description="Agent ID or 'main' (default)"
+    )
+    blocks: Optional[List[int]] = Field(
+        default=None, description="Task IDs this task blocks"
+    )
+    blocked_by: Optional[List[int]] = Field(
+        default=None, description="Task IDs that block this task"
+    )
+
+
 class TaskCreateTool(Tool):
     name: str = "TaskCreateTool"
-    tool_name: str = "create_task"
+    tool_name: str = "create_tasks"
     group: ToolGroup = ToolGroup.AGENT
 
     def forward(
         self,
         ctx: RunContext[AgentDeps],
-        title: Annotated[str, Field(description="Short task title")],
-        description: Annotated[str, Field(description="Detailed task description")],
-        assignee: Annotated[
-            Optional[str],
-            Field(default=None, description="Agent ID or 'main' (default)"),
-        ] = None,
-        blocks: Annotated[
-            Optional[List[int]],
-            Field(default=None, description="Task IDs this task blocks"),
-        ] = None,
-        blocked_by: Annotated[
-            Optional[List[int]],
-            Field(default=None, description="Task IDs that block this task"),
-        ] = None,
+        tasks: Annotated[
+            List[TaskInput],
+            Field(
+                description="List of tasks to create. Each task has title, description, and optional assignee/blocks/blocked_by."
+            ),
+        ],
     ) -> ToolResult:
         project_id = self._resolve_project_id(ctx)
         if not project_id:
@@ -40,17 +46,28 @@ class TaskCreateTool(Tool):
                 ToolErrorCode.INVALID_ARGUMENT,
                 "Current chat is not linked to a project.",
             )
+        if not tasks:
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                "tasks list cannot be empty.",
+            )
+
         db = get_database()
-        task = db.create_task(
-            project_id=project_id,
-            chat_id=ctx.deps.chat_id,
-            title=title,
-            description=description,
-            assignee=assignee or "main",
-            blocks=blocks or [],
-            blocked_by=blocked_by or [],
-        )
-        return ToolResult.success_result(f"Task [#{task.id}] created: {task.title}")
+        created = []
+        for t in tasks:
+            task = db.create_task(
+                project_id=project_id,
+                chat_id=ctx.deps.chat_id,
+                title=t.title,
+                description=t.description,
+                assignee=t.assignee or "main",
+                blocks=t.blocks or [],
+                blocked_by=t.blocked_by or [],
+            )
+            created.append(f"[#{task.id}] {task.title}")
+
+        lines = "\n".join(f"  {c}" for c in created)
+        return ToolResult.success_result(f"Created {len(created)} task(s):\n{lines}")
 
     def _resolve_project_id(self, ctx: RunContext[AgentDeps]) -> Optional[str]:
         chat_id = ctx.deps.chat_id
