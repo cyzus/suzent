@@ -22,9 +22,7 @@ class TaskUpdateTool(Tool):
         ctx: RunContext[AgentDeps],
         task_id: Annotated[int, Field(description="ID of the task to update")],
         status: Annotated[
-            Optional[
-                Literal["pending", "in_progress", "completed", "blocked", "cancelled"]
-            ],
+            Optional[Literal["pending", "in_progress", "completed", "cancelled"]],
             Field(default=None),
         ] = None,
         assignee: Annotated[

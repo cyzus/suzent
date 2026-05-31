@@ -120,11 +120,15 @@ export const GoalTaskView: React.FC<GoalTaskViewProps> = ({ goal, tasks }) => {
                   </span>
                   <div className="min-w-0">
                     <div className="text-xs font-bold leading-snug text-brutal-black dark:text-white">
-                      {task.title}
+                      {task.status === 'in_progress' && task.activeForm
+                        ? task.activeForm
+                        : task.title}
                     </div>
-                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400 leading-snug mt-0.5">
-                      {task.description}
-                    </div>
+                    {task.status !== 'in_progress' && (
+                      <div className="text-[10px] text-neutral-500 dark:text-neutral-400 leading-snug mt-0.5">
+                        {task.description}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <span className={`text-[9px] font-bold px-1 py-0.5 border border-brutal-black shrink-0 whitespace-nowrap ${TASK_STATUS_COLORS[task.status]}`}>

@@ -125,7 +125,9 @@ export const ProjectKanbanView: React.FC<ProjectKanbanViewProps> = ({ projectNam
                             #{task.id}
                           </span>
                           <span className="text-[11px] font-bold text-brutal-black dark:text-white leading-snug">
-                            {task.title}
+                            {task.status === 'in_progress' && task.activeForm
+                              ? task.activeForm
+                              : task.title}
                           </span>
                         </div>
                         <span className={`text-[8px] font-bold px-1 py-0.5 border border-brutal-black shrink-0 ${BADGE_COLORS[task.status]}`}>

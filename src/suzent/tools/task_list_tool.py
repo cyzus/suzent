@@ -41,7 +41,6 @@ class TaskListTool(Tool):
         db = get_database()
         tasks = db.list_tasks(
             project_id=project_id,
-            chat_id=ctx.deps.chat_id,
             status=status,
             assignee=assignee,
             include_completed=include_completed,

@@ -33,7 +33,6 @@ async def plan_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
 
     active_tasks = db.list_tasks(
         project_id=project_id,
-        chat_id=chat_id,
         include_completed=False,
         include_cancelled=False,
     )

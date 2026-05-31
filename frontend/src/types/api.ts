@@ -99,6 +99,7 @@ export interface Project {
 }
 
 export type GoalStatus = 'active' | 'paused' | 'completed' | 'cancelled';
+// 'blocked' is derived on the backend from blockedBy being non-empty — not stored as a DB status
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'blocked' | 'cancelled';
 
 export interface Goal {
@@ -121,6 +122,7 @@ export interface Task {
   chatId?: string | null;
   title: string;
   description: string;
+  activeForm?: string | null;
   status: TaskStatus;
   assignee?: string | null;
   blocks: number[];

@@ -23,13 +23,19 @@ def _goal_to_dict(goal) -> dict:
 
 
 def _task_to_dict(task) -> dict:
+    # Derive blocked state from blocked_by instead of storing it as explicit status
+    blocked_by = task.blocked_by or []
+    effective_status = (
+        "blocked" if blocked_by and task.status == "pending" else task.status
+    )
     return {
         "id": task.id,
         "projectId": task.project_id,
         "chatId": task.chat_id,
         "title": task.title,
         "description": task.description,
-        "status": task.status,
+        "activeForm": task.active_form,
+        "status": effective_status,
         "assignee": task.assignee,
         "blocks": task.blocks or [],
         "blockedBy": task.blocked_by or [],

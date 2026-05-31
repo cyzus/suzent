@@ -256,15 +256,17 @@ class DatabaseMigrationMixin:
             task_cols = [
                 col["name"] for col in inspect(self.engine).get_columns("tasks")
             ]
-            if "chat_id" not in task_cols:
-                with self.engine.connect() as conn:
+            with self.engine.connect() as conn:
+                if "chat_id" not in task_cols:
                     conn.execute(text("ALTER TABLE tasks ADD COLUMN chat_id TEXT"))
                     conn.execute(
                         text(
                             "CREATE INDEX IF NOT EXISTS ix_tasks_chat_id ON tasks(chat_id)"
                         )
                     )
-                    conn.commit()
+                if "active_form" not in task_cols:
+                    conn.execute(text("ALTER TABLE tasks ADD COLUMN active_form TEXT"))
+                conn.commit()
 
     def _migrate_static_config_from_db(self) -> None:
         inspector = inspect(self.engine)

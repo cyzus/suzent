@@ -14,6 +14,10 @@ logger = get_logger(__name__)
 class TaskInput(BaseModel):
     title: str = Field(description="Short task title")
     description: str = Field(description="Detailed task description")
+    active_form: Optional[str] = Field(
+        default=None,
+        description="Present-continuous display text shown while in progress, e.g. 'Setting up environment'",
+    )
     assignee: Optional[str] = Field(
         default=None, description="Agent ID or 'main' (default)"
     )
@@ -60,6 +64,7 @@ class TaskCreateTool(Tool):
                 chat_id=ctx.deps.chat_id,
                 title=t.title,
                 description=t.description,
+                active_form=t.active_form,
                 assignee=t.assignee or "main",
                 blocks=t.blocks or [],
                 blocked_by=t.blocked_by or [],

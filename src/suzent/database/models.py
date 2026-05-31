@@ -162,9 +162,12 @@ class TaskModel(SQLModel, table=True):
     chat_id: Optional[str] = Field(default=None, index=True)  # owning chat session
     title: str
     description: str
+    active_form: Optional[str] = (
+        None  # present-continuous display text, e.g. "Setting up environment"
+    )
     status: str = Field(
         default="pending"
-    )  # pending | in_progress | completed | blocked | cancelled
+    )  # pending | in_progress | completed | cancelled
     assignee: Optional[str] = None
     blocks: list = Field(default_factory=list, sa_column=Column(JSON))
     blocked_by: list = Field(default_factory=list, sa_column=Column(JSON))
