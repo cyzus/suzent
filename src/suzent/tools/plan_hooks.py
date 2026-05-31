@@ -20,15 +20,23 @@ async def plan_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
     if goal and goal.status == "active":
         has_active_content = True
         turns_info = ""
+        over_budget = False
         if goal.max_turns:
             remaining = goal.max_turns - goal.turns_elapsed
             turns_info = f" ({goal.turns_elapsed}/{goal.max_turns} turns used, {remaining} remaining)"
+            over_budget = remaining <= 0
         parts.append(f"[ACTIVE GOAL] {goal.objective}{turns_info}")
         for sg in goal.subgoals:
             parts.append(f"  - {sg}")
-        parts.append(
-            "Evaluate: if the goal is achieved call manage_goal(action='clear'). Otherwise keep working."
-        )
+        if over_budget:
+            parts.append(
+                "**WARNING: turn budget exhausted.** You must stop working on this goal, "
+                "call manage_goal(action='pause') immediately, and inform the user."
+            )
+        else:
+            parts.append(
+                "Evaluate: if the goal is achieved call manage_goal(action='clear'). Otherwise keep working."
+            )
         db.update_goal(goal.id, turns_elapsed=goal.turns_elapsed + 1)
 
     active_tasks = db.list_tasks(

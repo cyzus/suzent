@@ -125,7 +125,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     ),
   ));
   const hasGoalContent = Boolean(goal !== null || tasks.length > 0);
-  const hasKanbanContent = Boolean(onProjectBoardChange);
 
   // ── Tab definitions ─────────────────────────────────────────────────
   const tabs: TabConfig[] = [

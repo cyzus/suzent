@@ -47,12 +47,19 @@ class TaskUpdateTool(Tool):
                 ToolErrorCode.NOT_FOUND, f"Task [#{task_id}] not found."
             )
 
+        project_id = self._resolve_project_id(ctx)
+        if project_id and task.project_id != project_id:
+            return ToolResult.error_result(
+                ToolErrorCode.INVALID_ARGUMENT,
+                f"Task [#{task_id}] does not belong to the current project.",
+            )
+
         updates = {}
         if status is not None:
             updates["status"] = status
             if status == "completed":
                 updates["completed_at"] = datetime.now(timezone.utc)
-            elif status in ("pending", "in_progress"):
+            else:
                 updates["completed_at"] = None
         if assignee is not None:
             updates["assignee"] = assignee
@@ -85,3 +92,9 @@ class TaskUpdateTool(Tool):
                 msg += "\n\n**All project tasks completed.** Use manage_goal(action='status') to verify the goal or manage_goal(action='clear') to close it."
 
         return ToolResult.success_result(msg)
+
+    def _resolve_project_id(self, ctx: RunContext[AgentDeps]) -> Optional[str]:
+        chat_id = ctx.deps.chat_id
+        if not chat_id:
+            return None
+        return get_database().get_chat_project_id(chat_id)

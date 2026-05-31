@@ -39,13 +39,17 @@ class TaskListTool(Tool):
                 "Current chat is not linked to a project.",
             )
         db = get_database()
+        # "blocked" is a derived status (pending + non-empty blocked_by), not stored in DB
+        db_status = None if status == "blocked" else status
         tasks = db.list_tasks(
             project_id=project_id,
-            status=status,
+            status=db_status,
             assignee=assignee,
             include_completed=include_completed,
             include_cancelled=include_cancelled,
         )
+        if status == "blocked":
+            tasks = [t for t in tasks if t.blocked_by]
         if not tasks:
             return ToolResult.success_result("No tasks found.")
 

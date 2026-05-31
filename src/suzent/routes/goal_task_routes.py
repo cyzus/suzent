@@ -145,6 +145,7 @@ async def create_project_task(request: Request) -> JSONResponse:
             project_id=project_id,
             title=title,
             description=body.get("description") or "",
+            status=body.get("status") or "pending",
             chat_id=body.get("chat_id"),
             assignee=body.get("chat_id") or "human",
         )

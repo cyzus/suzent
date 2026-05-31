@@ -37,7 +37,7 @@ class TaskCreateTool(Tool):
         tasks: Annotated[
             List[TaskInput],
             Field(
-                description="List of tasks to create. Each task has title, description, and optional assignee/blocks/blocked_by."
+                description="List of tasks to create. Each task has title, description, and optional blocks/blocked_by."
             ),
         ],
     ) -> ToolResult:
