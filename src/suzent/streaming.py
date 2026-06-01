@@ -417,6 +417,36 @@ async def stream_agent_responses(
     if chat_id:
         register_active_stream(chat_id, out_queue)
 
+    # --- Mid-run checkpoint helper ---
+    async def _save_mid_run_checkpoint(messages: list) -> None:
+        """Persist a partial agent state snapshot after each completed tool batch.
+
+        Called as a fire-and-forget task so it never blocks the stream. On
+        disconnect the DB will have the last completed tool batch saved, letting
+        the next turn resume from there instead of from the start of the run.
+        """
+        if not chat_id or not messages:
+            return
+        try:
+            from suzent.core.agent_serializer import serialize_state
+            from suzent.database import get_database as _ckpt_get_db
+
+            _model_id = getattr(agent, "_model_id", None)
+            _tool_names = getattr(agent, "_tool_names", [])
+
+            def _sync_save() -> None:
+                _st = serialize_state(
+                    messages, model_id=_model_id, tool_names=_tool_names
+                )
+                _ckpt_get_db().update_chat(chat_id, agent_state=_st)
+
+            await asyncio.to_thread(_sync_save)
+            logger.debug(
+                f"[Streaming] Mid-run checkpoint saved ({len(messages)} messages)"
+            )
+        except Exception as _ckpt_err:
+            logger.debug(f"[Streaming] Mid-run checkpoint failed: {_ckpt_err}")
+
     # --- Background agent runner (stateless resume) ---
     async def _agent_runner() -> None:
         """Run the agent in a background task.
@@ -445,6 +475,16 @@ async def stream_agent_responses(
                     if current_deferred:
                         run_kwargs["deferred_tool_results"] = current_deferred
 
+                    # Per-run accumulators for mid-run checkpointing.
+                    # _chk_resp_parts: index → complete ModelResponsePart (from PartEndEvent)
+                    # _chk_tool_returns: ToolReturnParts collected this batch
+                    # _chk_in_flight: tool calls awaiting their result event
+                    # _chk_base: the message history baseline for this run iteration
+                    _chk_resp_parts: Dict[int, Any] = {}
+                    _chk_tool_returns: list = []
+                    _chk_in_flight: int = 0
+                    _chk_base: list = list(history or [])
+
                     last_run_result = None
                     logger.debug("[Streaming] Calling agent.run_stream_events()...")
                     async for event in _iter_stream_events_with_timeout(
@@ -456,6 +496,48 @@ async def stream_agent_responses(
                             logger.debug(
                                 f"[Streaming] Received event from agent: {type(event).__name__}"
                             )
+
+                            # ── Mid-run checkpoint tracking ──────────────────
+                            _event_kind = getattr(event, "event_kind", "")
+                            if _event_kind == "part_end":
+                                # Collect the complete part (not a delta) so we
+                                # can reconstruct a valid ModelResponse later.
+                                _chk_resp_parts[event.index] = event.part
+                            elif _event_kind == "function_tool_call":
+                                _chk_in_flight += 1
+                            elif _event_kind == "function_tool_result":
+                                from pydantic_ai.messages import (
+                                    ToolReturnPart as _TRP,
+                                    ModelResponse as _MResp,
+                                    ModelRequest as _MReq,
+                                )
+                                if isinstance(event.result, _TRP):
+                                    _chk_tool_returns.append(event.result)
+                                _chk_in_flight = max(0, _chk_in_flight - 1)
+                                if _chk_in_flight == 0 and _chk_tool_returns:
+                                    # All tools in this batch have completed.
+                                    # Build a proper checkpoint from accumulated parts.
+                                    _resp_parts = [
+                                        _chk_resp_parts[i]
+                                        for i in sorted(_chk_resp_parts)
+                                    ]
+                                    _checkpoint = _chk_base + [
+                                        _MResp(parts=_resp_parts),
+                                        _MReq(parts=list(_chk_tool_returns)),
+                                    ]
+                                    asyncio.create_task(
+                                        _save_mid_run_checkpoint(_checkpoint)
+                                    )
+                                    # Also update partial_history so the finally
+                                    # block has the latest state on crash/cancel.
+                                    partial_history = _checkpoint
+                                    # Advance base and reset per-batch state
+                                    # so the next tool batch starts clean.
+                                    _chk_base = list(_checkpoint)
+                                    _chk_resp_parts = {}
+                                    _chk_tool_returns = []
+                            # ────────────────────────────────────────────────
+
                             if isinstance(event, AgentRunResultEvent):
                                 last_run_result = event.result
                                 final_response_text = str(event.result.output)
