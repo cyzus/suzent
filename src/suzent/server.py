@@ -38,6 +38,7 @@ from suzent.routes.chat_routes import (
     mark_chat_read,
     retry_chat,
     steer_chat,
+    steer_chat_send,
     stop_chat,
     update_chat,
 )
@@ -681,6 +682,7 @@ app = Starlette(
         Route("/chat/live", live_stream, methods=["POST"]),
         Route("/chat/stop", stop_chat, methods=["POST"]),
         Route("/chat/steer", steer_chat, methods=["POST"]),
+        Route("/chat/steer-send", steer_chat_send, methods=["POST"]),
         Route("/chat/approve-tool", approve_tool, methods=["POST"]),
         Route("/chat/deactivate-tool", deactivate_tool, methods=["POST"]),
         Route("/chat/compact", compact_chat, methods=["POST"]),

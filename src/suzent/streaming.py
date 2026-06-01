@@ -782,18 +782,52 @@ async def stream_agent_responses(
 
                 elif msg_type == "approval":
                     # HITL: emit as AG-UI CustomEvent with all approval info
+                    approval_info = {
+                        "approvalId": payload["request_id"],
+                        "toolCallId": payload.get("tool_call_id")
+                        or payload["request_id"],
+                        "toolName": payload.get("tool_name", ""),
+                        "args": payload.get("args", {}),
+                        "chatId": chat_id,
+                    }
                     await _queue_custom_event(
                         out_queue,
                         "tool_approval_request",
-                        {
-                            "approvalId": payload["request_id"],
-                            "toolCallId": payload.get("tool_call_id")
-                            or payload["request_id"],
-                            "toolName": payload.get("tool_name", ""),
-                            "args": payload.get("args", {}),
-                            "chatId": chat_id,
-                        },
+                        approval_info,
                     )
+                    # Persist pending approval to DB so the frontend can
+                    # reconstruct the approval dialog after a page refresh.
+                    if chat_id:
+                        try:
+                            from suzent.database import get_database as _get_db
+
+                            def _save_pending_approval():
+                                _db = _get_db()
+                                _chat = _db.get_chat(chat_id)
+                                if _chat is not None:
+                                    _cfg = dict(_chat.config or {})
+                                    # Accumulate multiple pending approvals
+                                    existing = _cfg.get("_pending_approvals") or []
+                                    if isinstance(existing, list):
+                                        existing = [
+                                            a for a in existing
+                                            if a.get("toolCallId") != approval_info["toolCallId"]
+                                        ]
+                                    else:
+                                        existing = []
+                                    existing.append({
+                                        "approvalId": approval_info["approvalId"],
+                                        "toolCallId": approval_info["toolCallId"],
+                                        "toolName": approval_info["toolName"],
+                                        "args": approval_info["args"],
+                                        "savedAt": __import__("datetime").datetime.utcnow().isoformat(),
+                                    })
+                                    _cfg["_pending_approvals"] = existing
+                                    _db.update_chat(chat_id, config=_cfg)
+
+                            await asyncio.to_thread(_save_pending_approval)
+                        except Exception as _pa_err:
+                            logger.debug(f"[Streaming] Failed to save pending_approval: {_pa_err}")
 
                 elif msg_type == "tool_recovery":
                     # HITL: emit recovered tool result with output
@@ -915,6 +949,28 @@ async def stream_agent_responses(
             if not getattr(deps, "is_suspended", False):
                 # Stream ended (not paused for approvals), drop any stale cache.
                 pop_pending_auto_approvals(chat_id)
+                # Clear persisted pending approvals so the frontend doesn't
+                # show a stale dialog on next load.
+                try:
+                    from suzent.database import get_database as _get_db2
+
+                    async def _clear_pending_approvals_task():
+                        try:
+                            def _sync_clear():
+                                _db2 = _get_db2()
+                                _chat2 = _db2.get_chat(chat_id)
+                                if _chat2 is not None:
+                                    _cfg2 = dict(_chat2.config or {})
+                                    if "_pending_approvals" in _cfg2:
+                                        del _cfg2["_pending_approvals"]
+                                        _db2.update_chat(chat_id, config=_cfg2)
+                            await asyncio.to_thread(_sync_clear)
+                        except Exception:
+                            pass
+
+                    asyncio.create_task(_clear_pending_approvals_task())
+                except Exception as _cp_err:
+                    logger.debug(f"[Streaming] Failed to clear pending_approvals: {_cp_err}")
 
             existing = stream_controls.get(chat_id)
             if existing is control:

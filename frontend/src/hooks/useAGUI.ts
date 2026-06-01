@@ -35,6 +35,11 @@ interface UseAGUIReturn {
   /** Read the current parts synchronously (e.g. to snapshot before switching chats) */
   getParts: () => AGUIPart[];
   clearParts: () => void;
+  /**
+   * Restore saved parts directly (e.g. after a page refresh) without starting a
+   * new stream. Used to re-display pending tool-approval dialogs from sessionStorage.
+   */
+  restorePartsFromSeed: (seed: AGUIPart[]) => void;
   /** Remove an inline A2UI surface part by surface id (e.g. after ask_question is answered) */
   removeInlineSurface: (surfaceId: string) => void;
   /** Optimistically resolve a tool approval (instantly updates UI before backend responds) */
@@ -465,6 +470,14 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
 
   const getParts = useCallback(() => partsRef.current, []);
 
+  const restorePartsFromSeed = useCallback((seed: AGUIPart[]) => {
+    setParts(seed);
+    partsRef.current = seed;
+    setStatus('idle');
+    const approvalCount = seed.filter(p => p.type === 'tool' && p.state === 'approval-requested').length;
+    setPendingApprovalCountSync(approvalCount);
+  }, [setPendingApprovalCountSync]);
+
   // Optimistically update a tool part's state when user approves/denies
   // so buttons disappear instantly (no waiting for backend round-trip)
   const resolveApproval = useCallback((approvalId: string, approved: boolean) => {
@@ -883,5 +896,5 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     }
   }, [resetApprovalTracking, setPendingApprovalCountSync]);
 
-  return { parts, status, error, sendMessage, resumeStream, steerStream, stop, stopSilently, getParts, clearParts, removeInlineSurface, resolveApproval, pendingApprovalCount, addApprovalDecision, consumeApprovalDecisions };
+  return { parts, status, error, sendMessage, resumeStream, steerStream, stop, stopSilently, getParts, clearParts, restorePartsFromSeed, removeInlineSurface, resolveApproval, pendingApprovalCount, addApprovalDecision, consumeApprovalDecisions };
 }

@@ -219,6 +219,9 @@ async def chat_send(request: Request) -> JSONResponse:
     Returns 202 immediately. The response streams through /chat/live
     and is observable via /events/stream, enabling the frontend to
     watch other chats while this one processes.
+
+    Also accepts ``resume_approvals`` to resume a paused tool-approval stream
+    without a direct SSE connection (reconnectable after page refresh).
     """
     try:
         data = await request.json()
@@ -230,10 +233,11 @@ async def chat_send(request: Request) -> JSONResponse:
     config = data.get("config", {})
     files_list = data.get("files", [])
     file_mentions = data.get("file_mentions", [])
+    resume_approvals = data.get("resume_approvals", [])
 
     if not chat_id:
         return JSONResponse({"error": "chat_id is required"}, status_code=400)
-    if not message and not files_list:
+    if not message and not files_list and not resume_approvals:
         return JSONResponse({"error": "Empty message"}, status_code=400)
     from suzent.core.chat_processor import ChatProcessor
     from suzent.agent_manager import build_agent_config
@@ -253,11 +257,70 @@ async def chat_send(request: Request) -> JSONResponse:
                 files=files_list,
                 file_mentions=file_mentions,
                 config_override=config_override,
+                resume_approvals=resume_approvals or [],
             )
             async for chunk in generator:
                 await stream_queue.put(chunk)
         except Exception as exc:
             logger.error(f"[chat_send] Background turn error for {chat_id}: {exc}")
+            error_payload = (
+                f'data: {{"type":"RUN_ERROR","message":{json.dumps(str(exc))}}}\n\n'
+            )
+            try:
+                await stream_queue.put(error_payload)
+            except Exception:
+                pass
+        finally:
+            await stream_queue.put(None)
+
+    task = asyncio.create_task(_run())
+    _chat_send_tasks.add(task)
+    task.add_done_callback(_chat_send_tasks.discard)
+    return JSONResponse({"chat_id": chat_id}, status_code=202)
+
+
+async def steer_chat_send(request: Request) -> JSONResponse:
+    """
+    POST /chat/steer-send — Interrupt the current agent run and redirect via background queue.
+
+    Returns 202 immediately. The steer response streams through /chat/live so the
+    frontend can reconnect after a page refresh, matching the behaviour of /chat/send.
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    chat_id = data.get("chat_id")
+    message = data.get("message", "").strip()
+    config = data.get("config", {})
+
+    if not chat_id:
+        return JSONResponse({"error": "chat_id is required"}, status_code=400)
+    if not message:
+        return JSONResponse({"error": "message is required"}, status_code=400)
+
+    from suzent.core.chat_processor import ChatProcessor
+    from suzent.agent_manager import build_agent_config
+
+    processor = ChatProcessor()
+    config_override = build_agent_config(config, require_social_tool=False)
+    stream_queue = try_register_background_stream(chat_id)
+    if stream_queue is None:
+        return JSONResponse({"error": "Chat is already streaming"}, status_code=409)
+
+    async def _run() -> None:
+        try:
+            generator = processor.process_steer(
+                chat_id=chat_id,
+                user_id=CONFIG.user_id,
+                steer_message=message,
+                config_override=config_override,
+            )
+            async for chunk in generator:
+                await stream_queue.put(chunk)
+        except Exception as exc:
+            logger.error(f"[steer_send] Background steer error for {chat_id}: {exc}")
             error_payload = (
                 f'data: {{"type":"RUN_ERROR","message":{json.dumps(str(exc))}}}\n\n'
             )
