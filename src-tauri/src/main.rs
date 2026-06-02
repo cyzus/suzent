@@ -1,5 +1,5 @@
-// Prevents additional console window on Windows in release builds
-// REMOVED: #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Prevents an extra console window on Windows in release builds.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod backend;
 
@@ -11,6 +11,9 @@ use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{Emitter, Manager, State};
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 struct AppState {
     backend: Mutex<Option<BackendProcess>>,
@@ -27,6 +30,12 @@ struct BootstrapStatus {
 #[derive(Deserialize)]
 struct BootstrapStageRequest {
     stage: String,
+    dir: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct InstallWorkspaceRequest {
+    dir: String,
 }
 
 #[tauri::command]
@@ -48,7 +57,8 @@ fn check_for_update() -> Result<String, String> {
     let repo_dir = backend::find_repo_dir();
     let uv_exe = backend::find_uv();
 
-    let output = Command::new(&uv_exe)
+    let mut command = Command::new(&uv_exe);
+    command
         .args([
             "run",
             "--no-sync",
@@ -59,7 +69,9 @@ fn check_for_update() -> Result<String, String> {
         ])
         .current_dir(&repo_dir)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    hide_command_window(&mut command);
+    let output = command
         .output()
         .map_err(|e| format!("Failed to check for updates: {}", e))?;
 
@@ -121,7 +133,12 @@ fn bootstrap_manifest() -> Result<String, String> {
 fn run_bootstrap_stage(request: BootstrapStageRequest) -> Result<String, String> {
     let installer = find_bootstrap_installer()
         .ok_or_else(|| "Suzent installer helper was not found.".to_string())?;
-    let workspace = backend::find_install_workspace_dir();
+    let workspace = request
+        .dir
+        .as_deref()
+        .filter(|dir| !dir.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(backend::find_install_workspace_dir);
     let workspace_arg = workspace.display().to_string();
     run_installer_json(
         &installer,
@@ -134,6 +151,16 @@ fn run_bootstrap_stage(request: BootstrapStageRequest) -> Result<String, String>
             workspace_arg.as_str(),
         ],
     )
+}
+
+#[tauri::command]
+fn set_install_workspace(request: InstallWorkspaceRequest) -> Result<BootstrapStatus, String> {
+    let dir = request.dir.trim();
+    if dir.is_empty() {
+        return Err("Install directory cannot be empty.".to_string());
+    }
+    backend::persist_install_workspace_dir(&PathBuf::from(dir))?;
+    Ok(bootstrap_status())
 }
 
 #[tauri::command]
@@ -190,10 +217,13 @@ fn find_bootstrap_installer() -> Option<PathBuf> {
 }
 
 fn run_installer_json(installer: &Path, args: &[&str]) -> Result<String, String> {
-    let output = Command::new(installer)
+    let mut command = Command::new(installer);
+    command
         .args(args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    hide_command_window(&mut command);
+    let output = command
         .output()
         .map_err(|e| format!("Failed to run installer helper: {}", e))?;
 
@@ -341,10 +371,13 @@ fi\n\
 
 fn spawn_update_script(script: &Path) -> Result<(), String> {
     if cfg!(windows) {
-        Command::new("cmd")
+        let mut command = Command::new("cmd");
+        command
             .args(["/C", "start", "Suzent Update"])
             .arg(script)
-            .current_dir(script.parent().unwrap_or_else(|| Path::new(".")))
+            .current_dir(script.parent().unwrap_or_else(|| Path::new(".")));
+        hide_command_window(&mut command);
+        command
             .spawn()
             .map_err(|e| format!("Failed to start update script: {}", e))?;
     } else {
@@ -357,6 +390,15 @@ fn spawn_update_script(script: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(windows)]
+fn hide_command_window(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn hide_command_window(_command: &mut Command) {}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -365,13 +407,14 @@ fn main() {
         let repo_dir = backend::find_repo_dir();
         let uv_exe = backend::find_uv();
 
-        let status = std::process::Command::new(&uv_exe)
+        let mut command = std::process::Command::new(&uv_exe);
+        command
             .arg("run")
             .arg("--no-sync")
             .arg("suzent")
             .args(&args[1..])
-            .current_dir(&repo_dir)
-            .status();
+            .current_dir(&repo_dir);
+        let status = command.status();
 
         match status {
             Ok(s) => std::process::exit(s.code().unwrap_or(1)),
@@ -396,7 +439,15 @@ fn main() {
                 backend: Mutex::new(None),
             });
 
-            spawn_backend_start(app.handle().clone());
+            let status = bootstrap_status();
+            if status.required {
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let _ = app_handle.emit("bootstrap-required", status);
+                });
+            } else {
+                spawn_backend_start(app.handle().clone());
+            }
 
             Ok(())
         })
@@ -407,6 +458,7 @@ fn main() {
             bootstrap_status,
             bootstrap_manifest,
             run_bootstrap_stage,
+            set_install_workspace,
             retry_backend_start
         ])
         .plugin(tauri_plugin_shell::init())
@@ -428,10 +480,14 @@ fn read_port_file() -> Option<u16> {
 fn get_backend_config(app_handle: &tauri::AppHandle) -> Result<(u16, BackendProcess), String> {
     let _ = app_handle;
 
-    if std::env::var("SUZENT_DIR")
+    let install_test_mode = std::env::var("SUZENT_DIR")
         .map(|dir| !dir.trim().is_empty())
         .unwrap_or(false)
-    {
+        || std::env::var("SUZENT_FORCE_BOOTSTRAP")
+            .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+
+    if install_test_mode {
         let repo_dir = backend::find_install_workspace_dir();
         if !backend::is_workspace_bootstrapped(&repo_dir) {
             return Err("bootstrap-required".to_string());

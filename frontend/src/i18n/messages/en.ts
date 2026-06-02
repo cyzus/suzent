@@ -35,6 +35,8 @@ export const en = {
     windowTitle: 'Suzent Setup',
     start: 'Install',
     running: 'Installing...',
+    changeDir: 'Change',
+    chooseInstallDir: 'Choose Suzent install folder',
     installerMissing: 'Installer helper not found. Rebuild the desktop bundle with the installer helper included.',
     stageFailed: '{stage} failed',
     state: {
@@ -53,6 +55,7 @@ export const en = {
       dependencies: 'Installing dependencies',
       ui: 'Downloading desktop app',
       playwright: 'Installing Chromium',
+      shortcuts: 'Creating shortcuts',
       shim: 'Writing launcher',
     },
   },

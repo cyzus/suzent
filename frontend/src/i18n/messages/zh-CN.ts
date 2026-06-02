@@ -35,6 +35,8 @@ export const zhCN = {
     windowTitle: 'Suzent 安装',
     start: '安装',
     running: '正在安装...',
+    changeDir: '更改',
+    chooseInstallDir: '选择 Suzent 安装文件夹',
     installerMissing: '未找到安装助手。请重新构建桌面包并包含安装助手。',
     stageFailed: '{stage} 失败',
     state: {
@@ -53,6 +55,7 @@ export const zhCN = {
       dependencies: '安装依赖',
       ui: '下载桌面应用',
       playwright: '安装 Chromium',
+      shortcuts: '创建快捷方式',
       shim: '写入启动器',
     },
   },

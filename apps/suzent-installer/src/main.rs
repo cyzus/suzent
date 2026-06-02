@@ -2,7 +2,7 @@ use serde::Serialize;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Instant;
 
@@ -10,6 +10,9 @@ const PROTOCOL_VERSION: u16 = 1;
 const TARGET_PYTHON_VERSION: &str = "3.12";
 const DEFAULT_BRANCH: &str = "main";
 const REPO_URL: &str = "https://github.com/cyzus/suzent.git";
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Clone, Copy)]
 struct InstallStage {
@@ -193,6 +196,13 @@ fn stages() -> Vec<InstallStage> {
             worker: stage_playwright,
         },
         InstallStage {
+            name: "shortcuts",
+            title: "Creating desktop shortcuts",
+            category: "finalize",
+            needs_user_input: false,
+            worker: stage_shortcuts,
+        },
+        InstallStage {
             name: "shim",
             title: "Writing CLI shim",
             category: "finalize",
@@ -262,7 +272,8 @@ fn stage_git(_config: &InstallConfig) -> StageOutcome {
 
     if cfg!(windows) && find_executable("winget").is_some() {
         print_human("Installing Git via winget...");
-        let status = Command::new("winget")
+        let mut command = Command::new("winget");
+        command
             .args([
                 "install",
                 "--id",
@@ -274,8 +285,9 @@ fn stage_git(_config: &InstallConfig) -> StageOutcome {
                 "--silent",
             ])
             .stdout(child_stdio())
-            .stderr(child_stdio())
-            .status();
+            .stderr(child_stdio());
+        hide_command_window(&mut command);
+        let status = command.status();
 
         if matches!(status, Ok(s) if s.success()) && find_git_after_install().is_some() {
             print_human("[OK] Git installed");
@@ -294,7 +306,8 @@ fn stage_uv(_config: &InstallConfig) -> StageOutcome {
 
     print_human("Installing uv...");
     let status = if cfg!(windows) {
-        Command::new("powershell")
+        let mut command = Command::new("powershell");
+        command
             .args([
                 "-NoProfile",
                 "-ExecutionPolicy",
@@ -303,14 +316,16 @@ fn stage_uv(_config: &InstallConfig) -> StageOutcome {
                 "irm https://astral.sh/uv/install.ps1 | iex",
             ])
             .stdout(child_stdio())
-            .stderr(child_stdio())
-            .status()
+            .stderr(child_stdio());
+        hide_command_window(&mut command);
+        command.status()
     } else {
-        Command::new("sh")
+        let mut command = Command::new("sh");
+        command
             .args(["-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"])
             .stdout(child_stdio())
-            .stderr(child_stdio())
-            .status()
+            .stderr(child_stdio());
+        command.status()
     };
 
     if matches!(status, Ok(s) if s.success()) && find_uv_after_install().is_some() {
@@ -326,11 +341,13 @@ fn stage_python(_config: &InstallConfig) -> StageOutcome {
         return StageOutcome::fail("uv is not installed; run the uv stage first.");
     };
 
-    let found = Command::new(&uv)
+    let mut find_command = Command::new(&uv);
+    find_command
         .args(["python", "find", TARGET_PYTHON_VERSION])
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output();
+        .stderr(Stdio::null());
+    hide_command_window(&mut find_command);
+    let found = find_command.output();
 
     if matches!(found, Ok(out) if out.status.success()) {
         print_human(format!(
@@ -342,11 +359,13 @@ fn stage_python(_config: &InstallConfig) -> StageOutcome {
     print_human(format!(
         "Python {TARGET_PYTHON_VERSION} not found through uv. Installing..."
     ));
-    let status = Command::new(&uv)
+    let mut install_command = Command::new(&uv);
+    install_command
         .args(["python", "install", TARGET_PYTHON_VERSION])
         .stdout(child_stdio())
-        .stderr(child_stdio())
-        .status();
+        .stderr(child_stdio());
+    hide_command_window(&mut install_command);
+    let status = install_command.status();
 
     if matches!(status, Ok(s) if s.success()) {
         print_human(format!("[OK] Python {TARGET_PYTHON_VERSION} installed"));
@@ -370,12 +389,14 @@ fn stage_repository(config: &InstallConfig) -> StageOutcome {
         ) {
             return StageOutcome::fail("Failed to fetch repository updates.");
         }
-        let _ = Command::new(&git)
+        let mut checkout_command = Command::new(&git);
+        checkout_command
             .args(["checkout", &config.branch])
             .current_dir(&config.dir)
             .stdout(child_stdio())
-            .stderr(child_stdio())
-            .status();
+            .stderr(child_stdio());
+        hide_command_window(&mut checkout_command);
+        let _ = checkout_command.status();
         if !run_command(
             Command::new(&git)
                 .args(["pull", "origin", &config.branch])
@@ -480,6 +501,16 @@ fn stage_ui(config: &InstallConfig) -> StageOutcome {
         return StageOutcome::fail(format!("Failed to install UI binary: {error}"));
     }
 
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(metadata) = fs::metadata(&dest) {
+            let mut permissions = metadata.permissions();
+            permissions.set_mode(0o755);
+            let _ = fs::set_permissions(&dest, permissions);
+        }
+    }
+
     let _ = fs::write(bin_dir.join("version.txt"), "latest");
     print_human(format!("[OK] UI binary ready at {}", dest.display()));
     StageOutcome::ok()
@@ -507,6 +538,257 @@ fn stage_playwright(config: &InstallConfig) -> StageOutcome {
     }
 }
 
+fn stage_shortcuts(config: &InstallConfig) -> StageOutcome {
+    let ui = config.dir.join("bin").join(ui_binary_name());
+    if !ui.exists() {
+        return StageOutcome::skipped(format!(
+            "Desktop UI binary not found at {}; shortcut creation skipped.",
+            ui.display()
+        ));
+    }
+
+    if cfg!(windows) {
+        return create_windows_shortcuts(config, &ui);
+    }
+    if cfg!(target_os = "linux") {
+        return create_linux_shortcuts(config, &ui);
+    }
+    if cfg!(target_os = "macos") {
+        return create_macos_shortcuts(config, &ui);
+    }
+
+    StageOutcome::skipped("Shortcut creation is not implemented for this platform yet.")
+}
+
+#[cfg(windows)]
+fn create_windows_shortcuts(config: &InstallConfig, ui: &std::path::Path) -> StageOutcome {
+    let desktop = dirs_home().join("Desktop").join("Suzent.lnk");
+    let start_menu = env::var("APPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| dirs_home().join("AppData").join("Roaming"))
+        .join("Microsoft")
+        .join("Windows")
+        .join("Start Menu")
+        .join("Programs")
+        .join("Suzent.lnk");
+
+    for path in [&desktop, &start_menu] {
+        if let Some(parent) = path.parent() {
+            if let Err(error) = fs::create_dir_all(parent) {
+                return StageOutcome::skipped(format!(
+                    "Failed to create shortcut directory {}: {}",
+                    parent.display(),
+                    error
+                ));
+            }
+        }
+
+        let script = format!(
+            "$w = New-Object -ComObject WScript.Shell; \
+             $s = $w.CreateShortcut('{}'); \
+             $s.TargetPath = '{}'; \
+             $s.WorkingDirectory = '{}'; \
+             $s.IconLocation = '{}'; \
+             $s.Save()",
+            escape_powershell_single_quoted(&path.display().to_string()),
+            escape_powershell_single_quoted(&ui.display().to_string()),
+            escape_powershell_single_quoted(&config.dir.display().to_string()),
+            escape_powershell_single_quoted(&ui.display().to_string()),
+        );
+
+        let mut command = Command::new("powershell");
+        command
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                &script,
+            ])
+            .stdout(child_stdio())
+            .stderr(child_stdio());
+        hide_command_window(&mut command);
+        let status = command.status();
+
+        if !matches!(status, Ok(s) if s.success()) {
+            return StageOutcome::skipped(format!(
+                "Failed to create shortcut at {}; install can continue.",
+                path.display()
+            ));
+        }
+    }
+
+    StageOutcome::ok()
+}
+
+#[cfg(not(windows))]
+fn create_windows_shortcuts(_config: &InstallConfig, _ui: &std::path::Path) -> StageOutcome {
+    StageOutcome::skipped("Windows shortcuts are not supported on this platform.")
+}
+
+#[cfg(target_os = "linux")]
+fn create_linux_shortcuts(config: &InstallConfig, ui: &std::path::Path) -> StageOutcome {
+    let applications_dir = dirs_home()
+        .join(".local")
+        .join("share")
+        .join("applications");
+    if let Err(error) = fs::create_dir_all(&applications_dir) {
+        return StageOutcome::skipped(format!(
+            "Failed to create applications directory {}: {}",
+            applications_dir.display(),
+            error
+        ));
+    }
+
+    let desktop_file = applications_dir.join("suzent.desktop");
+    let content = format!(
+        "[Desktop Entry]\n\
+Type=Application\n\
+Name=Suzent\n\
+Comment=Your personal agent\n\
+Exec=\"{}\"\n\
+Path={}\n\
+Terminal=false\n\
+Categories=Utility;Development;\n",
+        ui.display(),
+        config.dir.display()
+    );
+
+    if let Err(error) = fs::write(&desktop_file, content) {
+        return StageOutcome::skipped(format!(
+            "Failed to write Linux desktop launcher {}: {}",
+            desktop_file.display(),
+            error
+        ));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(metadata) = fs::metadata(&desktop_file) {
+            let mut permissions = metadata.permissions();
+            permissions.set_mode(0o755);
+            let _ = fs::set_permissions(&desktop_file, permissions);
+        }
+    }
+
+    StageOutcome::ok()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn create_linux_shortcuts(_config: &InstallConfig, _ui: &std::path::Path) -> StageOutcome {
+    StageOutcome::skipped("Linux shortcuts are not supported on this platform.")
+}
+
+#[cfg(target_os = "macos")]
+fn create_macos_shortcuts(config: &InstallConfig, ui: &Path) -> StageOutcome {
+    let app_bundle = config.dir.join("Suzent.app");
+    let contents_dir = app_bundle.join("Contents");
+    let macos_dir = contents_dir.join("MacOS");
+    let executable = macos_dir.join("Suzent");
+    let plist = contents_dir.join("Info.plist");
+
+    if let Err(error) = fs::create_dir_all(&macos_dir) {
+        return StageOutcome::skipped(format!(
+            "Failed to create macOS app bundle {}: {}",
+            app_bundle.display(),
+            error
+        ));
+    }
+
+    let launcher = format!(
+        "#!/bin/sh\n\
+exec \"{}\" \"$@\"\n",
+        ui.display()
+    );
+    if let Err(error) = fs::write(&executable, launcher) {
+        return StageOutcome::skipped(format!(
+            "Failed to write macOS launcher {}: {}",
+            executable.display(),
+            error
+        ));
+    }
+
+    let plist_content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>Suzent</string>
+  <key>CFBundleDisplayName</key>
+  <string>Suzent</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.suzent.app</string>
+  <key>CFBundleVersion</key>
+  <string>0.6.3</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.6.3</string>
+  <key>CFBundleExecutable</key>
+  <string>Suzent</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>10.13</string>
+</dict>
+</plist>
+"#;
+    if let Err(error) = fs::write(&plist, plist_content) {
+        return StageOutcome::skipped(format!(
+            "Failed to write macOS Info.plist {}: {}",
+            plist.display(),
+            error
+        ));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(metadata) = fs::metadata(&executable) {
+            let mut permissions = metadata.permissions();
+            permissions.set_mode(0o755);
+            let _ = fs::set_permissions(&executable, permissions);
+        }
+    }
+
+    let applications_dir = dirs_home().join("Applications");
+    if let Err(error) = fs::create_dir_all(&applications_dir) {
+        return StageOutcome::skipped(format!(
+            "Failed to create user Applications directory {}: {}",
+            applications_dir.display(),
+            error
+        ));
+    }
+
+    let app_link = applications_dir.join("Suzent.app");
+    if let Ok(metadata) = fs::symlink_metadata(&app_link) {
+        if metadata.file_type().is_symlink() {
+            let _ = fs::remove_file(&app_link);
+        } else {
+            return StageOutcome::skipped(format!(
+                "{} already exists and is not a symlink; app bundle is available at {}.",
+                app_link.display(),
+                app_bundle.display()
+            ));
+        }
+    }
+
+    if let Err(error) = std::os::unix::fs::symlink(&app_bundle, &app_link) {
+        return StageOutcome::skipped(format!(
+            "Failed to link macOS app into {}: {}. App bundle is available at {}.",
+            app_link.display(),
+            error,
+            app_bundle.display()
+        ));
+    }
+
+    StageOutcome::ok()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn create_macos_shortcuts(_config: &InstallConfig, _ui: &Path) -> StageOutcome {
+    StageOutcome::skipped("macOS shortcuts are not supported on this platform.")
+}
+
 fn stage_shim(config: &InstallConfig) -> StageOutcome {
     if !cfg!(windows) {
         return StageOutcome::skipped("CLI shim writing is currently Windows-only.");
@@ -529,6 +811,10 @@ fn stage_shim(config: &InstallConfig) -> StageOutcome {
 
     print_human(format!("[OK] CLI shim written to {}", shim.display()));
     StageOutcome::ok()
+}
+
+fn escape_powershell_single_quoted(value: &str) -> String {
+    value.replace('\'', "''")
 }
 
 impl StageOutcome {
@@ -588,6 +874,7 @@ fn print_preview(config: &InstallConfig) {
                     println!("  uv run playwright install chromium");
                 }
             }
+            "shortcuts" => println!("  Create launcher shortcuts for {}", ui_binary_name()),
             _ => {}
         }
     }
@@ -609,6 +896,7 @@ fn print_completion(config: &InstallConfig) {
 }
 
 fn run_command(command: &mut Command) -> bool {
+    hide_command_window(command);
     matches!(
         command
             .stdout(child_stdio())
@@ -634,7 +922,10 @@ fn find_executable(name: &str) -> Option<PathBuf> {
     }
 
     let lookup = if cfg!(windows) { "where" } else { "which" };
-    let output = Command::new(lookup).arg(name).output().ok()?;
+    let mut command = Command::new(lookup);
+    command.arg(name);
+    hide_command_window(&mut command);
+    let output = command.output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -687,15 +978,7 @@ fn find_uv_after_install() -> Option<PathBuf> {
 }
 
 fn default_install_dir() -> PathBuf {
-    if cfg!(windows) {
-        env::var("LOCALAPPDATA")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| dirs_home().join("AppData").join("Local"))
-            .join("suzent")
-    } else {
-        dirs_home().join(".suzent")
-    }
-    .join("suzent")
+    dirs_home().join("suzent")
 }
 
 fn dirs_home() -> PathBuf {
@@ -708,8 +991,10 @@ fn dirs_home() -> PathBuf {
 fn ui_asset_name() -> &'static str {
     if cfg!(windows) {
         "suzent-windows-x86_64.exe"
-    } else if cfg!(target_os = "macos") {
+    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         "suzent-macos-aarch64"
+    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+        "suzent-macos-x86_64"
     } else {
         "suzent-linux-x86_64"
     }
@@ -762,6 +1047,15 @@ fn child_stdio() -> Stdio {
         Stdio::inherit()
     }
 }
+
+#[cfg(windows)]
+fn hide_command_window(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn hide_command_window(_command: &mut Command) {}
 
 fn exit_with_prompt(code: i32, non_interactive: bool) -> ! {
     if !non_interactive {

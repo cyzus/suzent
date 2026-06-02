@@ -3,6 +3,9 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 pub struct BackendProcess {
     child: Option<std::process::Child>,
     pub port: u16,
@@ -29,9 +32,8 @@ impl BackendProcess {
     /// Start backend: prefer venv Python directly (avoids uv wrapper stdout pipe issues on Windows).
     /// Falls back to `uv run --no-sync` if venv not found.
     ///
-    /// stdout/stderr are redirected to the log file (not piped), and the backend
-    /// is launched without CREATE_NO_WINDOW so its Windows process environment
-    /// matches `suzent serve` as closely as possible.
+    /// stdout/stderr are redirected to the log file, and Windows launches the
+    /// backend without opening a console window.
     pub fn start_with_uv(
         &mut self,
         uv_exe: &Path,
@@ -80,6 +82,8 @@ impl BackendProcess {
             .stdout(Stdio::from(log_handle))
             .stderr(Stdio::from(log_handle_stderr))
             .stdin(Stdio::piped()); // keep pipe open; Python monitor_stdin blocks on it until Tauri exits
+
+        hide_command_window(&mut command);
 
         let child = command
             .spawn()
@@ -186,19 +190,32 @@ pub fn find_install_workspace_dir() -> PathBuf {
         }
     }
 
+    if let Ok(dir) = std::fs::read_to_string(install_workspace_marker_path()) {
+        let trimmed = dir.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+
     default_install_dir()
 }
 
-pub fn default_install_dir() -> PathBuf {
-    if cfg!(windows) {
-        std::env::var("LOCALAPPDATA")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| dirs_home().join("AppData").join("Local"))
-            .join("suzent")
-    } else {
-        dirs_home().join(".suzent")
+pub fn persist_install_workspace_dir(dir: &std::path::Path) -> Result<(), String> {
+    let marker = install_workspace_marker_path();
+    if let Some(parent) = marker.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create install config directory: {}", e))?;
     }
-    .join("suzent")
+    std::fs::write(&marker, dir.display().to_string())
+        .map_err(|e| format!("Failed to save install directory: {}", e))
+}
+
+pub fn default_install_dir() -> PathBuf {
+    dirs_home().join("suzent")
+}
+
+fn install_workspace_marker_path() -> PathBuf {
+    find_data_dir().join("install-dir.txt")
 }
 
 pub fn is_workspace_bootstrapped(repo_dir: &std::path::Path) -> bool {
@@ -287,3 +304,12 @@ fn dirs_home() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_default()
 }
+
+#[cfg(windows)]
+fn hide_command_window(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn hide_command_window(_command: &mut Command) {}

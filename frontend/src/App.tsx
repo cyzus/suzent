@@ -770,6 +770,7 @@ function BootstrapInstallScreen({
   const [error, setError] = React.useState<string | null>(null);
   const [running, setRunning] = React.useState(false);
   const [details, setDetails] = React.useState<string[]>([]);
+  const [installDir, setInstallDir] = React.useState(status.workspace_dir);
 
   const completedCount = stages.filter(stage => {
     const state = stageStates[stage.name];
@@ -794,6 +795,29 @@ function BootstrapInstallScreen({
     });
   }, [loadManifest]);
 
+  React.useEffect(() => {
+    setInstallDir(status.workspace_dir);
+  }, [status.workspace_dir]);
+
+  const chooseInstallDir = React.useCallback(async () => {
+    if (running) return;
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: t('bootstrap.chooseInstallDir'),
+        defaultPath: installDir,
+      });
+      if (typeof selected === 'string' && selected.trim()) {
+        setInstallDir(selected);
+        setError(null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [installDir, running, t]);
+
   const runInstall = React.useCallback(async () => {
     if (running || stages.length === 0) return;
     setRunning(true);
@@ -801,10 +825,11 @@ function BootstrapInstallScreen({
     setDetails([]);
 
     try {
+      await invoke('set_install_workspace', { request: { dir: installDir } });
       for (const stage of stages) {
         setActiveStage(stage.name);
         setStageStates(prev => ({ ...prev, [stage.name]: 'running' }));
-        const raw = await invoke<string>('run_bootstrap_stage', { request: { stage: stage.name } });
+        const raw = await invoke<string>('run_bootstrap_stage', { request: { stage: stage.name, dir: installDir } });
         const result = JSON.parse(raw) as BootstrapStageResult;
 
         if (!result.ok) {
@@ -832,7 +857,7 @@ function BootstrapInstallScreen({
     } finally {
       setRunning(false);
     }
-  }, [onComplete, running, stageTitle, stages, t]);
+  }, [installDir, onComplete, running, stageTitle, stages, t]);
 
   return (
     <div className="h-screen overflow-hidden bg-neutral-100 font-sans text-brutal-black flex flex-col">
@@ -847,9 +872,19 @@ function BootstrapInstallScreen({
             <h1 className="text-3xl font-brutal font-black uppercase text-brutal-black">
               {t('bootstrap.title')}
             </h1>
-            <p className="font-mono text-xs text-neutral-500 mt-2 truncate" title={status.workspace_dir}>
-              {status.workspace_dir}
-            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <p className="font-mono text-xs text-neutral-500 truncate" title={installDir}>
+                {installDir}
+              </p>
+              <button
+                type="button"
+                disabled={running}
+                onClick={chooseInstallDir}
+                className="shrink-0 px-2 py-1 text-xs font-bold uppercase border border-neutral-300 hover:bg-neutral-100 disabled:opacity-50"
+              >
+                {t('bootstrap.changeDir')}
+              </button>
+            </div>
             {!status.installer_available && (
               <p className="mt-3 text-sm font-bold text-brutal-red">
                 {t('bootstrap.installerMissing')}
