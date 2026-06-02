@@ -922,6 +922,10 @@ async function isBackendReachable(): Promise<boolean> {
   }
 }
 
+function StartupDecisionScreen(): React.ReactElement {
+  return <div className="h-screen w-screen bg-neutral-100" />;
+}
+
 export default function App() {
   const locale = getInitialLocale();
   const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
@@ -955,6 +959,7 @@ export default function App() {
   const [backendError, setBackendError] = React.useState<string | null>(null);
   const [bootstrapStatusState, setBootstrapStatusState] = React.useState<BootstrapStatus | null>(null);
   const [bootstrapChecked, setBootstrapChecked] = React.useState(false);
+  const [backendStartingAfterInstall, setBackendStartingAfterInstall] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -1000,15 +1005,18 @@ export default function App() {
     import('@tauri-apps/api/event').then(({ listen }) => {
       listen<number>('backend-ready', () => {
         setBackendReady(true);
+        setBackendStartingAfterInstall(false);
         setBootstrapStatusState(null);
       }).then((fn) => { unlisten = fn; });
       listen<string>('backend-error', (event) => {
+        setBackendStartingAfterInstall(false);
         setBackendError(event.payload);
       }).then((fn) => { unlistenErr = fn; });
       listen<BootstrapStatus>('bootstrap-required', (event) => {
         setBootstrapChecked(true);
         setBackendError(null);
         setBackendReady(false);
+        setBackendStartingAfterInstall(false);
         setBootstrapStatusState(event.payload);
       }).then((fn) => { unlistenBootstrap = fn; });
     });
@@ -1026,17 +1034,22 @@ export default function App() {
         <ProjectProvider>
           <ChatProvider enabled={backendReady && !backendError}>
             {!bootstrapChecked ? (
-              <BackendLoadingScreen />
+              <StartupDecisionScreen />
             ) : bootstrapStatusState ? (
               <BootstrapInstallScreen
                 status={bootstrapStatusState}
                 onComplete={() => {
                   setBootstrapStatusState(null);
                   setBackendError(null);
+                  setBackendStartingAfterInstall(true);
                 }}
               />
-            ) : !backendReady || backendError ? (
+            ) : backendError ? (
               <BackendLoadingScreen error={backendError} />
+            ) : backendStartingAfterInstall ? (
+              <BackendLoadingScreen />
+            ) : !backendReady ? (
+              <StartupDecisionScreen />
             ) : (
               <GoalTasksProvider>
                 <AppInner />

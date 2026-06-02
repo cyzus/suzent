@@ -13,14 +13,14 @@
     "windows": [
       {
         "title": "SUZENT - Your Personal Agent",
-        "width": 1400,
-        "height": 900,
+        "width": 1040,
+        "height": 760,
         "resizable": true,
         "fullscreen": false,
         "decorations": false,
         "transparent": false,
-        "minWidth": 800,
-        "minHeight": 600
+        "minWidth": 760,
+        "minHeight": 560
       }
     ],
     "security": {
