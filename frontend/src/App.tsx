@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ArrowPathIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
 import { ChatList } from './components/ChatList';
 import { ChatWindow } from './components/ChatWindow';
@@ -38,6 +38,97 @@ import { I18nProvider, useI18n, getInitialLocale, tForLocale } from './i18n';
 interface HeaderTitleProps {
   text?: string;
   onUnlock?: () => void;
+}
+
+interface BootstrapStatus {
+  required: boolean;
+  workspace_dir: string;
+  installer_available: boolean;
+  installer_path?: string | null;
+}
+
+interface BootstrapStage {
+  name: string;
+  title: string;
+  category: string;
+  needs_user_input: boolean;
+}
+
+interface BootstrapManifest {
+  protocol_version: number;
+  stages: BootstrapStage[];
+}
+
+interface BootstrapStageResult {
+  stage: string;
+  ok: boolean;
+  skipped: boolean;
+  reason?: string | null;
+  duration_ms: number;
+}
+
+type BootstrapStageState = 'pending' | 'running' | 'succeeded' | 'skipped' | 'failed';
+
+function BootstrapWindowBar(): React.ReactElement {
+  const locale = getInitialLocale();
+  const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
+  const appWindow = window.__TAURI__?.window.getCurrentWindow();
+  const [isMaximized, setIsMaximized] = React.useState(false);
+
+  async function handleDrag(event: React.MouseEvent<HTMLDivElement>): Promise<void> {
+    const target = event.target as HTMLElement;
+    if (target.closest('button')) return;
+    await appWindow?.startDragging();
+  }
+
+  async function handleMaximize(): Promise<void> {
+    await appWindow?.toggleMaximize();
+    setIsMaximized(prev => !prev);
+  }
+
+  return (
+    <div
+      className="h-12 bg-white border-b border-neutral-200 flex items-center justify-between px-4 select-none"
+      onMouseDown={handleDrag}
+      data-tauri-drag-region
+    >
+      <div className="flex items-center gap-2 pointer-events-none">
+        <div className="w-2.5 h-2.5 bg-brutal-black" />
+        <span className="font-brutal text-sm uppercase text-brutal-black">
+          {t('bootstrap.windowTitle')}
+        </span>
+      </div>
+      <div className="flex h-full items-center text-brutal-black">
+        <button
+          type="button"
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={() => appWindow?.minimize()}
+          className="h-full w-10 flex items-center justify-center hover:bg-neutral-100"
+          title={t('titlebar.minimize')}
+        >
+          <span className="h-0.5 w-3 bg-current" />
+        </button>
+        <button
+          type="button"
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={handleMaximize}
+          className="h-full w-10 flex items-center justify-center hover:bg-neutral-100"
+          title={isMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
+        >
+          <span className="h-3 w-3 border-2 border-current" />
+        </button>
+        <button
+          type="button"
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={() => appWindow?.close()}
+          className="h-full w-10 flex items-center justify-center hover:bg-brutal-red hover:text-white"
+          title={t('titlebar.close')}
+        >
+          <span className="text-lg leading-none">×</span>
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function HeaderTitle({ text, onUnlock }: HeaderTitleProps): React.ReactElement {
@@ -664,6 +755,172 @@ function BackendLoadingScreen({ error, onRetry }: { error?: string | null; onRet
   );
 }
 
+function BootstrapInstallScreen({
+  status,
+  onComplete,
+}: {
+  status: BootstrapStatus;
+  onComplete: () => void;
+}) {
+  const locale = getInitialLocale();
+  const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
+  const [stages, setStages] = React.useState<BootstrapStage[]>([]);
+  const [stageStates, setStageStates] = React.useState<Record<string, BootstrapStageState>>({});
+  const [activeStage, setActiveStage] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [running, setRunning] = React.useState(false);
+  const [details, setDetails] = React.useState<string[]>([]);
+
+  const completedCount = stages.filter(stage => {
+    const state = stageStates[stage.name];
+    return state === 'succeeded' || state === 'skipped';
+  }).length;
+  const progress = stages.length > 0 ? Math.round((completedCount / stages.length) * 100) : 0;
+  const stageTitle = React.useCallback((stage: BootstrapStage): string => {
+    const translated = t(`bootstrap.stages.${stage.name}`);
+    return translated === `bootstrap.stages.${stage.name}` ? stage.title : translated;
+  }, [t]);
+
+  const loadManifest = React.useCallback(async () => {
+    const raw = await invoke<string>('bootstrap_manifest');
+    const manifest = JSON.parse(raw) as BootstrapManifest;
+    setStages(manifest.stages);
+    setStageStates(Object.fromEntries(manifest.stages.map(stage => [stage.name, 'pending'])));
+  }, []);
+
+  React.useEffect(() => {
+    loadManifest().catch((err) => {
+      setError(err instanceof Error ? err.message : String(err));
+    });
+  }, [loadManifest]);
+
+  const runInstall = React.useCallback(async () => {
+    if (running || stages.length === 0) return;
+    setRunning(true);
+    setError(null);
+    setDetails([]);
+
+    try {
+      for (const stage of stages) {
+        setActiveStage(stage.name);
+        setStageStates(prev => ({ ...prev, [stage.name]: 'running' }));
+        const raw = await invoke<string>('run_bootstrap_stage', { request: { stage: stage.name } });
+        const result = JSON.parse(raw) as BootstrapStageResult;
+
+        if (!result.ok) {
+          const reason = result.reason || t('bootstrap.stageFailed', { stage: stageTitle(stage) });
+          setStageStates(prev => ({ ...prev, [stage.name]: 'failed' }));
+          setError(reason);
+          setDetails(prev => [...prev, `${stageTitle(stage)}: ${reason}`]);
+          return;
+        }
+
+        setStageStates(prev => ({
+          ...prev,
+          [stage.name]: result.skipped ? 'skipped' : 'succeeded',
+        }));
+        if (result.reason) {
+          setDetails(prev => [...prev, `${stageTitle(stage)}: ${result.reason}`]);
+        }
+      }
+
+      setActiveStage(null);
+      await invoke('retry_backend_start');
+      onComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRunning(false);
+    }
+  }, [onComplete, running, stageTitle, stages, t]);
+
+  return (
+    <div className="h-screen overflow-hidden bg-neutral-100 font-sans text-brutal-black flex flex-col">
+      <BootstrapWindowBar />
+      <div className="flex-1 min-h-0 flex items-center justify-center p-6">
+      <div className="w-full max-w-3xl max-h-full min-h-0 bg-white border border-neutral-300 shadow-[0_18px_48px_rgba(0,0,0,0.12)] p-6 flex flex-col">
+        <div className="flex items-start gap-5">
+          <div className="w-24 h-24 shrink-0">
+            <RobotAvatar variant={error ? 'ghost' : running ? 'scanner' : 'idle'} className="w-full h-full" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-3xl font-brutal font-black uppercase text-brutal-black">
+              {t('bootstrap.title')}
+            </h1>
+            <p className="font-mono text-xs text-neutral-500 mt-2 truncate" title={status.workspace_dir}>
+              {status.workspace_dir}
+            </p>
+            {!status.installer_available && (
+              <p className="mt-3 text-sm font-bold text-brutal-red">
+                {t('bootstrap.installerMissing')}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-6 h-3 bg-neutral-200 border border-neutral-300 overflow-hidden">
+          <div
+            className="h-full bg-blue-500 transition-all duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <p className="text-right text-xs font-mono mt-1 text-neutral-500">{progress}%</p>
+
+        <div className="mt-5 min-h-0 flex-1 overflow-y-auto pr-2 grid gap-2 content-start">
+          {stages.map(stage => {
+            const state = stageStates[stage.name] || 'pending';
+            const isActive = activeStage === stage.name;
+            return (
+              <div
+                key={stage.name}
+                className={`flex items-center justify-between border px-3 py-2 ${
+                  isActive ? 'border-blue-400 bg-blue-50' : 'border-neutral-200 bg-neutral-50'
+                }`}
+              >
+                <div className="min-w-0">
+                  <p className="font-bold uppercase text-sm truncate">{stageTitle(stage)}</p>
+                </div>
+                <div className="ml-3 flex items-center gap-2 font-mono text-xs uppercase">
+                  {state === 'running' && <ArrowPathIcon className="w-4 h-4 animate-spin" />}
+                  {state === 'succeeded' && <CheckCircleIcon className="w-4 h-4" />}
+                  {state === 'failed' && <ExclamationTriangleIcon className="w-4 h-4 text-brutal-red" />}
+                  <span>{t(`bootstrap.state.${state}`)}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {details.length > 0 && (
+          <div className="mt-4 shrink-0 bg-neutral-100 border border-neutral-300 p-3 max-h-28 overflow-auto text-left">
+            {details.map((line, idx) => (
+              <p key={`${line}-${idx}`} className="font-mono text-xs text-neutral-700">{line}</p>
+            ))}
+          </div>
+        )}
+
+        {error && (
+          <p className="mt-4 text-sm font-bold text-brutal-red border-2 border-brutal-red p-3">
+            {error}
+          </p>
+        )}
+
+        <div className="mt-6 shrink-0 flex justify-end gap-3">
+          <button
+            type="button"
+            disabled={running || !status.installer_available || stages.length === 0}
+            onClick={runInstall}
+            className="px-5 py-3 bg-blue-500 text-white font-bold uppercase border border-blue-600 hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {running ? t('bootstrap.running') : error ? t('common.retry') : t('bootstrap.start')}
+          </button>
+        </div>
+      </div>
+      </div>
+    </div>
+  );
+}
+
 function hasPersistedBackendPort(): boolean {
   try {
     return !!sessionStorage.getItem('SUZENT_PORT') || !!localStorage.getItem('SUZENT_PORT');
@@ -728,16 +985,41 @@ export default function App() {
   // `backendReady` is driven by the Tauri `backend-ready` event emitted after the backend
   // is confirmed healthy. We never trust stale localStorage here — localStorage may hold
   // a port from a previous session while the backend is still starting up.
-  // The initial value handles the rare race where Rust injects the port before React renders.
-  const [backendReady, setBackendReady] = React.useState<boolean>(
-    !!(window as any).__SUZENT_BACKEND_PORT__
-  );
+  // Gate rendering until bootstrap_status answers, so the chat UI cannot flash
+  // before the installer/onboarding decision is known.
+  const [backendReady, setBackendReady] = React.useState<boolean>(false);
   const [backendError, setBackendError] = React.useState<string | null>(null);
+  const [bootstrapStatusState, setBootstrapStatusState] = React.useState<BootstrapStatus | null>(null);
+  const [bootstrapChecked, setBootstrapChecked] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    invoke<BootstrapStatus>('bootstrap_status')
+      .then((status) => {
+        if (cancelled) return;
+        if (status.required) {
+          setBackendReady(false);
+          setBackendError(null);
+          setBootstrapStatusState(status);
+        } else if ((window as any).__SUZENT_BACKEND_PORT__) {
+          setBackendReady(true);
+        }
+        setBootstrapChecked(true);
+      })
+      .catch(() => {
+        // The backend-error event handles startup failures.
+        if (!cancelled) setBootstrapChecked(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   React.useEffect(() => {
     if (backendReady) return;
     let unlisten: (() => void) | undefined;
     let unlistenErr: (() => void) | undefined;
+    let unlistenBootstrap: (() => void) | undefined;
     let cancelled = false;
 
     // Handle WebView refresh race: backend-ready may have been emitted before listeners attach.
@@ -754,15 +1036,23 @@ export default function App() {
     import('@tauri-apps/api/event').then(({ listen }) => {
       listen<number>('backend-ready', () => {
         setBackendReady(true);
+        setBootstrapStatusState(null);
       }).then((fn) => { unlisten = fn; });
       listen<string>('backend-error', (event) => {
         setBackendError(event.payload);
       }).then((fn) => { unlistenErr = fn; });
+      listen<BootstrapStatus>('bootstrap-required', (event) => {
+        setBootstrapChecked(true);
+        setBackendError(null);
+        setBackendReady(false);
+        setBootstrapStatusState(event.payload);
+      }).then((fn) => { unlistenBootstrap = fn; });
     });
     return () => {
       cancelled = true;
       unlisten?.();
       unlistenErr?.();
+      unlistenBootstrap?.();
     };
   }, [backendReady]);
 
@@ -771,7 +1061,17 @@ export default function App() {
       <ErrorBoundary>
         <ProjectProvider>
           <ChatProvider enabled={backendReady && !backendError}>
-            {!backendReady || backendError ? (
+            {!bootstrapChecked ? (
+              <BackendLoadingScreen />
+            ) : bootstrapStatusState ? (
+              <BootstrapInstallScreen
+                status={bootstrapStatusState}
+                onComplete={() => {
+                  setBootstrapStatusState(null);
+                  setBackendError(null);
+                }}
+              />
+            ) : !backendReady || backendError ? (
               <BackendLoadingScreen error={backendError} />
             ) : (
               <GoalTasksProvider>

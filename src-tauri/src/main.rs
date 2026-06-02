@@ -4,6 +4,7 @@
 mod backend;
 
 use backend::BackendProcess;
+use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -13,6 +14,19 @@ use tauri::{Emitter, Manager, State};
 
 struct AppState {
     backend: Mutex<Option<BackendProcess>>,
+}
+
+#[derive(Clone, Serialize)]
+struct BootstrapStatus {
+    required: bool,
+    workspace_dir: String,
+    installer_available: bool,
+    installer_path: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct BootstrapStageRequest {
+    stage: String,
 }
 
 #[tauri::command]
@@ -73,6 +87,178 @@ fn start_update_and_restart(app_handle: tauri::AppHandle) -> Result<(), String> 
     });
 
     Ok(())
+}
+
+#[tauri::command]
+fn bootstrap_status() -> BootstrapStatus {
+    let repo_dir = backend::find_install_workspace_dir();
+    let installer = find_bootstrap_installer();
+    let forced = std::env::var("SUZENT_FORCE_BOOTSTRAP")
+        .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let dev_without_install_target = cfg!(debug_assertions)
+        && std::env::var("SUZENT_DIR")
+            .unwrap_or_default()
+            .trim()
+            .is_empty();
+    BootstrapStatus {
+        required: forced
+            || (!dev_without_install_target && !backend::is_workspace_bootstrapped(&repo_dir)),
+        workspace_dir: repo_dir.display().to_string(),
+        installer_available: installer.is_some(),
+        installer_path: installer.map(|path| path.display().to_string()),
+    }
+}
+
+#[tauri::command]
+fn bootstrap_manifest() -> Result<String, String> {
+    let installer = find_bootstrap_installer()
+        .ok_or_else(|| "Suzent installer helper was not found.".to_string())?;
+    run_installer_json(&installer, &["--manifest"])
+}
+
+#[tauri::command]
+fn run_bootstrap_stage(request: BootstrapStageRequest) -> Result<String, String> {
+    let installer = find_bootstrap_installer()
+        .ok_or_else(|| "Suzent installer helper was not found.".to_string())?;
+    let workspace = backend::find_install_workspace_dir();
+    let workspace_arg = workspace.display().to_string();
+    run_installer_json(
+        &installer,
+        &[
+            "--stage",
+            request.stage.as_str(),
+            "--json",
+            "--non-interactive",
+            "--dir",
+            workspace_arg.as_str(),
+        ],
+    )
+}
+
+#[tauri::command]
+fn retry_backend_start(app_handle: tauri::AppHandle) -> Result<(), String> {
+    spawn_backend_start(app_handle);
+    Ok(())
+}
+
+fn find_bootstrap_installer_name() -> &'static str {
+    if cfg!(windows) {
+        "suzent-installer.exe"
+    } else {
+        "suzent-installer"
+    }
+}
+
+fn find_bootstrap_installer() -> Option<PathBuf> {
+    if let Ok(path) = std::env::var("SUZENT_INSTALLER_EXE") {
+        let candidate = PathBuf::from(path);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    let name = find_bootstrap_installer_name();
+    let mut candidates = Vec::new();
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join(name));
+            candidates.push(dir.join("bin").join(name));
+        }
+    }
+
+    let repo_dir = backend::find_repo_dir();
+    candidates.push(
+        repo_dir
+            .join("apps")
+            .join("suzent-installer")
+            .join("target")
+            .join("debug")
+            .join(name),
+    );
+    candidates.push(
+        repo_dir
+            .join("apps")
+            .join("suzent-installer")
+            .join("target")
+            .join("release")
+            .join(name),
+    );
+
+    candidates.into_iter().find(|path| path.exists())
+}
+
+fn run_installer_json(installer: &Path, args: &[&str]) -> Result<String, String> {
+    let output = Command::new(installer)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("Failed to run installer helper: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+    if output.status.success() {
+        return Ok(stdout);
+    }
+
+    if !stdout.is_empty() {
+        return Err(stdout);
+    }
+    if !stderr.is_empty() {
+        return Err(stderr);
+    }
+    Err(format!(
+        "Installer helper exited with code {}",
+        output.status.code().unwrap_or(1)
+    ))
+}
+
+fn spawn_backend_start(app_handle: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        let Some(window) = app_handle.get_webview_window("main") else {
+            return;
+        };
+
+        match get_backend_config(&app_handle) {
+            Ok((port, backend)) => {
+                println!("Backend configured on port {}", port);
+
+                if let Some(state) = app_handle.try_state::<AppState>() {
+                    if let Ok(mut guard) = state.backend.lock() {
+                        *guard = Some(backend);
+                    }
+                }
+
+                let js = format!(
+                    r#"
+window.__SUZENT_BACKEND_PORT__ = {port};
+try {{ sessionStorage.setItem('SUZENT_PORT', '{port}'); }} catch (e) {{}}
+try {{ localStorage.setItem('SUZENT_PORT', '{port}'); }} catch (e) {{}}
+"#
+                );
+                if let Err(e) = window.eval(&js) {
+                    eprintln!("Failed to inject backend port: {}", e);
+                    let _ = window.emit(
+                        "backend-error",
+                        format!("Failed to inject backend port: {}", e),
+                    );
+                } else {
+                    let _ = app_handle.emit("backend-ready", port);
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to start backend: {}", e);
+                if e == "bootstrap-required" {
+                    let _ = app_handle.emit("bootstrap-required", bootstrap_status());
+                } else {
+                    let _ = window.emit("backend-error", e);
+                }
+            }
+        }
+    });
 }
 
 fn find_relaunch_exe(repo_dir: &Path) -> Result<PathBuf, std::io::Error> {
@@ -206,55 +392,22 @@ fn main() {
             }
         }))
         .setup(|app| {
-            let window = app
-                .get_webview_window("main")
-                .ok_or("Failed to get main window")?;
-
             app.manage(AppState {
                 backend: Mutex::new(None),
             });
 
-            let app_handle = app.handle().clone();
-
-            std::thread::spawn(move || match get_backend_config(&app_handle) {
-                Ok((port, backend)) => {
-                    println!("Backend configured on port {}", port);
-
-                    if let Some(state) = app_handle.try_state::<AppState>() {
-                        if let Ok(mut guard) = state.backend.lock() {
-                            *guard = Some(backend);
-                        }
-                    }
-
-                    let js = format!(
-                        r#"
-window.__SUZENT_BACKEND_PORT__ = {port};
-try {{ sessionStorage.setItem('SUZENT_PORT', '{port}'); }} catch (e) {{}}
-try {{ localStorage.setItem('SUZENT_PORT', '{port}'); }} catch (e) {{}}
-"#
-                    );
-                    if let Err(e) = window.eval(&js) {
-                        eprintln!("Failed to inject backend port: {}", e);
-                        let _ = window.emit(
-                            "backend-error",
-                            format!("Failed to inject backend port: {}", e),
-                        );
-                    } else {
-                        let _ = app_handle.emit("backend-ready", port);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Failed to start backend: {}", e);
-                    let _ = window.emit("backend-error", e);
-                }
-            });
+            spawn_backend_start(app.handle().clone());
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_backend_port,
             check_for_update,
-            start_update_and_restart
+            start_update_and_restart,
+            bootstrap_status,
+            bootstrap_manifest,
+            run_bootstrap_stage,
+            retry_backend_start
         ])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -272,7 +425,33 @@ fn read_port_file() -> Option<u16> {
 
 /// Dev mode: expect a manually-started backend; just read the port from SUZENT_PORT.
 #[cfg(debug_assertions)]
-fn get_backend_config(_app_handle: &tauri::AppHandle) -> Result<(u16, BackendProcess), String> {
+fn get_backend_config(app_handle: &tauri::AppHandle) -> Result<(u16, BackendProcess), String> {
+    let _ = app_handle;
+
+    if std::env::var("SUZENT_DIR")
+        .map(|dir| !dir.trim().is_empty())
+        .unwrap_or(false)
+    {
+        let repo_dir = backend::find_install_workspace_dir();
+        if !backend::is_workspace_bootstrapped(&repo_dir) {
+            return Err("bootstrap-required".to_string());
+        }
+
+        let uv_exe = backend::find_uv();
+        let port = std::env::var("SUZENT_PORT")
+            .unwrap_or_else(|_| "0".to_string())
+            .parse::<u16>()
+            .unwrap_or(0);
+
+        println!(
+            "Dev install-test mode: starting backend from {}",
+            repo_dir.display()
+        );
+        let mut bp = BackendProcess::new();
+        let actual_port = bp.start_with_uv(&uv_exe, &repo_dir, port)?;
+        return Ok((actual_port, bp));
+    }
+
     let port = std::env::var("SUZENT_PORT")
         .unwrap_or_else(|_| "0".to_string())
         .parse::<u16>()
@@ -293,8 +472,12 @@ fn get_backend_config(_app_handle: &tauri::AppHandle) -> Result<(u16, BackendPro
 #[cfg(not(debug_assertions))]
 fn get_backend_config(app_handle: &tauri::AppHandle) -> Result<(u16, BackendProcess), String> {
     let _ = app_handle;
-    let repo_dir = backend::find_repo_dir();
+    let repo_dir = backend::find_install_workspace_dir();
     let uv_exe = backend::find_uv();
+
+    if !backend::is_workspace_bootstrapped(&repo_dir) {
+        return Err("bootstrap-required".to_string());
+    }
 
     let port = std::env::var("SUZENT_PORT")
         .unwrap_or_else(|_| "0".to_string())
