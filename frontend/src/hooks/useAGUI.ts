@@ -317,18 +317,22 @@ function processEvent(
           }
         }
         if (!found) {
-          // Fallback: attach to the most recent pending tool of the same name.
-          // This keeps output under the initial tool call even if toolCallId differs
-          // between approval request and recovery result.
+          // Fallback: attach to the most recent unfinished tool of the same name.
+          // The toolCallId can differ between the streamed TOOL_CALL_START and the
+          // deferred recovery result (auto-approved bash runs through the deferred
+          // path), so match by name on any tool still awaiting a result —
+          // 'approval-requested' OR 'running' with no output yet.
           for (let i = next.length - 1; i >= 0; i--) {
+            const p = next[i];
             if (
-              next[i].type === 'tool' &&
-              next[i].state === 'approval-requested' &&
-              (next[i].toolName || 'unknown') === toolName
+              p.type === 'tool' &&
+              (p.toolName || 'unknown') === toolName &&
+              (p.state === 'approval-requested' ||
+                (p.state === 'running' && !p.output))
             ) {
               next[i] = {
-                ...next[i],
-                toolCallId: next[i].toolCallId || tcId,
+                ...p,
+                toolCallId: p.toolCallId || tcId,
                 state: resultData.status === 'executed' ? 'completed' : 'error',
                 output,
                 argsReplayPending: false,
@@ -831,7 +835,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       const pendingApprovalIds = new Set<string>();
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) { console.log('[AGUI-DIAG] read loop DONE (stream ended)', { isProbe }); break; }
 
         // Sync with any out-of-band part mutations (e.g. removeInlineSurface)
         // that may have updated partsRef.current between read() calls.
@@ -842,6 +846,12 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         buffer = remainder;
 
         for (const event of events) {
+          // [DIAG] log tool-related events so we can see what reaches the frontend
+          if (event.type === 'TOOL_CALL_RESULT' ||
+              (event.type === 'CUSTOM' && ['tool_approval_request', 'tool_approval_result'].includes(event.data.name as string))) {
+            const v = event.data.value as Record<string, unknown> | undefined;
+            console.log('[AGUI-DIAG]', event.type, event.data.name ?? '', 'tcId=', (v?.toolCallId ?? (event.data as any).toolCallId));
+          }
           // Track approval requests
           if (event.type === 'CUSTOM' && (event.data.name as string) === 'tool_approval_request') {
             const approval = event.data.value as Record<string, unknown> | undefined;

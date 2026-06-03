@@ -751,6 +751,50 @@ async def stream_agent_responses(
                             elif _event_kind == "function_tool_result":
                                 if isinstance(event.result, _TRP):
                                     _chk_tool_returns.append(event.result)
+                                    # For deferred (auto-approved) tools, the result
+                                    # only otherwise reaches the frontend at
+                                    # AgentRunResultEvent — too late, leaving the tool
+                                    # stuck in "running" while the run continues. Emit
+                                    # the recovery immediately so it shows completed.
+                                    if current_deferred:
+                                        _trp = event.result
+                                        _tcid = getattr(_trp, "tool_call_id", None)
+                                        logger.debug(
+                                            f"[Streaming] deferred result check: tcid={_tcid} "
+                                            f"approvals={list(current_deferred.approvals.keys())}"
+                                        )
+                                        if (
+                                            _tcid
+                                            and _tcid in current_deferred.approvals
+                                        ):
+                                            logger.debug(
+                                                f"[Streaming] Immediate tool_recovery for {_tcid}"
+                                            )
+                                            await sse_queue.put(
+                                                (
+                                                    "tool_recovery",
+                                                    {
+                                                        "tool_call_id": _tcid,
+                                                        "tool_name": getattr(
+                                                            _trp, "tool_name", ""
+                                                        ),
+                                                        "status": "executed"
+                                                        if current_deferred.approvals[
+                                                            _tcid
+                                                        ]
+                                                        else "denied",
+                                                        "output": _serialize_tool_output(
+                                                            getattr(
+                                                                _trp, "output", None
+                                                            )
+                                                            or getattr(
+                                                                _trp, "content", None
+                                                            )
+                                                            or ""
+                                                        ),
+                                                    },
+                                                )
+                                            )
                                 _chk_in_flight = max(0, _chk_in_flight - 1)
                                 if _chk_in_flight == 0 and _chk_tool_returns:
                                     # All tools in this batch have completed.
