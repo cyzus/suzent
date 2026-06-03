@@ -19,6 +19,7 @@
         "fullscreen": false,
         "decorations": false,
         "transparent": false,
+        "visible": false,
         "minWidth": 760,
         "minHeight": 560
       }

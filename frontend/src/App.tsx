@@ -893,33 +893,70 @@ function hasPersistedBackendPort(): boolean {
   }
 }
 
-async function isBackendReachable(): Promise<boolean> {
-  const apiBase = (() => {
-    try {
-      const injected = (window as any).__SUZENT_BACKEND_PORT__;
-      if (typeof injected === 'number' && Number.isFinite(injected)) {
-        return `http://127.0.0.1:${injected}`;
-      }
-      const persisted = sessionStorage.getItem('SUZENT_PORT') || localStorage.getItem('SUZENT_PORT');
-      if (persisted) return `http://127.0.0.1:${persisted}`;
-    } catch {
-      // ignore
-    }
-    return '';
-  })();
+function rememberBackendPort(port: number): void {
+  (window as any).__SUZENT_BACKEND_PORT__ = port;
+  try {
+    sessionStorage.setItem('SUZENT_PORT', String(port));
+  } catch {
+    // ignore
+  }
+  try {
+    localStorage.setItem('SUZENT_PORT', String(port));
+  } catch {
+    // ignore
+  }
+}
 
-  if (!apiBase) return false;
+function getRememberedBackendPort(): number | null {
+  try {
+    const injected = (window as any).__SUZENT_BACKEND_PORT__;
+    if (typeof injected === 'number' && Number.isFinite(injected)) return injected;
+    const stored = sessionStorage.getItem('SUZENT_PORT') || localStorage.getItem('SUZENT_PORT');
+    if (!stored) return null;
+    const parsed = Number.parseInt(stored, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
+async function isBackendPortReachable(port: number): Promise<boolean> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 1500);
   try {
-    const res = await fetch(`${apiBase}/config`, { signal: controller.signal });
+    const res = await fetch(`http://127.0.0.1:${port}/config`, { signal: controller.signal });
     return res.ok;
   } catch {
     return false;
   } finally {
     window.clearTimeout(timeout);
   }
+}
+
+async function waitForBackendPort(options?: { attempts?: number }): Promise<number | null> {
+  const attempts = options?.attempts ?? 12;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const candidates: number[] = [];
+    const remembered = getRememberedBackendPort();
+    if (remembered) candidates.push(remembered);
+
+    try {
+      const tauriPort = await invoke<number>('get_backend_port');
+      candidates.unshift(tauriPort);
+    } catch {
+      // A dev backend may only be discoverable from storage after a WebView refresh.
+    }
+
+    for (const port of Array.from(new Set(candidates))) {
+      if (await isBackendPortReachable(port)) {
+        rememberBackendPort(port);
+        return port;
+      }
+    }
+
+    await new Promise(resolve => window.setTimeout(resolve, Math.min(500 * Math.pow(1.35, attempt), 2500)));
+  }
+  return null;
 }
 
 function StartupDecisionScreen(): React.ReactElement {
@@ -950,6 +987,12 @@ export default function App() {
     );
   }
 
+  React.useEffect(() => {
+    invoke('frontend_ready').catch(() => {
+      // Older/dev shells may not expose this command yet.
+    });
+  }, []);
+
   // `backendReady` is driven by the Tauri `backend-ready` event emitted after the backend
   // is confirmed healthy. We never trust stale localStorage here — localStorage may hold
   // a port from a previous session while the backend is still starting up.
@@ -959,6 +1002,7 @@ export default function App() {
   const [backendError, setBackendError] = React.useState<string | null>(null);
   const [bootstrapStatusState, setBootstrapStatusState] = React.useState<BootstrapStatus | null>(null);
   const [bootstrapChecked, setBootstrapChecked] = React.useState(false);
+  const [backendStartingAtStartup, setBackendStartingAtStartup] = React.useState(false);
   const [backendStartingAfterInstall, setBackendStartingAfterInstall] = React.useState(false);
 
   React.useEffect(() => {
@@ -969,9 +1013,21 @@ export default function App() {
         if (status.required) {
           setBackendReady(false);
           setBackendError(null);
+          setBackendStartingAtStartup(false);
           setBootstrapStatusState(status);
         } else if ((window as any).__SUZENT_BACKEND_PORT__) {
           setBackendReady(true);
+          setBackendStartingAtStartup(false);
+        } else {
+          setBackendStartingAtStartup(true);
+          waitForBackendPort()
+            .then((port) => {
+              if (cancelled || port === null) return;
+              setBackendReady(true);
+              setBackendError(null);
+              setBackendStartingAtStartup(false);
+            })
+            .catch(() => {});
         }
         setBootstrapChecked(true);
       })
@@ -994,21 +1050,27 @@ export default function App() {
     // Handle WebView refresh race: backend-ready may have been emitted before listeners attach.
     // If we have a persisted port, probe backend health and continue without waiting forever.
     if (hasPersistedBackendPort()) {
-      isBackendReachable().then((ok) => {
-        if (!cancelled && ok) {
+      waitForBackendPort({ attempts: 8 }).then((port) => {
+        if (!cancelled && port !== null) {
           setBackendReady(true);
           setBackendError(null);
+          setBackendStartingAtStartup(false);
+          setBackendStartingAfterInstall(false);
         }
       });
     }
 
     import('@tauri-apps/api/event').then(({ listen }) => {
-      listen<number>('backend-ready', () => {
+      listen<number>('backend-ready', (event) => {
+        rememberBackendPort(event.payload);
         setBackendReady(true);
+        setBackendError(null);
+        setBackendStartingAtStartup(false);
         setBackendStartingAfterInstall(false);
         setBootstrapStatusState(null);
       }).then((fn) => { unlisten = fn; });
       listen<string>('backend-error', (event) => {
+        setBackendStartingAtStartup(false);
         setBackendStartingAfterInstall(false);
         setBackendError(event.payload);
       }).then((fn) => { unlistenErr = fn; });
@@ -1016,6 +1078,7 @@ export default function App() {
         setBootstrapChecked(true);
         setBackendError(null);
         setBackendReady(false);
+        setBackendStartingAtStartup(false);
         setBackendStartingAfterInstall(false);
         setBootstrapStatusState(event.payload);
       }).then((fn) => { unlistenBootstrap = fn; });
@@ -1031,32 +1094,32 @@ export default function App() {
   return (
     <I18nProvider>
       <ErrorBoundary>
-        <ProjectProvider>
-          <ChatProvider enabled={backendReady && !backendError}>
-            {!bootstrapChecked ? (
-              <StartupDecisionScreen />
-            ) : bootstrapStatusState ? (
-              <BootstrapInstallScreen
-                status={bootstrapStatusState}
-                onComplete={() => {
-                  setBootstrapStatusState(null);
-                  setBackendError(null);
-                  setBackendStartingAfterInstall(true);
-                }}
-              />
-            ) : backendError ? (
-              <BackendLoadingScreen error={backendError} />
-            ) : backendStartingAfterInstall ? (
-              <BackendLoadingScreen />
-            ) : !backendReady ? (
-              <StartupDecisionScreen />
-            ) : (
+        {!bootstrapChecked ? (
+          <StartupDecisionScreen />
+        ) : bootstrapStatusState ? (
+          <BootstrapInstallScreen
+            status={bootstrapStatusState}
+            onComplete={() => {
+              setBootstrapStatusState(null);
+              setBackendError(null);
+              setBackendStartingAfterInstall(true);
+            }}
+          />
+        ) : backendError ? (
+          <BackendLoadingScreen error={backendError} />
+        ) : backendStartingAfterInstall || backendStartingAtStartup ? (
+          <BackendLoadingScreen />
+        ) : !backendReady ? (
+          <StartupDecisionScreen />
+        ) : (
+          <ProjectProvider>
+            <ChatProvider>
               <GoalTasksProvider>
                 <AppInner />
               </GoalTasksProvider>
-            )}
           </ChatProvider>
-        </ProjectProvider>
+          </ProjectProvider>
+        )}
       </ErrorBoundary>
     </I18nProvider>
   );

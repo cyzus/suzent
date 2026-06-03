@@ -169,6 +169,20 @@ fn retry_backend_start(app_handle: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn frontend_ready(app_handle: tauri::AppHandle) -> Result<(), String> {
+    let window = app_handle
+        .get_webview_window("main")
+        .ok_or_else(|| "Main window not found".to_string())?;
+    window
+        .show()
+        .map_err(|e| format!("Failed to show main window: {}", e))?;
+    window
+        .set_focus()
+        .map_err(|e| format!("Failed to focus main window: {}", e))?;
+    Ok(())
+}
+
 fn find_bootstrap_installer_name() -> &'static str {
     if cfg!(windows) {
         "suzent-installer.exe"
@@ -459,7 +473,8 @@ fn main() {
             bootstrap_manifest,
             run_bootstrap_stage,
             set_install_workspace,
-            retry_backend_start
+            retry_backend_start,
+            frontend_ready
         ])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())

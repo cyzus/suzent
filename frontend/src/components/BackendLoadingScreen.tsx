@@ -22,9 +22,22 @@ const STEP_PROGRESS: Record<string, number> = {
 export function BackendLoadingScreen({ error, onRetry }: BackendLoadingScreenProps): React.ReactElement {
   const locale = getInitialLocale();
   const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
+  const appWindow = window.__TAURI__?.window.getCurrentWindow();
   const [setupStep, setSetupStep] = React.useState<string | null>(null);
   const [progress, setProgress] = React.useState(0);
   const [ambientProgress, setAmbientProgress] = React.useState(18);
+  const [isMaximized, setIsMaximized] = React.useState(false);
+
+  async function handleDrag(event: React.MouseEvent<HTMLDivElement>): Promise<void> {
+    const target = event.target as HTMLElement;
+    if (target.closest('button')) return;
+    await appWindow?.startDragging();
+  }
+
+  async function handleMaximize(): Promise<void> {
+    await appWindow?.toggleMaximize();
+    setIsMaximized(prev => !prev);
+  }
 
   React.useEffect(() => {
     if (error) return;
@@ -53,7 +66,7 @@ export function BackendLoadingScreen({ error, onRetry }: BackendLoadingScreenPro
   const displayProgress = progress > 0 ? progress : ambientProgress;
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-neutral-50 font-sans p-8 text-center border-8 border-brutal-black overflow-hidden">
+    <div className="flex h-screen w-screen flex-col bg-neutral-100 font-sans text-center overflow-hidden">
       <style>{`
         @keyframes suzentPanelSignal {
           0% { transform: translateX(-110%); opacity: 0; }
@@ -109,52 +122,92 @@ export function BackendLoadingScreen({ error, onRetry }: BackendLoadingScreenPro
           box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
         }
       `}</style>
-      <div className="relative bg-white p-8 border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md w-full flex flex-col items-center overflow-hidden">
-        {!error && (
-          <div
-            className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-black"
-            style={{
-              animation: 'suzentPanelSignal 2.8s ease-in-out infinite',
-              clipPath: 'polygon(22% 0, 100% 0, 78% 100%, 0 100%)',
-            }}
-          />
-        )}
-        <div className="relative mb-6 flex h-44 w-44 items-center justify-center" aria-hidden="true">
+      <div
+        className="h-10 shrink-0 bg-white border-b border-neutral-200 flex items-center justify-between px-4 select-none"
+        onMouseDown={handleDrag}
+        data-tauri-drag-region
+      >
+        <div className="flex items-center gap-2 pointer-events-none">
+          <div className="h-2.5 w-2.5 bg-brutal-black" />
+          <span className="font-brutal text-xs uppercase text-brutal-black">SUZENT</span>
+        </div>
+        <div className="flex h-full items-center text-brutal-black">
+          <button
+            type="button"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={() => appWindow?.minimize()}
+            className="h-full w-10 flex items-center justify-center hover:bg-neutral-100"
+            title={t('titlebar.minimize')}
+          >
+            <span className="h-0.5 w-3 bg-current" />
+          </button>
+          <button
+            type="button"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={handleMaximize}
+            className="h-full w-10 flex items-center justify-center hover:bg-neutral-100"
+            title={isMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
+          >
+            <span className="h-3 w-3 border-2 border-current" />
+          </button>
+          <button
+            type="button"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={() => appWindow?.close()}
+            className="h-full w-10 flex items-center justify-center hover:bg-brutal-red hover:text-white"
+            title={t('titlebar.close')}
+          >
+            <span className="text-lg leading-none">×</span>
+          </button>
+        </div>
+      </div>
+      <div className="flex min-h-0 flex-1 items-center justify-center p-8">
+        <div className="relative bg-white p-8 border border-neutral-300 shadow-[6px_6px_0px_0px_rgba(0,0,0,0.92)] max-w-md w-full flex flex-col items-center overflow-hidden">
           {!error && (
-            <>
-              {[0, 1, 2].map(idx => (
-                <div
-                  key={`ring-${idx}`}
-                  className="absolute rounded-full border border-brutal-black"
-                  style={{
-                    width: `${132 + idx * 22}px`,
-                    height: `${132 + idx * 22}px`,
-                    '--start-rotation': `${idx * 31}deg`,
-                    opacity: 0.18 + idx * 0.08,
-                    transform: `rotate(${idx * 31}deg)`,
-                    animation: `suzentOccultRing ${5.4 + idx * 1.2}s linear infinite`,
-                  } as React.CSSProperties}
-                >
-                  <span className="absolute left-1/2 top-[-3px] h-1.5 w-8 -translate-x-1/2 bg-white" />
-                  <span className="absolute bottom-[-3px] left-1/2 h-1.5 w-8 -translate-x-1/2 bg-white" />
-                  <span className="absolute left-[-3px] top-1/2 h-8 w-1.5 -translate-y-1/2 bg-white" />
-                  <span className="absolute right-[-3px] top-1/2 h-8 w-1.5 -translate-y-1/2 bg-white" />
-                </div>
-              ))}
-              {Array.from({ length: 12 }).map((_, idx) => (
-                <span
-                  key={`rune-${idx}`}
-                  className="absolute left-1/2 top-1/2 h-3 w-1.5 origin-[50%_0] bg-brutal-black"
-                  style={{
-                    '--rune-rotation': `${idx * 30}deg`,
-                    animation: 'suzentRuneBlink 2.6s steps(2, end) infinite',
-                    animationDelay: `${idx * 0.09}s`,
-                  } as React.CSSProperties}
-                />
-              ))}
-            </>
+            <div
+              className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-black"
+              style={{
+                animation: 'suzentPanelSignal 2.8s ease-in-out infinite',
+                clipPath: 'polygon(22% 0, 100% 0, 78% 100%, 0 100%)',
+              }}
+            />
           )}
-          <div className={`suzent-cube-scene relative h-28 w-28 ${error ? 'opacity-35' : ''}`}>
+          <div className="relative mb-6 flex h-44 w-44 items-center justify-center" aria-hidden="true">
+            {!error && (
+              <>
+                {[0, 1, 2].map(idx => (
+                  <div
+                    key={`ring-${idx}`}
+                    className="absolute rounded-full border border-brutal-black"
+                    style={{
+                      width: `${132 + idx * 22}px`,
+                      height: `${132 + idx * 22}px`,
+                      '--start-rotation': `${idx * 31}deg`,
+                      opacity: 0.18 + idx * 0.08,
+                      transform: `rotate(${idx * 31}deg)`,
+                      animation: `suzentOccultRing ${5.4 + idx * 1.2}s linear infinite`,
+                    } as React.CSSProperties}
+                  >
+                    <span className="absolute left-1/2 top-[-3px] h-1.5 w-8 -translate-x-1/2 bg-white" />
+                    <span className="absolute bottom-[-3px] left-1/2 h-1.5 w-8 -translate-x-1/2 bg-white" />
+                    <span className="absolute left-[-3px] top-1/2 h-8 w-1.5 -translate-y-1/2 bg-white" />
+                    <span className="absolute right-[-3px] top-1/2 h-8 w-1.5 -translate-y-1/2 bg-white" />
+                  </div>
+                ))}
+                {Array.from({ length: 12 }).map((_, idx) => (
+                  <span
+                    key={`rune-${idx}`}
+                    className="absolute left-1/2 top-1/2 h-3 w-1.5 origin-[50%_0] bg-brutal-black"
+                    style={{
+                      '--rune-rotation': `${idx * 30}deg`,
+                      animation: 'suzentRuneBlink 2.6s steps(2, end) infinite',
+                      animationDelay: `${idx * 0.09}s`,
+                    } as React.CSSProperties}
+                  />
+                ))}
+              </>
+            )}
+            <div className={`suzent-cube-scene relative h-28 w-28 ${error ? 'opacity-35' : ''}`}>
             <div
               className="suzent-cube absolute inset-0"
               style={!error ? { animationName: 'suzentCube3dTurn' } : { transform: 'rotateX(-18deg) rotateY(36deg)' }}
@@ -255,6 +308,7 @@ export function BackendLoadingScreen({ error, onRetry }: BackendLoadingScreenPro
             </p>
           </div>
         )}
+      </div>
       </div>
     </div>
   );
