@@ -57,7 +57,7 @@ async def _compact_stream(chat_id: str, focus: str | None):
             "compaction_progress",
             {"stage": "summarizing", "message": "Compacting context..."},
         )
-        ctx = CommandContext(chat_id=chat_id, user_id=CONFIG.user_id)
+        ctx = CommandContext(chat_id=chat_id, user_id=CONFIG.user_id, surface="manual")
         command_str = f"/compact -- {focus}" if focus else "/compact"
         result = await dispatch(ctx, command_str)
         if result is None:

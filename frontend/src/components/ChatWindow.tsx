@@ -23,7 +23,7 @@ import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 import { SubAgentView } from './sidebar/SubAgentView';
 import { ProjectKanbanView } from './sidebar/ProjectKanbanView';
 import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
-import { useEventBus, isBusStreaming, subscribeToStreamEvents } from '../hooks/useEventBus';
+import { useEventBus, isBusStreaming, subscribeToBusPayloads, subscribeToStreamEvents } from '../hooks/useEventBus';
 import { useStatusStore } from '../hooks/useStatusStore';
 import { useContextUsageStore } from '../hooks/useContextUsageStore';
 import { useActivatedToolsStore } from '../hooks/useActivatedToolsStore';
@@ -43,6 +43,24 @@ function getLastMessageTimestamp(messages: Message[]): string | undefined {
     if (messages[i].timestamp) return messages[i].timestamp;
   }
   return undefined;
+}
+
+function formatCompactLifecycleNotice(payload: any): string | null {
+  if (!payload || payload.event !== 'auto_compaction') return null;
+  const source = String(payload.source || 'auto');
+  const prefix = source === 'auto' ? 'Auto compaction' : 'Compaction';
+
+  if (payload.stage === 'start') return `${prefix} running...`;
+  if (source === 'slash') return null;
+  if (payload.stage === 'skipped') return payload.message || `${prefix} skipped`;
+  if (payload.stage === 'error') return payload.message || `${prefix} failed`;
+
+  const before = Number(payload.tokens_before ?? 0);
+  const after = Number(payload.tokens_after ?? 0);
+  const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
+  return before > 0 && after >= 0
+    ? `${prefix} ${fmt(before)} -> ${fmt(after)}`
+    : `${prefix} complete`;
 }
 
 // ── AGUIPart[] → Store Message conversion ────────────────────────────
@@ -525,7 +543,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setUsage: setLastKnownUsage,
     setUsageForChat,
     clearUsage: clearLastKnownUsage,
-    setCompactNotice,
   } = useContextUsageStore();
   const { addActivatedTools, clearActivatedTools } = useActivatedToolsStore();
   const [subAgentTasks, setSubAgentTasks] = useState<Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>>({});
@@ -534,6 +551,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [isBoardFullscreen, setIsBoardFullscreen] = useState(false);
   const [fileMentions, setFileMentions] = useState<FileMentionSelection[]>([]);
   const [visibleMessageCount, setVisibleMessageCount] = useState(INITIAL_VISIBLE_MESSAGES);
+  const [compactNotice, setCompactNoticeLocal] = useState<string | null>(null);
   const prependScrollSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
   const { onSpawned: onSubAgentSpawned, onCompleted: onSubAgentCompleted, onFailed: onSubAgentFailed } = useSubAgentStatus();
   const { setStatus: setStatusBar } = useStatusStore();
@@ -569,6 +587,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     setSubAgentTasks({});
     setViewingSubAgentTaskId(null);
+  }, [currentChatId]);
+
+  useEffect(() => {
+    if (!currentChatId) {
+      setCompactNoticeLocal(null);
+      return;
+    }
+
+    const unsub = subscribeToBusPayloads((payload) => {
+      if (!payload || payload.event !== 'auto_compaction') return;
+      if (payload.chat_id !== currentChatId) return;
+      setCompactNoticeLocal(formatCompactLifecycleNotice(payload));
+    });
+    return unsub;
   }, [currentChatId]);
 
   // Ref to lock the chat ID for the current stream so switching chats doesn't misroute messages
@@ -686,7 +718,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (storeMsg.content.trim()) {
         addMessage(storeMsg, chatId!);
         if (/context compacted/i.test(storeMsg.content)) {
-          setCompactNotice('Context compacted');
+          setCompactNoticeLocal('Context compacted');
         }
       }
 
@@ -718,6 +750,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         const role = (value as { role?: Message['role'] })?.role;
         if (role === 'assistant' || role === 'notice') {
           setCurrentStreamDisplayRole(role);
+        }
+        return;
+      }
+      if (name === 'processing_status') {
+        const phase = (value as { phase?: string } | null)?.phase;
+        if (phase === 'compressing_context') {
+          setCompactNoticeLocal('Compaction running...');
+        } else if (phase === 'running' || phase === 'complete') {
+          setCompactNoticeLocal('Compaction complete');
         }
         return;
       }
@@ -1620,6 +1661,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     onForceWebContext={handleForceWebContext}
                     onRetry={!isStreaming ? handleRetry : undefined}
                   />
+                )}
+                {compactNotice && (
+                  <div className="space-y-6 mt-6">
+                    <div className="w-full flex flex-col group/message">
+                      <div className="flex justify-start w-full">
+                        <NoticeMessage message={{ role: 'notice', content: compactNotice }} />
+                      </div>
+                    </div>
+                  </div>
                 )}
                 {/* Streaming/transient message from AG-UI */}
                 {showTransientAssistant && (

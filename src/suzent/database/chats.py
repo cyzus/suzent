@@ -205,6 +205,23 @@ class ChatOperationsMixin:
             session.commit()
             return True
 
+    def append_chat_message(self, chat_id: str, message: Dict[str, Any]) -> bool:
+        """Append one display message to a chat."""
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if not chat:
+                return False
+
+            messages = list(chat.messages or [])
+            messages.append(message)
+            chat.messages = messages
+            chat.config = _with_message_summary(chat.config, messages)
+            chat.updated_at = datetime.now()
+            flag_modified(chat, "config")
+            session.add(chat)
+            session.commit()
+            return True
+
     def commit_snapshot_state(self, chat_id: str, agent_state: bytes) -> Optional[int]:
         """Commit fast snapshot state and increment revision atomically.
 

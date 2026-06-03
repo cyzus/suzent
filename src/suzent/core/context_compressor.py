@@ -57,6 +57,163 @@ REQUIRED_SECTIONS = [
 ]
 
 
+def _fmt_tokens(tokens: int) -> str:
+    return f"{tokens / 1000:.1f}k" if tokens >= 1000 else str(tokens)
+
+
+def format_compaction_notice(
+    *,
+    stage: str,
+    source: str,
+    tokens_before: int = 0,
+    tokens_after: Optional[int] = None,
+    messages_before: Optional[int] = None,
+    messages_after: Optional[int] = None,
+    message: Optional[str] = None,
+) -> str:
+    prefix = "Auto context compaction" if source == "auto" else "Context compaction"
+
+    if stage == "complete":
+        token_summary = (
+            f"{_fmt_tokens(tokens_before)} -> {_fmt_tokens(tokens_after)} tokens"
+            if tokens_after is not None
+            else "complete"
+        )
+        message_summary = (
+            f" ({messages_before} -> {messages_after} messages)"
+            if messages_before is not None and messages_after is not None
+            else ""
+        )
+        return f"{prefix}: {token_summary}{message_summary}"
+
+    if stage == "skipped":
+        return f"{prefix} skipped: {message or 'nothing to compact'}"
+
+    if stage == "error":
+        return f"{prefix} failed: {message or 'unknown error'}"
+
+    return f"{prefix}: {message or stage}"
+
+
+def persist_compaction_notice(
+    *,
+    chat_id: str,
+    stage: str,
+    source: str,
+    tokens_before: int = 0,
+    tokens_after: Optional[int] = None,
+    messages_before: Optional[int] = None,
+    messages_after: Optional[int] = None,
+    message: Optional[str] = None,
+) -> str:
+    notice = format_compaction_notice(
+        stage=stage,
+        source=source,
+        tokens_before=tokens_before,
+        tokens_after=tokens_after,
+        messages_before=messages_before,
+        messages_after=messages_after,
+        message=message,
+    )
+    try:
+        from suzent.database import get_database
+
+        notice_message = {
+            "role": "notice",
+            "content": notice,
+            "metadata": {
+                "kind": "context_compaction",
+                "source": source,
+                "stage": stage,
+            },
+        }
+        db = get_database()
+        append_chat_message = getattr(db, "append_chat_message", None)
+        if append_chat_message is not None:
+            append_chat_message(chat_id, notice_message)
+        else:
+            chat = db.get_chat(chat_id)
+            if chat is not None:
+                messages = list(chat.messages or [])
+                messages.append(notice_message)
+                db.update_chat(chat_id, messages=messages)
+    except Exception as e:
+        logger.debug(f"Failed to persist compaction notice for {chat_id}: {e}")
+    return notice
+
+
+def build_compaction_event(
+    *,
+    stage: str,
+    chat_id: str,
+    messages_before: int,
+    tokens_before: int,
+    source: str = "auto",
+    messages_after: Optional[int] = None,
+    tokens_after: Optional[int] = None,
+    message: Optional[str] = None,
+) -> dict[str, Any]:
+    """Build a normalized context compaction lifecycle event."""
+    payload: dict[str, Any] = {
+        "event": "auto_compaction",
+        "stage": stage,
+        "source": source,
+        "chat_id": chat_id,
+        "messages_before": messages_before,
+        "tokens_before": tokens_before,
+    }
+    if messages_after is not None:
+        payload["messages_after"] = messages_after
+    if tokens_after is not None:
+        payload["tokens_after"] = tokens_after
+    if message is not None:
+        payload["message"] = message
+    return payload
+
+
+def emit_compaction_event(
+    *,
+    chat_id: str,
+    stage: str,
+    source: str,
+    messages_before: int = 0,
+    tokens_before: int = 0,
+    messages_after: Optional[int] = None,
+    tokens_after: Optional[int] = None,
+    message: Optional[str] = None,
+    persist_result: bool = False,
+) -> dict[str, Any]:
+    payload = build_compaction_event(
+        chat_id=chat_id,
+        stage=stage,
+        source=source,
+        messages_before=messages_before,
+        tokens_before=tokens_before,
+        messages_after=messages_after,
+        tokens_after=tokens_after,
+        message=message,
+    )
+    try:
+        from suzent.core.stream_registry import emit_bus_event
+
+        emit_bus_event(payload)
+    except Exception as e:
+        logger.debug(f"Failed to emit compaction event for {chat_id}: {e}")
+
+    if persist_result and stage != "start":
+        persist_compaction_notice(
+            chat_id=chat_id,
+            stage=stage,
+            source=source,
+            tokens_before=tokens_before,
+            tokens_after=tokens_after,
+            messages_before=messages_before,
+            messages_after=messages_after,
+            message=message,
+        )
+    return payload
+
+
 # ---------------------------------------------------------------------------
 # Phase 1 — Token Engine
 # ---------------------------------------------------------------------------
@@ -227,22 +384,22 @@ class ContextCompressor:
         chat_id: str,
         messages_before: int,
         tokens_before: int,
+        source: str = "auto",
         messages_after: Optional[int] = None,
         tokens_after: Optional[int] = None,
+        message: Optional[str] = None,
     ) -> dict[str, Any]:
-        """Build a normalized event-bus payload for auto compaction lifecycle updates."""
-        payload: dict[str, Any] = {
-            "event": "auto_compaction",
-            "stage": stage,
-            "chat_id": chat_id,
-            "messages_before": messages_before,
-            "tokens_before": tokens_before,
-        }
-        if messages_after is not None:
-            payload["messages_after"] = messages_after
-        if tokens_after is not None:
-            payload["tokens_after"] = tokens_after
-        return payload
+        """Build a normalized context compaction lifecycle event."""
+        return build_compaction_event(
+            stage=stage,
+            source=source,
+            chat_id=chat_id,
+            messages_before=messages_before,
+            messages_after=messages_after,
+            tokens_before=tokens_before,
+            tokens_after=tokens_after,
+            message=message,
+        )
 
     async def _perform_compression(
         self, messages: list, focus: Optional[str] = None

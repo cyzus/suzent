@@ -16,6 +16,9 @@ import uuid
 from pathlib import Path
 from typing import AsyncGenerator, List, Dict, Any, Optional
 
+from ag_ui.core import CustomEvent
+from ag_ui.encoder import EventEncoder
+
 from suzent.logger import get_logger
 from suzent.config import CONFIG, PROJECT_DIR, USER_CONFIG_DIR, get_effective_volumes
 from suzent.agent_manager import get_or_create_agent
@@ -23,7 +26,11 @@ from suzent.permissions.loader import persist_global_command_rule
 
 from suzent.core.context_injection import build_agent_deps
 from suzent.core.agent_serializer import serialize_state, deserialize_state
-from suzent.core.context_compressor import ContextCompressor, estimate_tokens
+from suzent.core.context_compressor import (
+    ContextCompressor,
+    emit_compaction_event,
+    estimate_tokens,
+)
 from suzent.memory.lifecycle import get_memory_manager
 from suzent.streaming import stream_agent_responses
 from suzent.memory import ConversationTurn, Message, AgentAction
@@ -39,11 +46,15 @@ from suzent.core.stream_parser import StreamParser, TextChunk, ErrorEvent
 from suzent.core.stream_registry import (
     pop_pending_auto_approvals,
     register_background_stream,
-    emit_bus_event,
 )
 
 
 logger = get_logger(__name__)
+_event_encoder = EventEncoder()
+
+
+def _encode_custom_event(name: str, value: dict[str, Any]) -> str:
+    return _event_encoder.encode(CustomEvent(name=name, value=value))
 
 
 def _resolve_target_path(host_path: Path, filename: str) -> Path:
@@ -420,6 +431,44 @@ class ChatProcessor:
 
         if message_history is None:
             message_history = []
+
+        should_precompress = (
+            bool(message_content and message_content.strip())
+            and not resume_approvals
+            and not is_heartbeat
+            and not message_content.strip().startswith("/")
+        )
+        if should_precompress and message_history:
+            compressor = ContextCompressor(chat_id=chat_id, user_id=user_id)
+            plan = compressor.get_auto_compaction_plan(message_history)
+            if plan.get("can_attempt"):
+                yield _encode_custom_event(
+                    "processing_status",
+                    {
+                        "phase": "compressing_context",
+                        "chat_id": chat_id,
+                        "messages_before": int(plan["messages_before"]),
+                        "tokens_before": int(plan["tokens_before"]),
+                    },
+                )
+                compressed_history = await self._compress_with_events(
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    messages=message_history,
+                )
+                if len(compressed_history) < len(message_history):
+                    message_history = compressed_history
+                    deps.last_messages = message_history
+                    await self._persist_agent_state_snapshot(
+                        chat_id=chat_id,
+                        messages=message_history,
+                        model_id=getattr(agent, "_model_id", None),
+                        tool_names=getattr(agent, "_tool_names", []),
+                    )
+                yield _encode_custom_event(
+                    "processing_status",
+                    {"phase": "running", "chat_id": chat_id},
+                )
 
         # Universal slash command dispatch (before history is modified or agent runs)
         if message_content and not resume_approvals and not files and not is_heartbeat:
@@ -893,54 +942,72 @@ class ChatProcessor:
                         )
 
                     is_suspended = getattr(deps, "is_suspended", False)
+                    compressed_messages = last_messages
 
-                    if not is_suspended:
-                        # B2: Memory Extraction
+                    if is_suspended:
+                        logger.debug(
+                            f"[ChatProcessor] Skipping memory extraction for suspended run {chat_id}."
+                        )
                         try:
-                            await self._extract_memories(
-                                chat_id=chat_id,
-                                user_id=user_id,
-                                user_content=message_content,
-                                agent_content=full_response,
-                                messages=last_messages,
-                            )
                             db.update_job_step_status(
                                 job_id, PostProcessStep.MEMORY, StepStatus.SUCCESS
                             )
+                            db.update_job_step_status(
+                                job_id, PostProcessStep.COMPRESS, StepStatus.SUCCESS
+                            )
+                        except Exception:
+                            pass
+                    else:
+                        # B2: Memory Extraction (independent; never blocks display/state persistence)
+                        async def _run_memory_extraction() -> None:
+                            memory_db = get_database()
+                            try:
+                                await self._extract_memories(
+                                    chat_id=chat_id,
+                                    user_id=user_id,
+                                    user_content=message_content,
+                                    agent_content=full_response,
+                                    messages=last_messages,
+                                )
+                                memory_db.update_job_step_status(
+                                    job_id, PostProcessStep.MEMORY, StepStatus.SUCCESS
+                                )
+                            except Exception as e:
+                                logger.warning(f"Memory extraction failed: {e}")
+                                memory_db.update_job_step_status(
+                                    job_id,
+                                    PostProcessStep.MEMORY,
+                                    StepStatus.FAILED,
+                                    error=str(e),
+                                )
+
+                        try:
+                            memory_coro = _run_memory_extraction()
+                            await register_background_task(
+                                memory_coro,
+                                task_id=f"memory_extract_{chat_id}_{job_id}",
+                                description=f"Memory extraction for chat {chat_id}",
+                            )
                         except Exception as e:
-                            logger.warning(f"Memory extraction failed: {e}")
+                            try:
+                                memory_coro.close()
+                            except Exception:
+                                pass
+                            logger.warning(
+                                f"Failed to schedule memory extraction for {chat_id}: {e}"
+                            )
                             db.update_job_step_status(
                                 job_id,
                                 PostProcessStep.MEMORY,
                                 StepStatus.FAILED,
                                 error=str(e),
                             )
-
-                        # B3: Context Compression
-                        compressed_messages = last_messages
                         try:
-                            compressed_messages = await self._compress_with_events(
-                                chat_id=chat_id,
-                                user_id=user_id,
-                                messages=last_messages,
-                            )
                             db.update_job_step_status(
                                 job_id, PostProcessStep.COMPRESS, StepStatus.SUCCESS
                             )
-                        except Exception as e:
-                            logger.error(f"Compression failed: {e}")
-                            db.update_job_step_status(
-                                job_id,
-                                PostProcessStep.COMPRESS,
-                                StepStatus.FAILED,
-                                error=str(e),
-                            )
-                            compressed_messages = last_messages
-                    else:
-                        logger.debug(
-                            f"[ChatProcessor] Skipping memory extraction and compression for suspended run {chat_id}."
-                        )
-                        compressed_messages = last_messages
+                        except Exception:
+                            pass
 
                     # B4+B5: Display Rebuild + State Persistence (display is integrated in _persist_state)
                     try:
@@ -1327,7 +1394,7 @@ class ChatProcessor:
             logger.error(f"Memory extraction failed for {chat_id}: {e}")
 
     async def _compress_with_events(
-        self, chat_id: str, user_id: str, messages: list
+        self, chat_id: str, user_id: str, messages: list, source: str = "auto"
     ) -> list:
         """Compress context and emit normalized auto-compaction lifecycle events."""
         compressor = ContextCompressor(chat_id=chat_id, user_id=user_id)
@@ -1335,43 +1402,52 @@ class ChatProcessor:
         can_attempt = bool(compaction_plan.get("can_attempt"))
 
         if can_attempt:
-            emit_bus_event(
-                compressor.build_auto_compaction_event(
-                    stage="start",
-                    chat_id=chat_id,
-                    messages_before=int(compaction_plan["messages_before"]),
-                    tokens_before=int(compaction_plan["tokens_before"]),
-                )
+            emit_compaction_event(
+                chat_id=chat_id,
+                stage="start",
+                source=source,
+                messages_before=int(compaction_plan["messages_before"]),
+                tokens_before=int(compaction_plan["tokens_before"]),
             )
 
-        compressed_messages = await compressor.compress_messages(messages)
+        try:
+            compressed_messages = await compressor.compress_messages(messages)
+        except Exception as e:
+            if can_attempt:
+                emit_compaction_event(
+                    chat_id=chat_id,
+                    stage="error",
+                    source=source,
+                    messages_before=len(messages),
+                    tokens_before=int(compaction_plan["tokens_before"]),
+                    message=str(e),
+                    persist_result=source == "auto",
+                )
+            raise
 
         if len(compressed_messages) < len(messages):
-            try:
-                after_tokens = estimate_tokens(
-                    compressed_messages, CONFIG.max_context_tokens
-                ).estimated_tokens
-                emit_bus_event(
-                    compressor.build_auto_compaction_event(
-                        stage="complete",
-                        chat_id=chat_id,
-                        messages_before=len(messages),
-                        messages_after=len(compressed_messages),
-                        tokens_before=int(compaction_plan["tokens_before"]),
-                        tokens_after=after_tokens,
-                    )
-                )
-            except Exception as e:
-                logger.debug(f"Failed to emit auto_compaction event for {chat_id}: {e}")
+            after_tokens = estimate_tokens(
+                compressed_messages, CONFIG.max_context_tokens
+            ).estimated_tokens
+            emit_compaction_event(
+                chat_id=chat_id,
+                stage="complete",
+                source=source,
+                messages_before=len(messages),
+                messages_after=len(compressed_messages),
+                tokens_before=int(compaction_plan["tokens_before"]),
+                tokens_after=after_tokens,
+                persist_result=source == "auto",
+            )
         elif can_attempt:
-            emit_bus_event(
-                compressor.build_auto_compaction_event(
-                    stage="skipped",
-                    chat_id=chat_id,
-                    messages_before=len(messages),
-                    messages_after=len(compressed_messages),
-                    tokens_before=int(compaction_plan["tokens_before"]),
-                )
+            emit_compaction_event(
+                chat_id=chat_id,
+                stage="skipped",
+                source=source,
+                messages_before=len(messages),
+                messages_after=len(compressed_messages),
+                tokens_before=int(compaction_plan["tokens_before"]),
+                persist_result=source == "auto",
             )
 
         return compressed_messages
