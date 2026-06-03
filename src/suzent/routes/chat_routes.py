@@ -57,13 +57,7 @@ def _prewrite_user_display_message(
         entry["files"] = files
 
     try:
-        db = get_database()
-        chat_model = db.get_chat(chat_id)
-        if chat_model is None:
-            return
-
-        existing = list(chat_model.messages or [])
-        db.update_chat(chat_id, messages=existing + [entry])
+        get_database().append_chat_message(chat_id, entry)
     except Exception as exc:
         logger.debug(f"Failed to prewrite user display message for {chat_id}: {exc}")
 
@@ -348,6 +342,7 @@ async def steer_chat_send(request: Request) -> JSONResponse:
 
     processor = ChatProcessor()
     config_override = build_agent_config(config, require_social_tool=False)
+    stop_stream(chat_id, reason="Steered by user")
     _prewrite_user_display_message(chat_id, message, [])
 
     stream_queue = register_background_stream(chat_id)

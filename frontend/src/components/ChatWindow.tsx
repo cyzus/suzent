@@ -56,9 +56,9 @@ function formatCompactLifecycleNotice(payload: any): string | null {
   if (payload.stage === 'error') return payload.message || `${prefix} failed`;
 
   const before = Number(payload.tokens_before ?? 0);
-  const after = Number(payload.tokens_after ?? 0);
+  const after = payload.tokens_after != null ? Number(payload.tokens_after) : null;
   const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
-  return before > 0 && after >= 0
+  return before > 0 && after != null
     ? `${prefix} ${fmt(before)} -> ${fmt(after)}`
     : `${prefix} complete`;
 }
@@ -1168,15 +1168,31 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       abandonedStreamChatsRef.current.add(chatIdAtMount);
 
       // If there are pending tool approvals in the seed and no active stream,
-      // restore the parts directly so the approval dialog re-appears.
+      // restore the parts directly so the approval dialog re-appears — but only
+      // if the backend hasn't already completed the run (isBusStreaming=false and
+      // the stream hasn't been registered yet). We defer to tryConnect below to
+      // do the actual reconnect; restoring here only seeds the visual state.
       if (!isBusStreaming(chatIdAtMount)) {
         const hasSeedApprovals = savedSeed.parts.some(
           p => p.type === 'tool' && p.state === 'approval-requested'
         );
         if (hasSeedApprovals) {
+          // Verify the backend still has the run suspended before locking the UI.
+          // loadChat will fire below (abandonedStreamChatsRef was set above); if
+          // the DB snapshot shows no pending approvals the normal reload will
+          // clear the restored parts, so we never get stuck in isStreaming=true.
           restorePartsFromSeed(savedSeed.parts);
           setIsStreaming(true, chatIdAtMount);
           streamingChatIdRef.current = chatIdAtMount;
+          // Schedule a safety reset: if tryConnect doesn't establish a live
+          // stream within 5 s the backend has already finished and we clear.
+          setTimeout(() => {
+            if (streamingChatIdRef.current === chatIdAtMount && !isLiveStreamRef.current) {
+              setIsStreaming(false, chatIdAtMount);
+              streamingChatIdRef.current = null;
+              clearParts();
+            }
+          }, 5000);
         }
       }
     }

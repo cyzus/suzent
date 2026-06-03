@@ -13,6 +13,7 @@ using Server-Sent Events (SSE), including:
 """
 
 import asyncio
+from datetime import datetime
 import json
 import time
 import traceback
@@ -32,6 +33,7 @@ from ag_ui.core import (
 )
 from ag_ui.encoder import EventEncoder
 
+from suzent.core.agent_serializer import serialize_state
 from suzent.core.agent_deps import AgentDeps
 from suzent.core.stream_registry import (
     StreamControl,
@@ -42,11 +44,23 @@ from suzent.core.stream_registry import (
     register_active_stream,
     unregister_active_stream,
 )
+from suzent.database import get_database
 from loguru import logger
 
 
 # Module-level encoder for custom events
 _encoder = EventEncoder()
+
+# Per-chat lock serialising reads+writes to _pending_approvals in chat.config.
+_pending_approval_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_approval_lock(chat_id: str) -> asyncio.Lock:
+    if chat_id not in _pending_approval_locks:
+        _pending_approval_locks[chat_id] = asyncio.Lock()
+    return _pending_approval_locks[chat_id]
+
+
 _FIRST_STREAM_EVENT_TIMEOUT_SECONDS = 45.0
 _STREAM_IDLE_TIMEOUT_SECONDS = 120.0
 _DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS = 60.0
@@ -99,6 +113,7 @@ class _DraftDisplayAccumulator:
         self.chat_id = chat_id
         self.run_id = run_id
         self.parts: list[dict[str, Any]] = []
+        self._tool_index: dict[str, dict[str, Any]] = {}
         self.last_persisted_at = 0.0
         self.dirty = False
 
@@ -150,17 +165,17 @@ class _DraftDisplayAccumulator:
 
         if event_type == "TOOL_CALL_START":
             tool_call_id = getattr(event, "tool_call_id", "")
-            existing = self._find_tool(tool_call_id)
+            existing = self._tool_index.get(tool_call_id)
             if existing is None:
-                self.parts.append(
-                    {
-                        "type": "tool",
-                        "toolCallId": tool_call_id,
-                        "toolName": getattr(event, "tool_call_name", ""),
-                        "args": "",
-                        "state": "running",
-                    }
-                )
+                part: dict[str, Any] = {
+                    "type": "tool",
+                    "toolCallId": tool_call_id,
+                    "toolName": getattr(event, "tool_call_name", ""),
+                    "args": "",
+                    "state": "running",
+                }
+                self.parts.append(part)
+                self._tool_index[tool_call_id] = part
             else:
                 existing["state"] = "running"
                 existing["approvalId"] = None
@@ -197,9 +212,10 @@ class _DraftDisplayAccumulator:
 
         snapshot = [dict(part) for part in self.parts]
         content = "\n\n".join(
-            str(part.get("text") or "").strip()
+            text
             for part in snapshot
-            if part.get("type") == "text" and str(part.get("text") or "").strip()
+            if part.get("type") == "text"
+            and (text := str(part.get("text") or "").strip())
         )
         await asyncio.to_thread(
             _persist_draft_display_message,
@@ -212,14 +228,10 @@ class _DraftDisplayAccumulator:
         self.dirty = False
 
     def _find_tool(self, tool_call_id: str) -> Optional[dict[str, Any]]:
-        for index in range(len(self.parts) - 1, -1, -1):
-            part = self.parts[index]
-            if part.get("type") == "tool" and part.get("toolCallId") == tool_call_id:
-                return part
-        return None
+        return self._tool_index.get(tool_call_id)
 
     def _ensure_tool(self, tool_call_id: str) -> dict[str, Any]:
-        tool = self._find_tool(tool_call_id)
+        tool = self._tool_index.get(tool_call_id)
         if tool is not None:
             return tool
         tool = {
@@ -230,6 +242,7 @@ class _DraftDisplayAccumulator:
             "state": "running",
         }
         self.parts.append(tool)
+        self._tool_index[tool_call_id] = tool
         return tool
 
     def _apply_custom(self, event: Any) -> None:
@@ -656,9 +669,6 @@ async def stream_agent_responses(
         if not chat_id or not messages:
             return
         try:
-            from suzent.core.agent_serializer import serialize_state
-            from suzent.database import get_database as _ckpt_get_db
-
             _model_id = getattr(agent, "_model_id", None)
             _tool_names = getattr(agent, "_tool_names", [])
 
@@ -666,7 +676,7 @@ async def stream_agent_responses(
                 _st = serialize_state(
                     messages, model_id=_model_id, tool_names=_tool_names
                 )
-                _ckpt_get_db().update_chat(chat_id, agent_state=_st)
+                get_database().update_chat(chat_id, agent_state=_st)
 
             await asyncio.to_thread(_sync_save)
             logger.debug(
@@ -691,6 +701,11 @@ async def stream_agent_responses(
         prompt = message
         history = list(message_history) if message_history else None
         current_deferred = deferred_tool_results
+        from pydantic_ai.messages import (
+            ToolReturnPart as _TRP,
+            ModelResponse as _MResp,
+            ModelRequest as _MReq,
+        )
 
         try:
             logger.debug("[Streaming] Entering agent context (MCP init)...")
@@ -734,12 +749,6 @@ async def stream_agent_responses(
                             elif _event_kind == "function_tool_call":
                                 _chk_in_flight += 1
                             elif _event_kind == "function_tool_result":
-                                from pydantic_ai.messages import (
-                                    ToolReturnPart as _TRP,
-                                    ModelResponse as _MResp,
-                                    ModelRequest as _MReq,
-                                )
-
                                 if isinstance(event.result, _TRP):
                                     _chk_tool_returns.append(event.result)
                                 _chk_in_flight = max(0, _chk_in_flight - 1)
@@ -1110,14 +1119,12 @@ async def stream_agent_responses(
                     # reconstruct the approval dialog after a page refresh.
                     if chat_id:
                         try:
-                            from suzent.database import get_database as _get_db
 
                             def _save_pending_approval():
-                                _db = _get_db()
+                                _db = get_database()
                                 _chat = _db.get_chat(chat_id)
                                 if _chat is not None:
                                     _cfg = dict(_chat.config or {})
-                                    # Accumulate multiple pending approvals
                                     existing = _cfg.get("_pending_approvals") or []
                                     if isinstance(existing, list):
                                         existing = [
@@ -1134,15 +1141,14 @@ async def stream_agent_responses(
                                             "toolCallId": approval_info["toolCallId"],
                                             "toolName": approval_info["toolName"],
                                             "args": approval_info["args"],
-                                            "savedAt": __import__("datetime")
-                                            .datetime.utcnow()
-                                            .isoformat(),
+                                            "savedAt": datetime.utcnow().isoformat(),
                                         }
                                     )
                                     _cfg["_pending_approvals"] = existing
                                     _db.update_chat(chat_id, config=_cfg)
 
-                            await asyncio.to_thread(_save_pending_approval)
+                            async with _get_approval_lock(chat_id):
+                                await asyncio.to_thread(_save_pending_approval)
                         except Exception as _pa_err:
                             logger.debug(
                                 f"[Streaming] Failed to save pending_approval: {_pa_err}"
@@ -1280,32 +1286,29 @@ async def stream_agent_responses(
             if not getattr(deps, "is_suspended", False):
                 # Stream ended (not paused for approvals), drop any stale cache.
                 pop_pending_auto_approvals(chat_id)
+
                 # Clear persisted pending approvals so the frontend doesn't
                 # show a stale dialog on next load.
-                try:
-                    from suzent.database import get_database as _get_db2
+                async def _clear_pending_approvals_task():
+                    try:
 
-                    async def _clear_pending_approvals_task():
-                        try:
+                        def _do_clear():
+                            _db = get_database()
+                            _chat = _db.get_chat(chat_id)
+                            if _chat is not None:
+                                _cfg = dict(_chat.config or {})
+                                if "_pending_approvals" in _cfg:
+                                    del _cfg["_pending_approvals"]
+                                    _db.update_chat(chat_id, config=_cfg)
 
-                            def _sync_clear():
-                                _db2 = _get_db2()
-                                _chat2 = _db2.get_chat(chat_id)
-                                if _chat2 is not None:
-                                    _cfg2 = dict(_chat2.config or {})
-                                    if "_pending_approvals" in _cfg2:
-                                        del _cfg2["_pending_approvals"]
-                                        _db2.update_chat(chat_id, config=_cfg2)
+                        async with _get_approval_lock(chat_id):
+                            await asyncio.to_thread(_do_clear)
+                    except Exception:
+                        pass
+                    finally:
+                        _pending_approval_locks.pop(chat_id, None)
 
-                            await asyncio.to_thread(_sync_clear)
-                        except Exception:
-                            pass
-
-                    asyncio.create_task(_clear_pending_approvals_task())
-                except Exception as _cp_err:
-                    logger.debug(
-                        f"[Streaming] Failed to clear pending_approvals: {_cp_err}"
-                    )
+                asyncio.create_task(_clear_pending_approvals_task())
 
             existing = stream_controls.get(chat_id)
             if existing is control:

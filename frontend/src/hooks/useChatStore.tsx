@@ -39,8 +39,11 @@ function shouldKeepOptimisticUserMessage(localMessages: Message[], serverMessage
   if (!lastLocal || lastLocal.role !== 'user') return false;
 
   const fingerprint = userMessageFingerprint(lastLocal);
-  return countUserMessageFingerprint(localMessages, fingerprint)
-    > countUserMessageFingerprint(serverMessages, fingerprint);
+  const localCount = countUserMessageFingerprint(localMessages, fingerprint);
+  const serverCount = countUserMessageFingerprint(serverMessages, fingerprint);
+  // Only hold for exactly one pending message — avoid blocking indefinitely when
+  // the server never persists a second identical message (e.g. on error).
+  return localCount - serverCount === 1;
 }
 
 interface ChatStreamingContextValue {
