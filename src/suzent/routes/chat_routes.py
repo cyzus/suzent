@@ -21,12 +21,51 @@ from suzent.streaming import stop_stream
 from suzent.core.stream_registry import (
     get_background_queue,
     is_background_streaming,
-    try_register_background_stream,
+    register_background_stream,
     unregister_background_stream,
 )
 
 logger = get_logger(__name__)
 _chat_send_tasks: set[asyncio.Task[None]] = set()
+
+
+def _display_file_metadata(files_list: list) -> list[dict]:
+    """Return JSON-safe file metadata for immediate user-message display."""
+    result: list[dict] = []
+    for file in files_list or []:
+        if isinstance(file, dict):
+            result.append(file)
+    return result
+
+
+def _prewrite_user_display_message(
+    chat_id: str,
+    message: str,
+    files_list: list,
+) -> None:
+    """Append the user's display row before stream_started can trigger reloads."""
+    if not chat_id:
+        return
+
+    content = (message or "").strip()
+    files = _display_file_metadata(files_list)
+    if not content and not files:
+        return
+
+    entry: dict = {"role": "user", "content": content}
+    if files:
+        entry["files"] = files
+
+    try:
+        db = get_database()
+        chat_model = db.get_chat(chat_id)
+        if chat_model is None:
+            return
+
+        existing = list(chat_model.messages or [])
+        db.update_chat(chat_id, messages=existing + [entry])
+    except Exception as exc:
+        logger.debug(f"Failed to prewrite user display message for {chat_id}: {exc}")
 
 
 async def chat(request: Request) -> StreamingResponse:
@@ -244,9 +283,13 @@ async def chat_send(request: Request) -> JSONResponse:
 
     processor = ChatProcessor()
     config_override = build_agent_config(config, require_social_tool=False)
-    stream_queue = try_register_background_stream(chat_id)
-    if stream_queue is None:
+    if is_background_streaming(chat_id):
         return JSONResponse({"error": "Chat is already streaming"}, status_code=409)
+
+    if not resume_approvals and not message.strip().startswith("/"):
+        _prewrite_user_display_message(chat_id, message, files_list)
+
+    stream_queue = register_background_stream(chat_id)
 
     async def _run() -> None:
         try:
@@ -305,9 +348,9 @@ async def steer_chat_send(request: Request) -> JSONResponse:
 
     processor = ChatProcessor()
     config_override = build_agent_config(config, require_social_tool=False)
-    stream_queue = try_register_background_stream(chat_id)
-    if stream_queue is None:
-        return JSONResponse({"error": "Chat is already streaming"}, status_code=409)
+    _prewrite_user_display_message(chat_id, message, [])
+
+    stream_queue = register_background_stream(chat_id)
 
     async def _run() -> None:
         try:

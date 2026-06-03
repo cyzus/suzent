@@ -532,8 +532,18 @@ class ChatProcessor:
                     _chat = _db.get_chat(chat_id)
                     if _chat is not None:
                         _existing = list(_chat.messages or [])
-                        _user_entry: dict = {"role": "user", "content": full_prompt}
-                        _db.update_chat(chat_id, messages=_existing + [_user_entry])
+                        _last = _existing[-1] if _existing else {}
+                        _last_content = str(_last.get("content") or "").strip()
+                        if not (
+                            _last.get("role") == "user"
+                            and _last_content
+                            and full_prompt.strip().startswith(_last_content)
+                        ):
+                            _user_entry: dict = {
+                                "role": "user",
+                                "content": full_prompt,
+                            }
+                            _db.update_chat(chat_id, messages=_existing + [_user_entry])
                 except Exception:
                     pass  # Non-fatal; post-processing will persist the full history anyway
 

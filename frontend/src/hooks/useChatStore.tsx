@@ -10,6 +10,39 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function userMessageFingerprint(message: Message): string {
+  const files = (message.files ?? [])
+    .map(file => `${file.filename}:${file.path}:${file.mime_type}:${file.size}`)
+    .sort()
+    .join('|');
+  const images = (message.images ?? [])
+    .map(image => `${image.filename}:${image.mime_type}`)
+    .sort()
+    .join('|');
+  return JSON.stringify({
+    content: (message.content ?? '').trim(),
+    files,
+    images,
+  });
+}
+
+function countUserMessageFingerprint(messages: Message[], fingerprint: string): number {
+  return messages.reduce((count, message) => (
+    message.role === 'user' && userMessageFingerprint(message) === fingerprint
+      ? count + 1
+      : count
+  ), 0);
+}
+
+function shouldKeepOptimisticUserMessage(localMessages: Message[], serverMessages: Message[]): boolean {
+  const lastLocal = localMessages[localMessages.length - 1];
+  if (!lastLocal || lastLocal.role !== 'user') return false;
+
+  const fingerprint = userMessageFingerprint(lastLocal);
+  return countUserMessageFingerprint(localMessages, fingerprint)
+    > countUserMessageFingerprint(serverMessages, fingerprint);
+}
+
 interface ChatStreamingContextValue {
   messages: Message[];
   isStreaming: boolean;
@@ -1173,6 +1206,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           // don't let stale backend DB state overwrite it. Wait until DB catches up.
           const existing = prev[key] || [];
           if (existing.length > mappedMessages.length) {
+            return prev;
+          }
+          // Guard: a force reload can arrive after the frontend optimistically
+          // appended the user's message but before the backend display log has
+          // caught up. Keep the local user bubble visible while the agent stream
+          // continues, then let the next fresh server snapshot replace it.
+          if (shouldKeepOptimisticUserMessage(existing, mappedMessages)) {
             return prev;
           }
           // Guard: keep optimistic local content when server is still mid-postprocess.

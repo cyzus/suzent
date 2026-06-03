@@ -14,6 +14,7 @@ using Server-Sent Events (SSE), including:
 
 import asyncio
 import json
+import time
 import traceback
 import uuid
 from typing import Optional, Dict, Any, AsyncGenerator
@@ -50,6 +51,7 @@ _FIRST_STREAM_EVENT_TIMEOUT_SECONDS = 45.0
 _STREAM_IDLE_TIMEOUT_SECONDS = 120.0
 _DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS = 60.0
 _AUTO_TITLE_PLACEHOLDER_TITLES = frozenset({"", "new chat", "untitled"})
+_DRAFT_PERSIST_INTERVAL_SECONDS = 0.75
 
 
 def _should_generate_auto_title(chat: Any) -> bool:
@@ -72,6 +74,232 @@ def _serialize_tool_output(output: Any) -> str:
         except Exception:
             return str(output)
     return str(output) if output else ""
+
+
+def _event_type_value(event: Any) -> str:
+    event_type = getattr(event, "type", "")
+    return str(getattr(event_type, "value", event_type))
+
+
+def _stringify_part_content(raw: Any) -> str:
+    if raw is None:
+        return ""
+    if isinstance(raw, str):
+        return raw
+    try:
+        return json.dumps(raw, ensure_ascii=False)
+    except Exception:
+        return str(raw)
+
+
+class _DraftDisplayAccumulator:
+    """Accumulates AG-UI events into the frontend's persisted parts shape."""
+
+    def __init__(self, chat_id: Optional[str], run_id: str):
+        self.chat_id = chat_id
+        self.run_id = run_id
+        self.parts: list[dict[str, Any]] = []
+        self.last_persisted_at = 0.0
+        self.dirty = False
+
+    def apply(self, event: Any) -> None:
+        event_type = _event_type_value(event)
+
+        if event_type == "TEXT_MESSAGE_START":
+            self.parts.append(
+                {
+                    "type": "text",
+                    "text": "",
+                    "messageId": getattr(event, "message_id", ""),
+                }
+            )
+            self.dirty = True
+            return
+
+        if event_type == "TEXT_MESSAGE_CONTENT":
+            msg_id = getattr(event, "message_id", "")
+            delta = getattr(event, "delta", "") or ""
+            for index in range(len(self.parts) - 1, -1, -1):
+                part = self.parts[index]
+                if part.get("type") == "text" and part.get("messageId") == msg_id:
+                    part["text"] = str(part.get("text") or "") + delta
+                    self.dirty = True
+                    return
+            self.parts.append({"type": "text", "text": delta, "messageId": msg_id})
+            self.dirty = True
+            return
+
+        if event_type in {"THINKING_START", "THINKING_TEXT_MESSAGE_START"}:
+            last = self.parts[-1] if self.parts else None
+            if not last or last.get("type") != "reasoning" or last.get("text"):
+                self.parts.append({"type": "reasoning", "text": ""})
+                self.dirty = True
+            return
+
+        if event_type == "THINKING_TEXT_MESSAGE_CONTENT":
+            delta = getattr(event, "delta", "") or ""
+            for index in range(len(self.parts) - 1, -1, -1):
+                part = self.parts[index]
+                if part.get("type") == "reasoning":
+                    part["text"] = str(part.get("text") or "") + delta
+                    self.dirty = True
+                    return
+            self.parts.append({"type": "reasoning", "text": delta})
+            self.dirty = True
+            return
+
+        if event_type == "TOOL_CALL_START":
+            tool_call_id = getattr(event, "tool_call_id", "")
+            existing = self._find_tool(tool_call_id)
+            if existing is None:
+                self.parts.append(
+                    {
+                        "type": "tool",
+                        "toolCallId": tool_call_id,
+                        "toolName": getattr(event, "tool_call_name", ""),
+                        "args": "",
+                        "state": "running",
+                    }
+                )
+            else:
+                existing["state"] = "running"
+                existing["approvalId"] = None
+                existing.setdefault("args", "")
+            self.dirty = True
+            return
+
+        if event_type == "TOOL_CALL_ARGS":
+            tool_call_id = getattr(event, "tool_call_id", "")
+            delta = getattr(event, "delta", "") or ""
+            tool = self._ensure_tool(tool_call_id)
+            tool["args"] = str(tool.get("args") or "") + delta
+            self.dirty = True
+            return
+
+        if event_type == "TOOL_CALL_RESULT":
+            tool_call_id = getattr(event, "tool_call_id", "")
+            tool = self._ensure_tool(tool_call_id)
+            tool["output"] = _stringify_part_content(getattr(event, "content", ""))
+            tool["state"] = "completed"
+            tool["approvalId"] = None
+            self.dirty = True
+            return
+
+        if event_type == "CUSTOM":
+            self._apply_custom(event)
+
+    async def maybe_persist(self, *, force: bool = False) -> None:
+        if not self.chat_id or not self.parts or not self.dirty:
+            return
+        now = time.monotonic()
+        if not force and now - self.last_persisted_at < _DRAFT_PERSIST_INTERVAL_SECONDS:
+            return
+
+        snapshot = [dict(part) for part in self.parts]
+        content = "\n\n".join(
+            str(part.get("text") or "").strip()
+            for part in snapshot
+            if part.get("type") == "text" and str(part.get("text") or "").strip()
+        )
+        await asyncio.to_thread(
+            _persist_draft_display_message,
+            self.chat_id,
+            self.run_id,
+            snapshot,
+            content,
+        )
+        self.last_persisted_at = now
+        self.dirty = False
+
+    def _find_tool(self, tool_call_id: str) -> Optional[dict[str, Any]]:
+        for index in range(len(self.parts) - 1, -1, -1):
+            part = self.parts[index]
+            if part.get("type") == "tool" and part.get("toolCallId") == tool_call_id:
+                return part
+        return None
+
+    def _ensure_tool(self, tool_call_id: str) -> dict[str, Any]:
+        tool = self._find_tool(tool_call_id)
+        if tool is not None:
+            return tool
+        tool = {
+            "type": "tool",
+            "toolCallId": tool_call_id,
+            "toolName": "unknown",
+            "args": "",
+            "state": "running",
+        }
+        self.parts.append(tool)
+        return tool
+
+    def _apply_custom(self, event: Any) -> None:
+        name = getattr(event, "name", "")
+        value = getattr(event, "value", None)
+        if name == "tool_approval_request" and isinstance(value, dict):
+            tool_call_id = str(value.get("toolCallId") or value.get("approvalId") or "")
+            tool = self._ensure_tool(tool_call_id)
+            tool["state"] = "approval-requested"
+            tool["approvalId"] = value.get("approvalId")
+            tool["toolName"] = (
+                tool.get("toolName") or value.get("toolName") or "unknown"
+            )
+            if not tool.get("args") and value.get("args") is not None:
+                tool["args"] = _stringify_part_content(value.get("args"))
+            self.dirty = True
+        elif name == "tool_approval_result" and isinstance(value, dict):
+            tool_call_id = str(value.get("toolCallId") or "")
+            tool = self._ensure_tool(tool_call_id)
+            tool["state"] = (
+                "completed" if value.get("status") == "executed" else "error"
+            )
+            tool["output"] = _stringify_part_content(value.get("output"))
+            tool["approvalId"] = None
+            self.dirty = True
+        elif name == "tool_display" and isinstance(value, dict):
+            tool_call_id = str(value.get("toolCallId") or "")
+            tool = self._ensure_tool(tool_call_id)
+            tool["displayData"] = value
+            self.dirty = True
+        elif name == "a2ui.render" and isinstance(value, dict):
+            if value.get("target") == "inline":
+                self.parts.append({"type": "a2ui", "surface": value})
+                self.dirty = True
+
+
+def _persist_draft_display_message(
+    chat_id: str, run_id: str, parts: list[dict[str, Any]], content: str
+) -> None:
+    from suzent.database import get_database
+
+    db = get_database()
+    chat = db.get_chat(chat_id)
+    if chat is None:
+        return
+
+    messages = list(chat.messages or [])
+    draft = {
+        "role": "assistant",
+        "content": content,
+        "parts": parts,
+        "_streaming_draft": True,
+        "_streaming_run_id": run_id,
+    }
+
+    if messages:
+        last = messages[-1]
+        if (
+            isinstance(last, dict)
+            and last.get("role") == "assistant"
+            and last.get("_streaming_draft")
+            and last.get("_streaming_run_id") == run_id
+        ):
+            messages[-1] = draft
+        else:
+            messages.append(draft)
+    else:
+        messages.append(draft)
+
+    db.update_chat(chat_id, messages=messages)
 
 
 def _encode_custom(name: str, value: Any) -> str:
@@ -511,6 +739,7 @@ async def stream_agent_responses(
                                     ModelResponse as _MResp,
                                     ModelRequest as _MReq,
                                 )
+
                                 if isinstance(event.result, _TRP):
                                     _chk_tool_returns.append(event.result)
                                 _chk_in_flight = max(0, _chk_in_flight - 1)
@@ -892,24 +1121,32 @@ async def stream_agent_responses(
                                     existing = _cfg.get("_pending_approvals") or []
                                     if isinstance(existing, list):
                                         existing = [
-                                            a for a in existing
-                                            if a.get("toolCallId") != approval_info["toolCallId"]
+                                            a
+                                            for a in existing
+                                            if a.get("toolCallId")
+                                            != approval_info["toolCallId"]
                                         ]
                                     else:
                                         existing = []
-                                    existing.append({
-                                        "approvalId": approval_info["approvalId"],
-                                        "toolCallId": approval_info["toolCallId"],
-                                        "toolName": approval_info["toolName"],
-                                        "args": approval_info["args"],
-                                        "savedAt": __import__("datetime").datetime.utcnow().isoformat(),
-                                    })
+                                    existing.append(
+                                        {
+                                            "approvalId": approval_info["approvalId"],
+                                            "toolCallId": approval_info["toolCallId"],
+                                            "toolName": approval_info["toolName"],
+                                            "args": approval_info["args"],
+                                            "savedAt": __import__("datetime")
+                                            .datetime.utcnow()
+                                            .isoformat(),
+                                        }
+                                    )
                                     _cfg["_pending_approvals"] = existing
                                     _db.update_chat(chat_id, config=_cfg)
 
                             await asyncio.to_thread(_save_pending_approval)
                         except Exception as _pa_err:
-                            logger.debug(f"[Streaming] Failed to save pending_approval: {_pa_err}")
+                            logger.debug(
+                                f"[Streaming] Failed to save pending_approval: {_pa_err}"
+                            )
 
                 elif msg_type == "tool_recovery":
                     # HITL: emit recovered tool result with output
@@ -944,10 +1181,14 @@ async def stream_agent_responses(
 
     # --- Background worker to encode stream using AGUIEventStream ---
     async def encode_worker() -> None:
+        draft_accumulator: Optional[_DraftDisplayAccumulator] = None
         try:
+            run_id = str(uuid.uuid4())
+            if not is_heartbeat:
+                draft_accumulator = _DraftDisplayAccumulator(chat_id, run_id)
             run_input = RunAgentInput(
                 thread_id=chat_id or "default",
-                run_id=str(uuid.uuid4()),
+                run_id=run_id,
                 messages=[],
                 state=None,
                 tools=[],
@@ -959,12 +1200,20 @@ async def stream_agent_responses(
             async for agui_event in agui_events:
                 if control.cancel_event.is_set():
                     break
+                if draft_accumulator is not None:
+                    draft_accumulator.apply(agui_event)
+                    await draft_accumulator.maybe_persist()
                 encoded = event_stream.encode_event(agui_event)
                 await out_queue.put(("chunk", encoded))
         except Exception as e:
             err = RunErrorEvent(message=str(e))
             await out_queue.put(("chunk", _encoder.encode(err)))
         finally:
+            if draft_accumulator is not None:
+                try:
+                    await draft_accumulator.maybe_persist(force=True)
+                except Exception as exc:
+                    logger.debug(f"[Streaming] Failed to persist final draft: {exc}")
             await out_queue.put(("done", None))
 
     encode_task = asyncio.create_task(encode_worker())
@@ -1038,6 +1287,7 @@ async def stream_agent_responses(
 
                     async def _clear_pending_approvals_task():
                         try:
+
                             def _sync_clear():
                                 _db2 = _get_db2()
                                 _chat2 = _db2.get_chat(chat_id)
@@ -1046,13 +1296,16 @@ async def stream_agent_responses(
                                     if "_pending_approvals" in _cfg2:
                                         del _cfg2["_pending_approvals"]
                                         _db2.update_chat(chat_id, config=_cfg2)
+
                             await asyncio.to_thread(_sync_clear)
                         except Exception:
                             pass
 
                     asyncio.create_task(_clear_pending_approvals_task())
                 except Exception as _cp_err:
-                    logger.debug(f"[Streaming] Failed to clear pending_approvals: {_cp_err}")
+                    logger.debug(
+                        f"[Streaming] Failed to clear pending_approvals: {_cp_err}"
+                    )
 
             existing = stream_controls.get(chat_id)
             if existing is control:
