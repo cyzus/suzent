@@ -58,6 +58,7 @@ def build_agent_deps(
     _global_perm = dict(CONFIG.permission_policies or {})
     _request_perm = _get_config_value(config, "permission_policies", None)
 
+    _chat_obj = None
     try:
         from suzent.database import get_database as _gdb
 
@@ -151,11 +152,26 @@ def build_agent_deps(
 
     skill_manager = get_skill_manager()
 
-    tool_approval_policy = _get_config_value(config, "tool_approval_policy", {})
+    # Merge tool_approval_policy across layers so a remembered decision survives
+    # turns even if the client doesn't re-send it in the request config:
+    #   Layer 1 (lowest): per-chat policy persisted in DB
+    #   Layer 2 (highest): runtime config sent by client this request
+    _request_approval_policy = _get_config_value(config, "tool_approval_policy", {})
+    assert isinstance(_request_approval_policy, dict), (
+        "tool_approval_policy must be a dict"
+    )
 
-    # SECURITY: Make a defensive copy to prevent accidental mutation of shared config
-    # This ensures each AgentDeps instance has its own independent policy dict
-    assert isinstance(tool_approval_policy, dict), "tool_approval_policy must be a dict"
+    # Reuse the chat object fetched above for permission_policies.
+    _chat_approval_policy = (
+        (_chat_obj.config or {}).get("tool_approval_policy") if _chat_obj else None
+    )
+
+    tool_approval_policy: dict = {}
+    if isinstance(_chat_approval_policy, dict):
+        tool_approval_policy.update(_chat_approval_policy)
+    # Runtime request wins on conflict.
+    tool_approval_policy.update(_request_approval_policy)
+    # SECURITY: defensive copy so each AgentDeps has its own independent dict.
     tool_approval_policy = dict(tool_approval_policy)
 
     from suzent.core.file_tracker import FileTracker

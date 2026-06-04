@@ -1,5 +1,5 @@
-import React, { useMemo, useEffect, useRef } from 'react';
-import { Editor, DiffEditor, type BeforeMount, type DiffOnMount } from '@monaco-editor/react';
+import React, { useMemo } from 'react';
+import { Editor, DiffEditor, type BeforeMount } from '@monaco-editor/react';
 import { SCHEME_COLORS, type Scheme, useTheme } from '../../hooks/useTheme';
 
 const EDITOR_OPTIONS = {
@@ -12,6 +12,18 @@ const EDITOR_OPTIONS = {
   renderSideBySide: false, // Unified diff is better for inline chat context
   automaticLayout: true,
   padding: { top: 8, bottom: 8 },
+  // Disable features that touch the model asynchronously after layout/mouse
+  // events. In this chat context editors mount/unmount rapidly, and these
+  // features (sticky scroll, hover, code lens, overview ruler) race the model
+  // teardown and throw uncaught errors like "Cannot read properties of
+  // undefined (reading 'isVisible')", which abort the surrounding React render
+  // and leave tool UI (e.g. an approval prompt) stuck.
+  stickyScroll: { enabled: false },
+  hover: { enabled: false },
+  codeLens: false,
+  occurrencesHighlight: 'off' as const,
+  selectionHighlight: false,
+  overviewRulerLanes: 0,
   unicodeHighlight: {
     ambiguousCharacters: false,
     invisibleCharacters: false,
@@ -164,33 +176,6 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsed
   const editorTheme = getMonacoThemeName(theme, scheme);
   const beforeMount = useMemo(() => makeBeforeMount(), []);
 
-  // Hold the diff editor + its models so we can dispose them deterministically
-  // (and safely) on unmount. We keep the models with keepCurrent*Model so the
-  // wrapper's own teardown doesn't race the widget reset and throw; this manual
-  // cleanup avoids leaking the models instead.
-  const diffEditorRef = useRef<{
-    getModel?: () => { original?: any; modified?: any } | null;
-  } | null>(null);
-
-  const handleDiffMount: DiffOnMount = (editor) => {
-    diffEditorRef.current = editor as any;
-  };
-
-  useEffect(() => {
-    return () => {
-      try {
-        const ed = diffEditorRef.current;
-        const model = ed?.getModel?.();
-        // Reset the widget's models first, then dispose the underlying models.
-        (ed as any)?.setModel?.(null);
-        model?.original?.dispose?.();
-        model?.modified?.dispose?.();
-      } catch {
-        /* Monaco may already be tearing down — ignore. */
-      }
-    };
-  }, []);
-
   const { filePath, dirPart, namePart, language, isDiff, original, modified, height, canPreview } = useMemo(() => {
     const config = FILE_TOOL_PREVIEW_CONFIG[toolName];
     const filePath = typeof metadata?.abs_path === 'string'
@@ -263,13 +248,13 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsed
             theme={editorTheme}
             options={EDITOR_OPTIONS}
             beforeMount={beforeMount}
-            onMount={handleDiffMount}
             loading={LOADING_FALLBACK}
-            // Stop the wrapper from eagerly disposing the models on unmount —
-            // that races the DiffEditorWidget teardown and throws "TextModel got
+            // Don't let the wrapper eagerly dispose the models on unmount — that
+            // races the DiffEditorWidget teardown and throws "TextModel got
             // disposed before DiffEditorWidget model got reset", which aborts the
-            // surrounding render and leaves tool UI (e.g. approval) stuck. We
-            // dispose them ourselves in a safe useEffect cleanup above.
+            // surrounding React render and leaves tool UI (e.g. an approval
+            // prompt) stuck. Leaving the models for GC trades a tiny leak for
+            // crash-free teardown in this rapid mount/unmount chat context.
             keepCurrentOriginalModel
             keepCurrentModifiedModel
           />
