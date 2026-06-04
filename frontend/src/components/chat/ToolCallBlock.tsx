@@ -255,11 +255,24 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   return (
     <div className={`${inActivityRail ? 'my-0' : 'my-1.5'} min-w-0 w-full overflow-x-hidden`}>
       {/* Compact pill header */}
-      <button
+      {/* Header is a div (not button) so the inline auto-approve badge button
+          below is valid HTML — a <button> cannot nest inside a <button>. */}
+      <div
+        role="button"
+        tabIndex={hasDetails ? 0 : -1}
+        aria-expanded={hasDetails ? expanded : undefined}
         onClick={() => {
           if (!hasDetails) return;
           userToggledRef.current = true;
           setExpanded(!expanded);
+        }}
+        onKeyDown={(e) => {
+          if (!hasDetails) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            userToggledRef.current = true;
+            setExpanded(!expanded);
+          }
         }}
         className={headerClassName}
       >
@@ -334,7 +347,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
         )}
-      </button>
+      </div>
 
       {/* Expandable content */}
       <div className={`
