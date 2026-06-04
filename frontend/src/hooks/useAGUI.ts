@@ -874,6 +874,11 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         }
 
         if (events.length > 0) {
+          // [DIAG] dump tool part states to find stuck approval-requested parts
+          const toolStates = currentParts
+            .filter(p => p.type === 'tool')
+            .map(p => `${p.toolName}:${(p.toolCallId || '').slice(0, 6)}=${p.state}`);
+          if (toolStates.length) console.log('[AGUI-DIAG] toolParts', toolStates.join(' | '));
           setParts(currentParts);
           partsRef.current = currentParts;
           setPendingApprovalCountSync(pendingApprovalIds.size);
