@@ -1252,25 +1252,32 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       const seedParts = abandonedPartsRef.current.get(chatIdAtMount);
       abandonedPartsRef.current.delete(chatIdAtMount);
 
-      const streamed = await sendAGUI({ chat_id: chatIdAtMount, wait_ms: 8000 }, {
-        urlOverride: liveUrl,
-        seedParts,
-        onStreamStart: () => {
-          isLiveStreamRef.current = true;
-          // Pin the streaming chat ID so onFinish uses the correct chat even if
-          // the user navigates away mid-stream.
-          streamingChatIdRef.current = chatIdAtMount;
-          // Preserve the original start time across reconnects so the activity
-          // timer continues; only set it if this is the first time we see it.
-          if (!streamStartByChatRef.current.has(chatIdAtMount)) {
-            streamStartByChatRef.current.set(chatIdAtMount, Date.now());
-          }
-          setIsStreaming(true, chatIdAtMount);
-          loadChat(chatIdAtMount, { force: true }).catch(() => {});
-        },
-      });
+      let streamed: boolean;
+      try {
+        streamed = await sendAGUI({ chat_id: chatIdAtMount, wait_ms: 8000 }, {
+          urlOverride: liveUrl,
+          seedParts,
+          onStreamStart: () => {
+            isLiveStreamRef.current = true;
+            // Pin the streaming chat ID so onFinish uses the correct chat even if
+            // the user navigates away mid-stream.
+            streamingChatIdRef.current = chatIdAtMount;
+            // Preserve the original start time across reconnects so the activity
+            // timer continues; only set it if this is the first time we see it.
+            if (!streamStartByChatRef.current.has(chatIdAtMount)) {
+              streamStartByChatRef.current.set(chatIdAtMount, Date.now());
+            }
+            setIsStreaming(true, chatIdAtMount);
+            loadChat(chatIdAtMount, { force: true }).catch(() => {});
+          },
+        });
+      } finally {
+        // Always release the connect guard, even if sendAGUI rejected — otherwise
+        // connectingRef stays true forever and every future tryConnect (send,
+        // retry, steer, resume, bus stream_started) becomes a silent no-op.
+        connectingRef.current = false;
+      }
 
-      connectingRef.current = false;
       if (!streamed || cancelled) {
         // 204 (no active stream) or cancelled — clear pending so it doesn't loop.
         pendingConnectRef.current = false;

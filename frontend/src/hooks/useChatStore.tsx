@@ -41,9 +41,11 @@ function shouldKeepOptimisticUserMessage(localMessages: Message[], serverMessage
   const fingerprint = userMessageFingerprint(lastLocal);
   const localCount = countUserMessageFingerprint(localMessages, fingerprint);
   const serverCount = countUserMessageFingerprint(serverMessages, fingerprint);
-  // Only hold for exactly one pending message — avoid blocking indefinitely when
-  // the server never persists a second identical message (e.g. on error).
-  return localCount - serverCount === 1;
+  // Hold while the local store has more copies of this message than the server
+  // (the optimistic append(s) the backend hasn't logged yet). Using >= 1 (not
+  // === 1) keeps BOTH bubbles visible when the same text is sent twice in a row,
+  // while still releasing as soon as the server catches up.
+  return localCount - serverCount >= 1;
 }
 
 interface ChatStreamingContextValue {

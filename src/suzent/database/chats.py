@@ -222,6 +222,29 @@ class ChatOperationsMixin:
             session.commit()
             return True
 
+    def merge_chat_config(self, chat_id: str, updates: Dict[str, Any]) -> bool:
+        """Atomically merge top-level keys into a chat's config (read-modify-write
+        inside one DB session).
+
+        Use this instead of ``update_chat(config=...)`` when only specific keys
+        change, so concurrent writers to *other* config keys (e.g. one writing
+        ``tool_approval_policy`` while another writes ``_pending_approvals``) don't
+        clobber each other via a full-config replace.
+        """
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if not chat:
+                return False
+
+            next_config = dict(chat.config or {})
+            next_config.update(updates)
+            chat.config = next_config
+            chat.updated_at = datetime.now()
+            flag_modified(chat, "config")
+            session.add(chat)
+            session.commit()
+            return True
+
     def commit_snapshot_state(self, chat_id: str, agent_state: bytes) -> Optional[int]:
         """Commit fast snapshot state and increment revision atomically.
 

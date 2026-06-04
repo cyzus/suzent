@@ -701,6 +701,10 @@ async def stream_agent_responses(
         prompt = message
         history = list(message_history) if message_history else None
         current_deferred = deferred_tool_results
+        # tool_call_ids whose recovery we already emitted immediately at
+        # function_tool_result time, so the AgentRunResultEvent fallback path
+        # doesn't emit a second (duplicate) recovery for the same tool.
+        _emitted_recovery_ids: set[str] = set()
         from pydantic_ai.messages import (
             ToolReturnPart as _TRP,
             ModelResponse as _MResp,
@@ -763,6 +767,7 @@ async def stream_agent_responses(
                                             _tcid
                                             and _tcid in current_deferred.approvals
                                         ):
+                                            _emitted_recovery_ids.add(_tcid)
                                             await sse_queue.put(
                                                 (
                                                     "tool_recovery",
@@ -817,9 +822,14 @@ async def stream_agent_responses(
                                 last_run_result = event.result
                                 final_response_text = str(event.result.output)
 
-                                # HITL BUG FIX: Emit deferred tool recovery events with output
+                                # HITL BUG FIX: Emit deferred tool recovery events with output.
+                                # Seed the dedup set with ids we already emitted
+                                # immediately at function_tool_result time so each
+                                # deferred tool's recovery is sent exactly once.
                                 if current_deferred:
-                                    seen_recovery_ids: set[str] = set()
+                                    seen_recovery_ids: set[str] = set(
+                                        _emitted_recovery_ids
+                                    )
                                     for msg in event.result.all_messages():
                                         for (
                                             tool_call_id,
@@ -1161,8 +1171,9 @@ async def stream_agent_responses(
                                 _db = get_database()
                                 _chat = _db.get_chat(chat_id)
                                 if _chat is not None:
-                                    _cfg = dict(_chat.config or {})
-                                    existing = _cfg.get("_pending_approvals") or []
+                                    existing = (_chat.config or {}).get(
+                                        "_pending_approvals"
+                                    ) or []
                                     if isinstance(existing, list):
                                         existing = [
                                             a
@@ -1181,8 +1192,11 @@ async def stream_agent_responses(
                                             "savedAt": datetime.utcnow().isoformat(),
                                         }
                                     )
-                                    _cfg["_pending_approvals"] = existing
-                                    _db.update_chat(chat_id, config=_cfg)
+                                    # merge_chat_config so a concurrent write to a
+                                    # different config key isn't clobbered.
+                                    _db.merge_chat_config(
+                                        chat_id, {"_pending_approvals": existing}
+                                    )
 
                             async with _get_approval_lock(chat_id):
                                 await asyncio.to_thread(_save_pending_approval)
@@ -1332,11 +1346,14 @@ async def stream_agent_responses(
                         def _do_clear():
                             _db = get_database()
                             _chat = _db.get_chat(chat_id)
-                            if _chat is not None:
-                                _cfg = dict(_chat.config or {})
-                                if "_pending_approvals" in _cfg:
-                                    del _cfg["_pending_approvals"]
-                                    _db.update_chat(chat_id, config=_cfg)
+                            if _chat is not None and (_chat.config or {}).get(
+                                "_pending_approvals"
+                            ):
+                                # Set to [] (rather than deleting) via merge so a
+                                # concurrent write to another config key isn't lost.
+                                _db.merge_chat_config(
+                                    chat_id, {"_pending_approvals": []}
+                                )
 
                         async with _get_approval_lock(chat_id):
                             await asyncio.to_thread(_do_clear)

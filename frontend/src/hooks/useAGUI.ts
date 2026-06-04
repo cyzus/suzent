@@ -317,11 +317,15 @@ function processEvent(
           }
         }
         if (!found) {
-          // Fallback: attach to the most recent unfinished tool of the same name.
-          // The toolCallId can differ between the streamed TOOL_CALL_START and the
-          // deferred recovery result (auto-approved bash runs through the deferred
-          // path), so match by name on any tool still awaiting a result —
-          // 'approval-requested' OR 'running' with no output yet.
+          // Fallback: the toolCallId can differ between the streamed
+          // TOOL_CALL_START and the deferred recovery result (auto-approved tools
+          // run through the deferred path), so match by name on a tool still
+          // awaiting a result — 'approval-requested' OR 'running' with no output.
+          // Only do this when there is exactly ONE such candidate: with multiple
+          // parallel same-name tools, name-matching is ambiguous and could attach
+          // this result to the wrong tool's part. When ambiguous, fall through to
+          // pushing a new part — a correct extra block beats a corrupted one.
+          const candidateIdxs: number[] = [];
           for (let i = next.length - 1; i >= 0; i--) {
             const p = next[i];
             if (
@@ -330,17 +334,21 @@ function processEvent(
               (p.state === 'approval-requested' ||
                 (p.state === 'running' && !p.output))
             ) {
-              next[i] = {
-                ...p,
-                toolCallId: p.toolCallId || tcId,
-                state: resultData.status === 'executed' ? 'completed' : 'error',
-                output,
-                argsReplayPending: false,
-                approvalId: undefined,
-              };
-              found = true;
-              break;
+              candidateIdxs.push(i);
             }
+          }
+          if (candidateIdxs.length === 1) {
+            const i = candidateIdxs[0];
+            const p = next[i];
+            next[i] = {
+              ...p,
+              toolCallId: p.toolCallId || tcId,
+              state: resultData.status === 'executed' ? 'completed' : 'error',
+              output,
+              argsReplayPending: false,
+              approvalId: undefined,
+            };
+            found = true;
           }
         }
         if (!found) {

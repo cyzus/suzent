@@ -720,14 +720,21 @@ class ChatProcessor:
                         # tool_approval_policy in the request config. (Both session
                         # and global remember are at least chat-scoped here; true
                         # cross-chat global persistence is out of scope.)
+                        # Use merge_chat_config so this write can't clobber a
+                        # concurrent _pending_approvals write from streaming.py.
                         try:
                             _db = get_database()
                             _chat = _db.get_chat(chat_id)
-                            _chat_cfg = dict((_chat.config or {}) if _chat else {})
-                            _chat_ap = dict(_chat_cfg.get("tool_approval_policy") or {})
+                            _chat_ap = dict(
+                                ((_chat.config or {}) if _chat else {}).get(
+                                    "tool_approval_policy"
+                                )
+                                or {}
+                            )
                             _chat_ap[tool_name] = _policy_value
-                            _chat_cfg["tool_approval_policy"] = _chat_ap
-                            _db.update_chat(chat_id, config=_chat_cfg)
+                            _db.merge_chat_config(
+                                chat_id, {"tool_approval_policy": _chat_ap}
+                            )
                         except Exception as exc:
                             logger.warning(
                                 "Failed to persist approval policy for {}: {}",
