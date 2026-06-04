@@ -12,6 +12,18 @@ const EDITOR_OPTIONS = {
   renderSideBySide: false, // Unified diff is better for inline chat context
   automaticLayout: true,
   padding: { top: 8, bottom: 8 },
+  // Disable features that touch the model asynchronously after layout/mouse
+  // events. In this chat context editors mount/unmount rapidly, and these
+  // features (sticky scroll, hover, code lens, overview ruler) race the model
+  // teardown and throw uncaught errors like "Cannot read properties of
+  // undefined (reading 'isVisible')", which abort the surrounding React render
+  // and leave tool UI (e.g. an approval prompt) stuck.
+  stickyScroll: { enabled: false },
+  hover: { enabled: false },
+  codeLens: false,
+  occurrencesHighlight: 'off' as const,
+  selectionHighlight: false,
+  overviewRulerLanes: 0,
   unicodeHighlight: {
     ambiguousCharacters: false,
     invisibleCharacters: false,
@@ -237,6 +249,14 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsed
             options={EDITOR_OPTIONS}
             beforeMount={beforeMount}
             loading={LOADING_FALLBACK}
+            // Don't let the wrapper eagerly dispose the models on unmount — that
+            // races the DiffEditorWidget teardown and throws "TextModel got
+            // disposed before DiffEditorWidget model got reset", which aborts the
+            // surrounding React render and leaves tool UI (e.g. an approval
+            // prompt) stuck. Leaving the models for GC trades a tiny leak for
+            // crash-free teardown in this rapid mount/unmount chat context.
+            keepCurrentOriginalModel
+            keepCurrentModifiedModel
           />
         ) : (
           <Editor

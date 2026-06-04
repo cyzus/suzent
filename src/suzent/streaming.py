@@ -13,7 +13,9 @@ using Server-Sent Events (SSE), including:
 """
 
 import asyncio
+from datetime import datetime
 import json
+import time
 import traceback
 import uuid
 from typing import Optional, Dict, Any, AsyncGenerator
@@ -31,6 +33,7 @@ from ag_ui.core import (
 )
 from ag_ui.encoder import EventEncoder
 
+from suzent.core.agent_serializer import serialize_state
 from suzent.core.agent_deps import AgentDeps
 from suzent.core.stream_registry import (
     StreamControl,
@@ -41,15 +44,28 @@ from suzent.core.stream_registry import (
     register_active_stream,
     unregister_active_stream,
 )
+from suzent.database import get_database
 from loguru import logger
 
 
 # Module-level encoder for custom events
 _encoder = EventEncoder()
+
+# Per-chat lock serialising reads+writes to _pending_approvals in chat.config.
+_pending_approval_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_approval_lock(chat_id: str) -> asyncio.Lock:
+    if chat_id not in _pending_approval_locks:
+        _pending_approval_locks[chat_id] = asyncio.Lock()
+    return _pending_approval_locks[chat_id]
+
+
 _FIRST_STREAM_EVENT_TIMEOUT_SECONDS = 45.0
 _STREAM_IDLE_TIMEOUT_SECONDS = 120.0
 _DEFAULT_TOOL_STREAM_EVENT_TIMEOUT_SECONDS = 60.0
 _AUTO_TITLE_PLACEHOLDER_TITLES = frozenset({"", "new chat", "untitled"})
+_DRAFT_PERSIST_INTERVAL_SECONDS = 0.75
 
 
 def _should_generate_auto_title(chat: Any) -> bool:
@@ -72,6 +88,231 @@ def _serialize_tool_output(output: Any) -> str:
         except Exception:
             return str(output)
     return str(output) if output else ""
+
+
+def _event_type_value(event: Any) -> str:
+    event_type = getattr(event, "type", "")
+    return str(getattr(event_type, "value", event_type))
+
+
+def _stringify_part_content(raw: Any) -> str:
+    if raw is None:
+        return ""
+    if isinstance(raw, str):
+        return raw
+    try:
+        return json.dumps(raw, ensure_ascii=False)
+    except Exception:
+        return str(raw)
+
+
+class _DraftDisplayAccumulator:
+    """Accumulates AG-UI events into the frontend's persisted parts shape."""
+
+    def __init__(self, chat_id: Optional[str], run_id: str):
+        self.chat_id = chat_id
+        self.run_id = run_id
+        self.parts: list[dict[str, Any]] = []
+        self._tool_index: dict[str, dict[str, Any]] = {}
+        self.last_persisted_at = 0.0
+        self.dirty = False
+
+    def apply(self, event: Any) -> None:
+        event_type = _event_type_value(event)
+
+        if event_type == "TEXT_MESSAGE_START":
+            self.parts.append(
+                {
+                    "type": "text",
+                    "text": "",
+                    "messageId": getattr(event, "message_id", ""),
+                }
+            )
+            self.dirty = True
+            return
+
+        if event_type == "TEXT_MESSAGE_CONTENT":
+            msg_id = getattr(event, "message_id", "")
+            delta = getattr(event, "delta", "") or ""
+            for index in range(len(self.parts) - 1, -1, -1):
+                part = self.parts[index]
+                if part.get("type") == "text" and part.get("messageId") == msg_id:
+                    part["text"] = str(part.get("text") or "") + delta
+                    self.dirty = True
+                    return
+            self.parts.append({"type": "text", "text": delta, "messageId": msg_id})
+            self.dirty = True
+            return
+
+        if event_type in {"THINKING_START", "THINKING_TEXT_MESSAGE_START"}:
+            last = self.parts[-1] if self.parts else None
+            if not last or last.get("type") != "reasoning" or last.get("text"):
+                self.parts.append({"type": "reasoning", "text": ""})
+                self.dirty = True
+            return
+
+        if event_type == "THINKING_TEXT_MESSAGE_CONTENT":
+            delta = getattr(event, "delta", "") or ""
+            for index in range(len(self.parts) - 1, -1, -1):
+                part = self.parts[index]
+                if part.get("type") == "reasoning":
+                    part["text"] = str(part.get("text") or "") + delta
+                    self.dirty = True
+                    return
+            self.parts.append({"type": "reasoning", "text": delta})
+            self.dirty = True
+            return
+
+        if event_type == "TOOL_CALL_START":
+            tool_call_id = getattr(event, "tool_call_id", "")
+            existing = self._tool_index.get(tool_call_id)
+            if existing is None:
+                part: dict[str, Any] = {
+                    "type": "tool",
+                    "toolCallId": tool_call_id,
+                    "toolName": getattr(event, "tool_call_name", ""),
+                    "args": "",
+                    "state": "running",
+                }
+                self.parts.append(part)
+                self._tool_index[tool_call_id] = part
+            else:
+                existing["state"] = "running"
+                existing["approvalId"] = None
+                existing.setdefault("args", "")
+            self.dirty = True
+            return
+
+        if event_type == "TOOL_CALL_ARGS":
+            tool_call_id = getattr(event, "tool_call_id", "")
+            delta = getattr(event, "delta", "") or ""
+            tool = self._ensure_tool(tool_call_id)
+            tool["args"] = str(tool.get("args") or "") + delta
+            self.dirty = True
+            return
+
+        if event_type == "TOOL_CALL_RESULT":
+            tool_call_id = getattr(event, "tool_call_id", "")
+            tool = self._ensure_tool(tool_call_id)
+            tool["output"] = _stringify_part_content(getattr(event, "content", ""))
+            tool["state"] = "completed"
+            tool["approvalId"] = None
+            self.dirty = True
+            return
+
+        if event_type == "CUSTOM":
+            self._apply_custom(event)
+
+    async def maybe_persist(self, *, force: bool = False) -> None:
+        if not self.chat_id or not self.parts or not self.dirty:
+            return
+        now = time.monotonic()
+        if not force and now - self.last_persisted_at < _DRAFT_PERSIST_INTERVAL_SECONDS:
+            return
+
+        snapshot = [dict(part) for part in self.parts]
+        content = "\n\n".join(
+            text
+            for part in snapshot
+            if part.get("type") == "text"
+            and (text := str(part.get("text") or "").strip())
+        )
+        await asyncio.to_thread(
+            _persist_draft_display_message,
+            self.chat_id,
+            self.run_id,
+            snapshot,
+            content,
+        )
+        self.last_persisted_at = now
+        self.dirty = False
+
+    def _find_tool(self, tool_call_id: str) -> Optional[dict[str, Any]]:
+        return self._tool_index.get(tool_call_id)
+
+    def _ensure_tool(self, tool_call_id: str) -> dict[str, Any]:
+        tool = self._tool_index.get(tool_call_id)
+        if tool is not None:
+            return tool
+        tool = {
+            "type": "tool",
+            "toolCallId": tool_call_id,
+            "toolName": "unknown",
+            "args": "",
+            "state": "running",
+        }
+        self.parts.append(tool)
+        self._tool_index[tool_call_id] = tool
+        return tool
+
+    def _apply_custom(self, event: Any) -> None:
+        name = getattr(event, "name", "")
+        value = getattr(event, "value", None)
+        if name == "tool_approval_request" and isinstance(value, dict):
+            tool_call_id = str(value.get("toolCallId") or value.get("approvalId") or "")
+            tool = self._ensure_tool(tool_call_id)
+            tool["state"] = "approval-requested"
+            tool["approvalId"] = value.get("approvalId")
+            tool["toolName"] = (
+                tool.get("toolName") or value.get("toolName") or "unknown"
+            )
+            if not tool.get("args") and value.get("args") is not None:
+                tool["args"] = _stringify_part_content(value.get("args"))
+            self.dirty = True
+        elif name == "tool_approval_result" and isinstance(value, dict):
+            tool_call_id = str(value.get("toolCallId") or "")
+            tool = self._ensure_tool(tool_call_id)
+            tool["state"] = (
+                "completed" if value.get("status") == "executed" else "error"
+            )
+            tool["output"] = _stringify_part_content(value.get("output"))
+            tool["approvalId"] = None
+            self.dirty = True
+        elif name == "tool_display" and isinstance(value, dict):
+            tool_call_id = str(value.get("toolCallId") or "")
+            tool = self._ensure_tool(tool_call_id)
+            tool["displayData"] = value
+            self.dirty = True
+        elif name == "a2ui.render" and isinstance(value, dict):
+            if value.get("target") == "inline":
+                self.parts.append({"type": "a2ui", "surface": value})
+                self.dirty = True
+
+
+def _persist_draft_display_message(
+    chat_id: str, run_id: str, parts: list[dict[str, Any]], content: str
+) -> None:
+    from suzent.database import get_database
+
+    db = get_database()
+    chat = db.get_chat(chat_id)
+    if chat is None:
+        return
+
+    messages = list(chat.messages or [])
+    draft = {
+        "role": "assistant",
+        "content": content,
+        "parts": parts,
+        "_streaming_draft": True,
+        "_streaming_run_id": run_id,
+    }
+
+    if messages:
+        last = messages[-1]
+        if (
+            isinstance(last, dict)
+            and last.get("role") == "assistant"
+            and last.get("_streaming_draft")
+            and last.get("_streaming_run_id") == run_id
+        ):
+            messages[-1] = draft
+        else:
+            messages.append(draft)
+    else:
+        messages.append(draft)
+
+    db.update_chat(chat_id, messages=messages)
 
 
 def _encode_custom(name: str, value: Any) -> str:
@@ -417,6 +658,33 @@ async def stream_agent_responses(
     if chat_id:
         register_active_stream(chat_id, out_queue)
 
+    # --- Mid-run checkpoint helper ---
+    async def _save_mid_run_checkpoint(messages: list) -> None:
+        """Persist a partial agent state snapshot after each completed tool batch.
+
+        Called as a fire-and-forget task so it never blocks the stream. On
+        disconnect the DB will have the last completed tool batch saved, letting
+        the next turn resume from there instead of from the start of the run.
+        """
+        if not chat_id or not messages:
+            return
+        try:
+            _model_id = getattr(agent, "_model_id", None)
+            _tool_names = getattr(agent, "_tool_names", [])
+
+            def _sync_save() -> None:
+                _st = serialize_state(
+                    messages, model_id=_model_id, tool_names=_tool_names
+                )
+                get_database().update_chat(chat_id, agent_state=_st)
+
+            await asyncio.to_thread(_sync_save)
+            logger.debug(
+                f"[Streaming] Mid-run checkpoint saved ({len(messages)} messages)"
+            )
+        except Exception as _ckpt_err:
+            logger.debug(f"[Streaming] Mid-run checkpoint failed: {_ckpt_err}")
+
     # --- Background agent runner (stateless resume) ---
     async def _agent_runner() -> None:
         """Run the agent in a background task.
@@ -433,6 +701,15 @@ async def stream_agent_responses(
         prompt = message
         history = list(message_history) if message_history else None
         current_deferred = deferred_tool_results
+        # tool_call_ids whose recovery we already emitted immediately at
+        # function_tool_result time, so the AgentRunResultEvent fallback path
+        # doesn't emit a second (duplicate) recovery for the same tool.
+        _emitted_recovery_ids: set[str] = set()
+        from pydantic_ai.messages import (
+            ToolReturnPart as _TRP,
+            ModelResponse as _MResp,
+            ModelRequest as _MReq,
+        )
 
         try:
             logger.debug("[Streaming] Entering agent context (MCP init)...")
@@ -445,6 +722,16 @@ async def stream_agent_responses(
                     if current_deferred:
                         run_kwargs["deferred_tool_results"] = current_deferred
 
+                    # Per-run accumulators for mid-run checkpointing.
+                    # _chk_resp_parts: index → complete ModelResponsePart (from PartEndEvent)
+                    # _chk_tool_returns: ToolReturnParts collected this batch
+                    # _chk_in_flight: tool calls awaiting their result event
+                    # _chk_base: the message history baseline for this run iteration
+                    _chk_resp_parts: Dict[int, Any] = {}
+                    _chk_tool_returns: list = []
+                    _chk_in_flight: int = 0
+                    _chk_base: list = list(history or [])
+
                     last_run_result = None
                     logger.debug("[Streaming] Calling agent.run_stream_events()...")
                     async for event in _iter_stream_events_with_timeout(
@@ -456,13 +743,93 @@ async def stream_agent_responses(
                             logger.debug(
                                 f"[Streaming] Received event from agent: {type(event).__name__}"
                             )
+
+                            # ── Mid-run checkpoint tracking ──────────────────
+                            _event_kind = getattr(event, "event_kind", "")
+                            if _event_kind == "part_end":
+                                # Collect the complete part (not a delta) so we
+                                # can reconstruct a valid ModelResponse later.
+                                _chk_resp_parts[event.index] = event.part
+                            elif _event_kind == "function_tool_call":
+                                _chk_in_flight += 1
+                            elif _event_kind == "function_tool_result":
+                                if isinstance(event.result, _TRP):
+                                    _chk_tool_returns.append(event.result)
+                                    # For deferred (auto-approved) tools, the result
+                                    # only otherwise reaches the frontend at
+                                    # AgentRunResultEvent — too late, leaving the tool
+                                    # stuck in "running" while the run continues. Emit
+                                    # the recovery immediately so it shows completed.
+                                    if current_deferred:
+                                        _trp = event.result
+                                        _tcid = getattr(_trp, "tool_call_id", None)
+                                        if (
+                                            _tcid
+                                            and _tcid in current_deferred.approvals
+                                        ):
+                                            _emitted_recovery_ids.add(_tcid)
+                                            await sse_queue.put(
+                                                (
+                                                    "tool_recovery",
+                                                    {
+                                                        "tool_call_id": _tcid,
+                                                        "tool_name": getattr(
+                                                            _trp, "tool_name", ""
+                                                        ),
+                                                        "status": "executed"
+                                                        if current_deferred.approvals[
+                                                            _tcid
+                                                        ]
+                                                        else "denied",
+                                                        "output": _serialize_tool_output(
+                                                            getattr(
+                                                                _trp, "output", None
+                                                            )
+                                                            or getattr(
+                                                                _trp, "content", None
+                                                            )
+                                                            or ""
+                                                        ),
+                                                    },
+                                                )
+                                            )
+                                _chk_in_flight = max(0, _chk_in_flight - 1)
+                                if _chk_in_flight == 0 and _chk_tool_returns:
+                                    # All tools in this batch have completed.
+                                    # Build a proper checkpoint from accumulated parts.
+                                    _resp_parts = [
+                                        _chk_resp_parts[i]
+                                        for i in sorted(_chk_resp_parts)
+                                    ]
+                                    _checkpoint = _chk_base + [
+                                        _MResp(parts=_resp_parts),
+                                        _MReq(parts=list(_chk_tool_returns)),
+                                    ]
+                                    asyncio.create_task(
+                                        _save_mid_run_checkpoint(_checkpoint)
+                                    )
+                                    # Also update partial_history so the finally
+                                    # block has the latest state on crash/cancel.
+                                    partial_history = _checkpoint
+                                    # Advance base and reset per-batch state
+                                    # so the next tool batch starts clean.
+                                    _chk_base = list(_checkpoint)
+                                    _chk_resp_parts = {}
+                                    _chk_tool_returns = []
+                            # ────────────────────────────────────────────────
+
                             if isinstance(event, AgentRunResultEvent):
                                 last_run_result = event.result
                                 final_response_text = str(event.result.output)
 
-                                # HITL BUG FIX: Emit deferred tool recovery events with output
+                                # HITL BUG FIX: Emit deferred tool recovery events with output.
+                                # Seed the dedup set with ids we already emitted
+                                # immediately at function_tool_result time so each
+                                # deferred tool's recovery is sent exactly once.
                                 if current_deferred:
-                                    seen_recovery_ids: set[str] = set()
+                                    seen_recovery_ids: set[str] = set(
+                                        _emitted_recovery_ids
+                                    )
                                     for msg in event.result.all_messages():
                                         for (
                                             tool_call_id,
@@ -782,18 +1149,61 @@ async def stream_agent_responses(
 
                 elif msg_type == "approval":
                     # HITL: emit as AG-UI CustomEvent with all approval info
+                    approval_info = {
+                        "approvalId": payload["request_id"],
+                        "toolCallId": payload.get("tool_call_id")
+                        or payload["request_id"],
+                        "toolName": payload.get("tool_name", ""),
+                        "args": payload.get("args", {}),
+                        "chatId": chat_id,
+                    }
                     await _queue_custom_event(
                         out_queue,
                         "tool_approval_request",
-                        {
-                            "approvalId": payload["request_id"],
-                            "toolCallId": payload.get("tool_call_id")
-                            or payload["request_id"],
-                            "toolName": payload.get("tool_name", ""),
-                            "args": payload.get("args", {}),
-                            "chatId": chat_id,
-                        },
+                        approval_info,
                     )
+                    # Persist pending approval to DB so the frontend can
+                    # reconstruct the approval dialog after a page refresh.
+                    if chat_id:
+                        try:
+
+                            def _save_pending_approval():
+                                _db = get_database()
+                                _chat = _db.get_chat(chat_id)
+                                if _chat is not None:
+                                    existing = (_chat.config or {}).get(
+                                        "_pending_approvals"
+                                    ) or []
+                                    if isinstance(existing, list):
+                                        existing = [
+                                            a
+                                            for a in existing
+                                            if a.get("toolCallId")
+                                            != approval_info["toolCallId"]
+                                        ]
+                                    else:
+                                        existing = []
+                                    existing.append(
+                                        {
+                                            "approvalId": approval_info["approvalId"],
+                                            "toolCallId": approval_info["toolCallId"],
+                                            "toolName": approval_info["toolName"],
+                                            "args": approval_info["args"],
+                                            "savedAt": datetime.utcnow().isoformat(),
+                                        }
+                                    )
+                                    # merge_chat_config so a concurrent write to a
+                                    # different config key isn't clobbered.
+                                    _db.merge_chat_config(
+                                        chat_id, {"_pending_approvals": existing}
+                                    )
+
+                            async with _get_approval_lock(chat_id):
+                                await asyncio.to_thread(_save_pending_approval)
+                        except Exception as _pa_err:
+                            logger.debug(
+                                f"[Streaming] Failed to save pending_approval: {_pa_err}"
+                            )
 
                 elif msg_type == "tool_recovery":
                     # HITL: emit recovered tool result with output
@@ -828,10 +1238,14 @@ async def stream_agent_responses(
 
     # --- Background worker to encode stream using AGUIEventStream ---
     async def encode_worker() -> None:
+        draft_accumulator: Optional[_DraftDisplayAccumulator] = None
         try:
+            run_id = str(uuid.uuid4())
+            if not is_heartbeat:
+                draft_accumulator = _DraftDisplayAccumulator(chat_id, run_id)
             run_input = RunAgentInput(
                 thread_id=chat_id or "default",
-                run_id=str(uuid.uuid4()),
+                run_id=run_id,
                 messages=[],
                 state=None,
                 tools=[],
@@ -843,12 +1257,20 @@ async def stream_agent_responses(
             async for agui_event in agui_events:
                 if control.cancel_event.is_set():
                     break
+                if draft_accumulator is not None:
+                    draft_accumulator.apply(agui_event)
+                    await draft_accumulator.maybe_persist()
                 encoded = event_stream.encode_event(agui_event)
                 await out_queue.put(("chunk", encoded))
         except Exception as e:
             err = RunErrorEvent(message=str(e))
             await out_queue.put(("chunk", _encoder.encode(err)))
         finally:
+            if draft_accumulator is not None:
+                try:
+                    await draft_accumulator.maybe_persist(force=True)
+                except Exception as exc:
+                    logger.debug(f"[Streaming] Failed to persist final draft: {exc}")
             await out_queue.put(("done", None))
 
     encode_task = asyncio.create_task(encode_worker())
@@ -915,6 +1337,32 @@ async def stream_agent_responses(
             if not getattr(deps, "is_suspended", False):
                 # Stream ended (not paused for approvals), drop any stale cache.
                 pop_pending_auto_approvals(chat_id)
+
+                # Clear persisted pending approvals so the frontend doesn't
+                # show a stale dialog on next load.
+                async def _clear_pending_approvals_task():
+                    try:
+
+                        def _do_clear():
+                            _db = get_database()
+                            _chat = _db.get_chat(chat_id)
+                            if _chat is not None and (_chat.config or {}).get(
+                                "_pending_approvals"
+                            ):
+                                # Set to [] (rather than deleting) via merge so a
+                                # concurrent write to another config key isn't lost.
+                                _db.merge_chat_config(
+                                    chat_id, {"_pending_approvals": []}
+                                )
+
+                        async with _get_approval_lock(chat_id):
+                            await asyncio.to_thread(_do_clear)
+                    except Exception:
+                        pass
+                    finally:
+                        _pending_approval_locks.pop(chat_id, None)
+
+                asyncio.create_task(_clear_pending_approvals_task())
 
             existing = stream_controls.get(chat_id)
             if existing is control:

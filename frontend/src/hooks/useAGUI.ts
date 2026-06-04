@@ -35,6 +35,11 @@ interface UseAGUIReturn {
   /** Read the current parts synchronously (e.g. to snapshot before switching chats) */
   getParts: () => AGUIPart[];
   clearParts: () => void;
+  /**
+   * Restore saved parts directly (e.g. after a page refresh) without starting a
+   * new stream. Used to re-display pending tool-approval dialogs from sessionStorage.
+   */
+  restorePartsFromSeed: (seed: AGUIPart[]) => void;
   /** Remove an inline A2UI surface part by surface id (e.g. after ask_question is answered) */
   removeInlineSurface: (surfaceId: string) => void;
   /** Optimistically resolve a tool approval (instantly updates UI before backend responds) */
@@ -312,26 +317,38 @@ function processEvent(
           }
         }
         if (!found) {
-          // Fallback: attach to the most recent pending tool of the same name.
-          // This keeps output under the initial tool call even if toolCallId differs
-          // between approval request and recovery result.
+          // Fallback: the toolCallId can differ between the streamed
+          // TOOL_CALL_START and the deferred recovery result (auto-approved tools
+          // run through the deferred path), so match by name on a tool still
+          // awaiting a result — 'approval-requested' OR 'running' with no output.
+          // Only do this when there is exactly ONE such candidate: with multiple
+          // parallel same-name tools, name-matching is ambiguous and could attach
+          // this result to the wrong tool's part. When ambiguous, fall through to
+          // pushing a new part — a correct extra block beats a corrupted one.
+          const candidateIdxs: number[] = [];
           for (let i = next.length - 1; i >= 0; i--) {
+            const p = next[i];
             if (
-              next[i].type === 'tool' &&
-              next[i].state === 'approval-requested' &&
-              (next[i].toolName || 'unknown') === toolName
+              p.type === 'tool' &&
+              (p.toolName || 'unknown') === toolName &&
+              (p.state === 'approval-requested' ||
+                (p.state === 'running' && !p.output))
             ) {
-              next[i] = {
-                ...next[i],
-                toolCallId: next[i].toolCallId || tcId,
-                state: resultData.status === 'executed' ? 'completed' : 'error',
-                output,
-                argsReplayPending: false,
-                approvalId: undefined,
-              };
-              found = true;
-              break;
+              candidateIdxs.push(i);
             }
+          }
+          if (candidateIdxs.length === 1) {
+            const i = candidateIdxs[0];
+            const p = next[i];
+            next[i] = {
+              ...p,
+              toolCallId: p.toolCallId || tcId,
+              state: resultData.status === 'executed' ? 'completed' : 'error',
+              output,
+              argsReplayPending: false,
+              approvalId: undefined,
+            };
+            found = true;
           }
         }
         if (!found) {
@@ -464,6 +481,14 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
   }, []);
 
   const getParts = useCallback(() => partsRef.current, []);
+
+  const restorePartsFromSeed = useCallback((seed: AGUIPart[]) => {
+    setParts(seed);
+    partsRef.current = seed;
+    setStatus('idle');
+    const approvalCount = seed.filter(p => p.type === 'tool' && p.state === 'approval-requested').length;
+    setPendingApprovalCountSync(approvalCount);
+  }, [setPendingApprovalCountSync]);
 
   // Optimistically update a tool part's state when user approves/denies
   // so buttons disappear instantly (no waiting for backend round-trip)
@@ -883,5 +908,5 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     }
   }, [resetApprovalTracking, setPendingApprovalCountSync]);
 
-  return { parts, status, error, sendMessage, resumeStream, steerStream, stop, stopSilently, getParts, clearParts, removeInlineSurface, resolveApproval, pendingApprovalCount, addApprovalDecision, consumeApprovalDecisions };
+  return { parts, status, error, sendMessage, resumeStream, steerStream, stop, stopSilently, getParts, clearParts, restorePartsFromSeed, removeInlineSurface, resolveApproval, pendingApprovalCount, addApprovalDecision, consumeApprovalDecisions };
 }

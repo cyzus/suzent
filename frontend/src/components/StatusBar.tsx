@@ -6,7 +6,6 @@ import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
 import { useContextUsageStore, type ContextUsage } from '../hooks/useContextUsageStore';
 import { useCompact } from '../hooks/useCompact';
-import { subscribeToBusPayloads } from '../hooks/useEventBus';
 
 const getStatusStyles = (type: StatusType) => {
   switch (type) {
@@ -179,9 +178,6 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
       hoverCloseTimerRef.current = null;
     }, 150);
   };
-  const pushCompactHint = (msg: string) => {
-    setCompactNotice(msg);
-  };
   useEffect(() => {
     return () => clearHintTimer();
   }, []);
@@ -196,36 +192,6 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
       hintTimerRef.current = null;
     }, 10_000);
   }, [compactNotice, clearCompactNotice]);
-  useEffect(() => {
-    if (!currentChatId) return;
-
-    const unsub = subscribeToBusPayloads((payload) => {
-      if (!payload || payload.event !== 'auto_compaction') return;
-      if (payload.chat_id !== currentChatId) return;
-
-      if (payload.stage === 'start') {
-        setCompactNotice('Auto compacting...');
-        return;
-      }
-
-      if (payload.stage === 'skipped') {
-        setCompactNotice('Auto compaction skipped');
-        return;
-      }
-
-      const before = Number(payload.tokens_before ?? 0);
-      const after = Number(payload.tokens_after ?? 0);
-      const fmtCompact = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
-      const label = before > 0 && after >= 0
-        ? `Auto compacted ${fmtCompact(before)} -> ${fmtCompact(after)}`
-        : 'Auto compacted context';
-
-      setCompactNotice(label);
-    });
-
-    return unsub;
-  }, [currentChatId, setCompactNotice]);
-
   const compactStageLabel: Record<string, string> = {
     loading: 'Compacting...',
     analyzing: 'Compaction analyzing...',
@@ -236,23 +202,19 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
   const handleManualCompact = async () => {
     if (!currentChatId || isStreaming || compacting) return;
 
-    setCompactNotice('Compacting...');
     setStatus('Compacting context...', 'info', 5000);
 
     const result = await compact(currentChatId);
     if (result.error) {
-      pushCompactHint('Compaction failed');
       setStatus(`Compaction failed: ${result.error}`, 'error', 6000);
       return;
     }
 
     if (result.skipped) {
-      pushCompactHint('Compaction skipped');
       setStatus(result.reason || 'Compaction skipped', 'warning', 5000);
       return;
     }
 
-    pushCompactHint('Context compacted');
     setStatus('Context compacted', 'success', 5000);
   };
 
