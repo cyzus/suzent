@@ -1240,16 +1240,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // If a live stream, a connection attempt, or a user turn is already in
       // progress, mark pending so we retry immediately after it finishes.
       if (isLiveStreamRef.current || connectingRef.current || streamingChatIdRef.current === chatIdAtMount) {
-        console.log('[AGUI-DIAG] tryConnect BLOCKED', {
-          isLiveStream: isLiveStreamRef.current,
-          connecting: connectingRef.current,
-          streamingChatId: streamingChatIdRef.current,
-          chatIdAtMount,
-        });
         pendingConnectRef.current = true;
         return;
       }
-      console.log('[AGUI-DIAG] tryConnect CONNECTING to /chat/live for', chatIdAtMount);
       connectingRef.current = true;
 
       const liveUrl = `${getApiBase()}/chat/live`;

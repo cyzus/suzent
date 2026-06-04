@@ -759,17 +759,10 @@ async def stream_agent_responses(
                                     if current_deferred:
                                         _trp = event.result
                                         _tcid = getattr(_trp, "tool_call_id", None)
-                                        logger.debug(
-                                            f"[Streaming] deferred result check: tcid={_tcid} "
-                                            f"approvals={list(current_deferred.approvals.keys())}"
-                                        )
                                         if (
                                             _tcid
                                             and _tcid in current_deferred.approvals
                                         ):
-                                            logger.debug(
-                                                f"[Streaming] Immediate tool_recovery for {_tcid}"
-                                            )
                                             await sse_queue.put(
                                                 (
                                                     "tool_recovery",

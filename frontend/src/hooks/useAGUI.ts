@@ -835,7 +835,7 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
       const pendingApprovalIds = new Set<string>();
       while (true) {
         const { done, value } = await reader.read();
-        if (done) { console.log('[AGUI-DIAG] read loop DONE (stream ended)', { isProbe }); break; }
+        if (done) break;
 
         // Sync with any out-of-band part mutations (e.g. removeInlineSurface)
         // that may have updated partsRef.current between read() calls.
@@ -846,12 +846,6 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         buffer = remainder;
 
         for (const event of events) {
-          // [DIAG] log tool-related events so we can see what reaches the frontend
-          if (event.type === 'TOOL_CALL_RESULT' ||
-              (event.type === 'CUSTOM' && ['tool_approval_request', 'tool_approval_result'].includes(event.data.name as string))) {
-            const v = event.data.value as Record<string, unknown> | undefined;
-            console.log('[AGUI-DIAG]', event.type, event.data.name ?? '', 'tcId=', (v?.toolCallId ?? (event.data as any).toolCallId));
-          }
           // Track approval requests
           if (event.type === 'CUSTOM' && (event.data.name as string) === 'tool_approval_request') {
             const approval = event.data.value as Record<string, unknown> | undefined;
@@ -874,11 +868,6 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
         }
 
         if (events.length > 0) {
-          // [DIAG] dump tool part states to find stuck approval-requested parts
-          const toolStates = currentParts
-            .filter(p => p.type === 'tool')
-            .map(p => `${p.toolName}:${(p.toolCallId || '').slice(0, 6)}=${p.state}`);
-          if (toolStates.length) console.log('[AGUI-DIAG] toolParts', toolStates.join(' | '));
           setParts(currentParts);
           partsRef.current = currentParts;
           setPendingApprovalCountSync(pendingApprovalIds.size);
