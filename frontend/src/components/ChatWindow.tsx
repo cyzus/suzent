@@ -1112,6 +1112,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     { resetKey: `${currentChatId ?? 'new'}:${safeMessages.length > 0}` },
   );
 
+  // When a tool transitions into a pending approval, force-scroll to the bottom
+  // so the approval buttons are visible — even if the user had scrolled up.
+  const prevHasPendingApprovalRef = useRef(false);
+  useEffect(() => {
+    if (hasPendingTransientApprovals && !prevHasPendingApprovalRef.current) {
+      scrollToBottom();
+    }
+    prevHasPendingApprovalRef.current = hasPendingTransientApprovals;
+  }, [hasPendingTransientApprovals, scrollToBottom]);
+
   const loadOlderVisibleMessages = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el || !hasHiddenOlderMessages) return;

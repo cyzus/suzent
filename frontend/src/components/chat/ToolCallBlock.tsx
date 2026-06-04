@@ -148,12 +148,24 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const [expanded, setExpanded] = useState(!defaultCollapsed);
   const { t } = useI18n();
 
-  // Auto-expand when approval is requested
+  // Track whether the current expansion was forced open by a pending approval
+  // (vs. opened by the user clicking), so we can auto-collapse it once resolved
+  // without overriding a deliberate user expand.
+  const autoExpandedByPendingRef = React.useRef(false);
+  const userToggledRef = React.useRef(false);
+
+  // Auto-expand when approval is requested; auto-collapse once the approval is
+  // resolved and the result has arrived — unless the user manually toggled it.
   React.useEffect(() => {
     if (approvalState === 'pending') {
+      autoExpandedByPendingRef.current = true;
       setExpanded(true);
+    } else if (autoExpandedByPendingRef.current && output && !userToggledRef.current) {
+      // Approval was granted/denied and output landed → collapse back to default.
+      autoExpandedByPendingRef.current = false;
+      setExpanded(false);
     }
-  }, [approvalState]);
+  }, [approvalState, output]);
 
   // Format tool name for display: snake_case → readable
   const displayName = toolName.replace(/_/g, ' ');
@@ -244,7 +256,11 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
     <div className={`${inActivityRail ? 'my-0' : 'my-1.5'} min-w-0 w-full overflow-x-hidden`}>
       {/* Compact pill header */}
       <button
-        onClick={() => hasDetails && setExpanded(!expanded)}
+        onClick={() => {
+          if (!hasDetails) return;
+          userToggledRef.current = true;
+          setExpanded(!expanded);
+        }}
         className={headerClassName}
       >
         {/* Icon */}
