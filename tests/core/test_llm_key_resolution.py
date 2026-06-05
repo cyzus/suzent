@@ -64,6 +64,22 @@ def test_litellm_client_omits_api_key_when_provider_key_is_unset(monkeypatch):
     assert "api_key" not in fake_litellm.acompletion.await_args.kwargs
 
 
+def test_litellm_client_passes_reasoning_effort(monkeypatch) -> None:
+    monkeypatch.setattr(llm, "resolve_api_key", lambda _provider: None)
+    fake_litellm = SimpleNamespace(acompletion=AsyncMock())
+    fake_litellm.acompletion.return_value = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))]
+    )
+    monkeypatch.setattr(llm, "_litellm", lambda: fake_litellm)
+
+    result = asyncio.run(
+        LLMClient(model="openai/example").complete("hello", reasoning_effort="minimal")
+    )
+
+    assert result == "ok"
+    assert fake_litellm.acompletion.await_args.kwargs["reasoning_effort"] == "minimal"
+
+
 def test_litellm_client_routes_openai_compat_provider_to_openai_base(
     monkeypatch,
 ) -> None:

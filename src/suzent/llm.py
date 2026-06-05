@@ -234,6 +234,7 @@ class LLMClient:
         temperature: float = 0.7,
         max_tokens: int = 1000,
         response_format: Optional[Any] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> str:
         """Generate completion for a prompt.
 
@@ -245,6 +246,7 @@ class LLMClient:
             response_format: Optional response format - can be:
                 - Dict like {"type": "json_object"}
                 - Pydantic model class for structured output
+            reasoning_effort: Optional reasoning budget hint for compatible models
 
         Returns:
             Generated text response
@@ -256,12 +258,17 @@ class LLMClient:
 
         try:
             model, auth_kwargs = _litellm_model_and_kwargs(self.model)
+            optional_params: Dict[str, Any] = {}
+            if reasoning_effort is not None:
+                optional_params["reasoning_effort"] = reasoning_effort
+
             response = await _litellm().acompletion(
                 model=model,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 response_format=response_format,
+                **optional_params,
                 **auth_kwargs,
             )
 

@@ -14,13 +14,21 @@ async def _generate_title_with_model(model: str, user_content: str) -> str | Non
 
     client = LLMClient(model=model)
     title = await client.complete(
-        prompt=user_content[:500],
+        prompt=(
+            "Create a title for this user message:\n"
+            "<message>\n"
+            f"{user_content[:500]}\n"
+            "</message>\n"
+            "Title:"
+        ),
         system=(
-            "Generate a short title (3-6 words, no punctuation, no quotes) "
-            "that captures what this message is about. Reply with only the title."
+            "You name chat conversations. You are not replying to the user. "
+            "Output only a concise chat title of 3 to 6 words. "
+            "No punctuation, no quotes."
         ),
         temperature=0.3,
-        max_tokens=20,
+        max_tokens=512,
+        reasoning_effort="none",
     )
     return title.strip().strip("\"'").strip() if title else None
 

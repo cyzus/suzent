@@ -104,6 +104,8 @@ def test_generate_auto_title_strips_system_reminders_from_model_prompt(
 ) -> None:
     db = _DB()
     prompts: list[str] = []
+    max_tokens: list[int] = []
+    reasoning_efforts: list[str] = []
 
     class _Client:
         def __init__(self, model: str) -> None:
@@ -111,6 +113,8 @@ def test_generate_auto_title_strips_system_reminders_from_model_prompt(
 
         async def complete(self, **kwargs) -> str:
             prompts.append(kwargs["prompt"])
+            max_tokens.append(kwargs["max_tokens"])
+            reasoning_efforts.append(kwargs["reasoning_effort"])
             return "Greeting"
 
     monkeypatch.setattr(
@@ -127,7 +131,11 @@ def test_generate_auto_title_strips_system_reminders_from_model_prompt(
     )
 
     assert title == "Greeting"
-    assert prompts == ["hi"]
+    assert prompts == [
+        "Create a title for this user message:\n<message>\nhi\n</message>\nTitle:"
+    ]
+    assert max_tokens == [512]
+    assert reasoning_efforts == ["none"]
     assert db.titles["chat-1"] == "Greeting"
 
 
