@@ -104,6 +104,38 @@ export const ChatList: React.FC = () => {
     void refreshProjects();
   }, [chats.length, refreshProjects]);
 
+  // Keep projectChats in sync with changes to the global chats list while a
+  // project filter is active (new chat added, or title/fields updated locally).
+  const prevChatsLengthRef = useRef(chats.length);
+  useEffect(() => {
+    if (filterId === ALL_PROJECTS_FILTER) return;
+
+    const prevLen = prevChatsLengthRef.current;
+    prevChatsLengthRef.current = chats.length;
+
+    if (chats.length > prevLen) {
+      // A chat was added — prepend it if it belongs to the active project.
+      const newest = chats[0];
+      if (!newest || newest.projectId !== filterId) return;
+      setProjectChats(prev => {
+        if (prev.some(c => c.id === newest.id)) return prev;
+        return [newest, ...prev];
+      });
+      setProjectChatKindTotals(prev => ({ ...prev, all: prev.all + 1, you: prev.you + 1 }));
+    } else {
+      // No length change — propagate any field updates (e.g. auto-title) to projectChats.
+      setProjectChats(prev => {
+        let changed = false;
+        const next = prev.map(pc => {
+          const updated = chats.find(c => c.id === pc.id);
+          if (updated && updated.title !== pc.title) { changed = true; return { ...pc, title: updated.title }; }
+          return pc;
+        });
+        return changed ? next : prev;
+      });
+    }
+  }, [chats, filterId]);
+
   const markRead = useCallback((chatId: string) => {
     const chat = chatsRef.current.find(c => c.id === chatId);
     if (!chat) return;

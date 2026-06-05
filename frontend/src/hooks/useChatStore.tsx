@@ -259,7 +259,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
 }) => {
   // Read the user's currently-selected project so newly-created chats land there.
   // Must be wrapped in ProjectProvider (see App.tsx).
-  const { currentProjectId } = useProjects();
+  const { currentProjectId, projects } = useProjects();
   const currentProjectIdRef = useRef<string | null>(currentProjectId);
   useEffect(() => { currentProjectIdRef.current = currentProjectId; }, [currentProjectId]);
   const [messagesByChat, setMessagesByChat] = useState<Record<string, Message[]>>({
@@ -1030,13 +1030,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         });
         setShouldResetNext(false);
 
+        const createdProjectId = projectId || undefined;
+        const createdProject = createdProjectId ? projects.find(p => p.id === createdProjectId) : undefined;
         const summary: ChatSummary = {
           id: newChat.id,
           title: newChat.title,
           createdAt: newChat.createdAt,
           updatedAt: newChat.updatedAt,
           messageCount: chatMessages.length,
-          lastMessage: chatMessages.length ? chatMessages[chatMessages.length - 1].content.slice(0, 100) : undefined
+          lastMessage: chatMessages.length ? chatMessages[chatMessages.length - 1].content.slice(0, 100) : undefined,
+          projectId: createdProjectId ?? null,
+          projectName: createdProject?.name ?? null,
+          projectSlug: createdProject?.slug ?? null,
         };
 
         setChats(prev => {
