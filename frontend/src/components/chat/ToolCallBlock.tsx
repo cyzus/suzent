@@ -25,6 +25,7 @@ const ARGS_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> = 
 // For bash: args section stays, output section shows stdout separately.
 const OUTPUT_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> = {
   bash_execute: BashOutputRenderer,
+  read_file: FileDiffViewer,
 };
 
 export type ApprovalState = 'pending' | 'approved' | 'denied' | undefined;

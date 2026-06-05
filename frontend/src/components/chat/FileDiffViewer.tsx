@@ -133,6 +133,9 @@ const FILE_TOOL_PREVIEW_CONFIG: Record<string, FileToolPreviewConfig | undefined
   write_file: {
     modifiedArg: 'content',
   },
+  read_file: {
+    modifiedArg: '__read_file_output__',
+  },
 };
 
 const getLanguageFromPath = (filePath: string): string => {
@@ -194,19 +197,28 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsed
     let canPreview = false;
 
     if (config) {
-      const metadataOriginal = getStringProp(metadata, 'old_content');
-      const metadataModified = getStringProp(metadata, 'new_content');
-      const hasArgModified = hasProp(parsedArgs, config.modifiedArg);
-      const hasArgOriginal = hasProp(parsedArgs, config.originalArg);
-
-      original = metadataOriginal ?? getStringProp(parsedArgs, config.originalArg) ?? '';
-      modified = metadataModified ?? getStringProp(parsedArgs, config.modifiedArg) ?? '';
-      canPreview = metadataModified !== undefined || (
-        hasArgModified && (!config.requireOriginalArg || hasArgOriginal)
-      );
-      isDiff = Boolean(config.alwaysDiff || metadataOriginal !== undefined || config.originalArg);
-      if (metadataOriginal === undefined && !config.alwaysDiff) {
+      if (toolName === 'read_file' && output) {
+        // Strip the "[Lines X-Y of Z]\n" header and tab-prefixed line numbers
+        const bodyStart = output.indexOf('\n');
+        const body = bodyStart >= 0 ? output.slice(bodyStart + 1) : output;
+        modified = body.replace(/^\d+\t/gm, '');
+        canPreview = modified.length > 0;
         isDiff = false;
+      } else {
+        const metadataOriginal = getStringProp(metadata, 'old_content');
+        const metadataModified = getStringProp(metadata, 'new_content');
+        const hasArgModified = hasProp(parsedArgs, config.modifiedArg);
+        const hasArgOriginal = hasProp(parsedArgs, config.originalArg);
+
+        original = metadataOriginal ?? getStringProp(parsedArgs, config.originalArg) ?? '';
+        modified = metadataModified ?? getStringProp(parsedArgs, config.modifiedArg) ?? '';
+        canPreview = metadataModified !== undefined || (
+          hasArgModified && (!config.requireOriginalArg || hasArgOriginal)
+        );
+        isDiff = Boolean(config.alwaysDiff || metadataOriginal !== undefined || config.originalArg);
+        if (metadataOriginal === undefined && !config.alwaysDiff) {
+          isDiff = false;
+        }
       }
     }
 
