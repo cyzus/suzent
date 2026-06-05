@@ -40,6 +40,9 @@
     },
     "xiaomi_mimo/mimo-v2.5-tts-voicedesign": {
       "mode": "chat"
+    },
+    "xiaomi_mimo/mimo-v2.5-asr": {
+      "mode": "chat"
     }
   }
 }
