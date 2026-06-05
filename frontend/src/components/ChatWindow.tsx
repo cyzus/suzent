@@ -1448,10 +1448,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     }
 
-    // Block if this chat already has an active background stream (subagent, heartbeat, etc.).
-    // tryConnect() will attach to it shortly; once streamingForCurrentChat becomes true
-    // the user can steer via the redirect button instead.
-    if (isBusStreaming(chatIdForSend)) {
+    // Block if a background stream is active AND the frontend also thinks this chat
+    // is streaming. If the frontend already cleared (e.g. user just hit Stop), skip
+    // this check — the backend will return 409 if it's truly still busy, which gives
+    // a cleaner error than blocking here during the brief cancel-propagation window.
+    if (isBusStreaming(chatIdForSend) && isStreaming && activeStreamingChatId === chatIdForSend) {
       setStatusBar('This chat is still responding — wait or use the redirect button', 'info', 4000);
       return;
     }
@@ -1587,14 +1588,26 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (!isStreaming || stopInFlightRef.current) return;
     stopInFlightRef.current = true;
 
-    // Abort the AG-UI SSE connection
-    stopAGUIStream();
+    const targetChatId = activeStreamingChatId || streamingChatIdRef.current;
 
-    const targetChatId = activeStreamingChatId;
-    if (!targetChatId) {
-      stopInFlightRef.current = false;
-      return;
+    // Abort the AG-UI SSE connection. When the stream went through tryConnect
+    // (isLiveStreamRef=true), onFinish deliberately skips setIsStreaming(false)
+    // to let tryConnect's finally() handle cleanup. But for a user-triggered stop
+    // we need to clear streaming state immediately, so we do it here instead.
+    isLiveStreamRef.current = false;
+    streamingChatIdRef.current = null;
+    stopAGUIStream();
+    setIsStreaming(false, targetChatId ?? undefined);
+    clearParts();
+    // Reload chat from DB so the partial response (saved by backend on cancel)
+    // appears immediately — prevents the blank flash while waiting for DB commit.
+    if (targetChatId) {
+      setTimeout(() => { try { loadChat(targetChatId, { force: true }); } catch { } }, 500);
     }
+
+    stopInFlightRef.current = false;
+
+    if (!targetChatId) return;
 
     try {
       const res = await fetch(`${getApiBase()}/chat/stop`, {
@@ -1608,7 +1621,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     } catch (error) {
       console.error('Error sending stop request:', error);
     }
-    // Note: stopInFlightRef reset happens in onFinish/finally
   };
 
   // Handle file click from chat messages
