@@ -3,6 +3,12 @@
 from loguru import logger
 
 
+def _clean_title_source(user_content: str) -> str:
+    from suzent.core.system_reminder import strip_system_reminders
+
+    return " ".join(strip_system_reminders(user_content).split())
+
+
 async def _generate_title_with_model(model: str, user_content: str) -> str | None:
     from suzent.llm import LLMClient
 
@@ -31,6 +37,11 @@ async def generate_auto_title(
         from suzent.core.role_router import get_role_router
         from suzent.database import generate_chat_title, get_database
 
+        title_source = _clean_title_source(user_content)
+        if not title_source:
+            logger.warning(f"Auto-title skipped for {chat_id}: no user text")
+            return None
+
         router = get_role_router()
         model = router.get_model_id("cheap")
         logger.info(
@@ -50,7 +61,7 @@ async def generate_auto_title(
 
         for candidate_model in candidate_models:
             try:
-                title = await _generate_title_with_model(candidate_model, user_content)
+                title = await _generate_title_with_model(candidate_model, title_source)
             except Exception as e:
                 logger.warning(
                     f"Auto-title model failed for {chat_id} "
@@ -73,7 +84,7 @@ async def generate_auto_title(
             logger.info(f"Auto-title set for {chat_id}: {title!r}")
             return title
 
-        title = generate_chat_title(user_content)
+        title = generate_chat_title(title_source)
         if title == "New Chat":
             logger.warning(f"Auto-title fallback skipped for {chat_id}: no user text")
             return None

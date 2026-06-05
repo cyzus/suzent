@@ -97,3 +97,64 @@ def test_generate_auto_title_uses_local_fallback_when_models_return_empty(
 
     assert title == "Explain why auto title is blank"
     assert db.titles["chat-1"] == "Explain why auto title is blank"
+
+
+def test_generate_auto_title_strips_system_reminders_from_model_prompt(
+    monkeypatch,
+) -> None:
+    db = _DB()
+    prompts: list[str] = []
+
+    class _Client:
+        def __init__(self, model: str) -> None:
+            self.model = model
+
+        async def complete(self, **kwargs) -> str:
+            prompts.append(kwargs["prompt"])
+            return "Greeting"
+
+    monkeypatch.setattr(
+        "suzent.core.role_router.get_role_router", lambda: _Router("m1")
+    )
+    monkeypatch.setattr("suzent.database.get_database", lambda: db)
+    monkeypatch.setattr("suzent.llm.LLMClient", _Client)
+
+    title = asyncio.run(
+        generate_auto_title(
+            "chat-1",
+            "hi\n\n<system-reminder>You have a SkillTool</system-reminder>",
+        )
+    )
+
+    assert title == "Greeting"
+    assert prompts == ["hi"]
+    assert db.titles["chat-1"] == "Greeting"
+
+
+def test_generate_auto_title_strips_system_reminders_from_local_fallback(
+    monkeypatch,
+) -> None:
+    db = _DB()
+
+    class _Client:
+        def __init__(self, model: str) -> None:
+            self.model = model
+
+        async def complete(self, **_kwargs) -> str:
+            return ""
+
+    monkeypatch.setattr(
+        "suzent.core.role_router.get_role_router", lambda: _Router("m1")
+    )
+    monkeypatch.setattr("suzent.database.get_database", lambda: db)
+    monkeypatch.setattr("suzent.llm.LLMClient", _Client)
+
+    title = asyncio.run(
+        generate_auto_title(
+            "chat-1",
+            "hi\n\n<system-reminder>You have a SkillTool</system-reminder>",
+        )
+    )
+
+    assert title == "hi"
+    assert db.titles["chat-1"] == "hi"
