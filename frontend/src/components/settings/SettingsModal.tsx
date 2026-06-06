@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { useChatStore } from '../../hooks/useChatStore';
-import { ApiProvider, CustomProviderPayload, deleteCustomProvider, fetchApiKeys, fetchRoleModels, fetchRoleSuggestions, fetchSocialConfig, fetchMcpServers, saveApiKeys, saveCustomProvider, saveGlobalSandboxConfig, saveRoleModels, saveSocialConfig, saveUserPreferences, SocialConfig, UserConfig, verifyProvider } from '../../lib/api';
+import { ApiProvider, CustomProviderPayload, deleteCustomProvider, fetchApiKeys, fetchRoleModels, fetchRoleSuggestions, fetchSocialConfig, fetchMcpServers, saveApiKeys, saveCustomProvider, saveGlobalSandboxConfig, saveRoleModels, saveSocialConfig, SocialConfig, UserConfig, verifyProvider } from '../../lib/api';
 import { AppearanceTab } from './AppearanceTab';
 import { AutomationTab } from './AutomationTab';
 import { DataTab } from './DataTab';
@@ -51,7 +51,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
   const [activeTabs, setActiveTabs] = useState<Record<string, ProviderTab>>({});
   const [verifying, setVerifying] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [providersLoaded, setProvidersLoaded] = useState(false);
+  const [rolesLoaded, setRolesLoaded] = useState(false);
+  const [socialLoaded, setSocialLoaded] = useState(false);
+  const [notebookLoaded, setNotebookLoaded] = useState(false);
+  const providersAutosaveStarted = useRef(false);
+  const rolesAutosaveStarted = useRef(false);
+  const socialAutosaveStarted = useRef(false);
+  const notebookAutosaveStarted = useRef(false);
 
   // Role models + suggestions
   const [roleModels, setRoleModels] = useState<Record<string, string[]>>({});
@@ -91,6 +98,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
     if (!isOpen) return;
 
     setActiveCategory('providers');
+    setProvidersLoaded(false);
+    setRolesLoaded(false);
+    setSocialLoaded(false);
+    setNotebookLoaded(false);
+    providersAutosaveStarted.current = false;
+    rolesAutosaveStarted.current = false;
+    socialAutosaveStarted.current = false;
+    notebookAutosaveStarted.current = false;
 
     setLoading(true);
     fetchApiKeys().then(data => {
@@ -119,16 +134,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
       setOriginalDisplayValues({ ...initialKeys });
       setUserConfigs(initialConfigs);
       setActiveTabs(initialTabs);
+      setProvidersLoaded(true);
       setLoading(false);
     });
 
-    fetchRoleModels().then(setRoleModels);
+    fetchRoleModels().then(models => {
+      setRoleModels(models);
+      setRolesLoaded(true);
+    });
     fetchRoleSuggestions().then(setRoleSuggestions);
 
     fetchSocialConfig().then(config => {
       setSocialConfig(config);
       setUseCustomTools(config.tools !== null && config.tools !== undefined);
       setUseCustomMcp(config.mcp_enabled !== null && config.mcp_enabled !== undefined);
+      setSocialLoaded(true);
     });
 
     fetchMcpServers().then(data => {
@@ -168,7 +188,126 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
     } else {
       setGlobalNotebookHostPath('');
     }
-  }, [isOpen, backendConfig]);
+    setNotebookLoaded(true);
+  }, [isOpen]);
+
+  async function saveProviderSettings(): Promise<void> {
+    const keysToSave: Record<string, string> = {};
+    for (const [key, value] of Object.entries(apiKeys)) {
+      if (value === originalDisplayValues[key]) continue;
+      keysToSave[key] = value;
+    }
+
+    await saveApiKeys({
+      ...keysToSave,
+      "_PROVIDER_CONFIG_": JSON.stringify(userConfigs),
+    });
+    if (Object.keys(keysToSave).length > 0) {
+      setOriginalDisplayValues(prev => ({ ...prev, ...keysToSave }));
+    }
+  }
+
+  async function saveSocialSettings(): Promise<void> {
+    const socialToSave = { ...socialConfig };
+    delete socialToSave.model;
+    await saveSocialConfig(socialToSave);
+  }
+
+  async function saveNotebookSettings(): Promise<void> {
+    const sandboxVolumes = globalNotebookHostPath.trim()
+      ? [`${globalNotebookHostPath.trim()}:/mnt/notebook`]
+      : [];
+
+    await saveGlobalSandboxConfig(sandboxVolumes);
+    await refreshBackendConfig();
+  }
+
+  async function handleClose(): Promise<void> {
+    try {
+      await Promise.all([
+        providersLoaded ? saveProviderSettings() : Promise.resolve(),
+        rolesLoaded ? saveRoleModels(roleModels) : Promise.resolve(),
+        socialLoaded ? saveSocialSettings() : Promise.resolve(),
+        notebookLoaded ? saveNotebookSettings() : Promise.resolve(),
+      ]);
+    } catch (error) {
+      console.error('Failed to save settings before close', error);
+    } finally {
+      onClose();
+    }
+  }
+
+  useEffect(() => {
+    if (!isOpen || !providersLoaded) return;
+    if (!providersAutosaveStarted.current) {
+      providersAutosaveStarted.current = true;
+      return;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        await saveProviderSettings();
+      } catch (error) {
+        console.error('Failed to save provider settings', error);
+      }
+    }, 600);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [apiKeys, userConfigs, isOpen, providersLoaded]);
+
+  useEffect(() => {
+    if (!isOpen || !rolesLoaded) return;
+    if (!rolesAutosaveStarted.current) {
+      rolesAutosaveStarted.current = true;
+      return;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        await saveRoleModels(roleModels);
+      } catch (error) {
+        console.error('Failed to save model roles', error);
+      }
+    }, 600);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [roleModels, isOpen, rolesLoaded]);
+
+  useEffect(() => {
+    if (!isOpen || !socialLoaded) return;
+    if (!socialAutosaveStarted.current) {
+      socialAutosaveStarted.current = true;
+      return;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        await saveSocialSettings();
+      } catch (error) {
+        console.error('Failed to save social settings', error);
+      }
+    }, 600);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [socialConfig, isOpen, socialLoaded]);
+
+  useEffect(() => {
+    if (!isOpen || !notebookLoaded) return;
+    if (!notebookAutosaveStarted.current) {
+      notebookAutosaveStarted.current = true;
+      return;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        await saveNotebookSettings();
+      } catch (error) {
+        console.error('Failed to save notebook settings', error);
+      }
+    }, 600);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [globalNotebookHostPath, isOpen, notebookLoaded, refreshBackendConfig]);
 
   function handleKeyChange(key: string, val: string): void {
     setApiKeys(prev => ({ ...prev, [key]: val }));
@@ -215,37 +354,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
     }
 
     setVerifying(prev => ({ ...prev, [provider.id]: false }));
-  }
-
-  async function handleSave(): Promise<void> {
-    setSaving(true);
-
-    const keysToSave: Record<string, string> = {};
-    for (const [key, value] of Object.entries(apiKeys)) {
-      if (value === originalDisplayValues[key]) continue; // unchanged from backend display
-      keysToSave[key] = value;
-    }
-
-    const configBlob = JSON.stringify(userConfigs);
-    await saveApiKeys({ ...keysToSave, "_PROVIDER_CONFIG_": configBlob });
-    await saveRoleModels(roleModels);
-
-    // Strip model from social config — primary role is used instead
-    const socialToSave = { ...socialConfig };
-    delete socialToSave.model;
-    await saveSocialConfig(socialToSave);
-
-    // Persist preferences (sandbox only now; model fields moved to roles)
-    await saveUserPreferences({});
-
-    const sandboxVolumes = globalNotebookHostPath.trim()
-      ? [`${globalNotebookHostPath.trim()}:/mnt/notebook`]
-      : [];
-    await saveGlobalSandboxConfig(sandboxVolumes);
-    await refreshBackendConfig();
-
-    setSaving(false);
-    onClose();
   }
 
   if (!isOpen) return null;
@@ -311,7 +419,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center animate-view-fade">
-      <div className="absolute inset-0 bg-brutal-black/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-brutal-black/80 backdrop-blur-sm" onClick={handleClose} />
 
       <div className="relative w-full h-[95vh] md:w-[95vw] lg:w-[85vw] xl:w-[75vw] bg-neutral-100 dark:bg-zinc-900 border-4 border-brutal-black shadow-brutal-xl flex overflow-hidden">
         {/* Sidebar */}
@@ -353,24 +461,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
 
           <div className="p-4 border-t-4 border-brutal-black bg-neutral-50 dark:bg-zinc-800">
             <button
-              onClick={onClose}
-              className="w-full px-4 py-3 bg-white dark:bg-zinc-700 border-2 border-brutal-black font-bold uppercase text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none mb-3"
+              onClick={handleClose}
+              className="w-full px-4 py-3 bg-white dark:bg-zinc-700 border-2 border-brutal-black font-bold uppercase text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
             >
               {t('common.close')}
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="w-full px-4 py-3 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-brutal-black hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50 flex justify-center items-center gap-2"
-            >
-              {saving ? (
-                <>
-                  <div className="animate-spin h-4 w-4 border-2 border-brutal-black border-t-transparent rounded-full"></div>
-                  {t('settings.saving')}
-                </>
-              ) : (
-                t('settings.saveChanges')
-              )}
             </button>
           </div>
         </div>

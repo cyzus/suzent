@@ -301,7 +301,7 @@ export const en = {
       hostFolder: 'Host Folder',
       notConfigured: 'Not configured',
       chooseFolder: 'Choose Folder',
-      saveHint: 'Changes are applied when you click Save Changes.',
+      saveHint: 'Changes are applied automatically.',
     },
     appearance: {
       title: 'Appearance',

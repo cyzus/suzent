@@ -301,7 +301,7 @@ export const zhCN = {
       hostFolder: '主机目录',
       notConfigured: '未配置',
       chooseFolder: '选择目录',
-      saveHint: '点击“保存更改”后生效。',
+      saveHint: '更改会自动生效。',
     },
     appearance: {
       title: '外观',
