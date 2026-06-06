@@ -24,6 +24,7 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 REMINDER_TAG = "system-reminder"
+DISPLAY_TRIGGER_TAG = "system-reminder-display-trigger"
 _STRIP_RE = re.compile(
     r"<system-reminder>.*?</system-reminder>",
     re.DOTALL | re.IGNORECASE,
@@ -32,11 +33,23 @@ _EXTRACT_RE = re.compile(
     r"<system-reminder>(.*?)</system-reminder>",
     re.DOTALL | re.IGNORECASE,
 )
+_DISPLAY_TRIGGER_RE = re.compile(
+    rf"<{DISPLAY_TRIGGER_TAG}>(.*?)</{DISPLAY_TRIGGER_TAG}>",
+    re.DOTALL | re.IGNORECASE,
+)
 
 
-def wrap_in_system_reminder(content: str) -> str:
+def wrap_in_system_reminder(content: str, display_trigger: Optional[str] = None) -> str:
     """Wrap content in a <system-reminder> xml tag block."""
-    return f"\n<{REMINDER_TAG}>\n{content.strip()}\n</{REMINDER_TAG}>\n"
+    body = content.strip()
+    if display_trigger and display_trigger.strip():
+        body = (
+            f"<{DISPLAY_TRIGGER_TAG}>\n"
+            f"{display_trigger.strip()}\n"
+            f"</{DISPLAY_TRIGGER_TAG}>\n\n"
+            f"{body}"
+        )
+    return f"\n<{REMINDER_TAG}>\n{body}\n</{REMINDER_TAG}>\n"
 
 
 def strip_system_reminders(text: str) -> str:
@@ -51,6 +64,14 @@ def extract_system_reminder_content(text: str) -> str:
     if not text:
         return ""
     parts = [m.strip() for m in _EXTRACT_RE.findall(text) if m.strip()]
+    return "\n\n".join(parts)
+
+
+def extract_system_reminder_display_trigger(text: str) -> str:
+    """Return user-visible trigger text explicitly marked inside reminders."""
+    if not text:
+        return ""
+    parts = [m.strip() for m in _DISPLAY_TRIGGER_RE.findall(text) if m.strip()]
     return "\n\n".join(parts)
 
 
@@ -112,6 +133,7 @@ async def build_combined_reminder(
     deps: Any,
     adhoc_reminders: Optional[List[str]] = None,
     user_message: Optional[str] = None,
+    display_trigger: Optional[str] = None,
 ) -> Optional[str]:
     """Merge all reminder sources into a single wrapped ``<system-reminder>`` block.
 
@@ -169,6 +191,8 @@ async def build_combined_reminder(
         logger.debug(f"[system-reminder] chat={chat_id} — no content, skipping")
         return None
 
-    result = wrap_in_system_reminder("\n\n---\n\n".join(parts))
+    result = wrap_in_system_reminder(
+        "\n\n---\n\n".join(parts), display_trigger=display_trigger
+    )
     logger.debug(f"[system-reminder] chat={chat_id} ({len(parts)} part(s)):\n{result}")
     return result

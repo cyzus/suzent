@@ -83,6 +83,37 @@ def test_rebuild_strips_reminder_from_display_messages():
     assert res2[0]["content"] == "tool result"
 
 
+def test_rebuild_skips_hidden_reminder_only_prompt():
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+    from suzent.core.chat_processor import _rebuild_display_messages
+
+    reminder = wrap_in_system_reminder("do not show")
+
+    res = _rebuild_display_messages(
+        [ModelRequest(parts=[UserPromptPart(content=reminder)])]
+    )
+
+    assert res == []
+
+
+def test_rebuild_preserves_explicit_display_trigger():
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+    from suzent.core.chat_processor import _rebuild_display_messages
+
+    reminder = wrap_in_system_reminder(
+        "global hidden\n\n---\n\nScheduled Task: ingest",
+        display_trigger="Scheduled Task: ingest",
+    )
+
+    res = _rebuild_display_messages(
+        [ModelRequest(parts=[UserPromptPart(content=reminder)])]
+    )
+
+    assert len(res) == 1
+    assert res[0]["role"] == "system_triggered"
+    assert res[0]["content"] == "Scheduled Task: ingest"
+
+
 # Ensure tests run
 if __name__ == "__main__":
     pytest.main([__file__])

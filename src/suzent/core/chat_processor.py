@@ -545,8 +545,17 @@ class ChatProcessor:
             )
             else None
         )
+        display_trigger = None
+        if system_reminders and not (message_content and message_content.strip()):
+            display_trigger = "\n\n---\n\n".join(
+                r.strip() for r in system_reminders if r and r.strip()
+            )
         reminder = await build_combined_reminder(
-            chat_id, deps, adhoc_reminders=system_reminders, user_message=_turn_message
+            chat_id,
+            deps,
+            adhoc_reminders=system_reminders,
+            user_message=_turn_message,
+            display_trigger=display_trigger,
         )
         if reminder:
             if message_content and message_content.strip():
@@ -1748,6 +1757,7 @@ def _rebuild_display_messages(messages: list) -> list:
     from suzent.core.system_reminder import (
         strip_system_reminders,
         extract_system_reminder_content,
+        extract_system_reminder_display_trigger,
     )
 
     def render_reasoning_block(text: str) -> str:
@@ -1840,17 +1850,19 @@ def _rebuild_display_messages(messages: list) -> list:
                     # <system-reminder> (cron/heartbeat trigger), persist it as a
                     # distinct 'trigger' row so the UI can show what fired.
                     if not clean_text and not files:
-                        reminder_body = extract_system_reminder_content(
+                        display_trigger = extract_system_reminder_display_trigger(
                             stripped_attachments
                         )
-                        if reminder_body:
+                        if display_trigger:
                             entry: dict = {
                                 "role": "system_triggered",
-                                "content": reminder_body,
+                                "content": display_trigger,
                             }
                             if ts:
                                 entry["timestamp"] = ts
                             result.append(entry)
+                            continue
+                        if extract_system_reminder_content(stripped_attachments):
                             continue
 
                     entry = {"role": "user", "content": clean_text}
