@@ -102,9 +102,13 @@ fn start_update_and_restart(app_handle: tauri::AppHandle) -> Result<(), String> 
 }
 
 #[tauri::command]
-fn bootstrap_status() -> BootstrapStatus {
+fn bootstrap_status(app_handle: tauri::AppHandle) -> BootstrapStatus {
+    build_bootstrap_status(Some(&app_handle))
+}
+
+fn build_bootstrap_status(app_handle: Option<&tauri::AppHandle>) -> BootstrapStatus {
     let repo_dir = backend::find_install_workspace_dir();
-    let installer = find_bootstrap_installer();
+    let installer = find_bootstrap_installer(app_handle);
     let forced = std::env::var("SUZENT_FORCE_BOOTSTRAP")
         .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
@@ -123,15 +127,18 @@ fn bootstrap_status() -> BootstrapStatus {
 }
 
 #[tauri::command]
-fn bootstrap_manifest() -> Result<String, String> {
-    let installer = find_bootstrap_installer()
+fn bootstrap_manifest(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let installer = find_bootstrap_installer(Some(&app_handle))
         .ok_or_else(|| "Suzent installer helper was not found.".to_string())?;
     run_installer_json(&installer, &["--manifest"])
 }
 
 #[tauri::command]
-fn run_bootstrap_stage(request: BootstrapStageRequest) -> Result<String, String> {
-    let installer = find_bootstrap_installer()
+fn run_bootstrap_stage(
+    app_handle: tauri::AppHandle,
+    request: BootstrapStageRequest,
+) -> Result<String, String> {
+    let installer = find_bootstrap_installer(Some(&app_handle))
         .ok_or_else(|| "Suzent installer helper was not found.".to_string())?;
     let workspace = request
         .dir
@@ -154,13 +161,16 @@ fn run_bootstrap_stage(request: BootstrapStageRequest) -> Result<String, String>
 }
 
 #[tauri::command]
-fn set_install_workspace(request: InstallWorkspaceRequest) -> Result<BootstrapStatus, String> {
+fn set_install_workspace(
+    app_handle: tauri::AppHandle,
+    request: InstallWorkspaceRequest,
+) -> Result<BootstrapStatus, String> {
     let dir = request.dir.trim();
     if dir.is_empty() {
         return Err("Install directory cannot be empty.".to_string());
     }
     backend::persist_install_workspace_dir(&PathBuf::from(dir))?;
-    Ok(bootstrap_status())
+    Ok(build_bootstrap_status(Some(&app_handle)))
 }
 
 #[tauri::command]
@@ -191,7 +201,7 @@ fn find_bootstrap_installer_name() -> &'static str {
     }
 }
 
-fn find_bootstrap_installer() -> Option<PathBuf> {
+fn find_bootstrap_installer(app_handle: Option<&tauri::AppHandle>) -> Option<PathBuf> {
     if let Ok(path) = std::env::var("SUZENT_INSTALLER_EXE") {
         let candidate = PathBuf::from(path);
         if candidate.exists() {
@@ -206,6 +216,14 @@ fn find_bootstrap_installer() -> Option<PathBuf> {
         if let Some(dir) = exe.parent() {
             candidates.push(dir.join(name));
             candidates.push(dir.join("bin").join(name));
+        }
+    }
+
+    if let Some(app_handle) = app_handle {
+        if let Ok(resource_dir) = app_handle.path().resource_dir() {
+            candidates.push(resource_dir.join(name));
+            candidates.push(resource_dir.join("bin").join(name));
+            candidates.push(resource_dir.join("resources").join("bin").join(name));
         }
     }
 
@@ -296,7 +314,10 @@ try {{ localStorage.setItem('SUZENT_PORT', '{port}'); }} catch (e) {{}}
             Err(e) => {
                 eprintln!("Failed to start backend: {}", e);
                 if e == "bootstrap-required" {
-                    let _ = app_handle.emit("bootstrap-required", bootstrap_status());
+                    let _ = app_handle.emit(
+                        "bootstrap-required",
+                        build_bootstrap_status(Some(&app_handle)),
+                    );
                 } else {
                     let _ = window.emit("backend-error", e);
                 }
@@ -453,7 +474,7 @@ fn main() {
                 backend: Mutex::new(None),
             });
 
-            let status = bootstrap_status();
+            let status = build_bootstrap_status(Some(app.handle()));
             if status.required {
                 let app_handle = app.handle().clone();
                 std::thread::spawn(move || {

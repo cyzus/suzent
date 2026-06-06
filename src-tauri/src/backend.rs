@@ -222,6 +222,9 @@ pub fn is_workspace_bootstrapped(repo_dir: &std::path::Path) -> bool {
     if !repo_dir.join("pyproject.toml").exists() {
         return false;
     }
+    if !repo_dir.join(".suzent-bootstrap-complete").exists() {
+        return false;
+    }
 
     let py = if cfg!(windows) {
         repo_dir.join(".venv").join("Scripts").join("python.exe")

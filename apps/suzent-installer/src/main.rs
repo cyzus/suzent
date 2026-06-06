@@ -98,6 +98,11 @@ fn main() {
         }
     }
 
+    if let Err(error) = write_bootstrap_marker(&config) {
+        eprintln!("Failed to write bootstrap marker: {error}");
+        exit_with_prompt(1, config.non_interactive);
+    }
+
     print_completion(&config);
     exit_with_prompt(0, config.non_interactive);
 }
@@ -791,6 +796,9 @@ fn create_macos_shortcuts(_config: &InstallConfig, _ui: &Path) -> StageOutcome {
 
 fn stage_shim(config: &InstallConfig) -> StageOutcome {
     if !cfg!(windows) {
+        if let Err(error) = write_bootstrap_marker(config) {
+            return StageOutcome::fail(format!("Failed to write bootstrap marker: {error}"));
+        }
         return StageOutcome::skipped("CLI shim writing is currently Windows-only.");
     }
 
@@ -809,8 +817,19 @@ fn stage_shim(config: &InstallConfig) -> StageOutcome {
         return StageOutcome::fail(format!("Failed to write CLI shim: {error}"));
     }
 
+    if let Err(error) = write_bootstrap_marker(config) {
+        return StageOutcome::fail(format!("Failed to write bootstrap marker: {error}"));
+    }
+
     print_human(format!("[OK] CLI shim written to {}", shim.display()));
     StageOutcome::ok()
+}
+
+fn write_bootstrap_marker(config: &InstallConfig) -> io::Result<()> {
+    fs::write(
+        config.dir.join(".suzent-bootstrap-complete"),
+        format!("protocol={PROTOCOL_VERSION}\n"),
+    )
 }
 
 fn escape_powershell_single_quoted(value: &str) -> String {
