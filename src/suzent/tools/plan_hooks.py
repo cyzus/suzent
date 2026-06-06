@@ -14,11 +14,9 @@ async def plan_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
         return None
 
     parts = []
-    has_active_content = False
 
     goal = db.get_goal(project_id, chat_id=chat_id)
     if goal and goal.status == "active":
-        has_active_content = True
         turns_info = ""
         over_budget = False
         if goal.max_turns:
@@ -45,7 +43,6 @@ async def plan_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
         include_cancelled=False,
     )
     if active_tasks:
-        has_active_content = True
         parts.append(f"\n[ACTIVE TASKS] (project: {project_id})")
         for task in active_tasks:
             assignee_str = f" ({task.assignee})" if task.assignee else ""
@@ -63,11 +60,5 @@ async def plan_reminder_hook(chat_id: str, deps: Any) -> Optional[str]:
                 f"  [#{task.id}] {task.title}{assignee_str} — {task.status}{blocks_str}{blocked_by_str}"
             )
             parts.append(f"    {task.description}")
-
-    if not has_active_content:
-        # Suppress spontaneous goal/task creation from old plan history in context.
-        parts.append(
-            "[NO ACTIVE GOAL OR TASKS] Do not create goals or tasks unless the user explicitly asks."
-        )
 
     return "\n".join(parts) if parts else None
