@@ -89,7 +89,10 @@ async def generate_auto_title(
                 logger.warning(f"Auto-title update failed for missing chat {chat_id}")
                 return None
 
-            logger.info(f"Auto-title set for {chat_id}: {title!r}")
+            logger.info(
+                f"Auto-title set for {chat_id} using model={candidate_model!r} "
+                f"(selected={model!r}, fallback={fallback_model!r}): {title!r}"
+            )
             return title
 
         title = generate_chat_title(title_source)

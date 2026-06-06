@@ -7,6 +7,7 @@ Provides unified interface for:
 """
 
 from typing import List, Dict, Any, Optional, Type, TypeVar
+import json
 import os
 
 from pydantic import BaseModel
@@ -68,6 +69,49 @@ def _litellm_model_and_kwargs(
             litellm_model = f"openai/{_model_name}"
 
     return litellm_model, kwargs
+
+
+def _model_supports_response_schema(model: Optional[str]) -> bool:
+    """Return whether configured capabilities allow native response schemas."""
+    if not model:
+        return True
+
+    try:
+        from suzent.core.model_registry import get_model_registry
+
+        caps = get_model_registry().get_capabilities(model)
+    except Exception:
+        return True
+
+    return True if caps is None else caps.supports_response_schema
+
+
+def _model_supports_reasoning(model: Optional[str]) -> bool:
+    """Return whether configured capabilities allow reasoning params."""
+    if not model:
+        return False
+
+    try:
+        from suzent.core.model_registry import get_model_registry
+
+        caps = get_model_registry().get_capabilities(model)
+    except Exception:
+        return False
+
+    return caps.supports_reasoning if caps is not None else False
+
+
+def _parse_json_response(content: str) -> Any:
+    """Parse raw or fenced JSON returned by a model."""
+    stripped = content.strip()
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        stripped = "\n".join(lines).strip()
+    return json.loads(stripped)
 
 
 # Type variable for Pydantic models
@@ -256,27 +300,67 @@ class LLMClient:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
+        completion_kwargs: Dict[str, Any] = {}
+        litellm_model: Optional[str] = None
         try:
             model, auth_kwargs = _litellm_model_and_kwargs(self.model)
-            optional_params: Dict[str, Any] = {}
-            if reasoning_effort is not None:
-                optional_params["reasoning_effort"] = reasoning_effort
-
-            response = await _litellm().acompletion(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                response_format=response_format,
-                **optional_params,
+            litellm_model = model
+            completion_kwargs = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
                 **auth_kwargs,
-            )
+            }
+            if response_format is not None:
+                completion_kwargs["response_format"] = response_format
+            if reasoning_effort is not None and _model_supports_reasoning(self.model):
+                completion_kwargs["reasoning_effort"] = reasoning_effort
+
+            response = await _litellm().acompletion(**completion_kwargs)
 
             return response.choices[0].message.content
 
         except Exception as e:
-            logger.error(f"LLM completion failed: {e}")
-            raise
+            retry_error = e
+            for param_name in (
+                "reasoning_effort",
+                "response_format",
+                "max_tokens",
+                "temperature",
+            ):
+                if param_name not in completion_kwargs:
+                    continue
+                logger.warning(
+                    f"LLM completion with {param_name} failed for model={self.model!r} "
+                    f"(litellm_model={litellm_model!r}), retrying without it: {retry_error}"
+                )
+                completion_kwargs.pop(param_name, None)
+                try:
+                    response = await _litellm().acompletion(**completion_kwargs)
+                    return response.choices[0].message.content
+                except Exception as current_error:
+                    retry_error = current_error
+
+            if system and completion_kwargs:
+                logger.warning(
+                    f"LLM completion with system message failed for model={self.model!r} "
+                    f"(litellm_model={litellm_model!r}), retrying as user-only message: {retry_error}"
+                )
+                completion_kwargs["messages"] = [
+                    {"role": "user", "content": f"{system}\n\n{prompt}"}
+                ]
+                try:
+                    response = await _litellm().acompletion(**completion_kwargs)
+                    return response.choices[0].message.content
+                except Exception as current_error:
+                    retry_error = current_error
+
+            logger.error(
+                f"LLM completion failed for model={self.model!r} "
+                f"(litellm_model={litellm_model!r}): {retry_error}"
+            )
+            raise retry_error
 
     async def extract_with_schema(
         self,
@@ -303,6 +387,17 @@ class LLMClient:
         Raises:
             ValueError: If response cannot be validated against the model
         """
+        if not _model_supports_response_schema(self.model):
+            logger.debug(
+                f"Model {self.model} does not advertise response schema support; using JSON prompt fallback"
+            )
+            return await self._extract_with_prompt_json(
+                prompt=prompt,
+                response_model=response_model,
+                system=system,
+                temperature=temperature,
+            )
+
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -326,8 +421,43 @@ class LLMClient:
             return response_model.model_validate_json(content)
 
         except Exception as e:
-            logger.error(f"Structured extraction failed: {e}")
-            raise ValueError(f"Failed to extract structured data: {e}")
+            logger.warning(
+                f"Structured extraction failed, retrying with JSON prompt fallback: {e}"
+            )
+            try:
+                return await self._extract_with_prompt_json(
+                    prompt=prompt,
+                    response_model=response_model,
+                    system=system,
+                    temperature=temperature,
+                )
+            except Exception as retry_error:
+                logger.error(f"Structured extraction failed: {retry_error}")
+                raise ValueError(
+                    f"Failed to extract structured data: {retry_error}"
+                ) from retry_error
+
+    async def _extract_with_prompt_json(
+        self,
+        prompt: str,
+        response_model: Type[T],
+        system: Optional[str],
+        temperature: float,
+    ) -> T:
+        schema = json.dumps(response_model.model_json_schema(), ensure_ascii=False)
+        json_prompt = (
+            f"{prompt}\n\n"
+            "Return only valid JSON matching this JSON schema. "
+            "Do not include markdown fences or explanatory text.\n"
+            f"{schema}"
+        )
+        content = await self.complete(
+            prompt=json_prompt,
+            system=system,
+            temperature=temperature,
+            max_tokens=2000,
+        )
+        return response_model.model_validate(_parse_json_response(content))
 
     async def extract_structured(
         self,
@@ -350,8 +480,6 @@ class LLMClient:
         Raises:
             ValueError: If response is not valid JSON
         """
-        import json
-
         # If a Pydantic model is provided, use schema-based extraction
         if response_model is not None:
             result = await self.extract_with_schema(
@@ -372,7 +500,7 @@ class LLMClient:
         )
 
         try:
-            return json.loads(response)
+            return _parse_json_response(response)
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response: {e}")
             logger.debug(f"Raw response: {response}")

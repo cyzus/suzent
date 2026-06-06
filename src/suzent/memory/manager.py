@@ -612,6 +612,10 @@ class MemoryManager:
         """
         system_prompt = memory_context.FACT_EXTRACTION_SYSTEM_PROMPT
         user_prompt = memory_context.format_fact_extraction_user_prompt(content)
+        extraction_model = self.llm_extraction_model or getattr(
+            self.llm_client, "model", None
+        )
+        logger.debug(f"Starting LLM fact extraction with model={extraction_model!r}")
 
         try:
             # Use schema-based extraction with Pydantic model
@@ -644,7 +648,10 @@ class MemoryManager:
             return facts
 
         except Exception as e:
-            logger.warning(f"Schema-based extraction failed, trying fallback: {e}")
+            logger.warning(
+                f"Schema-based extraction failed for model={extraction_model!r}, "
+                f"trying fallback: {e}"
+            )
 
             # Fallback to basic JSON extraction
             try:
@@ -714,7 +721,10 @@ class MemoryManager:
                 return facts
 
             except Exception as fallback_error:
-                logger.error(f"LLM fact extraction failed completely: {fallback_error}")
+                logger.error(
+                    f"LLM fact extraction failed completely for model={extraction_model!r}: "
+                    f"{fallback_error}"
+                )
                 return []
 
     async def _add_memory_internal(
