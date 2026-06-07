@@ -78,12 +78,12 @@ class ImageGenerationTool(Tool):
                 image_url = await generator.generate(prompt=generation_prompt)
                 generated_images.append(image_url)
 
-            # Save the image locally to the session persistence directory if available
+            # Save the image to the project's shared images directory
             chat_id = ctx.deps.chat_id
             if chat_id:
-                workspace_dir = (
-                    Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "images"
-                )
+                from suzent.database import get_database
+
+                workspace_dir = get_database().get_project_dir(chat_id) / "images"
             else:
                 workspace_dir = Path(CONFIG.workspace_root) / "images"
 

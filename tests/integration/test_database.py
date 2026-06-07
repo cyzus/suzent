@@ -10,7 +10,6 @@ from sqlalchemy import inspect
 from suzent.database import (
     ChatDatabase,
     ChatSummaryModel,
-    PlanModel,
     UserPreferencesModel,
 )
 
@@ -43,6 +42,77 @@ class TestChatOperations:
         assert len(chat.messages) == 1
         assert chat.messages[0]["content"] == "Hello"
 
+    def test_link_chat_to_project_moves_direct_subagents(self, db):
+        source = db.get_project_by_slug(ChatDatabase.DEFAULT_PROJECT_SLUG)
+        target_id = db.create_project("Target", "target")
+        parent_id = db.create_chat("Parent", {}, project_id=source.id)
+        child_id = db.create_chat(
+            "Sub-agent",
+            {"platform": "subagent", "parent_chat_id": parent_id},
+            chat_id="subagent-sub_test",
+            project_id=source.id,
+        )
+
+        assert db.link_chat_to_project(parent_id, target_id) is True
+
+        assert db.get_chat(parent_id).project_id == target_id
+        assert db.get_chat(child_id).project_id == target_id
+        assert db.get_subagent_chat_ids_for_parent_chat(parent_id) == [child_id]
+
+    def test_move_all_chats_moves_stale_direct_subagents(self, db):
+        source = db.get_project_by_slug(ChatDatabase.DEFAULT_PROJECT_SLUG)
+        target_id = db.create_project("Target", "target")
+        stale_id = db.create_project("Stale", "stale")
+        parent_id = db.create_chat("Parent", {}, project_id=source.id)
+        child_id = db.create_chat(
+            "Sub-agent",
+            {"platform": "subagent", "parent_chat_id": parent_id},
+            chat_id="subagent-sub_stale",
+            project_id=stale_id,
+        )
+
+        moved = db.move_all_chats(source.id, target_id)
+
+        assert moved == 2
+        assert db.get_chat(parent_id).project_id == target_id
+        assert db.get_chat(child_id).project_id == target_id
+
+    def test_list_subagent_task_records_includes_selected_child_chat(self, db):
+        parent_id = db.create_chat("Parent", {})
+        child_id = db.create_chat(
+            "Sub-agent: inspect files",
+            {
+                "platform": "subagent",
+                "parent_chat_id": parent_id,
+                "subagent_task_id": "sub_12345678",
+                "model": "test-model",
+            },
+            chat_id="subagent-sub_12345678",
+        )
+
+        by_parent = db.list_subagent_task_records(parent_chat_id=parent_id)
+        by_child = db.list_subagent_task_records(parent_chat_id=child_id)
+
+        assert by_parent == by_child
+        assert by_child[0]["task_id"] == "sub_12345678"
+        assert by_child[0]["parent_chat_id"] == parent_id
+        assert by_child[0]["chat_id"] == child_id
+        assert by_child[0]["description"] == "inspect files"
+
+    def test_list_subagent_task_records_handles_legacy_child_metadata(self, db):
+        child_id = db.create_chat(
+            "Analyzing Claude Code and Suzent",
+            {"platform": "subagent"},
+            chat_id="subagent-sub_legacy",
+        )
+
+        by_child = db.list_subagent_task_records(parent_chat_id=child_id)
+
+        assert by_child[0]["task_id"] == "sub_legacy"
+        assert by_child[0]["parent_chat_id"] == ""
+        assert by_child[0]["chat_id"] == child_id
+        assert by_child[0]["description"] == "Analyzing Claude Code and Suzent"
+
     def test_update_chat(self, db):
         chat_id = db.create_chat("Original Title", {})
 
@@ -69,6 +139,38 @@ class TestChatOperations:
         assert len(chats) == 3
         # ChatSummaryModel uses camelCase for frontend compat
         assert isinstance(chats[0], ChatSummaryModel)
+
+    def test_list_chats_uses_cached_message_summary(self, db):
+        chat_id = db.create_chat(
+            "Summary Chat",
+            {},
+            [
+                {"role": "user", "content": "Hello"},
+                {
+                    "role": "assistant",
+                    "content": "Visible answer <details><summary>tool</summary>secret</details>",
+                },
+            ],
+        )
+
+        chats = db.list_chats()
+        summary = next(chat for chat in chats if chat.id == chat_id)
+        assert summary.messageCount == 1
+        assert summary.lastMessage == "Visible answer"
+
+        db.update_chat(
+            chat_id,
+            messages=[
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "First answer"},
+                {"role": "assistant", "content": "Second answer"},
+            ],
+        )
+
+        chats = db.list_chats()
+        summary = next(chat for chat in chats if chat.id == chat_id)
+        assert summary.messageCount == 2
+        assert summary.lastMessage == "Second answer"
 
     def test_get_chat_count(self, db):
         db.create_chat("Chat 1", {})
@@ -118,63 +220,6 @@ class TestChatOperations:
         assert chat.state_revision == 2
         assert chat.finalized_revision == 1
         assert chat.agent_state == b"state-2"
-
-
-class TestPlanOperations:
-    """Tests for plan and task CRUD operations."""
-
-    def test_create_plan(self, db):
-        chat_id = db.create_chat("Test Chat", {})
-
-        plan_id = db.create_plan(
-            chat_id,
-            "Test Objective",
-            [{"number": 1, "description": "Step 1", "status": "pending"}],
-        )
-        assert plan_id is not None
-
-    def test_get_plan(self, db):
-        chat_id = db.create_chat("Test Chat", {})
-        db.create_plan(
-            chat_id,
-            "My Objective",
-            [
-                {"number": 1, "description": "First step"},
-                {"number": 2, "description": "Second step"},
-            ],
-        )
-
-        plan = db.get_plan(chat_id)
-        assert plan is not None
-        assert isinstance(plan, PlanModel)
-        assert plan.objective == "My Objective"
-        assert len(plan.tasks) == 2
-        assert plan.tasks[0].description == "First step"
-
-    def test_update_task_status(self, db):
-        chat_id = db.create_chat("Test Chat", {})
-        db.create_plan(
-            chat_id,
-            "Objective",
-            [{"number": 1, "description": "Step 1", "status": "pending"}],
-        )
-
-        result = db.update_task_status(chat_id, 1, "completed", note="Done!")
-        assert result is True
-
-        plan = db.get_plan(chat_id)
-        assert plan.tasks[0].status == "completed"
-        assert plan.tasks[0].note == "Done!"
-
-    def test_delete_plan(self, db):
-        chat_id = db.create_chat("Test Chat", {})
-        db.create_plan(chat_id, "Objective", [])
-
-        assert db.get_plan(chat_id) is not None
-
-        result = db.delete_plan(chat_id)
-        assert result is True
-        assert db.get_plan(chat_id) is None
 
 
 class TestUserPreferences:

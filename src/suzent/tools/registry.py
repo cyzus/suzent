@@ -87,7 +87,10 @@ def _all_tool_classes() -> list:
     from suzent.tools.shell.process_tool import ProcessTool
     from suzent.tools.webpage_tool import WebpageTool
     from suzent.tools.websearch_tool import WebSearchTool
-    from suzent.tools.planning_tool import PlanningTool
+    from suzent.tools.goal_tool import GoalTool
+    from suzent.tools.task_create_tool import TaskCreateTool
+    from suzent.tools.task_update_tool import TaskUpdateTool
+    from suzent.tools.task_list_tool import TaskListTool
     from suzent.tools.browsing_tool import BrowsingTool
     from suzent.tools.skill_tool import SkillTool
     from suzent.tools.social_message_tool import SocialMessageTool
@@ -111,7 +114,10 @@ def _all_tool_classes() -> list:
         WebpageTool,
         WebSearchTool,
         AskQuestionTool,
-        PlanningTool,
+        GoalTool,
+        TaskCreateTool,
+        TaskUpdateTool,
+        TaskListTool,
         RenderUITool,
         ImageGenerationTool,
         ImageVisionTool,

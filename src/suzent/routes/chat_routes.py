@@ -13,7 +13,6 @@ import traceback
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
-from pathlib import Path
 
 from suzent.config import CONFIG
 from suzent.database import get_database
@@ -22,10 +21,45 @@ from suzent.streaming import stop_stream
 from suzent.core.stream_registry import (
     get_background_queue,
     is_background_streaming,
+    register_background_stream,
     unregister_background_stream,
 )
 
 logger = get_logger(__name__)
+_chat_send_tasks: set[asyncio.Task[None]] = set()
+
+
+def _display_file_metadata(files_list: list) -> list[dict]:
+    """Return JSON-safe file metadata for immediate user-message display."""
+    result: list[dict] = []
+    for file in files_list or []:
+        if isinstance(file, dict):
+            result.append(file)
+    return result
+
+
+def _prewrite_user_display_message(
+    chat_id: str,
+    message: str,
+    files_list: list,
+) -> None:
+    """Append the user's display row before stream_started can trigger reloads."""
+    if not chat_id:
+        return
+
+    content = (message or "").strip()
+    files = _display_file_metadata(files_list)
+    if not content and not files:
+        return
+
+    entry: dict = {"role": "user", "content": content}
+    if files:
+        entry["files"] = files
+
+    try:
+        get_database().append_chat_message(chat_id, entry)
+    except Exception as exc:
+        logger.debug(f"Failed to prewrite user display message for {chat_id}: {exc}")
 
 
 async def chat(request: Request) -> StreamingResponse:
@@ -146,14 +180,8 @@ async def chat(request: Request) -> StreamingResponse:
                     HEARTBEAT_BASE_INSTRUCTIONS,
                     HEARTBEAT_PROMPT_TEMPLATE,
                 )
-                from pathlib import Path
 
-                hb_path = (
-                    Path(CONFIG.sandbox_data_path)
-                    / "sessions"
-                    / chat_id
-                    / "heartbeat.md"
-                )
+                hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
                 custom = (
                     hb_path.read_text(encoding="utf-8").strip()
                     if hb_path.exists()
@@ -215,6 +243,136 @@ async def chat(request: Request) -> StreamingResponse:
     except Exception as e:
         logger.error(f"Error handling chat request: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+async def chat_send(request: Request) -> JSONResponse:
+    """
+    POST /chat/send — Start a user chat turn as a background stream.
+
+    Returns 202 immediately. The response streams through /chat/live
+    and is observable via /events/stream, enabling the frontend to
+    watch other chats while this one processes.
+
+    Also accepts ``resume_approvals`` to resume a paused tool-approval stream
+    without a direct SSE connection (reconnectable after page refresh).
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    chat_id = data.get("chat_id")
+    message = data.get("message", "").strip()
+    config = data.get("config", {})
+    files_list = data.get("files", [])
+    file_mentions = data.get("file_mentions", [])
+    resume_approvals = data.get("resume_approvals", [])
+
+    if not chat_id:
+        return JSONResponse({"error": "chat_id is required"}, status_code=400)
+    if not message and not files_list and not resume_approvals:
+        return JSONResponse({"error": "Empty message"}, status_code=400)
+    from suzent.core.chat_processor import ChatProcessor
+    from suzent.agent_manager import build_agent_config
+
+    processor = ChatProcessor()
+    config_override = build_agent_config(config, require_social_tool=False)
+    if is_background_streaming(chat_id):
+        return JSONResponse({"error": "Chat is already streaming"}, status_code=409)
+
+    if not resume_approvals and not message.strip().startswith("/"):
+        _prewrite_user_display_message(chat_id, message, files_list)
+
+    stream_queue = register_background_stream(chat_id)
+
+    async def _run() -> None:
+        try:
+            generator = processor.process_turn(
+                chat_id=chat_id,
+                user_id=CONFIG.user_id,
+                message_content=message,
+                files=files_list,
+                file_mentions=file_mentions,
+                config_override=config_override,
+                resume_approvals=resume_approvals or [],
+            )
+            async for chunk in generator:
+                await stream_queue.put(chunk)
+        except Exception as exc:
+            logger.error(f"[chat_send] Background turn error for {chat_id}: {exc}")
+            error_payload = (
+                f'data: {{"type":"RUN_ERROR","message":{json.dumps(str(exc))}}}\n\n'
+            )
+            try:
+                await stream_queue.put(error_payload)
+            except Exception:
+                pass
+        finally:
+            await stream_queue.put(None)
+
+    task = asyncio.create_task(_run())
+    _chat_send_tasks.add(task)
+    task.add_done_callback(_chat_send_tasks.discard)
+    return JSONResponse({"chat_id": chat_id}, status_code=202)
+
+
+async def steer_chat_send(request: Request) -> JSONResponse:
+    """
+    POST /chat/steer-send — Interrupt the current agent run and redirect via background queue.
+
+    Returns 202 immediately. The steer response streams through /chat/live so the
+    frontend can reconnect after a page refresh, matching the behaviour of /chat/send.
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    chat_id = data.get("chat_id")
+    message = data.get("message", "").strip()
+    config = data.get("config", {})
+
+    if not chat_id:
+        return JSONResponse({"error": "chat_id is required"}, status_code=400)
+    if not message:
+        return JSONResponse({"error": "message is required"}, status_code=400)
+
+    from suzent.core.chat_processor import ChatProcessor
+    from suzent.agent_manager import build_agent_config
+
+    processor = ChatProcessor()
+    config_override = build_agent_config(config, require_social_tool=False)
+    stop_stream(chat_id, reason="Steered by user")
+    _prewrite_user_display_message(chat_id, message, [])
+
+    stream_queue = register_background_stream(chat_id)
+
+    async def _run() -> None:
+        try:
+            generator = processor.process_steer(
+                chat_id=chat_id,
+                user_id=CONFIG.user_id,
+                steer_message=message,
+                config_override=config_override,
+            )
+            async for chunk in generator:
+                await stream_queue.put(chunk)
+        except Exception as exc:
+            logger.error(f"[steer_send] Background steer error for {chat_id}: {exc}")
+            error_payload = (
+                f'data: {{"type":"RUN_ERROR","message":{json.dumps(str(exc))}}}\n\n'
+            )
+            try:
+                await stream_queue.put(error_payload)
+            except Exception:
+                pass
+        finally:
+            await stream_queue.put(None)
+
+    task = asyncio.create_task(_run())
+    _chat_send_tasks.add(task)
+    task.add_done_callback(_chat_send_tasks.discard)
+    return JSONResponse({"chat_id": chat_id}, status_code=202)
 
 
 async def retry_chat(request: Request) -> StreamingResponse:
@@ -366,7 +524,7 @@ async def live_stream(request: Request) -> StreamingResponse:
                 yield ": keep-alive\n\n"
                 continue
             if chunk is None:
-                unregister_background_stream(chat_id)
+                unregister_background_stream(chat_id, q)
                 return
             yield chunk
 
@@ -383,20 +541,36 @@ async def live_stream(request: Request) -> StreamingResponse:
 
 
 async def get_chats(request: Request) -> JSONResponse:
-    """Return list of chat summaries with pagination and optional search."""
+    """Return list of chat summaries with pagination and optional search.
+
+    Query params:
+        limit, offset: pagination
+        search: substring match on title or message body
+        project_id: filter to chats in this project
+        platform: legacy filter; prefer ``project_id`` going forward
+    """
     try:
         db = get_database()
 
-        # Parse query parameters
         limit = int(request.query_params.get("limit", 50))
         offset = int(request.query_params.get("offset", 0))
         search = request.query_params.get("search", "").strip() or None
         platform = request.query_params.get("platform", "").strip() or None
+        project_id = request.query_params.get("project_id", "").strip() or None
 
         chats = db.list_chats(
-            limit=limit, offset=offset, search=search, platform=platform
+            limit=limit,
+            offset=offset,
+            search=search,
+            platform=platform,
+            project_id=project_id,
         )
-        total = db.get_chat_count(search=search, platform=platform)
+        total = db.get_chat_count(
+            search=search, platform=platform, project_id=project_id
+        )
+        kind_counts = db.get_chat_kind_counts(
+            search=search, platform=platform, project_id=project_id
+        )
 
         # Convert Pydantic models to dicts, annotating live background streams
         chats_data = [
@@ -411,9 +585,11 @@ async def get_chats(request: Request) -> JSONResponse:
             {
                 "chats": chats_data,
                 "total": total,
+                "kindCounts": kind_counts,
                 "limit": limit,
                 "offset": offset,
                 "search": search,
+                "projectId": project_id,
             }
         )
     except Exception as e:
@@ -455,7 +631,7 @@ async def get_chat(request: Request) -> JSONResponse:
         if context_usage:
             response_chat["contextUsage"] = context_usage
 
-        hb_path = Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
+        hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
         if hb_path.exists():
             try:
                 if "config" not in response_chat:
@@ -474,7 +650,7 @@ async def get_chat(request: Request) -> JSONResponse:
 
 
 async def create_chat(request: Request) -> JSONResponse:
-    """Create a new chat."""
+    """Create a new chat. Optional ``project_id`` body field assigns to a project."""
     try:
         data = await request.json()
         title = data.get("title", "New Chat")
@@ -485,14 +661,13 @@ async def create_chat(request: Request) -> JSONResponse:
             else None
         )
         messages = data.get("messages", [])
+        project_id = data.get("project_id") or data.get("projectId")
 
         db = get_database()
-        chat_id = db.create_chat(title, config, messages)
+        chat_id = db.create_chat(title, config, messages, project_id=project_id)
 
         if instructions is not None:
-            hb_path = (
-                Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
-            )
+            hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
             try:
                 hb_path.parent.mkdir(parents=True, exist_ok=True)
                 hb_path.write_text(instructions, encoding="utf-8")
@@ -539,9 +714,7 @@ async def update_chat(request: Request) -> JSONResponse:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
 
         if instructions is not None:
-            hb_path = (
-                Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
-            )
+            hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
             try:
                 hb_path.parent.mkdir(parents=True, exist_ok=True)
                 hb_path.write_text(instructions, encoding="utf-8")
@@ -558,7 +731,7 @@ async def update_chat(request: Request) -> JSONResponse:
             mode="json", by_alias=True, exclude={"agent_state"}
         )
 
-        hb_path = Path(CONFIG.sandbox_data_path) / "sessions" / chat_id / "heartbeat.md"
+        hb_path = get_database().get_project_dir(chat_id) / "heartbeat.md"
         if hb_path.exists():
             try:
                 if "config" not in response_chat:
@@ -577,19 +750,30 @@ async def update_chat(request: Request) -> JSONResponse:
 
 
 async def delete_chat(request: Request) -> JSONResponse:
-    """Delete a chat."""
+    """Delete a chat. Pass ?cascade=true to also delete subagent children."""
     try:
         chat_id = request.path_params["chat_id"]
+        cascade = request.query_params.get("cascade", "false").lower() == "true"
         db = get_database()
 
-        success = db.delete_chat(chat_id)
+        # Collect subagent child IDs before deletion (for tool cleanup)
+        child_ids = db.get_subagent_chat_ids_for_parent_chat(chat_id) if cascade else []
+
+        success = db.delete_chat(chat_id, cascade_subagents=cascade)
         if not success:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
 
         from suzent.agent_manager import clear_unlocked_tools
 
         clear_unlocked_tools(chat_id)
-        return JSONResponse({"message": "Chat deleted successfully"})
+        for child_id in child_ids:
+            clear_unlocked_tools(child_id)
+        return JSONResponse(
+            {
+                "message": "Chat deleted successfully",
+                "deleted_subagents": len(child_ids),
+            }
+        )
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 

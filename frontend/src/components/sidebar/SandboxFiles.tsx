@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { getApiBase } from '../../lib/api';
 import { useI18n } from '../../i18n';
 import { BrutalButton } from '../BrutalButton';
+import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
 import { useChatStore } from '../../hooks/useChatStore';
 import { FilePreview } from './FilePreview';
 import { isBinaryServedFile, isImageFile, isMarkdownFile, isCodeFile } from '../../lib/fileUtils';
@@ -41,7 +42,15 @@ interface SandboxFilesProps {
     onMaximize?: (filePath: string, fileName: string) => void;
 }
 
-const ROOT_PATH = '/';
+const WORKSPACE_PATH = '/workspace';
+const SHARED_PATH = '/shared';
+const MOUNTS_PATH = '/mnt';
+
+const FILE_ROOTS = [
+    { path: WORKSPACE_PATH, labelKey: 'sandbox.workspace' },
+    { path: SHARED_PATH, labelKey: 'sandbox.shared' },
+    { path: MOUNTS_PATH, labelKey: 'sandbox.mounts' },
+] as const;
 
 interface FileTreeNodeProps {
     path: string;
@@ -160,7 +169,8 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
     const { t } = useI18n();
     const { currentChatId, config } = useChatStore();
 
-    const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set([ROOT_PATH]));
+    const [activeRoot, setActiveRoot] = useState<string>(WORKSPACE_PATH);
+    const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set([WORKSPACE_PATH]));
     const [dirContents, setDirContents] = useState<Map<string, FileItem[]>>(new Map());
     const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
 
@@ -191,14 +201,26 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
 
     useEffect(() => {
         if (currentChatId) {
-            setExpandedDirs(new Set([ROOT_PATH]));
+            setActiveRoot(WORKSPACE_PATH);
+            setExpandedDirs(new Set([WORKSPACE_PATH]));
             setDirContents(new Map());
             setSelectedFile(null);
             setFileContent(null);
             setError(null);
-            fetchDirContents(ROOT_PATH);
+            fetchDirContents(WORKSPACE_PATH);
         }
-    }, [currentChatId]);
+    }, [currentChatId, fetchDirContents]);
+
+    const handleRootChange = useCallback((nextRoot: string) => {
+        setActiveRoot(nextRoot);
+        setExpandedDirs(new Set([nextRoot]));
+        setDirContents(new Map());
+        setSelectedFile(null);
+        setFileContent(null);
+        setError(null);
+        fetchDirContents(nextRoot);
+        onViewModeChange?.(false);
+    }, [fetchDirContents, onViewModeChange]);
 
     const handleToggleDir = useCallback((path: string) => {
         if (expandedDirs.has(path)) {
@@ -274,7 +296,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
             await fetch(`${getApiBase()}/system/open_explorer`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: '/persistence', chat_id: currentChatId })
+                body: JSON.stringify({ path: activeRoot, chat_id: currentChatId })
             });
         } catch (e) {
             console.error("Failed to open explorer", e);
@@ -294,7 +316,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
                 const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-                const targetPath = `/persistence/${cleanName}`;
+                const targetPath = `${activeRoot}/${cleanName}`;
                 const text = await file.text();
                 const base = getApiBase();
                 const volumesParam = JSON.stringify(config.sandbox_volumes || []);
@@ -308,7 +330,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                     throw new Error(data.error || `Failed to upload ${file.name}`);
                 }
             }
-            fetchDirContents(ROOT_PATH);
+            fetchDirContents(activeRoot);
         } catch (err) {
             setError(String(err));
         } finally {
@@ -391,43 +413,58 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
     }
 
     // Tree View
-    const isRootLoading = loadingDirs.has(ROOT_PATH);
+    const activeRootLabel = FILE_ROOTS.find(root => root.path === activeRoot)?.labelKey ?? 'sandbox.workspace';
+    const isMountsRoot = activeRoot === MOUNTS_PATH;
+    const isRootLoading = loadingDirs.has(activeRoot);
     const totalItems = Array.from(dirContents.values()).reduce((acc, items) => acc + items.length, 0);
 
     return (
         <div className="flex flex-col h-full bg-white dark:bg-zinc-900">
             {/* Toolbar */}
-            <div className="bg-white dark:bg-zinc-800 p-2 border-b-3 border-brutal-black flex items-center gap-2 shrink-0">
-                <BrutalButton
-                    onClick={handleRefresh}
-                    title={t('sandbox.refresh')}
-                    size="icon"
-                >
-                    <ArrowPathIcon className={`w-4 h-4 stroke-2 ${isRootLoading ? 'animate-spin' : ''}`} />
-                </BrutalButton>
-                <BrutalButton onClick={openRootInExplorer} title={t('sandbox.openInExplorer')} size="icon">
-                    <ArrowTopRightOnSquareIcon className="w-4 h-4 stroke-2" />
-                </BrutalButton>
-                <BrutalButton onClick={handleUploadClick} title={t('sandbox.uploadFile')} size="icon">
-                    <ArrowUpTrayIcon className="w-4 h-4 stroke-2" />
-                </BrutalButton>
-                <input
-                    type="file"
-                    id="sandbox-file-upload"
-                    className="hidden"
-                    onChange={handleFileChange}
-                    multiple
-                />
-                <div className="flex-1 overflow-hidden">
-                    <div className="text-[10px] font-mono font-bold truncate px-2 py-1 bg-neutral-100 dark:bg-zinc-700 border-2 border-brutal-black dark:text-white shadow-[2px_2px_0_0_#000] uppercase tracking-wider">
-                        Sandbox
+            <div className="bg-white dark:bg-zinc-800 p-2 border-b-3 border-brutal-black shrink-0">
+                <div className="flex items-center gap-2">
+                    <BrutalButton
+                        onClick={handleRefresh}
+                        title={t('sandbox.refresh')}
+                        size="icon"
+                    >
+                        <ArrowPathIcon className={`w-4 h-4 stroke-2 ${isRootLoading ? 'animate-spin' : ''}`} />
+                    </BrutalButton>
+                    <BrutalButton onClick={openRootInExplorer} title={t('sandbox.openInExplorer')} size="icon" disabled={isMountsRoot}>
+                        <ArrowTopRightOnSquareIcon className="w-4 h-4 stroke-2" />
+                    </BrutalButton>
+                    <BrutalButton onClick={handleUploadClick} title={t('sandbox.uploadFile')} size="icon" disabled={isMountsRoot}>
+                        <ArrowUpTrayIcon className="w-4 h-4 stroke-2" />
+                    </BrutalButton>
+                    <input
+                        type="file"
+                        id="sandbox-file-upload"
+                        className="hidden"
+                        onChange={handleFileChange}
+                        multiple
+                    />
+                    <div className="min-w-0 flex-1 border-2 border-brutal-black bg-neutral-100 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-brutal-black shadow-[2px_2px_0_0_#000] dark:bg-zinc-700 dark:text-white">
+                        <span className="block truncate">{activeRoot}</span>
                     </div>
                 </div>
+                <BrutalSegmentedTabs
+                    className="mt-2"
+                    value={activeRoot}
+                    onChange={handleRootChange}
+                    containerClassName="border-2 border-brutal-black bg-white dark:bg-zinc-700"
+                    inactiveTextClassName="text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600"
+                    tabClassName="flex-1 min-w-0 px-1.5 py-1.5 font-mono text-[10px] font-bold"
+                    tabs={FILE_ROOTS.map(root => ({
+                        id: root.path,
+                        label: t(root.labelKey),
+                        title: root.path,
+                    }))}
+                />
             </div>
 
             {/* Tree */}
             <div className="flex-1 overflow-y-auto bg-white dark:bg-zinc-900 py-1 scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black">
-                {isRootLoading && !dirContents.has(ROOT_PATH) ? (
+                {isRootLoading && !dirContents.has(activeRoot) ? (
                     <div className="flex flex-col items-center justify-center h-full opacity-50 space-y-4">
                         <div className="animate-spin w-8 h-8 border-4 border-brutal-black border-t-neutral-400 rounded-full"></div>
                         <span className="font-bold text-xs font-mono">{t('sandbox.scanning')}</span>
@@ -437,10 +474,10 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
                         {error}
                     </div>
                 ) : (
-                    (dirContents.get(ROOT_PATH) || []).map((item, idx) => (
+                    (dirContents.get(activeRoot) || []).map((item, idx) => (
                         <FileTreeNode
                             key={idx}
-                            path={`/${item.name}`}
+                            path={`${activeRoot}/${item.name}`}
                             name={item.name}
                             isDir={item.is_dir}
                             depth={0}
@@ -459,7 +496,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
 
             {/* Status Footer */}
             <div className="bg-white dark:bg-zinc-800 text-brutal-black dark:text-white p-2 flex justify-between items-center text-[10px] font-mono border-t-3 border-brutal-black select-none">
-                <span className="font-bold tracking-wider">{t('sandbox.itemsCount', { count: String(totalItems) })}</span>
+                <span className="font-bold tracking-wider">{t(activeRootLabel)}: {t('sandbox.itemsCount', { count: String(totalItems) })}</span>
                 <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-none border border-black ${loadingDirs.size > 0 ? 'bg-neutral-400 animate-pulse' : 'bg-brutal-green'}`}></div>
                     <span className="uppercase">{loadingDirs.size > 0 ? t('sandbox.status.syncing') : t('sandbox.status.ready')}</span>

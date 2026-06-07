@@ -48,6 +48,9 @@ function _handleMessage(evt: MessageEvent) {
     if (msg.event === 'snapshot') {
       _activeStreams = new Set(msg.streams ?? []);
       notify();
+      _activeStreams.forEach((chatId) => {
+        _streamEventListeners.get(chatId)?.forEach((cb) => cb.onStart?.());
+      });
     } else if (msg.event === 'stream_started') {
       if (msg.chat_id) {
         _activeStreams = new Set([..._activeStreams, msg.chat_id]);

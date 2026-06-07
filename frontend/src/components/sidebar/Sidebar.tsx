@@ -13,6 +13,7 @@ interface SidebarProps {
   isOpen?: boolean;
   onOpenSettings: () => void;
   onClose?: () => void;
+  titlebarControls?: React.ReactNode;
 }
 
 export function Sidebar({
@@ -22,7 +23,8 @@ export function Sidebar({
   configContent,
   isOpen = false,
   onOpenSettings,
-  onClose
+  onClose,
+  titlebarControls
 }: SidebarProps): React.ReactElement {
   const TABS: SidebarTab[] = ['chats', 'config'];
   const [animateContent, setAnimateContent] = useState(false);
@@ -32,7 +34,7 @@ export function Sidebar({
     () => detectDesktopPlatform(navigator.userAgent, navigator.platform),
     [],
   );
-  const canDragWindowFromSidebar = !!window.__TAURI__ && desktopPlatform === 'windows';
+  const canDragWindowFromSidebar = !!window.__TAURI__ && (desktopPlatform === 'windows' || desktopPlatform === 'macos');
   const appWindow = window.__TAURI__?.window.getCurrentWindow();
 
   const TAB_LABELS: Record<SidebarTab, string> = {
@@ -136,6 +138,8 @@ export function Sidebar({
           className="h-12 flex items-center justify-start px-4 border-b-3 border-brutal-black bg-white dark:bg-zinc-800 sticky top-0 z-10 shrink-0"
           onMouseDown={handleSidebarHeaderMouseDown}
         >
+          {titlebarControls}
+
           {/* Toggle Button (Close) */}
           <button
             onClick={onClose}

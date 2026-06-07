@@ -96,7 +96,7 @@ export function ConfigView({ isActive = true }: ConfigViewProps): React.ReactEle
     const newResult = status.last_result;
     if (newResult && newResult !== 'HEARTBEAT_OK' && newResult !== lastResultRef.current) {
       lastResultRef.current = newResult;
-      loadChatRef.current(currentChatId);
+      loadChatRef.current(currentChatId, { force: true });
     }
 
     if (status.heartbeat_due && !isStreamingRef.current && !heartbeatDispatchedRef.current) {

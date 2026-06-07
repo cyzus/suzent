@@ -12,6 +12,18 @@ const EDITOR_OPTIONS = {
   renderSideBySide: false, // Unified diff is better for inline chat context
   automaticLayout: true,
   padding: { top: 8, bottom: 8 },
+  // Disable features that touch the model asynchronously after layout/mouse
+  // events. In this chat context editors mount/unmount rapidly, and these
+  // features (sticky scroll, hover, code lens, overview ruler) race the model
+  // teardown and throw uncaught errors like "Cannot read properties of
+  // undefined (reading 'isVisible')", which abort the surrounding React render
+  // and leave tool UI (e.g. an approval prompt) stuck.
+  stickyScroll: { enabled: false },
+  hover: { enabled: false },
+  codeLens: false,
+  occurrencesHighlight: 'off' as const,
+  selectionHighlight: false,
+  overviewRulerLanes: 0,
   unicodeHighlight: {
     ambiguousCharacters: false,
     invisibleCharacters: false,
@@ -121,6 +133,9 @@ const FILE_TOOL_PREVIEW_CONFIG: Record<string, FileToolPreviewConfig | undefined
   write_file: {
     modifiedArg: 'content',
   },
+  read_file: {
+    modifiedArg: '__read_file_output__',
+  },
 };
 
 const getLanguageFromPath = (filePath: string): string => {
@@ -182,19 +197,28 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsed
     let canPreview = false;
 
     if (config) {
-      const metadataOriginal = getStringProp(metadata, 'old_content');
-      const metadataModified = getStringProp(metadata, 'new_content');
-      const hasArgModified = hasProp(parsedArgs, config.modifiedArg);
-      const hasArgOriginal = hasProp(parsedArgs, config.originalArg);
-
-      original = metadataOriginal ?? getStringProp(parsedArgs, config.originalArg) ?? '';
-      modified = metadataModified ?? getStringProp(parsedArgs, config.modifiedArg) ?? '';
-      canPreview = metadataModified !== undefined || (
-        hasArgModified && (!config.requireOriginalArg || hasArgOriginal)
-      );
-      isDiff = Boolean(config.alwaysDiff || metadataOriginal !== undefined || config.originalArg);
-      if (metadataOriginal === undefined && !config.alwaysDiff) {
+      if (toolName === 'read_file' && output) {
+        // Strip the "[Lines X-Y of Z]\n" header and tab-prefixed line numbers
+        const bodyStart = output.indexOf('\n');
+        const body = bodyStart >= 0 ? output.slice(bodyStart + 1) : output;
+        modified = body.replace(/^\d+\t/gm, '');
+        canPreview = modified.length > 0;
         isDiff = false;
+      } else {
+        const metadataOriginal = getStringProp(metadata, 'old_content');
+        const metadataModified = getStringProp(metadata, 'new_content');
+        const hasArgModified = hasProp(parsedArgs, config.modifiedArg);
+        const hasArgOriginal = hasProp(parsedArgs, config.originalArg);
+
+        original = metadataOriginal ?? getStringProp(parsedArgs, config.originalArg) ?? '';
+        modified = metadataModified ?? getStringProp(parsedArgs, config.modifiedArg) ?? '';
+        canPreview = metadataModified !== undefined || (
+          hasArgModified && (!config.requireOriginalArg || hasArgOriginal)
+        );
+        isDiff = Boolean(config.alwaysDiff || metadataOriginal !== undefined || config.originalArg);
+        if (metadataOriginal === undefined && !config.alwaysDiff) {
+          isDiff = false;
+        }
       }
     }
 
@@ -237,6 +261,14 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsed
             options={EDITOR_OPTIONS}
             beforeMount={beforeMount}
             loading={LOADING_FALLBACK}
+            // Don't let the wrapper eagerly dispose the models on unmount — that
+            // races the DiffEditorWidget teardown and throws "TextModel got
+            // disposed before DiffEditorWidget model got reset", which aborts the
+            // surrounding React render and leaves tool UI (e.g. an approval
+            // prompt) stuck. Leaving the models for GC trades a tiny leak for
+            // crash-free teardown in this rapid mount/unmount chat context.
+            keepCurrentOriginalModel
+            keepCurrentModifiedModel
           />
         ) : (
           <Editor

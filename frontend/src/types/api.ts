@@ -12,7 +12,7 @@ export interface ImageAttachment {
 export interface FileAttachment {
   id: string;
   filename: string;
-  path: string;           // Virtual path: /persistence/uploads/filename
+  path: string;           // Virtual path: /workspace/uploads/filename
   size: number;           // Bytes
   mime_type: string;
   uploaded_at?: string;
@@ -42,6 +42,7 @@ export interface ChatConfig {
   heartbeat_interval_minutes?: number;
   heartbeat_instructions?: string;
   heartbeat_last_run_at?: string;
+  platform?: string;
 }
 
 export interface Chat {
@@ -76,31 +77,59 @@ export interface ChatSummary {
   lastResultAt?: string;
   isRunning?: boolean;
   unreadCount?: number;
+  projectId?: string | null;
+  projectSlug?: string | null;
+  projectName?: string | null;
+  parentChatId?: string | null;
 }
 
-export type PlanPhaseStatus = 'pending' | 'in_progress' | 'completed';
-
-export interface PlanPhase {
-  id?: number;
-  number: number;
-  title: string;
-  description: string;
-  status: PlanPhaseStatus;
-  note?: string;
-  capabilities?: Record<string, any>;
-  createdAt?: string;
-  updatedAt?: string;
+export interface ChatKindCounts {
+  you: number;
+  scheduled: number;
+  all: number;
 }
 
-export interface Plan {
-  id?: number;
+export interface Project {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  archived: boolean;
+  chatCount: number;
+}
+
+export type GoalStatus = 'active' | 'paused' | 'completed' | 'cancelled';
+// 'blocked' is derived on the backend from blockedBy being non-empty — not stored as a DB status
+export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'blocked' | 'cancelled';
+
+export interface Goal {
+  id: number;
+  projectId: string;
   chatId?: string | null;
   objective: string;
-  title?: string;
-  phases: PlanPhase[];
+  status: GoalStatus;
+  subgoals: string[];
+  maxTurns?: number | null;
+  turnsElapsed: number;
   createdAt?: string;
   updatedAt?: string;
-  versionKey: string;
+  completedAt?: string | null;
+}
+
+export interface Task {
+  id: number;
+  projectId: string;
+  chatId?: string | null;
+  title: string;
+  description: string;
+  activeForm?: string | null;
+  status: TaskStatus;
+  assignee?: string | null;
+  blocks: number[];
+  blockedBy: number[];
+  createdAt?: string;
+  updatedAt?: string;
+  completedAt?: string | null;
 }
 
 // Added: configuration options exposed by backend (derived from suzent.config.Config)

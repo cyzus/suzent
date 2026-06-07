@@ -279,7 +279,6 @@ export function useToolApproval(options: UseToolApprovalOptions): UseToolApprova
       };
 
       setIsStreaming(true, targetChatId);
-      streamingChatIdRef.current = targetChatId;
       stopInFlightRef.current = false;
       await resumeStream(payload);
     } catch (error) {

@@ -11,6 +11,7 @@ from suzent.sync.github_api import (
     GitHubApiError,
     clear_github_token,
     get_authenticated_user,
+    github_token_expired_without_refresh,
     resolve_github_token,
     store_github_token,
 )
@@ -354,11 +355,18 @@ async def poll_github_auth(request: Request) -> JSONResponse:
         return _error_response(str(exc), 502)
 
     if token:
-        store_github_token(token)
+        store_github_token(
+            token.access_token,
+            expires_in=token.expires_in,
+            refresh_token=token.refresh_token,
+            refresh_token_expires_in=token.refresh_token_expires_in,
+            token_type=token.token_type,
+            scope=token.scope,
+        )
         _device_sessions.pop(session_id, None)
         username = None
         try:
-            username = get_authenticated_user(token)
+            username = get_authenticated_user(token.access_token)
         except Exception:
             pass
         return JSONResponse(
@@ -370,6 +378,10 @@ async def poll_github_auth(request: Request) -> JSONResponse:
 async def get_github_auth_status(request: Request) -> JSONResponse:
     token = resolve_github_token()
     if not token:
+        if github_token_expired_without_refresh():
+            return JSONResponse(
+                {"authenticated": False, "username": None, "token_expired": True}
+            )
         return JSONResponse({"authenticated": False, "username": None})
     try:
         username = get_authenticated_user(token)

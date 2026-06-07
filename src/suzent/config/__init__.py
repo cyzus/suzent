@@ -290,7 +290,10 @@ class ConfigModel(BaseModel):
 
     default_tools: List[str] = [
         "WebSearchTool",
-        "PlanningTool",
+        "GoalTool",
+        "TaskCreateTool",
+        "TaskUpdateTool",
+        "TaskListTool",
         "ReadFileTool",
         "WriteFileTool",
         "EditFileTool",

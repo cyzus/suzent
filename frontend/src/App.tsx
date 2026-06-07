@@ -11,11 +11,13 @@ import { RobotShowcase } from './components/chat/RobotShowcase';
 import { MemoryView } from './components/memory/MemoryView';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { ConfigView } from './components/sidebar/ConfigView';
+import { BrutalSegmentedTabs } from './components/BrutalSegmentedTabs';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { SkillsView } from './components/skills/SkillsView';
 import { StatusBar } from './components/StatusBar';
 import { ChatProvider, useChatCoreStore } from './hooks/useChatStore';
-import { PlanProvider, usePlan } from './hooks/usePlan';
+import { GoalTasksProvider, useGoalTasks } from './hooks/useGoalTasks';
+import { ProjectProvider } from './hooks/useProjects';
 import { useStatusStore } from './hooks/useStatusStore';
 import { useTheme } from './hooks/useTheme';
 import { drainCronNotifications, fetchHeartbeatStatus } from './lib/api';
@@ -95,6 +97,36 @@ function HeaderTitle({ text, onUnlock }: HeaderTitleProps): React.ReactElement {
   );
 }
 
+interface MacTrafficLightsProps {
+  isMaximized: boolean;
+  onMaximize: () => void;
+}
+
+function MacTrafficLights({ isMaximized, onMaximize }: MacTrafficLightsProps): React.ReactElement {
+  const { t } = useI18n();
+  const appWindow = window.__TAURI__?.window.getCurrentWindow();
+
+  return (
+    <div className="mr-3 flex h-10 shrink-0 items-center gap-2" aria-label={t('app.title')}>
+      <button
+        onClick={() => appWindow?.close()}
+        className="h-3 w-3 rounded-full border border-[#e0443e] bg-[#ff5f57] transition-opacity hover:opacity-90"
+        title={t('titlebar.close')}
+      />
+      <button
+        onClick={() => appWindow?.minimize()}
+        className="h-3 w-3 rounded-full border border-[#dfa123] bg-[#febc2e] transition-opacity hover:opacity-90"
+        title={t('titlebar.minimize')}
+      />
+      <button
+        onClick={onMaximize}
+        className="h-3 w-3 rounded-full border border-[#1ea833] bg-[#28c840] transition-opacity hover:opacity-90"
+        title={isMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
+      />
+    </div>
+  );
+}
+
 type MainView = 'chat' | 'memory' | 'skills' | 'emotes';
 
 interface UpdateStatus {
@@ -106,57 +138,16 @@ interface UpdateStatus {
 
 function NavTabs({ mainView, setMainView }: { mainView: MainView; setMainView: (v: MainView) => void }): React.ReactElement {
   const { t } = useI18n();
-  const [sliderStyle, setSliderStyle] = React.useState({ left: 3, width: 0 });
-  const navRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    if (navRef.current) {
-      const timeout = setTimeout(() => {
-        if (!navRef.current) return;
-        const activeBtn = navRef.current.querySelector<HTMLButtonElement>(`button[data-view="${mainView}"]`);
-        if (activeBtn) {
-          setSliderStyle({ left: activeBtn.offsetLeft, width: activeBtn.offsetWidth });
-        }
-      }, 10);
-      return () => clearTimeout(timeout);
-    }
-  }, [mainView, t]);
-
   return (
-    <div
-      ref={navRef}
-      className="relative flex items-center p-0.5 border-3 border-brutal-black bg-neutral-100 dark:bg-zinc-800 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-    >
-      {/* Background Slider */}
-      <div
-        className="absolute top-0.5 bottom-0.5 bg-brutal-black dark:bg-brutal-yellow transition-all duration-300 ease-out pointer-events-none"
-        style={{
-          left: sliderStyle.left,
-          width: sliderStyle.width,
-        }}
-      />
-
-      {[
-        { id: 'chat' as MainView, label: t('nav.chat') },
-        { id: 'memory' as MainView, label: t('nav.memory') },
-        { id: 'skills' as MainView, label: t('nav.skills') }
-      ].map((view) => (
-        <button
-          key={view.id}
-          data-view={view.id}
-          onClick={() => setMainView(view.id)}
-          className={`
-            relative z-10 px-2 py-0.5 font-bold uppercase text-[10px] md:text-sm transition-colors whitespace-nowrap
-            ${mainView === view.id
-              ? 'text-white dark:text-brutal-black'
-              : 'text-brutal-black dark:text-white hover:bg-black/5 dark:hover:bg-white/5'
-            }
-          `}
-        >
-          {view.label}
-        </button>
-      ))}
-    </div>
+    <BrutalSegmentedTabs
+      value={mainView}
+      onChange={setMainView}
+      tabs={[
+        { id: 'chat', label: t('nav.chat') },
+        { id: 'memory', label: t('nav.memory') },
+        { id: 'skills', label: t('nav.skills') },
+      ]}
+    />
   );
 }
 
@@ -206,12 +197,11 @@ function UpdateButton(): React.ReactElement | null {
     <button
       onClick={handleUpdate}
       disabled={isStartingUpdate}
-      className="h-8 min-w-8 px-2 flex items-center justify-center gap-1.5 border-2 border-brutal-black bg-brutal-yellow text-brutal-black font-brutal text-[10px] uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 disabled:opacity-60 disabled:cursor-wait disabled:hover:translate-x-0 disabled:hover:translate-y-0 transition-all"
+      className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors text-brutal-black dark:text-white disabled:opacity-50 disabled:cursor-wait"
       aria-label={t('updates.available')}
       title={t('updates.availableTitle', { version: updateStatus.latest_version || t('updates.latestVersion') })}
     >
-      <ArrowPathIcon className={`h-4 w-4 flex-shrink-0 stroke-[2.5] ${isStartingUpdate ? 'animate-spin' : ''}`} />
-      <span className="hidden 2xl:inline">{isStartingUpdate ? t('updates.starting') : t('updates.updateNow')}</span>
+      <ArrowPathIcon className={`h-5 w-5 ${isStartingUpdate ? 'animate-spin' : ''}`} />
     </button>
   );
 }
@@ -235,21 +225,22 @@ function AppInner(): React.ReactElement {
     isLeftSidebarOpen ? LEFT_SIDEBAR_WIDTH_PX : 0,
   );
 
-  const { refresh } = usePlan();
+  const { refresh: refreshGoalTasks, refreshKanban } = useGoalTasks();
   const { currentChatId, setViewSwitcher, refreshChatList, refreshChatListSilently, chats, loadChat } = useChatCoreStore();
   const setStatusMsg = useStatusStore(s => s.setStatus);
   const setHeartbeatStatus = useHeartbeatRunning(s => s.setStatus);
   const setChatHeartbeatStatus = useHeartbeatRunning(s => s.setChatStatus);
   const { theme, toggleTheme } = useTheme();
   const { t } = useI18n();
-  const [isWindowsMaximized, setIsWindowsMaximized] = useState(false);
+  const [isWindowMaximized, setIsWindowMaximized] = useState(false);
 
   const desktopPlatform = React.useMemo(
     () => detectDesktopPlatform(navigator.userAgent, navigator.platform),
     [],
   );
-  const showStandaloneTitleBar = desktopPlatform !== 'windows';
+  const showStandaloneTitleBar = desktopPlatform !== 'windows' && desktopPlatform !== 'macos';
   const showWindowsWindowControls = desktopPlatform === 'windows';
+  const showMacWindowControls = !!window.__TAURI__ && desktopPlatform === 'macos';
   const appWindow = window.__TAURI__?.window.getCurrentWindow();
 
   // Use refs so the interval callback always sees the latest values without re-creating the interval.
@@ -298,7 +289,7 @@ function AppInner(): React.ReactElement {
       }
 
       if (chatId && (openChat?.platform || openChat?.heartbeatEnabled) && !openChat?.isRunning) {
-        loadChatRef.current(chatId);
+        loadChatRef.current(chatId, { force: true });
       }
     }, 8000);
     return () => clearInterval(interval);
@@ -331,13 +322,13 @@ function AppInner(): React.ReactElement {
     });
   }
 
-  async function toggleWindowsMaximize(): Promise<void> {
+  async function toggleWindowMaximize(): Promise<void> {
     await appWindow?.toggleMaximize();
-    setIsWindowsMaximized(prev => !prev);
+    setIsWindowMaximized(prev => !prev);
   }
 
-  function handleWindowsHeaderMouseDown(event: React.MouseEvent<HTMLElement>): void {
-    if (!showWindowsWindowControls) {
+  function handleHeaderMouseDown(event: React.MouseEvent<HTMLElement>): void {
+    if (!showWindowsWindowControls && !showMacWindowControls) {
       return;
     }
 
@@ -357,8 +348,12 @@ function AppInner(): React.ReactElement {
   }, [setViewSwitcher, setMainView]);
 
   React.useEffect(() => {
-    console.log('Loading plan for chat:', currentChatId);
-    refresh(currentChatId);
+    // Use chatsRef (not chats) so this effect only re-runs on chat selection change,
+    // not on every chat list update (which would cause spurious re-renders mid-stream).
+    const chat = currentChatId ? chatsRef.current.find(c => c.id === currentChatId) : null;
+    const projectId = chat?.projectId ?? null;
+    refreshGoalTasks(projectId, currentChatId ?? null);
+    refreshKanban(projectId);
 
     // Auto-collapse right sidebar on new chat
     if (!currentChatId) {
@@ -368,7 +363,7 @@ function AppInner(): React.ReactElement {
     if (window.innerWidth < DESKTOP_BREAKPOINT_PX) {
       setIsLeftSidebarOpen(false);
     }
-  }, [currentChatId, refresh]);
+  }, [currentChatId, refreshGoalTasks, refreshKanban]); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
     if (!isLeftSidebarOpen || !isRightSidebarOpen) {
@@ -428,33 +423,39 @@ function AppInner(): React.ReactElement {
           isOpen={isLeftSidebarOpen}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onClose={() => setIsLeftSidebarOpen(false)}
+          titlebarControls={
+            showMacWindowControls && isLeftSidebarOpen ? (
+              <MacTrafficLights isMaximized={isWindowMaximized} onMaximize={toggleWindowMaximize} />
+            ) : null
+          }
         />
         <div className="flex-1 flex flex-col overflow-hidden w-full">
           <header
             className="relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12"
-            onMouseDown={handleWindowsHeaderMouseDown}
+            onMouseDown={handleHeaderMouseDown}
           >
             <div className="flex items-center gap-2 md:gap-0">
+              {showMacWindowControls && !isLeftSidebarOpen ? (
+                <MacTrafficLights isMaximized={isWindowMaximized} onMaximize={toggleWindowMaximize} />
+              ) : null}
               {isLeftSidebarOpen ? (
                 <div className="h-10 w-10 mr-3" aria-hidden="true" />
               ) : (
                 <div
-                  className="mr-3 group cursor-pointer"
+                  className="mr-3 group h-10 w-10 cursor-pointer rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-zinc-700"
                   onClick={toggleLeftSidebar}
                   role="button"
                   aria-label={t('sidebar.open')}
                   title={t('sidebar.open')}
                 >
-                  <div className="group-hover:hidden">
+                  <div className="flex h-full w-full items-center justify-center group-hover:hidden">
                     <SuzentLogo className="h-7 w-7" interactive />
                   </div>
-                  <div className="hidden group-hover:block">
-                    <div className="h-10 w-10 flex items-center justify-center rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-700 transition-colors">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-brutal-black dark:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <rect x="4" y="4" width="16" height="16" rx="2" />
-                        <line x1="9" y1="4" x2="9" y2="20" />
-                      </svg>
-                    </div>
+                  <div className="hidden h-full w-full items-center justify-center group-hover:flex">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-brutal-black dark:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <rect x="4" y="4" width="16" height="16" rx="2" />
+                      <line x1="9" y1="4" x2="9" y2="20" />
+                    </svg>
                   </div>
                 </div>
               )}
@@ -524,11 +525,11 @@ function AppInner(): React.ReactElement {
                     </svg>
                   </button>
                   <button
-                    onClick={toggleWindowsMaximize}
+                    onClick={toggleWindowMaximize}
                     className="h-full w-9 flex items-center justify-center hover:bg-brutal-black dark:hover:bg-zinc-600 hover:text-brutal-white transition-colors"
-                    title={isWindowsMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
+                    title={isWindowMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
                   >
-                    {isWindowsMaximized ? (
+                    {isWindowMaximized ? (
                       <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2">
                         <rect x="2" y="0" width="8" height="8" rx="0" />
                         <rect x="0" y="2" width="8" height="8" rx="0" />
@@ -768,24 +769,21 @@ export default function App() {
   return (
     <I18nProvider>
       <ErrorBoundary>
-        <ChatProvider enabled={backendReady && !backendError}>
-          {!backendReady || backendError ? (
-            <BackendLoadingScreen error={backendError} />
-          ) : (
-            <PlanProvider>
-              <AppInner />
-            </PlanProvider>
-          )}
-        </ChatProvider>
+        <ProjectProvider>
+          <ChatProvider enabled={backendReady && !backendError}>
+            {!backendReady || backendError ? (
+              <BackendLoadingScreen error={backendError} />
+            ) : (
+              <GoalTasksProvider>
+                <AppInner />
+              </GoalTasksProvider>
+            )}
+          </ChatProvider>
+        </ProjectProvider>
       </ErrorBoundary>
     </I18nProvider>
   );
 }
-
-
-
-
-
 
 
 

@@ -129,15 +129,27 @@ export const ActivityRail: React.FC<{
   children: React.ReactNode;
   itemCount: number;
   durationSeconds?: number;
+  startedAtMs?: number;
   showDuration?: boolean;
   defaultExpanded?: boolean;
   isActive?: boolean;
   hasPending?: boolean;
   currentLabel?: string;
-}> = ({ children, itemCount, durationSeconds, showDuration = true, defaultExpanded = false, isActive = false, hasPending = false, currentLabel }) => {
+}> = ({ children, itemCount, durationSeconds, startedAtMs, showDuration = true, defaultExpanded = false, isActive = false, hasPending = false, currentLabel }) => {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const startedAtRef = React.useRef(Date.now());
+  // Use the caller-provided start time when available so the timer resumes from
+  // the original start across remounts (e.g. reconnecting to a stream after a
+  // chat switch); otherwise fall back to mount time.
+  const startedAtRef = React.useRef(startedAtMs ?? Date.now());
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Adopt a later-arriving start time (the prop may be undefined on first render
+  // and resolve once the streaming chat's start timestamp is known).
+  useEffect(() => {
+    if (startedAtMs && startedAtMs !== startedAtRef.current) {
+      startedAtRef.current = startedAtMs;
+    }
+  }, [startedAtMs]);
 
   useEffect(() => {
     if (defaultExpanded) {

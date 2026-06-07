@@ -25,6 +25,7 @@ const ARGS_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> = 
 // For bash: args section stays, output section shows stdout separately.
 const OUTPUT_RENDERERS: Record<string, React.FC<ToolRendererProps> | undefined> = {
   bash_execute: BashOutputRenderer,
+  read_file: FileDiffViewer,
 };
 
 export type ApprovalState = 'pending' | 'approved' | 'denied' | undefined;
@@ -148,12 +149,24 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   const [expanded, setExpanded] = useState(!defaultCollapsed);
   const { t } = useI18n();
 
-  // Auto-expand when approval is requested
+  // Track whether the current expansion was forced open by a pending approval
+  // (vs. opened by the user clicking), so we can auto-collapse it once resolved
+  // without overriding a deliberate user expand.
+  const autoExpandedByPendingRef = React.useRef(false);
+  const userToggledRef = React.useRef(false);
+
+  // Auto-expand when approval is requested; auto-collapse once the approval is
+  // resolved and the result has arrived — unless the user manually toggled it.
   React.useEffect(() => {
     if (approvalState === 'pending') {
+      autoExpandedByPendingRef.current = true;
       setExpanded(true);
+    } else if (autoExpandedByPendingRef.current && output && !userToggledRef.current) {
+      // Approval was granted/denied and output landed → collapse back to default.
+      autoExpandedByPendingRef.current = false;
+      setExpanded(false);
     }
-  }, [approvalState]);
+  }, [approvalState, output]);
 
   // Format tool name for display: snake_case → readable
   const displayName = toolName.replace(/_/g, ' ');
@@ -243,8 +256,25 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   return (
     <div className={`${inActivityRail ? 'my-0' : 'my-1.5'} min-w-0 w-full overflow-x-hidden`}>
       {/* Compact pill header */}
-      <button
-        onClick={() => hasDetails && setExpanded(!expanded)}
+      {/* Header is a div (not button) so the inline auto-approve badge button
+          below is valid HTML — a <button> cannot nest inside a <button>. */}
+      <div
+        role="button"
+        tabIndex={hasDetails ? 0 : -1}
+        aria-expanded={hasDetails ? expanded : undefined}
+        onClick={() => {
+          if (!hasDetails) return;
+          userToggledRef.current = true;
+          setExpanded(!expanded);
+        }}
+        onKeyDown={(e) => {
+          if (!hasDetails) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            userToggledRef.current = true;
+            setExpanded(!expanded);
+          }
+        }}
         className={headerClassName}
       >
         {/* Icon */}
@@ -318,7 +348,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
         )}
-      </button>
+      </div>
 
       {/* Expandable content */}
       <div className={`

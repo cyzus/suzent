@@ -13,6 +13,7 @@ import { MemoryStatsComponent } from './MemoryStats';
 import { DailyLogsPanel } from './DailyLogsPanel';
 import { MemoryFilePanel } from './MemoryFilePanel';
 import { TranscriptPanel } from './TranscriptPanel';
+import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
 import type { CoreMemoryLabel } from '../../types/memory';
 
 type MemoryTab = 'overview' | 'daily-logs' | 'memory-file' | 'transcripts';
@@ -56,37 +57,6 @@ export const MemoryView: React.FC = () => {
     prevStreamingRef.current = isStreaming;
   }, [isStreaming]);
 
-  if (coreMemoryLoading && !coreMemory && activeTab === 'overview') {
-    return (
-      <div className="h-full w-full flex flex-col items-center justify-center p-8">
-        <div className="max-w-md w-full space-y-4">
-          <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-            <h2 className="font-brutal text-2xl uppercase mb-4 animate-pulse">
-              {t('memoryView.initializing')}
-            </h2>
-            <div className="space-y-2 font-mono text-xs text-brutal-black dark:text-white">
-              <div className="flex justify-between">
-                <span>{'>'} CONNECTING_TO_CORE</span>
-                <span>[OK]</span>
-              </div>
-              <div className="flex justify-between">
-                <span>{'>'} LOADING_VECTORS</span>
-                <span className="animate-pulse">...</span>
-              </div>
-              <div className="flex justify-between opacity-50">
-                <span>{'>'} {t('memoryView.indexingArchives')}</span>
-                <span>{t('memoryView.waiting')}</span>
-              </div>
-            </div>
-            <div className="mt-6 h-4 border-2 border-brutal-black p-0.5">
-              <div className="h-full bg-brutal-black w-2/3 animate-[shimmer_2s_infinite]"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   if (coreMemoryError && activeTab === 'overview') {
     return (
       <div className="p-6 space-y-4">
@@ -112,20 +82,13 @@ export const MemoryView: React.FC = () => {
   return (
     <div className="h-full w-full overflow-y-auto scrollbar-thin memory-scroll px-4 md:px-8 py-8 space-y-6 max-w-7xl mx-auto">
       {/* Sub-navigation tabs */}
-      <div className="flex border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`
-              flex-1 px-4 py-2.5 font-bold uppercase text-xs md:text-sm transition-colors border-r-3 border-brutal-black last:border-r-0
-              ${activeTab === tab.id ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black' : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'}
-            `}
-          >
-            {t(tab.labelKey)}
-          </button>
-        ))}
-      </div>
+      <BrutalSegmentedTabs
+        tabs={TABS.map((tab) => ({ id: tab.id, label: t(tab.labelKey) }))}
+        value={activeTab}
+        onChange={setActiveTab}
+        containerClassName="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+        tabClassName="flex-1 px-4 py-2.5 font-bold text-xs md:text-sm"
+      />
 
       {/* Tab content */}
       {activeTab === 'overview' && (
@@ -157,7 +120,15 @@ export const MemoryView: React.FC = () => {
 
               {showCoreMemory && (
                 <div className="space-y-4">
-                  {coreMemory &&
+                  {coreMemoryLoading && !coreMemory ? (
+                    [1, 2].map((i) => (
+                      <div key={i} className="border-3 border-brutal-black bg-white dark:bg-zinc-800 p-4 animate-brutal-blink">
+                        <div className="h-3 bg-neutral-200 dark:bg-zinc-700 mb-3 w-1/3"></div>
+                        <div className="h-16 bg-neutral-200 dark:bg-zinc-700"></div>
+                      </div>
+                    ))
+                  ) : (
+                    coreMemory &&
                     // Filter out session-scoped 'context' from the global view —
                     // it only makes sense inside an active chat session.
                     (Object.keys(coreMemory) as CoreMemoryLabel[])
@@ -170,7 +141,8 @@ export const MemoryView: React.FC = () => {
                             onUpdate={updateCoreMemoryBlock}
                           />
                         </div>
-                      ))}
+                      ))
+                  )}
                 </div>
               )}
             </div>

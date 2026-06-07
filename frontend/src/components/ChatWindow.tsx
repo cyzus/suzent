@@ -6,14 +6,13 @@ import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import type { Message, FileAttachment } from '../types/api';
 import type { ContentBlock } from '../lib/chatUtils';
 import { buildMessageRenderPlan } from '../lib/messageRenderPlan';
-import { usePlan } from '../hooks/usePlan';
+import { useGoalTasks } from '../hooks/useGoalTasks';
 import { useMemory } from '../hooks/useMemory';
 import { useCanvas } from '../hooks/useCanvas';
 import type { A2UISurface } from '../types/a2ui';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useUnifiedFileUpload } from '../hooks/useUnifiedFileUpload';
 import { useToolApproval } from '../hooks/chat/useToolApproval';
-import { PlanProgress } from './PlanProgress';
 import { NewChatView } from './NewChatView';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
 import { ImageViewer } from './ImageViewer';
@@ -22,8 +21,9 @@ import { UserMessage, AssistantMessage, RightSidebar, MarkdownRenderer } from '.
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 import { SubAgentView } from './sidebar/SubAgentView';
+import { ProjectKanbanView } from './sidebar/ProjectKanbanView';
 import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
-import { useEventBus, isBusStreaming, subscribeToStreamEvents } from '../hooks/useEventBus';
+import { useEventBus, isBusStreaming, subscribeToBusPayloads, subscribeToStreamEvents } from '../hooks/useEventBus';
 import { useStatusStore } from '../hooks/useStatusStore';
 import { useContextUsageStore } from '../hooks/useContextUsageStore';
 import { useActivatedToolsStore } from '../hooks/useActivatedToolsStore';
@@ -34,7 +34,7 @@ import type {
   SubAgentFailedPayload,
 } from '../lib/streamEvents';
 
-const INITIAL_VISIBLE_MESSAGES = 80;
+const INITIAL_VISIBLE_MESSAGES = 30;
 const LOAD_MORE_MESSAGES = 60;
 const LOAD_MORE_SCROLL_THRESHOLD_PX = 96;
 
@@ -43,6 +43,24 @@ function getLastMessageTimestamp(messages: Message[]): string | undefined {
     if (messages[i].timestamp) return messages[i].timestamp;
   }
   return undefined;
+}
+
+function formatCompactLifecycleNotice(payload: any): string | null {
+  if (!payload || payload.event !== 'auto_compaction') return null;
+  const source = String(payload.source || 'auto');
+  const prefix = source === 'auto' ? 'Auto compaction' : 'Compaction';
+
+  if (payload.stage === 'start') return `${prefix} running...`;
+  if (source === 'slash') return null;
+  if (payload.stage === 'skipped') return payload.message || `${prefix} skipped`;
+  if (payload.stage === 'error') return payload.message || `${prefix} failed`;
+
+  const before = Number(payload.tokens_before ?? 0);
+  const after = payload.tokens_after != null ? Number(payload.tokens_after) : null;
+  const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
+  return before > 0 && after != null
+    ? `${prefix} ${fmt(before)} -> ${fmt(after)}`
+    : `${prefix} complete`;
 }
 
 // ── AGUIPart[] → Store Message conversion ────────────────────────────
@@ -210,6 +228,42 @@ function groupedBlocksToAssistantContent(blocks: ContentBlock[]): string {
     }
   }
   return content;
+}
+
+// ── Stream seed helpers (sessionStorage) ─────────────────────────────
+// Persists streaming parts across page refreshes so the frontend can
+// (a) reconnect with a visual seed, or (b) detect a missed stream completion.
+const STREAM_SEED_KEY = 'chat_stream_seed_v1';
+
+interface StreamSeed {
+  chatId: string;
+  parts: AGUIPart[];
+  ts: number;
+}
+
+function _saveStreamSeed(chatId: string, parts: AGUIPart[]): void {
+  try {
+    const seed: StreamSeed = { chatId, parts, ts: Date.now() };
+    sessionStorage.setItem(STREAM_SEED_KEY, JSON.stringify(seed));
+  } catch { /* storage may be full or unavailable */ }
+}
+
+function _loadStreamSeed(chatId: string): StreamSeed | null {
+  try {
+    const raw = sessionStorage.getItem(STREAM_SEED_KEY);
+    if (!raw) return null;
+    const seed: StreamSeed = JSON.parse(raw);
+    if (seed.chatId !== chatId) return null;
+    if (Date.now() - seed.ts > 10 * 60 * 1000) {
+      sessionStorage.removeItem(STREAM_SEED_KEY);
+      return null;
+    }
+    return seed;
+  } catch { return null; }
+}
+
+function _clearStreamSeed(): void {
+  try { sessionStorage.removeItem(STREAM_SEED_KEY); } catch { /* ignore */ }
 }
 
 // Drag overlay component
@@ -460,7 +514,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setConfig,
     shouldResetNext,
     consumeResetFlag,
-    forceSaveNow,
     updateMessage,
     truncateMessagesFrom,
     setIsStreaming,
@@ -474,7 +527,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     updateChatTitleLocally,
   } = useChatStore();
 
-  const { refresh: refreshPlan, applySnapshot: applyPlanSnapshot, plan } = usePlan();
+  const { refresh: refreshGoalTasks, refreshKanban, goal, tasks, kanban } = useGoalTasks();
   const { loadCoreMemory, loadStats } = useMemory();
   const canvas = useCanvas(currentChatId);
   const { t } = useI18n();
@@ -482,7 +535,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Local state
   const [input, setInput] = useState('');
-  const [isPlanExpanded, setIsPlanExpanded] = useState(true);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [viewingFile, setViewingFile] = useState<{ path: string; name: string } | null>(null);
   const [sidebarFilePreview, setSidebarFilePreview] = useState<{ path: string; name: string } | null>(null);
@@ -491,14 +543,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setUsage: setLastKnownUsage,
     setUsageForChat,
     clearUsage: clearLastKnownUsage,
-    setCompactNotice,
   } = useContextUsageStore();
   const { addActivatedTools, clearActivatedTools } = useActivatedToolsStore();
   const [subAgentTasks, setSubAgentTasks] = useState<Record<string, { status: SubAgentStatus; resultSummary?: string; error?: string }>>({});
   const [viewingSubAgentTaskId, setViewingSubAgentTaskId] = useState<string | null>(null);
   const [forcedWebContextId, setForcedWebContextId] = useState<string | null>(null);
+  const [isBoardFullscreen, setIsBoardFullscreen] = useState(false);
   const [fileMentions, setFileMentions] = useState<FileMentionSelection[]>([]);
   const [visibleMessageCount, setVisibleMessageCount] = useState(INITIAL_VISIBLE_MESSAGES);
+  const [compactNotice, setCompactNoticeLocal] = useState<string | null>(null);
   const prependScrollSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
   const { onSpawned: onSubAgentSpawned, onCompleted: onSubAgentCompleted, onFailed: onSubAgentFailed } = useSubAgentStatus();
   const { setStatus: setStatusBar } = useStatusStore();
@@ -512,6 +565,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     activeChatIdRef.current = currentChatId;
     setVisibleMessageCount(INITIAL_VISIBLE_MESSAGES);
+    setIsBoardFullscreen(false);
     prependScrollSnapshotRef.current = null;
     clearActivatedTools();
     if (!currentChatId) {
@@ -535,6 +589,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setViewingSubAgentTaskId(null);
   }, [currentChatId]);
 
+  useEffect(() => {
+    if (!currentChatId) {
+      setCompactNoticeLocal(null);
+      return;
+    }
+
+    const unsub = subscribeToBusPayloads((payload) => {
+      if (!payload || payload.event !== 'auto_compaction') return;
+      if (payload.chat_id !== currentChatId) return;
+      setCompactNoticeLocal(formatCompactLifecycleNotice(payload));
+    });
+    return unsub;
+  }, [currentChatId]);
+
   // Ref to lock the chat ID for the current stream so switching chats doesn't misroute messages
   const streamingChatIdRef = useRef<string | null>(null);
 
@@ -546,9 +614,25 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Set to true when a stream_started arrives while a live/user stream is already in flight;
   // tryConnect will retry once the current stream finishes.
   const pendingConnectRef = useRef(false);
+  // True while a tryConnect is already in-flight (fetch to /chat/live is open).
+  // Prevents duplicate connections when both the direct call and stream_started fire.
+  const connectingRef = useRef(false);
+  // Holds the current effect's tryConnect so handleSend can call it directly
+  // after /chat/send returns 202, without waiting for stream_started from the bus.
+  const tryConnectRef = useRef<(() => void) | null>(null);
   // Captures the final AGUI parts from a live background stream so the cleanup path can
   // convert them to a persisted rich message (with tool-step HTML) after clearParts.
   const liveStreamPartsRef = useRef<AGUIPart[]>([]);
+  // Chats whose live stream we silently abandoned on navigation. On return we
+  // reload them from the DB so the response that streamed (and was persisted by
+  // the backend) while we were away is shown.
+  const abandonedStreamChatsRef = useRef<Set<string>>(new Set());
+  // Snapshot of streaming parts at the moment we abandoned a chat's live stream,
+  // so reconnecting can seed them back (preserving steps and in-flight tools).
+  const abandonedPartsRef = useRef<Map<string, AGUIPart[]>>(new Map());
+  // Wall-clock start time per streaming chat, so the activity timer resumes from
+  // the original start instead of resetting when the transient message remounts.
+  const streamStartByChatRef = useRef<Map<string, number>>(new Map());
   const [streamDisplayRole, setStreamDisplayRole] = useState<Message['role']>('assistant');
   const streamDisplayRoleRef = useRef<Message['role']>('assistant');
 
@@ -561,10 +645,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const {
     parts: streamingParts,
     sendMessage: sendAGUI,
-    resumeStream,
-    steerStream,
     stop: stopAGUIStream,
+    stopSilently: stopAGUIStreamSilently,
+    getParts: getStreamingParts,
     clearParts,
+    restorePartsFromSeed,
     resolveApproval,
     addApprovalDecision,
     consumeApprovalDecisions,
@@ -586,10 +671,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         setIsStreaming(false, chatId);
         streamingChatIdRef.current = null;
         clearParts();
+        _clearStreamSeed();
         setCurrentUsage(null);
         setCurrentStreamDisplayRole('assistant');
         // Reload chat from DB to reflect rolled-back state.
-        setTimeout(() => { try { loadChat(chatId!); } catch { } }, 300);
+        setTimeout(() => { try { loadChat(chatId!, { force: true }); } catch { } }, 300);
         return;
       }
 
@@ -638,7 +724,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (storeMsg.content.trim()) {
         addMessage(storeMsg, chatId!);
         if (/context compacted/i.test(storeMsg.content)) {
-          setCompactNotice('Context compacted');
+          setCompactNoticeLocal('Context compacted');
         }
       }
 
@@ -651,14 +737,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       // stale pending-approval tool blocks from the backend race condition.
       setIsStreaming(false, chatId);
       clearParts();
+      _clearStreamSeed();
 
       // Background DB sync — delay slightly so the backend has time to commit tool
       // results before we reload. An immediate reload risks getting stale
       // approval-requested state that the guards may not catch in all edge cases.
       const _syncChatId = chatId!;
-      setTimeout(() => { try { loadChat(_syncChatId); } catch { } }, 800);
+      setTimeout(() => { try { loadChat(_syncChatId, { force: true }); } catch { } }, 800);
 
       try { loadCoreMemory(); loadStats(); } catch { }
+      try { refreshGoalTasks(); refreshKanban(); } catch { }
     },
     onMarkDeferred: (surfaceId) => {
       canvas.markDeferred(surfaceId);
@@ -671,14 +759,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         }
         return;
       }
+      if (name === 'processing_status') {
+        const phase = (value as { phase?: string } | null)?.phase;
+        if (phase === 'compressing_context') {
+          setCompactNoticeLocal('Compaction running...');
+        } else if (phase === 'running' || phase === 'complete') {
+          setCompactNoticeLocal('Compaction complete');
+        }
+        return;
+      }
       if (name === 'chat_title_updated') {
         const { chat_id: titleChatId, title } = value as { chat_id: string; title: string };
         if (titleChatId && title) updateChatTitleLocally(titleChatId, title);
         return;
       } else if (name === 'plan_refresh') {
-        const chatId = streamingChatIdRef.current || activeChatIdRef.current;
-        applyPlanSnapshot(value as any);
-        refreshPlan(chatId);
+        // Refresh goal/task sidebar after agent tool calls or stream end
+        refreshGoalTasks();
+        refreshKanban();
       } else if (name === 'usage_update') {
         setCurrentUsage(value);
         const chatId = streamingChatIdRef.current || activeChatIdRef.current;
@@ -736,6 +833,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       setIsStreaming(false, chatId);
       streamingChatIdRef.current = null;
       stopInFlightRef.current = false;
+      if (chatId) {
+        streamStartByChatRef.current.delete(chatId);
+        abandonedPartsRef.current.delete(chatId);
+      }
       const errorMessage = typeof error?.message === 'string' ? error.message : '';
       const isNetworkError = errorMessage === 'Failed to fetch' || error instanceof TypeError;
       const isOutputValidationRetryError =
@@ -746,7 +847,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         ? t('chatWindow.outputValidationRetryError')
         : (errorMessage || t('chatWindow.genericError'));
 
-      if (!wasHeartbeat && !isLiveStreamRef.current && !isNetworkError) {
+      if (!wasHeartbeat && !isNetworkError) {
         const partialMessage = aguiPartsToStoreMessage(parts, currentUsage, streamDisplayRoleRef.current);
         if (partialMessage.content.trim()) {
           addMessage(partialMessage, chatId);
@@ -788,6 +889,60 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     return () => window.removeEventListener('agui:send-message', handler);
   }, [sendAGUI, currentChatId, setHeartbeatRunning, setIsStreaming]);
 
+  // Save the current streaming parts to sessionStorage on page hide so they
+  // can be used as a seed (or to detect a missed completion) after a refresh.
+  useEffect(() => {
+    const saveOnHide = () => {
+      const chatId = streamingChatIdRef.current;
+      if (!chatId) return;
+      const parts = getStreamingParts();
+      if (parts.length > 0) {
+        _saveStreamSeed(chatId, parts);
+      }
+    };
+    document.addEventListener('visibilitychange', saveOnHide);
+    window.addEventListener('beforeunload', saveOnHide);
+    return () => {
+      document.removeEventListener('visibilitychange', saveOnHide);
+      window.removeEventListener('beforeunload', saveOnHide);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getStreamingParts]);
+
+  // Resume a tool-approval stream via the background queue so it is
+  // reconnectable after a page refresh (same pattern as /chat/send).
+  const resumeViaQueue = useCallback(async (body: Record<string, unknown>) => {
+    const chatId = (body.chat_id as string) || streamingChatIdRef.current || currentChatId;
+    if (!chatId) return;
+
+    // Save current parts as seed so tryConnect's reconnect can show prior steps.
+    const currentParts = getStreamingParts();
+    if (currentParts.length > 0) {
+      abandonedPartsRef.current.set(chatId, currentParts);
+    }
+
+    const resp = await fetch(`${getApiBase()}/chat/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      const msg = resp.status === 409 ? 'Chat is already responding' : `Resume failed (${resp.status})`;
+      setStatusBar(msg, 'error', 4000);
+      throw new Error(msg);
+    }
+    // 202: the previous (suspended) stream has ended, but its onFinish pending-
+    // approval branch left streamingChatIdRef pinned to this chat. That pin would
+    // make tryConnect's guard skip the reconnect, so the resume stream would never
+    // be consumed. Clear the live-stream refs so tryConnect can attach; its
+    // onStreamStart re-pins streamingChatIdRef correctly.
+    streamingChatIdRef.current = null;
+    isLiveStreamRef.current = false;
+    // Connect immediately rather than waiting for stream_started from the bus.
+    tryConnectRef.current?.();
+  }, [currentChatId, getStreamingParts, setStatusBar]);
+
   const { handleToolApproval } = useToolApproval({
     currentChatId,
     activeStreamingChatId,
@@ -800,7 +955,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setConfig,
     updateMessage,
     setIsStreaming,
-    resumeStream,
+    resumeStream: resumeViaQueue,
     resolveApproval,
     addApprovalDecision,
     consumeApprovalDecisions,
@@ -957,6 +1112,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     { resetKey: `${currentChatId ?? 'new'}:${safeMessages.length > 0}` },
   );
 
+  // When a tool transitions into a pending approval, force-scroll to the bottom
+  // so the approval buttons are visible — even if the user had scrolled up.
+  const prevHasPendingApprovalRef = useRef(false);
+  useEffect(() => {
+    if (hasPendingTransientApprovals && !prevHasPendingApprovalRef.current) {
+      scrollToBottom();
+    }
+    prevHasPendingApprovalRef.current = hasPendingTransientApprovals;
+  }, [hasPendingTransientApprovals, scrollToBottom]);
+
   const loadOlderVisibleMessages = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el || !hasHiddenOlderMessages) return;
@@ -996,11 +1161,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     prependScrollSnapshotRef.current = null;
   }, [visibleMessages.length, scrollContainerRef]);
 
-  // Refresh plan when chat changes
-  useEffect(() => {
-    refreshPlan(currentChatId);
-  }, [currentChatId, refreshPlan]);
-
   // Background stream subscription: connect to /chat/live the moment the event bus
   // fires stream_started for this chat. Works for all chat types (heartbeat, cron,
   // social, and regular chats receiving a subagent wakeup).
@@ -1017,35 +1177,112 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     const chatIdAtMount = currentChatId;
     let cancelled = false;
 
-    // On entry into a background chat: reload from DB so any completed stream is visible.
-    if (isBackgroundChat) {
-      loadChat(chatIdAtMount).catch(() => {});
+    // Restore stream seed saved before a page refresh so we can either:
+    // (a) seed an in-progress reconnect with prior visual state, or
+    // (b) detect that the stream completed while we were gone and reload from DB.
+    const savedSeed = _loadStreamSeed(chatIdAtMount);
+    if (savedSeed) {
+      _clearStreamSeed();
+      if (savedSeed.parts.length > 0) {
+        // Pre-populate the abandoned-parts map so tryConnect below can use it
+        // as a visual seed — even if the snapshot hasn't arrived yet.
+        abandonedPartsRef.current.set(chatIdAtMount, savedSeed.parts);
+      }
+      // Mark as abandoned so the existing reload-on-return logic triggers.
+      abandonedStreamChatsRef.current.add(chatIdAtMount);
+
+      // If there are pending tool approvals in the seed and no active stream,
+      // restore the parts directly so the approval dialog re-appears — but only
+      // if the backend hasn't already completed the run (isBusStreaming=false and
+      // the stream hasn't been registered yet). We defer to tryConnect below to
+      // do the actual reconnect; restoring here only seeds the visual state.
+      if (!isBusStreaming(chatIdAtMount)) {
+        const hasSeedApprovals = savedSeed.parts.some(
+          p => p.type === 'tool' && p.state === 'approval-requested'
+        );
+        if (hasSeedApprovals) {
+          // Verify the backend still has the run suspended before locking the UI.
+          // loadChat will fire below (abandonedStreamChatsRef was set above); if
+          // the DB snapshot shows no pending approvals the normal reload will
+          // clear the restored parts, so we never get stuck in isStreaming=true.
+          restorePartsFromSeed(savedSeed.parts);
+          setIsStreaming(true, chatIdAtMount);
+          streamingChatIdRef.current = chatIdAtMount;
+          // Schedule a safety reset: if tryConnect doesn't establish a live
+          // stream within 5 s the backend has already finished and we clear.
+          setTimeout(() => {
+            if (streamingChatIdRef.current === chatIdAtMount && !isLiveStreamRef.current) {
+              setIsStreaming(false, chatIdAtMount);
+              streamingChatIdRef.current = null;
+              clearParts();
+            }
+          }, 5000);
+        }
+      }
+    }
+
+    // On entry: reload from DB so any stream that completed while we were away
+    // is visible. Covers platform/heartbeat chats and regular chats whose live
+    // stream we abandoned on a previous navigation.
+    if (isBackgroundChat || abandonedStreamChatsRef.current.has(chatIdAtMount)) {
+      abandonedStreamChatsRef.current.delete(chatIdAtMount);
+      // If the stream already finished while we were away, the DB has the full
+      // message — drop any preserved reconnect state so it isn't seeded stale.
+      if (!isBusStreaming(chatIdAtMount)) {
+        abandonedPartsRef.current.delete(chatIdAtMount);
+        streamStartByChatRef.current.delete(chatIdAtMount);
+      }
+      loadChat(chatIdAtMount, { force: true }).catch(() => {});
     }
 
     const tryConnect = async (): Promise<void> => {
       if (cancelled) return;
-      // If a live stream or a user turn is already in progress, mark a pending
-      // connect so we retry immediately after it finishes rather than dropping it.
-      if (isLiveStreamRef.current || streamingChatIdRef.current === chatIdAtMount) {
+      // If a live stream, a connection attempt, or a user turn is already in
+      // progress, mark pending so we retry immediately after it finishes.
+      if (isLiveStreamRef.current || connectingRef.current || streamingChatIdRef.current === chatIdAtMount) {
         pendingConnectRef.current = true;
         return;
       }
+      connectingRef.current = true;
 
       const liveUrl = `${getApiBase()}/chat/live`;
 
-      const streamed = await sendAGUI({ chat_id: chatIdAtMount }, {
-        urlOverride: liveUrl,
-        onStreamStart: () => {
-          isLiveStreamRef.current = true;
-          // Pin the streaming chat ID so onFinish uses the correct chat even if
-          // the user navigates away mid-stream.
-          streamingChatIdRef.current = chatIdAtMount;
-          setIsStreaming(true, chatIdAtMount);
-          loadChat(chatIdAtMount).catch(() => {});
-        },
-      });
+      // Seed with parts from a prior connection we abandoned on switch, so the
+      // visible steps and in-flight tool states resume instead of resetting.
+      const seedParts = abandonedPartsRef.current.get(chatIdAtMount);
+      abandonedPartsRef.current.delete(chatIdAtMount);
 
-      if (!streamed || cancelled) return;
+      let streamed: boolean;
+      try {
+        streamed = await sendAGUI({ chat_id: chatIdAtMount, wait_ms: 8000 }, {
+          urlOverride: liveUrl,
+          seedParts,
+          onStreamStart: () => {
+            isLiveStreamRef.current = true;
+            // Pin the streaming chat ID so onFinish uses the correct chat even if
+            // the user navigates away mid-stream.
+            streamingChatIdRef.current = chatIdAtMount;
+            // Preserve the original start time across reconnects so the activity
+            // timer continues; only set it if this is the first time we see it.
+            if (!streamStartByChatRef.current.has(chatIdAtMount)) {
+              streamStartByChatRef.current.set(chatIdAtMount, Date.now());
+            }
+            setIsStreaming(true, chatIdAtMount);
+            loadChat(chatIdAtMount, { force: true }).catch(() => {});
+          },
+        });
+      } finally {
+        // Always release the connect guard, even if sendAGUI rejected — otherwise
+        // connectingRef stays true forever and every future tryConnect (send,
+        // retry, steer, resume, bus stream_started) becomes a silent no-op.
+        connectingRef.current = false;
+      }
+
+      if (!streamed || cancelled) {
+        // 204 (no active stream) or cancelled — clear pending so it doesn't loop.
+        pendingConnectRef.current = false;
+        return;
+      }
 
       // If the stream paused for tool approval, keep the approval UI visible.
       // The event bus will fire stream_started again when the resume stream begins.
@@ -1061,10 +1298,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       const richMsg = aguiPartsToStoreMessage(liveStreamPartsRef.current, null);
       const isSocialStream = chatIdAtMount.startsWith('social-');
       setIsStreaming(false, chatIdAtMount);
+      // Stream finished cleanly — drop preserved reconnect state for this chat.
+      streamStartByChatRef.current.delete(chatIdAtMount);
+      abandonedPartsRef.current.delete(chatIdAtMount);
+      _clearStreamSeed();
 
       if (isSocialStream) {
         if (richMsg.content.trim()) addMessage(richMsg, chatIdAtMount);
-        try { await loadChat(chatIdAtMount); } catch { /* ignore */ }
+        try { await loadChat(chatIdAtMount, { force: true }); } catch { /* ignore */ }
       }
 
       clearParts();
@@ -1087,6 +1328,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       tryConnect();
     }
 
+    // Expose tryConnect so handleSend can call it directly after /chat/send 202,
+    // without depending on stream_started arriving from the event bus.
+    tryConnectRef.current = tryConnect;
+
     // Subscribe directly to stream_started — bypasses the React render cycle so
     // there is zero frame delay between the SSE event arriving and tryConnect() firing.
     const unsubEvents = subscribeToStreamEvents(chatIdAtMount, { onStart: tryConnect });
@@ -1094,13 +1339,30 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     return () => {
       cancelled = true;
       pendingConnectRef.current = false;
+      connectingRef.current = false;
+      tryConnectRef.current = null;
       unsubEvents();
       // Only stop the AG-UI connection if this effect started a background live stream.
       // Leave user-initiated /chat streams alone (they use a different code path).
       if (isLiveStreamRef.current && streamingChatIdRef.current === chatIdAtMount) {
-        stopAGUIStream();
+        // Silent stop: discard transient parts without finalizing them. Otherwise
+        // the abort-triggered onFinish would misroute this chat's parts into the
+        // chat we just switched to. The backend keeps producing and persists the
+        // result; we mark this chat for reload-on-return.
+        // Snapshot the current parts first so reconnecting can seed them back
+        // (preserving visible steps + in-flight tool states).
+        const snapshot = getStreamingParts();
+        if (snapshot.length > 0) {
+          abandonedPartsRef.current.set(chatIdAtMount, snapshot);
+        }
+        stopAGUIStreamSilently();
+        abandonedStreamChatsRef.current.add(chatIdAtMount);
         isLiveStreamRef.current = false;
         streamingChatIdRef.current = null;
+        clearParts();
+        // Clear streaming state so the next chat's send button is not blocked.
+        // The backend continues processing; reconnecting via /chat/live picks it up.
+        setIsStreaming(false, chatIdAtMount);
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1113,7 +1375,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       textarea.style.height = 'auto';
       textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
     }
-  }, [input, isRightSidebarOpen, isPlanExpanded]);
+  }, [input, isRightSidebarOpen]);
 
   // Send message handler (also handles steering when streaming)
   const send = async () => {
@@ -1137,29 +1399,43 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       steeringRef.current = true;
       setIsStreaming(true, currentChatId);
-      streamingChatIdRef.current = currentChatId;
       activeChatIdRef.current = currentChatId;
       stopInFlightRef.current = false;
-      try {
-        await steerStream({
-          chat_id: currentChatId,
-          message: prompt,
-          config: safeConfig,
-        });
-      } catch (error) {
-        console.error('Error during steer:', error);
-        setIsStreaming(false, currentChatId);
-      } finally {
+
+      // Abort the current live connection silently, then start steer via the
+      // background queue (/chat/steer-send → 202 → /chat/live) so it is
+      // reconnectable after a page refresh.
+      stopAGUIStreamSilently();
+      clearParts();
+      // Clear after abort so tryConnect isn't blocked when stream_started arrives.
+      streamingChatIdRef.current = null;
+      isLiveStreamRef.current = false;
+
+      const steerChatId = currentChatId;
+      fetch(`${getApiBase()}/chat/steer-send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: steerChatId, message: prompt, config: safeConfig }),
+      }).then(resp => {
+        if (!resp.ok) {
+          const msg = resp.status === 409 ? 'Steer failed — chat is busy' : `Steer failed (${resp.status})`;
+          setStatusBar(msg, 'error', 4000);
+          setIsStreaming(false, steerChatId);
+          return;
+        }
+        tryConnectRef.current?.();
+      }).catch(err => {
+        console.error('[send] /chat/steer-send failed:', err);
+        setIsStreaming(false, steerChatId);
+      }).finally(() => {
         steeringRef.current = false;
         stopInFlightRef.current = false;
-        setTimeout(async () => {
-          try { await forceSaveNow(currentChatId); } catch { }
-        }, 600);
-      }
+      });
       return;
     }
 
-    // Normal send — not streaming
+    // Block only if the frontend is currently watching this chat's live stream.
+    // Other chats streaming in the background don't block a new send here.
     if (isStreaming) return;
 
     // Create chat if needed
@@ -1170,6 +1446,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         console.error('Unable to initialize chat before sending message.');
         return;
       }
+    }
+
+    // Block if a background stream is active AND the frontend also thinks this chat
+    // is streaming. If the frontend already cleared (e.g. user just hit Stop), skip
+    // this check — the backend will return 409 if it's truly still busy, which gives
+    // a cleaner error than blocking here during the brief cancel-propagation window.
+    if (isBusStreaming(chatIdForSend) && isStreaming && activeStreamingChatId === chatIdForSend) {
+      setStatusBar('This chat is still responding — wait or use the redirect button', 'info', 4000);
+      return;
     }
 
     const filesToSend = [...selectedFiles];
@@ -1189,7 +1474,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     }
 
-    // Upload successful - now clear input and files
     const resetFlag = shouldResetNext;
     if (resetFlag) consumeResetFlag();
     setInput('');
@@ -1197,7 +1481,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setFileMentions([]);
     setCurrentUsage(null);
 
-    // Add user message to store for display + persistence
     addMessage({
       role: 'user',
       content: prompt,
@@ -1205,42 +1488,56 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       images: uploadedFileMetadata ? undefined : imagePreviews,
       files: uploadedFileMetadata
     }, chatIdForSend);
+
+    // Show loading indicator immediately before the network round-trip.
+    clearParts();
+    streamStartByChatRef.current.set(chatIdForSend, Date.now());
     setIsStreaming(true, chatIdForSend);
-    streamingChatIdRef.current = chatIdForSend;
-    activeChatIdRef.current = chatIdForSend;
-    stopInFlightRef.current = false;
-
-    try {
-      const mentionsToSend = extractSelectedFileMentions(prompt, fileMentions);
-      const payload: Record<string, unknown> = {
-        message: prompt,
-        config: safeConfig,
-        chat_id: chatIdForSend,
-        reset: resetFlag,
-      };
-      if (mentionsToSend.length > 0) {
-        payload.file_mentions = mentionsToSend;
+    const clearPartsIfStillViewingSendChat = () => {
+      if (activeChatIdRef.current === chatIdForSend) {
+        clearParts();
       }
-      if (uploadedFileMetadata) {
-        payload.files = uploadedFileMetadata;
-      }
+    };
 
-      await sendAGUI(payload);
-    } catch (error) {
-      console.error('Error during streaming:', error);
-      if (!steeringRef.current) {
+    const mentionsToSend = extractSelectedFileMentions(prompt, fileMentions);
+    const payload: Record<string, unknown> = {
+      message: prompt,
+      config: safeConfig,
+      chat_id: chatIdForSend,
+      reset: resetFlag,
+    };
+    if (mentionsToSend.length > 0) payload.file_mentions = mentionsToSend;
+    if (uploadedFileMetadata) payload.files = uploadedFileMetadata;
+
+    // Fire /chat/send — backend registers the background stream and returns 202.
+    // On success, call tryConnect() directly so we attach to /chat/live immediately
+    // without waiting for stream_started from the event bus (avoids new-chat races
+    // where the subscription for the new chat ID isn't set up yet).
+    fetch(`${getApiBase()}/chat/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(resp => {
+      if (!resp.ok) {
+        const msg = resp.status === 409 ? 'Chat is already responding' : `Send failed (${resp.status})`;
+        setStatusBar(msg, 'error', 4000);
         setIsStreaming(false, chatIdForSend);
+        clearPartsIfStillViewingSendChat();
+        return;
       }
-    } finally {
-      stopInFlightRef.current = false;
-      setTimeout(async () => {
-        try { await forceSaveNow(chatIdForSend); } catch { }
-      }, 600);
-    }
+      // 202: stream registered — connect to /chat/live immediately.
+      tryConnectRef.current?.();
+    }).catch(err => {
+      console.error('[send] /chat/send failed:', err);
+      setIsStreaming(false, chatIdForSend);
+      clearPartsIfStillViewingSendChat();
+    });
   };
 
-  // Retry handler — restores last checkpoint and re-runs the original message
-  const handleRetry = useCallback(async () => {
+  // Retry handler — restores last checkpoint and re-runs the original message.
+  // Uses the background queue (/chat/send) so the stream is reconnectable after
+  // a page refresh, matching the behaviour of the main send path.
+  const handleRetry = useCallback(() => {
     if (!currentChatId || isStreaming) return;
 
     // Strip all messages from the last user message onwards so the UI is clean
@@ -1258,39 +1555,59 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
 
     const chatIdForRetry = currentChatId;
+    clearParts();
+    streamStartByChatRef.current.set(chatIdForRetry, Date.now());
     setIsStreaming(true, chatIdForRetry);
-    streamingChatIdRef.current = chatIdForRetry;
+    // Don't set streamingChatIdRef here — tryConnect sets it in onStreamStart,
+    // same as the main send path. Setting it prematurely would block tryConnect.
     activeChatIdRef.current = chatIdForRetry;
     stopInFlightRef.current = false;
 
-    try {
-      await sendAGUI({ message: '/retry', chat_id: chatIdForRetry, config: safeConfig });
-    } catch (error) {
-      console.error('Error during retry:', error);
-      if (!steeringRef.current) {
+    fetch(`${getApiBase()}/chat/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: '/retry', chat_id: chatIdForRetry, config: safeConfig }),
+    }).then(resp => {
+      if (!resp.ok) {
+        const msg = resp.status === 409 ? 'Chat is already responding' : `Retry failed (${resp.status})`;
+        setStatusBar(msg, 'error', 4000);
         setIsStreaming(false, chatIdForRetry);
+        return;
       }
-    } finally {
+      tryConnectRef.current?.();
+    }).catch(err => {
+      console.error('[handleRetry] /chat/send failed:', err);
+      setIsStreaming(false, chatIdForRetry);
+    }).finally(() => {
       stopInFlightRef.current = false;
-      setTimeout(async () => {
-        try { await forceSaveNow(chatIdForRetry); } catch { }
-      }, 600);
-    }
-  }, [currentChatId, isStreaming, messages, truncateMessagesFrom, setIsStreaming, sendAGUI, safeConfig, forceSaveNow]);
+    });
+  }, [currentChatId, isStreaming, messages, truncateMessagesFrom, setIsStreaming, clearParts, safeConfig, setStatusBar]);
 
   // Stop streaming handler
   const stopStreaming = async () => {
     if (!isStreaming || stopInFlightRef.current) return;
     stopInFlightRef.current = true;
 
-    // Abort the AG-UI SSE connection
-    stopAGUIStream();
+    const targetChatId = activeStreamingChatId || streamingChatIdRef.current;
 
-    const targetChatId = activeStreamingChatId;
-    if (!targetChatId) {
-      stopInFlightRef.current = false;
-      return;
+    // Abort the AG-UI SSE connection. When the stream went through tryConnect
+    // (isLiveStreamRef=true), onFinish deliberately skips setIsStreaming(false)
+    // to let tryConnect's finally() handle cleanup. But for a user-triggered stop
+    // we need to clear streaming state immediately, so we do it here instead.
+    isLiveStreamRef.current = false;
+    streamingChatIdRef.current = null;
+    stopAGUIStream();
+    setIsStreaming(false, targetChatId ?? undefined);
+    clearParts();
+    // Reload chat from DB so the partial response (saved by backend on cancel)
+    // appears immediately — prevents the blank flash while waiting for DB commit.
+    if (targetChatId) {
+      setTimeout(() => { try { loadChat(targetChatId, { force: true }); } catch { } }, 500);
     }
+
+    stopInFlightRef.current = false;
+
+    if (!targetChatId) return;
 
     try {
       const res = await fetch(`${getApiBase()}/chat/stop`, {
@@ -1304,7 +1621,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     } catch (error) {
       console.error('Error sending stop request:', error);
     }
-    // Note: stopInFlightRef reset happens in onFinish/finally
   };
 
   // Handle file click from chat messages
@@ -1361,6 +1677,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {/* Main Chat Column */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
+        {/* Project board full-screen overlay */}
+        {isBoardFullscreen && (
+          <div className="absolute inset-0 z-20 bg-neutral-50 dark:bg-zinc-900 overflow-hidden">
+            <ProjectKanbanView
+              projectName={chats.find(c => c.id === currentChatId)?.projectName ?? null}
+              projectId={chats.find(c => c.id === currentChatId)?.projectId ?? null}
+              kanban={kanban}
+              chatTitles={Object.fromEntries(chats.map(c => [c.id, c.title]))}
+              onClose={() => setIsBoardFullscreen(false)}
+            />
+          </div>
+        )}
         <div className="relative flex-1 min-h-0">
           <div
             ref={scrollContainerRef}
@@ -1382,7 +1710,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 isUploading={isUploading}
                 fileError={fileError}
                 send={send}
-                isStreaming={isStreaming}
                 config={safeConfig}
                 setConfig={setConfig}
                 backendConfig={safeBackendConfig}
@@ -1416,6 +1743,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     onRetry={!isStreaming ? handleRetry : undefined}
                   />
                 )}
+                {compactNotice && (
+                  <div className="space-y-6 mt-6">
+                    <div className="w-full flex flex-col group/message">
+                      <div className="flex justify-start w-full">
+                        <NoticeMessage message={{ role: 'notice', content: compactNotice }} />
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {/* Streaming/transient message from AG-UI */}
                 {showTransientAssistant && (
                   <div className="space-y-6 mt-6">
@@ -1432,6 +1768,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                             isLastMessage={true}
                             onFileClick={handleFileClick}
                             aguiParts={streamingParts}
+                            streamStartedAtMs={currentChatId ? streamStartByChatRef.current.get(currentChatId) : undefined}
                             onToolApproval={handleToolApproval}
                             usage={currentUsage}
                             toolApprovalPolicy={safeConfig.tool_approval_policy}
@@ -1460,17 +1797,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         {/* Input Panel (shown when messages exist) */}
         {safeMessages.length > 0 && (
           <div className="p-4 flex flex-col gap-3 bg-neutral-50 dark:bg-zinc-900 relative z-10 shrink-0">
-            {!isRightSidebarOpen && (
-              <PlanProgress
-                plan={plan}
-                isDocked={false}
-                onToggleDock={() => onRightSidebarToggle(!isRightSidebarOpen)}
-                isExpanded={isPlanExpanded}
-                onToggleExpand={() => setIsPlanExpanded(!isPlanExpanded)}
-                isSidebarOpen={isRightSidebarOpen}
-              />
-            )}
-
             <ChatInputPanel
               input={input}
               setInput={setInput}
@@ -1481,7 +1807,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               isUploading={isUploading}
               fileError={fileError}
               send={send}
-              isStreaming={isStreaming}
               config={safeConfig}
               setConfig={setConfig}
               backendConfig={safeBackendConfig}
@@ -1511,9 +1836,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         maxWidthPx={rightSidebarMaxWidthPx}
         viewportWidthPx={viewportWidthPx}
         forceFullView={rightSidebarForceFullView}
-        plan={plan}
-        isPlanExpanded={isPlanExpanded}
-        onTogglePlanExpand={() => setIsPlanExpanded(!isPlanExpanded)}
+        goal={goal}
+        tasks={tasks}
+        kanban={kanban}
+        currentProjectName={chats.find(c => c.id === currentChatId)?.projectName ?? null}
+        currentProjectId={chats.find(c => c.id === currentChatId)?.projectId ?? null}
+        chatTitles={Object.fromEntries(chats.map(c => [c.id, c.title]))}
+        onProjectBoardChange={setIsBoardFullscreen}
+        isNewChat={safeMessages.length === 0 && !showTransientAssistant && !isProbablyLoadingChatMessages}
         fileToPreview={sidebarFilePreview}
         onMaximizeFile={handleMaximizeFile}
         canvas={canvas}
@@ -1522,7 +1852,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onCloseSubAgent={() => setViewingSubAgentTaskId(null)}
         onSelectSubAgent={(taskId) => setViewingSubAgentTaskId(taskId)}
         currentChatId={currentChatId}
-        hasSubAgents={Object.keys(subAgentTasks).length > 0 || safeMessages.some(m => m.content?.includes('agent'))}
+        hasSubAgents={
+          Object.keys(subAgentTasks).length > 0 ||
+          currentChatSummary?.platform === 'subagent' ||
+          safeConfig?.platform === 'subagent'
+        }
         messages={safeMessages}
         forcedWebContextId={forcedWebContextId}
         onClearForcedWebContext={() => setForcedWebContextId(null)}

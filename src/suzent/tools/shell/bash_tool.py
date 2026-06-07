@@ -35,7 +35,7 @@ class BashTool(Tool):
 
     Features:
     - Supports Python, Node.js, and shell commands
-    - Persistent storage at /persistence (survives restarts)
+    - Working directory is the project workspace at /workspace (shared across chats in the project)
     - Shared storage at /shared (accessible by all sessions)
     - Internet access for package installation and API calls
     """
@@ -218,7 +218,7 @@ class BashTool(Tool):
         Output is capped at 30,000 characters. stdout and stderr are returned separately.
 
         Storage paths (host mode env vars):
-        - WORKSPACE_ROOT, PERSISTENCE_PATH, SHARED_PATH, CHAT_ID, MOUNT_* for custom volumes
+        - WORKSPACE_ROOT, PROJECT_PATH, SHARED_PATH, CHAT_ID, MOUNT_* for custom volumes
 
         Args:
             ctx: The pydantic-ai run context with agent dependencies.
@@ -617,14 +617,20 @@ class BashTool(Tool):
             return ["bash", "-c", content]
 
     def _resolve_working_dir(self) -> Path:
-        """Resolve and create the working directory for host execution."""
+        """Resolve and create the working directory for host execution.
+
+        Defaults to the project directory the chat is linked to. The agent's
+        cwd is the project, not a per-chat sandbox subdirectory.
+        """
         from suzent.config import CONFIG
+        from suzent.database import get_database
 
         if self.cwd:
             working_dir = Path(self.cwd).resolve()
         else:
             sandbox_data_path = Path(CONFIG.sandbox_data_path).resolve()
-            working_dir = sandbox_data_path / "sessions" / self.chat_id
+            project_slug = get_database().get_chat_project_slug(self.chat_id)
+            working_dir = sandbox_data_path / "projects" / project_slug
         working_dir.mkdir(parents=True, exist_ok=True)
         return working_dir
 
@@ -785,6 +791,7 @@ class BashTool(Tool):
     def _get_host_env(self) -> dict:
         """Build environment variables for host execution."""
         from suzent.config import CONFIG
+        from suzent.database import get_database
 
         env = os.environ.copy()
         env["PYTHONIOENCODING"] = "utf-8"
@@ -793,7 +800,9 @@ class BashTool(Tool):
         sandbox_data_path = Path(CONFIG.sandbox_data_path).resolve()
         if self.chat_id:
             env["CHAT_ID"] = self.chat_id
-            env["PERSISTENCE_PATH"] = str(sandbox_data_path / "sessions" / self.chat_id)
+            project_slug = get_database().get_chat_project_slug(self.chat_id)
+            env["PROJECT_SLUG"] = project_slug
+            env["PROJECT_PATH"] = str(sandbox_data_path / "projects" / project_slug)
         env["SHARED_PATH"] = str(sandbox_data_path / "shared")
 
         if self.custom_volumes:

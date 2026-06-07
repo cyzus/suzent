@@ -748,6 +748,38 @@ export async function saveHeartbeatGlobalConfig(cfg: HeartbeatGlobalConfig): Pro
   });
 }
 
+// -----------------------------------------------------------------------------
+// Cost Tracking
+// -----------------------------------------------------------------------------
+
+export interface CostGlobal {
+  total_cost_usd: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_calls: number;
+  days: number;
+}
+
+export interface CostDaily {
+  date: string;
+  cost_usd: number;
+  input_tokens: number;
+  output_tokens: number;
+  calls: number;
+}
+
+export async function fetchGlobalCost(days = 30): Promise<CostGlobal> {
+  const res = await fetch(`${getApiBase()}/config/cost/global?days=${days}`);
+  if (!res.ok) throw new Error('Failed to fetch global cost');
+  return res.json();
+}
+
+export async function fetchDailyCost(days = 30): Promise<CostDaily[]> {
+  const res = await fetch(`${getApiBase()}/config/cost/daily?days=${days}`);
+  if (!res.ok) throw new Error('Failed to fetch daily cost');
+  return res.json();
+}
+
 export async function saveSocialConfig(config: SocialConfig): Promise<boolean> {
   try {
     const res = await fetch(`${getApiBase()}/config/social`, {

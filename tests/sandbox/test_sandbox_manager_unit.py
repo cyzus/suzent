@@ -35,12 +35,37 @@ def test_docker_session_process_id_validation_rejects_invalid_values():
             pass
 
 
+def test_docker_session_build_env_exposes_project_paths():
+    session = DockerSession(
+        session_id="chat-123",
+        client=None,
+        data_path="unused",
+        image="python:3.11-slim",
+        memory_mb=512,
+        cpus=1,
+        network="bridge",
+        project_slug="default",
+    )
+
+    env = session._build_env()
+
+    assert env["CHAT_ID"] == "chat-123"
+    assert env["PROJECT_SLUG"] == "default"
+    assert env["PROJECT_PATH"] == "/workspace"
+    assert env["SHARED_PATH"] == "/shared"
+
+
 def test_sandbox_manager_singleton_per_volume_key(monkeypatch):
     import suzent.sandbox.manager as manager_mod
+    import suzent.config as config_mod
 
     monkeypatch.setattr(manager_mod, "_manager_singletons", {})
     monkeypatch.setattr(SandboxManager, "_start_idle_cleanup_thread", lambda self: None)
     monkeypatch.setattr(SandboxManager, "_cleanup_orphans", lambda self: None)
+    monkeypatch.setattr(SandboxManager, "_ensure_directories", lambda self: None)
+    monkeypatch.setattr(
+        config_mod.CONFIG, "sandbox_data_path", "C:/tmp/suzent-sandbox-test"
+    )
 
     import docker
 

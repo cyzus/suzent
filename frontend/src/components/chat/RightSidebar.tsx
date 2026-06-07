@@ -1,12 +1,13 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useI18n } from '../../i18n';
-import { PlanProgress } from '../PlanProgress';
+import { GoalTaskView } from '../sidebar/GoalTaskView';
 import { SandboxFiles } from '../sidebar/SandboxFiles';
 import { WebActivitiesView } from '../sidebar/WebActivitiesView';
 import { CanvasView } from '../sidebar/CanvasView';
 import { SubAgentView } from '../sidebar/SubAgentView';
 import { SubAgentList } from '../sidebar/SubAgentList';
-import type { Message, Plan } from '../../types/api';
+import type { Message, Goal, Task } from '../../types/api';
+import type { KanbanData } from '../../hooks/useGoalTasks';
 import type { CanvasState } from '../../hooks/useCanvas';
 import { useWebHistory } from '../../hooks/useWebHistory';
 import {
@@ -25,7 +26,7 @@ import {
 // Icon strip width in px — keep in sync with w-11 (2.75rem = 44px)
 const ICON_STRIP_WIDTH = 44;
 
-type TabId = 'files' | 'browser' | 'canvas' | 'agents' | 'plan';
+type TabId = 'files' | 'browser' | 'canvas' | 'agents' | 'plan' | 'project';
 
 interface RightSidebarProps {
   isOpen: boolean;
@@ -35,9 +36,13 @@ interface RightSidebarProps {
   maxWidthPx?: number;
   viewportWidthPx?: number;
   forceFullView?: boolean;
-  plan: Plan | null;
-  isPlanExpanded: boolean;
-  onTogglePlanExpand: () => void;
+  goal: Goal | null;
+  tasks: Task[];
+  kanban: KanbanData | null;
+  currentProjectName?: string | null;
+  currentProjectId?: string | null;
+  chatTitles?: Record<string, string>;
+  onProjectBoardChange?: (open: boolean) => void;
   fileToPreview?: { path: string; name: string } | null;
   onMaximizeFile?: (filePath: string, fileName: string) => void;
   canvas?: CanvasState;
@@ -50,6 +55,7 @@ interface RightSidebarProps {
   messages?: Message[];
   forcedWebContextId?: string | null;
   onClearForcedWebContext?: () => void;
+  isNewChat?: boolean;
 }
 
 interface TabConfig {
@@ -70,9 +76,13 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   maxWidthPx,
   viewportWidthPx,
   forceFullView = false,
-  plan,
-  isPlanExpanded,
-  onTogglePlanExpand,
+  goal,
+  tasks,
+  kanban,
+  currentProjectName,
+  currentProjectId,
+  chatTitles = {},
+  onProjectBoardChange,
   fileToPreview,
   onMaximizeFile,
   canvas,
@@ -85,6 +95,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   messages = [],
   forcedWebContextId,
   onClearForcedWebContext,
+  isNewChat = false,
 }) => {
   useI18n();
   const [activeTab, setActiveTab] = useState<TabId>('browser');
@@ -113,7 +124,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       message.content.includes('web_search') || message.content.includes('webpage_fetch')
     ),
   ));
-  const hasValidPlan = Boolean(plan && plan.phases && plan.phases.length > 0);
+  const hasGoalContent = Boolean(goal !== null || tasks.length > 0);
 
   // ── Tab definitions ─────────────────────────────────────────────────
   const tabs: TabConfig[] = [
@@ -156,9 +167,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       id: 'plan',
       icon: ClipboardDocumentListIcon,
       labelKey: 'sidebar.tabs.plan',
-      fallbackLabel: 'Plan',
-      hasContent: hasValidPlan,
-      hasActivity: hasValidPlan,
+      fallbackLabel: 'Goal',
+      hasContent: true,  // always accessible — shows empty state + board button
+      hasActivity: hasGoalContent,
       activityClass: 'bg-brutal-yellow',
     },
   ];
@@ -177,8 +188,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   }, [viewingSubAgentTaskId]);
 
   useEffect(() => {
-    if (hasValidPlan) setActiveTab('plan');
-  }, [hasValidPlan]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (hasGoalContent) setActiveTab('plan');
+  }, [hasGoalContent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Open sidebar automatically when content arrives ─────────────────
   useEffect(() => {
@@ -194,21 +205,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   }, [viewingSubAgentTaskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (hasValidPlan && !isOpen) onOpen();
-  }, [hasValidPlan]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (hasGoalContent && !isOpen) onOpen();
+  }, [hasGoalContent]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (isOpen && activeTab === 'plan' && !hasValidPlan) {
-      onClose();
-      setActiveTab('browser');
-    }
-  }, [isOpen, activeTab, hasValidPlan, onClose]);
 
   // ── Icon strip click: toggle panel or switch tab ───────────────────
   const handleTabClick = useCallback((tabId: TabId) => {
     const targetTab = tabs.find(tab => tab.id === tabId);
     if (!targetTab) return;
-    if (targetTab.id !== 'files' && !targetTab.hasContent) {
+    if (targetTab.id !== 'files' && targetTab.id !== 'plan' && !targetTab.hasContent) {
       return;
     }
 
@@ -276,7 +281,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
   // Desktop: icon strip always visible (44px), content panel expands on open
   // Overlay: full hide/show (icon strip is part of the slide)
-  const desktopWidth = isOpen ? desktopOpenWidth : ICON_STRIP_WIDTH;
+  // New chat: hide entirely
+  const desktopWidth = isNewChat ? 0 : isOpen ? desktopOpenWidth : ICON_STRIP_WIDTH;
 
   // ── Report width via ResizeObserver ────────────────────────────────
   useEffect(() => {
@@ -302,88 +308,128 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   return (
     <div
       ref={sidebarRef}
-      style={isOverlayMode
-        ? { width: '100%', maxWidth: '100%' }
-        : { width: desktopWidth, maxWidth: effectiveMaxWidth }}
+      style={isNewChat
+        ? { width: 0 }
+        : isOverlayMode
+          ? { width: ICON_STRIP_WIDTH, maxWidth: ICON_STRIP_WIDTH }
+          : { width: desktopWidth, maxWidth: effectiveMaxWidth }}
       className={`
-        z-20 flex flex-row shrink-0 min-h-0 h-full overflow-hidden bg-white dark:bg-zinc-900
-        border-l-3 border-brutal-black
-        ${isOverlayMode
-          ? `absolute inset-y-0 right-0 transform-gpu will-change-transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'}`
-          : 'relative'
-        }
+        z-20 flex flex-row shrink-0 min-h-0 h-full overflow-visible
+        ${isNewChat ? 'pointer-events-none' : `bg-white dark:bg-zinc-900 ${!isOverlayMode || isOpen ? 'border-l-3 border-brutal-black' : ''}`}
+        relative
       `}
     >
-      {/* Drag-to-resize handle — on the left edge of the content panel */}
-      {!forceFullView && isOpen && (
-        <div
-          onMouseDown={handleResizeStart}
-          className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-50 hover:bg-brutal-black/20 active:bg-brutal-black/30 transition-colors hidden lg:block"
-          title="Drag to resize"
-        />
-      )}
-
       {/* ── Content Panel ─────────────────────────────────────────── */}
-      <div className={`flex flex-col min-h-0 min-w-0 flex-1 overflow-hidden transform-gpu will-change-transform transition-[opacity,transform] duration-200 ease-out ${isOpen ? 'opacity-100 translate-x-0 border-r-3 border-brutal-black' : 'opacity-0 translate-x-3 pointer-events-none'}`}>
-        {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto bg-neutral-50/50 dark:bg-zinc-900 scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black flex flex-col min-h-0">
-          <div className={`flex-1 h-full ${activeTab === 'files' ? 'block' : 'hidden'}`}>
-            <SandboxFiles
-              onViewModeChange={setIsFileExpanded}
-              externalFilePath={fileToPreview?.path ?? null}
-              externalFileName={fileToPreview?.name ?? null}
-              onMaximize={onMaximizeFile}
+      {/* In overlay mode: slides out absolutely to the right of the icon strip */}
+      {/* In desktop mode: sits inline to the left of the icon strip */}
+      {isOverlayMode ? (
+        <div
+          className={`absolute inset-y-0 right-full transform-gpu will-change-transform transition-transform duration-300 ease-in-out border-l-3 border-brutal-black overflow-hidden bg-white dark:bg-zinc-900 ${isOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'}`}
+          style={{ width: isOpen ? desktopOpenWidth : 0 }}
+        >
+          {!forceFullView && isOpen && (
+            <div
+              onMouseDown={handleResizeStart}
+              className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-50 hover:bg-brutal-black/20 active:bg-brutal-black/30 transition-colors"
+              title="Drag to resize"
             />
-          </div>
-          {/* Web Activities View (replaces old BrowserView) */}
-          <div className={`flex-1 h-full flex flex-col ${activeTab === 'browser' ? 'flex' : 'hidden'}`}>
-            <WebActivitiesView 
-              history={webHistory}
-              isBrowserStreamActive={isBrowserStreamActive}
-              onBrowserStreamActive={setIsBrowserStreamActive}
-              forcedContextId={forcedWebContextId}
-              onClearForcedContext={onClearForcedWebContext}
-            />
-          </div>
-          <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'canvas' ? 'flex' : 'hidden'}`}>
-            {canvas && (
-              <CanvasView
-                canvas={canvas}
-                onDispatch={onCanvasDispatch ?? (() => {})}
-              />
-            )}
-          </div>
-          <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'agents' ? 'flex' : 'hidden'}`}>
-            {viewingSubAgentTaskId ? (
-              <SubAgentView
-                taskId={viewingSubAgentTaskId}
-                onClose={onCloseSubAgent}
-              />
-            ) : currentChatId ? (
-              <SubAgentList
-                chatId={currentChatId}
-                onSelect={(taskId) => onSelectSubAgent?.(taskId)}
-              />
-            ) : (
-              <div className="flex items-center justify-center h-full text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400">
-                No sub-agent selected
+          )}
+          <div className="flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
+            <div className="flex-1 overflow-y-auto bg-neutral-50/50 dark:bg-zinc-900 scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black flex flex-col min-h-0">
+              <div className={`flex-1 h-full ${activeTab === 'files' ? 'block' : 'hidden'}`}>
+                <SandboxFiles
+                  onViewModeChange={setIsFileExpanded}
+                  externalFilePath={fileToPreview?.path ?? null}
+                  externalFileName={fileToPreview?.name ?? null}
+                  onMaximize={onMaximizeFile}
+                />
               </div>
-            )}
-          </div>
-          <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'plan' ? 'flex' : 'hidden'}`}>
-            <PlanProgress
-              plan={plan}
-              isDocked={true}
-              onToggleDock={onClose}
-              isExpanded={isPlanExpanded}
-              onToggleExpand={onTogglePlanExpand}
-              isSidebarOpen={true}
-            />
+              <div className={`flex-1 h-full flex flex-col ${activeTab === 'browser' ? 'flex' : 'hidden'}`}>
+                <WebActivitiesView
+                  history={webHistory}
+                  isBrowserStreamActive={isBrowserStreamActive}
+                  onBrowserStreamActive={setIsBrowserStreamActive}
+                  forcedContextId={forcedWebContextId}
+                  onClearForcedContext={onClearForcedWebContext}
+                />
+              </div>
+              <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'canvas' ? 'flex' : 'hidden'}`}>
+                {canvas && <CanvasView canvas={canvas} onDispatch={onCanvasDispatch ?? (() => {})} />}
+              </div>
+              <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'agents' ? 'flex' : 'hidden'}`}>
+                {viewingSubAgentTaskId ? (
+                  <SubAgentView taskId={viewingSubAgentTaskId} onClose={onCloseSubAgent} />
+                ) : currentChatId ? (
+                  <SubAgentList chatId={currentChatId} onSelect={(taskId) => onSelectSubAgent?.(taskId)} />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400">No sub-agent selected</div>
+                )}
+              </div>
+              <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'plan' ? 'flex' : 'hidden'}`}>
+                <GoalTaskView
+                  goal={goal}
+                  tasks={tasks}
+                  onOpenBoard={onProjectBoardChange ? () => onProjectBoardChange(true) : undefined}
+                  projectTaskCount={kanban?.tasks.length}
+                />
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <>
+          {!forceFullView && isOpen && (
+            <div
+              onMouseDown={handleResizeStart}
+              className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-50 hover:bg-brutal-black/20 active:bg-brutal-black/30 transition-colors hidden lg:block"
+              title="Drag to resize"
+            />
+          )}
+          <div className={`flex flex-col min-h-0 min-w-0 flex-1 overflow-hidden transform-gpu will-change-transform transition-[opacity,transform] duration-200 ease-out ${isOpen ? 'opacity-100 translate-x-0 border-r-3 border-brutal-black' : 'opacity-0 translate-x-3 pointer-events-none'}`}>
+            <div className="flex-1 overflow-y-auto bg-neutral-50/50 dark:bg-zinc-900 scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black flex flex-col min-h-0">
+              <div className={`flex-1 h-full ${activeTab === 'files' ? 'block' : 'hidden'}`}>
+                <SandboxFiles
+                  onViewModeChange={setIsFileExpanded}
+                  externalFilePath={fileToPreview?.path ?? null}
+                  externalFileName={fileToPreview?.name ?? null}
+                  onMaximize={onMaximizeFile}
+                />
+              </div>
+              <div className={`flex-1 h-full flex flex-col ${activeTab === 'browser' ? 'flex' : 'hidden'}`}>
+                <WebActivitiesView
+                  history={webHistory}
+                  isBrowserStreamActive={isBrowserStreamActive}
+                  onBrowserStreamActive={setIsBrowserStreamActive}
+                  forcedContextId={forcedWebContextId}
+                  onClearForcedContext={onClearForcedWebContext}
+                />
+              </div>
+              <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'canvas' ? 'flex' : 'hidden'}`}>
+                {canvas && <CanvasView canvas={canvas} onDispatch={onCanvasDispatch ?? (() => {})} />}
+              </div>
+              <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'agents' ? 'flex' : 'hidden'}`}>
+                {viewingSubAgentTaskId ? (
+                  <SubAgentView taskId={viewingSubAgentTaskId} onClose={onCloseSubAgent} />
+                ) : currentChatId ? (
+                  <SubAgentList chatId={currentChatId} onSelect={(taskId) => onSelectSubAgent?.(taskId)} />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-[10px] font-bold uppercase tracking-widest font-mono text-neutral-400">No sub-agent selected</div>
+                )}
+              </div>
+              <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'plan' ? 'flex' : 'hidden'}`}>
+                <GoalTaskView
+                  goal={goal}
+                  tasks={tasks}
+                  onOpenBoard={onProjectBoardChange ? () => onProjectBoardChange(true) : undefined}
+                  projectTaskCount={kanban?.tasks.length}
+                />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
-      {/* ── Icon Strip ────────────────────────────────────────────── */}
+      {/* ── Icon Strip — always visible (except new chat) ─────────── */}
       <div className="flex flex-col items-center bg-white dark:bg-zinc-800 shrink-0 w-11 py-1 gap-0.5">
         {tabs.map((tab) => {
           const Icon = tab.icon;

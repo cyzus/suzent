@@ -1,12 +1,51 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Message, ChatConfig, ConfigOptions, Chat, ChatSummary } from '../types/api';
+import type { Message, ChatConfig, ConfigOptions, Chat, ChatSummary, ChatKindCounts } from '../types/api';
 import { getApiBase } from '../lib/api';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import { shouldKeepLocalAssistantContent } from '../lib/chatSyncGuards';
 import { useContextUsageStore } from './useContextUsageStore';
+import { useProjects } from './useProjects';
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function userMessageFingerprint(message: Message): string {
+  const files = (message.files ?? [])
+    .map(file => `${file.filename}:${file.path}:${file.mime_type}:${file.size}`)
+    .sort()
+    .join('|');
+  const images = (message.images ?? [])
+    .map(image => `${image.filename}:${image.mime_type}`)
+    .sort()
+    .join('|');
+  return JSON.stringify({
+    content: (message.content ?? '').trim(),
+    files,
+    images,
+  });
+}
+
+function countUserMessageFingerprint(messages: Message[], fingerprint: string): number {
+  return messages.reduce((count, message) => (
+    message.role === 'user' && userMessageFingerprint(message) === fingerprint
+      ? count + 1
+      : count
+  ), 0);
+}
+
+function shouldKeepOptimisticUserMessage(localMessages: Message[], serverMessages: Message[]): boolean {
+  const lastLocal = localMessages[localMessages.length - 1];
+  if (!lastLocal || lastLocal.role !== 'user') return false;
+
+  const fingerprint = userMessageFingerprint(lastLocal);
+  const localCount = countUserMessageFingerprint(localMessages, fingerprint);
+  const serverCount = countUserMessageFingerprint(serverMessages, fingerprint);
+  // Hold while the local store has more copies of this message than the server
+  // (the optimistic append(s) the backend hasn't logged yet). Using >= 1 (not
+  // === 1) keeps BOTH bubbles visible when the same text is sent twice in a row,
+  // while still releasing as soon as the server catches up.
+  return localCount - serverCount >= 1;
 }
 
 interface ChatStreamingContextValue {
@@ -38,18 +77,18 @@ interface ChatCoreContextValue {
   setSearchQuery: (query: string) => void;
   beginNewChat: () => void;
   createNewChat: () => Promise<string | null>;
-  loadChat: (chatId: string) => Promise<void>;
+  loadChat: (chatId: string, options?: { force?: boolean }) => Promise<void>;
   saveCurrentChat: (skipRefresh?: boolean) => Promise<void>;
   finalSave: (chatId?: string | null) => Promise<void>;
   forceSaveNow: (chatId?: string | null) => Promise<void>;
-  deleteChat: (chatId: string) => Promise<void>;
+  deleteChat: (chatId: string, options?: { cascade?: boolean }) => Promise<void>;
   renameChat: (chatId: string, title: string) => Promise<void>;
   chatTotal: number;
-  socialChatTotal: number;
+  chatKindTotals: ChatKindCounts;
   loadingMoreChats: boolean;
   refreshChatList: (searchQuery?: string, force?: boolean) => Promise<void>;
   refreshChatListSilently: (searchQuery?: string) => Promise<void>;
-  loadMoreChats: (tab?: 'personal' | 'social') => Promise<void>;
+  loadMoreChats: () => Promise<void>;
   updateChatTitleLocally: (chatId: string, title: string) => void;
   updateMessage: (index: number, update: Partial<Message>, chatId?: string | null) => void;
   truncateMessagesFrom: (fromIndex: number, chatId?: string | null) => void;
@@ -64,6 +103,8 @@ type ChatContextValue = ChatCoreContextValue & ChatStreamingContextValue;
 const ChatCoreContext = createContext<ChatCoreContextValue | null>(null);
 const ChatStreamingContext = createContext<ChatStreamingContextValue | null>(null);
 
+const emptyChatKindCounts: ChatKindCounts = { you: 0, scheduled: 0, all: 0 };
+
 const defaultConfig: ChatConfig = {
   model: '',
   agent: '',
@@ -77,13 +118,22 @@ const UNSAVED_CHAT_KEY = '__unsaved__';
 const LAST_CONFIG_KEY = 'suzent_last_config';
 const keyForChat = (chatId: string | null) => chatId ?? UNSAVED_CHAT_KEY;
 
-/**
- * Strip tool_approval_policy from config before saving to localStorage.
- * Approval policies should only persist per-chat in the database, not leak to new chats.
- */
-const stripApprovalPolicy = (config: ChatConfig): ChatConfig => {
-  const { tool_approval_policy, ...rest } = config;
-  return rest;
+const stripReusableConfig = (config: ChatConfig): ChatConfig => {
+  const reusable = { ...config } as Record<string, unknown>;
+  [
+    'tool_approval_policy',
+    'permission_policies',
+    'heartbeat_enabled',
+    'heartbeat_interval_minutes',
+    'heartbeat_instructions',
+    'heartbeat_last_run_at',
+    'platform',
+    'sender_id',
+    'target_id',
+    'cron_job_id',
+    'parent_chat_id',
+  ].forEach(key => delete reusable[key]);
+  return reusable as unknown as ChatConfig;
 };
 
 /** Build a ChatConfig from user preferences and backend defaults. */
@@ -100,6 +150,25 @@ const buildConfigFromPreferences = (
   mcp_urls: [],
   mcp_enabled: {}
 });
+
+const hydrateChatConfig = (
+  chatConfig: ChatConfig | undefined,
+  fallbackConfig: ChatConfig
+): ChatConfig => {
+  const savedConfig: Partial<ChatConfig> = chatConfig ?? {};
+  return {
+    ...fallbackConfig,
+    ...savedConfig,
+    model: savedConfig.model || fallbackConfig.model,
+    agent: savedConfig.agent || fallbackConfig.agent,
+    tools: savedConfig.tools ?? fallbackConfig.tools,
+    memory_enabled: savedConfig.memory_enabled ?? fallbackConfig.memory_enabled,
+    sandbox_enabled: savedConfig.sandbox_enabled ?? fallbackConfig.sandbox_enabled,
+    sandbox_volumes: savedConfig.sandbox_volumes ?? fallbackConfig.sandbox_volumes,
+    mcp_urls: savedConfig.mcp_urls ?? fallbackConfig.mcp_urls,
+    mcp_enabled: savedConfig.mcp_enabled ?? fallbackConfig.mcp_enabled,
+  };
+};
 
 /** Extract the preference fields we track for dirty-checking. */
 const extractSavedPreferences = (prefs: ConfigOptions['userPreferences']) => ({
@@ -188,6 +257,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   children,
   enabled = true,
 }) => {
+  // Read the user's currently-selected project so newly-created chats land there.
+  // Must be wrapped in ProjectProvider (see App.tsx).
+  const { currentProjectId, projects } = useProjects();
+  const currentProjectIdRef = useRef<string | null>(currentProjectId);
+  useEffect(() => { currentProjectIdRef.current = currentProjectId; }, [currentProjectId]);
   const [messagesByChat, setMessagesByChat] = useState<Record<string, Message[]>>({
     [UNSAVED_CHAT_KEY]: []
   });
@@ -205,14 +279,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   const [currentChatTitle, setCurrentChatTitle] = useState<string>('New Chat');
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [chatTotal, setChatTotal] = useState<number>(0);
+  const [chatKindTotals, setChatKindTotals] = useState<ChatKindCounts>(emptyChatKindCounts);
   const [chatOffset, setChatOffset] = useState<number>(0);
   const chatOffsetRef = useRef<number>(0);
-  const [socialChatTotal, setSocialChatTotal] = useState<number>(0);
-  const [socialChatOffset, setSocialChatOffset] = useState<number>(0);
-  const socialChatOffsetRef = useRef<number>(0);
   // Keep refs in sync so refresh callbacks always see the latest offset values
   useEffect(() => { chatOffsetRef.current = chatOffset; }, [chatOffset]);
-  useEffect(() => { socialChatOffsetRef.current = socialChatOffset; }, [socialChatOffset]);
   const [loadingChats, setLoadingChats] = useState(false);
   const [loadingMoreChats, setLoadingMoreChats] = useState(false);
   const [refreshingChats, setRefreshingChats] = useState(false);
@@ -285,9 +356,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           const isModelValid = backendConfig.models.includes(parsed.model);
           const isAgentValid = backendConfig.agents.includes(parsed.agent);
           if (isModelValid && isAgentValid) {
-            // Ensure tool_approval_policy is never inherited from localStorage
-            // (it should be chat-scoped, not global)
-            return stripApprovalPolicy(parsed);
+            // Ensure chat-scoped state is never inherited from localStorage.
+            return stripReusableConfig(parsed);
           }
         }
       }
@@ -440,9 +510,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       requestId = searchRequestIdRef.current;
       // Reset offsets so the fetch covers only the first page for the new query
       chatOffsetRef.current = 0;
-      socialChatOffsetRef.current = 0;
       setChatOffset(0);
-      setSocialChatOffset(0);
     }
 
     if (isFirstLoad) {
@@ -455,29 +523,22 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       const searchParam = search !== undefined ? search : searchQuery;
       const apiBase = getApiBase();
       // Re-fetch enough rows to cover what the user has already loaded via "load more"
-      const personalLimit = chatOffsetRef.current + 50;
-      const socialLimit = socialChatOffsetRef.current + 50;
-      let url = `${apiBase}/chats?limit=${personalLimit}&platform=personal`;
+      const limit = chatOffsetRef.current + 50;
+      let url = `${apiBase}/chats?limit=${limit}`;
       if (searchParam) url += `&search=${encodeURIComponent(searchParam)}`;
-      let socialUrl = `${apiBase}/chats?limit=${socialLimit}&platform=social`;
-      if (searchParam) socialUrl += `&search=${encodeURIComponent(searchParam)}`;
-      const [res, socialRes] = await Promise.all([fetch(url), fetch(socialUrl)]);
+      const res = await fetch(url);
       if (res.ok) {
         // Discard stale forced-search responses that arrived out of order.
         if (force && requestId !== searchRequestIdRef.current) return;
 
         const data = await res.json();
-        const personalList: ChatSummary[] = data.chats || [];
-        setChatTotal(data.total ?? personalList.length);
-
-        let socialList: ChatSummary[] = [];
-        if (socialRes.ok) {
-          const socialData = await socialRes.json();
-          socialList = socialData.chats || [];
-          setSocialChatTotal(socialData.total ?? 0);
-        }
-
-        const serverList = [...personalList, ...socialList];
+        const serverList: ChatSummary[] = data.chats || [];
+        setChatTotal(data.total ?? serverList.length);
+        setChatKindTotals(data.kindCounts ?? {
+          you: serverList.filter(chat => (chat.platform || '').toLowerCase() !== 'cron').length,
+          scheduled: serverList.filter(chat => (chat.platform || '').toLowerCase() === 'cron').length,
+          all: data.total ?? serverList.length,
+        });
 
         // Merge server list with local state, preserving local updates
         setChats(prev => {
@@ -552,27 +613,22 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     await refreshChatListInternal(search, { silent: true });
   }, [refreshChatListInternal]);
 
-  const loadMoreChats = useCallback(async (tab: 'personal' | 'social' = 'personal') => {
+  const loadMoreChats = useCallback(async () => {
     if (loadingMoreChats) return;
     setLoadingMoreChats(true);
     try {
       const apiBase = getApiBase();
-      const currentOffset = tab === 'social' ? socialChatOffset : chatOffset;
-      const nextOffset = currentOffset + 50;
+      const nextOffset = chatOffset + 50;
       const searchParam = searchQuery;
-      let url = `${apiBase}/chats?limit=50&offset=${nextOffset}&platform=${tab}`;
+      let url = `${apiBase}/chats?limit=50&offset=${nextOffset}`;
       if (searchParam) url += `&search=${encodeURIComponent(searchParam)}`;
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         const newChats: ChatSummary[] = data.chats || [];
-        if (tab === 'social') {
-          if (data.total != null) setSocialChatTotal(data.total);
-          setSocialChatOffset(nextOffset);
-        } else {
-          if (data.total != null) setChatTotal(data.total);
-          setChatOffset(nextOffset);
-        }
+        if (data.total != null) setChatTotal(data.total);
+        if (data.kindCounts) setChatKindTotals(data.kindCounts);
+        setChatOffset(nextOffset);
         setChats(prev => {
           const existingIds = new Set(prev.map(c => c.id));
           const appended = newChats.filter(c => !existingIds.has(c.id));
@@ -584,7 +640,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     } finally {
       setLoadingMoreChats(false);
     }
-  }, [chatOffset, socialChatOffset, loadingMoreChats, searchQuery]);
+  }, [chatOffset, loadingMoreChats, searchQuery]);
 
   const updateChatTitleLocally = useCallback((chatId: string, title: string) => {
     setChats(prev => prev.map(c => c.id === chatId ? { ...c, title } : c));
@@ -702,9 +758,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     setConfigState(resolved);
     setConfigByChat(prevConfigs => ({ ...prevConfigs, [key]: resolved }));
 
-    // Save to localStorage to remember for next new chat (but strip approval policy)
+    // Save reusable preferences for the next new chat without chat-scoped state.
     try {
-      localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripApprovalPolicy(resolved)));
+      localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripReusableConfig(resolved)));
     } catch (e) {
       console.warn('Failed to save config to localStorage:', e);
     }
@@ -937,13 +993,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       const chatTitle = 'New Chat';
 
       try {
+        const projectId = currentProjectIdRef.current;
         const res = await fetch(`${getApiBase()}/chats`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             title: chatTitle,
             config: effectiveConfig,
-            messages: chatMessages
+            messages: chatMessages,
+            project_id: projectId || undefined,
           })
         });
 
@@ -972,13 +1030,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         });
         setShouldResetNext(false);
 
+        const createdProjectId = projectId || undefined;
+        const createdProject = createdProjectId ? projects.find(p => p.id === createdProjectId) : undefined;
         const summary: ChatSummary = {
           id: newChat.id,
           title: newChat.title,
           createdAt: newChat.createdAt,
           updatedAt: newChat.updatedAt,
           messageCount: chatMessages.length,
-          lastMessage: chatMessages.length ? chatMessages[chatMessages.length - 1].content.slice(0, 100) : undefined
+          lastMessage: chatMessages.length ? chatMessages[chatMessages.length - 1].content.slice(0, 100) : undefined,
+          projectId: createdProjectId ?? null,
+          projectName: createdProject?.name ?? null,
+          projectSlug: createdProject?.slug ?? null,
         };
 
         setChats(prev => {
@@ -1006,13 +1069,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     return result;
   }, [currentChatId, messagesByChat, configByChat, computeDefaultConfig, refreshChatListInternal, clearScheduledSave]);
 
-  const loadChat = useCallback(async (chatId: string) => {
+  const loadChat = useCallback(async (chatId: string, options?: { force?: boolean }) => {
+    const force = !!options?.force;
     // Clear any pending saves for the previous chat before switching
     if (currentChatId && currentChatId !== chatId) {
       clearScheduledSave(currentChatId);
     }
 
     const key = keyForChat(chatId);
+    const cachedMessages = messagesByChatRef.current[key];
     setCurrentChatId(chatId);
     setShouldResetNext(false);
 
@@ -1024,12 +1089,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     const cachedConfig = configByChat[key];
     if (cachedConfig) {
       setConfigState(cachedConfig);
-      // Save to localStorage to remember for next new chat (but strip approval policy)
+      // Save reusable preferences for the next new chat without chat-scoped state.
       try {
-        localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripApprovalPolicy(cachedConfig)));
+        localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripReusableConfig(cachedConfig)));
       } catch (e) {
         console.warn('Failed to save config to localStorage:', e);
       }
+    }
+
+    if (!force && cachedMessages) {
+      return;
     }
 
     try {
@@ -1054,12 +1123,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             details: serverUsage?.details ?? existingUsage?.details,
           });
         }
-        const loadedConfig = stripDenyApprovalPolicies(chat.config);
+        const loadedConfig = hydrateChatConfig(
+          stripDenyApprovalPolicies(chat.config),
+          computeDefaultConfig(),
+        );
         setConfigByChat(prev => ({ ...prev, [key]: loadedConfig }));
         setConfigState(loadedConfig);
-        // Save to localStorage to remember for next new chat (but strip approval policy)
+        // Save reusable preferences for the next new chat without chat-scoped state.
         try {
-          localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripApprovalPolicy(chat.config)));
+          localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripReusableConfig(loadedConfig)));
         } catch (e) {
           console.warn('Failed to save config to localStorage:', e);
         }
@@ -1146,6 +1218,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           if (existing.length > mappedMessages.length) {
             return prev;
           }
+          // Guard: a force reload can arrive after the frontend optimistically
+          // appended the user's message but before the backend display log has
+          // caught up. Keep the local user bubble visible while the agent stream
+          // continues, then let the next fresh server snapshot replace it.
+          if (shouldKeepOptimisticUserMessage(existing, mappedMessages)) {
+            return prev;
+          }
           // Guard: keep optimistic local content when server is still mid-postprocess.
           // Covers both equal-count and server-has-more cases: if local last assistant has
           // real text and server last assistant is tool-only (intermediate), backend hasn't
@@ -1223,7 +1302,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     }
   }, [chats, configByChat, currentChatId, clearScheduledSave]);
 
-  const deleteChat = useCallback(async (chatId: string) => {
+  const deleteChat = useCallback(async (chatId: string, { cascade = false }: { cascade?: boolean } = {}) => {
     const key = keyForChat(chatId);
     const deletedSummary = chats.find(c => c.id === chatId);
     const deletedIndex = chats.findIndex(c => c.id === chatId);
@@ -1232,7 +1311,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     const wasCurrent = currentChatId === chatId;
 
     // Optimistic UI: remove immediately so delete feels instant.
-    setChats(prev => prev.filter(c => c.id !== chatId));
+    // When cascading, also remove subagent children from the local chats list.
+    setChats(prev => {
+      if (!cascade) return prev.filter(c => c.id !== chatId);
+      return prev.filter(c => {
+        if (c.id === chatId) return false;
+        const config = (c as any).config;
+        const parentId = (c as any).parentChatId;
+        return !(parentId === chatId);
+      });
+    });
     setMessagesByChat(prev => {
       const next = { ...prev };
       delete next[key];
@@ -1248,7 +1336,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     }
 
     try {
-      const res = await fetch(`${getApiBase()}/chats/${chatId}`, { method: 'DELETE' });
+      const url = cascade
+        ? `${getApiBase()}/chats/${chatId}?cascade=true`
+        : `${getApiBase()}/chats/${chatId}`;
+      const res = await fetch(url, { method: 'DELETE' });
       if (!res.ok) {
         throw new Error(`Failed to delete chat: ${res.status} ${res.statusText}`);
       }
@@ -1276,7 +1367,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       }
       if (wasCurrent) {
         // Try to restore the previously selected chat after rollback.
-        try { await loadChat(chatId); } catch { /* ignore */ }
+        try { await loadChat(chatId, { force: true }); } catch { /* ignore */ }
       }
     }
   }, [beginNewChat, chats, currentChatId, loadChat, refreshChatListSilently]);
@@ -1315,7 +1406,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       currentChatId,
       chats,
       chatTotal,
-      socialChatTotal,
+      chatKindTotals,
       loadingChats,
       loadingMoreChats,
       refreshingChats,
@@ -1357,7 +1448,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     currentChatId,
     chats,
     chatTotal,
-    socialChatTotal,
+    chatKindTotals,
     loadingChats,
     loadingMoreChats,
     refreshingChats,

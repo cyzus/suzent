@@ -193,9 +193,15 @@ class MarkdownMemoryStore:
         """Get path for a named block file (e.g., persona.md)."""
         return self.base_dir / f"{label}.md"
 
-    def _session_dir(self, chat_id: str) -> Path:
-        """Get path for a session-specific directory."""
-        return self.base_dir / "sessions" / chat_id[:32]
+    def _context_path(self, chat_id: str) -> Path:
+        """Get path for the project-scoped context.md.
+
+        Context is shared across all chats in the same project, so the file
+        lives at ``projects/{slug}/context.md`` rather than in a per-chat dir.
+        """
+        from suzent.database import get_database
+
+        return get_database().get_project_dir(chat_id) / "context.md"
 
     async def read_block(self, label: str) -> Optional[str]:
         """Read a named core memory block file (e.g., persona.md).
@@ -224,28 +230,22 @@ class MarkdownMemoryStore:
         logger.debug(f"Updated block file: {label}.md")
 
     async def read_session_context(self, chat_id: str) -> Optional[str]:
-        """Read the session-scoped context.md for a chat.
+        """Read the project-scoped context.md for a chat.
 
-        Args:
-            chat_id: Chat session identifier
-
-        Returns:
-            File content, or None if file does not exist
+        Context is shared across all chats in the same project.
         """
-        path = self._session_dir(chat_id) / "context.md"
+        path = self._context_path(chat_id)
         if not path.exists():
             return None
         return path.read_text(encoding="utf-8")
 
     async def write_session_context(self, chat_id: str, content: str) -> None:
-        """Write the session-scoped context.md for a chat.
+        """Write the project-scoped context.md for a chat.
 
-        Args:
-            chat_id: Chat session identifier
-            content: Full content to write
+        Context is shared across all chats in the same project.
         """
         async with self._write_lock:
-            session_dir = self._session_dir(chat_id)
-            session_dir.mkdir(parents=True, exist_ok=True)
-            (session_dir / "context.md").write_text(content, encoding="utf-8")
-        logger.debug(f"Updated session context for chat {chat_id[:8]}")
+            path = self._context_path(chat_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+        logger.debug(f"Updated project context for chat {chat_id[:8]}")

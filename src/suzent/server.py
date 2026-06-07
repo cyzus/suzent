@@ -28,6 +28,7 @@ from suzent.logger import get_logger, setup_logging
 from suzent.routes.chat_routes import (
     approve_tool,
     chat,
+    chat_send,
     create_chat,
     deactivate_tool,
     delete_chat,
@@ -37,6 +38,7 @@ from suzent.routes.chat_routes import (
     mark_chat_read,
     retry_chat,
     steer_chat,
+    steer_chat_send,
     stop_chat,
     update_chat,
 )
@@ -47,6 +49,14 @@ from suzent.routes.chatgpt_routes import (
     start_chatgpt_login,
 )
 from suzent.routes.commands_routes import get_commands
+from suzent.routes.project_routes import (
+    create_project,
+    delete_project,
+    list_projects,
+    move_all_chats,
+    move_chat_to_project,
+    update_project,
+)
 from suzent.routes.config_routes import (
     get_api_keys_status,
     get_config,
@@ -94,7 +104,14 @@ from suzent.routes.sync_routes import (
     unlock_shibboleth,
     validate_sync_profile,
 )
-from suzent.routes.plan_routes import get_plan, get_plans
+from suzent.routes.goal_task_routes import (
+    get_project_goal,
+    get_project_tasks,
+    get_project_kanban,
+    create_project_task,
+    update_project_task,
+    delete_project_task,
+)
 from suzent.routes.mcp_routes import (
     list_mcp_servers,
     add_mcp_server,
@@ -661,9 +678,11 @@ app = Starlette(
     lifespan=lifespan,
     routes=[
         Route("/chat", chat, methods=["POST"]),
+        Route("/chat/send", chat_send, methods=["POST"]),
         Route("/chat/live", live_stream, methods=["POST"]),
         Route("/chat/stop", stop_chat, methods=["POST"]),
         Route("/chat/steer", steer_chat, methods=["POST"]),
+        Route("/chat/steer-send", steer_chat_send, methods=["POST"]),
         Route("/chat/approve-tool", approve_tool, methods=["POST"]),
         Route("/chat/deactivate-tool", deactivate_tool, methods=["POST"]),
         Route("/chat/compact", compact_chat, methods=["POST"]),
@@ -672,11 +691,21 @@ app = Starlette(
         Route("/chats", get_chats, methods=["GET"]),
         Route("/chats", create_chat, methods=["POST"]),
         Route("/chats/{chat_id}/mark-read", mark_chat_read, methods=["POST"]),
+        Route("/chats/{chat_id}/project", move_chat_to_project, methods=["POST"]),
         Route("/chats/{chat_id}", get_chat, methods=["GET"]),
         Route("/chats/{chat_id}", update_chat, methods=["PUT"]),
         Route("/chats/{chat_id}", delete_chat, methods=["DELETE"]),
-        Route("/plans", get_plans, methods=["GET"]),
-        Route("/plan", get_plan, methods=["GET"]),
+        Route("/projects", list_projects, methods=["GET"]),
+        Route("/projects", create_project, methods=["POST"]),
+        Route("/projects/{project_id}", update_project, methods=["PATCH"]),
+        Route("/projects/{project_id}", delete_project, methods=["DELETE"]),
+        Route("/projects/{project_id}/move-chats", move_all_chats, methods=["POST"]),
+        Route("/project/goal", get_project_goal, methods=["GET"]),
+        Route("/project/tasks", get_project_tasks, methods=["GET"]),
+        Route("/project/kanban", get_project_kanban, methods=["GET"]),
+        Route("/project/tasks", create_project_task, methods=["POST"]),
+        Route("/project/tasks/{task_id:int}", update_project_task, methods=["PATCH"]),
+        Route("/project/tasks/{task_id:int}", delete_project_task, methods=["DELETE"]),
         Route("/config", get_config, methods=["GET"]),
         Route("/chatgpt/status", get_chatgpt_status, methods=["GET"]),
         Route("/chatgpt/login", start_chatgpt_login, methods=["POST"]),

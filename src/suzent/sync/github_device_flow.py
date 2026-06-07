@@ -27,6 +27,32 @@ class DeviceFlowState:
     started_at: float
 
 
+@dataclass(frozen=True)
+class GitHubDeviceToken:
+    access_token: str
+    expires_in: int | None = None
+    refresh_token: str | None = None
+    refresh_token_expires_in: int | None = None
+    token_type: str | None = None
+    scope: str | None = None
+
+    @classmethod
+    def from_response(cls, data: dict) -> GitHubDeviceToken | None:
+        access_token = str(data.get("access_token", "")).strip()
+        if not access_token:
+            return None
+        return cls(
+            access_token=access_token,
+            expires_in=_optional_int(data.get("expires_in")),
+            refresh_token=_optional_str(data.get("refresh_token")),
+            refresh_token_expires_in=_optional_int(
+                data.get("refresh_token_expires_in")
+            ),
+            token_type=_optional_str(data.get("token_type")),
+            scope=_optional_str(data.get("scope")),
+        )
+
+
 class DeviceFlowError(RuntimeError):
     pass
 
@@ -40,7 +66,7 @@ class DeviceFlowDenied(DeviceFlowError):
 
 
 def start() -> DeviceFlowState:
-    """Request a device code from GitHub and return the state the caller should display."""
+    """Request a device code from GitHub and return the display state."""
     response = httpx.post(
         _DEVICE_CODE_URL,
         data={"client_id": GITHUB_APP_CLIENT_ID, "scope": _SCOPE},
@@ -50,9 +76,8 @@ def start() -> DeviceFlowState:
     response.raise_for_status()
     data = response.json()
     if "error" in data:
-        raise DeviceFlowError(
-            f"GitHub device flow start failed: {data.get('error_description', data['error'])}"
-        )
+        detail = data.get("error_description", data["error"])
+        raise DeviceFlowError(f"GitHub device flow start failed: {detail}")
     return DeviceFlowState(
         device_code=data["device_code"],
         user_code=data["user_code"],
@@ -65,7 +90,7 @@ def start() -> DeviceFlowState:
     )
 
 
-def poll(state: DeviceFlowState) -> str | None:
+def poll(state: DeviceFlowState) -> GitHubDeviceToken | None:
     """Poll once for an access token.
 
     Returns the token string when the user has approved, None when still pending.
@@ -90,10 +115,7 @@ def poll(state: DeviceFlowState) -> str | None:
 
     error = data.get("error")
     if not error:
-        token = data.get("access_token", "").strip()
-        if token:
-            return token
-        return None
+        return GitHubDeviceToken.from_response(data)
 
     if error == "authorization_pending":
         return None
@@ -108,3 +130,17 @@ def poll(state: DeviceFlowState) -> str | None:
     raise DeviceFlowError(
         f"Device flow poll error: {data.get('error_description', error)}"
     )
+
+
+def _optional_str(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _optional_int(value: object) -> int | None:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
