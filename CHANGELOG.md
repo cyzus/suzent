@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.6.5] - 2026-06-07
+
+### 🚀 Added
+- **Standalone Desktop Installer**: Added a dedicated Tauri installer app that provides a custom setup UI while reusing the existing staged install engine.
+- **Installer Release Assets**: Release builds now publish `suzent-installer-*` assets alongside the main desktop binaries, so users can install Suzent through the dedicated bootstrap app.
+
+### 🐛 Fixed
+- **Installer Packaging Model**: Removed the main app's bundled-helper assumption and now directs uninstalled users to the standalone Suzent Installer.
+- **i18n Provider Placement**: Moved `I18nProvider` above the app tree so loading, bootstrap, and error states can safely use localized components.
+
 ## [v0.6.4] - 2026-06-07
 
 ### 🚀 Added
