@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ArrowPathIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
 import { ChatList } from './components/ChatList';
 import { ChatWindow } from './components/ChatWindow';
+import { BackendLoadingScreen } from './components/BackendLoadingScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { RobotAvatar } from './components/chat/RobotAvatar';
 import { SuzentLogo } from './components/SuzentLogo';
@@ -38,6 +39,97 @@ import { I18nProvider, useI18n, getInitialLocale, tForLocale } from './i18n';
 interface HeaderTitleProps {
   text?: string;
   onUnlock?: () => void;
+}
+
+interface BootstrapStatus {
+  required: boolean;
+  workspace_dir: string;
+  installer_available: boolean;
+  installer_path?: string | null;
+}
+
+interface BootstrapStage {
+  name: string;
+  title: string;
+  category: string;
+  needs_user_input: boolean;
+}
+
+interface BootstrapManifest {
+  protocol_version: number;
+  stages: BootstrapStage[];
+}
+
+interface BootstrapStageResult {
+  stage: string;
+  ok: boolean;
+  skipped: boolean;
+  reason?: string | null;
+  duration_ms: number;
+}
+
+type BootstrapStageState = 'pending' | 'running' | 'succeeded' | 'skipped' | 'failed';
+
+function BootstrapWindowBar(): React.ReactElement {
+  const locale = getInitialLocale();
+  const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
+  const appWindow = window.__TAURI__?.window.getCurrentWindow();
+  const [isMaximized, setIsMaximized] = React.useState(false);
+
+  async function handleDrag(event: React.MouseEvent<HTMLDivElement>): Promise<void> {
+    const target = event.target as HTMLElement;
+    if (target.closest('button')) return;
+    await appWindow?.startDragging();
+  }
+
+  async function handleMaximize(): Promise<void> {
+    await appWindow?.toggleMaximize();
+    setIsMaximized(prev => !prev);
+  }
+
+  return (
+    <div
+      className="h-12 bg-white border-b border-neutral-200 flex items-center justify-between px-4 select-none"
+      onMouseDown={handleDrag}
+      data-tauri-drag-region
+    >
+      <div className="flex items-center gap-2 pointer-events-none">
+        <div className="w-2.5 h-2.5 bg-brutal-black" />
+        <span className="font-brutal text-sm uppercase text-brutal-black">
+          {t('bootstrap.windowTitle')}
+        </span>
+      </div>
+      <div className="flex h-full items-center text-brutal-black">
+        <button
+          type="button"
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={() => appWindow?.minimize()}
+          className="h-full w-10 flex items-center justify-center hover:bg-neutral-100"
+          title={t('titlebar.minimize')}
+        >
+          <span className="h-0.5 w-3 bg-current" />
+        </button>
+        <button
+          type="button"
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={handleMaximize}
+          className="h-full w-10 flex items-center justify-center hover:bg-neutral-100"
+          title={isMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
+        >
+          <span className="h-3 w-3 border-2 border-current" />
+        </button>
+        <button
+          type="button"
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={() => appWindow?.close()}
+          className="h-full w-10 flex items-center justify-center hover:bg-brutal-red hover:text-white"
+          title={t('titlebar.close')}
+        >
+          <span className="text-lg leading-none">×</span>
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function HeaderTitle({ text, onUnlock }: HeaderTitleProps): React.ReactElement {
@@ -592,73 +684,202 @@ function AppInner(): React.ReactElement {
 };
 
 
-// Map each setup step message to a progress percentage.
-// Steps that aren't listed fall back to the previous progress value.
-const STEP_PROGRESS: Record<string, number> = {
-  'Setting up Python environment...': 5,
-  'Creating Python virtual environment...': 20,
-  'Installing packages...': 45,
-  'Installing Playwright Chromium browser (this may take a few minutes)...': 70,
-  'Finalizing setup...': 88,
-  'Starting backend server...': 95,
-  'Starting backend...': 95,
-};
-
-function BackendLoadingScreen({ error, onRetry }: { error?: string | null; onRetry?: () => void }) {
+function BootstrapInstallScreen({
+  status,
+  onComplete,
+}: {
+  status: BootstrapStatus;
+  onComplete: () => void;
+}) {
   const locale = getInitialLocale();
   const t = (key: string, params?: Record<string, string>) => tForLocale(locale, key, params);
-  const [setupStep, setSetupStep] = React.useState<string | null>(null);
-  const [progress, setProgress] = React.useState(0);
+  const [stages, setStages] = React.useState<BootstrapStage[]>([]);
+  const [stageStates, setStageStates] = React.useState<Record<string, BootstrapStageState>>({});
+  const [activeStage, setActiveStage] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [running, setRunning] = React.useState(false);
+  const [details, setDetails] = React.useState<string[]>([]);
+  const [installDir, setInstallDir] = React.useState(status.workspace_dir);
+
+  const completedCount = stages.filter(stage => {
+    const state = stageStates[stage.name];
+    return state === 'succeeded' || state === 'skipped';
+  }).length;
+  const progress = stages.length > 0 ? Math.round((completedCount / stages.length) * 100) : 0;
+  const stageTitle = React.useCallback((stage: BootstrapStage): string => {
+    const translated = t(`bootstrap.stages.${stage.name}`);
+    return translated === `bootstrap.stages.${stage.name}` ? stage.title : translated;
+  }, [t]);
+
+  const loadManifest = React.useCallback(async () => {
+    const raw = await invoke<string>('bootstrap_manifest');
+    const manifest = JSON.parse(raw) as BootstrapManifest;
+    setStages(manifest.stages);
+    setStageStates(Object.fromEntries(manifest.stages.map(stage => [stage.name, 'pending'])));
+  }, []);
 
   React.useEffect(() => {
-    if (error) return;
-    const interval = setInterval(() => {
-      const step = (window as any).__SUZENT_SETUP_STEP__;
-      if (step && step !== setupStep) {
-        setSetupStep(step);
-        const pct = STEP_PROGRESS[step];
-        if (pct !== undefined) setProgress(pct);
+    loadManifest().catch((err) => {
+      setError(err instanceof Error ? err.message : String(err));
+    });
+  }, [loadManifest]);
+
+  React.useEffect(() => {
+    setInstallDir(status.workspace_dir);
+  }, [status.workspace_dir]);
+
+  const chooseInstallDir = React.useCallback(async () => {
+    if (running) return;
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: t('bootstrap.chooseInstallDir'),
+        defaultPath: installDir,
+      });
+      if (typeof selected === 'string' && selected.trim()) {
+        setInstallDir(selected);
+        setError(null);
       }
-    }, 150);
-    return () => clearInterval(interval);
-  }, [error, setupStep]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [installDir, running, t]);
+
+  const runInstall = React.useCallback(async () => {
+    if (running || stages.length === 0) return;
+    setRunning(true);
+    setError(null);
+    setDetails([]);
+
+    try {
+      await invoke('set_install_workspace', { request: { dir: installDir } });
+      for (const stage of stages) {
+        setActiveStage(stage.name);
+        setStageStates(prev => ({ ...prev, [stage.name]: 'running' }));
+        const raw = await invoke<string>('run_bootstrap_stage', { request: { stage: stage.name, dir: installDir } });
+        const result = JSON.parse(raw) as BootstrapStageResult;
+
+        if (!result.ok) {
+          const reason = result.reason || t('bootstrap.stageFailed', { stage: stageTitle(stage) });
+          setStageStates(prev => ({ ...prev, [stage.name]: 'failed' }));
+          setError(reason);
+          setDetails(prev => [...prev, `${stageTitle(stage)}: ${reason}`]);
+          return;
+        }
+
+        setStageStates(prev => ({
+          ...prev,
+          [stage.name]: result.skipped ? 'skipped' : 'succeeded',
+        }));
+        if (result.reason) {
+          setDetails(prev => [...prev, `${stageTitle(stage)}: ${result.reason}`]);
+        }
+      }
+
+      setActiveStage(null);
+      await invoke('retry_backend_start');
+      onComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRunning(false);
+    }
+  }, [installDir, onComplete, running, stageTitle, stages, t]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-neutral-50 font-sans p-8 text-center border-8 border-brutal-black">
-      <div className="bg-white p-8 border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md w-full flex flex-col items-center">
-        <div className="w-32 h-32 mb-6">
-          <RobotAvatar variant={error ? 'ghost' : 'idle'} className="w-full h-full" />
-        </div>
-        <h1 className="text-4xl font-brutal font-black uppercase mb-4 text-brutal-black">
-          {error ? t('app.backendErrorTitle') : t('app.initializing')}
-        </h1>
-        <p className="font-bold text-lg mb-6 leading-tight min-h-[2rem]">
-          {error || setupStep || t('app.connectingToCore')}
-        </p>
-        {error && onRetry ? (
-          <button
-            onClick={onRetry}
-            className="px-6 py-3 bg-brutal-black text-white font-bold uppercase border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
-          >
-            {t('common.retry')}
-          </button>
-        ) : (
-          <div className="w-full">
-            <div className="w-full h-4 bg-neutral-200 border-2 border-brutal-black overflow-hidden relative">
-              {progress > 0 ? (
-                <div
-                  className="absolute top-0 left-0 h-full bg-brutal-black transition-all duration-500 ease-out"
-                  style={{ width: `${progress}%` }}
-                />
-              ) : (
-                <div className="absolute top-0 left-0 h-full w-1/2 bg-brutal-black animate-[slide_1s_ease-in-out_infinite]" />
-              )}
+    <div className="h-screen overflow-hidden bg-neutral-100 font-sans text-brutal-black flex flex-col">
+      <BootstrapWindowBar />
+      <div className="flex-1 min-h-0 flex items-center justify-center p-6">
+      <div className="w-full max-w-3xl max-h-full min-h-0 bg-white border border-neutral-300 shadow-[0_18px_48px_rgba(0,0,0,0.12)] p-6 flex flex-col">
+        <div className="flex items-start gap-5">
+          <div className="w-24 h-24 shrink-0">
+            <RobotAvatar variant={error ? 'ghost' : running ? 'scanner' : 'idle'} className="w-full h-full" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-3xl font-brutal font-black uppercase text-brutal-black">
+              {t('bootstrap.title')}
+            </h1>
+            <div className="mt-2 flex items-center gap-2">
+              <p className="font-mono text-xs text-neutral-500 truncate" title={installDir}>
+                {installDir}
+              </p>
+              <button
+                type="button"
+                disabled={running}
+                onClick={chooseInstallDir}
+                className="shrink-0 px-2 py-1 text-xs font-bold uppercase border border-neutral-300 hover:bg-neutral-100 disabled:opacity-50"
+              >
+                {t('bootstrap.changeDir')}
+              </button>
             </div>
-            {progress > 0 && (
-              <p className="text-right text-xs font-mono mt-1 text-neutral-500">{progress}%</p>
+            {!status.installer_available && (
+              <p className="mt-3 text-sm font-bold text-brutal-red">
+                {t('bootstrap.installerMissing')}
+              </p>
             )}
           </div>
+        </div>
+
+        <div className="mt-6 h-3 bg-neutral-200 border border-neutral-300 overflow-hidden">
+          <div
+            className="h-full bg-blue-500 transition-all duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <p className="text-right text-xs font-mono mt-1 text-neutral-500">{progress}%</p>
+
+        <div className="mt-5 min-h-0 flex-1 overflow-y-auto pr-2 grid gap-2 content-start">
+          {stages.map(stage => {
+            const state = stageStates[stage.name] || 'pending';
+            const isActive = activeStage === stage.name;
+            return (
+              <div
+                key={stage.name}
+                className={`flex items-center justify-between border px-3 py-2 ${
+                  isActive ? 'border-blue-400 bg-blue-50' : 'border-neutral-200 bg-neutral-50'
+                }`}
+              >
+                <div className="min-w-0">
+                  <p className="font-bold uppercase text-sm truncate">{stageTitle(stage)}</p>
+                </div>
+                <div className="ml-3 flex items-center gap-2 font-mono text-xs uppercase">
+                  {state === 'running' && <ArrowPathIcon className="w-4 h-4 animate-spin" />}
+                  {state === 'succeeded' && <CheckCircleIcon className="w-4 h-4" />}
+                  {state === 'failed' && <ExclamationTriangleIcon className="w-4 h-4 text-brutal-red" />}
+                  <span>{t(`bootstrap.state.${state}`)}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {details.length > 0 && (
+          <div className="mt-4 shrink-0 bg-neutral-100 border border-neutral-300 p-3 max-h-28 overflow-auto text-left">
+            {details.map((line, idx) => (
+              <p key={`${line}-${idx}`} className="font-mono text-xs text-neutral-700">{line}</p>
+            ))}
+          </div>
         )}
+
+        {error && (
+          <p className="mt-4 text-sm font-bold text-brutal-red border-2 border-brutal-red p-3">
+            {error}
+          </p>
+        )}
+
+        <div className="mt-6 shrink-0 flex justify-end gap-3">
+          <button
+            type="button"
+            disabled={running || !status.installer_available || stages.length === 0}
+            onClick={runInstall}
+            className="px-5 py-3 bg-blue-500 text-white font-bold uppercase border border-blue-600 hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {running ? t('bootstrap.running') : error ? t('common.retry') : t('bootstrap.start')}
+          </button>
+        </div>
+      </div>
       </div>
     </div>
   );
@@ -672,33 +893,74 @@ function hasPersistedBackendPort(): boolean {
   }
 }
 
-async function isBackendReachable(): Promise<boolean> {
-  const apiBase = (() => {
-    try {
-      const injected = (window as any).__SUZENT_BACKEND_PORT__;
-      if (typeof injected === 'number' && Number.isFinite(injected)) {
-        return `http://127.0.0.1:${injected}`;
-      }
-      const persisted = sessionStorage.getItem('SUZENT_PORT') || localStorage.getItem('SUZENT_PORT');
-      if (persisted) return `http://127.0.0.1:${persisted}`;
-    } catch {
-      // ignore
-    }
-    return '';
-  })();
+function rememberBackendPort(port: number): void {
+  (window as any).__SUZENT_BACKEND_PORT__ = port;
+  try {
+    sessionStorage.setItem('SUZENT_PORT', String(port));
+  } catch {
+    // ignore
+  }
+  try {
+    localStorage.setItem('SUZENT_PORT', String(port));
+  } catch {
+    // ignore
+  }
+}
 
-  if (!apiBase) return false;
+function getRememberedBackendPort(): number | null {
+  try {
+    const injected = (window as any).__SUZENT_BACKEND_PORT__;
+    if (typeof injected === 'number' && Number.isFinite(injected)) return injected;
+    const stored = sessionStorage.getItem('SUZENT_PORT') || localStorage.getItem('SUZENT_PORT');
+    if (!stored) return null;
+    const parsed = Number.parseInt(stored, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
+async function isBackendPortReachable(port: number): Promise<boolean> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 1500);
   try {
-    const res = await fetch(`${apiBase}/config`, { signal: controller.signal });
+    const res = await fetch(`http://127.0.0.1:${port}/config`, { signal: controller.signal });
     return res.ok;
   } catch {
     return false;
   } finally {
     window.clearTimeout(timeout);
   }
+}
+
+async function waitForBackendPort(options?: { attempts?: number }): Promise<number | null> {
+  const attempts = options?.attempts ?? 12;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const candidates: number[] = [];
+    const remembered = getRememberedBackendPort();
+    if (remembered) candidates.push(remembered);
+
+    try {
+      const tauriPort = await invoke<number>('get_backend_port');
+      candidates.unshift(tauriPort);
+    } catch {
+      // A dev backend may only be discoverable from storage after a WebView refresh.
+    }
+
+    for (const port of Array.from(new Set(candidates))) {
+      if (await isBackendPortReachable(port)) {
+        rememberBackendPort(port);
+        return port;
+      }
+    }
+
+    await new Promise(resolve => window.setTimeout(resolve, Math.min(500 * Math.pow(1.35, attempt), 2500)));
+  }
+  return null;
+}
+
+function StartupDecisionScreen(): React.ReactElement {
+  return <div className="h-screen w-screen bg-neutral-100" />;
 }
 
 export default function App() {
@@ -725,61 +987,139 @@ export default function App() {
     );
   }
 
+  React.useEffect(() => {
+    invoke('frontend_ready').catch(() => {
+      // Older/dev shells may not expose this command yet.
+    });
+  }, []);
+
   // `backendReady` is driven by the Tauri `backend-ready` event emitted after the backend
   // is confirmed healthy. We never trust stale localStorage here — localStorage may hold
   // a port from a previous session while the backend is still starting up.
-  // The initial value handles the rare race where Rust injects the port before React renders.
-  const [backendReady, setBackendReady] = React.useState<boolean>(
-    !!(window as any).__SUZENT_BACKEND_PORT__
-  );
+  // Gate rendering until bootstrap_status answers, so the chat UI cannot flash
+  // before the installer/onboarding decision is known.
+  const [backendReady, setBackendReady] = React.useState<boolean>(false);
   const [backendError, setBackendError] = React.useState<string | null>(null);
+  const [bootstrapStatusState, setBootstrapStatusState] = React.useState<BootstrapStatus | null>(null);
+  const [bootstrapChecked, setBootstrapChecked] = React.useState(false);
+  const [backendStartingAtStartup, setBackendStartingAtStartup] = React.useState(false);
+  const [backendStartingAfterInstall, setBackendStartingAfterInstall] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    invoke<BootstrapStatus>('bootstrap_status')
+      .then((status) => {
+        if (cancelled) return;
+        if (status.required) {
+          setBackendReady(false);
+          setBackendError(null);
+          setBackendStartingAtStartup(false);
+          setBootstrapStatusState(status);
+        } else if ((window as any).__SUZENT_BACKEND_PORT__) {
+          setBackendReady(true);
+          setBackendStartingAtStartup(false);
+        } else {
+          setBackendStartingAtStartup(true);
+          waitForBackendPort()
+            .then((port) => {
+              if (cancelled || port === null) return;
+              setBackendReady(true);
+              setBackendError(null);
+              setBackendStartingAtStartup(false);
+            })
+            .catch(() => {});
+        }
+        setBootstrapChecked(true);
+      })
+      .catch(() => {
+        // The backend-error event handles startup failures.
+        if (!cancelled) setBootstrapChecked(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   React.useEffect(() => {
     if (backendReady) return;
     let unlisten: (() => void) | undefined;
     let unlistenErr: (() => void) | undefined;
+    let unlistenBootstrap: (() => void) | undefined;
     let cancelled = false;
 
     // Handle WebView refresh race: backend-ready may have been emitted before listeners attach.
     // If we have a persisted port, probe backend health and continue without waiting forever.
     if (hasPersistedBackendPort()) {
-      isBackendReachable().then((ok) => {
-        if (!cancelled && ok) {
+      waitForBackendPort({ attempts: 8 }).then((port) => {
+        if (!cancelled && port !== null) {
           setBackendReady(true);
           setBackendError(null);
+          setBackendStartingAtStartup(false);
+          setBackendStartingAfterInstall(false);
         }
       });
     }
 
     import('@tauri-apps/api/event').then(({ listen }) => {
-      listen<number>('backend-ready', () => {
+      listen<number>('backend-ready', (event) => {
+        rememberBackendPort(event.payload);
         setBackendReady(true);
+        setBackendError(null);
+        setBackendStartingAtStartup(false);
+        setBackendStartingAfterInstall(false);
+        setBootstrapStatusState(null);
       }).then((fn) => { unlisten = fn; });
       listen<string>('backend-error', (event) => {
+        setBackendStartingAtStartup(false);
+        setBackendStartingAfterInstall(false);
         setBackendError(event.payload);
       }).then((fn) => { unlistenErr = fn; });
+      listen<BootstrapStatus>('bootstrap-required', (event) => {
+        setBootstrapChecked(true);
+        setBackendError(null);
+        setBackendReady(false);
+        setBackendStartingAtStartup(false);
+        setBackendStartingAfterInstall(false);
+        setBootstrapStatusState(event.payload);
+      }).then((fn) => { unlistenBootstrap = fn; });
     });
     return () => {
       cancelled = true;
       unlisten?.();
       unlistenErr?.();
+      unlistenBootstrap?.();
     };
   }, [backendReady]);
 
   return (
     <I18nProvider>
       <ErrorBoundary>
-        <ProjectProvider>
-          <ChatProvider enabled={backendReady && !backendError}>
-            {!backendReady || backendError ? (
-              <BackendLoadingScreen error={backendError} />
-            ) : (
+        {!bootstrapChecked ? (
+          <StartupDecisionScreen />
+        ) : bootstrapStatusState ? (
+          <BootstrapInstallScreen
+            status={bootstrapStatusState}
+            onComplete={() => {
+              setBootstrapStatusState(null);
+              setBackendError(null);
+              setBackendStartingAfterInstall(true);
+            }}
+          />
+        ) : backendError ? (
+          <BackendLoadingScreen error={backendError} />
+        ) : backendStartingAfterInstall || backendStartingAtStartup ? (
+          <BackendLoadingScreen />
+        ) : !backendReady ? (
+          <StartupDecisionScreen />
+        ) : (
+          <ProjectProvider>
+            <ChatProvider>
               <GoalTasksProvider>
                 <AppInner />
               </GoalTasksProvider>
-            )}
           </ChatProvider>
-        </ProjectProvider>
+          </ProjectProvider>
+        )}
       </ErrorBoundary>
     </I18nProvider>
   );

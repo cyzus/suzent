@@ -4,7 +4,7 @@
   "version": "0.6.3",
   "identifier": "com.suzent.app",
   "build": {
-    "beforeBuildCommand": "cd ../frontend && npm run build",
+    "beforeBuildCommand": "cd ../frontend && npm run build && cd ../src-tauri && npm run build:installer",
     "beforeDevCommand": "cd ../frontend && npm run dev",
     "devUrl": "http://127.0.0.1:18080",
     "frontendDist": "../frontend/dist"
@@ -13,14 +13,15 @@
     "windows": [
       {
         "title": "SUZENT - Your Personal Agent",
-        "width": 1400,
-        "height": 900,
+        "width": 1040,
+        "height": 760,
         "resizable": true,
         "fullscreen": false,
         "decorations": false,
         "transparent": false,
-        "minWidth": 800,
-        "minHeight": 600
+        "visible": false,
+        "minWidth": 760,
+        "minHeight": 560
       }
     ],
     "security": {
@@ -31,7 +32,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": [],
+    "resources": ["resources/bin/*"],
     "externalBin": [],
     "icon": [
       "icons/32x32.png",
