@@ -412,7 +412,7 @@ fn stage_repository(config: &InstallConfig) -> StageOutcome {
         return StageOutcome::ok();
     }
 
-    if config.dir.exists() {
+    if config.dir.exists() && !is_empty_dir(&config.dir) {
         return StageOutcome::fail(format!(
             "{} already exists but is not a Git repository. Set SUZENT_DIR or --dir to another path.",
             config.dir.display()
@@ -834,6 +834,13 @@ fn write_bootstrap_marker(config: &InstallConfig) -> io::Result<()> {
 
 fn escape_powershell_single_quoted(value: &str) -> String {
     value.replace('\'', "''")
+}
+
+fn is_empty_dir(path: &Path) -> bool {
+    path.is_dir()
+        && fs::read_dir(path)
+            .map(|mut entries| entries.next().is_none())
+            .unwrap_or(false)
 }
 
 impl StageOutcome {

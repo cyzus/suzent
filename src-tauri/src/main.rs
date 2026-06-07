@@ -54,7 +54,7 @@ fn get_backend_port(state: State<AppState>) -> Result<u16, String> {
 
 #[tauri::command]
 fn check_for_update() -> Result<String, String> {
-    let repo_dir = backend::find_repo_dir();
+    let repo_dir = backend::find_install_workspace_dir();
     let uv_exe = backend::find_uv();
 
     let mut command = Command::new(&uv_exe);
@@ -86,7 +86,7 @@ fn check_for_update() -> Result<String, String> {
 
 #[tauri::command]
 fn start_update_and_restart(app_handle: tauri::AppHandle) -> Result<(), String> {
-    let repo_dir = backend::find_repo_dir();
+    let repo_dir = backend::find_install_workspace_dir();
     let uv_exe = backend::find_uv();
     let ui_exe = find_relaunch_exe(&repo_dir).map_err(|e| e.to_string())?;
     let script = write_update_script(&repo_dir, &uv_exe, &ui_exe)?;
