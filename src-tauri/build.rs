@@ -7,13 +7,6 @@ fn main() {
     let resources = Path::new("resources");
     fs::create_dir_all(resources).expect("Failed to create resources directory");
 
-    let installer_bin = resources.join("bin");
-    fs::create_dir_all(&installer_bin).expect("Failed to create installer resource directory");
-    let installer_placeholder = installer_bin.join(".gitkeep");
-    if !installer_placeholder.exists() {
-        fs::write(&installer_placeholder, "").expect("Failed to write installer placeholder");
-    }
-
     let cmd_shim = resources.join("suzent.cmd");
     if !cmd_shim.exists() {
         fs::write(

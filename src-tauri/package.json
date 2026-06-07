@@ -7,7 +7,6 @@
     "tauri": "tauri",
     "dev": "tauri dev",
     "build:dist": "tauri build --config tauri.conf.prod.json",
-    "build:installer": "node scripts/build-installer-resource.mjs",
     "build:frontend": "cd ../frontend && npm install && npm run build"
   },
   "devDependencies": {

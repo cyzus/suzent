@@ -37,7 +37,7 @@ export const en = {
     running: 'Installing...',
     changeDir: 'Change',
     chooseInstallDir: 'Choose Suzent install folder',
-    installerMissing: 'Installer helper not found. Rebuild the desktop bundle with the installer helper included.',
+    installerMissing: 'Suzent is not installed yet. Download and run the Suzent Installer, then reopen the app.',
     stageFailed: '{stage} failed',
     state: {
       pending: 'Pending',

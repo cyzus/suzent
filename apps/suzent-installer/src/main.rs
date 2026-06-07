@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::io::{self, Write};
@@ -30,6 +30,12 @@ struct InstallConfig {
     skip_playwright: bool,
     json: bool,
     non_interactive: bool,
+}
+
+#[derive(Deserialize)]
+struct StageRequest {
+    stage: String,
+    dir: String,
 }
 
 #[derive(Default)]
@@ -64,6 +70,11 @@ struct StageResult {
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.is_empty() {
+        run_tauri_app();
+        return;
+    }
+
     let config = InstallConfig::from_env_and_args(&args);
 
     if has_flag(&args, "--protocol-version") {
@@ -105,6 +116,56 @@ fn main() {
 
     print_completion(&config);
     exit_with_prompt(0, config.non_interactive);
+}
+
+#[tauri::command]
+fn installer_manifest() -> Result<String, String> {
+    serde_json::to_string(&manifest()).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn default_install_dir_command() -> String {
+    default_install_dir().display().to_string()
+}
+
+#[tauri::command]
+fn run_installer_stage(request: StageRequest) -> Result<String, String> {
+    let args = vec![
+        "--stage".to_string(),
+        request.stage.clone(),
+        "--json".to_string(),
+        "--non-interactive".to_string(),
+        "--dir".to_string(),
+        request.dir,
+    ];
+    let config = InstallConfig::from_env_and_args(&args);
+    let Some(stage) = stages()
+        .into_iter()
+        .find(|stage| stage.name == request.stage)
+    else {
+        let result = StageResult {
+            stage: request.stage,
+            ok: false,
+            skipped: false,
+            reason: Some("unknown installer stage".to_string()),
+            duration_ms: 0,
+        };
+        return serde_json::to_string(&result).map_err(|error| error.to_string());
+    };
+
+    serde_json::to_string(&run_stage(&config, stage)).map_err(|error| error.to_string())
+}
+
+fn run_tauri_app() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
+        .invoke_handler(tauri::generate_handler![
+            installer_manifest,
+            default_install_dir_command,
+            run_installer_stage,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running Suzent installer");
 }
 
 impl InstallConfig {

@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Suzent Installer</title>
+    <style>
+      :root {
+        color: #111;
+        background: #f4f4f5;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(244, 244, 245, 0.92)),
+          radial-gradient(circle at 20% 12%, rgba(59, 130, 246, 0.18), transparent 34%),
+          radial-gradient(circle at 78% 24%, rgba(16, 185, 129, 0.14), transparent 30%);
+      }
+
+      main {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 36px;
+      }
+
+      .shell {
+        width: min(920px, 100%);
+        border: 1px solid #d4d4d8;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.16);
+      }
+
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        border-bottom: 1px solid #e4e4e7;
+        padding: 28px 32px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 34px;
+        line-height: 1;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      .mark {
+        display: inline-block;
+        width: 13px;
+        height: 13px;
+        margin-right: 12px;
+        background: #111;
+        vertical-align: 3px;
+      }
+
+      .version {
+        margin-top: 8px;
+        color: #52525b;
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        font-size: 13px;
+      }
+
+      .body {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 290px;
+        gap: 28px;
+        padding: 32px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .path-row {
+        display: flex;
+        gap: 10px;
+      }
+
+      input {
+        width: 100%;
+        height: 44px;
+        border: 1px solid #d4d4d8;
+        padding: 0 12px;
+        font: 14px ui-monospace, SFMono-Regular, Consolas, monospace;
+      }
+
+      button {
+        height: 44px;
+        border: 1px solid #111;
+        background: #111;
+        color: #fff;
+        padding: 0 18px;
+        font-weight: 900;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+
+      button.secondary {
+        border-color: #d4d4d8;
+        background: #fff;
+        color: #111;
+      }
+
+      button:disabled {
+        cursor: wait;
+        opacity: 0.55;
+      }
+
+      .progress {
+        height: 12px;
+        margin: 26px 0 8px;
+        border: 1px solid #d4d4d8;
+        background: #e5e7eb;
+        overflow: hidden;
+      }
+
+      .bar {
+        width: 0%;
+        height: 100%;
+        background: #2563eb;
+        transition: width 180ms ease;
+      }
+
+      .percent {
+        text-align: right;
+        color: #52525b;
+        font: 12px ui-monospace, SFMono-Regular, Consolas, monospace;
+      }
+
+      .stages {
+        display: grid;
+        gap: 8px;
+        margin-top: 24px;
+        max-height: 280px;
+        overflow: auto;
+      }
+
+      .stage {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        border: 1px solid #e4e4e7;
+        background: #fafafa;
+        padding: 10px 12px;
+        font-size: 13px;
+      }
+
+      .stage.running {
+        border-color: #93c5fd;
+        background: #eff6ff;
+      }
+
+      .stage.failed {
+        border-color: #ef4444;
+        background: #fef2f2;
+      }
+
+      .state {
+        color: #52525b;
+        font: 11px ui-monospace, SFMono-Regular, Consolas, monospace;
+        text-transform: uppercase;
+      }
+
+      .panel {
+        border-left: 1px solid #e4e4e7;
+        padding-left: 26px;
+      }
+
+      .panel h2 {
+        margin: 0 0 12px;
+        font-size: 15px;
+        text-transform: uppercase;
+      }
+
+      .panel p {
+        margin: 0 0 14px;
+        color: #52525b;
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      .error {
+        display: none;
+        margin-top: 18px;
+        border: 2px solid #ef4444;
+        color: #dc2626;
+        padding: 12px;
+        font-weight: 800;
+      }
+
+      .log {
+        display: none;
+        margin-top: 16px;
+        max-height: 92px;
+        overflow: auto;
+        border: 1px solid #d4d4d8;
+        background: #f4f4f5;
+        padding: 10px;
+        color: #3f3f46;
+        font: 12px ui-monospace, SFMono-Regular, Consolas, monospace;
+      }
+
+      @media (max-width: 760px) {
+        main {
+          padding: 18px;
+        }
+
+        .body {
+          grid-template-columns: 1fr;
+        }
+
+        .panel {
+          border-left: 0;
+          border-top: 1px solid #e4e4e7;
+          padding-left: 0;
+          padding-top: 22px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="shell">
+        <div class="header">
+          <div>
+            <h1><span class="mark"></span>Install Suzent</h1>
+            <div class="version" id="version">Preparing installer...</div>
+          </div>
+          <button id="start">Start</button>
+        </div>
+        <div class="body">
+          <div>
+            <label for="install-dir">Install directory</label>
+            <div class="path-row">
+              <input id="install-dir" autocomplete="off" spellcheck="false" />
+              <button class="secondary" id="default-dir" type="button">Default</button>
+            </div>
+            <div class="progress">
+              <div class="bar" id="bar"></div>
+            </div>
+            <div class="percent" id="percent">0%</div>
+            <div class="stages" id="stages"></div>
+            <div class="error" id="error"></div>
+            <div class="log" id="log"></div>
+          </div>
+          <aside class="panel">
+            <h2>What this does</h2>
+            <p>Installs the tools Suzent needs, clones or updates the workspace, syncs Python dependencies, prepares browser automation, and creates launch shortcuts.</p>
+            <p>The main Suzent app is downloaded into the workspace during setup, so future launches use the installed copy.</p>
+            <p>Existing non-empty folders are protected unless they are already Suzent Git repositories.</p>
+          </aside>
+        </div>
+      </section>
+    </main>
+    <script>
+      const invoke = window.__TAURI__.core.invoke;
+      const startButton = document.getElementById('start');
+      const defaultButton = document.getElementById('default-dir');
+      const dirInput = document.getElementById('install-dir');
+      const versionEl = document.getElementById('version');
+      const stagesEl = document.getElementById('stages');
+      const barEl = document.getElementById('bar');
+      const percentEl = document.getElementById('percent');
+      const errorEl = document.getElementById('error');
+      const logEl = document.getElementById('log');
+
+      let manifest = null;
+      const states = new Map();
+
+      function setError(message) {
+        errorEl.textContent = message || '';
+        errorEl.style.display = message ? 'block' : 'none';
+      }
+
+      function log(message) {
+        if (!message) return;
+        logEl.style.display = 'block';
+        const line = document.createElement('div');
+        line.textContent = message;
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function renderStages(activeName) {
+        stagesEl.innerHTML = '';
+        for (const stage of manifest.stages) {
+          const state = states.get(stage.name) || 'pending';
+          const row = document.createElement('div');
+          row.className = `stage ${activeName === stage.name ? 'running' : ''} ${state === 'failed' ? 'failed' : ''}`;
+          row.innerHTML = `<strong>${stage.title}</strong><span class="state">${state}</span>`;
+          stagesEl.appendChild(row);
+        }
+
+        const done = manifest.stages.filter(stage => ['succeeded', 'skipped'].includes(states.get(stage.name))).length;
+        const pct = manifest.stages.length ? Math.round((done / manifest.stages.length) * 100) : 0;
+        barEl.style.width = `${pct}%`;
+        percentEl.textContent = `${pct}%`;
+      }
+
+      async function load() {
+        const [raw, defaultDir] = await Promise.all([
+          invoke('installer_manifest'),
+          invoke('default_install_dir_command'),
+        ]);
+        manifest = JSON.parse(raw);
+        dirInput.value = defaultDir;
+        versionEl.textContent = `Protocol ${manifest.protocol_version} • ${manifest.stages.length} stages`;
+        for (const stage of manifest.stages) states.set(stage.name, 'pending');
+        renderStages(null);
+      }
+
+      async function runInstall() {
+        if (!manifest) return;
+        setError(null);
+        logEl.innerHTML = '';
+        logEl.style.display = 'none';
+        startButton.disabled = true;
+        defaultButton.disabled = true;
+        dirInput.disabled = true;
+
+        try {
+          const dir = dirInput.value.trim();
+          if (!dir) throw new Error('Install directory cannot be empty.');
+
+          for (const stage of manifest.stages) {
+            states.set(stage.name, 'running');
+            renderStages(stage.name);
+            const raw = await invoke('run_installer_stage', { request: { stage: stage.name, dir } });
+            const result = JSON.parse(raw);
+            if (!result.ok) {
+              states.set(stage.name, 'failed');
+              renderStages(stage.name);
+              throw new Error(result.reason || `${stage.title} failed`);
+            }
+            states.set(stage.name, result.skipped ? 'skipped' : 'succeeded');
+            if (result.reason) log(`${stage.title}: ${result.reason}`);
+            renderStages(null);
+          }
+
+          versionEl.textContent = 'Installation complete';
+          startButton.textContent = 'Done';
+        } catch (error) {
+          setError(error instanceof Error ? error.message : String(error));
+          startButton.disabled = false;
+          defaultButton.disabled = false;
+          dirInput.disabled = false;
+          startButton.textContent = 'Retry';
+        }
+      }
+
+      defaultButton.addEventListener('click', async () => {
+        dirInput.value = await invoke('default_install_dir_command');
+      });
+      startButton.addEventListener('click', runInstall);
+      load().catch(error => setError(error instanceof Error ? error.message : String(error)));
+    </script>
+  </body>
+</html>

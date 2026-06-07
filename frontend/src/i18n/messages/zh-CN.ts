@@ -37,7 +37,7 @@ export const zhCN = {
     running: '正在安装...',
     changeDir: '更改',
     chooseInstallDir: '选择 Suzent 安装文件夹',
-    installerMissing: '未找到安装助手。请重新构建桌面包并包含安装助手。',
+    installerMissing: '尚未安装 Suzent。请下载并运行 Suzent Installer，然后重新打开应用。',
     stageFailed: '{stage} 失败',
     state: {
       pending: '等待中',
