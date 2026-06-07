@@ -34,7 +34,7 @@ import {
 } from './lib/layout';
 import { TitleBar } from './components/TitleBar';
 import { detectDesktopPlatform } from './lib/titleBarPlatform';
-import { I18nProvider, useI18n, getInitialLocale, tForLocale } from './i18n';
+import { useI18n, getInitialLocale, tForLocale } from './i18n';
 
 interface HeaderTitleProps {
   text?: string;
@@ -1092,36 +1092,34 @@ export default function App() {
   }, [backendReady]);
 
   return (
-    <I18nProvider>
-      <ErrorBoundary>
-        {!bootstrapChecked ? (
-          <StartupDecisionScreen />
-        ) : bootstrapStatusState ? (
-          <BootstrapInstallScreen
-            status={bootstrapStatusState}
-            onComplete={() => {
-              setBootstrapStatusState(null);
-              setBackendError(null);
-              setBackendStartingAfterInstall(true);
-            }}
-          />
-        ) : backendError ? (
-          <BackendLoadingScreen error={backendError} />
-        ) : backendStartingAfterInstall || backendStartingAtStartup ? (
-          <BackendLoadingScreen />
-        ) : !backendReady ? (
-          <StartupDecisionScreen />
-        ) : (
-          <ProjectProvider>
-            <ChatProvider>
-              <GoalTasksProvider>
-                <AppInner />
-              </GoalTasksProvider>
+    <ErrorBoundary>
+      {!bootstrapChecked ? (
+        <StartupDecisionScreen />
+      ) : bootstrapStatusState ? (
+        <BootstrapInstallScreen
+          status={bootstrapStatusState}
+          onComplete={() => {
+            setBootstrapStatusState(null);
+            setBackendError(null);
+            setBackendStartingAfterInstall(true);
+          }}
+        />
+      ) : backendError ? (
+        <BackendLoadingScreen error={backendError} />
+      ) : backendStartingAfterInstall || backendStartingAtStartup ? (
+        <BackendLoadingScreen />
+      ) : !backendReady ? (
+        <StartupDecisionScreen />
+      ) : (
+        <ProjectProvider>
+          <ChatProvider>
+            <GoalTasksProvider>
+              <AppInner />
+            </GoalTasksProvider>
           </ChatProvider>
-          </ProjectProvider>
-        )}
-      </ErrorBoundary>
-    </I18nProvider>
+        </ProjectProvider>
+      )}
+    </ErrorBoundary>
   );
 }
 
