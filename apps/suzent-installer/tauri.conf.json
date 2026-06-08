@@ -10,13 +10,12 @@
     "windows": [
       {
         "title": "Suzent Installer",
-        "width": 960,
-        "height": 680,
-        "resizable": true,
+        "width": 940,
+        "height": 620,
+        "resizable": false,
+        "maximizable": false,
         "fullscreen": false,
-        "decorations": true,
-        "minWidth": 720,
-        "minHeight": 520
+        "decorations": true
       }
     ],
     "security": {

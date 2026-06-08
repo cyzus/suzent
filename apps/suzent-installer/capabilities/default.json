@@ -7,6 +7,7 @@
   "permissions": [
     "core:default",
     "dialog:allow-open",
-    "core:window:default"
+    "core:window:default",
+    "core:window:allow-close"
   ]
 }

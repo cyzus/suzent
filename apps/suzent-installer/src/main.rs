@@ -137,32 +137,51 @@ fn default_install_dir_command() -> String {
 }
 
 #[tauri::command]
-fn run_installer_stage(request: StageRequest) -> Result<String, String> {
-    let args = vec![
-        "--stage".to_string(),
-        request.stage.clone(),
-        "--json".to_string(),
-        "--non-interactive".to_string(),
-        "--dir".to_string(),
-        request.dir,
-    ];
-    let config = InstallConfig::from_env_and_args(&args);
-    let Some(stage) = stages()
-        .into_iter()
-        .find(|stage| stage.name == request.stage)
-    else {
-        let result = StageResult {
-            stage: request.stage,
-            ok: false,
-            skipped: false,
-            reason: Some("unknown installer stage".to_string()),
-            duration_ms: 0,
-            logs: Vec::new(),
+async fn run_installer_stage(request: StageRequest) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let args = vec![
+            "--stage".to_string(),
+            request.stage.clone(),
+            "--json".to_string(),
+            "--non-interactive".to_string(),
+            "--dir".to_string(),
+            request.dir,
+        ];
+        let config = InstallConfig::from_env_and_args(&args);
+        let Some(stage) = stages()
+            .into_iter()
+            .find(|stage| stage.name == request.stage)
+        else {
+            let result = StageResult {
+                stage: request.stage,
+                ok: false,
+                skipped: false,
+                reason: Some("unknown installer stage".to_string()),
+                duration_ms: 0,
+                logs: Vec::new(),
+            };
+            return serde_json::to_string(&result).map_err(|error| error.to_string());
         };
-        return serde_json::to_string(&result).map_err(|error| error.to_string());
-    };
 
-    serde_json::to_string(&run_stage(&config, stage)).map_err(|error| error.to_string())
+        serde_json::to_string(&run_stage(&config, stage)).map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn launch_installed_app(dir: String) -> Result<(), String> {
+    let workspace = PathBuf::from(dir);
+    let ui = workspace.join("bin").join(ui_binary_name());
+    if !ui.exists() {
+        return Err(format!("Suzent app not found at {}", ui.display()));
+    }
+
+    let mut command = Command::new(&ui);
+    command.current_dir(&workspace);
+    hide_command_window(&mut command);
+    command.spawn().map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 fn run_tauri_app() {
@@ -173,6 +192,7 @@ fn run_tauri_app() {
             installer_manifest,
             default_install_dir_command,
             run_installer_stage,
+            launch_installed_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Suzent installer");
@@ -641,63 +661,50 @@ fn stage_shortcuts(config: &InstallConfig) -> StageOutcome {
 
 #[cfg(windows)]
 fn create_windows_shortcuts(config: &InstallConfig, ui: &std::path::Path) -> StageOutcome {
-    let desktop = dirs_home().join("Desktop").join("Suzent.lnk");
-    let start_menu = env::var("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| dirs_home().join("AppData").join("Roaming"))
-        .join("Microsoft")
-        .join("Windows")
-        .join("Start Menu")
-        .join("Programs")
-        .join("Suzent.lnk");
+    let script = format!(
+        "$ui = '{}'; \
+         $workspace = '{}'; \
+         $w = New-Object -ComObject WScript.Shell; \
+         $locations = @( \
+           @([Environment]::GetFolderPath('DesktopDirectory'), 'Desktop'), \
+           @([Environment]::GetFolderPath('Programs'), 'Start Menu') \
+         ); \
+         foreach ($location in $locations) {{ \
+           $dir = $location[0]; \
+           $label = $location[1]; \
+           if ([string]::IsNullOrWhiteSpace($dir)) {{ continue; }} \
+           New-Item -ItemType Directory -Force -Path $dir | Out-Null; \
+           $path = Join-Path $dir 'Suzent.lnk'; \
+           $s = $w.CreateShortcut($path); \
+           $s.TargetPath = $ui; \
+           $s.WorkingDirectory = $workspace; \
+           $s.IconLocation = $ui; \
+           $s.Save(); \
+           Write-Output \"[$label] $path\"; \
+         }}",
+        escape_powershell_single_quoted(&ui.display().to_string()),
+        escape_powershell_single_quoted(&config.dir.display().to_string()),
+    );
 
-    for path in [&desktop, &start_menu] {
-        if let Some(parent) = path.parent() {
-            if let Err(error) = fs::create_dir_all(parent) {
-                return StageOutcome::skipped(format!(
-                    "Failed to create shortcut directory {}: {}",
-                    parent.display(),
-                    error
-                ));
-            }
-        }
+    let mut command = Command::new("powershell");
+    command
+        .args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &script,
+        ])
+        .stdout(child_stdio())
+        .stderr(child_stdio());
+    hide_command_window(&mut command);
 
-        let script = format!(
-            "$w = New-Object -ComObject WScript.Shell; \
-             $s = $w.CreateShortcut('{}'); \
-             $s.TargetPath = '{}'; \
-             $s.WorkingDirectory = '{}'; \
-             $s.IconLocation = '{}'; \
-             $s.Save()",
-            escape_powershell_single_quoted(&path.display().to_string()),
-            escape_powershell_single_quoted(&ui.display().to_string()),
-            escape_powershell_single_quoted(&config.dir.display().to_string()),
-            escape_powershell_single_quoted(&ui.display().to_string()),
-        );
-
-        let mut command = Command::new("powershell");
-        command
-            .args([
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                &script,
-            ])
-            .stdout(child_stdio())
-            .stderr(child_stdio());
-        hide_command_window(&mut command);
-        let status = run_command(&mut command);
-
-        if !status {
-            return StageOutcome::skipped(format!(
-                "Failed to create shortcut at {}; install can continue.",
-                path.display()
-            ));
-        }
+    if run_command(&mut command) {
+        print_human("[OK] Windows shortcuts created");
+        StageOutcome::ok()
+    } else {
+        StageOutcome::skipped("Failed to create Windows shortcuts; install can continue.")
     }
-
-    StageOutcome::ok()
 }
 
 #[cfg(not(windows))]
@@ -751,6 +758,10 @@ Categories=Utility;Development;\n",
         }
     }
 
+    print_human(format!(
+        "[OK] Linux launcher created at {}",
+        desktop_file.display()
+    ));
     StageOutcome::ok()
 }
 
@@ -860,6 +871,7 @@ exec \"{}\" \"$@\"\n",
         ));
     }
 
+    print_human(format!("[OK] macOS app shortcut created at {}", app_link.display()));
     StageOutcome::ok()
 }
 

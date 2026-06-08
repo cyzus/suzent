@@ -7,7 +7,16 @@
     <style>
       :root {
         color: #111;
-        background: #f4f4f5;
+        background: #f8fafc;
+        --ink: #111;
+        --paper: #fff;
+        --muted: #52525b;
+        --line: #111;
+        --soft-line: #d4d4d8;
+        --yellow: #ffe666;
+        --blue: #2563eb;
+        --green: #16a34a;
+        --red: #dc2626;
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
 
@@ -17,25 +26,44 @@
 
       body {
         margin: 0;
-        min-height: 100vh;
-        background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(244, 244, 245, 0.92)),
-          radial-gradient(circle at 20% 12%, rgba(59, 130, 246, 0.18), transparent 34%),
-          radial-gradient(circle at 78% 24%, rgba(16, 185, 129, 0.14), transparent 30%);
+        height: 100vh;
+        background-color: #f8fafc;
+        background-image: radial-gradient(rgba(17, 17, 17, 0.11) 1px, transparent 1px);
+        background-size: 18px 18px;
+        color: var(--ink);
+        overflow: hidden;
       }
 
       main {
-        min-height: 100vh;
+        height: 100vh;
         display: grid;
         place-items: center;
-        padding: 36px;
+        padding: 18px;
+        position: relative;
+      }
+
+      main::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background:
+          linear-gradient(90deg, transparent 0, transparent 49%, rgba(255, 230, 102, 0.18) 50%, transparent 51%, transparent 100%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
+        background-size: 120px 100%, 100% 100%;
+        animation: drift-grid 14s linear infinite;
       }
 
       .shell {
-        width: min(920px, 100%);
-        border: 1px solid #d4d4d8;
-        background: rgba(255, 255, 255, 0.96);
-        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.16);
+        width: 880px;
+        height: 540px;
+        border: 3px solid var(--line);
+        background: rgba(255, 255, 255, 0.98);
+        box-shadow: 8px 8px 0 var(--line), 0 24px 60px rgba(15, 23, 42, 0.14);
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        animation: enter-shell 320ms ease-out both;
       }
 
       .header {
@@ -43,39 +71,80 @@
         align-items: center;
         justify-content: space-between;
         gap: 20px;
-        border-bottom: 1px solid #e4e4e7;
-        padding: 28px 32px;
+        border-bottom: 3px solid var(--line);
+        padding: 22px 28px;
+        background: var(--paper);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .header::after {
+        content: "";
+        position: absolute;
+        right: 0;
+        top: 0;
+        width: 168px;
+        height: 100%;
+        background:
+          repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.08) 0 8px, transparent 8px 16px),
+          var(--yellow);
+        border-left: 3px solid var(--line);
+        z-index: 0;
+      }
+
+      .header > * {
+        position: relative;
+        z-index: 1;
       }
 
       h1 {
         margin: 0;
-        font-size: 34px;
+        font-size: 30px;
         line-height: 1;
         letter-spacing: 0;
         text-transform: uppercase;
       }
 
-      .mark {
-        display: inline-block;
-        width: 13px;
-        height: 13px;
-        margin-right: 12px;
-        background: #111;
-        vertical-align: 3px;
+      .brand-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .brand-logo {
+        width: 34px;
+        height: 34px;
+        flex: 0 0 auto;
+        filter: drop-shadow(3px 3px 0 rgba(0, 0, 0, 0.16));
+        animation: logo-bob 1800ms ease-in-out infinite;
+      }
+
+      .brand-logo .logo-eye {
+        transform-origin: center;
+        animation: logo-eye-scan 2400ms ease-in-out infinite;
+      }
+
+      .brand-logo .logo-eye:last-child {
+        animation-delay: 80ms;
       }
 
       .version {
         margin-top: 8px;
-        color: #52525b;
+        color: var(--muted);
         font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
         font-size: 13px;
       }
 
       .body {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 290px;
-        gap: 28px;
-        padding: 32px;
+        grid-template-columns: minmax(0, 1fr) 330px;
+        gap: 24px;
+        padding: 24px 28px 22px;
+        min-height: 0;
+        flex: 1;
+        background:
+          linear-gradient(180deg, rgba(255, 230, 102, 0.08), transparent 160px),
+          var(--paper);
       }
 
       label {
@@ -93,61 +162,86 @@
 
       input {
         width: 100%;
-        height: 44px;
-        border: 1px solid #d4d4d8;
+        height: 40px;
+        border: 2px solid var(--line);
         padding: 0 12px;
-        font: 14px ui-monospace, SFMono-Regular, Consolas, monospace;
+        background: #fff;
+        font: 13px ui-monospace, SFMono-Regular, Consolas, monospace;
+        box-shadow: 3px 3px 0 #e5e5e5;
       }
 
       button {
-        height: 44px;
-        border: 1px solid #111;
-        background: #111;
+        height: 40px;
+        border: 2px solid var(--line);
+        background: var(--ink);
         color: #fff;
-        padding: 0 18px;
+        padding: 0 16px;
         font-weight: 900;
         text-transform: uppercase;
         cursor: pointer;
+        box-shadow: 4px 4px 0 var(--line);
+        transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease;
       }
 
       button.secondary {
-        border-color: #d4d4d8;
+        border-color: var(--line);
         background: #fff;
-        color: #111;
+        color: var(--ink);
+      }
+
+      button:hover:not(:disabled) {
+        transform: translate(-1px, -1px);
+        box-shadow: 6px 6px 0 var(--line);
+      }
+
+      button:active:not(:disabled) {
+        transform: translate(2px, 2px);
+        box-shadow: 1px 1px 0 var(--line);
       }
 
       button:disabled {
         cursor: wait;
         opacity: 0.55;
+        box-shadow: 2px 2px 0 #a1a1aa;
+      }
+
+      .actions {
+        display: flex;
+        gap: 10px;
       }
 
       .progress {
-        height: 12px;
-        margin: 26px 0 8px;
-        border: 1px solid #d4d4d8;
-        background: #e5e7eb;
+        height: 14px;
+        margin: 20px 0 8px;
+        border: 2px solid var(--line);
+        background: #fff;
         overflow: hidden;
+        box-shadow: 3px 3px 0 #e5e5e5;
       }
 
       .bar {
         width: 0%;
         height: 100%;
-        background: #2563eb;
-        transition: width 180ms ease;
+        background:
+          repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.16) 0 8px, transparent 8px 16px),
+          var(--yellow);
+        transition: width 240ms cubic-bezier(.2,.8,.2,1);
+        animation: progress-stripes 900ms linear infinite;
       }
 
       .percent {
         text-align: right;
-        color: #52525b;
+        color: var(--muted);
         font: 12px ui-monospace, SFMono-Regular, Consolas, monospace;
       }
 
       .stages {
         display: grid;
-        gap: 8px;
-        margin-top: 24px;
-        max-height: 280px;
+        gap: 7px;
+        margin-top: 16px;
+        max-height: 210px;
         overflow: auto;
+        padding-right: 4px;
       }
 
       .stage {
@@ -155,31 +249,42 @@
         align-items: center;
         justify-content: space-between;
         gap: 14px;
-        border: 1px solid #e4e4e7;
-        background: #fafafa;
-        padding: 10px 12px;
+        border: 2px solid var(--line);
+        background: #fff;
+        padding: 9px 12px;
         font-size: 13px;
+        box-shadow: 3px 3px 0 #e5e5e5;
+        animation: stage-in 180ms ease-out both;
       }
 
       .stage.running {
-        border-color: #93c5fd;
-        background: #eff6ff;
+        border-color: var(--line);
+        background: var(--yellow);
+        animation: running-pulse 900ms ease-in-out infinite;
       }
 
       .stage.failed {
-        border-color: #ef4444;
+        border-color: var(--red);
         background: #fef2f2;
+        box-shadow: 3px 3px 0 var(--red);
+      }
+
+      .stage strong {
+        line-height: 1.2;
       }
 
       .state {
-        color: #52525b;
+        color: var(--muted);
         font: 11px ui-monospace, SFMono-Regular, Consolas, monospace;
         text-transform: uppercase;
       }
 
       .panel {
-        border-left: 1px solid #e4e4e7;
-        padding-left: 26px;
+        border-left: 3px solid var(--line);
+        padding-left: 22px;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
       }
 
       .panel h2 {
@@ -190,24 +295,39 @@
 
       .panel p {
         margin: 0 0 14px;
-        color: #52525b;
-        font-size: 14px;
-        line-height: 1.45;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.42;
       }
 
       .error {
         display: none;
-        margin-top: 18px;
-        border: 2px solid #ef4444;
-        color: #dc2626;
+        margin-top: 14px;
+        border: 3px solid var(--red);
+        color: var(--red);
+        background: #fff;
         padding: 12px;
         font-weight: 800;
+        box-shadow: 5px 5px 0 #fecaca;
+      }
+
+      .complete {
+        display: none;
+        border: 3px solid var(--line);
+        background: #f0fdf4;
+        color: #14532d;
+        padding: 12px;
+        font-size: 13px;
+        line-height: 1.45;
+        box-shadow: 5px 5px 0 #86efac;
       }
 
       .log {
-        margin-top: 16px;
-        border: 1px solid #d4d4d8;
-        background: #f4f4f5;
+        flex: 1;
+        min-height: 0;
+        border: 2px solid var(--line);
+        background: #f8fafc;
+        box-shadow: 4px 4px 0 #e5e5e5;
       }
 
       .log summary {
@@ -219,12 +339,14 @@
       }
 
       .log-body {
-        max-height: 190px;
+        height: 100%;
+        max-height: 286px;
         overflow: auto;
-        border-top: 1px solid #d4d4d8;
+        border-top: 2px solid var(--line);
         padding: 10px 12px;
         color: #3f3f46;
         font: 12px ui-monospace, SFMono-Regular, Consolas, monospace;
+        background: #fff;
       }
 
       .log-body div {
@@ -242,9 +364,96 @@
 
         .panel {
           border-left: 0;
-          border-top: 1px solid #e4e4e7;
+          border-top: 3px solid var(--line);
           padding-left: 0;
           padding-top: 22px;
+        }
+
+        .log-body {
+          max-height: 160px;
+        }
+      }
+
+      @keyframes enter-shell {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes stage-in {
+        from {
+          opacity: 0;
+          transform: translateX(-8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+
+      @keyframes running-pulse {
+        0%, 100% {
+          box-shadow: 3px 3px 0 var(--line);
+        }
+        50% {
+          box-shadow: 6px 6px 0 var(--line);
+        }
+      }
+
+      @keyframes progress-stripes {
+        from {
+          background-position: 0 0;
+        }
+        to {
+          background-position: 22px 0;
+        }
+      }
+
+      @keyframes drift-grid {
+        from {
+          background-position: 0 0, 0 0;
+        }
+        to {
+          background-position: 120px 0, 0 0;
+        }
+      }
+
+      @keyframes logo-bob {
+        0%, 100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-2px);
+        }
+      }
+
+      @keyframes logo-eye-scan {
+        0%, 20%, 100% {
+          transform: translate(0, 0);
+        }
+        38% {
+          transform: translate(1.4px, 0);
+        }
+        56% {
+          transform: translate(-1.2px, 0.8px);
+        }
+        72% {
+          transform: translate(0, 0);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 1ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 1ms !important;
         }
       }
     </style>
@@ -254,10 +463,20 @@
       <section class="shell">
         <div class="header">
           <div>
-            <h1><span class="mark"></span>Install Suzent</h1>
+            <div class="brand-row">
+              <svg class="brand-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Suzent logo">
+                <rect x="0" y="0" width="24" height="24" rx="4" fill="#000000" />
+                <rect class="logo-eye" x="5" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" />
+                <rect class="logo-eye" x="14" y="8" width="5" height="5" rx="1.5" fill="#FFFFFF" />
+              </svg>
+              <h1>Install Suzent</h1>
+            </div>
             <div class="version" id="version">Preparing installer...</div>
           </div>
-          <button id="start">Start</button>
+          <div class="actions">
+            <button class="secondary" id="launch" type="button" hidden>Launch</button>
+            <button id="start">Start</button>
+          </div>
         </div>
         <div class="body">
           <div>
@@ -273,16 +492,19 @@
             <div class="percent" id="percent">0%</div>
             <div class="stages" id="stages"></div>
             <div class="error" id="error"></div>
+          </div>
+          <aside class="panel">
+            <div id="info-panel">
+              <h2>What this does</h2>
+              <p>Installs the tools Suzent needs, clones or updates the workspace, syncs Python dependencies, prepares browser automation, and creates launch shortcuts.</p>
+              <p>The main Suzent app is downloaded into the workspace during setup, so future launches use the installed copy.</p>
+              <p>Existing non-empty folders are protected unless they are already Suzent Git repositories.</p>
+            </div>
+            <div class="complete" id="complete"></div>
             <details class="log" id="log">
               <summary>Detailed log</summary>
               <div class="log-body" id="log-body"></div>
             </details>
-          </div>
-          <aside class="panel">
-            <h2>What this does</h2>
-            <p>Installs the tools Suzent needs, clones or updates the workspace, syncs Python dependencies, prepares browser automation, and creates launch shortcuts.</p>
-            <p>The main Suzent app is downloaded into the workspace during setup, so future launches use the installed copy.</p>
-            <p>Existing non-empty folders are protected unless they are already Suzent Git repositories.</p>
           </aside>
         </div>
       </section>
@@ -291,6 +513,7 @@
       const invoke = window.__TAURI__.core.invoke;
       const openDialog = window.__TAURI__.dialog.open;
       const startButton = document.getElementById('start');
+      const launchButton = document.getElementById('launch');
       const defaultButton = document.getElementById('default-dir');
       const browseButton = document.getElementById('browse-dir');
       const dirInput = document.getElementById('install-dir');
@@ -299,15 +522,23 @@
       const barEl = document.getElementById('bar');
       const percentEl = document.getElementById('percent');
       const errorEl = document.getElementById('error');
+      const infoPanelEl = document.getElementById('info-panel');
+      const completeEl = document.getElementById('complete');
       const logEl = document.getElementById('log');
       const logBodyEl = document.getElementById('log-body');
 
       let manifest = null;
+      let installComplete = false;
       const states = new Map();
 
       function setError(message) {
         errorEl.textContent = message || '';
         errorEl.style.display = message ? 'block' : 'none';
+      }
+
+      function setComplete(message) {
+        completeEl.textContent = message || '';
+        completeEl.style.display = message ? 'block' : 'none';
       }
 
       function log(message) {
@@ -364,11 +595,21 @@
       }
 
       async function runInstall() {
+        if (installComplete) {
+          await closeInstaller();
+          return;
+        }
+
         if (!manifest) return;
         setError(null);
+        setComplete(null);
+        infoPanelEl.style.display = 'none';
         logBodyEl.innerHTML = '';
         logEl.open = true;
+        installComplete = false;
+        launchButton.hidden = true;
         startButton.disabled = true;
+        launchButton.disabled = true;
         defaultButton.disabled = true;
         browseButton.disabled = true;
         dirInput.disabled = true;
@@ -393,15 +634,45 @@
           }
 
           versionEl.textContent = 'Installation complete';
-          startButton.textContent = 'Done';
+          setComplete('Suzent is installed. Desktop and Start Menu shortcuts were created when supported by this platform.');
+          infoPanelEl.style.display = 'block';
+          launchButton.hidden = false;
+          launchButton.disabled = false;
+          startButton.textContent = 'Exit';
+          startButton.disabled = false;
+          installComplete = true;
         } catch (error) {
           setError(error instanceof Error ? error.message : String(error));
+          infoPanelEl.style.display = 'block';
           startButton.disabled = false;
           defaultButton.disabled = false;
           browseButton.disabled = false;
           dirInput.disabled = false;
+          launchButton.hidden = true;
+          launchButton.disabled = true;
           startButton.textContent = 'Retry';
         }
+      }
+
+      async function launchSuzent() {
+        try {
+          setError(null);
+          launchButton.disabled = true;
+          await invoke('launch_installed_app', { dir: dirInput.value.trim() });
+          await closeInstaller();
+        } catch (error) {
+          setError(error instanceof Error ? error.message : String(error));
+          launchButton.disabled = false;
+        }
+      }
+
+      async function closeInstaller() {
+        const appWindow = window.__TAURI__?.window?.getCurrentWindow?.();
+        if (appWindow) {
+          await appWindow.close();
+          return;
+        }
+        window.close();
       }
 
       browseButton.addEventListener('click', async () => {
@@ -418,6 +689,7 @@
       defaultButton.addEventListener('click', async () => {
         dirInput.value = await invoke('default_install_dir_command');
       });
+      launchButton.addEventListener('click', launchSuzent);
       startButton.addEventListener('click', runInstall);
       load().catch(error => setError(error instanceof Error ? error.message : String(error)));
     </script>
