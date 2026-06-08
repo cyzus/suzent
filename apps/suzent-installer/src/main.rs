@@ -1,4 +1,7 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
@@ -13,6 +16,10 @@ const REPO_URL: &str = "https://github.com/cyzus/suzent.git";
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+thread_local! {
+    static STAGE_LOGS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
 
 #[derive(Clone, Copy)]
 struct InstallStage {
@@ -66,6 +73,7 @@ struct StageResult {
     skipped: bool,
     reason: Option<String>,
     duration_ms: u128,
+    logs: Vec<String>,
 }
 
 fn main() {
@@ -149,6 +157,7 @@ fn run_installer_stage(request: StageRequest) -> Result<String, String> {
             skipped: false,
             reason: Some("unknown installer stage".to_string()),
             duration_ms: 0,
+            logs: Vec::new(),
         };
         return serde_json::to_string(&result).map_err(|error| error.to_string());
     };
@@ -158,6 +167,7 @@ fn run_installer_stage(request: StageRequest) -> Result<String, String> {
 
 fn run_tauri_app() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             installer_manifest,
@@ -303,6 +313,7 @@ fn run_stage_command(config: &InstallConfig, stage_name: &str) {
                 "unknown stage: {stage_name}. Run --manifest to list valid stages."
             )),
             duration_ms: 0,
+            logs: Vec::new(),
         });
         std::process::exit(2);
     };
@@ -319,6 +330,7 @@ fn run_stage(config: &InstallConfig, stage: InstallStage) -> StageResult {
     }
 
     let started = Instant::now();
+    clear_stage_logs();
     let outcome = (stage.worker)(config);
 
     StageResult {
@@ -327,6 +339,7 @@ fn run_stage(config: &InstallConfig, stage: InstallStage) -> StageResult {
         skipped: outcome.skipped,
         reason: outcome.reason,
         duration_ms: started.elapsed().as_millis(),
+        logs: take_stage_logs(),
     }
 }
 
@@ -353,9 +366,9 @@ fn stage_git(_config: &InstallConfig) -> StageOutcome {
             .stdout(child_stdio())
             .stderr(child_stdio());
         hide_command_window(&mut command);
-        let status = command.status();
+        let installed = run_command(&mut command);
 
-        if matches!(status, Ok(s) if s.success()) && find_git_after_install().is_some() {
+        if installed && find_git_after_install().is_some() {
             print_human("[OK] Git installed");
             return StageOutcome::ok();
         }
@@ -384,17 +397,17 @@ fn stage_uv(_config: &InstallConfig) -> StageOutcome {
             .stdout(child_stdio())
             .stderr(child_stdio());
         hide_command_window(&mut command);
-        command.status()
+        run_command(&mut command)
     } else {
         let mut command = Command::new("sh");
         command
             .args(["-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"])
             .stdout(child_stdio())
             .stderr(child_stdio());
-        command.status()
+        run_command(&mut command)
     };
 
-    if matches!(status, Ok(s) if s.success()) && find_uv_after_install().is_some() {
+    if status && find_uv_after_install().is_some() {
         print_human("[OK] uv installed");
         return StageOutcome::ok();
     }
@@ -413,7 +426,9 @@ fn stage_python(_config: &InstallConfig) -> StageOutcome {
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     hide_command_window(&mut find_command);
+    log_command_start(&find_command);
     let found = find_command.output();
+    log_command_output(&found);
 
     if matches!(found, Ok(out) if out.status.success()) {
         print_human(format!(
@@ -430,10 +445,9 @@ fn stage_python(_config: &InstallConfig) -> StageOutcome {
         .args(["python", "install", TARGET_PYTHON_VERSION])
         .stdout(child_stdio())
         .stderr(child_stdio());
-    hide_command_window(&mut install_command);
-    let status = install_command.status();
+    let status = run_command(&mut install_command);
 
-    if matches!(status, Ok(s) if s.success()) {
+    if status {
         print_human(format!("[OK] Python {TARGET_PYTHON_VERSION} installed"));
         StageOutcome::ok()
     } else {
@@ -461,8 +475,7 @@ fn stage_repository(config: &InstallConfig) -> StageOutcome {
             .current_dir(&config.dir)
             .stdout(child_stdio())
             .stderr(child_stdio());
-        hide_command_window(&mut checkout_command);
-        let _ = checkout_command.status();
+        let _ = run_command(&mut checkout_command);
         if !run_command(
             Command::new(&git)
                 .args(["pull", "origin", &config.branch])
@@ -674,9 +687,9 @@ fn create_windows_shortcuts(config: &InstallConfig, ui: &std::path::Path) -> Sta
             .stdout(child_stdio())
             .stderr(child_stdio());
         hide_command_window(&mut command);
-        let status = command.status();
+        let status = run_command(&mut command);
 
-        if !matches!(status, Ok(s) if s.success()) {
+        if !status {
             return StageOutcome::skipped(format!(
                 "Failed to create shortcut at {}; install can continue.",
                 path.display()
@@ -984,6 +997,15 @@ fn print_completion(config: &InstallConfig) {
 
 fn run_command(command: &mut Command) -> bool {
     hide_command_window(command);
+    log_command_start(command);
+
+    if machine_mode() {
+        let result = command.stdout(Stdio::piped()).stderr(Stdio::piped()).output();
+        let success = matches!(&result, Ok(output) if output.status.success());
+        log_command_output(&result);
+        return success;
+    }
+
     matches!(
         command
             .stdout(child_stdio())
@@ -1118,7 +1140,53 @@ fn print_json<T: Serialize>(value: &T) {
 fn print_human(message: impl AsRef<str>) {
     if !machine_mode() {
         println!("{}", message.as_ref());
+    } else {
+        log_detail(message.as_ref());
     }
+}
+
+fn clear_stage_logs() {
+    STAGE_LOGS.with(|logs| logs.borrow_mut().clear());
+}
+
+fn take_stage_logs() -> Vec<String> {
+    STAGE_LOGS.with(|logs| std::mem::take(&mut *logs.borrow_mut()))
+}
+
+fn log_detail(message: impl AsRef<str>) {
+    let message = message.as_ref().trim();
+    if message.is_empty() {
+        return;
+    }
+    STAGE_LOGS.with(|logs| logs.borrow_mut().push(message.to_string()));
+}
+
+fn log_command_start(command: &Command) {
+    log_detail(format!("$ {}", command_display(command)));
+}
+
+fn log_command_output(result: &io::Result<std::process::Output>) {
+    match result {
+        Ok(output) => {
+            log_detail(format!("exit code: {}", output.status.code().unwrap_or(-1)));
+            log_stream("stdout", &output.stdout);
+            log_stream("stderr", &output.stderr);
+        }
+        Err(error) => log_detail(format!("failed to start command: {error}")),
+    }
+}
+
+fn log_stream(name: &str, bytes: &[u8]) {
+    let text = String::from_utf8_lossy(bytes);
+    for line in text.lines().map(str::trim_end).filter(|line| !line.is_empty()) {
+        log_detail(format!("{name}: {line}"));
+    }
+}
+
+fn command_display(command: &Command) -> String {
+    let mut parts = vec![command.get_program().to_string_lossy().to_string()];
+    parts.extend(command.get_args().map(|arg| arg.to_string_lossy().to_string()));
+    parts.join(" ")
 }
 
 fn machine_mode() -> bool {

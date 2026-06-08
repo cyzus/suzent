@@ -205,15 +205,30 @@
       }
 
       .log {
-        display: none;
         margin-top: 16px;
-        max-height: 92px;
-        overflow: auto;
         border: 1px solid #d4d4d8;
         background: #f4f4f5;
-        padding: 10px;
+      }
+
+      .log summary {
+        padding: 10px 12px;
+        font-size: 12px;
+        font-weight: 900;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+
+      .log-body {
+        max-height: 190px;
+        overflow: auto;
+        border-top: 1px solid #d4d4d8;
+        padding: 10px 12px;
         color: #3f3f46;
         font: 12px ui-monospace, SFMono-Regular, Consolas, monospace;
+      }
+
+      .log-body div {
+        white-space: pre-wrap;
       }
 
       @media (max-width: 760px) {
@@ -249,6 +264,7 @@
             <label for="install-dir">Install directory</label>
             <div class="path-row">
               <input id="install-dir" autocomplete="off" spellcheck="false" />
+              <button class="secondary" id="browse-dir" type="button">Browse</button>
               <button class="secondary" id="default-dir" type="button">Default</button>
             </div>
             <div class="progress">
@@ -257,7 +273,10 @@
             <div class="percent" id="percent">0%</div>
             <div class="stages" id="stages"></div>
             <div class="error" id="error"></div>
-            <div class="log" id="log"></div>
+            <details class="log" id="log">
+              <summary>Detailed log</summary>
+              <div class="log-body" id="log-body"></div>
+            </details>
           </div>
           <aside class="panel">
             <h2>What this does</h2>
@@ -270,8 +289,10 @@
     </main>
     <script>
       const invoke = window.__TAURI__.core.invoke;
+      const openDialog = window.__TAURI__.dialog.open;
       const startButton = document.getElementById('start');
       const defaultButton = document.getElementById('default-dir');
+      const browseButton = document.getElementById('browse-dir');
       const dirInput = document.getElementById('install-dir');
       const versionEl = document.getElementById('version');
       const stagesEl = document.getElementById('stages');
@@ -279,6 +300,7 @@
       const percentEl = document.getElementById('percent');
       const errorEl = document.getElementById('error');
       const logEl = document.getElementById('log');
+      const logBodyEl = document.getElementById('log-body');
 
       let manifest = null;
       const states = new Map();
@@ -290,11 +312,27 @@
 
       function log(message) {
         if (!message) return;
-        logEl.style.display = 'block';
         const line = document.createElement('div');
         line.textContent = message;
-        logEl.appendChild(line);
-        logEl.scrollTop = logEl.scrollHeight;
+        logBodyEl.appendChild(line);
+        logBodyEl.scrollTop = logBodyEl.scrollHeight;
+      }
+
+      function logStage(stage, result) {
+        log(``);
+        log(`## ${stage.title} (${result.duration_ms}ms)`);
+        for (const line of result.logs || []) log(line);
+        if (result.reason) log(`note: ${result.reason}`);
+      }
+
+      function workspacePathFromParent(parent) {
+        const trimmed = parent.replace(/[\\/]+$/, '');
+        if (!trimmed) return parent;
+        const parts = trimmed.split(/[\\/]/);
+        const leaf = parts[parts.length - 1];
+        if (leaf.toLowerCase() === 'suzent') return trimmed;
+        const separator = parent.includes('\\') ? '\\' : '/';
+        return `${trimmed}${separator}suzent`;
       }
 
       function renderStages(activeName) {
@@ -328,10 +366,11 @@
       async function runInstall() {
         if (!manifest) return;
         setError(null);
-        logEl.innerHTML = '';
-        logEl.style.display = 'none';
+        logBodyEl.innerHTML = '';
+        logEl.open = true;
         startButton.disabled = true;
         defaultButton.disabled = true;
+        browseButton.disabled = true;
         dirInput.disabled = true;
 
         try {
@@ -343,13 +382,13 @@
             renderStages(stage.name);
             const raw = await invoke('run_installer_stage', { request: { stage: stage.name, dir } });
             const result = JSON.parse(raw);
+            logStage(stage, result);
             if (!result.ok) {
               states.set(stage.name, 'failed');
               renderStages(stage.name);
               throw new Error(result.reason || `${stage.title} failed`);
             }
             states.set(stage.name, result.skipped ? 'skipped' : 'succeeded');
-            if (result.reason) log(`${stage.title}: ${result.reason}`);
             renderStages(null);
           }
 
@@ -359,10 +398,22 @@
           setError(error instanceof Error ? error.message : String(error));
           startButton.disabled = false;
           defaultButton.disabled = false;
+          browseButton.disabled = false;
           dirInput.disabled = false;
           startButton.textContent = 'Retry';
         }
       }
+
+      browseButton.addEventListener('click', async () => {
+        const selected = await openDialog({
+          directory: true,
+          multiple: false,
+          defaultPath: dirInput.value.trim() || undefined,
+        });
+        if (typeof selected === 'string') {
+          dirInput.value = workspacePathFromParent(selected);
+        }
+      });
 
       defaultButton.addEventListener('click', async () => {
         dirInput.value = await invoke('default_install_dir_command');
