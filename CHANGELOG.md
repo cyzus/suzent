@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.6.6] - 2026-06-08
+
+### 🐛 Fixed
+- **Standalone Installer UX**: Reworked the custom installer with a fixed-size setup window, native folder browsing, responsive stage execution, in-app detailed logs, and launch/exit completion actions.
+- **Windows Shortcuts**: Create shortcuts using Windows known folders so Desktop and Start Menu links work with redirected locations such as OneDrive Desktop.
+- **Installer Release Asset**: Updated the standalone installer package version so release assets report `v0.6.6`.
+
 ## [v0.6.5] - 2026-06-07
 
 ### 🚀 Added
