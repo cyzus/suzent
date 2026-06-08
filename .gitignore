@@ -54,6 +54,10 @@ src-tauri/resources/
 src-tauri/browsers/
 src-tauri/gen/
 
+# Rust apps
+apps/*/target/
+apps/*/gen/
+
 # Database
 *.db
 *.sqlite

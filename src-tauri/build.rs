@@ -9,14 +9,20 @@ fn main() {
 
     let cmd_shim = resources.join("suzent.cmd");
     if !cmd_shim.exists() {
-        fs::write(&cmd_shim, "@echo off\r\nREM Placeholder — actual shim is generated at runtime.\r\n")
-            .expect("Failed to write suzent.cmd placeholder");
+        fs::write(
+            &cmd_shim,
+            "@echo off\r\nREM Placeholder — actual shim is generated at runtime.\r\n",
+        )
+        .expect("Failed to write suzent.cmd placeholder");
     }
 
     let sh_shim = resources.join("suzent");
     if !sh_shim.exists() {
-        fs::write(&sh_shim, "#!/bin/sh\n# Placeholder — actual shim is generated at runtime.\n")
-            .expect("Failed to write suzent placeholder");
+        fs::write(
+            &sh_shim,
+            "#!/bin/sh\n# Placeholder — actual shim is generated at runtime.\n",
+        )
+        .expect("Failed to write suzent placeholder");
     }
 
     tauri_build::build()

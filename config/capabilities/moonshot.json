@@ -24,7 +24,8 @@
       "max_output_tokens": 262144,
       "supports_vision": true,
       "supports_function_calling": true,
-      "supports_reasoning": true
+      "supports_reasoning": true,
+      "supports_response_schema": true
     },
     "moonshot/kimi-k2.6": {
       "mode": "chat",
@@ -32,7 +33,8 @@
       "max_output_tokens": 262144,
       "supports_vision": true,
       "supports_function_calling": true,
-      "supports_reasoning": true
+      "supports_reasoning": true,
+      "supports_response_schema": true
     },
     "moonshot/kimi-latest": {
       "mode": "chat",
@@ -86,7 +88,8 @@
       "mode": "chat",
       "max_input_tokens": 131072,
       "max_output_tokens": 131072,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "supports_response_schema": true
     },
     "moonshot/moonshot-v1-128k-0430": {
       "mode": "chat",
@@ -99,13 +102,15 @@
       "max_input_tokens": 131072,
       "max_output_tokens": 131072,
       "supports_vision": true,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "supports_response_schema": true
     },
     "moonshot/moonshot-v1-32k": {
       "mode": "chat",
       "max_input_tokens": 32768,
       "max_output_tokens": 32768,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "supports_response_schema": true
     },
     "moonshot/moonshot-v1-32k-0430": {
       "mode": "chat",
@@ -118,13 +123,15 @@
       "max_input_tokens": 32768,
       "max_output_tokens": 32768,
       "supports_vision": true,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "supports_response_schema": true
     },
     "moonshot/moonshot-v1-8k": {
       "mode": "chat",
       "max_input_tokens": 8192,
       "max_output_tokens": 8192,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "supports_response_schema": true
     },
     "moonshot/moonshot-v1-8k-0430": {
       "mode": "chat",
@@ -137,13 +144,15 @@
       "max_input_tokens": 8192,
       "max_output_tokens": 8192,
       "supports_vision": true,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "supports_response_schema": true
     },
     "moonshot/moonshot-v1-auto": {
       "mode": "chat",
       "max_input_tokens": 131072,
       "max_output_tokens": 131072,
-      "supports_function_calling": true
+      "supports_function_calling": true,
+      "supports_response_schema": true
     }
   }
 }

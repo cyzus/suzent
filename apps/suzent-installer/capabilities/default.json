@@ -1,0 +1,12 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for the Suzent installer",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "core:window:default"
+  ]
+}
