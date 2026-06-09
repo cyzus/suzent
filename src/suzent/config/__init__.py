@@ -358,6 +358,9 @@ class ConfigModel(BaseModel):
 
     plan_watcher_interval: float = 2.0
 
+    # Goal mode: max autonomous continuation turns before auto-pausing.
+    goals_max_turns: int = 20
+
     @classmethod
     def load_from_files(cls) -> "ConfigModel":
         logger = get_logger(__name__)

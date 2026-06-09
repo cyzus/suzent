@@ -176,6 +176,17 @@ class SchedulerBrain(BaseBrain):
         self._pending_notifications.clear()
         return notifications
 
+    def add_notification(self, source: str, result: str) -> None:
+        """Queue a status-bar notification from a non-cron source (e.g. goal mode)."""
+        self._pending_notifications.append(
+            {
+                "job_id": None,
+                "job_name": source,
+                "result": result[:500],
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+
     # -- Internal ------------------------------------------------------------
 
     def _initialize_schedules(self):
