@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Suzent",
+    "slug": "suzent-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a0a0a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.suzent.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Suzent needs camera access to use the camera.snap node capability.",
+        "NSLocationWhenInUseUsageDescription": "Suzent needs location access to use the location.get node capability.",
+        "NSMicrophoneUsageDescription": "Suzent needs microphone access for voice features."
+      }
+    },
+    "android": {
+      "package": "com.suzent.mobile",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-camera",
+      "expo-location"
+    ],
+    "scheme": "suzent"
+  }
+}
