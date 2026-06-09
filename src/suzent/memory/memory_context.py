@@ -282,3 +282,61 @@ CORE_MEMORY_SUMMARIZATION_PROMPT = """Condense these facts into a brief, scannab
 Group into sections (omit if empty): **Profile**, **Preferences**, **Stack**, **Constraints**.
 Max 2000 words. Respond with the summary only.
 """
+
+
+# ===== Dream consolidation (autonomous wiki keeper) =====
+
+DREAM_SYSTEM_PROMPT = """You are Suzent's memory consolidation agent ("dream"). You run \
+autonomously to turn the raw, append-only daily memory logs into a clean, durable, \
+cross-referenced knowledge vault.
+
+Tools: read_file, write_file, edit_file, glob_search, grep_search, memory_search.
+Filesystem:
+- Daily logs (READ-ONLY source): /shared/memory/archive/YYYY-MM-DD.md  — NEVER edit or delete these.
+- The vault (your workspace):     /mnt/notebook/  — schema.md, index.md, log.md, zoned pages.
+
+Rules:
+- ALWAYS read /mnt/notebook/schema.md first; follow its zones, naming, and frontmatter exactly.
+- Improve existing pages; never create near-duplicates. Search before you write.
+- Preserve history: when a fact changes over time, record "currently X; previously Y" — never silently overwrite.
+- Only remove a statement when it is a genuine correction or an exact duplicate.
+- Do NOT write to log.md — the runner records the consolidation watermark. Just tidy the pages.
+"""
+
+DREAM_INSTRUCTIONS = """Consolidate the daily memory logs dated after {start} through {end} into the vault.
+
+1. Orient: read schema.md and index.md; glob_search /mnt/notebook for existing pages.
+2. Read the logs: /shared/memory/archive/*.md dated after {start} through {end}.
+3. For each distinct fact/topic:
+   a. Find the page it belongs to (index.md + glob_search/grep_search + memory_search).
+      Personal facts about the user -> 3_Personal/ ; domain knowledge -> 2_Wiki/.
+   b. Apply the matching case:
+      - Duplicate (same fact reworded)              -> do nothing.
+      - New, non-conflicting                        -> add under the right section.
+      - Correction (new entry shows old was wrong)  -> replace the wrong statement.
+      - Change over time (both true at diff. times) -> rewrite as "Currently X (since {end});
+                                                       previously Y."  status: active.
+      - Genuine conflict you can't confidently resolve -> keep the more recent claim, add a
+        `> [!warning] Conflicting claims: <A> vs <B> (<dates>)` callout, set the page frontmatter
+        status: needs-review, and prepend `[!alert] Conflict in [[<page>]]` to log.md.
+   c. Convert relative dates ("yesterday") to absolute.
+4. Add `## Related` wikilinks between related pages.
+5. Update index.md. Do NOT write the watermark to log.md — the runner records it.
+
+Return a one-paragraph summary of what you created, updated, superseded, or flagged.
+"""
+
+# Deterministic post-step run by the runner (not the agent): regenerate the
+# always-visible MEMORY.md from the vault's personal facts + recall signal.
+MEMORY_PROMOTION_PROMPT = """You are writing MEMORY.md — the few most important, durable facts \
+about the user that should ALWAYS be visible to the assistant.
+
+Consolidated personal knowledge:
+{personal_facts}
+
+Recently-recalled topics (usage signal — favour these):
+{recall_summary}
+
+Write a concise markdown summary, grouped under `##` headers, one fact per bullet. Include only \
+durable, high-value facts. Hard limit: {max_lines} lines. Respond with the markdown only.
+"""

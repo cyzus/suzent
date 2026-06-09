@@ -21,6 +21,13 @@ main_event_loop = None  # Store reference to main event loop for async operation
 
 # Background watcher task reference (kept alive)
 _watcher_task = None
+_dream_runner = None
+
+# Gate that lets the dream runner pause the core-file watcher while it holds the
+# consolidation lock (so the watcher can't index half-written pages mid-dream).
+# Set = run; cleared = paused.
+core_watcher_gate = asyncio.Event()
+core_watcher_gate.set()
 
 
 async def _migrate_blocks_to_files(memory_store, markdown_store, user_id: str) -> None:
@@ -119,9 +126,9 @@ async def _core_file_watch_loop(mgr, user_id: str, interval: int = 300) -> None:
     Polls every `interval` seconds. Uses mtime comparison so only changed files
     are re-embedded — unchanged files incur zero cost.
     """
-    from suzent.memory.indexer import CoreMemoryFileIndexer
-
-    indexer = CoreMemoryFileIndexer()
+    # Use the manager's shared indexer instance so the per-turn writes, the dream
+    # runner, and this watcher all share one lock + mtime state.
+    indexer = mgr._core_indexer
     logger.info(f"Core file watcher started (interval={interval}s)")
 
     # Initial indexing pass (catches files written before the loop starts)
@@ -137,6 +144,7 @@ async def _core_file_watch_loop(mgr, user_id: str, interval: int = 300) -> None:
 
     while True:
         await asyncio.sleep(interval)
+        await core_watcher_gate.wait()  # paused while the dream holds the lock
         try:
             if mgr.markdown_store and mgr.store:
                 await indexer.check_and_update(
@@ -156,7 +164,7 @@ async def init_memory_system() -> bool:
     Returns:
         True if memory system initialized successfully, False otherwise.
     """
-    global memory_manager, memory_store, main_event_loop, _watcher_task
+    global memory_manager, memory_store, main_event_loop, _watcher_task, _dream_runner
 
     # Store reference to main event loop
     main_event_loop = asyncio.get_running_loop()
@@ -207,22 +215,34 @@ async def init_memory_system() -> bool:
             markdown_store=markdown_store,
         )
 
-        notebook_host_path = None
+        # Always-on notebook vault. Use the user's mounted /mnt/notebook host path
+        # if they provided one, else the default CONFIG.notebook_dir. The vault is
+        # bootstrapped (nav files + zone folders) unconditionally so the dream
+        # consolidation can always run.
         from suzent.tools.filesystem.path_resolver import PathResolver
+        from suzent.memory.wiki_manager import WikiManager
+        from pathlib import Path
 
+        notebook_host_path = None
         for vol in CONFIG.sandbox_volumes or []:
             parsed = PathResolver.parse_volume_string(vol)
             if parsed and parsed[1] == "/mnt/notebook":
                 notebook_host_path = parsed[0]
                 break
 
-        if notebook_host_path:
-            from suzent.memory.wiki_manager import WikiManager
-            from pathlib import Path
-
-            resolved_notebook = str(Path(notebook_host_path).resolve())
-            memory_manager.wiki_manager = WikiManager(notebook_path=resolved_notebook)
-            logger.info(f"WikiManager initialized at {resolved_notebook}")
+        resolved_notebook = str(
+            Path(notebook_host_path).resolve()
+            if notebook_host_path
+            else Path(CONFIG.notebook_dir).resolve()
+        )
+        memory_manager.notebook_dir = resolved_notebook
+        memory_manager.wiki_manager = WikiManager(notebook_path=resolved_notebook)
+        # Align the markdown store's vault pointer (it may default differently).
+        if markdown_store is not None:
+            markdown_store.notebook_dir = Path(resolved_notebook)
+            markdown_store.notebook_state_dir = Path(resolved_notebook) / ".state"
+            markdown_store.notebook_state_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Notebook vault ready at {resolved_notebook}")
 
         logger.info(
             f"Memory system initialized successfully "
@@ -247,6 +267,17 @@ async def init_memory_system() -> bool:
                 name="core_memory_file_watcher",
             )
 
+            # Start the autonomous dream consolidation runner (gated; a safe no-op
+            # until enough daily logs accrue).
+            if getattr(CONFIG, "memory_consolidation_enabled", True):
+                try:
+                    from suzent.core.dream_runner import DreamRunner
+
+                    _dream_runner = DreamRunner()
+                    await _dream_runner.start()
+                except Exception as e:
+                    logger.error(f"Failed to start DreamRunner: {e}")
+
         return True
 
     except Exception as e:
@@ -258,7 +289,14 @@ async def init_memory_system() -> bool:
 
 async def shutdown_memory_system():
     """Shutdown memory system and close connections."""
-    global memory_store, _watcher_task
+    global memory_store, _watcher_task, _dream_runner
+
+    if _dream_runner is not None:
+        try:
+            await _dream_runner.stop()
+        except Exception:
+            pass
+        _dream_runner = None
 
     if _watcher_task and not _watcher_task.done():
         _watcher_task.cancel()

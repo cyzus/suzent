@@ -216,8 +216,36 @@ async def delete_archival_memory(request: Request) -> JSONResponse:
                 {"error": "Memory system not initialized"}, status_code=503
             )
 
-        # Delete from store
-        await manager.store.delete_memory(memory_id)
+        # Files are the source of truth; LanceDB is derived. Deletion tombstones the
+        # fact (so re-indexing can't resurrect it) and reindexes the source file —
+        # we don't mutate LanceDB ad hoc (see the mutation invariant in the plan).
+        mem = await manager.store.get_memory(memory_id)
+        md = getattr(manager, "markdown_store", None)
+        content = (mem or {}).get("content", "")
+        meta = (mem or {}).get("metadata", {}) or {}
+        source_type = meta.get("source_type")
+        source_file = meta.get("source_file")
+
+        if md and content:
+            try:
+                await md.append_tombstone(content)
+            except Exception as e:
+                logger.warning(f"Failed to tombstone deleted memory: {e}")
+
+        if md and source_type == "archive_log" and source_file:
+            # Diary fact: re-index the day's log; the tombstone makes the indexer skip it.
+            await manager._core_indexer.reindex_file_now(
+                markdown_store=md,
+                lancedb_store=manager.store,
+                embedding_gen=manager.embedding_gen,
+                user_id=CONFIG.user_id,
+                label="archive",
+                filename=source_file,
+            )
+        else:
+            # Notebook/core rows: best-effort immediate removal (the row's page is
+            # corrected by the next dream/lint pass).
+            await manager.store.delete_memory(memory_id)
 
         return JSONResponse({"success": True})
 
@@ -252,4 +280,21 @@ async def get_memory_stats(request: Request) -> JSONResponse:
 
     except Exception as e:
         logger.error(f"Error getting memory stats: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def consolidate_memory(request: Request) -> JSONResponse:
+    """Trigger an on-demand memory consolidation (dream) run."""
+    try:
+        from suzent.core.dream_runner import get_active_dream_runner
+
+        runner = get_active_dream_runner()
+        if runner is None:
+            return JSONResponse({"error": "Dream runner not active"}, status_code=503)
+
+        result = await runner.force_run()
+        return JSONResponse({"success": True, "result": result})
+
+    except Exception as e:
+        logger.error(f"Error during memory consolidation: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)

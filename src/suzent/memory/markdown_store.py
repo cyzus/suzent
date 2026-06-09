@@ -13,6 +13,8 @@ Two-tier structure (inspired by OpenClaw):
 """
 
 import asyncio
+import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -31,21 +33,149 @@ class MarkdownMemoryStore:
     (via this class) operate on the same physical files.
     """
 
-    def __init__(self, base_dir: str):
+    def __init__(self, base_dir: str, notebook_dir: Optional[str] = None):
         """
         Initialize the markdown memory store.
 
         Args:
-            base_dir: Physical path to the memory directory
+            base_dir: Physical path to the operational memory directory
                       (e.g., .suzent/sandbox/shared/memory/)
+            notebook_dir: Physical path to the always-on notebook vault
+                      (defaults to CONFIG.notebook_dir, e.g. ~/.suzent/notebook).
         """
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
         # Daily logs live in a dedicated subdirectory so the root stays clean
         self.archive_dir = self.base_dir / "archive"
         self.archive_dir.mkdir(parents=True, exist_ok=True)
+        # The notebook vault (durable wiki) — always-on, separate from operational memory.
+        from suzent.config import CONFIG
+
+        self.notebook_dir = Path(notebook_dir or CONFIG.notebook_dir)
+        self.notebook_dir.mkdir(parents=True, exist_ok=True)
+        self.notebook_state_dir = self.notebook_dir / ".state"
+        self.notebook_state_dir.mkdir(parents=True, exist_ok=True)
         self._write_lock = asyncio.Lock()
-        logger.info(f"MarkdownMemoryStore initialized at {self.base_dir}")
+        logger.info(
+            f"MarkdownMemoryStore initialized at {self.base_dir} (notebook: {self.notebook_dir})"
+        )
+
+    # --- Notebook vault: pages, log.md, watermark ---
+
+    _NAV_FILES = {"schema.md", "index.md", "log.md", "SCHEMA.md", "INDEX.md", "LOG.md"}
+
+    def list_notebook_pages(self) -> List[Path]:
+        """All content pages in the vault (recursive *.md), excluding nav files + .state/."""
+        pages = []
+        for p in self.notebook_dir.rglob("*.md"):
+            if ".state" in p.parts:
+                continue
+            if p.parent == self.notebook_dir and p.name in self._NAV_FILES:
+                continue
+            pages.append(p)
+        return sorted(pages)
+
+    def notebook_rel(self, path: Path) -> str:
+        """Root-relative POSIX path of a vault file (the index `source_file` key)."""
+        return path.relative_to(self.notebook_dir).as_posix()
+
+    @property
+    def notebook_log_path(self) -> Path:
+        return self.notebook_dir / "log.md"
+
+    def read_notebook_log(self) -> str:
+        p = self.notebook_log_path
+        return p.read_text(encoding="utf-8") if p.exists() else ""
+
+    async def append_notebook_log(self, entry: str) -> None:
+        async with self._write_lock:
+            with open(self.notebook_log_path, "a", encoding="utf-8") as f:
+                f.write(entry.rstrip() + "\n")
+
+    def read_watermark(self) -> Optional[str]:
+        """Latest `watermark=YYYY-MM-DD` token in log.md, or None if absent."""
+        matches = re.findall(r"watermark=(\d{4}-\d{2}-\d{2})", self.read_notebook_log())
+        return matches[-1] if matches else None
+
+    async def write_watermark_entry(self, run_date: str, watermark: str) -> None:
+        """Append the authoritative consolidation entry (runner-owned; plan NEW-1/C5)."""
+        await self.append_notebook_log(
+            f"\n## [{run_date}] ingest | daily logs  watermark={watermark}"
+        )
+
+    # --- Recall log (usage signal for MEMORY.md promotion) ---
+
+    @property
+    def recall_log_path(self) -> Path:
+        return self.notebook_state_dir / "recall_log.jsonl"
+
+    def append_recall(self, snippet: str, source_type: str = "") -> None:
+        """Best-effort append of one retrieval event (never raises)."""
+        try:
+            line = json.dumps(
+                {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "snippet": (snippet or "")[:160],
+                    "source_type": source_type,
+                }
+            )
+            with open(self.recall_log_path, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        except Exception:
+            pass
+
+    def read_recalls(self) -> List[dict]:
+        out: List[dict] = []
+        p = self.recall_log_path
+        if not p.exists():
+            return out
+        for line in p.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    out.append(json.loads(line))
+                except Exception:
+                    continue
+        return out
+
+    def truncate_recalls(self) -> None:
+        try:
+            self.recall_log_path.write_text("", encoding="utf-8")
+        except Exception:
+            pass
+
+    # --- Tombstones (user-deleted facts the indexer must skip) ---
+
+    @property
+    def tombstones_path(self) -> Path:
+        return self.notebook_state_dir / "tombstones.jsonl"
+
+    @staticmethod
+    def _normalize(text: str) -> str:
+        return " ".join((text or "").lower().split())
+
+    async def append_tombstone(self, content: str) -> None:
+        async with self._write_lock:
+            with open(self.tombstones_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"content": self._normalize(content)}) + "\n")
+
+    def read_tombstones(self) -> set:
+        out: set = set()
+        p = self.tombstones_path
+        if not p.exists():
+            return out
+        for line in p.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    out.add(json.loads(line).get("content", ""))
+                except Exception:
+                    continue
+        return out
+
+    def is_tombstoned(self, content: str, tombstones: Optional[set] = None) -> bool:
+        ts = tombstones if tombstones is not None else self.read_tombstones()
+        return self._normalize(content) in ts
 
     # --- Daily Logs ---
 

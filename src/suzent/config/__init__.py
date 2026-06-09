@@ -277,6 +277,14 @@ def get_effective_volumes(custom_volumes: Optional[List[str]] = None) -> List[st
         skills_resolved = str(SKILLS_ROOT_DIR.resolve())
         volumes.append(f"{skills_resolved}:/mnt/skills")
 
+    # Always expose the notebook vault at /mnt/notebook so the agent can read/write
+    # durable knowledge (the dream consolidation agent + the "file a query result"
+    # flow). Defaults to CONFIG.notebook_dir unless the user mapped their own.
+    if not any(v.endswith(":/mnt/notebook") for v in volumes):
+        notebook_resolved = str(Path(CONFIG.notebook_dir).resolve())
+        Path(notebook_resolved).mkdir(parents=True, exist_ok=True)
+        volumes.append(f"{notebook_resolved}:/mnt/notebook")
+
     return volumes
 
 
@@ -322,6 +330,26 @@ class ConfigModel(BaseModel):
     memory_enabled: bool = False
     markdown_memory_enabled: bool = True
     extraction_model: Optional[str] = None
+
+    # --- Notebook vault + dream consolidation ---
+    notebook_dir: str = str(DATA_DIR / "notebook")
+    memory_consolidation_enabled: bool = True
+    memory_consolidation_min_hours: float = 24.0
+    memory_consolidation_min_facts: int = 20
+    memory_consolidation_interval_seconds: int = 1800
+    memory_consolidation_timeout_seconds: int = 600
+    memory_consolidation_max_days: int = 14
+    memory_consolidation_max_retries: int = 3
+    memory_consolidation_memory_max_lines: int = 200
+    memory_consolidation_model: Optional[str] = None
+    memory_dream_tools: List[str] = [
+        "ReadFileTool",
+        "WriteFileTool",
+        "EditFileTool",
+        "GlobTool",
+        "GrepTool",
+        "MemorySearchTool",
+    ]
 
     cron_presets: List[Dict[str, Any]] = []
     user_id: str = "default-user"

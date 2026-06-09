@@ -238,7 +238,6 @@ async def reindex_memories(request: Request) -> JSONResponse:
     """
     try:
         from suzent.memory.lifecycle import get_memory_manager
-        from suzent.memory.indexer import MarkdownIndexer
 
         manager = get_memory_manager()
         if not manager:
@@ -254,14 +253,22 @@ async def reindex_memories(request: Request) -> JSONResponse:
 
         clear_existing = body.get("clear_existing", False)
 
-        indexer = MarkdownIndexer()
-        stats = await indexer.reindex_from_markdown(
-            markdown_store=manager.markdown_store,
-            lancedb_store=manager.store,
-            embedding_gen=manager.embedding_gen,
-            user_id=CONFIG.user_id,
-            clear_existing=clear_existing,
-        )
+        # The indexer is the sole writer to LanceDB. clear_existing wipes and rebuilds
+        # from files (memory + notebook); otherwise we do an incremental pass.
+        if clear_existing:
+            stats = await manager._core_indexer.clear_and_full_reindex(
+                markdown_store=manager.markdown_store,
+                lancedb_store=manager.store,
+                embedding_gen=manager.embedding_gen,
+                user_id=CONFIG.user_id,
+            )
+        else:
+            stats = await manager._core_indexer.check_and_update(
+                markdown_store=manager.markdown_store,
+                lancedb_store=manager.store,
+                embedding_gen=manager.embedding_gen,
+                user_id=CONFIG.user_id,
+            )
 
         return JSONResponse(
             {
