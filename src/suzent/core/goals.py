@@ -1,50 +1,48 @@
 """
-Goal mode: persistent, self-continuing objectives ("Ralph loop").
+Goal mode: judge-driven automatic continuation on top of the project Goal system.
 
-A goal is a standing objective the agent works toward across multiple turns
-without the user re-prompting each time. After every non-heartbeat turn an
-auxiliary *judge* model (a single, stateless LLM call — never a full agent) is
-asked whether the goal is fully satisfied. If not, and the turn budget is not
-exhausted, the agent is automatically run again with a continuation prompt.
-
-State lives in ``chat.config["goal"]`` so it survives restarts and resumes,
-exactly like the heartbeat configuration. Control flow:
+The canonical goal store is ``GoalModel`` (project + chat scoped), also driven
+by the ``manage_goal`` tool, the per-turn ``plan_reminder_hook`` (which injects
+the active goal and increments ``turns_elapsed``), and surfaced in the frontend
+right sidebar. This module adds the piece that store lacks: a standing-goal
+*continuation loop* — after each non-heartbeat turn an auxiliary **judge** model
+(a single, stateless LLM call — never a full agent) decides whether the goal is
+satisfied, and if not, automatically runs the agent again until it is done or the
+turn budget is exhausted.
 
     /goal <text>            -> run_goal_step (turn 1)
     turn completes          -> maybe_continue_goal (judge)
-        verdict DONE        -> status = done
-        verdict CONTINUE    -> run_goal_step (turn N+1)
+        verdict DONE        -> status = completed
+        verdict CONTINUE    -> run_goal_step (next turn)
         budget exhausted    -> status = paused
 
-Any real user turn also passes through ``maybe_continue_goal``, so a manual
-message naturally preempts and then re-drives the loop.
+Turn counting is owned by ``plan_reminder_hook`` (it increments ``turns_elapsed``
+each turn); this module only *reads* the budget. State, status, and subgoals all
+live on ``GoalModel`` so the sidebar and the ``manage_goal`` tool stay in sync.
 """
 
 from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from typing import Optional
 
-from suzent.config import CONFIG
 from suzent.database import get_database
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
 
-GOAL_CONFIG_KEY = "goal"
-
-# Status values for a goal.
+# GoalModel statuses.
 STATUS_ACTIVE = "active"
 STATUS_PAUSED = "paused"
-STATUS_DONE = "done"
-STATUS_CLEARED = "cleared"
+STATUS_COMPLETED = "completed"
+STATUS_CANCELLED = "cancelled"
 
-# Consecutive judge parse failures tolerated before auto-pausing and asking the
-# user to configure a stronger judge model.
+# Consecutive judge parse failures tolerated before auto-pausing. Tracked in
+# memory (keyed by goal id) — it is a transient safety valve, not durable state.
 MAX_PARSE_FAILURES = 3
+_parse_failures: dict[int, int] = {}
 
 
 JUDGE_SYSTEM_PROMPT = (
@@ -59,71 +57,23 @@ JUDGE_SYSTEM_PROMPT = (
 )
 
 
-@dataclass
-class GoalState:
-    """Persistent state for a single chat's standing goal."""
+# ─── Goal resolution (canonical GoalModel store) ─────────────────────────────
 
-    objective: str
-    status: str = STATUS_ACTIVE
-    turn: int = 0
-    max_turns: int = 20
-    subgoals: list[str] = field(default_factory=list)
-    parse_failures: int = 0
 
-    def to_dict(self) -> dict:
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, data: dict) -> Optional["GoalState"]:
-        if not isinstance(data, dict) or not data.get("objective"):
+def resolve_goal(chat_id: str):
+    """Return (project_id, GoalModel) for the chat's active/paused goal, or None."""
+    try:
+        db = get_database()
+        project_id = db.get_chat_project_id(chat_id)
+        if not project_id:
             return None
-        return cls(
-            objective=str(data.get("objective", "")),
-            status=str(data.get("status", STATUS_ACTIVE)),
-            turn=int(data.get("turn", 0) or 0),
-            max_turns=int(data.get("max_turns", CONFIG.goals_max_turns) or 0),
-            subgoals=[str(s) for s in (data.get("subgoals") or [])],
-            parse_failures=int(data.get("parse_failures", 0) or 0),
-        )
-
-
-# ─── Persistence ───────────────────────────────────────────────────────────
-
-
-def get_goal(chat_id: str) -> Optional[GoalState]:
-    """Load the goal state for a chat, or None if none is set."""
-    try:
-        chat = get_database().get_chat(chat_id)
+        goal = db.get_goal(project_id, chat_id=chat_id)
+        if not goal:
+            return None
+        return project_id, goal
     except Exception as e:
-        logger.debug(f"[goal] get_goal failed for {chat_id}: {e}")
+        logger.debug(f"[goal] resolve_goal failed for {chat_id}: {e}")
         return None
-    if not chat:
-        return None
-    return GoalState.from_dict((chat.config or {}).get(GOAL_CONFIG_KEY))
-
-
-def save_goal(chat_id: str, state: GoalState) -> None:
-    """Persist goal state into ``chat.config['goal']``."""
-    try:
-        get_database().merge_chat_config(chat_id, {GOAL_CONFIG_KEY: state.to_dict()})
-    except Exception as e:
-        logger.warning(f"[goal] save_goal failed for {chat_id}: {e}")
-
-
-def clear_goal(chat_id: str) -> None:
-    """Remove the goal from a chat's config."""
-    try:
-        state = get_goal(chat_id)
-        if state is None:
-            return
-        state.status = STATUS_CLEARED
-        # Keep the record but mark it cleared so /goal status reads cleanly,
-        # then drop the heavy fields by overwriting with a minimal marker.
-        get_database().merge_chat_config(
-            chat_id, {GOAL_CONFIG_KEY: {"objective": "", "status": STATUS_CLEARED}}
-        )
-    except Exception as e:
-        logger.warning(f"[goal] clear_goal failed for {chat_id}: {e}")
 
 
 # ─── Judge (single stateless LLM call) ───────────────────────────────────────
@@ -209,19 +159,17 @@ async def judge_goal(
 # ─── Continuation loop ───────────────────────────────────────────────────────
 
 
-def _build_continuation_prompt(state: GoalState) -> str:
-    parts = [
-        f"[Goal mode — step {state.turn}/{state.max_turns}] "
-        "You are autonomously working toward a standing goal. Do not ask the user "
-        "for confirmation or wait for further input — take the next concrete action "
-        "yourself. When the goal is fully achieved, state clearly that it is complete.",
-        f"GOAL:\n{state.objective}",
-    ]
-    if state.subgoals:
-        numbered = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(state.subgoals))
-        parts.append("SUB-GOALS (all must be satisfied):\n" + numbered)
-    parts.append("Continue now with the next concrete step.")
-    return "\n\n".join(parts)
+CONTINUATION_PROMPT = (
+    "[Goal mode] You are autonomously continuing toward your active goal (shown "
+    "in the goal reminder above). Do not wait for the user — take the next "
+    "concrete action now. When the goal is fully achieved, call "
+    "manage_goal(action='clear'); if you cannot make progress, call "
+    "manage_goal(action='pause') and explain why."
+)
+
+
+def _budget_exhausted(goal) -> bool:
+    return bool(goal.max_turns) and goal.turns_elapsed >= goal.max_turns
 
 
 def _goal_config_override() -> dict:
@@ -249,8 +197,11 @@ async def run_goal_step(chat_id: str, user_id: str) -> None:
     """Run one autonomous turn toward the active goal, if appropriate."""
     from suzent.core.stream_registry import stream_controls
 
-    state = get_goal(chat_id)
-    if not state or state.status != STATUS_ACTIVE:
+    resolved = resolve_goal(chat_id)
+    if not resolved:
+        return
+    _project_id, goal = resolved
+    if goal.status != STATUS_ACTIVE:
         return
 
     # Another turn is already streaming for this chat (e.g. a real user message).
@@ -259,21 +210,22 @@ async def run_goal_step(chat_id: str, user_id: str) -> None:
         logger.debug(f"[goal] step skipped for {chat_id}: stream already active")
         return
 
-    if state.turn >= state.max_turns:
-        state.status = STATUS_PAUSED
-        save_goal(chat_id, state)
+    if _budget_exhausted(goal):
+        get_database().update_goal(goal.id, status=STATUS_PAUSED)
         notify_goal(
             chat_id,
-            f"⏸ Goal paused — {state.turn}/{state.max_turns} turns used. "
+            f"⏸ Goal paused — {goal.turns_elapsed}/{goal.max_turns} turns used. "
             "Use /goal resume to continue.",
         )
         return
 
-    state.turn += 1
-    save_goal(chat_id, state)
-    notify_goal(chat_id, f"↻ Continuing toward goal ({state.turn}/{state.max_turns})")
+    turns_label = (
+        f"{goal.turns_elapsed + 1}/{goal.max_turns}"
+        if goal.max_turns
+        else str(goal.turns_elapsed + 1)
+    )
+    notify_goal(chat_id, f"↻ Continuing toward goal ({turns_label})")
 
-    prompt = _build_continuation_prompt(state)
     try:
         from suzent.core.chat_processor import ChatProcessor
 
@@ -282,7 +234,7 @@ async def run_goal_step(chat_id: str, user_id: str) -> None:
             user_id=user_id,
             message_content="",
             config_override=_goal_config_override(),
-            system_reminders=[prompt],
+            system_reminders=[CONTINUATION_PROMPT],
         )
     except Exception as e:
         logger.error(f"[goal] step execution failed for {chat_id}: {e}")
@@ -295,8 +247,11 @@ async def maybe_continue_goal(
 
     Called after every non-heartbeat turn. A cheap no-op unless a goal is active.
     """
-    state = get_goal(chat_id)
-    if not state or state.status != STATUS_ACTIVE:
+    resolved = resolve_goal(chat_id)
+    if not resolved:
+        return
+    _project_id, goal = resolved
+    if goal.status != STATUS_ACTIVE:
         return
 
     # User interrupted this turn (steer / stop). Halt the loop but keep the goal
@@ -305,57 +260,67 @@ async def maybe_continue_goal(
         logger.debug(f"[goal] continuation halted for {chat_id}: turn was cancelled")
         return
 
+    db = get_database()
     verdict, reason, parse_failed = await judge_goal(
-        state.objective, state.subgoals, last_response
+        goal.objective, list(goal.subgoals or []), last_response
     )
 
     if parse_failed:
-        state.parse_failures += 1
-        if state.parse_failures >= MAX_PARSE_FAILURES:
-            state.status = STATUS_PAUSED
-            save_goal(chat_id, state)
+        count = _parse_failures.get(goal.id, 0) + 1
+        _parse_failures[goal.id] = count
+        if count >= MAX_PARSE_FAILURES:
+            _parse_failures.pop(goal.id, None)
+            db.update_goal(goal.id, status=STATUS_PAUSED)
             notify_goal(
                 chat_id,
                 "⏸ Goal paused — the judge model returned unparseable verdicts "
-                f"{state.parse_failures}× in a row. Configure a stronger 'cheap' "
-                "model, then /goal resume.",
+                f"{count}× in a row. Configure a stronger 'cheap' model, then "
+                "/goal resume.",
             )
             return
-        save_goal(chat_id, state)
         await run_goal_step(chat_id, user_id)  # fail open: keep going
         return
 
-    state.parse_failures = 0
+    _parse_failures.pop(goal.id, None)
 
     if verdict == "done":
-        state.status = STATUS_DONE
-        save_goal(chat_id, state)
+        db.update_goal(
+            goal.id,
+            status=STATUS_COMPLETED,
+            completed_at=datetime.now(timezone.utc),
+        )
         notify_goal(chat_id, f"✓ Goal achieved: {reason}")
         return
 
-    save_goal(chat_id, state)
+    if _budget_exhausted(goal):
+        db.update_goal(goal.id, status=STATUS_PAUSED)
+        notify_goal(
+            chat_id,
+            f"⏸ Goal paused — {goal.turns_elapsed}/{goal.max_turns} turns used. "
+            "Use /goal resume to continue.",
+        )
+        return
+
     await run_goal_step(chat_id, user_id)
 
 
-# ─── Display helpers ─────────────────────────────────────────────────────────
+# ─── Display helper (for /goal status) ───────────────────────────────────────
 
 
-def format_status(state: Optional[GoalState]) -> str:
-    """Render a human-readable status block for /goal status."""
-    if not state or not state.objective or state.status == STATUS_CLEARED:
+def format_status(goal) -> str:
+    """Render a human-readable status block for /goal status (takes a GoalModel)."""
+    if not goal or goal.status in (STATUS_COMPLETED, STATUS_CANCELLED):
         return "No active goal. Set one with `/goal <objective>`."
 
-    icon = {
-        STATUS_ACTIVE: "🎯",
-        STATUS_PAUSED: "⏸",
-        STATUS_DONE: "✓",
-    }.get(state.status, "🎯")
-
+    icon = {STATUS_ACTIVE: "🎯", STATUS_PAUSED: "⏸"}.get(goal.status, "🎯")
+    turns = f"{goal.turns_elapsed}/{goal.max_turns}" if goal.max_turns else str(
+        goal.turns_elapsed
+    )
     lines = [
-        f"{icon} **Goal** ({state.status}) — turn {state.turn}/{state.max_turns}",
-        f"  {state.objective}",
+        f"{icon} **Goal** ({goal.status}) — turn {turns}",
+        f"  {goal.objective}",
     ]
-    if state.subgoals:
+    if goal.subgoals:
         lines.append("  Sub-goals:")
-        lines.extend(f"    {i + 1}. {s}" for i, s in enumerate(state.subgoals))
+        lines.extend(f"    {i + 1}. {s}" for i, s in enumerate(goal.subgoals))
     return "\n".join(lines)

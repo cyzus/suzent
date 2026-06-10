@@ -1,22 +1,25 @@
-"""Goal-mode slash commands: /goal and /subgoal."""
+"""User-facing goal-mode slash commands: /goal and /subgoal.
+
+Thin wrappers over the canonical GoalModel store (same data the `manage_goal`
+tool and the right-sidebar read), plus the judge-driven continuation loop in
+``suzent.core.goals``. Gives the user direct stop/start control the agent tool
+and read-only sidebar don't provide.
+"""
 
 import typer
 
 from suzent.core.commands.base import register_command, CommandContext
 
-_RESERVED = {"status", "pause", "resume", "clear"}
-
 
 def _schedule_step(chat_id: str, user_id: str) -> None:
     """Kick off the first/next autonomous goal turn as a background task."""
     import uuid
+    import asyncio
     from suzent.core.goals import run_goal_step
     from suzent.core.task_registry import register_background_task
 
     coro = run_goal_step(chat_id, user_id)
     try:
-        import asyncio
-
         asyncio.create_task(
             register_background_task(
                 coro,
@@ -26,6 +29,12 @@ def _schedule_step(chat_id: str, user_id: str) -> None:
         )
     except Exception:
         coro.close()
+
+
+def _resolve_project_id(chat_id: str):
+    from suzent.database import get_database
+
+    return get_database().get_chat_project_id(chat_id)
 
 
 @register_command(
@@ -43,15 +52,10 @@ def handle_goal(
 ):
     async def _impl():
         from suzent.config import CONFIG
+        from suzent.database import get_database
         from suzent.core.goals import (
-            GoalState,
             STATUS_ACTIVE,
-            STATUS_DONE,
             STATUS_PAUSED,
-            STATUS_CLEARED,
-            get_goal,
-            save_goal,
-            clear_goal,
             format_status,
         )
 
@@ -61,50 +65,57 @@ def handle_goal(
         tokens = list(args or [])
         sub = tokens[0].lower() if tokens else "status"
 
+        db = get_database()
+        project_id = _resolve_project_id(chat_id)
+        if not project_id:
+            return "This chat is not linked to a project, so goals are unavailable."
+
         if not tokens or sub == "status":
-            return format_status(get_goal(chat_id))
+            return format_status(db.get_goal(project_id, chat_id=chat_id))
 
         if sub == "pause":
-            state = get_goal(chat_id)
-            if not state or state.status not in (STATUS_ACTIVE,):
+            goal = db.get_goal(project_id, chat_id=chat_id)
+            if not goal or goal.status != STATUS_ACTIVE:
                 return "No active goal to pause."
-            state.status = STATUS_PAUSED
-            save_goal(chat_id, state)
+            db.update_goal(goal.id, status=STATUS_PAUSED)
             return "⏸ Goal paused. Use `/goal resume` to continue."
 
         if sub == "resume":
-            state = get_goal(chat_id)
-            if not state or state.status == STATUS_CLEARED:
+            goal = db.get_goal(project_id, chat_id=chat_id)
+            if not goal:
                 return "No goal to resume. Set one with `/goal <objective>`."
-            if state.status == STATUS_DONE:
-                return "Goal already completed. Set a new one with `/goal <objective>`."
-            state.status = STATUS_ACTIVE
-            state.turn = 0
-            state.parse_failures = 0
-            save_goal(chat_id, state)
+            db.update_goal(goal.id, status=STATUS_ACTIVE, turns_elapsed=0)
             _schedule_step(chat_id, user_id)
-            return f"▶ Goal resumed (max {state.max_turns} turns):\n  {state.objective}"
+            return f"▶ Goal resumed:\n  {goal.objective}"
 
         if sub == "clear":
-            clear_goal(chat_id)
+            if not db.get_goal(project_id, chat_id=chat_id):
+                return "No active goal to clear."
+            db.clear_goal(project_id, chat_id=chat_id)
             return "🗑 Goal cleared."
 
         # Otherwise the whole argument is a new objective.
         objective = " ".join(tokens).strip()
         if not objective:
             return "Usage: `/goal <objective>`"
-        state = GoalState(
-            objective=objective,
-            status=STATUS_ACTIVE,
-            turn=0,
-            max_turns=CONFIG.goals_max_turns,
-            subgoals=[],
-        )
-        save_goal(chat_id, state)
+        max_turns = CONFIG.goals_max_turns
+        existing = db.get_goal(project_id, chat_id=chat_id)
+        if existing:
+            db.update_goal(
+                existing.id,
+                objective=objective,
+                status=STATUS_ACTIVE,
+                turns_elapsed=0,
+                max_turns=max_turns,
+            )
+        else:
+            db.create_goal(
+                project_id, objective, chat_id=chat_id, max_turns=max_turns
+            )
         _schedule_step(chat_id, user_id)
         return (
             f"🎯 Goal set: {objective}\n"
-            f"Working autonomously toward it (max {state.max_turns} turns). "
+            f"Working autonomously toward it (max {max_turns} turns). "
             "Use `/goal status` to check, `/goal pause` to stop."
         )
 
@@ -125,44 +136,48 @@ def handle_subgoal(
     ),
 ):
     async def _impl():
-        from suzent.core.goals import STATUS_CLEARED, get_goal, save_goal
+        from suzent.database import get_database
 
         cmd_ctx: CommandContext = ctx.obj
         chat_id = cmd_ctx.chat_id
         tokens = list(args or [])
 
-        state = get_goal(chat_id)
-        if not state or state.status == STATUS_CLEARED or not state.objective:
+        db = get_database()
+        project_id = _resolve_project_id(chat_id)
+        if not project_id:
+            return "This chat is not linked to a project, so goals are unavailable."
+
+        goal = db.get_goal(project_id, chat_id=chat_id)
+        if not goal:
             return "No active goal. Set one first with `/goal <objective>`."
 
+        subgoals = list(goal.subgoals or [])
+
         if not tokens:
-            if not state.subgoals:
+            if not subgoals:
                 return "No sub-goals. Add one with `/subgoal <text>`."
-            listing = "\n".join(
-                f"  {i + 1}. {s}" for i, s in enumerate(state.subgoals)
-            )
+            listing = "\n".join(f"  {i + 1}. {s}" for i, s in enumerate(subgoals))
             return f"Sub-goals for the active goal:\n{listing}"
 
         sub = tokens[0].lower()
 
         if sub == "clear":
-            state.subgoals = []
-            save_goal(chat_id, state)
+            db.update_goal(goal.id, subgoals=[])
             return "🗑 All sub-goals cleared."
 
         if sub == "remove":
             if len(tokens) < 2 or not tokens[1].isdigit():
                 return "Usage: `/subgoal remove <N>`"
             idx = int(tokens[1]) - 1
-            if idx < 0 or idx >= len(state.subgoals):
+            if idx < 0 or idx >= len(subgoals):
                 return f"No sub-goal #{tokens[1]}."
-            removed = state.subgoals.pop(idx)
-            save_goal(chat_id, state)
+            removed = subgoals.pop(idx)
+            db.update_goal(goal.id, subgoals=subgoals)
             return f"🗑 Removed sub-goal: {removed}"
 
         text = " ".join(tokens).strip()
-        state.subgoals.append(text)
-        save_goal(chat_id, state)
-        return f"➕ Sub-goal added (#{len(state.subgoals)}): {text}"
+        subgoals.append(text)
+        db.update_goal(goal.id, subgoals=subgoals)
+        return f"➕ Sub-goal added (#{len(subgoals)}): {text}"
 
     return _impl

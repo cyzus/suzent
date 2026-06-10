@@ -210,7 +210,13 @@ error in `src/` and verify `ruff check` passes"*.
 4. When the judge says the goal is met, you see `✓ Goal achieved: <reason>`. When the budget runs out, you see `⏸ Goal paused — N/max turns used`.
 5. **Any real message you send preempts the loop** — your turn runs first, then the judge re-evaluates from there.
 
-Goal state lives in the chat's config, so it survives restarts and resumes.
+Goals are stored in the project `GoalModel` (project + chat scoped) — the same
+record the agent's `manage_goal` tool writes and the **right-sidebar Goal tab**
+displays (objective, status, turn progress, sub-goals). Setting a goal lights up
+the sidebar automatically, and state survives restarts and resumes. The per-turn
+`plan_reminder_hook` injects the active goal into context and advances the turn
+counter; this judge loop layers automatic continuation on top of that.
+
 The judge **fails open**: if the judge call errors or returns something
 unparseable, the loop continues (the turn budget is the real safety backstop).
 After 3 consecutive unparseable verdicts the goal auto-pauses and asks you to

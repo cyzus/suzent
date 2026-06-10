@@ -1,19 +1,33 @@
 """Unit tests for goal-mode pure logic (no DB / no network)."""
 
 import asyncio
+from types import SimpleNamespace
 
 from suzent.core.goals import (
-    GoalState,
     STATUS_ACTIVE,
-    STATUS_CLEARED,
-    STATUS_DONE,
+    STATUS_CANCELLED,
+    STATUS_COMPLETED,
     STATUS_PAUSED,
-    _build_continuation_prompt,
+    _budget_exhausted,
     _build_judge_user_prompt,
     _parse_verdict,
     format_status,
     judge_goal,
 )
+
+
+def _goal(**kw):
+    """Build a GoalModel-like stub for the pure display/budget helpers."""
+    defaults = dict(
+        id=1,
+        objective="do a thing",
+        status=STATUS_ACTIVE,
+        turns_elapsed=0,
+        max_turns=20,
+        subgoals=[],
+    )
+    defaults.update(kw)
+    return SimpleNamespace(**defaults)
 
 
 # ─── _parse_verdict ──────────────────────────────────────────────────────────
@@ -56,34 +70,20 @@ def test_parse_verdict_garbage():
     assert _parse_verdict("not json at all") is None
 
 
-# ─── GoalState serialization ────────────────────────────────────────────────
+# ─── _budget_exhausted ───────────────────────────────────────────────────────
 
 
-def test_goalstate_roundtrip():
-    state = GoalState(
-        objective="port feature X",
-        status=STATUS_ACTIVE,
-        turn=3,
-        max_turns=20,
-        subgoals=["tests pass", "CI green"],
-        parse_failures=1,
-    )
-    restored = GoalState.from_dict(state.to_dict())
-    assert restored == state
+def test_budget_exhausted_true_when_at_limit():
+    assert _budget_exhausted(_goal(turns_elapsed=20, max_turns=20)) is True
+    assert _budget_exhausted(_goal(turns_elapsed=21, max_turns=20)) is True
 
 
-def test_goalstate_from_dict_requires_objective():
-    assert GoalState.from_dict({"status": "active"}) is None
-    assert GoalState.from_dict({}) is None
-    assert GoalState.from_dict(None) is None
+def test_budget_not_exhausted_below_limit():
+    assert _budget_exhausted(_goal(turns_elapsed=5, max_turns=20)) is False
 
 
-def test_goalstate_from_dict_defaults():
-    state = GoalState.from_dict({"objective": "do a thing"})
-    assert state.status == STATUS_ACTIVE
-    assert state.turn == 0
-    assert state.subgoals == []
-    assert state.parse_failures == 0
+def test_budget_never_exhausted_without_max_turns():
+    assert _budget_exhausted(_goal(turns_elapsed=999, max_turns=None)) is False
 
 
 # ─── format_status ───────────────────────────────────────────────────────────
@@ -93,43 +93,36 @@ def test_format_status_none():
     assert "No active goal" in format_status(None)
 
 
-def test_format_status_cleared():
-    state = GoalState(objective="", status=STATUS_CLEARED)
-    assert "No active goal" in format_status(state)
+def test_format_status_completed_and_cancelled_read_as_no_goal():
+    assert "No active goal" in format_status(_goal(status=STATUS_COMPLETED))
+    assert "No active goal" in format_status(_goal(status=STATUS_CANCELLED))
 
 
 def test_format_status_active_with_subgoals():
-    state = GoalState(
-        objective="fix lints",
-        status=STATUS_ACTIVE,
-        turn=2,
-        max_turns=10,
-        subgoals=["ruff clean", "mypy clean"],
+    out = format_status(
+        _goal(
+            objective="fix lints",
+            status=STATUS_ACTIVE,
+            turns_elapsed=2,
+            max_turns=10,
+            subgoals=["ruff clean", "mypy clean"],
+        )
     )
-    out = format_status(state)
     assert "2/10" in out
     assert "fix lints" in out
     assert "ruff clean" in out
     assert "mypy clean" in out
 
 
-def test_format_status_done_icon():
-    state = GoalState(objective="x", status=STATUS_DONE, turn=5, max_turns=20)
-    assert "✓" in format_status(state)
-
-
 def test_format_status_paused_icon():
-    state = GoalState(objective="x", status=STATUS_PAUSED, turn=20, max_turns=20)
-    assert "⏸" in format_status(state)
+    assert "⏸" in format_status(_goal(status=STATUS_PAUSED, turns_elapsed=20, max_turns=20))
 
 
-# ─── prompt builders ─────────────────────────────────────────────────────────
+# ─── judge prompt builder ────────────────────────────────────────────────────
 
 
 def test_judge_prompt_includes_subgoals():
-    prompt = _build_judge_user_prompt(
-        "main goal", ["sub a", "sub b"], "the response"
-    )
+    prompt = _build_judge_user_prompt("main goal", ["sub a", "sub b"], "the response")
     assert "main goal" in prompt
     assert "1. sub a" in prompt
     assert "2. sub b" in prompt
@@ -140,14 +133,6 @@ def test_judge_prompt_truncates_long_response():
     prompt = _build_judge_user_prompt("g", [], "x" * 9000)
     # Response is capped at 4000 chars in the prompt body.
     assert "x" * 4001 not in prompt
-
-
-def test_continuation_prompt_includes_step_and_objective():
-    state = GoalState(objective="ship it", turn=4, max_turns=12, subgoals=["a"])
-    prompt = _build_continuation_prompt(state)
-    assert "step 4/12" in prompt
-    assert "ship it" in prompt
-    assert "1. a" in prompt
 
 
 # ─── judge_goal fail-open semantics ──────────────────────────────────────────

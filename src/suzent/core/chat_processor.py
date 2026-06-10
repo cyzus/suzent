@@ -1127,10 +1127,10 @@ class ChatProcessor:
             # indexed DB read) when no goal is active; never fires for heartbeats.
             if not is_heartbeat:
                 try:
-                    from suzent.core.goals import get_goal
+                    from suzent.core.goals import resolve_goal
 
-                    goal_state = get_goal(chat_id)
-                    if goal_state and goal_state.status == "active":
+                    resolved_goal = resolve_goal(chat_id)
+                    if resolved_goal and resolved_goal[1].status == "active":
                         from suzent.core.goals import maybe_continue_goal
 
                         was_cancelled = bool(
