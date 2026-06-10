@@ -2,6 +2,7 @@
 Top-level CLI commands: start, doctor, update, upgrade, setup-build-tools.
 """
 
+import csv
 import io
 import json
 import os
@@ -25,6 +26,18 @@ IS_WINDOWS = sys.platform == "win32"
 _REPO = "cyzus/suzent"
 _BIN_DIR = "bin"
 _UPDATE_CHECK_TTL_SECONDS = 24 * 60 * 60
+
+
+def _is_development_workspace(root: Path) -> bool:
+    """Return True for source checkouts that are not bootstrapped installs."""
+    return not (root / ".suzent-bootstrap-complete").exists()
+
+
+def _backend_sync_args(root: Path) -> list[str]:
+    args = ["uv", "sync", "--extra", "social"]
+    if _is_development_workspace(root):
+        args.extend(["--extra", "dev"])
+    return args
 
 
 def _get_ui_binary(root: Path) -> Path | None:
@@ -519,6 +532,63 @@ def kill_process(pid: int):
         subprocess.run(["kill", "-9", str(pid)], check=True)
 
 
+def _windows_image_pids(image_name: str, *, exclude_pid: int) -> list[int]:
+    if not IS_WINDOWS:
+        return []
+    result = subprocess.run(
+        ["tasklist", "/FI", f"IMAGENAME eq {image_name}", "/FO", "CSV", "/NH"],
+        capture_output=True,
+        text=True,
+    )
+    pids: list[int] = []
+    for row in csv.reader(result.stdout.splitlines()):
+        if len(row) < 2:
+            continue
+        try:
+            pid = int(row[1])
+        except ValueError:
+            continue
+        if pid != exclude_pid:
+            pids.append(pid)
+    return pids
+
+
+def _windows_suzent_backend_pids(root: Path, *, exclude_pid: int) -> list[int]:
+    if not IS_WINDOWS:
+        return []
+    root_text = str(root.resolve()).replace("'", "''")
+    script = (
+        "$ErrorActionPreference = 'SilentlyContinue'; "
+        f"$root = '{root_text}'; "
+        f"$current = {exclude_pid}; "
+        "$procs = Get-CimInstance Win32_Process | Where-Object { "
+        "$_.ProcessId -ne $current -and "
+        "$_.CommandLine -like '*suzent.server*' -and "
+        '$_.CommandLine -like "*$root*" '
+        "}; "
+        "$procs | ForEach-Object { $_.ProcessId }"
+    )
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", script],
+        capture_output=True,
+        text=True,
+    )
+    pids: list[int] = []
+    for line in result.stdout.splitlines():
+        try:
+            pid = int(line.strip())
+        except ValueError:
+            continue
+        if pid != exclude_pid:
+            pids.append(pid)
+    return pids
+
+
+def _stop_windows_process(pid: int, label: str) -> None:
+    typer.echo(f"  • Stopping running {label} (PID {pid})...")
+    subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+
+
 def run_command(
     cmd: list[str], cwd: Path = None, check: bool = True, shell_on_windows: bool = False
 ):
@@ -832,31 +902,24 @@ def register_commands(app: typer.Typer):
         else:
             typer.echo("\n⚠️  Some tools are missing. Please install them.")
 
-    def _kill_other_suzent_processes() -> None:
-        """Terminate any running suzent.exe processes (except this one) before update."""
+    def _kill_other_suzent_processes(root: Path) -> None:
+        """Terminate running Suzent UI/backend processes before dependency sync."""
         if not IS_WINDOWS:
             return
         my_pid = os.getpid()
+
         try:
-            result = subprocess.run(
-                ["tasklist", "/FI", "IMAGENAME eq suzent.exe", "/FO", "CSV", "/NH"],
-                capture_output=True,
-                text=True,
-            )
-            for line in result.stdout.strip().splitlines():
-                parts = [p.strip('"') for p in line.split('","')]
-                if len(parts) < 2:
-                    continue
-                try:
-                    pid = int(parts[1])
-                except ValueError:
-                    continue
-                if pid == my_pid:
-                    continue
-                typer.echo(f"  • Stopping running suzent process (PID {pid})...")
-                subprocess.run(
-                    ["taskkill", "/F", "/PID", str(pid)], capture_output=True
-                )
+            for pid in _windows_image_pids("suzent.exe", exclude_pid=my_pid):
+                _stop_windows_process(pid, "suzent process")
+        except Exception:
+            pass
+
+        try:
+            backend_pids = _windows_suzent_backend_pids(root, exclude_pid=my_pid)
+            for pid in backend_pids:
+                _stop_windows_process(pid, "suzent backend")
+            if backend_pids:
+                time.sleep(1)
         except Exception:
             pass
 
@@ -916,18 +979,20 @@ def register_commands(app: typer.Typer):
             if not sh_shim.exists():
                 sh_shim.write_text("#!/bin/sh\n# Placeholder\n")
 
-        typer.echo("  • Updating backend dependencies with social channel support...")
+        sync_args = _backend_sync_args(root)
+        sync_label = " ".join(sync_args)
+        typer.echo(f"  • Updating backend dependencies ({sync_label})...")
         # On Windows, the running suzent.exe in .venv/Scripts/ is locked by the OS.
         # uv sync will fail trying to remove it. Workaround: kill other suzent
         # processes first, then rename the exe out of the way — Windows allows
         # renaming a running executable even though it can't delete it.
         # Retry the rename a few times to handle transient AV scanner locks (error 32).
         _renamed_exe: Path | None = None
+        _kill_other_suzent_processes(root)
         if IS_WINDOWS:
             venv_exe = root / ".venv" / "Scripts" / "suzent.exe"
             bak_exe = root / ".venv" / "Scripts" / "suzent.exe.bak"
             if venv_exe.exists():
-                _kill_other_suzent_processes()
                 # Remove any previous leftover .bak
                 if bak_exe.exists():
                     try:
@@ -944,13 +1009,9 @@ def register_commands(app: typer.Typer):
                             time.sleep(1)
 
         try:
-            run_command(
-                ["uv", "sync", "--extra", "social"], cwd=root, shell_on_windows=True
-            )
+            run_command(sync_args, cwd=root, shell_on_windows=True)
         except subprocess.CalledProcessError:
-            typer.echo(
-                "  ❌ Backend dependency update failed (uv sync --extra social)."
-            )
+            typer.echo(f"  ❌ Backend dependency update failed ({sync_label}).")
             # Try to restore the renamed exe so the CLI still works
             if _renamed_exe and _renamed_exe.exists():
                 try:

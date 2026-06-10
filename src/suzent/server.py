@@ -969,32 +969,41 @@ if __name__ == "__main__":
                     os._exit(0)
 
             def monitor_parent(pid):
-                try:
-                    import psutil
-                    import time
+                import subprocess
+                import time
 
-                    logger.info(f"Starting parent monitor for PID {pid}")
-                    pid_exists = getattr(psutil, "pid_exists", None)
-                    if pid_exists is None:
-                        logger.warning(
-                            "psutil.pid_exists unavailable; parent monitoring disabled "
-                            "(relying on stdin monitor)."
-                        )
+                logger.info(f"Starting parent monitor for PID {pid}")
+
+                while True:
+                    try:
+                        if sys.platform == "win32":
+                            result = subprocess.run(
+                                [
+                                    "tasklist",
+                                    "/FI",
+                                    f"PID eq {pid}",
+                                    "/FO",
+                                    "CSV",
+                                    "/NH",
+                                ],
+                                capture_output=True,
+                                text=True,
+                                check=False,
+                            )
+                            exists = str(pid) in result.stdout
+                        else:
+                            os.kill(pid, 0)
+                            exists = True
+                    except OSError:
+                        exists = False
+                    except Exception as e:
+                        logger.error(f"Parent monitor failed: {e}")
                         return
 
-                    while True:
-                        if not pid_exists(pid):
-                            logger.critical(
-                                f"Parent process {pid} died. Shutting down."
-                            )
-                            os._exit(0)
-                        time.sleep(1)
-                except ImportError:
-                    logger.warning(
-                        "psutil not found, parent monitoring disabled (rely on stdin)."
-                    )
-                except Exception as e:
-                    logger.error(f"Parent monitor failed: {e}")
+                    if not exists:
+                        logger.critical(f"Parent process {pid} died. Shutting down.")
+                        os._exit(0)
+                    time.sleep(1)
 
             parent_pid = os.getppid()
             threading.Thread(target=monitor_stdin, daemon=True).start()

@@ -85,11 +85,24 @@ fn check_for_update() -> Result<String, String> {
 }
 
 #[tauri::command]
-fn start_update_and_restart(app_handle: tauri::AppHandle) -> Result<(), String> {
+fn start_update_and_restart(
+    app_handle: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<(), String> {
     let repo_dir = backend::find_install_workspace_dir();
     let uv_exe = backend::find_uv();
     let ui_exe = find_relaunch_exe(&repo_dir).map_err(|e| e.to_string())?;
     let script = write_update_script(&repo_dir, &uv_exe, &ui_exe)?;
+
+    {
+        let mut backend_guard = state
+            .backend
+            .lock()
+            .map_err(|_| "Failed to lock backend state".to_string())?;
+        if let Some(mut backend) = backend_guard.take() {
+            backend.stop();
+        }
+    }
 
     spawn_update_script(&script)?;
 
