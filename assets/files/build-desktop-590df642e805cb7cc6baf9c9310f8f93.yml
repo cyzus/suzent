@@ -48,15 +48,23 @@ jobs:
           - os: windows-latest
             asset: suzent-windows-x86_64.exe
             binary: src-tauri/target/release/suzent.exe
+            installer_asset: suzent-installer-windows-x86_64.exe
+            installer_binary: apps/suzent-installer/target/release/suzent-installer.exe
           - os: macos-latest
             asset: suzent-macos-aarch64
             binary: src-tauri/target/release/suzent
+            installer_asset: suzent-installer-macos-aarch64
+            installer_binary: apps/suzent-installer/target/release/suzent-installer
           - os: macos-13
             asset: suzent-macos-x86_64
             binary: src-tauri/target/release/suzent
+            installer_asset: suzent-installer-macos-x86_64
+            installer_binary: apps/suzent-installer/target/release/suzent-installer
           - os: ubuntu-22.04
             asset: suzent-linux-x86_64
             binary: src-tauri/target/release/suzent
+            installer_asset: suzent-installer-linux-x86_64
+            installer_binary: apps/suzent-installer/target/release/suzent-installer
 
     runs-on: ${{ matrix.os }}
 
@@ -89,15 +97,24 @@ jobs:
       - name: Install Tauri JS deps
         run: cd src-tauri && npm ci
 
-      - name: Build
+      - name: Install installer JS deps
+        run: cd apps/suzent-installer && npm ci
+
+      - name: Build main app
         run: cd src-tauri && npm run build:dist
 
-      - name: Upload binary to Release
+      - name: Build installer app
+        run: cd apps/suzent-installer && npm run build
+
+      - name: Upload binaries to Release
         if: github.event_name == 'release' || github.event_name == 'push'
         shell: bash
         run: |
           cp "${{ matrix.binary }}" "${{ matrix.asset }}"
+          cp "${{ matrix.installer_binary }}" "${{ matrix.installer_asset }}"
           gh release upload "${{ needs.create-release.outputs.tag_name }}" \
-            "${{ matrix.asset }}" --clobber
+            "${{ matrix.asset }}" \
+            "${{ matrix.installer_asset }}" \
+            --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
