@@ -332,6 +332,35 @@ def _score_mention_match(
     return (3, lowered_path)
 
 
+def _prioritize_requested_roots(
+    roots: list[tuple[str, Path]], requested_volumes: list[str] | None
+) -> list[tuple[str, Path]]:
+    if not requested_volumes:
+        return roots
+
+    requested_mounts: set[str] = set()
+    for volume in requested_volumes:
+        parsed = PathResolver.parse_volume_string(volume)
+        if not parsed:
+            continue
+        _, container_path = parsed
+        normalized_mount = container_path.replace("\\", "/").strip()
+        if not normalized_mount.startswith("/"):
+            normalized_mount = f"/{normalized_mount}"
+        requested_mounts.add(normalized_mount.rstrip("/") or "/")
+
+    if not requested_mounts:
+        return roots
+
+    return sorted(
+        roots,
+        key=lambda item: (
+            item[0].rstrip("/") not in requested_mounts,
+            item[0].lower(),
+        ),
+    )
+
+
 async def search_file_mentions(request: Request) -> JSONResponse:
     """Search mounted sandbox files for chat input @ mentions."""
 
@@ -356,7 +385,9 @@ async def search_file_mentions(request: Request) -> JSONResponse:
 
     try:
         resolver = _get_resolver_for_request(chat_id, override_volumes=override_volumes)
-        roots = resolver.get_virtual_roots()
+        roots = _prioritize_requested_roots(
+            resolver.get_virtual_roots(), override_volumes
+        )
         results: list[dict] = []
         seen_virtual_paths: set[str] = set()
         visited = 0

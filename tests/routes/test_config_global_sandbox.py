@@ -12,12 +12,12 @@ def test_save_global_sandbox_config_persists_and_updates_runtime(monkeypatch):
 
     monkeypatch.setattr(
         config_routes,
-        "_load_default_config_file",
-        lambda: {"TITLE": "SUZENT", "SANDBOX_VOLUMES": ["C:/old:/mnt/old"]},
+        "_load_local_config_file",
+        lambda: {"title": "SUZENT", "sandbox_volumes": ["C:/old:/mnt/old"]},
     )
     monkeypatch.setattr(
         config_routes,
-        "_save_default_config_file",
+        "_save_local_config_file",
         lambda cfg: captured.update(cfg),
     )
 
@@ -30,7 +30,7 @@ def test_save_global_sandbox_config_persists_and_updates_runtime(monkeypatch):
     payload = response.json()
     assert payload["success"] is True
     assert payload["globalSandboxVolumes"] == ["C:/data:/mnt/data"]
-    assert captured["SANDBOX_VOLUMES"] == ["C:/data:/mnt/data"]
+    assert captured["sandbox_volumes"] == ["C:/data:/mnt/data"]
     assert config_routes.CONFIG.sandbox_volumes == ["C:/data:/mnt/data"]
 
 
