@@ -1122,6 +1122,34 @@ class ChatProcessor:
                     # registration bypasses max_concurrent but still respects shutdown.
                     asyncio.create_task(_run_post_processing())
 
+            # 10. Goal-mode continuation. After a normal turn, let the judge decide
+            # whether to auto-continue toward a standing goal. Cheap no-op (one
+            # indexed DB read) when no goal is active; never fires for heartbeats.
+            if not is_heartbeat:
+                try:
+                    from suzent.core.goals import resolve_goal
+
+                    resolved_goal = resolve_goal(chat_id)
+                    if resolved_goal and resolved_goal[1].status == "active":
+                        from suzent.core.goals import maybe_continue_goal
+
+                        was_cancelled = bool(
+                            getattr(deps, "cancel_event", None)
+                            and deps.cancel_event.is_set()
+                        )
+                        await register_background_task(
+                            maybe_continue_goal(
+                                chat_id,
+                                user_id,
+                                full_response.strip(),
+                                was_cancelled,
+                            ),
+                            task_id=f"goal_continue_{chat_id}_{uuid.uuid4().hex}",
+                            description=f"Goal continuation for chat {chat_id}",
+                        )
+                except Exception as e:
+                    logger.debug(f"[goal] continuation scheduling skipped: {e}")
+
     async def process_steer(
         self,
         chat_id: str,

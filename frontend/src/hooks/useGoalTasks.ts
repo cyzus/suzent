@@ -12,6 +12,7 @@ interface GoalTasksContextValue {
   goal: Goal | null;
   tasks: Task[];
   refresh: (projectId?: string | null, chatId?: string | null) => Promise<void>;
+  goalAction: (action: 'pause' | 'resume' | 'clear') => Promise<void>;
   // Project-scoped (kanban tab)
   kanban: KanbanData | null;
   refreshKanban: (projectId?: string | null) => Promise<void>;
@@ -47,6 +48,25 @@ export const GoalTasksProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (tasksRes.ok) setTasks(await tasksRes.json());
     } catch (err) {
       console.warn('Failed to fetch goal/tasks:', err);
+    }
+  }, []);
+
+  const goalAction = useCallback(async (action: 'pause' | 'resume' | 'clear') => {
+    const pid = currentProjectIdRef.current;
+    const cid = currentChatIdRef.current;
+    if (!pid || !cid) return;
+    try {
+      const res = await fetch(`${getApiBase()}/project/goal/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: pid, chat_id: cid, action }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setGoal(updated && updated.id ? (updated as Goal) : null);
+      }
+    } catch (err) {
+      console.warn('Failed to update goal:', err);
     }
   }, []);
 
@@ -116,8 +136,8 @@ export const GoalTasksProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const contextValue = React.useMemo(
-    () => ({ goal, tasks, refresh, kanban, refreshKanban, updateTask, createTask, deleteTask }),
-    [goal, tasks, refresh, kanban, refreshKanban, updateTask, createTask, deleteTask],
+    () => ({ goal, tasks, refresh, goalAction, kanban, refreshKanban, updateTask, createTask, deleteTask }),
+    [goal, tasks, refresh, goalAction, kanban, refreshKanban, updateTask, createTask, deleteTask],
   );
 
   return React.createElement(GoalTasksContext.Provider, { value: contextValue }, children);

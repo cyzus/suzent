@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Goal, Task, GoalStatus, TaskStatus } from '../../types/api';
 import { useI18n } from '../../i18n';
+import { useGoalTasks } from '../../hooks/useGoalTasks';
 import { BrutalButton } from '../BrutalButton';
 
 interface GoalTaskViewProps {
@@ -67,7 +68,18 @@ function TaskCheck({ status }: { status: TaskStatus }) {
 
 export const GoalTaskView: React.FC<GoalTaskViewProps> = ({ goal, tasks, onOpenBoard, projectTaskCount }) => {
   const { t } = useI18n();
+  const { goalAction } = useGoalTasks();
   const [subgoalsExpanded, setSubgoalsExpanded] = React.useState(true);
+  const [busy, setBusy] = React.useState(false);
+
+  const runGoalAction = React.useCallback(async (action: 'pause' | 'resume' | 'clear') => {
+    setBusy(true);
+    try {
+      await goalAction(action);
+    } finally {
+      setBusy(false);
+    }
+  }, [goalAction]);
 
   const activeTasks = tasks.filter(t => t.status !== 'cancelled');
   const completed = tasks.filter(t => t.status === 'completed').length;
@@ -127,6 +139,22 @@ export const GoalTaskView: React.FC<GoalTaskViewProps> = ({ goal, tasks, onOpenB
                     ))}
                   </ul>
                 )}
+              </div>
+            )}
+            {(goal.status === 'active' || goal.status === 'paused') && (
+              <div className="flex gap-1.5 pt-0.5">
+                {goal.status === 'active' ? (
+                  <BrutalButton size="sm" disabled={busy} onClick={() => runGoalAction('pause')}>
+                    ⏸ {t('goal.pause')}
+                  </BrutalButton>
+                ) : (
+                  <BrutalButton size="sm" disabled={busy} onClick={() => runGoalAction('resume')}>
+                    ▶ {t('goal.resume')}
+                  </BrutalButton>
+                )}
+                <BrutalButton size="sm" disabled={busy} onClick={() => runGoalAction('clear')}>
+                  ✕ {t('goal.clear')}
+                </BrutalButton>
               </div>
             )}
           </div>

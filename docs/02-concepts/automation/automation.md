@@ -195,6 +195,61 @@ suzent heartbeat run -c <chat-id>
 | PUT | `/heartbeat/md` | Update HEARTBEAT.md content |
 | PUT | `/heartbeat/interval` | Set interval (`{"interval_minutes": N}`) |
 
+## Goal Mode
+
+Goal mode lets the agent pursue a standing objective across many turns without
+you re-prompting each step — our take on the "Ralph loop". Use it for tasks
+where "done" is well-defined and you want to walk away, e.g. *"Fix every lint
+error in `src/` and verify `ruff check` passes"*.
+
+### How It Works
+
+1. You set a goal with `/goal <objective>`. The agent immediately starts working on it (turn 1).
+2. After each turn, an auxiliary **judge** model (a single, cheap, stateless LLM call — not a full agent) decides whether the goal is fully satisfied.
+3. If not, and the turn budget isn't exhausted, the agent is automatically run again with a continuation prompt — you'll see `↻ Continuing toward goal (N/max)` in the status bar.
+4. When the judge says the goal is met, you see `✓ Goal achieved: <reason>`. When the budget runs out, you see `⏸ Goal paused — N/max turns used`.
+5. **Any real message you send preempts the loop** — your turn runs first, then the judge re-evaluates from there.
+
+Goals are stored in the project `GoalModel` (project + chat scoped) — the same
+record the agent's `manage_goal` tool writes and the **right-sidebar Goal tab**
+displays (objective, status, turn progress, sub-goals). The sidebar also exposes
+**Pause / Resume / Clear** buttons (via `POST /project/goal/action`) so you can
+control the loop without typing a command — Resume re-enters the continuation
+loop exactly like `/goal resume`. Setting a goal lights up the sidebar
+automatically, and state survives restarts and resumes. The per-turn
+`plan_reminder_hook` injects the active goal into context and advances the turn
+counter; this judge loop layers automatic continuation on top of that.
+
+The judge **fails open**: if the judge call errors or returns something
+unparseable, the loop continues (the turn budget is the real safety backstop).
+After 3 consecutive unparseable verdicts the goal auto-pauses and asks you to
+configure a stronger `cheap` role model.
+
+Autonomous goal turns auto-approve tools so the agent can act unattended.
+
+### Commands
+
+| Command | Action |
+|---|---|
+| `/goal <objective>` | Set a goal and start working toward it |
+| `/goal` or `/goal status` | Show the current goal, status, and turn progress |
+| `/goal pause` | Stop the auto-continuation loop |
+| `/goal resume` | Resume a paused goal (resets the turn counter) |
+| `/goal clear` | Remove the goal |
+| `/subgoal <text>` | Append an acceptance criterion (judge requires all sub-goals met) |
+| `/subgoal` | List current sub-goals |
+| `/subgoal remove <N>` | Remove sub-goal number `N` |
+| `/subgoal clear` | Remove all sub-goals |
+
+### Configuration
+
+| Setting | Default | Description |
+|---|---|---|
+| `goals_max_turns` | `20` | Max autonomous continuation turns before auto-pausing |
+
+The judge uses the `cheap` model role (configurable in **Settings → Model
+Roles**), falling back to the primary model if `cheap` is unset.
+
 ## Architecture
 
 ### Scheduler (Cron)

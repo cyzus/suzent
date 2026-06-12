@@ -560,6 +560,9 @@ export const zhCN = {
     noGoal: '暂无目标。',
     turns: '{elapsed}/{max} 轮',
     subgoals: '子目标',
+    pause: '暂停',
+    resume: '继续',
+    clear: '清除',
     status: {
       active: '进行中',
       paused: '已暂停',

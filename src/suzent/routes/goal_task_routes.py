@@ -66,6 +66,51 @@ async def get_project_goal(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+async def update_project_goal(request: Request) -> JSONResponse:
+    """Pause / resume / clear the active goal for a chat (sidebar controls).
+
+    Body JSON: { project_id, chat_id, action }  where action is one of
+    "pause", "resume", "clear". Resuming re-enters the autonomous
+    continuation loop, mirroring the `/goal resume` command. Returns the
+    updated goal (or null if it was cleared / none exists).
+    """
+    try:
+        body = await request.json()
+        project_id = body.get("project_id")
+        chat_id = body.get("chat_id")
+        action = (body.get("action") or "").strip().lower()
+        if not project_id or not chat_id:
+            return JSONResponse(
+                {"error": "project_id and chat_id are required"}, status_code=400
+            )
+        if action not in {"pause", "resume", "clear"}:
+            return JSONResponse(
+                {"error": "action must be pause, resume, or clear"}, status_code=400
+            )
+
+        db = get_database()
+        goal = db.get_goal(project_id, chat_id=chat_id)
+        if not goal:
+            return JSONResponse(None)
+
+        if action == "pause":
+            if goal.status == "active":
+                goal = db.update_goal(goal.id, status="paused")
+        elif action == "resume":
+            goal = db.update_goal(goal.id, status="active", turns_elapsed=0)
+            from suzent.config import CONFIG
+            from suzent.core.goals import schedule_goal_step
+
+            schedule_goal_step(chat_id, CONFIG.user_id)
+        elif action == "clear":
+            db.clear_goal(project_id, chat_id=chat_id)
+            return JSONResponse(None)
+
+        return JSONResponse(_goal_to_dict(goal) if goal else None)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 async def get_project_tasks(request: Request) -> JSONResponse:
     """Return tasks for a chat (chat-scoped).
 

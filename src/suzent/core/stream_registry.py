@@ -176,18 +176,22 @@ class _BusStreamQueue:
         # returns False as soon as the producer finishes, even if a late
         # /chat/live client hasn't drained the queue yet.
         self.producer_active: bool = True
+        # Set when the None sentinel is put; lets waiters avoid spinning.
+        self.done_event: asyncio.Event = asyncio.Event()
 
     # --- write side ---
 
     async def put(self, item) -> None:
         if item is None:
             self.producer_active = False
+            self.done_event.set()
         await self._q.put(item)
         _fan_chunk_to_bus(self.chat_id, item)
 
     def put_nowait(self, item) -> None:
         if item is None:
             self.producer_active = False
+            self.done_event.set()
         self._q.put_nowait(item)
         _fan_chunk_to_bus(self.chat_id, item)
 
