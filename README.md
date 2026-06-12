@@ -1,9 +1,13 @@
 
+<div align="right">
+
+*[中文版](README.zh-CN.md)*
+
+</div>
+
 <div align="center">
 
 ![Suzent Banner](docs/assets/banner_v2.png)
-
-*[中文版](README.zh-CN.md)*
 
 # **SUZENT: SUMMON A SOVEREIGN GEIST**
 
