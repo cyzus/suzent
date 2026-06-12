@@ -191,6 +191,40 @@ def _save_default_config_file(config_data: dict[str, Any]) -> None:
         yaml.safe_dump(config_data, file, sort_keys=False, allow_unicode=False)
 
 
+def _load_local_config_file() -> dict[str, Any]:
+    from suzent.core.user_config import get_local_config_path
+
+    path = get_local_config_path()
+    if not path.exists():
+        return {}
+    try:
+        import yaml  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(
+            "PyYAML is required to update global sandbox mounts"
+        ) from exc
+    with path.open("r", encoding="utf-8") as file:
+        data = yaml.safe_load(file) or {}
+    if not isinstance(data, dict):
+        raise ValueError("config/local.yaml must contain a mapping at the root")
+    return data
+
+
+def _save_local_config_file(config_data: dict[str, Any]) -> None:
+    from suzent.core.user_config import get_local_config_path
+
+    path = get_local_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        import yaml  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(
+            "PyYAML is required to update global sandbox mounts"
+        ) from exc
+    with path.open("w", encoding="utf-8") as file:
+        yaml.safe_dump(config_data, file, sort_keys=False, allow_unicode=False)
+
+
 def _normalize_sandbox_volumes(raw_volumes: Any) -> list[str]:
     if not isinstance(raw_volumes, list):
         raise ValueError("sandbox_volumes must be an array of strings")
@@ -212,14 +246,20 @@ def _normalize_sandbox_volumes(raw_volumes: Any) -> list[str]:
 
 
 async def save_global_sandbox_config(request: Request) -> JSONResponse:
-    """Persist global sandbox settings to config/default.yaml."""
+    """Persist global sandbox settings to the machine-local config file.
+
+    sandbox_volumes are machine-specific (host paths differ per device) and must
+    live in ~/.suzent/config/local.yaml, which the loader merges LAST and which is
+    never synced across devices. Writing them to default.yaml would be silently
+    overridden by local.yaml on the next restart.
+    """
     try:
         payload = await request.json()
         sandbox_volumes = _normalize_sandbox_volumes(payload.get("sandbox_volumes", []))
 
-        config_data = _load_default_config_file()
-        config_data["SANDBOX_VOLUMES"] = sandbox_volumes
-        _save_default_config_file(config_data)
+        config_data = _load_local_config_file()
+        config_data["sandbox_volumes"] = sandbox_volumes
+        _save_local_config_file(config_data)
 
         # Keep runtime config in sync without requiring restart.
         CONFIG.sandbox_volumes = sandbox_volumes
