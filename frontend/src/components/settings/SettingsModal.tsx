@@ -35,12 +35,13 @@ type MCPServer = MCPUrlServer | MCPStdioServer;
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialCategory?: CategoryType;
 }
 
 type ProviderTab = 'credentials' | 'models';
 type CategoryType = 'providers' | 'roles' | 'memory' | 'social' | 'mcp' | 'automation' | 'data' | 'usage' | 'appearance';
 
-export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.ReactElement | null {
+export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
   const { t, locale, setLocale } = useI18n();
   const [providers, setProviders] = useState<ApiProvider[]>([]);
@@ -98,7 +99,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
   useEffect(() => {
     if (!isOpen) return;
 
-    setActiveCategory('providers');
+    setActiveCategory(initialCategory);
     setProvidersLoaded(false);
     setRolesLoaded(false);
     setSocialLoaded(false);
@@ -190,7 +191,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.Re
       setGlobalNotebookHostPath('');
     }
     setNotebookLoaded(true);
-  }, [isOpen]);
+  }, [isOpen, initialCategory]);
 
   async function saveProviderSettings(): Promise<void> {
     const keysToSave: Record<string, string> = {};

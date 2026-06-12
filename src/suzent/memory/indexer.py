@@ -11,6 +11,7 @@ Also provides:
   changes and keeps their embeddings in LanceDB up to date (Phase 2)
 """
 
+import asyncio
 import json
 import re
 from pathlib import Path
@@ -19,182 +20,6 @@ from typing import List, Optional
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
-
-# Parsing constants
-DAILY_LOG_ENTRY_PATTERN = re.compile(r"^## (\d{2}:\d{2}) - Chat: (\w+)", re.MULTILINE)
-FACT_LINE_PATTERN = re.compile(
-    r"^- \*\*\[(\w+)\]\*\* (.+?) \(importance: ([\d.]+)\)", re.MULTILINE
-)
-TAGS_PATTERN = re.compile(r"^\s+- Tags: (.+)$", re.MULTILINE)
-
-
-class MarkdownIndexer:
-    """
-    Rebuilds LanceDB archival_memories from markdown memory files.
-
-    Parses daily log files (YYYY-MM-DD.md) and re-indexes their content
-    into the LanceDB vector store, generating embeddings for each fact.
-    """
-
-    async def reindex_from_markdown(
-        self,
-        markdown_store,
-        lancedb_store,
-        embedding_gen,
-        user_id: str,
-        clear_existing: bool = False,
-    ) -> dict:
-        """
-        Parse all markdown memory files and rebuild the LanceDB index.
-
-        Args:
-            markdown_store: MarkdownMemoryStore instance
-            lancedb_store: LanceDBMemoryStore instance
-            embedding_gen: EmbeddingGenerator instance
-            user_id: User ID to scope the memories
-            clear_existing: If True, delete existing memories before re-indexing
-
-        Returns:
-            Dict with stats: total_files, total_facts, indexed, skipped, errors
-        """
-        stats = {
-            "total_files": 0,
-            "total_facts": 0,
-            "indexed": 0,
-            "skipped": 0,
-            "errors": 0,
-        }
-
-        try:
-            # Optionally clear existing archival memories
-            if clear_existing:
-                await lancedb_store.delete_all_memories(user_id=user_id)
-                logger.info(f"Cleared existing memories for user {user_id}")
-
-            # List all daily log files
-            dates = await markdown_store.list_daily_logs()
-            stats["total_files"] = len(dates)
-
-            if not dates:
-                logger.info("No daily log files found for re-indexing")
-                return stats
-
-            logger.info(f"Re-indexing {len(dates)} daily log files")
-
-            for date in dates:
-                try:
-                    content = await markdown_store.read_daily_log(date)
-                    if not content:
-                        continue
-
-                    facts = self._parse_daily_log(content, date)
-                    stats["total_facts"] += len(facts)
-
-                    for fact in facts:
-                        try:
-                            embedding = await embedding_gen.generate(fact["content"])
-                            await lancedb_store.add_memory(
-                                content=fact["content"],
-                                embedding=embedding,
-                                user_id=user_id,
-                                chat_id=None,  # User-level
-                                metadata=fact["metadata"],
-                                importance=fact["importance"],
-                            )
-                            stats["indexed"] += 1
-                        except Exception as e:
-                            logger.warning(f"Failed to index fact from {date}: {e}")
-                            stats["errors"] += 1
-
-                except Exception as e:
-                    logger.error(f"Failed to parse daily log {date}: {e}")
-                    stats["errors"] += 1
-
-            logger.info(
-                f"Re-indexing complete: {stats['indexed']} indexed, "
-                f"{stats['errors']} errors from {stats['total_facts']} facts"
-            )
-
-        except Exception as e:
-            logger.error(f"Re-indexing failed: {e}")
-            stats["errors"] += 1
-
-        return stats
-
-    def _parse_daily_log(self, content: str, date: str) -> List[dict]:
-        """
-        Parse a daily log markdown file into structured facts.
-
-        Args:
-            content: Markdown file content
-            date: Date string (YYYY-MM-DD)
-
-        Returns:
-            List of fact dicts with content, importance, metadata
-        """
-        facts = []
-        current_chat_id = None
-        current_time = None
-
-        lines = content.split("\n")
-        i = 0
-
-        while i < len(lines):
-            line = lines[i]
-
-            # Match section header: ## HH:MM - Chat: xxxxxxxx
-            header_match = DAILY_LOG_ENTRY_PATTERN.match(line)
-            if header_match:
-                current_time = header_match.group(1)
-                current_chat_id = header_match.group(2)
-                i += 1
-                continue
-
-            # Match fact line: - **[category]** content (importance: 0.8)
-            fact_match = FACT_LINE_PATTERN.match(line)
-            if fact_match:
-                category = fact_match.group(1)
-                fact_content = fact_match.group(2)
-                importance = float(fact_match.group(3))
-
-                # Look ahead for tags and context
-                tags = []
-                context = {}
-                j = i + 1
-                while j < len(lines) and lines[j].startswith("  "):
-                    sub_line = lines[j].strip()
-                    if sub_line.startswith("- Tags:"):
-                        tags = [
-                            t.strip() for t in sub_line[len("- Tags:") :].split(",")
-                        ]
-                    elif sub_line.startswith("- Context:"):
-                        context["user_intent"] = sub_line[len("- Context:") :].strip()
-                    elif sub_line.startswith("- Outcome:"):
-                        context["outcome"] = sub_line[len("- Outcome:") :].strip()
-                    j += 1
-
-                facts.append(
-                    {
-                        "content": fact_content,
-                        "importance": importance,
-                        "metadata": {
-                            "category": category,
-                            "tags": tags,
-                            "source_chat_id": current_chat_id,
-                            "source_date": date,
-                            "source_time": current_time,
-                            "conversation_context": context if context else None,
-                        },
-                    }
-                )
-
-                i = j
-                continue
-
-            i += 1
-
-        return facts
-
 
 # ---------------------------------------------------------------------------
 # Transcript Indexer (Phase 5)
@@ -402,6 +227,9 @@ class CoreMemoryFileIndexer:
         # path_str → last known mtime (float)
         self._mtimes: dict = {}
         self._state_path: Optional[Path] = None
+        # Serializes all index mutations (per-turn reindex_file_now, the background
+        # watcher's check_and_update, and the dream's reconcile).
+        self._lock = asyncio.Lock()
 
     def _load_state(self, markdown_store) -> None:
         """Load persisted mtime state from disk (called once on first check).
@@ -456,13 +284,20 @@ class CoreMemoryFileIndexer:
         embedding_gen,
         user_id: str,
     ) -> dict:
-        """Check all core memory files and archive logs for changes and re-index those that changed.
+        """Locked wrapper — serializes against per-turn reindex and the dream reconcile."""
+        async with self._lock:
+            return await self._check_and_update_impl(
+                markdown_store, lancedb_store, embedding_gen, user_id
+            )
 
-        Args:
-            markdown_store: MarkdownMemoryStore instance
-            lancedb_store: LanceDBMemoryStore instance
-            embedding_gen: EmbeddingGenerator instance
-            user_id: User scope for the archival memories
+    async def _check_and_update_impl(
+        self,
+        markdown_store,
+        lancedb_store,
+        embedding_gen,
+        user_id: str,
+    ) -> dict:
+        """Check all core memory files and archive logs for changes and re-index changed ones.
 
         Returns:
             Dict with stats: files_checked, files_updated, chunks_indexed, errors
@@ -492,6 +327,14 @@ class CoreMemoryFileIndexer:
         for archive_path in sorted(markdown_store.archive_dir.glob("????-??-??.md")):
             entries.append((archive_path, "archive", archive_path.name))
 
+        # Notebook vault pages (recursive; root-relative source_file key)
+        for page in markdown_store.list_notebook_pages():
+            entries.append((page, "notebook", markdown_store.notebook_rel(page)))
+
+        # Watermark (archives ≤ W are consolidated → dropped) + tombstones (skip deleted facts)
+        watermark = markdown_store.read_watermark()
+        tombstones = markdown_store.read_tombstones()
+
         state_dirty = False
 
         for path, label, filename in entries:
@@ -500,9 +343,20 @@ class CoreMemoryFileIndexer:
             if not path.exists():
                 continue
 
-            mtime = path.stat().st_mtime
             path_key = str(path)
 
+            # Watermark-aware archives: a log already folded into the vault (date ≤ W)
+            # must NOT remain in the search index — drop it once.
+            if label == "archive" and watermark:
+                date = filename.removesuffix(".md")
+                if date <= watermark:
+                    if path_key in self._mtimes:
+                        await lancedb_store.delete_memories_by_source_date(date, user_id)
+                        del self._mtimes[path_key]
+                        state_dirty = True
+                    continue
+
+            mtime = path.stat().st_mtime
             if self._mtimes.get(path_key) == mtime:
                 continue  # File unchanged — nothing to do
 
@@ -520,12 +374,13 @@ class CoreMemoryFileIndexer:
                     lancedb_store=lancedb_store,
                     embedding_gen=embedding_gen,
                     user_id=user_id,
+                    tombstones=tombstones,
                 )
                 self._mtimes[path_key] = mtime
                 state_dirty = True
                 stats["files_updated"] += 1
                 stats["chunks_indexed"] += n
-                logger.info(f"Re-indexed {filename}: {n} chunks")
+                logger.info(f"Re-indexed {filename}: {n} rows")
 
             except Exception as e:
                 stats["errors"] += 1
@@ -536,6 +391,74 @@ class CoreMemoryFileIndexer:
 
         return stats
 
+    async def reindex_file_now(
+        self,
+        markdown_store,
+        lancedb_store,
+        embedding_gen,
+        user_id: str,
+        label: str,
+        filename: str,
+    ) -> int:
+        """Immediately (re)index ONE file: delete its existing rows, re-embed its
+        current content, and record the new mtime so the background watcher won't
+        redundantly re-index it. Delete-then-add makes this idempotent and race-free
+        with the watcher. Used by the per-turn write path (label="archive").
+        """
+        async with self._lock:
+            if self._state_path is None:
+                self._load_state(markdown_store)
+
+            if label == "archive":
+                path = markdown_store.archive_dir / filename
+            elif label == "notebook":
+                path = markdown_store.notebook_dir / filename
+            else:
+                path = markdown_store._block_path(label)
+
+            if not path.exists():
+                return 0
+
+            content = path.read_text(encoding="utf-8").strip()
+            if not content:
+                self._mtimes[str(path)] = path.stat().st_mtime
+                self._save_state()
+                return 0
+
+            n = await self._reindex_file(
+                label=label,
+                filename=filename,
+                content=content,
+                lancedb_store=lancedb_store,
+                embedding_gen=embedding_gen,
+                user_id=user_id,
+                tombstones=markdown_store.read_tombstones(),
+            )
+            # Record post-write mtime so the watcher treats this file as handled.
+            self._mtimes[str(path)] = path.stat().st_mtime
+            self._save_state()
+            return n
+
+    async def clear_and_full_reindex(
+        self,
+        markdown_store,
+        lancedb_store,
+        embedding_gen,
+        user_id: str,
+    ) -> dict:
+        """Wipe the user's LanceDB rows and rebuild the index from files (core +
+        notebook + post-watermark archives). Used by the reindex route / migration.
+        """
+        async with self._lock:
+            await lancedb_store.delete_all_memories(user_id=user_id)
+            self._mtimes = {}
+            if self._state_path is None:
+                self._state_path = markdown_store.base_dir / self.INDEX_STATE_FILENAME
+            self._save_state()
+            return await self._check_and_update_impl(
+                markdown_store, lancedb_store, embedding_gen, user_id
+            )
+
     async def _reindex_file(
         self,
         label: str,
@@ -544,41 +467,46 @@ class CoreMemoryFileIndexer:
         lancedb_store,
         embedding_gen,
         user_id: str,
+        tombstones: Optional[set] = None,
     ) -> int:
-        """Delete stale chunks and re-embed the full content of one file.
+        """Delete stale rows and re-embed the content of one file. Idempotent.
 
-        Returns the number of chunks indexed.
+        Diary logs are indexed one row per fact (§A); notebook pages and core files
+        one row per paragraph chunk. Tombstoned content is skipped for every source
+        type (diary facts AND notebook/core chunks alike) so a user deletion never
+        resurrects, even on a full clear-and-rebuild. Returns the number of rows indexed.
         """
-        # 1. Remove existing entries for this file.
-        # Archive logs may have been written with source_date (no source_file) by the
-        # legacy MarkdownIndexer, so use the broader date-based delete to avoid duplicates.
+        tombstones = tombstones or set()
+
+        # 1. Build the rows to index: (text, metadata, importance). Importance is a
+        #    constant — ranking is relevance + recency, not a tuned lever.
         if label == "archive":
-            date = filename.removesuffix(".md")
-            await lancedb_store.delete_memories_by_source_date(date, user_id)
+            rows = [
+                (
+                    fact["content"],
+                    {
+                        "source_type": "archive_log",
+                        "source_file": filename,
+                        "category": fact["category"],
+                        "tags": fact["tags"],
+                    },
+                    0.5,
+                )
+                for fact in self._parse_archive_facts(content)
+                if fact["content"]
+                and " ".join(fact["content"].lower().split()) not in tombstones
+            ]
         else:
-            await lancedb_store.delete_memories_by_source_file(filename, user_id)
-
-        # 2. Chunk the file content
-        chunks = self._chunk_by_paragraphs(content)
-
-        is_archive = label == "archive"
-        source_type = "archive_log" if is_archive else "core_file"
-        importance = 0.3 if is_archive else 0.75
-        tags = ["archive", filename] if is_archive else ["core_memory", label, filename]
-
-        # 3. Embed and store each chunk
-        indexed = 0
-        for i, chunk in enumerate(chunks):
-            if not chunk.strip():
-                continue
-            try:
-                embedding = await embedding_gen.generate(chunk)
-                await lancedb_store.add_memory(
-                    content=chunk,
-                    embedding=embedding,
-                    user_id=user_id,
-                    chat_id=None,
-                    metadata={
+            source_type = "notebook" if label == "notebook" else "core_file"
+            tags = (
+                ["notebook", filename]
+                if label == "notebook"
+                else ["core_memory", label, filename]
+            )
+            rows = [
+                (
+                    chunk,
+                    {
                         "source_type": source_type,
                         "source_file": filename,
                         "chunk_index": i,
@@ -586,13 +514,64 @@ class CoreMemoryFileIndexer:
                         "category": source_type,
                         "tags": tags,
                     },
-                    importance=importance,
+                    0.5,
                 )
-                indexed += 1
-            except Exception as e:
-                logger.warning(f"Failed to embed chunk {i} of {filename}: {e}")
+                for i, chunk in enumerate(self._chunk_by_paragraphs(content))
+                if chunk.strip()
+                and " ".join(chunk.lower().split()) not in tombstones
+            ]
+
+        # 2. Embed ALL rows BEFORE mutating the index. embedding_gen.generate() raises
+        #    on failure (e.g. embedding backend unreachable) — letting it propagate here
+        #    leaves the existing index untouched and the file gets retried next pass,
+        #    instead of deleting rows and replacing them with poisoned zero vectors.
+        embeddings = [await embedding_gen.generate(text) for text, _, _ in rows]
+
+        # 3. Replace: clear this file's old rows, then add the freshly-embedded ones.
+        #    Reached only after every embedding succeeded. Archive logs may also carry
+        #    legacy source_date metadata, so use the broader date-based delete for them.
+        if label == "archive":
+            await lancedb_store.delete_memories_by_source_date(
+                filename.removesuffix(".md"), user_id
+            )
+        else:
+            await lancedb_store.delete_memories_by_source_file(filename, user_id)
+
+        indexed = 0
+        for (text, metadata, importance), embedding in zip(rows, embeddings):
+            await lancedb_store.add_memory(
+                content=text,
+                embedding=embedding,
+                user_id=user_id,
+                chat_id=None,
+                metadata=metadata,
+                importance=importance,
+            )
+            indexed += 1
 
         return indexed
+
+    @staticmethod
+    def _parse_archive_facts(content: str) -> List[dict]:
+        """Parse daily-log fact lines ``- [category] content `tags``` into dicts.
+
+        Non-fact lines (file/section headers, blanks) are ignored.
+        """
+        facts: List[dict] = []
+        for raw in content.splitlines():
+            m = re.match(r"^-\s*\[([^\]]+)\]\s*(.*)$", raw.strip())
+            if not m:
+                continue
+            category = m.group(1).strip()
+            rest = m.group(2).strip()
+            tags: List[str] = []
+            tag_m = re.search(r"`([^`]*)`\s*$", rest)
+            if tag_m:
+                tags = tag_m.group(1).split()
+                rest = rest[: tag_m.start()].strip()
+            if rest:
+                facts.append({"content": rest, "category": category, "tags": tags})
+        return facts
 
     @staticmethod
     def _chunk_by_paragraphs(

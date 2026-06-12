@@ -76,8 +76,6 @@ class TestMemoryExtractionResult:
         result = MemoryExtractionResult.empty()
 
         assert result.extracted_facts == []
-        assert result.memories_created == []
-        assert result.memories_updated == []
         assert result.conflicts_detected == []
 
 

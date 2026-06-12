@@ -90,3 +90,44 @@ export interface ReindexResponse {
   success: boolean;
   stats: Record<string, unknown>;
 }
+
+export interface DreamRunResult {
+  ran?: boolean;
+  started?: boolean;
+  changed?: boolean;
+  advanced?: boolean;
+  skipped?: boolean;
+  watermark?: string | null;
+  target?: string | null;
+  reason?: string;
+}
+
+export interface DreamStatus {
+  active: boolean;
+  available: boolean;
+  enabled: boolean;
+  running: boolean;
+  phase?: 'idle' | 'queued' | 'preparing' | 'running_agent' | 'finalizing' | string;
+  reason?: string;
+  watermark?: string | null;
+  pending_dates?: string[];
+  pending_count?: number;
+  pending_facts?: number;
+  archive_count?: number;
+  consolidated_count?: number;
+  progress_percent?: number;
+  next_batch_end?: string | null;
+  last_attempt_at?: number | null;
+  last_started_at?: string | null;
+  last_finished_at?: string | null;
+  last_result?: DreamRunResult | null;
+  failures?: Record<string, number>;
+  min_facts?: number;
+  min_hours?: number;
+  max_days?: number;
+}
+
+export interface DreamConsolidateResponse {
+  success: boolean;
+  result: DreamRunResult;
+}

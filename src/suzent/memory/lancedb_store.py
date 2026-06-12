@@ -673,6 +673,34 @@ class LanceDBMemoryStore:
             logger.error(f"Update failed: {e}")
             return False
 
+    async def get_memory(self, memory_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a single archival memory by id (content + parsed metadata), or None."""
+        try:
+            results = await (
+                self.archival_table.query()
+                .where(f"id = '{_escape_sql(memory_id)}'")
+                .limit(1)
+                .to_arrow()
+            )
+            rows = results.to_pylist()
+            if not rows:
+                return None
+            row = rows[0]
+            meta = row.get("metadata")
+            try:
+                meta = json.loads(meta) if isinstance(meta, str) else (meta or {})
+            except Exception:
+                meta = {}
+            return {
+                "id": row.get("id"),
+                "content": row.get("content", ""),
+                "user_id": row.get("user_id"),
+                "metadata": meta,
+            }
+        except Exception as e:
+            logger.error(f"get_memory failed: {e}")
+            return None
+
     async def delete_memory(self, memory_id: str) -> bool:
         """Delete a memory."""
         try:

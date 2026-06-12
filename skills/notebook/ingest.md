@@ -72,6 +72,8 @@ For inbox files: read the full document and note the main topics, key arguments,
 **CRITICAL: Separate Knowledge from Projects (Dynamic vs. Static)**
 If a general concept is found within a specific project or document, **do not lock it inside the project folder**. Extract it into a global Wiki/Concepts page and link to it using `[[wikilinks]]`.
 
+**Personal facts about the user** (preferences, profile, working style, decisions about the user) go to `3_Personal/`, not `2_Wiki/`.
+
 For each significant topic, ask:
 
 **Does it already exist in the vault?**
@@ -134,8 +136,12 @@ Write meaningful one-line summaries — not just the page title.
 
 ## Step 8 — Append to log.md
 
+When you process daily logs, the header MUST carry a `watermark=YYYY-MM-DD` token set to the
+**latest daily-log date you processed** — this is the shared consolidation watermark (the
+autonomous dream reads and writes the same token).
+
 ```
-## [YYYY-MM-DD] ingest | {description}
+## [YYYY-MM-DD] ingest | daily logs  watermark=YYYY-MM-DD
 Pages created: [[path/page]]
 Pages updated: [[path/page]] (what changed)
 Sources: {filenames or date range}

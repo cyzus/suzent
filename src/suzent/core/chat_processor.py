@@ -961,9 +961,12 @@ class ChatProcessor:
 
                     # B1: Write JSONL transcript
                     try:
-                        await self._write_transcript(
-                            chat_id, message_content, full_response, last_messages
-                        )
+                        # System/forked turns (dream, sub-agents) don't get transcripts
+                        # written/indexed — keeps their chatter out of memory (NEW-7).
+                        if not self._is_system_chat(chat_id):
+                            await self._write_transcript(
+                                chat_id, message_content, full_response, last_messages
+                            )
                         db.update_job_step_status(
                             job_id, PostProcessStep.TRANSCRIPT, StepStatus.SUCCESS
                         )
@@ -1427,11 +1430,27 @@ class ChatProcessor:
             "is_image": att_type == "image",
         }
 
+    def _is_system_chat(self, chat_id: str) -> bool:
+        """True for system/forked chats (dream consolidation, sub-agents) whose own
+        turns must NOT feed memory extraction or transcript indexing — otherwise the
+        consolidation agent's housekeeping chatter would re-enter memory (plan NEW-7).
+        """
+        try:
+            chat = get_database().get_chat(chat_id)
+            platform = (chat.config or {}).get("platform") if chat else None
+            return platform in ("dream", "subagent", "subagent_wakeup")
+        except Exception:
+            return False
+
     async def _extract_memories(
         self, chat_id, user_id, user_content, agent_content, messages
     ):
         """Extract memories from pydantic-ai message history."""
         if not CONFIG.memory_enabled:
+            return
+        # Skip system/forked turns (dream, sub-agents). The per-chat platform — not
+        # the global CONFIG flag — is authoritative here.
+        if self._is_system_chat(chat_id):
             return
 
         try:

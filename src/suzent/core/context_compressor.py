@@ -635,10 +635,9 @@ class ContextCompressor:
             )
 
             extracted_count = len(result.extracted_facts) if result else 0
-            created_count = len(result.memories_created) if result else 0
             logger.info(
-                f"Pre-compaction flush: extracted {extracted_count} facts, "
-                f"created {created_count} memories from {len(messages_to_compress)} messages"
+                f"Pre-compaction flush: extracted {extracted_count} facts "
+                f"from {len(messages_to_compress)} messages"
             )
 
         except Exception as e:

@@ -271,14 +271,8 @@ class MemoryExtractionResult(BaseModel):
     extracted_facts: List[str] = Field(
         default_factory=list, description="List of extracted fact contents"
     )
-    memories_created: List[str] = Field(
-        default_factory=list, description="IDs of newly created memories"
-    )
-    memories_updated: List[str] = Field(
-        default_factory=list, description="IDs of updated/similar existing memories"
-    )
     conflicts_detected: List[Dict[str, Any]] = Field(
-        default_factory=list, description="Any detected conflicts"
+        default_factory=list, description="Any detected conflicts (reserved)"
     )
 
     @classmethod

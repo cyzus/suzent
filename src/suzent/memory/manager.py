@@ -9,6 +9,7 @@ from suzent.logger import get_logger
 from suzent.llm import EmbeddingGenerator, LLMClient
 from .lancedb_store import LanceDBMemoryStore
 from .markdown_store import MarkdownMemoryStore
+from .indexer import CoreMemoryFileIndexer
 from . import memory_context
 from .models import (
     ConversationTurn,
@@ -31,9 +32,7 @@ IMPORTANT_MEMORY_THRESHOLD = 0.7
 # Heuristic extraction importance scores
 DEFAULT_IMPORTANCE = 0.5
 
-# Deduplication and extraction settings
-DEDUPLICATION_SEARCH_LIMIT = 3
-DEDUPLICATION_SIMILARITY_THRESHOLD = 0.85
+# Extraction settings
 LLM_EXTRACTION_TEMPERATURE = 1.0
 
 
@@ -74,6 +73,9 @@ class MemoryManager:
             LLMClient(model=llm_for_extraction) if llm_for_extraction else None
         )
         self.wiki_manager: Optional["WikiManager"] = None
+        # Shared indexer instance (also used by the lifecycle background watcher and
+        # the dream runner) — the SOLE writer to the LanceDB search index.
+        self._core_indexer = CoreMemoryFileIndexer()
         logger.info(
             f"MemoryManager initialized with embedding model: {embedding_model}, "
             f"extraction model: {llm_for_extraction}, "
@@ -231,6 +233,48 @@ class MemoryManager:
         except Exception as e:
             logger.error(f"Failed to refresh core memory facts: {e}")
 
+    async def promote_memory_md(self, user_id: str) -> None:
+        """Regenerate the always-visible MEMORY.md from the vault's personal facts +
+        recall signal. Deterministic single LLM call, run by the dream runner after a
+        productive consolidation (replaces refresh_core_memory_facts; plan C1).
+        """
+        if not self.markdown_store or not self.llm_client:
+            return
+        try:
+            from suzent.config import CONFIG
+
+            personal_dir = self.markdown_store.notebook_dir / "3_Personal"
+            chunks: List[str] = []
+            if personal_dir.exists():
+                for p in sorted(personal_dir.rglob("*.md")):
+                    try:
+                        chunks.append(p.read_text(encoding="utf-8"))
+                    except Exception:
+                        continue
+            personal_facts = "\n\n".join(chunks).strip()
+            if not personal_facts:
+                return
+
+            recalls = self.markdown_store.read_recalls()
+            snippets = [r.get("snippet", "") for r in recalls if r.get("snippet")]
+            recall_summary = "\n".join(f"- {s}" for s in snippets[-30:]) or "(none)"
+
+            max_lines = getattr(CONFIG, "memory_consolidation_memory_max_lines", 200)
+            summary = await self.llm_client.complete(
+                prompt=memory_context.MEMORY_PROMOTION_PROMPT.format(
+                    personal_facts=personal_facts[:12000],
+                    recall_summary=recall_summary,
+                    max_lines=max_lines,
+                ),
+                temperature=0.3,
+                max_tokens=2000,
+            )
+            if summary:
+                await self.markdown_store.write_memory_file(summary.strip())
+                logger.info("Promoted MEMORY.md from consolidated personal facts")
+        except Exception as e:
+            logger.error(f"promote_memory_md failed: {e}")
+
     async def format_core_memory_for_context(
         self,
         chat_id: Optional[str] = None,
@@ -273,6 +317,22 @@ class MemoryManager:
             mount_skills=mount_skills,
             mount_notebook=mount_notebook,
         )
+
+    def _log_recalls(self, memories: List[Dict[str, Any]]) -> None:
+        """Record retrieved memories to the recall log (usage signal for MEMORY.md
+        promotion). Best-effort — never raises."""
+        if not self.markdown_store or not memories:
+            return
+        try:
+            for m in memories:
+                if not isinstance(m, dict):
+                    continue
+                meta = m.get("metadata") if isinstance(m.get("metadata"), dict) else {}
+                self.markdown_store.append_recall(
+                    m.get("content", ""), (meta or {}).get("source_type", "")
+                )
+        except Exception:
+            pass
 
     async def retrieve_relevant_memories(
         self,
@@ -327,6 +387,7 @@ class MemoryManager:
             if not memories:
                 return ""
 
+            self._log_recalls(memories)
             logger.info(f"Retrieved {len(memories)} relevant memories for query")
             return memory_context.format_retrieved_memories_section(
                 memories, tag_important=True
@@ -373,6 +434,7 @@ class MemoryManager:
                     limit=limit,
                 )
 
+            self._log_recalls(results)
             logger.info(f"Memory search for '{query}': found {len(results)} results")
             return results
 
@@ -401,10 +463,15 @@ class MemoryManager:
             user_id: User identifier
 
         Returns:
-            MemoryExtractionResult with extracted facts and memory IDs
+            MemoryExtractionResult with the list of extracted fact contents.
+
+        Append-only write path (fixes #34): facts are written to the markdown daily
+        log (the source of truth) and indexed into LanceDB. There is NO write-time
+        deduplication — duplicate/contradictory facts are resolved later by the dream
+        consolidation pass, which has full context. See
+        docs/03-developing/memory-consolidation-plan.md.
         """
         result = MemoryExtractionResult.empty()
-        high_importance_found = False
 
         try:
             # Convert dict to Pydantic model if needed
@@ -413,51 +480,47 @@ class MemoryManager:
             else:
                 turn = conversation_turn
 
-            # Format the full turn into a text representation for the LLM
-            turn_text = turn.format_for_extraction()
-
-            # Extract facts using the formatted text
-            extracted_facts = await self._extract_facts_llm(turn_text)
+            # Extract facts from the formatted turn
+            extracted_facts = await self._extract_facts_llm(turn.format_for_extraction())
 
             if not extracted_facts:
                 logger.debug("No facts extracted from conversation turn")
                 return result
 
-            logger.debug(
-                f"Extracted {len(extracted_facts)} facts: {[f.content for f in extracted_facts]}"
-            )
-
             result.extracted_facts = [f.content for f in extracted_facts]
-
-            # Store memories in LanceDB (search index)
-            await self._deduplicate_and_store_facts(
-                extracted_facts, user_id, chat_id, result
+            logger.debug(
+                f"Extracted {len(extracted_facts)} facts: {result.extracted_facts}"
             )
 
-            # Dual-write to markdown (human-readable source of truth)
-            await self._write_facts_to_markdown(extracted_facts, chat_id)
+            # 1. Append to the markdown daily log (append-only source of truth).
+            date = await self._write_facts_to_markdown(extracted_facts, chat_id)
 
-            # Check for high importance facts to trigger core memory update
-            for fact in extracted_facts:
-                if fact.importance >= IMPORTANT_MEMORY_THRESHOLD:
-                    high_importance_found = True
-                    break
+            # 2. Index the day's log into LanceDB (the derived search index). The
+            #    indexer is the only writer to LanceDB (mutation invariant).
+            if date and self.markdown_store:
+                try:
+                    await self._core_indexer.reindex_file_now(
+                        markdown_store=self.markdown_store,
+                        lancedb_store=self.store,
+                        embedding_gen=self.embedding_gen,
+                        user_id=user_id,
+                        label="archive",
+                        filename=f"{date}.md",
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to index daily log {date}: {e}")
 
-            logger.info(
-                f"Processed conversation turn: created {len(result.memories_created)} memories"
-            )
-
-            # Trigger core memory refresh if needed (fire and forget handled by caller/event loop in theory,
-            # here we await it but log errors so it doesn't fail the request)
-            if high_importance_found:
-                # We could make this async in background, but for now just await safely
-                logger.info(
-                    "High importance fact found, triggering core memory refresh"
-                )
+            # 3. Keep MEMORY.md fresh from the top archival facts. Retained until the
+            #    dream's promote_memory_md replaces it (see plan, finding C1).
+            if any(f.importance >= IMPORTANT_MEMORY_THRESHOLD for f in extracted_facts):
                 try:
                     await self.refresh_core_memory_facts(user_id)
                 except Exception as e:
-                    logger.error(f"Background core memory refresh failed: {e}")
+                    logger.error(f"Core memory refresh failed: {e}")
+
+            logger.info(
+                f"Processed conversation turn: extracted {len(result.extracted_facts)} facts"
+            )
 
         except Exception as e:
             logger.error(f"Failed to process conversation turn for memories: {e}")
@@ -467,72 +530,22 @@ class MemoryManager:
 
         return result
 
-    async def _deduplicate_and_store_facts(
-        self,
-        facts: List[ExtractedFact],
-        user_id: str,
-        source_chat_id: str,
-        result: MemoryExtractionResult,
-    ):
-        """Helper to deduplicate and store a list of facts."""
-        for fact in facts:
-            # Metadata construction
-            metadata = {
-                "importance": fact.importance,
-                "category": fact.category,
-                "tags": fact.tags,
-                "source_chat_id": source_chat_id,
-                # Flattened context fields
-                "conversation_context": {
-                    "user_intent": fact.context_user_intent,
-                    "agent_actions_summary": fact.context_agent_actions_summary,
-                    "outcome": fact.context_outcome,
-                },
-            }
+    async def _write_facts_to_markdown(
+        self, facts: List[ExtractedFact], chat_id: str
+    ) -> Optional[str]:
+        """Append extracted facts to the daily markdown log (append-only).
 
-            # Transcript linkage (Phase 5)
-            if fact.source_session_id:
-                metadata["source_session_id"] = fact.source_session_id
-            if fact.source_transcript_line is not None:
-                metadata["source_transcript_line"] = fact.source_transcript_line
-            if fact.source_timestamp:
-                metadata["source_timestamp"] = fact.source_timestamp
-
-            # Search for similar existing memories
-            similar = await self.search_memories(
-                query=fact.content,
-                limit=DEDUPLICATION_SEARCH_LIMIT,
-                user_id=user_id,
-                chat_id=None,  # User-level memories
-                use_hybrid=False,
-            )
-
-            if (
-                similar
-                and similar[0].get("similarity", 0) > DEDUPLICATION_SIMILARITY_THRESHOLD
-            ):
-                # Very similar memory exists - update/skip
-                result.memories_updated.append(str(similar[0]["id"]))
-            else:
-                # New fact - store it
-                memory_id = await self._add_memory_internal(
-                    content=fact.content,
-                    metadata=metadata,
-                    chat_id=None,  # User-level memory
-                    user_id=user_id,
-                )
-                result.memories_created.append(memory_id)
-
-    async def _write_facts_to_markdown(self, facts: List[ExtractedFact], chat_id: str):
-        """Write extracted facts to the daily markdown log."""
+        Returns the date string (YYYY-MM-DD, UTC) the facts were written to, or
+        None if the markdown store is unavailable or the write failed.
+        """
         if not self.markdown_store:
-            return
+            return None
 
         try:
             fact_dicts = [
                 {
                     "content": f.content,
-                    "category": f.category,
+                    "category": f.category or "general",
                     "importance": f.importance,
                     "tags": f.tags,
                     "context": {
@@ -543,62 +556,17 @@ class MemoryManager:
                 }
                 for f in facts
             ]
+            from datetime import timezone
+
+            date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             await self.markdown_store.append_daily_log(
-                chat_id=chat_id, facts=fact_dicts
+                chat_id=chat_id, facts=fact_dicts, date=date
             )
+            return date
         except Exception as e:
             # Markdown write failure should not block the main flow
             logger.warning(f"Failed to write facts to markdown daily log: {e}")
-
-    async def process_message_for_memories(
-        self, message: Dict[str, Any], chat_id: str, user_id: str
-    ) -> MemoryExtractionResult:
-        """
-        (Legacy) Automatically extract and store important facts from a single message.
-        kept for backward compatibility or direct calls.
-        """
-        result = MemoryExtractionResult.empty()
-
-        try:
-            # Extract facts from message
-            facts = await self._extract_facts_simple(message)
-
-            if not facts:
-                return result
-
-            result.extracted_facts = [f.content for f in facts]
-
-            # Use shared storage logic
-            await self._deduplicate_and_store_facts(facts, user_id, chat_id, result)
-
-            logger.info(
-                f"Processed message: created {len(result.memories_created)} memories"
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to process message for memories: {e}")
-
-        return result
-
-    async def _extract_facts_simple(
-        self, message: Dict[str, Any]
-    ) -> List[ExtractedFact]:
-        """
-        Extract facts from a message.
-        Uses LLM if available
-        """
-        content = message.get("content", "")
-        role = message.get("role", "")
-
-        # Only extract from user messages
-        if role != "user":
-            return []
-
-        # Use LLM-based extraction if configured
-        if self.llm_client:
-            return await self._extract_facts_llm(content)
-        else:
-            return []
+            return None
 
     async def _extract_facts_llm(self, content: str) -> List[ExtractedFact]:
         """
@@ -726,34 +694,6 @@ class MemoryManager:
                     f"{fallback_error}"
                 )
                 return []
-
-    async def _add_memory_internal(
-        self,
-        content: str,
-        metadata: Dict[str, Any],
-        chat_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-    ) -> str:
-        """Internal method to add memory to archival storage."""
-        try:
-            # Generate embedding
-            embedding = await self.embedding_gen.generate(content)
-
-            # Store in database
-            memory_id = await self.store.add_memory(
-                content=content,
-                embedding=embedding,
-                user_id=user_id,
-                chat_id=chat_id,
-                metadata=metadata,
-                importance=metadata.get("importance", DEFAULT_IMPORTANCE),
-            )
-
-            return memory_id
-
-        except Exception as e:
-            logger.error(f"Failed to add memory: {e}")
-            raise
 
     # ===== Utility Methods =====
 
