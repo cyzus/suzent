@@ -102,6 +102,55 @@ class SocialAPI:
         return await self.client.post("/social/pairing/deny", json={"token": token})
 
 
+class MCPAPI:
+    def __init__(self, client: AsyncBaseClient):
+        self.client = client
+
+    async def list(self) -> dict:
+        """Returns four parallel dicts keyed by name: urls, stdio, headers, enabled."""
+        return await self.client.get("/mcp_servers")
+
+    async def add(
+        self,
+        name: str,
+        *,
+        url: str | None = None,
+        headers: dict | None = None,
+        stdio: dict | None = None,
+    ) -> dict:
+        payload: dict = {"name": name}
+        if url:
+            payload["url"] = url
+            if headers:
+                payload["headers"] = headers
+        if stdio:
+            payload["stdio"] = stdio
+        return await self.client.post("/mcp_servers", json=payload)
+
+    async def remove(self, name: str) -> dict:
+        return await self.client.post("/mcp_servers/remove", json={"name": name})
+
+    async def set_enabled(self, name: str, enabled: bool) -> dict:
+        return await self.client.post(
+            "/mcp_servers/enabled", json={"name": name, "enabled": enabled}
+        )
+
+
+class SkillsAPI:
+    def __init__(self, client: AsyncBaseClient):
+        self.client = client
+
+    async def list(self) -> list:
+        """Returns a list of {name, description, path, source, enabled}."""
+        return await self.client.get("/skills")
+
+    async def toggle(self, name: str) -> dict:
+        return await self.client.post(f"/skills/{name}/toggle")
+
+    async def reload(self) -> list:
+        return await self.client.post("/skills/reload")
+
+
 class ChatAPI:
     def __init__(self, client: AsyncBaseClient):
         self.client = client
@@ -129,6 +178,8 @@ class SuzentAsyncClient(AsyncBaseClient):
         self.config = ConfigAPI(self)
         self.social = SocialAPI(self)
         self.chat = ChatAPI(self)
+        self.mcp = MCPAPI(self)
+        self.skill = SkillsAPI(self)
 
 
 @lru_cache(maxsize=1)
