@@ -262,7 +262,9 @@ class SchedulerBrain(BaseBrain):
         try:
             response_text = await self._run_chat_turn(chat_id, job, db, job_id, run_id)
 
-            db.update_cron_job_run_state(job_id, last_result=response_text)
+            db.update_cron_job_run_state(
+                job_id, last_result=response_text, clear_error=True
+            )
             db.finish_cron_run(run_id, "success", result=response_text)
             db.set_last_result_at(chat_id)
 

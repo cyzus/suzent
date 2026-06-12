@@ -82,8 +82,13 @@ class CronOperationsMixin:
         last_result: Optional[str] = None,
         last_error: Optional[str] = None,
         retry_count: Optional[int] = None,
+        clear_error: bool = False,
     ) -> bool:
-        """Update cron job run metadata (used by scheduler)."""
+        """Update cron job run metadata (used by scheduler).
+
+        Pass clear_error=True on a successful run to wipe any stale error from a
+        previous failed run; otherwise last_error is left untouched when None.
+        """
         with self._session() as session:
             job = session.get(CronJobModel, job_id)
             if not job:
@@ -94,7 +99,9 @@ class CronOperationsMixin:
                 job.next_run_at = next_run_at
             if last_result is not None:
                 job.last_result = last_result[:2000]
-            if last_error is not None:
+            if clear_error:
+                job.last_error = None
+            elif last_error is not None:
                 job.last_error = last_error[:1000]
             if retry_count is not None:
                 job.retry_count = retry_count
