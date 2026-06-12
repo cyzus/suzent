@@ -125,6 +125,108 @@ def _build_mcp_servers(config: Dict[str, Any]) -> List:
     return servers
 
 
+async def probe_mcp_server(
+    entry: Dict[str, Any], timeout: float | None = None
+) -> Dict[str, Any]:
+    """Attempt to connect to a single MCP server and list its tools.
+
+    `entry` is a row from mcp_store (type/url/headers/command/args/env).
+    On success returns {"ok": True, "count": int, "tools": [{"name", "description"}]};
+    on failure {"ok": False, "error": str}.
+
+    stdio servers get a much longer default timeout: the first `uv tool run` /
+    `npx` invocation may download and install the package before the server
+    starts speaking, which can take well over a minute on a cold cache.
+    """
+    import asyncio
+
+    is_stdio = entry.get("type") == "stdio"
+    if timeout is None:
+        timeout = 90.0 if is_stdio else 15.0
+
+    has_url = entry.get("type") == "url" and entry.get("url")
+    has_cmd = is_stdio and entry.get("command")
+    if not has_url and not has_cmd:
+        return {"ok": False, "error": "Server has no url or command configured"}
+
+    def _build():
+        if has_url:
+            return MCPServerStreamableHTTP(entry["url"], headers=entry.get("headers"))
+        return MCPServerStdio(
+            entry["command"], args=entry.get("args") or [], env=entry.get("env")
+        )
+
+    async def _connect() -> list[dict[str, str]]:
+        # Re-create the server per attempt; a half-started transport cannot be reused.
+        try:
+            srv = _build()
+        except Exception as e:  # noqa: BLE001 - bad config surfaces to caller
+            raise RuntimeError(f"Invalid server config: {e}") from e
+        async with srv:
+            tools = await srv.list_tools()
+            return [
+                {
+                    "name": getattr(t, "name", ""),
+                    "description": (getattr(t, "description", "") or "").strip(),
+                }
+                for t in tools
+            ]
+
+    # stdio startup over `uv tool run` / `npx` can transiently break the pipe before
+    # the handshake settles; retry those a couple times before giving up.
+    attempts = 3 if is_stdio else 1
+    last_error: str | None = None
+    for attempt in range(attempts):
+        try:
+            tools = await asyncio.wait_for(_connect(), timeout=timeout)
+            return {"ok": True, "count": len(tools), "tools": tools}
+        except asyncio.TimeoutError:
+            hint = (
+                " — the command may still be installing its package on first run; "
+                "try again once it is cached"
+                if is_stdio
+                else ""
+            )
+            return {"ok": False, "error": f"Timed out after {timeout:.0f}s{hint}"}
+        except Exception as e:  # noqa: BLE001 - surface connection failure
+            last_error = _flatten_error(e)
+            if attempt < attempts - 1 and _is_transient_stdio_error(last_error):
+                await asyncio.sleep(1.0 * (attempt + 1))
+                continue
+            break
+
+    return {"ok": False, "error": last_error or "Connection failed"}
+
+
+def _flatten_error(exc: BaseException) -> str:
+    """Produce a readable message, unwrapping anyio/TaskGroup ExceptionGroups."""
+    # ExceptionGroup (Python 3.11+) hides the real cause behind a generic message.
+    inner = getattr(exc, "exceptions", None)
+    if inner:
+        return "; ".join(_flatten_error(e) for e in inner)
+    name = exc.__class__.__name__
+    msg = str(exc).strip()
+    if name == "BrokenResourceError" and not msg:
+        # The child process closed the pipe before the handshake completed —
+        # usually it exited early (bad args, crash, or still warming up).
+        return "Server process closed the connection before responding (it may have exited early or is still starting)"
+    return msg or name
+
+
+def _is_transient_stdio_error(message: str) -> bool:
+    """True for stdio startup races worth retrying (broken/closed pipe, EOF)."""
+    lowered = message.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "brokenresource",
+            "closed the connection",
+            "closedresource",
+            "eof",
+        )
+    )
+
+
 def create_agent(
     config: Dict[str, Any], memory_context: Optional[str] = None
 ) -> Agent[AgentDeps, str]:

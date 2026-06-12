@@ -129,8 +129,29 @@ class MCPAPI:
             payload["stdio"] = stdio
         return await self.client.post("/mcp_servers", json=payload)
 
+    async def update(
+        self,
+        name: str,
+        *,
+        url: str | None = None,
+        headers: dict | None = None,
+        stdio: dict | None = None,
+    ) -> dict:
+        payload: dict = {"name": name}
+        if url:
+            payload["url"] = url
+            if headers:
+                payload["headers"] = headers
+        if stdio:
+            payload["stdio"] = stdio
+        return await self.client.post("/mcp_servers/update", json=payload)
+
     async def remove(self, name: str) -> dict:
         return await self.client.post("/mcp_servers/remove", json={"name": name})
+
+    async def test(self, name: str) -> dict:
+        """Probe a configured server: {ok, tools} or {ok: False, error}."""
+        return await self.client.post("/mcp_servers/test", json={"name": name})
 
     async def set_enabled(self, name: str, enabled: bool) -> dict:
         return await self.client.post(

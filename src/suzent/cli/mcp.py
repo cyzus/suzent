@@ -117,14 +117,57 @@ def add_server(
     async def _run():
         try:
             client = get_client()
-            await client.mcp.add(name, url=url, headers=headers, stdio=stdio)
+            data = await client.mcp.add(name, url=url, headers=headers, stdio=stdio)
             typer.echo(f"Added MCP server: {name}")
+            probe = data.get("probe") or {}
+            if probe.get("ok"):
+                typer.echo(
+                    f"  ✅ Connection OK — {probe.get('count', 0)} tool(s) found"
+                )
+                _print_tool_names(probe.get("tools") or [])
+            elif probe:
+                typer.echo(f"  ⚠️  Saved, but connection failed: {probe.get('error')}")
             typer.echo("  (enabled by default — use 'suzent mcp disable' to turn off)")
         except ClientError as e:
             typer.echo(f"❌ {e}")
             raise typer.Exit(code=1)
 
     asyncio.run(_run())
+
+
+@mcp_app.command("test")
+def test_server(name: str = typer.Argument(..., help="Server name to test")):
+    """Probe a configured MCP server and report reachability + tool count."""
+
+    async def _run():
+        try:
+            client = get_client()
+            result = await client.mcp.test(name)
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+        if result.get("ok"):
+            typer.echo(f"✅ {name}: reachable — {result.get('count', 0)} tool(s)")
+            _print_tool_names(result.get("tools") or [], verbose=True)
+        else:
+            typer.echo(f"❌ {name}: {result.get('error', 'unreachable')}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
+
+
+def _print_tool_names(tools: list, *, verbose: bool = False) -> None:
+    """Print tool names (and descriptions when verbose) under a probe result."""
+    for tool in tools:
+        name = tool.get("name", "")
+        if verbose and tool.get("description"):
+            desc = tool["description"].splitlines()[0]
+            if len(desc) > 60:
+                desc = desc[:57] + "..."
+            typer.echo(f"     • {name} — {desc}")
+        else:
+            typer.echo(f"     • {name}")
 
 
 @mcp_app.command("remove")

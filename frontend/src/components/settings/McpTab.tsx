@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 import { useI18n } from '../../i18n';
-import { addMcpServer, fetchMcpServers, removeMcpServer, setMcpServerEnabled } from '../../lib/api';
+import { addMcpServer, updateMcpServer, fetchMcpServers, removeMcpServer, setMcpServerEnabled, testMcpServer, type McpProbeResult } from '../../lib/api';
 import { BrutalSelect } from '../BrutalSelect';
 
 type MCPUrlServer = {
@@ -43,60 +43,117 @@ export function McpTab({
     const [stdioEnv, setStdioEnv] = useState('');
     const [addType, setAddType] = useState<'url' | 'stdio'>('url');
     const [loading, setLoading] = useState(false);
+    // In-progress inline edit for one server, or null. Transport mirrors the
+    // server's own type (the name and transport kind are not editable here).
+    type EditDraft = { name: string; type: 'url' | 'stdio'; url: string; headers: string; command: string; args: string; env: string };
+    const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+    const [editLoading, setEditLoading] = useState(false);
+    // Per-server probe results, keyed by server name. `testing` flags an in-flight probe.
+    const [probes, setProbes] = useState<Record<string, McpProbeResult & { testing?: boolean }>>({});
+    // Which servers have their tool list expanded.
+    const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
+
+    const parseKv = (raw: string): Record<string, string> | undefined => {
+        if (!raw.trim()) return undefined;
+        const out: Record<string, string> = {};
+        for (const pair of raw.split(',')) {
+            const [k, v] = pair.split('=').map(s => s.trim());
+            if (k && v) out[k] = v;
+        }
+        return Object.keys(out).length ? out : undefined;
+    };
+
+    const clearAddForm = () => {
+        setSrvName('');
+        setSrvUrl('');
+        setSrvHeaders('');
+        setStdioCmd('');
+        setStdioArgs('');
+        setStdioEnv('');
+    };
+
+    const refreshServerList = async () => {
+        const data = await fetchMcpServers();
+        onMcpServersRefresh(data);
+        const urls = data.urls || {};
+        const stdio = data.stdio || {};
+        const enabled = data.enabled || {};
+        const urlServers: MCPServer[] = Object.entries(urls).map(([name, url]) => ({
+            type: 'url', name, url: String(url), enabled: !!enabled[name]
+        }));
+        const stdioServers: MCPServer[] = Object.entries(stdio).map(([name, params]: [string, any]) => ({
+            type: 'stdio', name, command: params.command, args: params.args, env: params.env, enabled: !!enabled[name]
+        }));
+        onServerListChange([...urlServers, ...stdioServers]);
+    };
+
+    const startEdit = (server: MCPServer) => {
+        setEditDraft(server.type === 'url'
+            ? {
+                name: server.name, type: 'url',
+                url: server.url,
+                headers: Object.entries(server.headers || {}).map(([k, v]) => `${k}=${v}`).join(', '),
+                command: '', args: '', env: '',
+            }
+            : {
+                name: server.name, type: 'stdio',
+                url: '', headers: '',
+                command: server.command,
+                args: (server.args || []).join(', '),
+                env: Object.entries(server.env || {}).map(([k, v]) => `${k}=${v}`).join(', '),
+            });
+    };
 
     const handleAddServer = async () => {
         setLoading(true);
         try {
+            let addedName: string;
+            let probe: McpProbeResult | undefined;
             if (addType === 'url') {
                 if (!srvUrl.trim()) return;
                 try { new URL(srvUrl); } catch { return; }
-                // Parse headers from KEY=value format
-                let headers: Record<string, string> | undefined;
-                if (srvHeaders.trim()) {
-                    headers = {};
-                    for (const pair of srvHeaders.split(',')) {
-                        const [k, v] = pair.split('=').map(s => s.trim());
-                        if (k && v) headers[k] = v;
-                    }
-                }
-                await addMcpServer(srvName.trim() || new URL(srvUrl).host, srvUrl.trim(), undefined, headers);
+                const headers = parseKv(srvHeaders);
+                addedName = srvName.trim() || new URL(srvUrl).host;
+                probe = await addMcpServer(addedName, srvUrl.trim(), undefined, headers);
             } else {
                 if (!stdioCmd.trim()) return;
                 const args = stdioArgs.trim()
                     ? stdioArgs.split(',').map(s => s.trim()).filter(Boolean)
                     : undefined;
-                let env: Record<string, string> | undefined;
-                if (stdioEnv.trim()) {
-                    env = {};
-                    for (const pair of stdioEnv.split(',')) {
-                        const [k, v] = pair.split('=').map(s => s.trim());
-                        if (k && v) env[k] = v;
-                    }
-                }
-                await addMcpServer(srvName.trim() || stdioCmd.trim(), undefined, { command: stdioCmd.trim(), args, env });
+                const env = parseKv(stdioEnv);
+                addedName = srvName.trim() || stdioCmd.trim();
+                probe = await addMcpServer(addedName, undefined, { command: stdioCmd.trim(), args, env });
             }
-            // Clear form
-            setSrvName('');
-            setSrvUrl('');
-            setSrvHeaders('');
-            setStdioCmd('');
-            setStdioArgs('');
-            setStdioEnv('');
-            // Refresh servers
-            const data = await fetchMcpServers();
-            onMcpServersRefresh(data);
-            const urls = data.urls || {};
-            const stdio = data.stdio || {};
-            const enabled = data.enabled || {};
-            const urlServers: MCPServer[] = Object.entries(urls).map(([name, url]) => ({
-                type: 'url', name, url: String(url), enabled: !!enabled[name]
-            }));
-            const stdioServers: MCPServer[] = Object.entries(stdio).map(([name, params]: [string, any]) => ({
-                type: 'stdio', name, command: params.command, args: params.args, env: params.env, enabled: !!enabled[name]
-            }));
-            onServerListChange([...urlServers, ...stdioServers]);
+            if (probe) setProbes(prev => ({ ...prev, [addedName]: probe! }));
+            clearAddForm();
+            await refreshServerList();
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSaveEdit = async () => {
+        if (!editDraft) return;
+        setEditLoading(true);
+        try {
+            const name = editDraft.name;
+            let probe: McpProbeResult | undefined;
+            if (editDraft.type === 'url') {
+                if (!editDraft.url.trim()) return;
+                try { new URL(editDraft.url); } catch { return; }
+                probe = await updateMcpServer(name, editDraft.url.trim(), undefined, parseKv(editDraft.headers));
+            } else {
+                if (!editDraft.command.trim()) return;
+                const args = editDraft.args.trim()
+                    ? editDraft.args.split(',').map(s => s.trim()).filter(Boolean)
+                    : undefined;
+                probe = await updateMcpServer(name, undefined, { command: editDraft.command.trim(), args, env: parseKv(editDraft.env) });
+            }
+            if (probe) setProbes(prev => ({ ...prev, [name]: probe! }));
+            setEditDraft(null);
+            await refreshServerList();
+        } finally {
+            setEditLoading(false);
         }
     };
 
@@ -117,8 +174,23 @@ export function McpTab({
         try {
             await removeMcpServer(server.name);
             onServerListChange(serverList.filter(s => s.name !== server.name));
+            setProbes(prev => {
+                const next = { ...prev };
+                delete next[server.name];
+                return next;
+            });
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleTestServer = async (server: MCPServer) => {
+        setProbes(prev => ({ ...prev, [server.name]: { ok: false, testing: true } }));
+        try {
+            const result = await testMcpServer(server.name);
+            setProbes(prev => ({ ...prev, [server.name]: result }));
+        } catch (e) {
+            setProbes(prev => ({ ...prev, [server.name]: { ok: false, error: String(e) } }));
         }
     };
 
@@ -225,8 +297,9 @@ export function McpTab({
                         {serverList.map((server) => (
                             <div
                                 key={server.name}
-                                className="flex items-center gap-4 bg-neutral-50 dark:bg-zinc-900 border-2 border-brutal-black p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                                className="bg-neutral-50 dark:bg-zinc-900 border-2 border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
                             >
+                              <div className="flex items-center gap-4 p-4">
                                 <input
                                     type="checkbox"
                                     checked={server.enabled}
@@ -252,7 +325,54 @@ export function McpTab({
                                             {server.args && server.args.length > 0 && ` [${server.args.join(', ')}]`}
                                         </div>
                                     )}
+                                    {probes[server.name] && (
+                                        probes[server.name].testing ? (
+                                            <div className="text-[11px] font-bold uppercase text-neutral-500 dark:text-neutral-400 mt-1">{t('settings.mcp.testing')}</div>
+                                        ) : probes[server.name].ok ? (
+                                            <div className="text-[11px] font-bold uppercase text-green-600 dark:text-green-400 mt-1" title={t('settings.mcp.reachable')}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setExpandedTools(prev => ({ ...prev, [server.name]: !prev[server.name] }))}
+                                                    className="hover:underline"
+                                                >
+                                                    ● {t('settings.mcp.reachable')} ({probes[server.name].count ?? 0})
+                                                    {(probes[server.name].tools?.length ?? 0) > 0 && (expandedTools[server.name] ? ' ▾' : ' ▸')}
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="text-[11px] font-bold uppercase text-brutal-red mt-1 truncate" title={probes[server.name].error}>
+                                                ● {t('settings.mcp.unreachable')}: {probes[server.name].error}
+                                            </div>
+                                        )
+                                    )}
+                                    {probes[server.name]?.ok && expandedTools[server.name] && (probes[server.name].tools?.length ?? 0) > 0 && (
+                                        <ul className="mt-1 space-y-0.5">
+                                            {probes[server.name].tools!.map(tool => (
+                                                <li
+                                                    key={tool.name}
+                                                    className="text-[11px] font-mono text-neutral-600 dark:text-neutral-300 truncate"
+                                                    title={tool.description || tool.name}
+                                                >
+                                                    • {tool.name}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
                                 </div>
+                                <button
+                                    onClick={() => handleTestServer(server)}
+                                    disabled={loading || probes[server.name]?.testing}
+                                    className="px-3 py-1 bg-brutal-blue text-white border-2 border-brutal-black font-bold text-xs uppercase hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
+                                >
+                                    {t('settings.mcp.test')}
+                                </button>
+                                <button
+                                    onClick={() => editDraft?.name === server.name ? setEditDraft(null) : startEdit(server)}
+                                    disabled={loading}
+                                    className={`px-3 py-1 border-2 border-brutal-black font-bold text-xs uppercase hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50 ${editDraft?.name === server.name ? 'bg-brutal-black text-white' : 'bg-brutal-yellow text-brutal-black'}`}
+                                >
+                                    {t('common.edit')}
+                                </button>
                                 <button
                                     onClick={() => handleRemoveServer(server)}
                                     disabled={loading}
@@ -260,6 +380,68 @@ export function McpTab({
                                 >
                                     {t('common.remove')}
                                 </button>
+                              </div>
+
+                              {editDraft?.name === server.name && (
+                                <div className="border-t-2 border-brutal-black p-4 space-y-2 bg-white dark:bg-zinc-800">
+                                    <div className="text-[11px] font-bold uppercase text-neutral-500 dark:text-neutral-400">
+                                        {t('settings.mcp.editServerTitle')} — {server.name}
+                                    </div>
+                                    {editDraft.type === 'url' ? (
+                                        <>
+                                            <input
+                                                value={editDraft.url}
+                                                onChange={e => setEditDraft({ ...editDraft, url: e.target.value })}
+                                                placeholder="https://host/path"
+                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white dark:placeholder-neutral-500"
+                                            />
+                                            <input
+                                                value={editDraft.headers}
+                                                onChange={e => setEditDraft({ ...editDraft, headers: e.target.value })}
+                                                placeholder={t('settings.mcp.headersPlaceholder')}
+                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white dark:placeholder-neutral-500"
+                                            />
+                                        </>
+                                    ) : (
+                                        <>
+                                            <input
+                                                value={editDraft.command}
+                                                onChange={e => setEditDraft({ ...editDraft, command: e.target.value })}
+                                                placeholder={t('settings.mcp.commandPlaceholder')}
+                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white dark:placeholder-neutral-500"
+                                            />
+                                            <input
+                                                value={editDraft.args}
+                                                onChange={e => setEditDraft({ ...editDraft, args: e.target.value })}
+                                                placeholder={t('settings.mcp.argsPlaceholder')}
+                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white dark:placeholder-neutral-500"
+                                            />
+                                            <input
+                                                value={editDraft.env}
+                                                onChange={e => setEditDraft({ ...editDraft, env: e.target.value })}
+                                                placeholder={t('settings.mcp.envPlaceholder')}
+                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white dark:placeholder-neutral-500"
+                                            />
+                                        </>
+                                    )}
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={handleSaveEdit}
+                                            disabled={editLoading || (editDraft.type === 'url' ? !editDraft.url.trim() : !editDraft.command.trim())}
+                                            className="px-4 py-2 bg-brutal-green border-2 border-brutal-black font-bold text-xs uppercase text-brutal-black hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
+                                        >
+                                            {editLoading ? t('settings.mcp.saving') : t('settings.mcp.saveServer')}
+                                        </button>
+                                        <button
+                                            onClick={() => setEditDraft(null)}
+                                            disabled={editLoading}
+                                            className="px-4 py-2 bg-neutral-200 dark:bg-zinc-700 border-2 border-brutal-black font-bold text-xs uppercase text-brutal-black dark:text-white hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
+                                        >
+                                            {t('common.cancel')}
+                                        </button>
+                                    </div>
+                                </div>
+                              )}
                             </div>
                         ))}
                     </div>

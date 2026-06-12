@@ -116,8 +116,10 @@ from suzent.routes.goal_task_routes import (
 from suzent.routes.mcp_routes import (
     list_mcp_servers,
     add_mcp_server,
+    update_mcp_server,
     remove_mcp_server,
     set_mcp_server_enabled,
+    test_mcp_server,
 )
 from suzent.routes.memory_routes import (
     get_core_memory,
@@ -769,8 +771,10 @@ app = Starlette(
         Route("/social/pairing/deny", deny_pairing, methods=["POST"]),
         Route("/mcp_servers", list_mcp_servers, methods=["GET"]),
         Route("/mcp_servers", add_mcp_server, methods=["POST"]),
+        Route("/mcp_servers/update", update_mcp_server, methods=["POST"]),
         Route("/mcp_servers/remove", remove_mcp_server, methods=["POST"]),
         Route("/mcp_servers/enabled", set_mcp_server_enabled, methods=["POST"]),
+        Route("/mcp_servers/test", test_mcp_server, methods=["POST"]),
         Route("/sandbox/files", list_sandbox_files, methods=["GET"]),
         Route("/sandbox/mentions", search_file_mentions, methods=["GET"]),
         Route("/sandbox/read_file", read_sandbox_file, methods=["GET"]),

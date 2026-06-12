@@ -143,24 +143,68 @@ export async function fetchMcpServers(): Promise<McpServersResponse> {
   return res.json();
 }
 
+export interface McpToolInfo {
+  name: string;
+  description?: string;
+}
+
+export interface McpProbeResult {
+  ok: boolean;
+  count?: number;
+  tools?: McpToolInfo[];
+  error?: string;
+}
+
 export async function addMcpServer(
   name: string,
   url?: string,
   stdio?: StdioConfig,
   headers?: Record<string, string>
-): Promise<void> {
+): Promise<McpProbeResult | undefined> {
   const body: { name: string; url?: string; stdio?: StdioConfig; headers?: Record<string, string> } = { name };
   if (url) body.url = url;
   if (stdio) body.stdio = stdio;
   if (headers && Object.keys(headers).length > 0) body.headers = headers;
 
-  /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
   const res = await fetch(`${getApiBase()}/mcp_servers`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
   if (!res.ok) throw new Error('Failed to add MCP server');
+  const data = await res.json();
+  return data.probe as McpProbeResult | undefined;
+}
+
+export async function updateMcpServer(
+  name: string,
+  url?: string,
+  stdio?: StdioConfig,
+  headers?: Record<string, string>
+): Promise<McpProbeResult | undefined> {
+  const body: { name: string; url?: string; stdio?: StdioConfig; headers?: Record<string, string> } = { name };
+  if (url) body.url = url;
+  if (stdio) body.stdio = stdio;
+  if (headers && Object.keys(headers).length > 0) body.headers = headers;
+
+  const res = await fetch(`${getApiBase()}/mcp_servers/update`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error('Failed to update MCP server');
+  const data = await res.json();
+  return data.probe as McpProbeResult | undefined;
+}
+
+export async function testMcpServer(name: string): Promise<McpProbeResult> {
+  const res = await fetch(`${getApiBase()}/mcp_servers/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name })
+  });
+  if (!res.ok) throw new Error('Failed to test MCP server');
+  return res.json();
 }
 
 export async function removeMcpServer(name: string): Promise<void> {
