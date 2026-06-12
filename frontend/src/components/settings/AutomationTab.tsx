@@ -17,6 +17,7 @@ import {
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalSelect } from '../BrutalSelect';
 import { ScheduleBuilder, describeCron } from './ScheduleBuilder';
+import { SettingsHeader } from './SettingsHeader';
 
 interface AutomationTabProps {
   models: string[];
@@ -185,9 +186,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black dark:text-white">{t('settings.automation.title')}</h2>
-      </div>
+      <SettingsHeader title={t('settings.automation.title')} subtitle={t('settings.automation.subtitle')} />
 
       {/* Status Card */}
       <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">

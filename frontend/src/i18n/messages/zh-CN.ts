@@ -147,6 +147,7 @@ export const zhCN = {
     usingSuzent: 'SUZENT 设置',
     memoryConfig: {
       title: '记忆配置',
+      subtitle: '管理后台记忆整理与笔记库',
       systemConfigTitle: '系统配置',
       systemConfigDesc: '配置工作区的笔记目录挂载路径。',
       modelRolesHint: '向量模型和抽取模型请在「模型角色 → 向量嵌入 / 轻量」中配置。',
@@ -187,6 +188,7 @@ export const zhCN = {
     },
     providers: {
       title: '模型提供商',
+      subtitle: '配置提供商 API 密钥并管理可用模型',
       apiKeysTab: 'API 密钥',
       modelsTab: '模型',
       addModelIdPlaceholder: '添加模型 ID...',
@@ -236,6 +238,7 @@ export const zhCN = {
     },
     mcp: {
       title: 'MCP 服务器',
+      subtitle: '通过 MCP 连接外部工具与资源',
       addNewServerTitle: '添加新服务器',
       addNewServerDesc: '添加一个 MCP 服务器，用于连接外部工具与资源。',
       nameOptionalPlaceholder: '名称（可选）',
@@ -273,6 +276,7 @@ export const zhCN = {
     },
     data: {
       title: '数据',
+      subtitle: '在多设备间同步可移植配置、技能与记忆',
       githubTitle: 'GitHub 同步',
       githubDesc: '通过带 GitHub remote 的本地 Git 仓库同步可迁移配置、技能和 Markdown 记忆。对话、运行时数据、索引和明文密钥只保留在本机。',
       githubQuickStartTitle: '快速开始',
@@ -406,6 +410,7 @@ export const zhCN = {
     verifyFailed: '验证失败或未找到可用模型。',
     social: {
       title: '社交频道',
+      subtitle: '配置社交平台智能体与访问控制',
       generalSettingsTitle: '通用设置',
       generalSettingsDesc: '配置全局社交互动设置。',
       socialModel: '社交模型',
@@ -428,6 +433,7 @@ export const zhCN = {
     },
     automation: {
       title: '自动化',
+      subtitle: '调度周期性智能体任务并管理调度器',
       failedToCreateJob: '创建任务失败',
       failedToUpdateJob: '更新任务失败',
       defaultModel: '默认',

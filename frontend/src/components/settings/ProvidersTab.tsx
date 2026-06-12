@@ -4,6 +4,7 @@ import { useI18n } from '../../i18n';
 import { ApiField, ApiProvider, CustomProviderPayload, fetchChatGPTStatus, logoutChatGPT, startChatGPTLogin, syncCapabilities, UserConfig } from '../../lib/api';
 import type { ChatGPTLoginResponse, ChatGPTStatusResponse } from '../../types/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
+import { SettingsHeader } from './SettingsHeader';
 
 // Brand colors keyed by provider id (hex without #). Kept in the frontend only.
 const PROVIDER_COLORS: Record<string, string> = {
@@ -516,28 +517,31 @@ export function ProvidersTab({
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between mb-4 gap-3">
-                <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black dark:text-white">{t('settings.providers.title')}</h2>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                    {syncResult && (
-                        <span className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 max-w-[200px] truncate">{syncResult}</span>
-                    )}
-                    <button
-                        onClick={handleSync}
-                        disabled={syncing}
-                        title={t('settings.providers.syncTooltip')}
-                        className="px-3 py-2 text-xs font-black uppercase border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-700 dark:text-white disabled:opacity-40 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.2)] active:shadow-none"
-                    >
-                        {syncing ? t('settings.providers.syncing') : t('settings.providers.sync')}
-                    </button>
-                    <button
-                        onClick={() => setShowAddForm(v => !v)}
-                        className="px-3 py-2 text-xs font-black uppercase bg-brutal-black text-white border-2 border-brutal-black hover:bg-zinc-800 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)] active:shadow-none"
-                    >
-                        {showAddForm ? '✕' : t('settings.providers.addProvider')}
-                    </button>
-                </div>
-            </div>
+            <SettingsHeader
+                title={t('settings.providers.title')}
+                subtitle={t('settings.providers.subtitle')}
+                actions={
+                    <>
+                        {syncResult && (
+                            <span className="text-[10px] font-bold text-neutral-300 max-w-[200px] truncate">{syncResult}</span>
+                        )}
+                        <button
+                            onClick={handleSync}
+                            disabled={syncing}
+                            title={t('settings.providers.syncTooltip')}
+                            className="px-3 py-2 text-xs font-black uppercase border-2 border-white text-white hover:bg-white/10 disabled:opacity-40 active:translate-y-px"
+                        >
+                            {syncing ? t('settings.providers.syncing') : t('settings.providers.sync')}
+                        </button>
+                        <button
+                            onClick={() => setShowAddForm(v => !v)}
+                            className="px-3 py-2 text-xs font-black uppercase bg-white text-brutal-black border-2 border-white hover:bg-neutral-200 active:translate-y-px"
+                        >
+                            {showAddForm ? '✕' : t('settings.providers.addProvider')}
+                        </button>
+                    </>
+                }
+            />
 
             {showAddForm && (
                 <AddProviderForm

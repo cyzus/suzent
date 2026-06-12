@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTheme, SCHEME_COLORS, SCHEME_SURFACES, type Scheme } from '../../hooks/useTheme';
 import { useI18n } from '../../i18n';
+import { SettingsHeader } from './SettingsHeader';
 
 /** Mini split preview: left = light half, right = dark half */
 function CardPreview({ s }: { s: Scheme }) {
@@ -44,10 +45,7 @@ export function AppearanceTab(): React.ReactElement {
 
   return (
     <div className="space-y-6">
-      <div className="bg-brutal-black text-white p-3 border-3 border-brutal-black">
-        <h3 className="font-brutal text-xl uppercase tracking-tight">{t('settings.appearance.title')}</h3>
-        <p className="text-xs text-neutral-300 font-mono">{t('settings.appearance.subtitle')}</p>
-      </div>
+      <SettingsHeader title={t('settings.appearance.title')} subtitle={t('settings.appearance.subtitle')} />
 
       <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal p-6">
         <div className="text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400 mb-5">

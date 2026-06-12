@@ -3,6 +3,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 
 import { useDreamStatus } from '../../hooks/useDreamStatus';
 import { useI18n } from '../../i18n';
+import { SettingsHeader } from './SettingsHeader';
 
 interface MemoryTabProps {
     globalNotebookHostPath: string;
@@ -78,7 +79,7 @@ export function MemoryTab({
 
     return (
         <div className="space-y-6">
-            <h2 className="text-3xl font-brutal font-black uppercase text-brutal-black dark:text-white">{t('settings.memoryConfig.title')}</h2>
+            <SettingsHeader title={t('settings.memoryConfig.title')} subtitle={t('settings.memoryConfig.subtitle')} />
 
             {/* Model roles redirect notice */}
             <div className="bg-brutal-yellow/20 border-2 border-brutal-black p-4 flex items-start gap-3">

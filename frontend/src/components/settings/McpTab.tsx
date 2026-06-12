@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useI18n } from '../../i18n';
 import { addMcpServer, updateMcpServer, fetchMcpServers, removeMcpServer, setMcpServerEnabled, testMcpServer, type McpProbeResult } from '../../lib/api';
 import { BrutalSelect } from '../BrutalSelect';
+import { SettingsHeader } from './SettingsHeader';
 
 type MCPUrlServer = {
     type: 'url';
@@ -196,9 +197,7 @@ export function McpTab({
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between mb-4">
-                <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black dark:text-white">{t('settings.mcp.title')}</h2>
-            </div>
+            <SettingsHeader title={t('settings.mcp.title')} subtitle={t('settings.mcp.subtitle')} />
 
             {/* Add MCP Server Card */}
             <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">

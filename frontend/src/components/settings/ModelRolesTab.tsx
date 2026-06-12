@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
+import { SettingsHeader } from './SettingsHeader';
 
 interface ModelRolesTabProps {
   roleModels: Record<string, string[]>;
@@ -236,14 +237,7 @@ export function ModelRolesTab({ roleModels, suggestions, onChange }: ModelRolesT
 
   return (
     <div className="space-y-6">
-      <div className="mb-6">
-        <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black dark:text-white mb-2">
-          {t('settings.roles.title')}
-        </h2>
-        <p className="text-sm text-neutral-500 dark:text-neutral-400">
-          {t('settings.roles.subtitle')}
-        </p>
-      </div>
+      <SettingsHeader title={t('settings.roles.title')} subtitle={t('settings.roles.subtitle')} />
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         {ROLES.map(({ key, labelKey, descKey }) => (

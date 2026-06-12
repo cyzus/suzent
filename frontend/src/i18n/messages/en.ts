@@ -147,6 +147,7 @@ export const en = {
     usingSuzent: 'Using Suzent',
     memoryConfig: {
       title: 'Memory Configuration',
+      subtitle: 'Manage background consolidation and the notebook vault',
       systemConfigTitle: 'System Configuration',
       systemConfigDesc: 'Configure the notebook mount path for your workspace.',
       modelRolesHint: 'Embedding and extraction models are configured in Model Roles → Embedding / Cheap.',
@@ -187,6 +188,7 @@ export const en = {
     },
     providers: {
       title: 'Model Providers',
+      subtitle: 'Connect provider API keys and manage available models',
       apiKeysTab: 'API keys',
       modelsTab: 'Models',
       addModelIdPlaceholder: 'Add model ID...',
@@ -236,6 +238,7 @@ export const en = {
     },
     mcp: {
       title: 'MCP Servers',
+      subtitle: 'Connect external tools and resources via MCP',
       addNewServerTitle: 'Add new server',
       addNewServerDesc: 'Add a new MCP server to connect external tools and resources.',
       nameOptionalPlaceholder: 'Name (optional)',
@@ -273,6 +276,7 @@ export const en = {
     },
     data: {
       title: 'Data',
+      subtitle: 'Sync portable config, skills, and memory across devices',
       githubTitle: 'GitHub Sync',
       githubDesc: 'Share portable config, skills, and markdown memory through a local Git repo with a GitHub remote. Chats, runtime data, indexes, and plaintext secrets stay local.',
       githubQuickStartTitle: 'Quick start',
@@ -406,6 +410,7 @@ export const en = {
     verifyFailed: 'Verification failed or no models found.',
     social: {
       title: 'Social Channels',
+      subtitle: 'Configure social platform agents and access control',
       generalSettingsTitle: 'General Settings',
       generalSettingsDesc: 'Configure global settings for social interactions.',
       socialModel: 'Social Model',
@@ -428,6 +433,7 @@ export const en = {
     },
     automation: {
       title: 'Automation',
+      subtitle: 'Schedule recurring agent jobs and manage the scheduler',
       failedToCreateJob: 'Failed to create job',
       failedToUpdateJob: 'Failed to update job',
       defaultModel: 'Default',

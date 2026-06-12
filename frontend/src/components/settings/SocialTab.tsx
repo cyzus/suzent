@@ -4,6 +4,7 @@ import { useI18n } from '../../i18n';
 import { PairingRequest, SocialConfig, approvePairing, denyPairing, fetchPairings } from '../../lib/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalToggle } from '../BrutalToggle';
+import { SettingsHeader } from './SettingsHeader';
 
 interface McpServersData {
     urls: Record<string, string>;
@@ -64,9 +65,7 @@ export function SocialTab({
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between mb-4">
-                <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black dark:text-white">{t('settings.social.title')}</h2>
-            </div>
+            <SettingsHeader title={t('settings.social.title')} subtitle={t('settings.social.subtitle')} />
 
             <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
                 <div className="flex items-start gap-4 mb-6">

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { fetchGlobalCost, fetchDailyCost } from '../../lib/api';
 import type { CostGlobal, CostDaily } from '../../lib/api';
 import { useI18n } from '../../i18n';
+import { SettingsHeader } from './SettingsHeader';
 
 type TimeRange = 7 | 14 | 30;
 
@@ -149,10 +150,7 @@ export function UsageTab(): React.ReactElement {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-brutal-black text-white p-3 border-3 border-brutal-black">
-        <h3 className="font-brutal text-xl uppercase tracking-tight">{t('settings.usage.title')}</h3>
-        <p className="text-xs text-neutral-300 font-mono">{t('settings.usage.subtitle')}</p>
-      </div>
+      <SettingsHeader title={t('settings.usage.title')} subtitle={t('settings.usage.subtitle')} />
 
       {/* Time range selector */}
       <div className="flex gap-2">

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 
 import { useI18n } from '../../i18n';
 import { GitHubSyncSection } from './GitHubSyncSection';
+import { SettingsHeader } from './SettingsHeader';
 
 type Notification = { text: string; isError: boolean };
 
@@ -16,9 +17,7 @@ export function DataTab({ onSyncComplete }: { onSyncComplete?: () => void }): Re
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-4xl font-brutal font-black uppercase text-brutal-black dark:text-white">{t('settings.data.title')}</h2>
-      </div>
+      <SettingsHeader title={t('settings.data.title')} subtitle={t('settings.data.subtitle')} />
 
       <GitHubSyncSection busy={busy} onBusyChange={setBusy} onNotify={notify} onSyncComplete={onSyncComplete} />
 
