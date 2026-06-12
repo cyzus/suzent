@@ -299,9 +299,33 @@ async def consolidate_memory(request: Request) -> JSONResponse:
         if runner is None:
             return JSONResponse({"error": "Dream runner not active"}, status_code=503)
 
-        result = await runner.force_run()
+        result = runner.start_force_run()
         return JSONResponse({"success": True, "result": result})
 
     except Exception as e:
         logger.error(f"Error during memory consolidation: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def get_dream_status(request: Request) -> JSONResponse:
+    """Return the background memory consolidation status."""
+    try:
+        from suzent.core.dream_runner import get_active_dream_runner
+
+        runner = get_active_dream_runner()
+        if runner is None:
+            return JSONResponse(
+                {
+                    "active": False,
+                    "available": False,
+                    "enabled": CONFIG.memory_consolidation_enabled,
+                    "running": False,
+                    "reason": "Dream runner not active",
+                }
+            )
+
+        return JSONResponse(runner.status())
+
+    except Exception as e:
+        logger.error(f"Error getting dream status: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)

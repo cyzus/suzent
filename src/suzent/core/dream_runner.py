@@ -12,7 +12,7 @@ import asyncio
 import re
 import time
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from suzent.config import CONFIG
 from suzent.core.base_brain import BaseBrain, get_active
@@ -42,6 +42,11 @@ class DreamRunner(BaseBrain):
         # Ephemeral pacing state (NOT the watermark, which lives in log.md).
         self._last_attempt_at: float = 0.0
         self._failures: dict = {}  # batch-end-date -> consecutive no-op count
+        self._last_started_at: Optional[str] = None
+        self._last_finished_at: Optional[str] = None
+        self._last_result: Optional[dict[str, Any]] = None
+        self._phase: str = "idle"
+        self._background_task: Optional[asyncio.Task] = None
 
     async def _run_loop(self):
         # Let startup settle before the first tick.
@@ -57,7 +62,9 @@ class DreamRunner(BaseBrain):
             except Exception as e:
                 logger.error(f"Dream loop error: {e}")
             try:
-                await asyncio.sleep(max(60, CONFIG.memory_consolidation_interval_seconds))
+                await asyncio.sleep(
+                    max(60, CONFIG.memory_consolidation_interval_seconds)
+                )
             except asyncio.CancelledError:
                 break
 
@@ -104,6 +111,65 @@ class DreamRunner(BaseBrain):
             pass
         return state
 
+    def status(self) -> dict[str, Any]:
+        """Return a frontend-safe snapshot of dream consolidation state."""
+        running = self._lock.locked() or self._phase == "queued"
+        mgr = get_memory_manager()
+        if not mgr or not getattr(mgr, "markdown_store", None):
+            return {
+                "active": True,
+                "available": False,
+                "running": running,
+                "phase": self._phase,
+                "reason": "memory system unavailable",
+                "enabled": CONFIG.memory_consolidation_enabled,
+                "last_started_at": self._last_started_at,
+                "last_finished_at": self._last_finished_at,
+                "last_result": self._last_result,
+            }
+
+        watermark = mgr.markdown_store.read_watermark()
+        pending = self._pending_dates(mgr, watermark)
+        pending_facts = self._count_fact_lines(mgr, pending)
+        all_dates = [
+            p.stem
+            for p in sorted(mgr.markdown_store.archive_dir.glob("????-??-??.md"))
+            if p.stem < self._today_utc()
+        ]
+        consolidated_count = len(
+            [date for date in all_dates if watermark and date <= watermark]
+        )
+        total_count = len(all_dates)
+        progress_percent = (
+            round((consolidated_count / total_count) * 100) if total_count > 0 else 100
+        )
+        next_batch = pending[: CONFIG.memory_consolidation_max_days]
+        available = bool(getattr(mgr, "llm_client", None))
+        return {
+            "active": True,
+            "available": available,
+            "reason": None if available else "consolidation model unavailable",
+            "enabled": CONFIG.memory_consolidation_enabled,
+            "running": running,
+            "phase": self._phase,
+            "watermark": watermark,
+            "pending_dates": pending,
+            "pending_count": len(pending),
+            "pending_facts": pending_facts,
+            "archive_count": total_count,
+            "consolidated_count": consolidated_count,
+            "progress_percent": progress_percent,
+            "next_batch_end": next_batch[-1] if next_batch else None,
+            "last_attempt_at": self._last_attempt_at or None,
+            "last_started_at": self._last_started_at,
+            "last_finished_at": self._last_finished_at,
+            "last_result": self._last_result,
+            "failures": dict(self._failures),
+            "min_facts": CONFIG.memory_consolidation_min_facts,
+            "min_hours": CONFIG.memory_consolidation_min_hours,
+            "max_days": CONFIG.memory_consolidation_max_days,
+        }
+
     # ----- gate + run -----
 
     async def _tick(self):
@@ -121,9 +187,14 @@ class DreamRunner(BaseBrain):
         behind = len(pending) > CONFIG.memory_consolidation_max_days
         if not behind:
             # Steady state: back off on attempts + require enough new material.
-            if (time.time() - self._last_attempt_at) < CONFIG.memory_consolidation_min_hours * 3600:
+            if (
+                time.time() - self._last_attempt_at
+            ) < CONFIG.memory_consolidation_min_hours * 3600:
                 return
-            if self._count_fact_lines(mgr, pending) < CONFIG.memory_consolidation_min_facts:
+            if (
+                self._count_fact_lines(mgr, pending)
+                < CONFIG.memory_consolidation_min_facts
+            ):
                 return
         # behind => sprint (ignore the daily/volume gate) until caught up.
         await self._run_dream(mgr, watermark, pending)
@@ -139,11 +210,48 @@ class DreamRunner(BaseBrain):
             return {"ran": False, "reason": "nothing pending"}
         return await self._run_dream(mgr, watermark, pending)
 
-    async def _run_dream(self, mgr, watermark: Optional[str], pending: List[str]) -> dict:
+    def start_force_run(self) -> dict:
+        """Start on-demand consolidation in the background for UI-triggered runs."""
+        if self._lock.locked() or self._phase == "queued":
+            return {"ran": False, "started": False, "reason": "already running"}
+
+        mgr = get_memory_manager()
+        if not mgr or not mgr.markdown_store or not mgr.llm_client:
+            return {
+                "ran": False,
+                "started": False,
+                "reason": "memory system unavailable",
+            }
+
+        watermark = mgr.markdown_store.read_watermark()
+        pending = self._pending_dates(mgr, watermark)
+        if not pending:
+            return {"ran": False, "started": False, "reason": "nothing pending"}
+
+        self._phase = "queued"
+        target = pending[: CONFIG.memory_consolidation_max_days][-1]
+        task = asyncio.create_task(self._run_dream(mgr, watermark, pending))
+        self._background_task = task
+
+        def _done(done_task: asyncio.Task) -> None:
+            try:
+                done_task.result()
+            except Exception as e:
+                self._phase = "idle"
+                logger.error(f"[dream] background run failed: {e}")
+
+        task.add_done_callback(_done)
+        return {"ran": True, "started": True, "watermark": watermark, "target": target}
+
+    async def _run_dream(
+        self, mgr, watermark: Optional[str], pending: List[str]
+    ) -> dict:
         if self._lock.locked():
             return {"ran": False, "reason": "already running"}
         async with self._lock:
+            self._phase = "preparing"
             self._last_attempt_at = time.time()
+            self._last_started_at = datetime.now(timezone.utc).isoformat()
             batch = pending[: CONFIG.memory_consolidation_max_days]
             w_new = batch[-1]
 
@@ -152,7 +260,9 @@ class DreamRunner(BaseBrain):
                 logger.warning(f"[dream] skipping un-consolidatable batch <= {w_new}")
                 await self._advance_watermark(mgr, w_new)
                 self._failures.pop(w_new, None)
-                return {"ran": True, "skipped": True, "watermark": w_new}
+                result = {"ran": True, "skipped": True, "watermark": w_new}
+                self._record_result(result)
+                return result
 
             start = watermark or "0000-00-00"
             before = self._content_pages_state(mgr)
@@ -161,6 +271,7 @@ class DreamRunner(BaseBrain):
             agent_ok = False
             try:
                 await self._reset_dream_chat()
+                self._phase = "running_agent"
                 await self._run_agent(start, w_new)
                 agent_ok = True
             except Exception as e:
@@ -168,6 +279,7 @@ class DreamRunner(BaseBrain):
             finally:
                 self._resume_watcher()
 
+            self._phase = "finalizing"
             # Advance ONLY when the agent finished cleanly AND produced real page
             # changes. A failed or timed-out run can leave a partially-written page,
             # so "a content page changed" alone is NOT proof of work — advancing on it
@@ -179,16 +291,22 @@ class DreamRunner(BaseBrain):
             changed = self._content_pages_state(mgr) != before
             if not (agent_ok and changed):
                 self._failures[w_new] = self._failures.get(w_new, 0) + 1
-                reason = "agent run failed/timed out" if not agent_ok else "no content changes"
+                reason = (
+                    "agent run failed/timed out"
+                    if not agent_ok
+                    else "no content changes"
+                )
                 logger.info(
                     f"[dream] not advancing ({reason}); watermark stays {watermark} (target {w_new})"
                 )
-                return {
+                result = {
                     "ran": True,
                     "changed": changed,
                     "advanced": False,
                     "watermark": watermark,
                 }
+                self._record_result(result)
+                return result
 
             self._failures.pop(w_new, None)
             await self._advance_watermark(mgr, w_new)
@@ -207,7 +325,19 @@ class DreamRunner(BaseBrain):
             except Exception as e:
                 logger.error(f"[dream] reindex failed: {e}")
             logger.info(f"[dream] consolidated through {w_new}")
-            return {"ran": True, "changed": True, "advanced": True, "watermark": w_new}
+            result = {
+                "ran": True,
+                "changed": True,
+                "advanced": True,
+                "watermark": w_new,
+            }
+            self._record_result(result)
+            return result
+
+    def _record_result(self, result: dict[str, Any]) -> None:
+        self._last_result = result
+        self._last_finished_at = datetime.now(timezone.utc).isoformat()
+        self._phase = "idle"
 
     async def _advance_watermark(self, mgr, w_new: str):
         await mgr.markdown_store.write_watermark_entry(self._today_utc(), w_new)

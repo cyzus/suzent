@@ -302,6 +302,11 @@ function AppInner(): React.ReactElement {
   const [sidebarTab, setSidebarTab] = useState<'chats' | 'config'>('chats');
   const [mainView, setMainView] = useState<MainView>('chat');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsInitialCategory, setSettingsInitialCategory] = useState<'providers' | 'roles' | 'memory' | 'social' | 'mcp' | 'automation' | 'data' | 'usage' | 'appearance'>('providers');
+  const openSettings = (category: typeof settingsInitialCategory = 'providers') => {
+    setSettingsInitialCategory(category);
+    setIsSettingsOpen(true);
+  };
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(window.innerWidth >= DESKTOP_BREAKPOINT_PX);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number | null>(null);
@@ -513,7 +518,7 @@ function AppInner(): React.ReactElement {
           chatsContent={<ChatList />}
           configContent={<ConfigView isActive={sidebarTab === 'config' && isLeftSidebarOpen} />}
           isOpen={isLeftSidebarOpen}
-          onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenSettings={() => openSettings()}
           onClose={() => setIsLeftSidebarOpen(false)}
           titlebarControls={
             showMacWindowControls && isLeftSidebarOpen ? (
@@ -647,7 +652,7 @@ function AppInner(): React.ReactElement {
             </div>
           </header>
 
-          <StatusBar />
+          <StatusBar onOpenMemorySettings={() => openSettings('memory')} />
 
           {mainView === 'chat' && (
             <div key="chat" className="flex-1 flex flex-col min-h-0 animate-view-fade">
@@ -678,7 +683,11 @@ function AppInner(): React.ReactElement {
           )}
         </div>
       </div>
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        initialCategory={settingsInitialCategory}
+      />
     </div>
   );
 };

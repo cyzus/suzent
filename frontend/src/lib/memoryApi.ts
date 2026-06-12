@@ -14,6 +14,8 @@ import type {
   DailyLogListResponse,
   MemoryFileResponse,
   ReindexResponse,
+  DreamConsolidateResponse,
+  DreamStatus,
 } from '../types/memory';
 import { getApiBase } from './api';
 
@@ -188,6 +190,30 @@ export const memoryApi = {
     });
     if (!response.ok) {
       throw new Error(`Failed to reindex memories: ${response.statusText}`);
+    }
+    return await response.json();
+  },
+
+  /**
+   * Get background dream consolidation status
+   */
+  async getDreamStatus(): Promise<DreamStatus> {
+    const response = await fetch(`${memoryEndpoint()}/dream/status`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch dream status: ${response.statusText}`);
+    }
+    return await response.json();
+  },
+
+  /**
+   * Trigger dream consolidation now
+   */
+  async consolidateMemory(): Promise<DreamConsolidateResponse> {
+    const response = await fetch(`${memoryEndpoint()}/consolidate`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to consolidate memory: ${response.statusText}`);
     }
     return await response.json();
   },

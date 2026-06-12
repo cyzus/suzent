@@ -6,6 +6,7 @@ import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
 import { useContextUsageStore, type ContextUsage } from '../hooks/useContextUsageStore';
 import { useCompact } from '../hooks/useCompact';
+import { useDreamStatus } from '../hooks/useDreamStatus';
 
 const getStatusStyles = (type: StatusType) => {
   switch (type) {
@@ -346,7 +347,57 @@ function SubAgentWidget() {
   );
 }
 
-export const StatusBar: React.FC = () => {
+function DreamWidget({ onOpenMemorySettings }: { onOpenMemorySettings?: () => void }) {
+  const { status, loading, error } = useDreamStatus();
+  const { t } = useI18n();
+
+  if (loading && !status) return null;
+  if (!status?.active) return null;
+
+  const pending = status.pending_count ?? 0;
+  const failed = !!error || status.last_result?.advanced === false;
+  const running = status.running;
+
+  const label = running
+    ? status.phase === 'finalizing'
+      ? t('settings.memoryConfig.dreamStatus.finalizing')
+      : t('settings.memoryConfig.dreamStatus.running')
+    : failed
+    ? t('settings.memoryConfig.statusBarNeedsReview')
+    : pending > 0
+    ? t('settings.memoryConfig.statusBarPending', { count: String(pending) })
+    : t('settings.memoryConfig.statusBarIdle');
+
+  const badgeClass = running
+    ? 'bg-brutal-blue text-white animate-pulse'
+    : failed
+    ? 'bg-brutal-red text-white'
+    : pending > 0
+    ? 'bg-brutal-yellow text-brutal-black'
+    : 'bg-neutral-200 dark:bg-zinc-700 text-neutral-600 dark:text-neutral-300';
+
+  const title = error || status.reason || (status.watermark
+    ? t('settings.memoryConfig.statusBarWatermark', { watermark: status.watermark })
+    : t('settings.memoryConfig.dreamTitle'));
+
+  return (
+    <button
+      type="button"
+      onClick={onOpenMemorySettings}
+      className={`flex items-center gap-1.5 flex-shrink-0 ml-3 px-1.5 py-0.5 border-2 border-brutal-black dark:border-neutral-500 font-bold uppercase tracking-wider ${badgeClass}`}
+      title={title}
+    >
+      <span className="text-[10px]" aria-hidden="true">{running ? '◐' : failed ? '!' : '◌'}</span>
+      <span className="hidden md:inline text-[9px]">{label}</span>
+    </button>
+  );
+}
+
+interface StatusBarProps {
+  onOpenMemorySettings?: () => void;
+}
+
+export const StatusBar: React.FC<StatusBarProps> = ({ onOpenMemorySettings }) => {
   const { message, type } = useStatusStore();
 
   return (
@@ -368,6 +419,7 @@ export const StatusBar: React.FC = () => {
       {/* Right: context usage + sub-agent indicator + heartbeat */}
       <ContextWidget />
       <SubAgentWidget />
+      <DreamWidget onOpenMemorySettings={onOpenMemorySettings} />
       <HeartbeatWidget />
     </div>
   );
