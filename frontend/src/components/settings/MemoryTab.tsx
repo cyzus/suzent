@@ -4,6 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { useDreamStatus } from '../../hooks/useDreamStatus';
 import { useI18n } from '../../i18n';
 import { SettingsHeader } from './SettingsHeader';
+import { SettingsCard, SectionCardHeader } from './SettingsCard';
 
 interface MemoryTabProps {
     globalNotebookHostPath: string;
@@ -82,30 +83,29 @@ export function MemoryTab({
             <SettingsHeader title={t('settings.memoryConfig.title')} subtitle={t('settings.memoryConfig.subtitle')} />
 
             {/* Model roles redirect notice */}
-            <div className="bg-brutal-yellow/20 border-2 border-brutal-black p-4 flex items-start gap-3">
+            <div className="bg-brutal-yellow text-brutal-black border-2 border-brutal-black shadow-brutal-sm p-4 flex items-start gap-3">
                 <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <p className="text-sm font-bold">{t('settings.memoryConfig.modelRolesHint')}</p>
             </div>
 
-            <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6">
-                <div className="flex items-start justify-between gap-4 mb-6">
-                    <div className="flex items-start gap-4">
-                        <div className="w-12 h-12 bg-brutal-blue border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M20 12.5A8.5 8.5 0 1111.5 4 6.5 6.5 0 0020 12.5z" />
-                            </svg>
+            <SettingsCard>
+                <SectionCardHeader
+                    iconTone="blue"
+                    icon={
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M20 12.5A8.5 8.5 0 1111.5 4 6.5 6.5 0 0020 12.5z" />
+                        </svg>
+                    }
+                    title={t('settings.memoryConfig.dreamTitle')}
+                    description={t('settings.memoryConfig.dreamDesc')}
+                    actions={
+                        <div className={`px-4 py-2 border-2 border-brutal-black font-mono text-xs font-bold uppercase whitespace-nowrap shadow-brutal-sm ${statusClass}`}>
+                            {statusLabel}
                         </div>
-                        <div>
-                            <h3 className="text-xl font-bold uppercase">{t('settings.memoryConfig.dreamTitle')}</h3>
-                            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{t('settings.memoryConfig.dreamDesc')}</p>
-                        </div>
-                    </div>
-                    <div className={`px-4 py-2 border-2 border-brutal-black font-mono text-xs font-bold uppercase whitespace-nowrap shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${statusClass}`}>
-                        {statusLabel}
-                    </div>
-                </div>
+                    }
+                />
 
                 <div className="mb-5">
                     <div className="flex items-center justify-between gap-3 mb-2">
@@ -129,26 +129,26 @@ export function MemoryTab({
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <div className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3">
-                        <div className="text-[10px] font-bold uppercase text-neutral-500">{t('settings.memoryConfig.consolidatedThrough')}</div>
+                        <div className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">{t('settings.memoryConfig.consolidatedThrough')}</div>
                         <div className="font-mono text-sm font-bold mt-1">{dreamStatus?.watermark || '—'}</div>
                     </div>
                     <div className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3">
-                        <div className="text-[10px] font-bold uppercase text-neutral-500">{t('settings.memoryConfig.pendingLogs')}</div>
+                        <div className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">{t('settings.memoryConfig.pendingLogs')}</div>
                         <div className="font-mono text-sm font-bold mt-1">{dreamStatus?.pending_count ?? 0}</div>
                     </div>
                     <div className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3">
-                        <div className="text-[10px] font-bold uppercase text-neutral-500">{t('settings.memoryConfig.pendingFacts')}</div>
+                        <div className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">{t('settings.memoryConfig.pendingFacts')}</div>
                         <div className="font-mono text-sm font-bold mt-1">{dreamStatus?.pending_facts ?? 0}</div>
                     </div>
                     <div className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3">
-                        <div className="text-[10px] font-bold uppercase text-neutral-500">{t('settings.memoryConfig.lastRun')}</div>
+                        <div className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">{t('settings.memoryConfig.lastRun')}</div>
                         <div className="font-mono text-sm font-bold mt-1">{formatDate(dreamStatus?.last_finished_at)}</div>
                     </div>
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-stretch">
                     <div className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3 min-w-0">
-                        <div className="text-[10px] font-bold uppercase text-neutral-500">{t('settings.memoryConfig.lastResult')}</div>
+                        <div className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">{t('settings.memoryConfig.lastResult')}</div>
                         <div className="font-mono text-xs font-bold mt-1 truncate">{lastResultLabel}</div>
                         {pendingDates.length > 0 && (
                             <div className="font-mono text-[11px] text-neutral-500 dark:text-neutral-400 mt-2 truncate">
@@ -179,32 +179,29 @@ export function MemoryTab({
                         </button>
                     </div>
                 </div>
-            </div>
+            </SettingsCard>
 
-            <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6">
-                <div className="flex items-start gap-4 mb-6">
-                    <div className="w-12 h-12 bg-brutal-blue border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
-                    </div>
-                    <div>
-                        <h3 className="text-xl font-bold uppercase">{t('settings.memoryConfig.systemConfigTitle')}</h3>
-                        <p className="text-sm text-neutral-600 mt-1">{t('settings.memoryConfig.systemConfigDesc')}</p>
-                    </div>
-                </div>
+            <SettingsCard>
+                <SectionCardHeader
+                    iconTone="blue"
+                    icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>}
+                    title={t('settings.memoryConfig.systemConfigTitle')}
+                    description={t('settings.memoryConfig.systemConfigDesc')}
+                />
 
-                <div className="mt-6 pt-6 border-t-2 border-dashed border-brutal-black space-y-3">
+                <div className="mt-6 pt-6 border-t-2 border-dashed border-brutal-black dark:border-zinc-600 space-y-3">
                     <div>
                         <h3 className="text-lg font-bold uppercase">{t('settings.sandbox.title')}</h3>
-                        <p className="text-sm text-neutral-600 mt-1">{t('settings.sandbox.subtitle')}</p>
+                        <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{t('settings.sandbox.subtitle')}</p>
                     </div>
 
-                    <div className="text-xs font-bold uppercase text-neutral-500">{t('settings.sandbox.mountTarget')}</div>
+                    <div className="text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400">{t('settings.sandbox.mountTarget')}</div>
                     <div className="font-mono text-sm border-2 border-brutal-black bg-brutal-yellow/30 px-3 py-2 inline-block">
                         /mnt/notebook
                     </div>
 
                     <div>
-                        <div className="text-xs font-bold uppercase text-neutral-500 mb-1">{t('settings.sandbox.hostFolder')}</div>
+                        <div className="text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400 mb-1">{t('settings.sandbox.hostFolder')}</div>
                         <div className="font-mono text-xs border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2 break-all min-h-[2.25rem]">
                             {globalNotebookHostPath || t('settings.sandbox.notConfigured')}
                         </div>
@@ -224,7 +221,7 @@ export function MemoryTab({
                         {t('settings.sandbox.saveHint')}
                     </div>
                 </div>
-            </div>
+            </SettingsCard>
         </div>
     );
 }

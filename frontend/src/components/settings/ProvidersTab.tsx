@@ -145,7 +145,7 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
     };
 
     return (
-        <div className="bg-white dark:bg-zinc-800 border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 space-y-4">
+        <div className="bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal-xl p-6 space-y-4">
             <h3 className="font-black uppercase text-lg tracking-wide dark:text-white">{t('settings.providers.addForm.title')}</h3>
 
             <div className="grid grid-cols-2 gap-4">
@@ -339,8 +339,8 @@ function ChatGPTProviderCard({
     const allModels = provider.default_models || [];
 
     return (
-        <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col h-full">
-            <div className="p-4 bg-neutral-50 dark:bg-zinc-900 flex justify-between items-center border-b-4 border-brutal-black gap-3">
+        <div className="bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black shadow-brutal-xl flex flex-col h-full">
+            <div className="p-4 bg-neutral-50 dark:bg-zinc-900 flex justify-between items-center border-b-3 border-brutal-black gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                     <ProviderIcon provider={provider} />
                     <div className="flex flex-col min-w-0">
@@ -591,9 +591,9 @@ export function ProvidersTab({
                     }
 
                     return (
-                        <div key={provider.id} className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col h-full">
+                        <div key={provider.id} className="bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black shadow-brutal-xl flex flex-col h-full">
                             {/* Provider Header */}
-                            <div className="p-4 bg-neutral-50 dark:bg-zinc-900 flex justify-between items-center border-b-4 border-brutal-black gap-3">
+                            <div className="p-4 bg-neutral-50 dark:bg-zinc-900 flex justify-between items-center border-b-3 border-brutal-black gap-3">
                                 <div className="flex items-center gap-3 min-w-0">
                                     <ProviderIcon provider={provider} />
                                     <div className="flex flex-col min-w-0">
@@ -620,10 +620,10 @@ export function ProvidersTab({
                             </div>
 
                             {/* Tabs */}
-                            <div className="flex bg-brutal-black border-b-4 border-brutal-black">
+                            <div className="flex bg-brutal-black border-b-3 border-brutal-black">
                                 <button
                                     onClick={() => onTabChange(provider.id, 'credentials')}
-                                    className={`flex-1 p-2 font-bold uppercase text-xs tracking-wider transition-colors border-r-4 border-brutal-black ${activeTab === 'credentials' ? 'bg-brutal-black text-white dark:bg-zinc-900' : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'}`}
+                                    className={`flex-1 p-2 font-bold uppercase text-xs tracking-wider transition-colors border-r-3 border-brutal-black ${activeTab === 'credentials' ? 'bg-brutal-black text-white dark:bg-zinc-900' : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'}`}
                                 >
                                     {t('settings.providers.apiKeysTab')}
                                 </button>

@@ -19,6 +19,7 @@ import {
   SyncStatus,
 } from '../../lib/dataApi';
 import { ShibbolethPanel } from './ShibbolethPanel';
+import { SettingsCard, SectionCardHeader } from './SettingsCard';
 
 type NotificationHandler = (text: string, isError: boolean) => void;
 
@@ -340,17 +341,19 @@ export function GitHubSyncSection({
   const configured = Boolean(syncStatus?.configured && syncStatus.profile);
 
   return (
-    <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6">
-      <div className="flex items-start gap-4 mb-6">
-        <div className="w-12 h-12 bg-brutal-green border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-brutal-black">
+    <SettingsCard>
+      <SectionCardHeader
+        iconTone="green"
+        icon={
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2v20M5 7h14M5 17h14" />
           </svg>
-        </div>
-        <div className="flex-1">
-          <h3 className="text-xl font-bold uppercase">{t('settings.data.githubTitle')}</h3>
-          <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{t('settings.data.githubDesc')}</p>
-          <div className="flex flex-wrap items-center gap-2 mt-3">
+        }
+        title={t('settings.data.githubTitle')}
+        description={
+          <>
+            {t('settings.data.githubDesc')}
+            <div className="flex flex-wrap items-center gap-2 mt-3">
             {configured && (
               <span className="px-2 py-1 border-2 border-brutal-black text-[10px] font-bold uppercase bg-brutal-green">
                 {t('settings.data.githubConnected')}
@@ -372,9 +375,10 @@ export function GitHubSyncSection({
                 </button>
               </>
             )}
-          </div>
-        </div>
-      </div>
+            </div>
+          </>
+        }
+      />
 
       {/* GitHub sign-in / device flow */}
       {githubTokenExpired && devicePhase === 'idle' && (
@@ -582,6 +586,6 @@ export function GitHubSyncSection({
           )}
         </div>
       )}
-    </div>
+    </SettingsCard>
   );
 }

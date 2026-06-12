@@ -2,6 +2,7 @@ import React from 'react';
 import { useTheme, SCHEME_COLORS, SCHEME_SURFACES, type Scheme } from '../../hooks/useTheme';
 import { useI18n } from '../../i18n';
 import { SettingsHeader } from './SettingsHeader';
+import { SettingsCard } from './SettingsCard';
 
 /** Mini split preview: left = light half, right = dark half */
 function CardPreview({ s }: { s: Scheme }) {
@@ -47,7 +48,7 @@ export function AppearanceTab(): React.ReactElement {
     <div className="space-y-6">
       <SettingsHeader title={t('settings.appearance.title')} subtitle={t('settings.appearance.subtitle')} />
 
-      <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal p-6">
+      <SettingsCard>
         <div className="text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400 mb-5">
           {t('settings.appearance.colorScheme')}
         </div>
@@ -109,7 +110,7 @@ export function AppearanceTab(): React.ReactElement {
             );
           })}
         </div>
-      </div>
+      </SettingsCard>
     </div>
   );
 }

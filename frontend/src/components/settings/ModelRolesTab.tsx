@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { SettingsHeader } from './SettingsHeader';
+import { GridCard } from './SettingsCard';
 
 interface ModelRolesTabProps {
   roleModels: Record<string, string[]>;
@@ -152,16 +153,7 @@ function RoleCard({ label, desc, selected, suggestions, onChange }: RoleCardProp
   }
 
   return (
-    <div className="bg-white dark:bg-zinc-800 border-4 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col">
-      {/* Header */}
-      <div className="p-4 bg-neutral-50 dark:bg-zinc-900 border-b-4 border-brutal-black flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="font-black uppercase text-lg tracking-wide dark:text-white truncate">{label}</div>
-          <div className="text-xs text-neutral-500 dark:text-neutral-400 normal-case font-normal mt-0.5">{desc}</div>
-        </div>
-        <div className={`w-3 h-3 rounded-full border-2 border-brutal-black flex-shrink-0 ${selected.length > 0 ? 'bg-brutal-green' : 'bg-transparent'}`} />
-      </div>
-
+    <GridCard title={label} subtitle={desc} active={selected.length > 0}>
       {/* Body */}
       <div className="p-4 flex flex-col gap-3 flex-1">
 
@@ -226,7 +218,7 @@ function RoleCard({ label, desc, selected, suggestions, onChange }: RoleCardProp
           </button>
         </div>
       </div>
-    </div>
+    </GridCard>
   );
 }
 
@@ -239,7 +231,7 @@ export function ModelRolesTab({ roleModels, suggestions, onChange }: ModelRolesT
     <div className="space-y-6">
       <SettingsHeader title={t('settings.roles.title')} subtitle={t('settings.roles.subtitle')} />
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
         {ROLES.map(({ key, labelKey, descKey }) => (
           <RoleCard
             key={key}

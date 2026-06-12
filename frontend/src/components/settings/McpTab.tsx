@@ -4,6 +4,8 @@ import { useI18n } from '../../i18n';
 import { addMcpServer, updateMcpServer, fetchMcpServers, removeMcpServer, setMcpServerEnabled, testMcpServer, type McpProbeResult } from '../../lib/api';
 import { BrutalSelect } from '../BrutalSelect';
 import { SettingsHeader } from './SettingsHeader';
+import { SettingsCard, SectionCardHeader } from './SettingsCard';
+import { BrutalOnOff } from '../BrutalOnOff';
 
 type MCPUrlServer = {
     type: 'url';
@@ -200,16 +202,13 @@ export function McpTab({
             <SettingsHeader title={t('settings.mcp.title')} subtitle={t('settings.mcp.subtitle')} />
 
             {/* Add MCP Server Card */}
-            <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
-                <div className="flex items-start gap-4 mb-6">
-                    <div className="w-12 h-12 bg-brutal-blue border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-white">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                    </div>
-                    <div>
-                        <h3 className="text-xl font-bold uppercase">{t('settings.mcp.addNewServerTitle')}</h3>
-                        <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{t('settings.mcp.addNewServerDesc')}</p>
-                    </div>
-                </div>
+            <SettingsCard>
+                <SectionCardHeader
+                    iconTone="blue"
+                    icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>}
+                    title={t('settings.mcp.addNewServerTitle')}
+                    description={t('settings.mcp.addNewServerDesc')}
+                />
 
                 <div className="space-y-4">
                     <div className="flex gap-2">
@@ -273,19 +272,16 @@ export function McpTab({
                         {loading ? t('settings.mcp.adding') : t('settings.mcp.addServer')}
                     </button>
                 </div>
-            </div>
+            </SettingsCard>
 
             {/* Server List Card */}
-            <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6">
-                <div className="flex items-start gap-4 mb-6">
-                    <div className="w-12 h-12 bg-black border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-white">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" /></svg>
-                    </div>
-                    <div>
-                        <h3 className="text-xl font-bold uppercase">{t('settings.mcp.configuredServersTitle')}</h3>
-                        <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{t('settings.mcp.configuredServersDesc')}</p>
-                    </div>
-                </div>
+            <SettingsCard>
+                <SectionCardHeader
+                    iconTone="black"
+                    icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" /></svg>}
+                    title={t('settings.mcp.configuredServersTitle')}
+                    description={t('settings.mcp.configuredServersDesc')}
+                />
 
                 {serverList.length === 0 ? (
                     <div className="text-center py-8 text-neutral-500 dark:text-neutral-400 font-bold uppercase">
@@ -299,19 +295,15 @@ export function McpTab({
                                 className="bg-neutral-50 dark:bg-zinc-900 border-2 border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
                             >
                               <div className="flex items-center gap-4 p-4">
-                                <input
-                                    type="checkbox"
+                                <BrutalOnOff
+                                    size="sm"
                                     checked={server.enabled}
                                     onChange={() => handleToggleServer(server)}
                                     disabled={loading}
-                                    className="w-5 h-5 border-2 border-brutal-black accent-brutal-black"
                                 />
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
                                         <span className="font-bold text-brutal-black dark:text-white">{server.name}</span>
-                                        <span className={`text-[10px] px-2 py-0.5 border-2 font-bold uppercase ${server.enabled ? 'border-brutal-black bg-brutal-green text-brutal-black' : 'border-brutal-black bg-neutral-200 text-brutal-black'}`}>
-                                            {server.enabled ? t('common.on') : t('common.off')}
-                                        </span>
                                         <span className="text-[10px] px-2 py-0.5 border border-neutral-400 text-neutral-500 dark:text-neutral-400 uppercase">
                                             {server.type === 'url' ? t('config.mcp.url') : t('config.mcp.stdio')}
                                         </span>
@@ -445,7 +437,7 @@ export function McpTab({
                         ))}
                     </div>
                 )}
-            </div>
+            </SettingsCard>
         </div>
     );
 }

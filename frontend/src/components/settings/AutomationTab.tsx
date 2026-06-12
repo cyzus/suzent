@@ -18,6 +18,8 @@ import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalSelect } from '../BrutalSelect';
 import { ScheduleBuilder, describeCron } from './ScheduleBuilder';
 import { SettingsHeader } from './SettingsHeader';
+import { SettingsCard, SectionCardHeader } from './SettingsCard';
+import { BrutalOnOff } from '../BrutalOnOff';
 
 interface AutomationTabProps {
   models: string[];
@@ -189,45 +191,41 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
       <SettingsHeader title={t('settings.automation.title')} subtitle={t('settings.automation.subtitle')} />
 
       {/* Status Card */}
-      <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
-        <div className="flex items-start gap-4">
-          <div className={`w-12 h-12 border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-white ${status?.scheduler_running ? 'bg-brutal-green' : 'bg-neutral-400'}`}>
+      <SettingsCard>
+        <SectionCardHeader
+          iconTone={status?.scheduler_running ? 'green' : 'neutral'}
+          icon={
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-          </div>
-          <div>
-            <h3 className="text-xl font-bold uppercase">{t('settings.automation.schedulerStatusTitle')}</h3>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+          }
+          title={t('settings.automation.schedulerStatusTitle')}
+          description={
+            <>
               {status?.scheduler_running ? (
-                <span className="text-green-700 font-bold">{t('settings.automation.running')}</span>
+                <span className="text-green-700 dark:text-green-400 font-bold">{t('settings.automation.running')}</span>
               ) : (
-                <span className="text-red-700 font-bold">{t('settings.automation.stopped')}</span>
+                <span className="text-red-700 dark:text-red-400 font-bold">{t('settings.automation.stopped')}</span>
               )}
               {status && ` \u2014 ${t('settings.automation.activeOfTotal', { active: String(status.active_jobs), total: String(status.total_jobs) })}`}
-            </p>
-          </div>
-        </div>
-      </div>
-
-
+            </>
+          }
+        />
+      </SettingsCard>
 
       {/* Heartbeat Tool Approvals */}
       {tools.length > 0 && (
-        <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
-          <div className="flex items-start gap-4 mb-6">
-            <div className="w-12 h-12 bg-brutal-green border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-brutal-black">
+        <SettingsCard>
+          <SectionCardHeader
+            iconTone="green"
+            icon={
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
               </svg>
-            </div>
-            <div>
-              <h3 className="text-xl font-bold uppercase">Heartbeat Tool Approvals</h3>
-              <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
-                Tools that are automatically approved when heartbeat runs. Leave on <strong>All Tools</strong> to approve everything, or pick <strong>Custom</strong> to restrict.
-              </p>
-            </div>
-          </div>
+            }
+            title={t('settings.automation.heartbeatToolsTitle')}
+            description={t('settings.automation.heartbeatToolsDesc')}
+          />
 
           <div className="space-y-3">
             <div className="flex gap-2">
@@ -265,24 +263,21 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                     label: t.replace(/Tool$/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase(),
                   }))
                 }
-                emptyMessage="No tools selected"
+                emptyMessage={t('settings.automation.noToolsSelected')}
               />
             )}
           </div>
-        </div>
+        </SettingsCard>
       )}
 
       {/* Add Job Form */}
-      <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
-        <div className="flex items-start gap-4 mb-6">
-          <div className="w-12 h-12 bg-brutal-blue border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-white">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-          </div>
-          <div>
-            <h3 className="text-xl font-bold uppercase">{t('settings.automation.addNewJobTitle')}</h3>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{t('settings.automation.addNewJobDesc')}</p>
-          </div>
-        </div>
+      <SettingsCard>
+        <SectionCardHeader
+          iconTone="blue"
+          icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>}
+          title={t('settings.automation.addNewJobTitle')}
+          description={t('settings.automation.addNewJobDesc')}
+        />
 
         <div className="space-y-4">
           <input
@@ -341,21 +336,20 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
             {loading ? t('settings.automation.creating') : t('settings.automation.addJob')}
           </button>
         </div>
-      </div>
+      </SettingsCard>
 
       {/* Job List */}
-      <div className="bg-white dark:bg-zinc-800 dark:text-white border-4 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6">
-        <div className="flex items-start gap-4 mb-6">
-          <div className="w-12 h-12 bg-black border-2 border-brutal-black flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-white">
+      <SettingsCard>
+        <SectionCardHeader
+          iconTone="black"
+          icon={
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
-          </div>
-          <div>
-            <h3 className="text-xl font-bold uppercase">{t('settings.automation.scheduledJobsTitle')}</h3>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{t('settings.automation.scheduledJobsDesc')}</p>
-          </div>
-        </div>
+          }
+          title={t('settings.automation.scheduledJobsTitle')}
+          description={t('settings.automation.scheduledJobsDesc')}
+        />
 
         {jobs.length === 0 ? (
           <div className="text-center py-8 text-neutral-500 dark:text-neutral-400 font-bold uppercase">
@@ -426,19 +420,15 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                   /* View mode */
                   <>
                     <div className="flex items-center gap-4 mb-2">
-                      <input
-                        type="checkbox"
+                      <BrutalOnOff
+                        size="sm"
                         checked={job.active}
                         onChange={() => handleToggle(job)}
                         disabled={loading}
-                        className="w-5 h-5 border-2 border-brutal-black accent-brutal-black"
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-bold text-brutal-black dark:text-white">{job.name}</span>
-                          <span className={`text-[10px] px-2 py-0.5 border-2 font-bold uppercase ${job.active ? 'border-brutal-black bg-brutal-green text-brutal-black' : 'border-brutal-black bg-neutral-200 text-brutal-black'}`}>
-                            {job.active ? t('common.on') : t('common.off')}
-                          </span>
                           <span className="text-[10px] px-2 py-0.5 border border-neutral-400 text-neutral-500 dark:text-neutral-400 uppercase">
                             {job.delivery_mode}
                           </span>
@@ -530,7 +520,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
             ))}
           </div>
         )}
-      </div>
+      </SettingsCard>
     </div>
   );
 }

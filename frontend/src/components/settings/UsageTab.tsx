@@ -3,6 +3,7 @@ import { fetchGlobalCost, fetchDailyCost } from '../../lib/api';
 import type { CostGlobal, CostDaily } from '../../lib/api';
 import { useI18n } from '../../i18n';
 import { SettingsHeader } from './SettingsHeader';
+import { SettingsCard } from './SettingsCard';
 
 type TimeRange = 7 | 14 | 30;
 
@@ -176,7 +177,7 @@ export function UsageTab(): React.ReactElement {
           <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-brutal-black" />
         </div>
       ) : error ? (
-        <div className="border-3 border-brutal-black bg-red-50 dark:bg-red-900/20 p-4">
+        <div className="border-3 border-brutal-black bg-red-50 dark:bg-red-950 p-4">
           <p className="text-sm text-red-700 dark:text-red-400 font-mono">{error}</p>
         </div>
       ) : global ? (
@@ -206,12 +207,12 @@ export function UsageTab(): React.ReactElement {
           </div>
 
           {/* Daily chart */}
-          <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal p-6">
+          <SettingsCard>
             <DailyChart data={daily} range={range} />
-          </div>
+          </SettingsCard>
 
           {/* Token breakdown */}
-          <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal p-6">
+          <SettingsCard>
             <div className="text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400 mb-4">
               {t('settings.usage.tokenBreakdown')}
             </div>
@@ -253,7 +254,7 @@ export function UsageTab(): React.ReactElement {
                 </div>
               </div>
             </div>
-          </div>
+          </SettingsCard>
 
           {/* Empty state */}
           {global.total_calls === 0 && (
