@@ -106,6 +106,7 @@ from suzent.routes.sync_routes import (
 )
 from suzent.routes.goal_task_routes import (
     get_project_goal,
+    update_project_goal,
     get_project_tasks,
     get_project_kanban,
     create_project_task,
@@ -701,6 +702,7 @@ app = Starlette(
         Route("/projects/{project_id}", delete_project, methods=["DELETE"]),
         Route("/projects/{project_id}/move-chats", move_all_chats, methods=["POST"]),
         Route("/project/goal", get_project_goal, methods=["GET"]),
+        Route("/project/goal/action", update_project_goal, methods=["POST"]),
         Route("/project/tasks", get_project_tasks, methods=["GET"]),
         Route("/project/kanban", get_project_kanban, methods=["GET"]),
         Route("/project/tasks", create_project_task, methods=["POST"]),

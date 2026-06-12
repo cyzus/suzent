@@ -12,47 +12,11 @@ from suzent.core.commands.base import register_command, CommandContext
 
 
 def _schedule_step(chat_id: str, user_id: str) -> None:
-    """Kick off the first/next autonomous goal turn as a background task.
+    """Kick off the first/next autonomous goal turn (deferred until the
+    command-response stream finishes — see suzent.core.goals)."""
+    from suzent.core.goals import schedule_goal_step
 
-    Defers until any in-progress stream for this chat has finished so the
-    first goal turn never races with the '/goal set' or '/goal resume'
-    command-response stream that is still being emitted to the client.
-    """
-    import uuid
-    import asyncio
-    from suzent.core.goals import run_goal_step
-    from suzent.core.task_registry import register_background_task
-
-    async def _deferred() -> None:
-        from suzent.core.stream_registry import stream_controls, background_queues
-
-        ctrl = stream_controls.get(chat_id)
-        if ctrl is not None:
-            try:
-                await asyncio.wait_for(ctrl.completed_event.wait(), timeout=30.0)
-            except asyncio.TimeoutError:
-                pass
-
-        bq = background_queues.get(chat_id)
-        if bq is not None and bq.producer_active:
-            try:
-                await asyncio.wait_for(bq.done_event.wait(), timeout=30.0)
-            except asyncio.TimeoutError:
-                pass
-
-        await run_goal_step(chat_id, user_id)
-
-    coro = _deferred()
-    try:
-        asyncio.create_task(
-            register_background_task(
-                coro,
-                task_id=f"goal_step_{chat_id}_{uuid.uuid4().hex}",
-                description=f"Goal step for chat {chat_id}",
-            )
-        )
-    except Exception:
-        coro.close()
+    schedule_goal_step(chat_id, user_id)
 
 
 def _resolve_project_id(chat_id: str):

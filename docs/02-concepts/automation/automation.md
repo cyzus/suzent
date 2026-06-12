@@ -212,8 +212,11 @@ error in `src/` and verify `ruff check` passes"*.
 
 Goals are stored in the project `GoalModel` (project + chat scoped) — the same
 record the agent's `manage_goal` tool writes and the **right-sidebar Goal tab**
-displays (objective, status, turn progress, sub-goals). Setting a goal lights up
-the sidebar automatically, and state survives restarts and resumes. The per-turn
+displays (objective, status, turn progress, sub-goals). The sidebar also exposes
+**Pause / Resume / Clear** buttons (via `POST /project/goal/action`) so you can
+control the loop without typing a command — Resume re-enters the continuation
+loop exactly like `/goal resume`. Setting a goal lights up the sidebar
+automatically, and state survives restarts and resumes. The per-turn
 `plan_reminder_hook` injects the active goal into context and advances the turn
 counter; this judge loop layers automatic continuation on top of that.
 

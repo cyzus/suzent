@@ -584,6 +584,9 @@ export const en = {
     noGoal: 'No active goal.',
     turns: '{elapsed}/{max} turns',
     subgoals: 'Subgoals',
+    pause: 'Pause',
+    resume: 'Resume',
+    clear: 'Clear',
     status: {
       active: 'ACTIVE',
       paused: 'PAUSED',

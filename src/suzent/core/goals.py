@@ -240,6 +240,51 @@ async def run_goal_step(chat_id: str, user_id: str) -> None:
         logger.error(f"[goal] step execution failed for {chat_id}: {e}")
 
 
+def schedule_goal_step(chat_id: str, user_id: str) -> None:
+    """Kick off the first/next autonomous goal turn as a background task.
+
+    Defers until any in-progress stream for this chat has finished so the
+    first goal turn never races with a still-emitting command-response or
+    foreground stream (which would otherwise be terminated when this turn
+    registers its own background stream). The 30 s caps are safety valves.
+    """
+    import asyncio
+    import uuid
+
+    from suzent.core.task_registry import register_background_task
+
+    async def _deferred() -> None:
+        from suzent.core.stream_registry import background_queues, stream_controls
+
+        ctrl = stream_controls.get(chat_id)
+        if ctrl is not None:
+            try:
+                await asyncio.wait_for(ctrl.completed_event.wait(), timeout=30.0)
+            except asyncio.TimeoutError:
+                pass
+
+        bq = background_queues.get(chat_id)
+        if bq is not None and bq.producer_active:
+            try:
+                await asyncio.wait_for(bq.done_event.wait(), timeout=30.0)
+            except asyncio.TimeoutError:
+                pass
+
+        await run_goal_step(chat_id, user_id)
+
+    coro = _deferred()
+    try:
+        asyncio.create_task(
+            register_background_task(
+                coro,
+                task_id=f"goal_step_{chat_id}_{uuid.uuid4().hex}",
+                description=f"Goal step for chat {chat_id}",
+            )
+        )
+    except Exception:
+        coro.close()
+
+
 async def maybe_continue_goal(
     chat_id: str, user_id: str, last_response: str, was_cancelled: bool
 ) -> None:
