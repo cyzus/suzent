@@ -16,6 +16,7 @@ import {
 } from '../../lib/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalSelect } from '../BrutalSelect';
+import { ScheduleBuilder, describeCron } from './ScheduleBuilder';
 
 interface AutomationTabProps {
   models: string[];
@@ -34,7 +35,8 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
 
   // Form state (new job)
   const [name, setName] = useState('');
-  const [cronExpr, setCronExpr] = useState('');
+  // Default to a friendly, valid schedule (daily at 9:00) so the builder opens populated.
+  const [cronExpr, setCronExpr] = useState('0 9 * * *');
   const [prompt, setPrompt] = useState('');
   const [deliveryMode, setDeliveryMode] = useState<'announce' | 'none'>('announce');
   const [modelOverride, setModelOverride] = useState('');
@@ -82,7 +84,7 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
         model_override: modelOverride || null,
       });
       setName('');
-      setCronExpr('');
+      setCronExpr('0 9 * * *');
       setPrompt('');
       setDeliveryMode('announce');
       setModelOverride('');
@@ -284,20 +286,14 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
         </div>
 
         <div className="space-y-4">
-          <div className="flex gap-2">
-            <input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder={t('settings.automation.jobNamePlaceholder')}
-              className="flex-1 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
-            />
-            <input
-              value={cronExpr}
-              onChange={e => setCronExpr(e.target.value)}
-              placeholder={t('settings.automation.cronExprPlaceholder')}
-              className="w-52 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
-            />
-          </div>
+          <input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder={t('settings.automation.jobNamePlaceholder')}
+            className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
+          />
+
+          <ScheduleBuilder value={cronExpr} onChange={setCronExpr} />
 
           <textarea
             value={prompt}
@@ -376,20 +372,16 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                 {editingJobId === job.id ? (
                   /* Edit mode */
                   <div className="space-y-3">
-                    <div className="flex gap-2">
-                      <input
-                        value={editFields.name || ''}
-                        onChange={e => setEditFields({ ...editFields, name: e.target.value })}
-                        placeholder={t('settings.automation.jobNamePlaceholder')}
-                        className="flex-1 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
-                      />
-                      <input
-                        value={editFields.cron_expr || ''}
-                        onChange={e => setEditFields({ ...editFields, cron_expr: e.target.value })}
-                        placeholder={t('settings.automation.cronExpression')}
-                        className="w-52 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
-                      />
-                    </div>
+                    <input
+                      value={editFields.name || ''}
+                      onChange={e => setEditFields({ ...editFields, name: e.target.value })}
+                      placeholder={t('settings.automation.jobNamePlaceholder')}
+                      className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
+                    />
+                    <ScheduleBuilder
+                      value={editFields.cron_expr || '0 9 * * *'}
+                      onChange={cron => setEditFields({ ...editFields, cron_expr: cron })}
+                    />
                     <textarea
                       value={editFields.prompt || ''}
                       onChange={e => setEditFields({ ...editFields, prompt: e.target.value })}
@@ -452,8 +444,9 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                             {job.delivery_mode}
                           </span>
                         </div>
-                        <div className="text-xs font-mono text-neutral-500 dark:text-neutral-400 mt-1">
-                          <span className="font-bold">{job.cron_expr}</span>
+                        <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                          <span className="font-bold">{describeCron(job.cron_expr, t)}</span>
+                          <span className="ml-2 font-mono text-neutral-400 dark:text-neutral-500">({job.cron_expr})</span>
                           {job.model_override && <span className="ml-2">model: {job.model_override}</span>}
                         </div>
                       </div>
