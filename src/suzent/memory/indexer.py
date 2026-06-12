@@ -477,17 +477,7 @@ class CoreMemoryFileIndexer:
         """
         tombstones = tombstones or set()
 
-        # 1. Remove existing rows for this file (delete-then-add = idempotent, race-free).
-        #    Archive logs may also carry legacy source_date metadata, so use the broader
-        #    date-based delete for them.
-        if label == "archive":
-            await lancedb_store.delete_memories_by_source_date(
-                filename.removesuffix(".md"), user_id
-            )
-        else:
-            await lancedb_store.delete_memories_by_source_file(filename, user_id)
-
-        # 2. Build the rows to index: (text, metadata, importance). Importance is a
+        # 1. Build the rows to index: (text, metadata, importance). Importance is a
         #    constant — ranking is relevance + recency, not a tuned lever.
         if label == "archive":
             rows = [
@@ -529,22 +519,33 @@ class CoreMemoryFileIndexer:
                 if chunk.strip()
             ]
 
-        # 3. Embed and store each row.
+        # 2. Embed ALL rows BEFORE mutating the index. embedding_gen.generate() raises
+        #    on failure (e.g. embedding backend unreachable) — letting it propagate here
+        #    leaves the existing index untouched and the file gets retried next pass,
+        #    instead of deleting rows and replacing them with poisoned zero vectors.
+        embeddings = [await embedding_gen.generate(text) for text, _, _ in rows]
+
+        # 3. Replace: clear this file's old rows, then add the freshly-embedded ones.
+        #    Reached only after every embedding succeeded. Archive logs may also carry
+        #    legacy source_date metadata, so use the broader date-based delete for them.
+        if label == "archive":
+            await lancedb_store.delete_memories_by_source_date(
+                filename.removesuffix(".md"), user_id
+            )
+        else:
+            await lancedb_store.delete_memories_by_source_file(filename, user_id)
+
         indexed = 0
-        for text, metadata, importance in rows:
-            try:
-                embedding = await embedding_gen.generate(text)
-                await lancedb_store.add_memory(
-                    content=text,
-                    embedding=embedding,
-                    user_id=user_id,
-                    chat_id=None,
-                    metadata=metadata,
-                    importance=importance,
-                )
-                indexed += 1
-            except Exception as e:
-                logger.warning(f"Failed to embed row of {filename}: {e}")
+        for (text, metadata, importance), embedding in zip(rows, embeddings):
+            await lancedb_store.add_memory(
+                content=text,
+                embedding=embedding,
+                user_id=user_id,
+                chat_id=None,
+                metadata=metadata,
+                importance=importance,
+            )
+            indexed += 1
 
         return indexed
 

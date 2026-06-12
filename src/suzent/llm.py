@@ -177,8 +177,12 @@ class EmbeddingGenerator:
             return embedding
 
         except Exception as e:
+            # Never fabricate a zero vector on failure. A zero vector is a valid-looking
+            # but semantically-null point: the store will happily persist it, silently
+            # poisoning the index (all-zero rows) and breaking retrieval with no signal.
+            # Raise so the caller can skip/retry — the source data stays safe in markdown.
             logger.error(f"Failed to generate embedding: {e}")
-            return [0.0] * (self.dimension or 1)
+            raise
 
     async def generate_batch(
         self, texts: List[str], batch_size: int = 32
@@ -208,8 +212,10 @@ class EmbeddingGenerator:
                 all_embeddings.extend(batch_embeddings)
 
             except Exception as e:
+                # Don't fabricate zero vectors on failure — that poisons the index.
+                # Fail loudly so the caller can skip/retry.
                 logger.error(f"Failed to generate batch embeddings: {e}")
-                all_embeddings.extend([[0.0] * self.dimension] * len(batch))
+                raise
 
         return all_embeddings
 

@@ -2,8 +2,20 @@
 
 Design & implementation plan. Closes [#34](https://github.com/cyzus/suzent/issues/34); supersedes PR #36.
 
-Status: **proposal / not yet implemented.** Branch: `refactor/memory-architecture-append-only`.
+Status: **implemented (PR #41) and validated end-to-end.** Branch: `refactor/memory-architecture-append-only`.
 Audit fixes C1–C5 / M1–M5 / m1–m5, NEW-1…11, and refinements §A/§B folded in (tagged inline).
+
+**Phase 3 validated end-to-end** with real models (DeepSeek V4-pro agent + Ollama `nomic-embed-text`
+embeddings): the dream agent consolidated seeded daily logs into zoned `3_Personal/` pages,
+handled the Google→Microsoft state-change with history (`"Currently Microsoft … Previously Google"`),
+deduped duplicate facts, the runner wrote the `watermark=` token, regenerated `MEMORY.md`, reindexed,
+and retrieval returned the consolidated pages. This surfaced and fixed a **root-cause robustness bug
+(C6)**: `EmbeddingGenerator.generate()/generate_batch()` silently returned **zero vectors** on backend
+failure, which poisons the vector index (all-zero rows) and breaks retrieval with no signal. Fix:
+embedding now **raises** on failure (never fabricates zeros), and `_reindex_file` **embeds all rows
+before mutating the index** — so a transient embedding-backend outage leaves the existing index
+untouched and the file is retried, instead of deleting rows and storing poison. Covered by
+`tests/memory/test_embedding_robustness.py`.
 Code anchors re-verified against current `main` (post-pull): `_deduplicate_and_store_facts`,
 `refresh_core_memory_facts`, `MarkdownIndexer`, `CoreMemoryFileIndexer`, `_extract_memories`
 (call ~1000 / gate ~1406), `MemoryExtractionResult.memories_created` (sole external consumer
