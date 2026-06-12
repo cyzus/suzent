@@ -472,8 +472,9 @@ class CoreMemoryFileIndexer:
         """Delete stale rows and re-embed the content of one file. Idempotent.
 
         Diary logs are indexed one row per fact (§A); notebook pages and core files
-        one row per paragraph chunk. Tombstoned diary facts are skipped so user
-        deletions never resurrect. Returns the number of rows indexed.
+        one row per paragraph chunk. Tombstoned content is skipped for every source
+        type (diary facts AND notebook/core chunks alike) so a user deletion never
+        resurrects, even on a full clear-and-rebuild. Returns the number of rows indexed.
         """
         tombstones = tombstones or set()
 
@@ -517,6 +518,7 @@ class CoreMemoryFileIndexer:
                 )
                 for i, chunk in enumerate(self._chunk_by_paragraphs(content))
                 if chunk.strip()
+                and " ".join(chunk.lower().split()) not in tombstones
             ]
 
         # 2. Embed ALL rows BEFORE mutating the index. embedding_gen.generate() raises

@@ -158,19 +158,37 @@ class DreamRunner(BaseBrain):
             before = self._content_pages_state(mgr)
 
             self._pause_watcher()
+            agent_ok = False
             try:
                 await self._reset_dream_chat()
                 await self._run_agent(start, w_new)
+                agent_ok = True
             except Exception as e:
                 logger.error(f"[dream] agent run failed: {e}")
             finally:
                 self._resume_watcher()
 
-            # Proof of work: a content page changed (excludes log.md/index.md churn).
-            if self._content_pages_state(mgr) == before:
+            # Advance ONLY when the agent finished cleanly AND produced real page
+            # changes. A failed or timed-out run can leave a partially-written page,
+            # so "a content page changed" alone is NOT proof of work — advancing on it
+            # would mark the whole batch consolidated and let the indexer drop the raw
+            # daily logs (<= watermark) for facts that were never folded into the vault
+            # (silent data loss). On any failure we bump the retry counter and keep the
+            # watermark put, so the batch is re-attempted from the same start (and
+            # eventually retry-skipped if it stays un-consolidatable).
+            changed = self._content_pages_state(mgr) != before
+            if not (agent_ok and changed):
                 self._failures[w_new] = self._failures.get(w_new, 0) + 1
-                logger.info(f"[dream] no content changes; not advancing (W={w_new})")
-                return {"ran": True, "changed": False, "watermark": watermark}
+                reason = "agent run failed/timed out" if not agent_ok else "no content changes"
+                logger.info(
+                    f"[dream] not advancing ({reason}); watermark stays {watermark} (target {w_new})"
+                )
+                return {
+                    "ran": True,
+                    "changed": changed,
+                    "advanced": False,
+                    "watermark": watermark,
+                }
 
             self._failures.pop(w_new, None)
             await self._advance_watermark(mgr, w_new)
@@ -189,7 +207,7 @@ class DreamRunner(BaseBrain):
             except Exception as e:
                 logger.error(f"[dream] reindex failed: {e}")
             logger.info(f"[dream] consolidated through {w_new}")
-            return {"ran": True, "changed": True, "watermark": w_new}
+            return {"ran": True, "changed": True, "advanced": True, "watermark": w_new}
 
     async def _advance_watermark(self, mgr, w_new: str):
         await mgr.markdown_store.write_watermark_entry(self._today_utc(), w_new)

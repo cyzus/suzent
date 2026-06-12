@@ -243,8 +243,11 @@ async def delete_archival_memory(request: Request) -> JSONResponse:
                 filename=source_file,
             )
         else:
-            # Notebook/core rows: best-effort immediate removal (the row's page is
-            # corrected by the next dream/lint pass).
+            # Notebook/core rows: drop the row now; the tombstone appended above makes
+            # the indexer skip this chunk on any future rebuild (clear_and_full_reindex
+            # included), so {"success": True} is durable — it can't resurrect. (If a later
+            # dream *rewords* the fact into a new page paragraph, only the exact prior text
+            # is tombstoned; that residue is reconciled by the next dream/lint pass.)
             await manager.store.delete_memory(memory_id)
 
         return JSONResponse({"success": True})

@@ -16,6 +16,23 @@ embedding now **raises** on failure (never fabricates zeros), and `_reindex_file
 before mutating the index** — so a transient embedding-backend outage leaves the existing index
 untouched and the file is retried, instead of deleting rows and storing poison. Covered by
 `tests/memory/test_embedding_robustness.py`.
+
+**Review fixes (PR #41, post-review)** — two correctness findings from code review, both of the
+same "no silent loss" class as #34:
+- **(C7) watermark must not advance on a failed/partial dream.** `DreamRunner._run_dream` caught
+  the agent's exceptions/timeouts but still ran the proof-of-work check, so a run that wrote one
+  page then failed (`asyncio.wait_for` timeout) looked like "a page changed" and advanced the
+  watermark — marking the whole batch consolidated and letting the indexer drop the raw daily logs
+  for facts never folded into the vault. Fix: track agent success explicitly and advance ONLY when
+  the agent finished cleanly **and** a content page changed; otherwise bump the retry counter and
+  leave the watermark put (so the batch is re-attempted, then retry-skipped if truly stuck).
+  Covered by `tests/memory/test_dream_runner_watermark.py`.
+- **(C8) notebook/core deletion must be durable.** Tombstones were applied only to archive (diary)
+  facts in `_reindex_file`, so deleting a notebook/core memory returned `{"success": true}` yet a
+  full `clear_and_full_reindex` re-chunked the page and resurrected the row. Fix: the normalized
+  tombstone filter now applies to **every** source type (diary facts and notebook/core chunks
+  alike). Covered by `tests/memory/test_indexer_tombstones.py`. (Residual: a fact a later dream
+  *rewords* into a new paragraph isn't an exact text match — reconciled by the next dream/lint pass.)
 Code anchors re-verified against current `main` (post-pull): `_deduplicate_and_store_facts`,
 `refresh_core_memory_facts`, `MarkdownIndexer`, `CoreMemoryFileIndexer`, `_extract_memories`
 (call ~1000 / gate ~1406), `MemoryExtractionResult.memories_created` (sole external consumer
@@ -227,7 +244,8 @@ watermark-aware in the index; deletes can't resurrect.
   prose can't be atomized into facts; diary lines already are atomic facts.
 - **Watermark-aware archives** — read the `watermark=` token from `log.md`; index logs `date > W`;
   delete-once logs `date ≤ W`. (Until P3 advances W, all logs are `> W` → identical to today.)
-  **Skip tombstoned content** when indexing logs, so user-deleted log facts never resurrect.
+  **Skip tombstoned content for every source type** (diary facts AND notebook/core chunks), so a
+  user-deleted fact never resurrects — even on a full `clear_and_full_reindex` (C8).
 - **Constant importance 0.5** everywhere (drop per-source values; ranking = relevance+recency).
 - `clear_and_full_reindex(...)`: wipe LanceDB for user, reset mtime state, reindex memory files
   + notebook pages + post-watermark archives.
@@ -237,16 +255,16 @@ watermark-aware in the index; deletes can't resurrect.
 - Delegate to `manager._core_indexer.clear_and_full_reindex` (clear) / `check_and_update`
   (incremental). Now covers notebook + memory.
 
-**`routes/memory_routes.py::delete_archival_memory`** (file edit → reindex; never mutates LanceDB
-directly — §2.1)
-- Resolve `memory_id → source_file` from metadata.
-- **Notebook page** (editable truth): remove the matching paragraph(s) from the page (content-match
-  the stored chunk), rewrite the file, `reindex_file_now(page)`. The fact is gone from the file, so
-  a later full reindex cannot resurrect it.
-- **Daily log** (immutable): write an **indexer-consulted tombstone** to `tombstones.jsonl` (the
-  indexer skips it when indexing logs, so even `clear_and_full_reindex` won't bring it back).
-- Complex sub-paragraph removals (one clause out of a synthesis paragraph) are queued as a
-  dream/lint correction, not done mechanically.
+**`routes/memory_routes.py::delete_archival_memory`** (tombstone → reindex; the index is derived — §2.1)
+- Resolve `memory_id → {content, source_type, source_file}` from metadata; always write an
+  **indexer-consulted tombstone** (normalized `content`) to `tombstones.jsonl` first.
+- **Daily log** (immutable): `reindex_file_now(log)` — the tombstone makes the indexer skip that
+  fact; the immutable log line stays but is no longer indexed.
+- **Notebook/core chunk**: drop the LanceDB row now (`delete_memory(id)`); because the tombstone is
+  consulted for **all** source types (C8), even a full `clear_and_full_reindex` won't bring it back.
+  Rewriting the source page to physically remove the prose is deferred to the dream/lint pass — so a
+  fact a later dream *rewords* into a new paragraph (no exact text match) is reconciled there, not
+  mechanically.
 
 **`memory/manager.py`**
 - `retrieve_relevant_memories` / `search_memories`: append to `recall_log.jsonl` (usage signal).
@@ -328,19 +346,24 @@ class DreamRunner(BaseBrain):                  # mirrors HeartbeatRunner; starte
               "auto_approve_tools": True, "platform": "dream",
               "sandbox_volumes": [f"{CONFIG.notebook_dir}:/mnt/notebook"],
               "static_instructions": DREAM_SYSTEM_PROMPT})
+      agent_ok = False
       try:
         await asyncio.wait_for(ChatProcessor().process_turn_text(
             chat_id=DREAM_CHAT_ID, user_id=CONFIG.user_id,
             message_content=DREAM_INSTRUCTIONS.format(start=W, end=W_new),         # NEW-8 placeholders
             config_override=cfg), timeout=CONFIG.memory_consolidation_timeout_seconds)
+        agent_ok = True                                          # clean finish (no exception/timeout)
       except Exception: log
       finally: resume_core_watcher()
-      if content_pages_changed(before):                         # PROOF OF WORK = a content page changed (NEW-6/C2)
+      # PROOF OF WORK = agent finished cleanly AND a content page changed (NEW-6/C2/C7).
+      # agent_ok guards against a partial write from a failed/timed-out run advancing W and
+      # letting the indexer drop raw logs for facts never folded into the vault (C7).
+      if agent_ok and content_pages_changed(before):
         advance_watermark(W_new); _failures.pop(W_new, None)
         await mgr.promote_memory_md(recall_summary, max_lines)  # regenerate MEMORY.md FIRST (NEW-11)
         await mgr._core_indexer.check_and_update(...)           # then index changed pages + new MEMORY.md; drop archives ≤ W_new
       else:
-        _failures[W_new] = _failures.get(W_new, 0) + 1          # no-op: don't advance (C2); back off (NEW-5)
+        _failures[W_new] = _failures.get(W_new, 0) + 1          # failed or no-op: don't advance (C2/C7); back off (NEW-5)
 
   advance_watermark(W_new):                                     # ONLY the runner writes the token (NEW-1/C5)
     append_log_md(f"## [{today}] ingest | daily logs  watermark={W_new}")
@@ -493,11 +516,13 @@ notebook_dir: str = str(DATA_DIR / "notebook")
 1. **Recursion** (dream turn → extraction → new logs): extraction platform guard (P1). *Required.*
 2. **History loss**: state-change kept as "previously X"; raw logs immutable; demotion ≠ deletion;
    full rebuild from logs.
-3. **Delete**: file edit → reindex (pages) or indexer-consulted tombstone (immutable logs) — never
-   a direct LanceDB delete (§2.1), so nothing resurrects. Caveat: removing one clause from a
-   synthesis paragraph isn't mechanical → queued as a dream/lint correction.
-4. **Crash mid-dream**: watermark only advances on success; idempotent dream prevents duplicate
-   pages on re-run.
+3. **Delete**: write an indexer-consulted tombstone (consulted for **all** source types — C8), then
+   reindex the log / drop the notebook-or-core row — so nothing resurrects, even on a full
+   `clear_and_full_reindex`. Caveat: a fact a later dream rewords into a synthesis paragraph isn't an
+   exact text match → queued as a dream/lint correction.
+4. **Crash/timeout mid-dream**: the watermark advances only on a *clean* agent finish **and** a page
+   change (C7) — never on a partial write from a failed/timed-out run; the in-memory lock clears and
+   the idempotent dream re-runs the same batch.
 5. **In-progress today's log**: window strictly `< today` (UTC); today stays indexed, never
    consolidated.
 6. **Concurrent dreams**: `asyncio.Lock` + gate checks it.
