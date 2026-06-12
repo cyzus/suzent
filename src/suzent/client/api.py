@@ -57,21 +57,23 @@ class HeartbeatAPI:
     def __init__(self, client: AsyncBaseClient):
         self.client = client
 
-    async def status(self) -> dict:
-        return await self.client.get("/heartbeat/status")
+    async def status(self, chat_id: str | None = None) -> dict:
+        params = {"chat_id": chat_id} if chat_id else None
+        return await self.client.get("/heartbeat/status", params=params)
 
     async def enable(self, chat_id: str | None = None) -> dict:
         payload = {"chat_id": chat_id} if chat_id else {}
         return await self.client.post("/heartbeat/enable", json=payload)
 
-    async def disable(self) -> dict:
-        return await self.client.post("/heartbeat/disable")
+    async def disable(self, chat_id: str | None = None) -> dict:
+        payload = {"chat_id": chat_id} if chat_id else {}
+        return await self.client.post("/heartbeat/disable", json=payload)
 
     async def trigger(self, manual: bool = False, chat_id: str | None = None) -> dict:
         payload = {"manual": manual}
         if chat_id:
             payload["chat_id"] = chat_id
-        return await self.client.post("/heartbeat", json=payload)
+        return await self.client.post("/heartbeat/trigger", json=payload)
 
     async def update_interval(self, payload: dict) -> dict:
         return await self.client.post("/heartbeat/interval", json=payload)

@@ -19,6 +19,7 @@ This allows the agent to manage its own session's heartbeat from bash:
 
 """
 
+import os
 import typer
 from typing import Optional
 import asyncio
@@ -30,14 +31,33 @@ heartbeat_app = typer.Typer(
 )
 
 
+def _resolve_chat_id(explicit: Optional[str]) -> Optional[str]:
+    """Resolve chat id: explicit --chat > $CHAT_ID env > active CLI session."""
+    if explicit:
+        return explicit
+    env_id = os.getenv("CHAT_ID")
+    if env_id:
+        return env_id
+    from suzent.cli.state import get_current_chat_id
+
+    return get_current_chat_id()
+
+
 @heartbeat_app.command("status")
-def heartbeat_status():
+def heartbeat_status(
+    chat_id: Optional[str] = typer.Option(
+        None,
+        "--chat",
+        "-c",
+        help="Specific chat ID (defaults to $CHAT_ID / active session).",
+    ),
+):
     """Check if the desktop heartbeat ping logic is currently active."""
 
     async def _run():
         try:
             client = get_client()
-            res = await client.heartbeat.status()
+            res = await client.heartbeat.status(_resolve_chat_id(chat_id))
 
             enabled = res.get("enabled", False)
             interval = res.get("interval_minutes", 10)
@@ -66,7 +86,7 @@ def heartbeat_enable(
     async def _run():
         try:
             client = get_client()
-            data = await client.heartbeat.enable(chat_id)
+            data = await client.heartbeat.enable(_resolve_chat_id(chat_id))
             if data.get("success"):
                 typer.echo("✅ Heartbeat tracking enabled.")
                 if chat_id:
@@ -81,13 +101,20 @@ def heartbeat_enable(
 
 
 @heartbeat_app.command("disable")
-def heartbeat_disable():
+def heartbeat_disable(
+    chat_id: Optional[str] = typer.Option(
+        None,
+        "--chat",
+        "-c",
+        help="Specific chat ID (defaults to $CHAT_ID / active session).",
+    ),
+):
     """Disable heartbeat background tracking."""
 
     async def _run():
         try:
             client = get_client()
-            data = await client.heartbeat.disable()
+            data = await client.heartbeat.disable(_resolve_chat_id(chat_id))
             if data.get("success"):
                 typer.echo("✅ Heartbeat tracking disabled.")
             else:
@@ -99,9 +126,43 @@ def heartbeat_disable():
     asyncio.run(_run())
 
 
+@heartbeat_app.command("run")
+def heartbeat_run(
+    chat_id: Optional[str] = typer.Option(
+        None,
+        "--chat",
+        "-c",
+        help="Specific chat ID (defaults to $CHAT_ID / active session).",
+    ),
+):
+    """Trigger a heartbeat tick immediately."""
+
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.heartbeat.trigger(
+                manual=True, chat_id=_resolve_chat_id(chat_id)
+            )
+            if data.get("success", True):
+                typer.echo("✅ Heartbeat triggered.")
+            else:
+                typer.echo(f"❌ Failed: {data.get('error', 'unknown error')}")
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
+
+
 @heartbeat_app.command("interval")
 def heartbeat_set_interval(
     minutes: int = typer.Argument(..., help="Number of minutes between pings"),
+    chat_id: Optional[str] = typer.Option(
+        None,
+        "--chat",
+        "-c",
+        help="Specific chat ID (defaults to $CHAT_ID / active session).",
+    ),
 ):
     """Update the heartbeat interval."""
 
@@ -110,7 +171,14 @@ def heartbeat_set_interval(
             typer.echo("Interval must be at least 1 minute.")
             raise typer.Exit(code=1)
 
-        payload = {"minutes": minutes}
+        resolved = _resolve_chat_id(chat_id)
+        if not resolved:
+            typer.echo(
+                "❌ No chat ID. Pass --chat or set $CHAT_ID / an active session."
+            )
+            raise typer.Exit(code=1)
+
+        payload = {"interval_minutes": minutes, "chat_id": resolved}
         try:
             client = get_client()
             data = await client.heartbeat.update_interval(payload)
