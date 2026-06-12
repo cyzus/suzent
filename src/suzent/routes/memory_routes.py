@@ -220,9 +220,13 @@ async def delete_archival_memory(request: Request) -> JSONResponse:
         # fact (so re-indexing can't resurrect it) and reindexes the source file —
         # we don't mutate LanceDB ad hoc (see the mutation invariant in the plan).
         mem = await manager.store.get_memory(memory_id)
+        if not mem:
+            return JSONResponse({"error": "Memory not found"}, status_code=404)
+
         md = getattr(manager, "markdown_store", None)
-        content = (mem or {}).get("content", "")
-        meta = (mem or {}).get("metadata", {}) or {}
+        content = mem.get("content", "")
+        user_id = mem.get("user_id") or CONFIG.user_id
+        meta = mem.get("metadata", {}) or {}
         source_type = meta.get("source_type")
         source_file = meta.get("source_file")
 
@@ -238,7 +242,7 @@ async def delete_archival_memory(request: Request) -> JSONResponse:
                 markdown_store=md,
                 lancedb_store=manager.store,
                 embedding_gen=manager.embedding_gen,
-                user_id=CONFIG.user_id,
+                user_id=user_id,
                 label="archive",
                 filename=source_file,
             )

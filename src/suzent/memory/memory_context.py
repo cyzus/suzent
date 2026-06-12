@@ -300,7 +300,7 @@ Rules:
 - Improve existing pages; never create near-duplicates. Search before you write.
 - Preserve history: when a fact changes over time, record "currently X; previously Y" — never silently overwrite.
 - Only remove a statement when it is a genuine correction or an exact duplicate.
-- Do NOT write to log.md — the runner records the consolidation watermark. Just tidy the pages.
+- Do NOT write to log.md — the runner records consolidation events there. Put conflicts on content pages.
 """
 
 DREAM_INSTRUCTIONS = """Consolidate the daily memory logs dated after {start} through {end} into the vault.
@@ -317,8 +317,9 @@ DREAM_INSTRUCTIONS = """Consolidate the daily memory logs dated after {start} th
       - Change over time (both true at diff. times) -> rewrite as "Currently X (since {end});
                                                        previously Y."  status: active.
       - Genuine conflict you can't confidently resolve -> keep the more recent claim, add a
-        `> [!warning] Conflicting claims: <A> vs <B> (<dates>)` callout, set the page frontmatter
-        status: needs-review, and prepend `[!alert] Conflict in [[<page>]]` to log.md.
+        `> [!warning] Conflicting claims: <A> vs <B> (<dates>)` callout on the relevant
+        content page (or create a conflict-review page in the schema's appropriate location
+        if no topical page exists) and set that page frontmatter status: needs-review.
    c. Convert relative dates ("yesterday") to absolute.
 4. Add `## Related` wikilinks between related pages.
 5. Update index.md. Do NOT write the watermark to log.md — the runner records it.

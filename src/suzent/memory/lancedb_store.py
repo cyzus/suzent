@@ -694,6 +694,7 @@ class LanceDBMemoryStore:
             return {
                 "id": row.get("id"),
                 "content": row.get("content", ""),
+                "user_id": row.get("user_id"),
                 "metadata": meta,
             }
         except Exception as e:
