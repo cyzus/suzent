@@ -60,7 +60,8 @@ function ModelDropdown({ options, onSelect }: ModelDropdownProps) {
     setQuery('');
   }
 
-  if (options.length === 0) return null;
+  const trimmed = query.trim();
+  const isExistingOption = options.includes(trimmed);
 
   return (
     <div ref={ref} className="relative">
@@ -75,13 +76,14 @@ function ModelDropdown({ options, onSelect }: ModelDropdownProps) {
 
       {open && (
         <div className="absolute z-50 top-full mt-1 left-0 right-0 border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-          {/* Search input */}
+          {/* Search doubles as custom-model entry: Enter adds the typed id */}
           <div className="border-b-2 border-brutal-black">
             <input
               ref={inputRef}
               type="text"
               value={query}
               onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && trimmed) handleSelect(trimmed); }}
               placeholder={t('settings.roles.searchPlaceholder')}
               className="w-full px-3 py-2 font-mono text-xs bg-neutral-50 dark:bg-zinc-700 dark:text-white focus:outline-none"
               spellCheck={false}
@@ -90,23 +92,34 @@ function ModelDropdown({ options, onSelect }: ModelDropdownProps) {
 
           {/* Option list */}
           <ul className="max-h-48 overflow-y-auto">
-            {filtered.length === 0 ? (
+            {filtered.length === 0 && !trimmed && (
               <li className="px-3 py-2 text-xs text-neutral-400 dark:text-neutral-500 italic">
                 {t('settings.roles.noModelsFound')}
               </li>
-            ) : (
-              filtered.map(m => (
-                <li key={m}>
-                  <button
-                    type="button"
-                    onClick={() => handleSelect(m)}
-                    className="w-full text-left px-3 py-2 font-mono text-xs hover:bg-brutal-yellow dark:hover:bg-brutal-yellow/20 border-b border-neutral-100 dark:border-zinc-700 truncate dark:text-white"
-                    title={m}
-                  >
-                    {m}
-                  </button>
-                </li>
-              ))
+            )}
+            {filtered.map(m => (
+              <li key={m}>
+                <button
+                  type="button"
+                  onClick={() => handleSelect(m)}
+                  className="w-full text-left px-3 py-2 font-mono text-xs hover:bg-brutal-yellow dark:hover:bg-brutal-yellow/20 border-b border-neutral-100 dark:border-zinc-700 truncate dark:text-white"
+                  title={m}
+                >
+                  {m}
+                </button>
+              </li>
+            ))}
+            {trimmed && !isExistingOption && (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => handleSelect(trimmed)}
+                  className="w-full text-left px-3 py-2 font-mono text-xs font-bold hover:bg-brutal-yellow dark:hover:bg-brutal-yellow/20 border-t-2 border-brutal-black truncate dark:text-white"
+                  title={trimmed}
+                >
+                  + {t('settings.roles.addCustom', { id: trimmed })}
+                </button>
+              </li>
             )}
           </ul>
         </div>
@@ -127,7 +140,6 @@ interface RoleCardProps {
 
 function RoleCard({ label, desc, selected, suggestions, onChange }: RoleCardProps) {
   const { t } = useI18n();
-  const [customInput, setCustomInput] = useState('');
 
   const available = suggestions.filter(m => !selected.includes(m));
 
@@ -145,11 +157,6 @@ function RoleCard({ label, desc, selected, suggestions, onChange }: RoleCardProp
     const next = [...selected];
     [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
     onChange(next);
-  }
-
-  function handleCustomAdd() {
-    addModel(customInput);
-    setCustomInput('');
   }
 
   return (
@@ -171,19 +178,21 @@ function RoleCard({ label, desc, selected, suggestions, onChange }: RoleCardProp
                 >
                   {modelId}
                 </span>
-                {idx > 0 && (
+                {idx > 0 ? (
                   <button
                     type="button"
                     onClick={() => moveUp(idx)}
                     className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-neutral-100 dark:hover:bg-zinc-600 dark:text-white text-xs flex-shrink-0 font-bold"
-                    title="Move up (higher priority)"
+                    title={t('settings.roles.moveUp')}
                   >↑</button>
+                ) : (
+                  selected.length > 1 && <span className="w-6 h-6 flex-shrink-0" aria-hidden="true" />
                 )}
                 <button
                   type="button"
                   onClick={() => removeModel(modelId)}
                   className="w-6 h-6 flex items-center justify-center border-2 border-brutal-black bg-white dark:bg-zinc-700 hover:bg-red-50 dark:hover:bg-red-900/30 dark:text-white text-xs flex-shrink-0 font-bold"
-                  title="Remove"
+                  title={t('common.remove')}
                 >×</button>
               </div>
             ))}
@@ -194,29 +203,8 @@ function RoleCard({ label, desc, selected, suggestions, onChange }: RoleCardProp
           </div>
         )}
 
-        {/* Searchable list dropdown */}
+        {/* Add model: searchable dropdown; typing a custom id also works */}
         <ModelDropdown options={available} onSelect={addModel} />
-
-        {/* Custom model input */}
-        <div className="flex gap-1.5">
-          <input
-            type="text"
-            value={customInput}
-            onChange={e => setCustomInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleCustomAdd()}
-            placeholder={t('settings.roles.customPlaceholder')}
-            className="flex-1 font-mono text-xs border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-brutal-black min-w-0"
-            spellCheck={false}
-          />
-          <button
-            type="button"
-            onClick={handleCustomAdd}
-            disabled={!customInput.trim()}
-            className="px-3 py-1.5 bg-brutal-black text-white font-bold uppercase text-xs border-2 border-brutal-black hover:bg-neutral-800 disabled:opacity-40 flex-shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-[1px] active:translate-y-[1px]"
-          >
-            {t('common.add')}
-          </button>
-        </div>
       </div>
     </GridCard>
   );
