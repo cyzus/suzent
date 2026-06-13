@@ -11,17 +11,19 @@ import { CoreMemoryBlock } from './CoreMemoryBlock';
 import { ArchivalMemoryList } from './ArchivalMemoryList';
 import { MemoryStatsComponent } from './MemoryStats';
 import { DailyLogsPanel } from './DailyLogsPanel';
-import { MemoryFilePanel } from './MemoryFilePanel';
 import { TranscriptPanel } from './TranscriptPanel';
+import { DreamingPanel } from './DreamingPanel';
 import { BrutalSegmentedTabs } from '../BrutalSegmentedTabs';
 import type { CoreMemoryLabel } from '../../types/memory';
 
-type MemoryTab = 'overview' | 'daily-logs' | 'memory-file' | 'transcripts';
+// MEMORY.md is shown in Overview as the editable 'facts' core-memory block, so it
+// has no standalone tab here.
+type MemoryTab = 'overview' | 'dreaming' | 'daily-logs' | 'transcripts';
 
 const TABS: { id: MemoryTab; labelKey: string }[] = [
   { id: 'overview', labelKey: 'memoryView.tabs.overview' },
+  { id: 'dreaming', labelKey: 'memoryView.tabs.dreaming' },
   { id: 'daily-logs', labelKey: 'memoryView.tabs.dailyLogs' },
-  { id: 'memory-file', labelKey: 'memoryView.tabs.memoryFile' },
   { id: 'transcripts', labelKey: 'memoryView.tabs.transcripts' },
 ];
 
@@ -163,15 +165,15 @@ export const MemoryView: React.FC = () => {
         </div>
       )}
 
-      {activeTab === 'daily-logs' && (
+      {activeTab === 'dreaming' && (
         <div className="animate-view-fade">
-          <DailyLogsPanel />
+          <DreamingPanel />
         </div>
       )}
 
-      {activeTab === 'memory-file' && (
+      {activeTab === 'daily-logs' && (
         <div className="animate-view-fade">
-          <MemoryFilePanel />
+          <DailyLogsPanel />
         </div>
       )}
 

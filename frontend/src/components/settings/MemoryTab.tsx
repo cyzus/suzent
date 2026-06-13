@@ -1,7 +1,6 @@
 import React from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 
-import { useDreamStatus } from '../../hooks/useDreamStatus';
 import { useI18n } from '../../i18n';
 import { SettingsHeader } from './SettingsHeader';
 import { SettingsCard, SectionCardHeader } from './SettingsCard';
@@ -16,7 +15,6 @@ export function MemoryTab({
     onGlobalNotebookHostPathChange,
 }: MemoryTabProps): React.ReactElement {
     const { t } = useI18n();
-    const { status: dreamStatus, loading: dreamLoading, runningNow, error: dreamError, refresh: refreshDreamStatus, runNow } = useDreamStatus();
 
     const pickDirectory = async () => {
         try {
@@ -31,55 +29,6 @@ export function MemoryTab({
         }
     };
 
-    const formatDate = (value?: string | null): string => {
-        if (!value) return t('settings.memoryConfig.never');
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return t('settings.memoryConfig.never');
-        return date.toLocaleString([], {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-        });
-    };
-
-    const statusLabel = (() => {
-        if (dreamLoading && !dreamStatus) return t('settings.memoryConfig.dreamStatus.loading');
-        if (dreamError) return t('settings.memoryConfig.dreamStatus.error');
-        if (!dreamStatus?.active) return t('settings.memoryConfig.dreamStatus.inactive');
-        if (!dreamStatus.enabled) return t('settings.memoryConfig.dreamStatus.disabled');
-        if (dreamStatus.phase === 'finalizing') return t('settings.memoryConfig.dreamStatus.finalizing');
-        if (dreamStatus.phase === 'queued' || dreamStatus.phase === 'preparing') return t('settings.memoryConfig.dreamStatus.preparing');
-        if (dreamStatus.running || runningNow) return t('settings.memoryConfig.dreamStatus.running');
-        if ((dreamStatus.pending_count ?? 0) > 0) return t('settings.memoryConfig.dreamStatus.pending');
-        return t('settings.memoryConfig.dreamStatus.idle');
-    })();
-
-    const statusClass = (() => {
-        if (dreamError || dreamStatus?.last_result?.advanced === false) return 'bg-brutal-red text-white';
-        if (dreamStatus?.running || runningNow) return 'bg-brutal-blue text-white';
-        if ((dreamStatus?.pending_count ?? 0) > 0) return 'bg-brutal-yellow text-brutal-black';
-        return 'bg-brutal-green text-brutal-black';
-    })();
-
-    const lastResultLabel = (() => {
-        const result = dreamStatus?.last_result;
-        if (!result) return t('settings.memoryConfig.noRunsYet');
-        // Prefer the agent's own one-paragraph summary (what it created/updated/flagged).
-        if (result.summary) return result.summary;
-        if (result.reason) return result.reason;
-        if (result.skipped) return t('settings.memoryConfig.lastResultSkipped');
-        if (result.advanced) return t('settings.memoryConfig.lastResultAdvanced', { watermark: result.watermark || '—' });
-        if (result.advanced === false) return t('settings.memoryConfig.lastResultNotAdvanced');
-        return t('settings.memoryConfig.lastResultRan');
-    })();
-
-    const pendingDates = dreamStatus?.pending_dates ?? [];
-    const canRunDream = !!dreamStatus?.active && !!dreamStatus?.available && !!dreamStatus?.enabled && !dreamStatus?.running && !runningNow;
-    const progressPercent = Math.max(0, Math.min(100, dreamStatus?.progress_percent ?? 0));
-    const consolidatedCount = dreamStatus?.consolidated_count ?? 0;
-    const archiveCount = dreamStatus?.archive_count ?? 0;
-
     return (
         <div className="space-y-6">
             <SettingsHeader title={t('settings.memoryConfig.title')} subtitle={t('settings.memoryConfig.subtitle')} />
@@ -91,102 +40,6 @@ export function MemoryTab({
                 </svg>
                 <p className="text-sm font-bold">{t('settings.memoryConfig.modelRolesHint')}</p>
             </div>
-
-            <SettingsCard>
-                <SectionCardHeader
-                    iconTone="blue"
-                    icon={
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M20 12.5A8.5 8.5 0 1111.5 4 6.5 6.5 0 0020 12.5z" />
-                        </svg>
-                    }
-                    title={t('settings.memoryConfig.dreamTitle')}
-                    description={t('settings.memoryConfig.dreamDesc')}
-                    actions={
-                        <div className={`px-4 py-2 border-2 border-brutal-black font-mono text-xs font-bold uppercase whitespace-nowrap shadow-brutal-sm ${statusClass}`}>
-                            {statusLabel}
-                        </div>
-                    }
-                />
-
-                <div className="mb-5">
-                    <div className="flex items-center justify-between gap-3 mb-2">
-                        <div className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">
-                            {t('settings.memoryConfig.backlogProgress')}
-                        </div>
-                        <div className="font-mono text-xs font-bold">
-                            {t('settings.memoryConfig.progressCount', { current: String(consolidatedCount), total: String(archiveCount) })}
-                        </div>
-                    </div>
-                    <div className="h-5 border-2 border-brutal-black bg-neutral-100 dark:bg-zinc-900 overflow-hidden">
-                        <div
-                            className={`h-full transition-all duration-500 ${dreamStatus?.running || runningNow ? 'bg-brutal-blue animate-pulse' : progressPercent >= 100 ? 'bg-brutal-green' : 'bg-brutal-yellow'}`}
-                            style={{ width: `${progressPercent}%` }}
-                        />
-                    </div>
-                    <div className="mt-1 font-mono text-[11px] text-neutral-500 dark:text-neutral-400">
-                        {progressPercent}% {t('settings.memoryConfig.complete')}
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                    <div className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3">
-                        <div className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">{t('settings.memoryConfig.consolidatedThrough')}</div>
-                        <div className="font-mono text-sm font-bold mt-1">{dreamStatus?.watermark || '—'}</div>
-                    </div>
-                    <div className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3">
-                        <div className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">{t('settings.memoryConfig.pendingLogs')}</div>
-                        <div className="font-mono text-sm font-bold mt-1">{dreamStatus?.pending_count ?? 0}</div>
-                    </div>
-                    <div className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3">
-                        <div className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">{t('settings.memoryConfig.pendingFacts')}</div>
-                        <div className="font-mono text-sm font-bold mt-1">{dreamStatus?.pending_facts ?? 0}</div>
-                    </div>
-                    <div className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3">
-                        <div className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">{t('settings.memoryConfig.lastRun')}</div>
-                        <div className="font-mono text-sm font-bold mt-1">{formatDate(dreamStatus?.last_finished_at)}</div>
-                    </div>
-                </div>
-
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-stretch">
-                    <div className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3 min-w-0">
-                        <div className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">{t('settings.memoryConfig.lastResult')}</div>
-                        <div
-                            className="font-mono text-xs font-bold mt-1 whitespace-pre-wrap break-words overflow-y-auto max-h-32"
-                            title={lastResultLabel}
-                        >
-                            {lastResultLabel}
-                        </div>
-                        {pendingDates.length > 0 && (
-                            <div className="font-mono text-[11px] text-neutral-500 dark:text-neutral-400 mt-2 truncate">
-                                {t('settings.memoryConfig.nextBatch')}: {pendingDates.slice(0, dreamStatus?.max_days ?? 14).join(', ')}
-                            </div>
-                        )}
-                        {dreamError && (
-                            <div className="font-mono text-[11px] text-brutal-red mt-2 truncate">
-                                {dreamError}
-                            </div>
-                        )}
-                    </div>
-                    <div className="flex gap-2">
-                        <button
-                            type="button"
-                            onClick={() => void refreshDreamStatus()}
-                            className="px-4 py-2 bg-white dark:bg-zinc-700 border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-neutral-100 dark:hover:bg-zinc-600 transition-colors"
-                        >
-                            {t('common.refresh')}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => void runNow()}
-                            disabled={!canRunDream}
-                            className="px-4 py-2 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                        >
-                            {runningNow || dreamStatus?.running ? t('settings.memoryConfig.runningNow') : t('settings.memoryConfig.runNow')}
-                        </button>
-                    </div>
-                </div>
-            </SettingsCard>
 
             <SettingsCard>
                 <SectionCardHeader
