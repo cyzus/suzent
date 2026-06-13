@@ -103,6 +103,24 @@ class MarkdownMemoryStore:
             f"\n## [{run_date}] ingest | daily logs  watermark={watermark}"
         )
 
+    def read_last_lint_date(self) -> Optional[str]:
+        """Date of the most recent `## [YYYY-MM-DD] lint` entry in log.md, or None.
+
+        The lint phase has no watermark (it audits the whole vault); its cadence gate
+        keys off how long ago the last lint ran, recorded by these log entries.
+        """
+        matches = re.findall(
+            r"##\s*\[(\d{4}-\d{2}-\d{2})\]\s*lint\b", self.read_notebook_log()
+        )
+        return matches[-1] if matches else None
+
+    async def write_lint_entry(self, run_date: str, summary: str = "") -> None:
+        """Append the runner-owned lint event (mirrors write_watermark_entry)."""
+        line = f"\n## [{run_date}] lint"
+        if summary:
+            line += f"\n{summary.strip()}"
+        await self.append_notebook_log(line)
+
     # --- Recall log (usage signal for MEMORY.md promotion) ---
 
     @property

@@ -18,9 +18,27 @@ from .models import (
 SUMMARY_LAST_MESSAGE_KEY = "_summary_last_message"
 SUMMARY_VISIBLE_COUNT_KEY = "_summary_visible_assistant_count"
 
+# Platforms hidden from the user's chat list. Only the autonomous dream consolidation
+# chat is hidden — sub-agent chats are intentionally kept visible (nested under their
+# parent agent in the UI), so they are NOT excluded here.
+HIDDEN_CHAT_PLATFORMS = ("dream",)
+
 
 def _apply_chat_filters(statement, search, platform, project_id):
-    """Apply common search/platform/project filters to a ChatModel statement."""
+    """Apply common search/platform/project filters to a ChatModel statement.
+
+    The hidden dream consolidation chat is always excluded from listing — it is an
+    internal background agent, not a user conversation (it surfacing in the sidebar
+    is the bug this fixes). Sub-agent chats remain visible by design.
+    """
+    # SQLite json_extract returns the platform string or NULL; exclude the hidden set.
+    placeholders = ", ".join(f"'{p}'" for p in HIDDEN_CHAT_PLATFORMS)
+    statement = statement.where(
+        text(
+            "(json_extract(config, '$.platform') IS NULL "
+            f"OR json_extract(config, '$.platform') NOT IN ({placeholders}))"
+        )
+    )
     if search:
         statement = statement.where(
             or_(

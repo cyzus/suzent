@@ -350,6 +350,11 @@ class ConfigModel(BaseModel):
         "GrepTool",
         "MemorySearchTool",
     ]
+    # Lint phase: a periodic editorial audit of the vault (contradictions, broken
+    # links, orphans, decay) run by the same dream runner AFTER ingest catches up.
+    # Distinct prompt + its own (slower) gate; ingest always takes priority.
+    memory_lint_enabled: bool = True
+    memory_lint_min_days: float = 7.0
 
     cron_presets: List[Dict[str, Any]] = []
     user_id: str = "default-user"

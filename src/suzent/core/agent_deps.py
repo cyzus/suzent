@@ -34,6 +34,10 @@ class AgentDeps:
     # --- Session identity ---
     chat_id: str = ""
     user_id: str = "default"
+    # System/forked chats (dream consolidation, sub-agents) are reset to a clean
+    # slate before every run, so their agent_state must NEVER be persisted (mid-run
+    # checkpoints or end-of-turn). Set by the chat processor from the chat platform.
+    stateless: bool = False
 
     # --- Sandbox / filesystem ---
     sandbox_enabled: bool = False
