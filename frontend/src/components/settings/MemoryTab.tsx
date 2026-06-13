@@ -65,6 +65,8 @@ export function MemoryTab({
     const lastResultLabel = (() => {
         const result = dreamStatus?.last_result;
         if (!result) return t('settings.memoryConfig.noRunsYet');
+        // Prefer the agent's own one-paragraph summary (what it created/updated/flagged).
+        if (result.summary) return result.summary;
         if (result.reason) return result.reason;
         if (result.skipped) return t('settings.memoryConfig.lastResultSkipped');
         if (result.advanced) return t('settings.memoryConfig.lastResultAdvanced', { watermark: result.watermark || '—' });
@@ -149,7 +151,12 @@ export function MemoryTab({
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-stretch">
                     <div className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3 min-w-0">
                         <div className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">{t('settings.memoryConfig.lastResult')}</div>
-                        <div className="font-mono text-xs font-bold mt-1 truncate">{lastResultLabel}</div>
+                        <div
+                            className="font-mono text-xs font-bold mt-1 whitespace-pre-wrap break-words overflow-y-auto max-h-32"
+                            title={lastResultLabel}
+                        >
+                            {lastResultLabel}
+                        </div>
                         {pendingDates.length > 0 && (
                             <div className="font-mono text-[11px] text-neutral-500 dark:text-neutral-400 mt-2 truncate">
                                 {t('settings.memoryConfig.nextBatch')}: {pendingDates.slice(0, dreamStatus?.max_days ?? 14).join(', ')}

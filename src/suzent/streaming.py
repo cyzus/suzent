@@ -668,6 +668,10 @@ async def stream_agent_responses(
         """
         if not chat_id or not messages:
             return
+        # Stateless chats (dream, sub-agents) reset before each run; persisting a
+        # mid-run snapshot would let this run's history survive into the next.
+        if getattr(deps, "stateless", False):
+            return
         try:
             _model_id = getattr(agent, "_model_id", None)
             _tool_names = getattr(agent, "_tool_names", [])

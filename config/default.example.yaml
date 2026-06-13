@@ -68,16 +68,13 @@ EMBEDDING_DIMENSION: 3072
 # Fields: name, cron_expr, prompt, delivery_mode (announce|silent), model_override, enabled, requires
 # `requires`: name of a CONFIG field that must be truthy for this job to be active.
 # Add new presets here without touching any Python code.
-CRON_PRESETS:
-  - name: wiki-ingest-daily
-    cron_expr: "0 2 * * *"
-    prompt: "Run the ingest skill for daily memory logs. Follow /mnt/skills/official/notebook/ingest.md exactly."
-    delivery_mode: announce
-  - name: wiki-lint-weekly
-    cron_expr: "0 3 * * 0"
-    prompt: "Run the lint skill. Follow /mnt/skills/official/notebook/lint.md exactly."
-    delivery_mode: announce
-  # Example — add your own presets:
+# NOTE: the notebook ingest + lint cron presets were removed — the autonomous
+# dream runner (DreamRunner) now owns both phases: it consolidates daily logs
+# continuously (gated) and runs the editorial lint pass weekly once ingest is
+# caught up. Re-adding cron jobs for ingest/lint would duplicate that work and
+# race on the shared notebook watermark/log.md. See src/suzent/core/dream_runner.py.
+CRON_PRESETS: []
+  # Example — add your own presets (replace the [] above with a list):
   # - name: daily-summary
   #   cron_expr: "0 20 * * *"
   #   prompt: "Summarize what was accomplished today and write it to /shared/memory/summaries/."

@@ -244,6 +244,8 @@ class ChatProcessor:
 
         # 3. Build AgentDeps (replaces inject_chat_context)
         deps = build_agent_deps(chat_id=chat_id, user_id=user_id, config=config)
+        # System/forked chats never persist agent_state — they reset before each run.
+        deps.stateless = self._is_system_chat(chat_id)
 
         # 4. Restore message history from DB (or use override for steer)
         message_history = _message_history_override
@@ -550,12 +552,20 @@ class ChatProcessor:
             display_trigger = "\n\n---\n\n".join(
                 r.strip() for r in system_reminders if r and r.strip()
             )
-        reminder = await build_combined_reminder(
-            chat_id,
-            deps,
-            adhoc_reminders=system_reminders,
-            user_message=_turn_message,
-            display_trigger=display_trigger,
+        # Stateless chats (dream, sub-agents) run a fixed, self-contained prompt and
+        # must not receive skill-discovery / plan / RAG reminders — that ambient
+        # chatter (e.g. the automation/cron skill hint) is what made the dream agent
+        # hallucinate "this scheduled task already fired, skip it" and no-op.
+        reminder = (
+            None
+            if getattr(deps, "stateless", False)
+            else await build_combined_reminder(
+                chat_id,
+                deps,
+                adhoc_reminders=system_reminders,
+                user_message=_turn_message,
+                display_trigger=display_trigger,
+            )
         )
         if reminder:
             if message_content and message_content.strip():
@@ -863,7 +873,16 @@ class ChatProcessor:
 
             # Persist a lightweight state snapshot immediately so a fast-following
             # turn can restore recent history even before heavy post-processing ends.
+            #
+            # System/forked chats (dream consolidation, sub-agents) are stateless by
+            # design: every run is reset to a clean slate (see DreamRunner._reset_dream_chat).
+            # Persisting their agent_state lets a previous run's history survive — and,
+            # worse, a late finalize from the prior run can resurrect it AFTER the next
+            # run's reset (a race), so the dream agent wakes up carrying 40+ messages of
+            # unrelated chatter and hallucinates "I already did this, skip" — never
+            # consolidating. Skip all agent_state persistence for these chats.
             snapshot_revision: Optional[int] = None
+            _stateless_chat = self._is_system_chat(chat_id)
             try:
                 snapshot_messages = getattr(deps, "last_messages", None)
                 if snapshot_messages is None:
@@ -892,12 +911,14 @@ class ChatProcessor:
                             )
                         )
 
-                snapshot_revision = await self._persist_agent_state_snapshot(
-                    chat_id=chat_id,
-                    messages=snapshot_messages or [],
-                    model_id=getattr(agent, "_model_id", None),
-                    tool_names=getattr(agent, "_tool_names", []),
-                )
+                # Stateless chats never snapshot agent_state (see note above).
+                if not _stateless_chat:
+                    snapshot_revision = await self._persist_agent_state_snapshot(
+                        chat_id=chat_id,
+                        messages=snapshot_messages or [],
+                        model_id=getattr(agent, "_model_id", None),
+                        tool_names=getattr(agent, "_tool_names", []),
+                    )
             except Exception as e:
                 logger.warning(
                     f"Failed to persist pre-postprocess state snapshot for {chat_id}: {e}"
@@ -1571,8 +1592,16 @@ class ChatProcessor:
         """Persist conversation state to database."""
         try:
             db = get_database()
-            agent_state = serialize_state(
-                messages, model_id=model_id, tool_names=tool_names
+            # System/forked chats (dream, sub-agents) are stateless by design and are
+            # reset to a clean slate before every run. Persisting their agent_state lets
+            # a prior run's history survive into the next one — and a late finalize here
+            # can resurrect it after the next run's reset. Keep agent_state empty so each
+            # run starts clean (display messages are still rebuilt below for inspection).
+            stateless = self._is_system_chat(chat_id)
+            agent_state = (
+                b""
+                if stateless
+                else serialize_state(messages, model_id=model_id, tool_names=tool_names)
             )
 
             current_chat = db.get_chat(chat_id)

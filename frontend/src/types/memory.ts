@@ -100,6 +100,12 @@ export interface DreamRunResult {
   watermark?: string | null;
   target?: string | null;
   reason?: string;
+  /** Phase that produced this result ('lint' for the editorial pass). */
+  phase?: string;
+  /** Lint-phase success flag. */
+  ok?: boolean;
+  /** The agent's own one-paragraph summary of what it did this run. */
+  summary?: string;
 }
 
 export interface DreamStatus {
@@ -107,7 +113,7 @@ export interface DreamStatus {
   available: boolean;
   enabled: boolean;
   running: boolean;
-  phase?: 'idle' | 'queued' | 'preparing' | 'running_agent' | 'finalizing' | string;
+  phase?: 'idle' | 'queued' | 'preparing' | 'running_agent' | 'running_lint' | 'finalizing' | string;
   reason?: string;
   watermark?: string | null;
   pending_dates?: string[];
@@ -125,6 +131,11 @@ export interface DreamStatus {
   min_facts?: number;
   min_hours?: number;
   max_days?: number;
+  lint_enabled?: boolean;
+  lint_last_run?: string | null;
+  lint_days_since?: number | null;
+  lint_due?: boolean;
+  lint_min_days?: number;
 }
 
 export interface DreamConsolidateResponse {

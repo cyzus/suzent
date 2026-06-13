@@ -47,6 +47,9 @@ class DreamRunner(BaseBrain):
         self._last_result: Optional[dict[str, Any]] = None
         self._phase: str = "idle"
         self._background_task: Optional[asyncio.Task] = None
+        self._reindex_task: Optional[asyncio.Task] = None
+        # Lint pacing (ephemeral; the durable "last lint" signal is log.md entries).
+        self._last_lint_attempt_at: float = 0.0
 
     async def _run_loop(self):
         # Let startup settle before the first tick.
@@ -145,6 +148,8 @@ class DreamRunner(BaseBrain):
         )
         next_batch = pending[: CONFIG.memory_consolidation_max_days]
         available = bool(getattr(mgr, "llm_client", None))
+        last_lint = mgr.markdown_store.read_last_lint_date()
+        lint_days = self._days_since(last_lint)
         return {
             "active": True,
             "available": available,
@@ -168,6 +173,11 @@ class DreamRunner(BaseBrain):
             "min_facts": CONFIG.memory_consolidation_min_facts,
             "min_hours": CONFIG.memory_consolidation_min_hours,
             "max_days": CONFIG.memory_consolidation_max_days,
+            "lint_enabled": CONFIG.memory_lint_enabled,
+            "lint_last_run": last_lint,
+            "lint_days_since": round(lint_days, 1) if lint_days is not None else None,
+            "lint_due": self._lint_due(mgr) if not pending else False,
+            "lint_min_days": CONFIG.memory_lint_min_days,
         }
 
     # ----- gate + run -----
@@ -181,23 +191,27 @@ class DreamRunner(BaseBrain):
 
         watermark = mgr.markdown_store.read_watermark()
         pending = self._pending_dates(mgr, watermark)
-        if not pending:
+        if pending:
+            behind = len(pending) > CONFIG.memory_consolidation_max_days
+            if not behind:
+                # Steady state: back off on attempts + require enough new material.
+                if (
+                    time.time() - self._last_attempt_at
+                ) < CONFIG.memory_consolidation_min_hours * 3600:
+                    return
+                if (
+                    self._count_fact_lines(mgr, pending)
+                    < CONFIG.memory_consolidation_min_facts
+                ):
+                    return
+            # behind => sprint (ignore the daily/volume gate) until caught up.
+            await self._run_dream(mgr, watermark, pending)
             return
 
-        behind = len(pending) > CONFIG.memory_consolidation_max_days
-        if not behind:
-            # Steady state: back off on attempts + require enough new material.
-            if (
-                time.time() - self._last_attempt_at
-            ) < CONFIG.memory_consolidation_min_hours * 3600:
-                return
-            if (
-                self._count_fact_lines(mgr, pending)
-                < CONFIG.memory_consolidation_min_facts
-            ):
-                return
-        # behind => sprint (ignore the daily/volume gate) until caught up.
-        await self._run_dream(mgr, watermark, pending)
+        # Ingest is caught up. Only now consider the (slower) lint pass, so the
+        # editorial audit never starves new-log consolidation.
+        if self._lint_due(mgr):
+            await self._run_lint(mgr)
 
     async def force_run(self) -> dict:
         """On-demand consolidation — bypasses time+volume gates (not the lock)."""
@@ -269,10 +283,11 @@ class DreamRunner(BaseBrain):
 
             self._pause_watcher()
             agent_ok = False
+            summary = ""
             try:
                 await self._reset_dream_chat()
                 self._phase = "running_agent"
-                await self._run_agent(start, w_new)
+                summary = await self._run_agent(start, w_new)
                 agent_ok = True
             except Exception as e:
                 logger.error(f"[dream] agent run failed: {e}")
@@ -304,34 +319,36 @@ class DreamRunner(BaseBrain):
                     "changed": changed,
                     "advanced": False,
                     "watermark": watermark,
+                    "summary": summary or reason,
                 }
                 self._record_result(result)
                 return result
 
             self._failures.pop(w_new, None)
             await self._advance_watermark(mgr, w_new)
-            # Promote MEMORY.md first so the reconcile pass indexes the fresh file.
+            # Promote MEMORY.md (bounded) so the curated summary reflects this batch.
             try:
-                await mgr.promote_memory_md(CONFIG.user_id)
-            except Exception as e:
-                logger.error(f"[dream] promote_memory_md failed: {e}")
-            try:
-                await mgr._core_indexer.check_and_update(
-                    markdown_store=mgr.markdown_store,
-                    lancedb_store=mgr.store,
-                    embedding_gen=mgr.embedding_gen,
-                    user_id=CONFIG.user_id,
+                await asyncio.wait_for(
+                    mgr.promote_memory_md(CONFIG.user_id),
+                    timeout=CONFIG.memory_consolidation_timeout_seconds,
                 )
             except Exception as e:
-                logger.error(f"[dream] reindex failed: {e}")
+                logger.error(f"[dream] promote_memory_md failed/timed out: {e}")
             logger.info(f"[dream] consolidated through {w_new}")
             result = {
                 "ran": True,
                 "changed": True,
                 "advanced": True,
                 "watermark": w_new,
+                "summary": summary or f"Consolidated through {w_new}.",
             }
+            # Consolidation is durably complete now (watermark + MEMORY.md). The search
+            # reindex is just index maintenance and can be SLOW (minutes on fat early
+            # logs, hundreds of embeddings each) — running it inline pins the panel in
+            # 'finalizing' and holds the lock the whole time. Mark the run done and fan
+            # the reindex out to the background instead.
             self._record_result(result)
+            self._schedule_reindex(mgr)
             return result
 
     def _record_result(self, result: dict[str, Any]) -> None:
@@ -341,6 +358,125 @@ class DreamRunner(BaseBrain):
 
     async def _advance_watermark(self, mgr, w_new: str):
         await mgr.markdown_store.write_watermark_entry(self._today_utc(), w_new)
+
+    async def _reindex(self, mgr) -> None:
+        """Reconcile the vault into the search index, with a hard timeout.
+
+        The indexer embeds every changed page and grabs its own shared lock; a stalled
+        embedding call would otherwise run unbounded. The watermark is already advanced
+        by the time we get here, so a timed-out reindex is non-fatal — the indexer is
+        idempotent and the next reconcile picks up whatever was missed.
+        """
+        await asyncio.wait_for(
+            mgr._core_indexer.check_and_update(
+                markdown_store=mgr.markdown_store,
+                lancedb_store=mgr.store,
+                embedding_gen=mgr.embedding_gen,
+                user_id=CONFIG.user_id,
+            ),
+            timeout=CONFIG.memory_consolidation_timeout_seconds,
+        )
+
+    def _schedule_reindex(self, mgr) -> None:
+        """Fan the (slow) search reindex out to the background so it never blocks the
+        dream cycle or pins the panel in 'finalizing'. The indexer is idempotent and
+        catches up whatever's missed, so if one is already in flight we just skip —
+        the next cycle's reindex will cover this batch too.
+        """
+        if self._reindex_task is not None and not self._reindex_task.done():
+            return  # one already running; it will pick up the latest vault state
+
+        async def _bg() -> None:
+            try:
+                await self._reindex(mgr)
+            except Exception as e:
+                logger.error(f"[dream] background reindex failed/timed out: {e}")
+
+        try:
+            self._reindex_task = asyncio.create_task(_bg())
+        except Exception as e:
+            logger.error(f"[dream] failed to schedule background reindex: {e}")
+
+    # ----- lint phase (editorial audit; runs only once ingest is caught up) -----
+
+    @staticmethod
+    def _days_since(date_str: Optional[str]) -> Optional[float]:
+        if not date_str:
+            return None
+        try:
+            then = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            return (datetime.now(timezone.utc) - then).total_seconds() / 86400.0
+        except Exception:
+            return None
+
+    def _lint_due(self, mgr) -> bool:
+        """True if the vault is overdue for a lint pass (and not rate-limited)."""
+        if not CONFIG.memory_lint_enabled:
+            return False
+        # Don't re-attempt within a day even if the last pass logged nothing.
+        if (time.time() - self._last_lint_attempt_at) < 24 * 3600:
+            return False
+        last = mgr.markdown_store.read_last_lint_date()
+        days = self._days_since(last)
+        # Never linted, or older than the configured cadence.
+        return days is None or days >= CONFIG.memory_lint_min_days
+
+    async def _run_lint(self, mgr) -> dict:
+        """Run the editorial lint pass. Records a log entry on a clean run (no watermark)."""
+        if self._lock.locked():
+            return {"ran": False, "reason": "already running"}
+        async with self._lock:
+            self._phase = "preparing"
+            self._last_lint_attempt_at = time.time()
+            self._last_started_at = datetime.now(timezone.utc).isoformat()
+
+            before = self._content_pages_state(mgr)
+            self._pause_watcher()
+            agent_ok = False
+            summary = ""
+            try:
+                await self._reset_dream_chat()
+                self._phase = "running_lint"
+                summary = await self._run_lint_agent()
+                agent_ok = True
+            except Exception as e:
+                logger.error(f"[dream] lint run failed: {e}")
+            finally:
+                self._resume_watcher()
+
+            self._phase = "finalizing"
+            changed = self._content_pages_state(mgr) != before
+            # Lint may legitimately find nothing to fix, so unlike ingest a clean
+            # no-change run is still "success" — we record the pass either way so the
+            # weekly cadence advances. We only skip the log entry if the agent errored.
+            if not agent_ok:
+                result = {
+                    "ran": True,
+                    "phase": "lint",
+                    "ok": False,
+                    "changed": changed,
+                    "summary": summary or "lint run failed/timed out",
+                }
+                self._record_result(result)
+                return result
+
+            try:
+                await mgr.markdown_store.write_lint_entry(self._today_utc())
+            except Exception as e:
+                logger.error(f"[dream] write_lint_entry failed: {e}")
+            logger.info(f"[dream] lint pass complete (changed={changed})")
+            result = {
+                "ran": True,
+                "phase": "lint",
+                "ok": True,
+                "changed": changed,
+                "summary": summary or "Lint pass complete (no changes).",
+            }
+            # Mark done, then reindex in the background (see _run_dream rationale).
+            self._record_result(result)
+            if changed:
+                self._schedule_reindex(mgr)
+            return result
 
     # ----- watcher pause/resume (via lifecycle gate Event) -----
 
@@ -385,28 +521,76 @@ class DreamRunner(BaseBrain):
             except Exception:
                 pass
 
-    async def _run_agent(self, start: str, end: str):
+    async def _run_agent(self, start: str, end: str) -> str:
+        """Ingest phase: fold daily logs in (start, end] into the vault.
+
+        Returns the agent's one-paragraph summary (shown in the dream panel).
+        """
+        return await self._run_forked_agent(
+            memory_context.DREAM_SYSTEM_PROMPT,
+            memory_context.DREAM_INSTRUCTIONS.format(start=start, end=end),
+        )
+
+    async def _run_lint_agent(self) -> str:
+        """Lint phase: editorial audit/repair of the existing vault. Returns the summary."""
+        return await self._run_forked_agent(
+            memory_context.LINT_SYSTEM_PROMPT,
+            memory_context.LINT_INSTRUCTIONS,
+        )
+
+    async def _run_forked_agent(self, system_prompt: str, message: str) -> str:
+        """Run the tool-restricted dream agent; return its FINAL summary text.
+
+        process_turn_text concatenates every assistant text segment across the turn,
+        so its return value is `preamble + ...tool steps... + final summary` — the panel
+        would then show the opening line ("I'll start by orienting myself…"), not the
+        wrap-up. We instead watch the event stream and keep only the LAST contiguous
+        text block (the text emitted after the agent's final tool call), which is the
+        actual summary the prompt asks for.
+        """
         from suzent.core.chat_processor import ChatProcessor
         from suzent.agent_manager import build_agent_config
+        from suzent.core.stream_parser import TextChunk, ToolCall
 
         base = {
             "platform": "dream",
             "memory_enabled": False,
             "auto_approve_tools": True,
             "tools": list(CONFIG.memory_dream_tools),
-            "static_instructions": memory_context.DREAM_SYSTEM_PROMPT,
+            "static_instructions": system_prompt,
         }
         if CONFIG.memory_consolidation_model:
             base["model"] = CONFIG.memory_consolidation_model
         cfg = build_agent_config(base, require_social_tool=False)
 
-        message = memory_context.DREAM_INSTRUCTIONS.format(start=start, end=end)
-        await asyncio.wait_for(
+        last_block: list[str] = []
+        _saw_text = False
+
+        async def _on_event(event) -> None:
+            nonlocal _saw_text
+            if isinstance(event, TextChunk):
+                # New text block begins right after a tool call — drop the prior block
+                # so we end up holding only the final, post-tool summary.
+                if not _saw_text:
+                    last_block.clear()
+                last_block.append(event.content)
+                _saw_text = True
+            elif isinstance(event, ToolCall):
+                _saw_text = False  # next text starts a fresh (later) block
+
+        full = await asyncio.wait_for(
             ChatProcessor().process_turn_text(
                 chat_id=DREAM_CHAT_ID,
                 user_id=CONFIG.user_id,
                 message_content=message,
                 config_override=cfg,
+                on_event=_on_event,
             ),
             timeout=CONFIG.memory_consolidation_timeout_seconds,
         )
+        # Prefer the last block; fall back to the full text if no boundaries were seen.
+        text = "".join(last_block).strip() or (full or "").strip()
+        # Cap so the panel's LAST RESULT box stays readable (it's a status line, not a log).
+        if len(text) > 600:
+            text = text[:597].rstrip() + "…"
+        return text

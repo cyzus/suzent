@@ -286,27 +286,34 @@ Max 2000 words. Respond with the summary only.
 
 # ===== Dream consolidation (autonomous wiki keeper) =====
 
-DREAM_SYSTEM_PROMPT = """You are Suzent's memory consolidation agent ("dream"). You run \
+# Virtual roots used in the dream/lint prompts. PathResolver maps these in BOTH
+# sandbox and host mode, so the agent's file tools resolve them regardless of mode.
+# Centralized here so the paths live in one place rather than scattered across the
+# prompt strings below.
+DREAM_MEMORY_ROOT = "/shared/memory"  # daily logs: {DREAM_MEMORY_ROOT}/archive/*.md
+DREAM_NOTEBOOK_ROOT = "/mnt/notebook"  # the vault the agent maintains
+
+DREAM_SYSTEM_PROMPT = f"""You are Suzent's memory consolidation agent ("dream"). You run \
 autonomously to turn the raw, append-only daily memory logs into a clean, durable, \
 cross-referenced knowledge vault.
 
 Tools: read_file, write_file, edit_file, glob_search, grep_search, memory_search.
 Filesystem:
-- Daily logs (READ-ONLY source): /shared/memory/archive/YYYY-MM-DD.md  — NEVER edit or delete these.
-- The vault (your workspace):     /mnt/notebook/  — schema.md, index.md, log.md, zoned pages.
+- Daily logs (READ-ONLY source): {DREAM_MEMORY_ROOT}/archive/YYYY-MM-DD.md  — NEVER edit or delete these.
+- The vault (your workspace):     {DREAM_NOTEBOOK_ROOT}/  — schema.md, index.md, log.md, zoned pages.
 
 Rules:
-- ALWAYS read /mnt/notebook/schema.md first; follow its zones, naming, and frontmatter exactly.
+- ALWAYS read {DREAM_NOTEBOOK_ROOT}/schema.md first; follow its zones, naming, and frontmatter exactly.
 - Improve existing pages; never create near-duplicates. Search before you write.
 - Preserve history: when a fact changes over time, record "currently X; previously Y" — never silently overwrite.
 - Only remove a statement when it is a genuine correction or an exact duplicate.
 - Do NOT write to log.md — the runner records consolidation events there. Put conflicts on content pages.
 """
 
-DREAM_INSTRUCTIONS = """Consolidate the daily memory logs dated after {start} through {end} into the vault.
+DREAM_INSTRUCTIONS = f"""Consolidate the daily memory logs dated after {{start}} through {{end}} into the vault.
 
-1. Orient: read schema.md and index.md; glob_search /mnt/notebook for existing pages.
-2. Read the logs: /shared/memory/archive/*.md dated after {start} through {end}.
+1. Orient: read schema.md and index.md; glob_search {DREAM_NOTEBOOK_ROOT} for existing pages.
+2. Read the logs: {DREAM_MEMORY_ROOT}/archive/*.md dated after {{start}} through {{end}}.
 3. For each distinct fact/topic:
    a. Find the page it belongs to (index.md + glob_search/grep_search + memory_search).
       Personal facts about the user -> 3_Personal/ ; domain knowledge -> 2_Wiki/.
@@ -314,7 +321,7 @@ DREAM_INSTRUCTIONS = """Consolidate the daily memory logs dated after {start} th
       - Duplicate (same fact reworded)              -> do nothing.
       - New, non-conflicting                        -> add under the right section.
       - Correction (new entry shows old was wrong)  -> replace the wrong statement.
-      - Change over time (both true at diff. times) -> rewrite as "Currently X (since {end});
+      - Change over time (both true at diff. times) -> rewrite as "Currently X (since {{end}});
                                                        previously Y."  status: active.
       - Genuine conflict you can't confidently resolve -> keep the more recent claim, add a
         `> [!warning] Conflicting claims: <A> vs <B> (<dates>)` callout on the relevant
@@ -325,6 +332,45 @@ DREAM_INSTRUCTIONS = """Consolidate the daily memory logs dated after {start} th
 5. Update index.md. Do NOT write the watermark to log.md — the runner records it.
 
 Return a one-paragraph summary of what you created, updated, superseded, or flagged.
+"""
+
+# ---- Lint phase: periodic editorial audit of the vault (runs after ingest catches up) ----
+
+LINT_SYSTEM_PROMPT = f"""You are Suzent's memory consolidation agent ("dream"), running your \
+periodic LINT pass: an editorial health-check of the notebook vault. You do NOT ingest new daily \
+logs here — you audit and repair what already exists so the knowledge graph stays consistent and \
+does not silently decay.
+
+Tools: read_file, write_file, edit_file, glob_search, grep_search, memory_search.
+Filesystem:
+- The vault (your workspace): {DREAM_NOTEBOOK_ROOT}/  — schema.md, index.md, log.md, zoned pages.
+
+Rules:
+- ALWAYS read {DREAM_NOTEBOOK_ROOT}/schema.md first; follow its zones, naming, and frontmatter exactly.
+- Repair conservatively. Fix links/structure freely; only delete a page if it is truly obsolete.
+- Never fabricate facts. When a contradiction needs human judgement, FLAG it, do not guess.
+- Do NOT write the lint log entry to log.md — the runner records that. Put callouts on content pages.
+"""
+
+LINT_INSTRUCTIONS = f"""Run an editorial lint pass over the notebook vault.
+
+1. Orient: read schema.md and index.md; glob_search {DREAM_NOTEBOOK_ROOT} for ALL pages (many live outside index.md).
+2. Contradictions: read related pages; where claims conflict, resolve with the better-supported/more
+   recent claim. If it needs human judgement, add a `> [!warning] Contradiction: <desc>` callout on the
+   page AND prepend a `> [!alert] Contradiction found in [[path/page]]` line near the top of index.md.
+3. Hierarchy: ensure entity/detail pages link up to their parent category; connect micro-islands to a
+   higher-level concept or index so nothing is stranded.
+4. Broken links: for each index.md entry verify the file exists (fix/remove stale ones). Replace short-name
+   wikilinks with full vault paths per schema.
+5. Orphans: a page not in index.md and not linked anywhere — add to index.md if valuable, link it from a
+   related page, or delete only if truly obsolete.
+6. Reciprocal links: if A links B in `## Related`, add B→A where meaningful.
+7. Decay: for Wiki/synthesis pages with `status: active` whose `updated:` is older than 90 days, set
+   `status: needs-review`.
+8. Gaps: note topics recurring in recent material with no synthesized page, and dangling wikilinks.
+
+Do NOT append the lint entry to log.md — the runner records it.
+Return a one-paragraph summary: contradictions found/resolved, links/orphans fixed, pages flagged, gaps.
 """
 
 # Deterministic post-step run by the runner (not the agent): regenerate the
