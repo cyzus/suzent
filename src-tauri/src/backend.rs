@@ -157,18 +157,10 @@ pub fn find_repo_dir() -> PathBuf {
         }
     }
 
+    if let Some(dir) = workspace_containing_exe() {
+        return dir;
+    }
     if let Ok(exe) = std::env::current_exe() {
-        let mut dir = exe.parent().map(PathBuf::from).unwrap_or_default();
-        for _ in 0..6 {
-            if dir.join("pyproject.toml").exists() {
-                return dir;
-            }
-            if let Some(parent) = dir.parent() {
-                dir = parent.to_path_buf();
-            } else {
-                break;
-            }
-        }
         // Fall back to exe directory
         if let Some(parent) = exe.parent() {
             return parent.to_path_buf();
@@ -183,11 +175,37 @@ pub fn find_repo_dir() -> PathBuf {
     std::env::current_dir().unwrap_or_default()
 }
 
+/// Walk up from the running executable looking for a `pyproject.toml`.
+///
+/// In a dev or self-contained build the exe lives inside the workspace, so this
+/// finds it. In a normal installed build the exe lives outside the workspace
+/// (e.g. Program Files), so the walk fails and this returns `None`.
+fn workspace_containing_exe() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let mut dir = exe.parent().map(PathBuf::from)?;
+    for _ in 0..6 {
+        if dir.join("pyproject.toml").exists() {
+            return Some(dir);
+        }
+        dir = dir.parent()?.to_path_buf();
+    }
+    None
+}
+
 pub fn find_install_workspace_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("SUZENT_DIR") {
         if !dir.trim().is_empty() {
             return PathBuf::from(dir);
         }
+    }
+
+    // Prefer the workspace the running process actually came from, so updates
+    // target what's running (e.g. a dev checkout) rather than a stale install
+    // marker. The exe-walk only succeeds for dev/self-contained builds; a normal
+    // installed build's exe lives outside the workspace and falls through to the
+    // marker below.
+    if let Some(dir) = workspace_containing_exe() {
+        return dir;
     }
 
     if let Ok(dir) = std::fs::read_to_string(install_workspace_marker_path()) {
