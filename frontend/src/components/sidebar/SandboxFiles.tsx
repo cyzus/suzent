@@ -209,7 +209,8 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
             setError(null);
             fetchDirContents(WORKSPACE_PATH);
         }
-    }, [currentChatId, fetchDirContents]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentChatId]);
 
     const handleRootChange = useCallback((nextRoot: string) => {
         setActiveRoot(nextRoot);
