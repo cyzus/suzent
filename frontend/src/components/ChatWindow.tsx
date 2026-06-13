@@ -310,6 +310,39 @@ const LoadingIndicator: React.FC = () => {
   );
 };
 
+const SystemTriggeredMessage: React.FC<{ message: Message }> = ({ message }) => {
+  const raw = (message.content || '').trim();
+  if (!raw) return null;
+
+  // Pull out the leading title: prefer a **bold** first line, else first line.
+  const lines = raw.split('\n');
+  const firstLine = lines[0].trim();
+  const boldMatch = firstLine.match(/^\*\*(.+?)\*\*$/);
+  const title = (boldMatch ? boldMatch[1] : firstLine).trim();
+  const body = lines.slice(1).join('\n').trim();
+
+  return (
+    <div className="w-full max-w-3xl my-1 pl-2 md:pl-4">
+      <div className="border-l-[3px] border-brutal-black/20 dark:border-neutral-700 px-4 py-2 opacity-50 hover:opacity-100 transition-opacity duration-300">
+        {/* Title */}
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-brutal-black/60 dark:text-neutral-400 text-[10px] leading-none" aria-hidden="true">⏱</span>
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-brutal-black/60 dark:text-neutral-400 truncate">
+            {title}
+          </span>
+        </div>
+        
+        {/* Body */}
+        {body && (
+          <div className="text-[12px] leading-relaxed text-brutal-black/80 dark:text-neutral-300">
+            <MarkdownRenderer content={body} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const NoticeMessage: React.FC<{ message: Message }> = ({ message }) => {
   if (!message.content?.trim()) {
     return null;
@@ -425,12 +458,7 @@ const MessageList: React.FC<{
         if (m.role === 'system_triggered') {
           return (
             <div key={globalIdx} className="chat-msg-row w-full flex justify-start">
-              <div className="inline-flex items-start gap-2 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2 text-xs font-mono shadow-brutal-sm max-w-3xl">
-                <span className="text-brutal-blue mt-[1px]">⏱</span>
-                <span className="whitespace-pre-wrap text-brutal-black dark:text-neutral-200">
-                  {m.content}
-                </span>
-              </div>
+              <SystemTriggeredMessage message={m} />
             </div>
           );
         }
