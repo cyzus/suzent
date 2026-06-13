@@ -168,7 +168,3 @@ SUZENT is built upon the collective intelligence and innovation of the open-sour
 The creative assets, including the **Robot Avatar design**, **character animations**, and **project logos**, are subject to separate license terms. See [TERMS-OF-USE-ASSETS](TERMS-OF-USE-ASSETS.md) for details.
 
 **SUMMON LOCALLY. REMEMBER PRIVATELY. ANSWER TO NO FALSE GOD.**
-
----
-
-*[中文版](README.zh-CN.md)*
