@@ -376,6 +376,18 @@ class DreamRunner(BaseBrain):
             ),
             timeout=CONFIG.memory_consolidation_timeout_seconds,
         )
+        # Compact the archival table while we're already doing background maintenance.
+        # Per-fact inserts fragment it into hundreds of tiny files; left uncompacted,
+        # the memory list/stats views slow to seconds. This keeps them sub-100ms.
+        store = getattr(mgr, "store", None)
+        if store is not None and hasattr(store, "optimize"):
+            try:
+                await asyncio.wait_for(
+                    store.optimize(),
+                    timeout=CONFIG.memory_consolidation_timeout_seconds,
+                )
+            except Exception as e:
+                logger.warning(f"[dream] archival compaction failed/timed out: {e}")
 
     def _schedule_reindex(self, mgr) -> None:
         """Fan the (slow) search reindex out to the background so it never blocks the

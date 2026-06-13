@@ -828,11 +828,29 @@ class LanceDBMemoryStore:
             if chat_id:
                 clause += f" AND chat_id = '{_escape_sql(chat_id)}'"
 
-            query = self.archival_table.query()
-            res = await query.where(clause).limit(limit + offset).to_arrow()
+            # Select only the columns the list view needs — never the embedding
+            # `vector` (thousands of high-dim rows would be read off disk for nothing,
+            # which is what made this endpoint slow). accessed_at is pulled for sorting.
+            query = (
+                self.archival_table.query()
+                .where(clause)
+                .select(
+                    [
+                        "id",
+                        "content",
+                        "metadata",
+                        "importance",
+                        "created_at",
+                        "updated_at",
+                        "accessed_at",
+                        "access_count",
+                    ]
+                )
+            )
+            res = await query.to_arrow()
             rows = res.to_pylist()
 
-            # Sort by specified column
+            # Sort by specified column (full set, so offset paging is stable/correct).
             reverse = order_desc
             if order_by in ["created_at", "updated_at", "accessed_at"]:
                 rows.sort(
@@ -914,22 +932,32 @@ class LanceDBMemoryStore:
     async def get_memory_stats(self, user_id: str) -> Dict[str, Any]:
         """Get memory statistics for a user."""
         try:
-            query = self.archival_table.query()
             clause = f"user_id = '{_escape_sql(user_id)}'"
-            results = await query.where(clause).to_arrow()
-            rows = results.to_pylist()
+            # Stats only aggregate three scalar columns — never read the embedding
+            # `vector` (reading every high-dim vector just to count/average scalars is
+            # what made /stats slow). Compute over the Arrow columns directly rather
+            # than materializing every row into a Python dict (the table can hold tens
+            # of thousands of rows).
+            table = await (
+                self.archival_table.query()
+                .where(clause)
+                .select(["importance", "access_count", "accessed_at"])
+                .to_arrow()
+            )
 
-            if not rows:
+            total_memories = table.num_rows
+            if total_memories == 0:
                 return self._empty_stats()
 
-            total_memories = len(rows)
+            importances = table.column("importance").to_pylist()
+            access_counts = table.column("access_count").to_pylist()
+            accessed_at = table.column("accessed_at").to_pylist()
+
             now = datetime.now(timezone.utc)
-            importances = [r["importance"] for r in rows]
-            access_counts = [r["access_count"] for r in rows]
             utilized_memories = sum(1 for count in access_counts if count > 0)
             cold_memories = total_memories - utilized_memories
             recently_accessed_memories_7d = sum(
-                1 for row in rows if self._is_recent_access(row.get("accessed_at"), now)
+                1 for ts in accessed_at if self._is_recent_access(ts, now)
             )
 
             return {
@@ -955,3 +983,20 @@ class LanceDBMemoryStore:
         except Exception as e:
             logger.error(f"Failed to get memory stats: {e}")
             return self._empty_stats()
+
+    async def optimize(self) -> None:
+        """Compact the archival table: merge the many small data fragments that
+        accumulate from per-fact inserts into a few large ones.
+
+        Fragmentation — not the query code — is the dominant cost for list/stats/search:
+        an un-compacted table scans hundreds of tiny `.lance` files per query (seconds),
+        while a compacted one answers in tens of milliseconds. Called periodically by the
+        dream runner after consolidation.
+        """
+        if not self.archival_table:
+            return
+        try:
+            await self.archival_table.optimize()
+            logger.info("Compacted archival_memories table")
+        except Exception as e:
+            logger.warning(f"Archival table optimize failed: {e}")
