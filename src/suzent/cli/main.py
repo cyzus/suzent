@@ -2,7 +2,6 @@
 Top-level CLI commands: start, doctor, update, upgrade, setup-build-tools.
 """
 
-import csv
 import io
 import json
 import os
@@ -532,37 +531,89 @@ def kill_process(pid: int):
         subprocess.run(["kill", "-9", str(pid)], check=True)
 
 
-def _windows_image_pids(image_name: str, *, exclude_pid: int) -> list[int]:
+def _windows_ancestor_pids() -> set[int]:
+    """Return the PID chain of the current process up to the root.
+
+    `uv run suzent update` launches the Python interpreter under a `suzent.exe`
+    shim (with `uv.exe`/`cmd.exe` above it). `os.getpid()` is the *Python* PID,
+    so the `suzent.exe` that spawned this updater would otherwise be treated as a
+    foreign process and killed — taking down the running update mid-flight.
+    Excluding the whole ancestor chain prevents the updater from killing itself.
+    """
+    if not IS_WINDOWS:
+        return set()
+    my_pid = os.getpid()
+    # Seed the walk from the *parent*: under `uv run` the leaf python.exe can be
+    # missing from the WMI snapshot (PID-visibility race), but the parent is
+    # reliably present, and the suzent.exe shim we must spare sits above it.
+    parent_pid = os.getppid()
+    pids: set[int] = {my_pid, parent_pid}
+    script = (
+        "$ErrorActionPreference = 'SilentlyContinue'; "
+        "$map = @{}; "
+        "Get-CimInstance Win32_Process | ForEach-Object { "
+        "$map[$_.ProcessId] = $_.ParentProcessId }; "
+        f"$pid_ = {parent_pid}; $seen = @(); "
+        "while ($pid_ -and -not ($seen -contains $pid_)) { "
+        "$seen += $pid_; $pid_ = $map[$pid_] }; "
+        "$seen"
+    )
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", script],
+        capture_output=True,
+        text=True,
+    )
+    for line in result.stdout.splitlines():
+        try:
+            pids.add(int(line.strip()))
+        except ValueError:
+            continue
+    return pids
+
+
+def _windows_app_suzent_pids(*, exclude_pids: set[int]) -> list[int]:
+    """Return PIDs of running Suzent *app* processes (UI/backend), not updaters.
+
+    Matching on the command line is race-free, unlike walking the process tree:
+    `uv run suzent update` is itself a `suzent.exe`, and its `uv.exe` parents can
+    drop out of a WMI snapshot, so the updater can't reliably exclude its own
+    ancestors by PID alone. The app runs `suzent start`/`suzent.server`/the UI;
+    the updater runs `suzent update` — so we skip any command line with 'update'.
+    """
     if not IS_WINDOWS:
         return []
+    script = (
+        "$ErrorActionPreference = 'SilentlyContinue'; "
+        "Get-CimInstance Win32_Process | Where-Object { "
+        "$_.Name -eq 'suzent.exe' -and "
+        "$_.CommandLine -notlike '*suzent update*' -and "
+        "$_.CommandLine -notlike '* update*' "
+        "} | ForEach-Object { $_.ProcessId }"
+    )
     result = subprocess.run(
-        ["tasklist", "/FI", f"IMAGENAME eq {image_name}", "/FO", "CSV", "/NH"],
+        ["powershell", "-NoProfile", "-Command", script],
         capture_output=True,
         text=True,
     )
     pids: list[int] = []
-    for row in csv.reader(result.stdout.splitlines()):
-        if len(row) < 2:
-            continue
+    for line in result.stdout.splitlines():
         try:
-            pid = int(row[1])
+            pid = int(line.strip())
         except ValueError:
             continue
-        if pid != exclude_pid:
+        if pid not in exclude_pids:
             pids.append(pid)
     return pids
 
 
-def _windows_suzent_backend_pids(root: Path, *, exclude_pid: int) -> list[int]:
+def _windows_suzent_backend_pids(root: Path, *, exclude_pids: set[int]) -> list[int]:
     if not IS_WINDOWS:
         return []
     root_text = str(root.resolve()).replace("'", "''")
     script = (
         "$ErrorActionPreference = 'SilentlyContinue'; "
         f"$root = '{root_text}'; "
-        f"$current = {exclude_pid}; "
         "$procs = Get-CimInstance Win32_Process | Where-Object { "
-        "$_.ProcessId -ne $current -and "
         "$_.CommandLine -like '*suzent.server*' -and "
         '$_.CommandLine -like "*$root*" '
         "}; "
@@ -579,7 +630,7 @@ def _windows_suzent_backend_pids(root: Path, *, exclude_pid: int) -> list[int]:
             pid = int(line.strip())
         except ValueError:
             continue
-        if pid != exclude_pid:
+        if pid not in exclude_pids:
             pids.append(pid)
     return pids
 
@@ -906,16 +957,20 @@ def register_commands(app: typer.Typer):
         """Terminate running Suzent UI/backend processes before dependency sync."""
         if not IS_WINDOWS:
             return
-        my_pid = os.getpid()
+        # Exclude the whole ancestor chain, not just our PID: the running updater
+        # is the Python interpreter, but its parent suzent.exe shim would
+        # otherwise be killed as a "foreign" suzent process — terminating us.
+        exclude_pids = _windows_ancestor_pids()
+        exclude_pids.add(os.getpid())
 
         try:
-            for pid in _windows_image_pids("suzent.exe", exclude_pid=my_pid):
+            for pid in _windows_app_suzent_pids(exclude_pids=exclude_pids):
                 _stop_windows_process(pid, "suzent process")
         except Exception:
             pass
 
         try:
-            backend_pids = _windows_suzent_backend_pids(root, exclude_pid=my_pid)
+            backend_pids = _windows_suzent_backend_pids(root, exclude_pids=exclude_pids)
             for pid in backend_pids:
                 _stop_windows_process(pid, "suzent backend")
             if backend_pids:
