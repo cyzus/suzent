@@ -38,6 +38,10 @@ class AgentDeps:
     # slate before every run, so their agent_state must NEVER be persisted (mid-run
     # checkpoints or end-of-turn). Set by the chat processor from the chat platform.
     stateless: bool = False
+    # Dream agents provide their own virtual-path environment rules in the static
+    # prompt. This is intentionally separate from stateless so sub-agents can keep
+    # the normal host/sandbox guidance while still avoiding persisted agent_state.
+    suppress_environment_context: bool = False
 
     # --- Sandbox / filesystem ---
     sandbox_enabled: bool = False

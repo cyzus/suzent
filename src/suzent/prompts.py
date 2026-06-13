@@ -409,11 +409,10 @@ def register_dynamic_instructions(
 
     @agent.instructions
     def inject_environment_context(ctx: Any) -> str:
-        # Stateless chats (dream consolidation, sub-agents) ship a fixed, self-contained
-        # prompt that deliberately uses virtual paths (/shared/memory, /mnt/notebook),
-        # which PathResolver resolves in any mode. Injecting the host-mode "do NOT use
-        # /mnt/... paths" warning contradicts that prompt and makes a weak model give up.
-        if getattr(ctx.deps, "stateless", False):
+        # Dream consolidation ships a fixed, self-contained prompt that deliberately
+        # uses virtual paths (/shared/memory, /mnt/notebook), which PathResolver resolves
+        # in any mode. The host-mode "/mnt" warning contradicts that prompt.
+        if getattr(ctx.deps, "suppress_environment_context", False):
             return ""
         shell_type = getattr(ctx.deps, "shell_type", "unknown")
         return build_execution_mode_section(

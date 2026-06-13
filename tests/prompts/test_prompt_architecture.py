@@ -63,6 +63,57 @@ def test_register_dynamic_instructions_environment_uses_host_paths():
     assert "Do NOT use virtual `/mnt/...` paths." in result
 
 
+def test_register_dynamic_instructions_stateless_keeps_environment_context():
+    agent = _FakeAgent()
+    register_dynamic_instructions(
+        agent,
+        base_instructions="",
+        memory_context="",
+    )
+
+    funcs = {fn.__name__: fn for fn in agent.functions}
+    ctx = SimpleNamespace(
+        deps=SimpleNamespace(
+            stateless=True,
+            suppress_environment_context=False,
+            sandbox_enabled=False,
+            workspace_root="D:/workspace/suzent",
+            custom_volumes=[],
+            skill_manager=None,
+            social_context={},
+        )
+    )
+
+    result = funcs["inject_environment_context"](ctx)
+
+    assert "# Environment: Host" in result
+    assert "D:/workspace/suzent" in result
+
+
+def test_register_dynamic_instructions_can_suppress_environment_context():
+    agent = _FakeAgent()
+    register_dynamic_instructions(
+        agent,
+        base_instructions="",
+        memory_context="",
+    )
+
+    funcs = {fn.__name__: fn for fn in agent.functions}
+    ctx = SimpleNamespace(
+        deps=SimpleNamespace(
+            stateless=True,
+            suppress_environment_context=True,
+            sandbox_enabled=False,
+            workspace_root="D:/workspace/suzent",
+            custom_volumes=[],
+            skill_manager=None,
+            social_context={},
+        )
+    )
+
+    assert funcs["inject_environment_context"](ctx) == ""
+
+
 def test_register_dynamic_instructions_empty_social_returns_empty_string():
     agent = _FakeAgent()
     register_dynamic_instructions(

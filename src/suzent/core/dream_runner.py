@@ -556,6 +556,7 @@ class DreamRunner(BaseBrain):
             "platform": "dream",
             "memory_enabled": False,
             "auto_approve_tools": True,
+            "suppress_environment_context": True,
             "tools": list(CONFIG.memory_dream_tools),
             "static_instructions": system_prompt,
         }

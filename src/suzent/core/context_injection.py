@@ -49,6 +49,9 @@ def build_agent_deps(
     sandbox_enabled = _get_config_value(
         config, "sandbox_enabled", CONFIG.sandbox_enabled
     )
+    suppress_environment_context = _get_config_value(
+        config, "suppress_environment_context", False
+    )
     workspace_root = _get_config_value(config, "workspace_root", CONFIG.workspace_root)
     cwd = _get_config_value(config, "cwd", None)
     auto_approve_tools = _get_config_value(config, "auto_approve_tools", False)
@@ -183,6 +186,7 @@ def build_agent_deps(
     return AgentDeps(
         chat_id=chat_id,
         user_id=user_id,
+        suppress_environment_context=suppress_environment_context,
         sandbox_enabled=sandbox_enabled,
         workspace_root=workspace_root,
         cwd=cwd,
