@@ -124,3 +124,53 @@ export function SettingsCard({ className = '', children }: SettingsCardProps): R
     </div>
   );
 }
+
+interface SettingsListActionProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  tone?: 'blue' | 'red' | 'neutral';
+  active?: boolean;
+}
+
+/**
+ * Standard soft action button for list items (edit, remove, test, etc).
+ */
+export function SettingsListAction({ tone = 'neutral', active, className = '', children, ...props }: SettingsListActionProps): React.ReactElement {
+  let colorClasses = '';
+  if (active) {
+    colorClasses = 'bg-brutal-black text-white border-brutal-black dark:bg-white dark:text-black dark:border-white';
+  } else if (tone === 'blue') {
+    colorClasses = 'border-brutal-black/20 dark:border-white/10 bg-transparent text-neutral-500 dark:text-neutral-400 hover:border-brutal-blue hover:text-brutal-blue dark:hover:border-blue-400 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20';
+  } else if (tone === 'red') {
+    colorClasses = 'border-brutal-black/20 dark:border-white/10 bg-transparent text-neutral-500 dark:text-neutral-400 hover:border-brutal-red hover:text-brutal-red dark:hover:border-red-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20';
+  } else {
+    colorClasses = 'border-brutal-black/20 dark:border-white/10 bg-transparent text-neutral-500 dark:text-neutral-400 hover:border-brutal-black hover:text-brutal-black dark:hover:border-white dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-zinc-800';
+  }
+
+  return (
+    <button
+      className={`px-3 py-1 border text-[11px] font-bold uppercase transition-colors disabled:opacity-50 rounded-sm ${colorClasses} ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+interface SettingsListItemProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+/**
+ * Common wrapper for list items in settings (MCP servers, Cron Jobs).
+ * Applies the standard heavy border, drop shadow, and subtle textured background.
+ */
+export function SettingsListItem({ children, className = '' }: SettingsListItemProps): React.ReactElement {
+  return (
+    <div className={`group relative overflow-hidden bg-neutral-50 dark:bg-zinc-900 border-[3px] border-brutal-black shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff] ${className}`}>
+      <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(#000_2px,transparent_2px)] [background-size:16px_16px] pointer-events-none" />
+      <div className="relative z-10 w-full h-full flex flex-col">
+        {children}
+      </div>
+    </div>
+  );
+}

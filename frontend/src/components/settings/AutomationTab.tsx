@@ -18,7 +18,7 @@ import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalSelect } from '../BrutalSelect';
 import { ScheduleBuilder, describeCron } from './ScheduleBuilder';
 import { SettingsHeader } from './SettingsHeader';
-import { SettingsCard, SectionCardHeader } from './SettingsCard';
+import { SettingsCard, SectionCardHeader, SettingsListItem, SettingsListAction } from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
 
 interface AutomationTabProps {
@@ -358,10 +358,8 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
         ) : (
           <div className="space-y-3">
             {jobs.map(job => (
-              <div
-                key={job.id}
-                className="bg-neutral-50 dark:bg-zinc-900 border-2 border-brutal-black p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-              >
+              <SettingsListItem key={job.id}>
+                <div className="p-4 md:p-5">
                 {editingJobId === job.id ? (
                   /* Edit mode */
                   <div className="space-y-3">
@@ -401,19 +399,19 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                       />
                     </div>
                     <div className="flex gap-2">
-                      <button
+                      <SettingsListAction
+                        tone="blue"
                         onClick={handleSaveEdit}
                         disabled={loading}
-                        className="px-4 py-1.5 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
                       >
                         {t('common.save')}
-                      </button>
-                      <button
+                      </SettingsListAction>
+                      <SettingsListAction
                         onClick={cancelEdit}
-                        className="px-4 py-1.5 bg-neutral-200 border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
+                        disabled={loading}
                       >
                         {t('common.cancel')}
-                      </button>
+                      </SettingsListAction>
                     </div>
                   </div>
                 ) : (
@@ -439,28 +437,27 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                           {job.model_override && <span className="ml-2">model: {job.model_override}</span>}
                         </div>
                       </div>
-                      <div className="flex gap-2 shrink-0">
-                        <button
-                          onClick={() => startEdit(job)}
-                          disabled={loading}
-                          className="px-3 py-1 bg-neutral-200 text-brutal-black border-2 border-brutal-black font-bold text-xs uppercase hover:bg-neutral-300 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
-                        >
-                          {t('common.edit')}
-                        </button>
-                        <button
+                      <div className="flex gap-2 shrink-0 md:self-start mt-3 md:mt-0 md:ml-4">
+                        <SettingsListAction
+                          tone="blue"
                           onClick={() => handleTrigger(job)}
                           disabled={loading}
-                          className="px-3 py-1 bg-brutal-blue text-white border-2 border-brutal-black font-bold text-xs uppercase hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
                         >
                           {t('settings.automation.run')}
-                        </button>
-                        <button
+                        </SettingsListAction>
+                        <SettingsListAction
+                          onClick={() => startEdit(job)}
+                          disabled={loading}
+                        >
+                          {t('common.edit')}
+                        </SettingsListAction>
+                        <SettingsListAction
+                          tone="red"
                           onClick={() => handleDelete(job)}
                           disabled={loading}
-                          className="px-3 py-1 bg-brutal-red text-white border-2 border-brutal-black font-bold text-xs uppercase hover:bg-red-600 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
                         >
                           {t('common.remove')}
-                        </button>
+                        </SettingsListAction>
                       </div>
                     </div>
 
@@ -516,7 +513,8 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                     )}
                   </>
                 )}
-              </div>
+                </div>
+              </SettingsListItem>
             ))}
           </div>
         )}

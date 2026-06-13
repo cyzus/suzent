@@ -4,7 +4,7 @@ import { useI18n } from '../../i18n';
 import { addMcpServer, updateMcpServer, fetchMcpServers, removeMcpServer, setMcpServerEnabled, testMcpServer, type McpProbeResult } from '../../lib/api';
 import { BrutalSelect } from '../BrutalSelect';
 import { SettingsHeader } from './SettingsHeader';
-import { SettingsCard, SectionCardHeader } from './SettingsCard';
+import { SectionCardHeader, SettingsCard, SettingsListItem, SettingsListAction } from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
 
 type MCPUrlServer = {
@@ -288,152 +288,170 @@ export function McpTab({
                         {t('settings.mcp.noServersConfigured')}
                     </div>
                 ) : (
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                         {serverList.map((server) => (
-                            <div
-                                key={server.name}
-                                className="bg-neutral-50 dark:bg-zinc-900 border-2 border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                            >
-                              <div className="flex items-center gap-4 p-4">
-                                <BrutalOnOff
-                                    size="sm"
-                                    checked={server.enabled}
-                                    onChange={() => handleToggleServer(server)}
-                                    disabled={loading}
-                                />
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-bold text-brutal-black dark:text-white">{server.name}</span>
-                                        <span className="text-[10px] px-2 py-0.5 border border-neutral-400 text-neutral-500 dark:text-neutral-400 uppercase">
+                            <SettingsListItem key={server.name}>
+                              <div className="flex flex-col md:flex-row items-start md:items-center gap-4 p-4 md:p-5 relative overflow-hidden">
+                                
+                                <div className="relative z-10 shrink-0 mt-1 md:mt-0">
+                                    <BrutalOnOff
+                                        size="md"
+                                        checked={server.enabled}
+                                        onChange={() => handleToggleServer(server)}
+                                        disabled={loading}
+                                    />
+                                </div>
+                                <div className="flex-1 min-w-0 relative z-10 w-full">
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <span className="text-lg font-black uppercase tracking-wide text-brutal-black dark:text-white truncate">
+                                            {server.name}
+                                        </span>
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 border-2 border-brutal-black shadow-[1px_1px_0_0_#000] uppercase ${server.type === 'url' ? 'bg-brutal-blue text-white' : 'bg-brutal-yellow text-brutal-black'}`}>
                                             {server.type === 'url' ? t('config.mcp.url') : t('config.mcp.stdio')}
                                         </span>
                                     </div>
-                                    {server.type === 'url' ? (
-                                        <div className="text-xs font-mono text-neutral-500 dark:text-neutral-400 truncate" title={server.url}>{server.url}</div>
-                                    ) : (
-                                        <div className="text-xs font-mono text-neutral-500 dark:text-neutral-400 truncate">
-                                            {server.command}
-                                            {server.args && server.args.length > 0 && ` [${server.args.join(', ')}]`}
+                                    <div className="bg-white dark:bg-zinc-800 border-2 border-dashed border-brutal-black/40 dark:border-white/20 p-2 text-xs font-mono text-neutral-600 dark:text-neutral-300 truncate rounded-sm">
+                                        {server.type === 'url' ? (
+                                            <span title={server.url}>{server.url}</span>
+                                        ) : (
+                                            <span title={`${server.command} ${server.args?.join(' ') || ''}`}>
+                                                <span className="font-bold text-brutal-black dark:text-white">{server.command}</span>
+                                                {server.args && server.args.length > 0 && ` ${server.args.join(' ')}`}
+                                            </span>
+                                        )}
+                                    </div>
+                                    
+                                    {probes[server.name] && (
+                                        <div className="mt-3">
+                                            {probes[server.name].testing ? (
+                                                <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-neutral-200 dark:bg-zinc-700 border border-brutal-black text-[10px] font-bold uppercase text-neutral-600 dark:text-neutral-300">
+                                                    <span className="text-sm leading-none">⚙</span> {t('settings.mcp.testing')}
+                                                </div>
+                                            ) : probes[server.name].ok ? (
+                                                <div className="inline-flex items-center gap-2">
+                                                    <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-green-100 dark:bg-green-900/30 border border-brutal-black text-[10px] font-bold uppercase text-green-700 dark:text-green-400" title={t('settings.mcp.reachable')}>
+                                                        <span className="w-2 h-2 bg-green-500 rounded-full border border-brutal-black" />
+                                                        {t('settings.mcp.reachable')} ({probes[server.name].count ?? 0})
+                                                    </div>
+                                                    {(probes[server.name].tools?.length ?? 0) > 0 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setExpandedTools(prev => ({ ...prev, [server.name]: !prev[server.name] }))}
+                                                            className="text-[10px] font-bold uppercase text-brutal-blue dark:text-blue-400 hover:underline hover:text-blue-600"
+                                                        >
+                                                            {expandedTools[server.name] ? '[-]' : '[+]'} {t('settings.mcp.viewTools')}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-red-100 dark:bg-red-900/30 border border-brutal-black text-[10px] font-bold uppercase text-brutal-red truncate max-w-full" title={probes[server.name].error}>
+                                                    <span className="text-brutal-red text-sm leading-none">⚠</span>
+                                                    <span className="truncate">{t('settings.mcp.unreachable')}: {probes[server.name].error}</span>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
-                                    {probes[server.name] && (
-                                        probes[server.name].testing ? (
-                                            <div className="text-[11px] font-bold uppercase text-neutral-500 dark:text-neutral-400 mt-1">{t('settings.mcp.testing')}</div>
-                                        ) : probes[server.name].ok ? (
-                                            <div className="text-[11px] font-bold uppercase text-green-600 dark:text-green-400 mt-1" title={t('settings.mcp.reachable')}>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setExpandedTools(prev => ({ ...prev, [server.name]: !prev[server.name] }))}
-                                                    className="hover:underline"
-                                                >
-                                                    ● {t('settings.mcp.reachable')} ({probes[server.name].count ?? 0})
-                                                    {(probes[server.name].tools?.length ?? 0) > 0 && (expandedTools[server.name] ? ' ▾' : ' ▸')}
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <div className="text-[11px] font-bold uppercase text-brutal-red mt-1 truncate" title={probes[server.name].error}>
-                                                ● {t('settings.mcp.unreachable')}: {probes[server.name].error}
-                                            </div>
-                                        )
-                                    )}
                                     {probes[server.name]?.ok && expandedTools[server.name] && (probes[server.name].tools?.length ?? 0) > 0 && (
-                                        <ul className="mt-1 space-y-0.5">
+                                        <ul className="mt-3 space-y-1 bg-neutral-100 dark:bg-zinc-800 border border-brutal-black p-3 max-h-48 overflow-y-auto">
                                             {probes[server.name].tools!.map(tool => (
                                                 <li
                                                     key={tool.name}
-                                                    className="text-[11px] font-mono text-neutral-600 dark:text-neutral-300 truncate"
+                                                    className="flex flex-col gap-0.5 text-[11px] font-mono border-b border-neutral-300 dark:border-neutral-700 pb-1 last:border-0 last:pb-0"
                                                     title={tool.description || tool.name}
                                                 >
-                                                    • {tool.name}
+                                                    <span className="font-bold text-brutal-blue dark:text-blue-400">{tool.name}</span>
+                                                    {tool.description && <span className="text-neutral-500 truncate">{tool.description}</span>}
                                                 </li>
                                             ))}
                                         </ul>
                                     )}
                                 </div>
-                                <button
-                                    onClick={() => handleTestServer(server)}
-                                    disabled={loading || probes[server.name]?.testing}
-                                    className="px-3 py-1 bg-brutal-blue text-white border-2 border-brutal-black font-bold text-xs uppercase hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
-                                >
-                                    {t('settings.mcp.test')}
-                                </button>
-                                <button
-                                    onClick={() => editDraft?.name === server.name ? setEditDraft(null) : startEdit(server)}
-                                    disabled={loading}
-                                    className={`px-3 py-1 border-2 border-brutal-black font-bold text-xs uppercase hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50 ${editDraft?.name === server.name ? 'bg-brutal-black text-white' : 'bg-brutal-yellow text-brutal-black'}`}
-                                >
-                                    {t('common.edit')}
-                                </button>
-                                <button
-                                    onClick={() => handleRemoveServer(server)}
-                                    disabled={loading}
-                                    className="px-3 py-1 bg-brutal-red text-white border-2 border-brutal-black font-bold text-xs uppercase hover:bg-red-600 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
-                                >
-                                    {t('common.remove')}
-                                </button>
+                                <div className="flex gap-2 shrink-0 relative z-10 w-full md:w-auto mt-3 md:mt-0 justify-end md:self-start md:ml-4">
+                                    <SettingsListAction
+                                        tone="blue"
+                                        onClick={() => handleTestServer(server)}
+                                        disabled={loading || probes[server.name]?.testing}
+                                    >
+                                        {t('settings.mcp.test')}
+                                    </SettingsListAction>
+                                    <SettingsListAction
+                                        active={editDraft?.name === server.name}
+                                        onClick={() => editDraft?.name === server.name ? setEditDraft(null) : startEdit(server)}
+                                        disabled={loading}
+                                    >
+                                        {t('common.edit')}
+                                    </SettingsListAction>
+                                    <SettingsListAction
+                                        tone="red"
+                                        onClick={() => handleRemoveServer(server)}
+                                        disabled={loading}
+                                    >
+                                        {t('common.remove')}
+                                    </SettingsListAction>
+                                </div>
                               </div>
-
+ 
                               {editDraft?.name === server.name && (
-                                <div className="border-t-2 border-brutal-black p-4 space-y-2 bg-white dark:bg-zinc-800">
-                                    <div className="text-[11px] font-bold uppercase text-neutral-500 dark:text-neutral-400">
-                                        {t('settings.mcp.editServerTitle')} — {server.name}
+                                <div className="border-t-[3px] border-brutal-black p-5 space-y-3 bg-neutral-100 dark:bg-zinc-800">
+                                    <div className="text-[12px] font-black uppercase tracking-wider text-brutal-black dark:text-white flex items-center gap-2">
+                                        <span className="w-2 h-2 bg-brutal-yellow border border-brutal-black inline-block" />
+                                        {t('settings.mcp.editServerTitle')} — <span className="text-brutal-blue dark:text-blue-400">{server.name}</span>
                                     </div>
                                     {editDraft.type === 'url' ? (
-                                        <>
+                                        <div className="space-y-2">
                                             <input
                                                 value={editDraft.url}
                                                 onChange={e => setEditDraft({ ...editDraft, url: e.target.value })}
                                                 placeholder="https://host/path"
-                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white dark:placeholder-neutral-500"
+                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-[2px_2px_0_0_#000] focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
                                             />
                                             <input
                                                 value={editDraft.headers}
                                                 onChange={e => setEditDraft({ ...editDraft, headers: e.target.value })}
                                                 placeholder={t('settings.mcp.headersPlaceholder')}
-                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white dark:placeholder-neutral-500"
+                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-[2px_2px_0_0_#000] focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
                                             />
-                                        </>
+                                        </div>
                                     ) : (
-                                        <>
+                                        <div className="space-y-2">
                                             <input
                                                 value={editDraft.command}
                                                 onChange={e => setEditDraft({ ...editDraft, command: e.target.value })}
                                                 placeholder={t('settings.mcp.commandPlaceholder')}
-                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white dark:placeholder-neutral-500"
+                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-[2px_2px_0_0_#000] focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
                                             />
                                             <input
                                                 value={editDraft.args}
                                                 onChange={e => setEditDraft({ ...editDraft, args: e.target.value })}
                                                 placeholder={t('settings.mcp.argsPlaceholder')}
-                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white dark:placeholder-neutral-500"
+                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-[2px_2px_0_0_#000] focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
                                             />
                                             <input
                                                 value={editDraft.env}
                                                 onChange={e => setEditDraft({ ...editDraft, env: e.target.value })}
                                                 placeholder={t('settings.mcp.envPlaceholder')}
-                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white dark:placeholder-neutral-500"
+                                                className="w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs shadow-[2px_2px_0_0_#000] focus:outline-none focus:translate-y-[2px] focus:translate-x-[2px] focus:shadow-none transition-all dark:text-white dark:placeholder-neutral-500"
                                             />
-                                        </>
+                                        </div>
                                     )}
-                                    <div className="flex gap-2">
-                                        <button
+                                    <div className="flex gap-3 pt-2">
+                                        <SettingsListAction
+                                            tone="blue"
                                             onClick={handleSaveEdit}
                                             disabled={editLoading || (editDraft.type === 'url' ? !editDraft.url.trim() : !editDraft.command.trim())}
-                                            className="px-4 py-2 bg-brutal-green border-2 border-brutal-black font-bold text-xs uppercase text-brutal-black hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
                                         >
                                             {editLoading ? t('settings.mcp.saving') : t('settings.mcp.saveServer')}
-                                        </button>
-                                        <button
+                                        </SettingsListAction>
+                                        <SettingsListAction
                                             onClick={() => setEditDraft(null)}
                                             disabled={editLoading}
-                                            className="px-4 py-2 bg-neutral-200 dark:bg-zinc-700 border-2 border-brutal-black font-bold text-xs uppercase text-brutal-black dark:text-white hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
                                         >
                                             {t('common.cancel')}
-                                        </button>
+                                        </SettingsListAction>
                                     </div>
                                 </div>
                               )}
-                            </div>
+                            </SettingsListItem>
                         ))}
                     </div>
                 )}
