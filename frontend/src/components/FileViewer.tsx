@@ -95,41 +95,39 @@ export const FileViewer: React.FC<FileViewerProps> = ({ filePath, fileName, chat
             open={Boolean(filePath && chatId)}
             onClose={onClose}
             zIndexClassName="z-50"
-            containerClassName="relative w-full max-w-6xl h-[90vh] bg-white border-4 border-brutal-black shadow-brutal-xl flex flex-col"
+            containerClassName="relative w-full max-w-5xl h-[85vh] bg-white dark:bg-zinc-900 border-[3px] border-brutal-black shadow-[6px_6px_0_0_#000] dark:shadow-[6px_6px_0_0_#fff] flex flex-col overflow-hidden"
         >
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b-4 border-brutal-black bg-brutal-yellow shrink-0">
-                <h2 className="text-lg font-bold text-brutal-black truncate font-mono uppercase tracking-wider">
+            <div className="flex items-center justify-between px-5 py-3 border-b-[3px] border-brutal-black bg-white dark:bg-zinc-800 shrink-0">
+                <h2 className="text-sm font-bold text-neutral-700 dark:text-neutral-200 truncate font-mono">
                     {fileName || t('fileViewer.title')}
                 </h2>
                 <div className="flex gap-2">
-                    <BrutalButton
-                        variant="primary"
-                        size="icon"
+                    <button
                         onClick={openInExplorer}
                         title={t('fileViewer.revealInExplorer')}
+                        className="p-1 bg-brutal-blue text-white border-2 border-brutal-black hover:bg-blue-600"
                     >
-                        <ArrowTopRightOnSquareIcon className="w-5 h-5" />
-                    </BrutalButton>
-                    <BrutalButton
-                        variant="danger"
-                        size="icon"
+                        <ArrowTopRightOnSquareIcon className="w-5 h-5 stroke-[2.5]" />
+                    </button>
+                    <button
                         onClick={onClose}
                         title={t('fileViewer.closeEsc')}
+                        className="p-1 bg-brutal-red text-white border-2 border-brutal-black hover:bg-red-600"
                     >
-                        <XMarkIcon className="w-5 h-5" />
-                    </BrutalButton>
+                        <XMarkIcon className="w-5 h-5 stroke-[2.5]" />
+                    </button>
                 </div>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-auto bg-white">
+            <div className="flex-1 overflow-auto bg-white dark:bg-zinc-900">
                 {loading ? (
                     <div className="flex items-center justify-center h-full">
-                        <div className="animate-spin w-12 h-12 border-4 border-brutal-black border-t-neutral-400 rounded-full"></div>
+                        <div className="animate-spin w-8 h-8 border-2 border-neutral-300 border-t-brutal-blue rounded-full"></div>
                     </div>
                 ) : error ? (
-                    <div className="p-8 m-8 bg-brutal-red/10 border-3 border-brutal-red text-brutal-red text-sm font-bold font-mono">
+                    <div className="p-8 m-8 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-brutal-red dark:text-red-400 text-sm font-medium rounded">
                         {t('fileViewer.errorPrefix')}{error}
                     </div>
                 ) : (

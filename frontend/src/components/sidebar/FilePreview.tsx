@@ -37,8 +37,8 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ filename, content, cha
     // 1. Images
     if (isImageFile(filename)) {
         return (
-            <div className="flex items-center justify-center p-4 bg-neutral-100 min-h-[50%]">
-                <img src={serveUrl} alt={filename} className="max-w-full max-h-full object-contain shadow-md border border-neutral-300" />
+            <div className="flex items-center justify-center p-8 bg-neutral-50 dark:bg-zinc-900/50 h-full w-full">
+                <img src={serveUrl} alt={filename} className="max-w-full max-h-full object-contain drop-shadow-md rounded-sm" />
             </div>
         );
     }
