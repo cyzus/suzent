@@ -324,6 +324,9 @@ class ConfigModel(BaseModel):
 
     embedding_model: Optional[str] = None
     embedding_dimension: int = 0
+    # Hard cap on a single embedding API call. Without this, a slow/unreachable
+    # provider blocks memory search indefinitely (the tool appears to hang).
+    embedding_timeout: float = 30.0
 
     image_generation_model: Optional[str] = None
 

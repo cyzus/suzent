@@ -166,6 +166,12 @@ async def init_memory_system() -> bool:
     """
     global memory_manager, memory_store, main_event_loop, _watcher_task, _dream_runner
 
+    # Idempotent: if a previous call already built the manager, don't re-run
+    # (which would spawn duplicate watcher/dream tasks). Lets callers — e.g. the
+    # search tool — safely lazy-init when they find the manager not yet ready.
+    if memory_manager is not None:
+        return True
+
     # Store reference to main event loop
     main_event_loop = asyncio.get_running_loop()
 

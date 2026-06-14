@@ -127,6 +127,9 @@ async def test_access_count_increments_on_retrieval(store):
     )
     assert len(semantic_results) == 1
 
+    # Access recording is detached from the search hot path; drain it before
+    # asserting the counters are visible.
+    await store.flush_access_recording()
     stats_after_semantic = await store.get_memory_stats(user_id="user1")
     assert stats_after_semantic["total_accesses"] == 1
     assert stats_after_semantic["utilized_memories"] == 1
@@ -144,6 +147,7 @@ async def test_access_count_increments_on_retrieval(store):
     )
     assert len(hybrid_results) == 1
 
+    await store.flush_access_recording()
     stats_after_hybrid = await store.get_memory_stats(user_id="user1")
     assert stats_after_hybrid["total_accesses"] == 2
     assert stats_after_hybrid["access_distribution"]["light"] == 1

@@ -157,6 +157,9 @@ class LanceDBMemoryStore:
         self.db: Optional[lancedb.AsyncDatabase] = None
         self.archival_table = None
         self.blocks_table = None
+        # Detached access-recording tasks (best-effort; kept referenced so the
+        # event loop doesn't GC them mid-flight, and drainable in tests).
+        self._access_tasks: set = set()
 
     async def connect(self) -> None:
         """Initialize connection to LanceDB."""
@@ -463,12 +466,7 @@ class LanceDBMemoryStore:
                 for r in results
             ]
 
-            try:
-                await self._record_memory_accesses(formatted_results)
-            except Exception as access_error:
-                logger.warning(
-                    f"Failed to update access counts in semantic search: {access_error}"
-                )
+            self._schedule_access_recording(formatted_results)
 
             return formatted_results
 
@@ -567,8 +565,36 @@ class LanceDBMemoryStore:
 
         return scored_results
 
+    def _schedule_access_recording(self, results: List[Dict[str, Any]]) -> None:
+        """Fire-and-forget access-counter bookkeeping.
+
+        Each update is a predicate write that, on a large table, costs hundreds of
+        ms — done sequentially per result it added seconds to every search and could
+        block indefinitely under commit-lock contention with the background indexer.
+        Access counts are best-effort telemetry, so we detach them from the search
+        hot path: search returns immediately and the writes happen in the background.
+        """
+        if not results:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = loop.create_task(self._record_memory_accesses(results))
+        self._access_tasks.add(task)
+        task.add_done_callback(self._access_tasks.discard)
+
+    async def flush_access_recording(self) -> None:
+        """Wait for any pending detached access-counter writes to complete.
+
+        Used by tests (and shutdown) that need access counts to be visible. Not
+        called on the search hot path — that's the whole point of detaching them.
+        """
+        if self._access_tasks:
+            await asyncio.gather(*list(self._access_tasks), return_exceptions=True)
+
     async def _record_memory_accesses(self, results: List[Dict[str, Any]]) -> None:
-        """Increment access counters for retrieved memories."""
+        """Increment access counters for retrieved memories (background task)."""
         if not results:
             return
 
@@ -579,13 +605,16 @@ class LanceDBMemoryStore:
                 continue
 
             current_access_count = int(result.get("access_count", 0))
-            await self.archival_table.update(
-                where=f"id = '{_escape_sql(str(memory_id))}'",
-                updates={
-                    "access_count": current_access_count + 1,
-                    "accessed_at": now,
-                },
-            )
+            try:
+                await self.archival_table.update(
+                    where=f"id = '{_escape_sql(str(memory_id))}'",
+                    updates={
+                        "access_count": current_access_count + 1,
+                        "accessed_at": now,
+                    },
+                )
+            except Exception as e:
+                logger.debug(f"Access-count update skipped for {memory_id}: {e}")
 
     async def hybrid_search(
         self,
@@ -628,12 +657,7 @@ class LanceDBMemoryStore:
             # Sort and limit
             scored_results.sort(key=lambda x: x["score"], reverse=True)
             final_results = scored_results[:limit]
-            try:
-                await self._record_memory_accesses(final_results)
-            except Exception as access_error:
-                logger.warning(
-                    f"Failed to update access counts in hybrid search: {access_error}"
-                )
+            self._schedule_access_recording(final_results)
 
             return final_results
 

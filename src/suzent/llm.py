@@ -7,6 +7,7 @@ Provides unified interface for:
 """
 
 from typing import List, Dict, Any, Optional, Type, TypeVar
+import asyncio
 import json
 import os
 
@@ -140,6 +141,7 @@ class EmbeddingGenerator:
             except Exception:
                 self.model = None
         self.dimension = dimension or CONFIG.embedding_dimension
+        self.timeout = CONFIG.embedding_timeout
 
     async def generate(self, text: str) -> List[float]:
         """Generate embedding for a single text."""
@@ -152,10 +154,17 @@ class EmbeddingGenerator:
 
         try:
             model, auth_kwargs = _litellm_model_and_kwargs(self.model)
-            response = await _litellm().aembedding(
-                model=model,
-                input=text,
-                **auth_kwargs,
+            # Bound the call so a slow/unreachable provider can't hang memory
+            # search forever. timeout= is passed to LiteLLM and the outer
+            # wait_for is a backstop in case the provider ignores it.
+            response = await asyncio.wait_for(
+                _litellm().aembedding(
+                    model=model,
+                    input=text,
+                    timeout=self.timeout,
+                    **auth_kwargs,
+                ),
+                timeout=self.timeout,
             )
 
             embedding = response.data[0]["embedding"]
@@ -202,10 +211,14 @@ class EmbeddingGenerator:
 
             try:
                 model, auth_kwargs = _litellm_model_and_kwargs(self.model)
-                response = await _litellm().aembedding(
-                    model=model,
-                    input=batch,
-                    **auth_kwargs,
+                response = await asyncio.wait_for(
+                    _litellm().aembedding(
+                        model=model,
+                        input=batch,
+                        timeout=self.timeout,
+                        **auth_kwargs,
+                    ),
+                    timeout=self.timeout,
                 )
 
                 batch_embeddings = [item["embedding"] for item in response.data]

@@ -30,6 +30,22 @@ class MemorySearchTool(Tool):
     def __init__(self):
         super().__init__()
 
+    @staticmethod
+    async def _resolve_manager():
+        """Return the live memory manager, lazily initializing it if a startup
+        race left it unbuilt. Returns None only if memory is disabled or init
+        genuinely failed."""
+        from suzent.memory.lifecycle import get_memory_manager, init_memory_system
+
+        mm = get_memory_manager()
+        if mm is not None:
+            return mm
+        try:
+            await init_memory_system()
+        except Exception as e:
+            logger.warning(f"Lazy memory init failed: {e}")
+        return get_memory_manager()
+
     async def forward(
         self,
         ctx: RunContext[AgentDeps],
@@ -59,9 +75,15 @@ class MemorySearchTool(Tool):
         """
         mm = ctx.deps.memory_manager
         if not mm:
+            # The manager is built by a fire-and-forget background task at server
+            # startup, so an early search can race ahead of it (and the deps for
+            # this turn captured memory_manager=None). Fall back to the live global,
+            # and lazily run init if it hasn't completed yet. init is idempotent.
+            mm = await self._resolve_manager()
+        if not mm:
             return ToolResult.error_result(
                 ToolErrorCode.EXECUTION_FAILED,
-                "Memory system not available.",
+                "Memory system is still initializing. Please try again in a moment.",
             )
         user_id = ctx.deps.user_id
 
