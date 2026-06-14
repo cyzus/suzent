@@ -127,6 +127,10 @@ export interface DreamStatus {
   last_started_at?: string | null;
   last_finished_at?: string | null;
   last_result?: DreamRunResult | null;
+  last_ingest_finished_at?: string | null;
+  last_ingest_result?: DreamRunResult | null;
+  last_lint_finished_at?: string | null;
+  last_lint_result?: DreamRunResult | null;
   failures?: Record<string, number>;
   min_facts?: number;
   min_hours?: number;

@@ -24,6 +24,11 @@ from suzent.memory import memory_context
 logger = get_logger(__name__)
 
 DREAM_CHAT_ID = "system-dream"
+DREAM_LINT_CHAT_ID = "system-dream-lint"
+_REASONING_DETAILS_RE = re.compile(
+    r"<details\s+data-reasoning=[\"']true[\"'][^>]*>.*?</details>\s*",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 def get_active_dream_runner() -> Optional["DreamRunner"]:
@@ -45,6 +50,10 @@ class DreamRunner(BaseBrain):
         self._last_started_at: Optional[str] = None
         self._last_finished_at: Optional[str] = None
         self._last_result: Optional[dict[str, Any]] = None
+        self._last_ingest_finished_at: Optional[str] = None
+        self._last_ingest_result: Optional[dict[str, Any]] = None
+        self._last_lint_finished_at: Optional[str] = None
+        self._last_lint_result: Optional[dict[str, Any]] = None
         self._phase: str = "idle"
         self._background_task: Optional[asyncio.Task] = None
         self._reindex_task: Optional[asyncio.Task] = None
@@ -117,6 +126,29 @@ class DreamRunner(BaseBrain):
     def status(self) -> dict[str, Any]:
         """Return a frontend-safe snapshot of dream consolidation state."""
         running = self._lock.locked() or self._phase == "queued"
+        persisted_ingest = self._load_last_result_from_dream_chat(
+            DREAM_CHAT_ID,
+            phase="ingest",
+        )
+        persisted_lint = self._load_last_result_from_dream_chat(
+            DREAM_LINT_CHAT_ID,
+            phase="lint",
+        )
+        last_ingest_finished_at = self._last_ingest_finished_at or persisted_ingest.get(
+            "last_finished_at"
+        )
+        last_ingest_result = self._last_ingest_result or persisted_ingest.get(
+            "last_result"
+        )
+        last_lint_finished_at = self._last_lint_finished_at or persisted_lint.get(
+            "last_finished_at"
+        )
+        last_lint_result = self._last_lint_result or persisted_lint.get("last_result")
+        last_started_at = self._last_started_at or persisted_ingest.get(
+            "last_started_at"
+        )
+        last_finished_at = self._last_finished_at or last_ingest_finished_at
+        last_result = self._last_result or last_ingest_result
         mgr = get_memory_manager()
         if not mgr or not getattr(mgr, "markdown_store", None):
             return {
@@ -126,9 +158,13 @@ class DreamRunner(BaseBrain):
                 "phase": self._phase,
                 "reason": "memory system unavailable",
                 "enabled": CONFIG.memory_consolidation_enabled,
-                "last_started_at": self._last_started_at,
-                "last_finished_at": self._last_finished_at,
-                "last_result": self._last_result,
+                "last_started_at": last_started_at,
+                "last_finished_at": last_finished_at,
+                "last_result": last_result,
+                "last_ingest_finished_at": last_ingest_finished_at,
+                "last_ingest_result": last_ingest_result,
+                "last_lint_finished_at": last_lint_finished_at,
+                "last_lint_result": last_lint_result,
             }
 
         watermark = mgr.markdown_store.read_watermark()
@@ -166,9 +202,13 @@ class DreamRunner(BaseBrain):
             "progress_percent": progress_percent,
             "next_batch_end": next_batch[-1] if next_batch else None,
             "last_attempt_at": self._last_attempt_at or None,
-            "last_started_at": self._last_started_at,
-            "last_finished_at": self._last_finished_at,
-            "last_result": self._last_result,
+            "last_started_at": last_started_at,
+            "last_finished_at": last_finished_at,
+            "last_result": last_result,
+            "last_ingest_finished_at": last_ingest_finished_at,
+            "last_ingest_result": last_ingest_result,
+            "last_lint_finished_at": last_lint_finished_at,
+            "last_lint_result": last_lint_result,
             "failures": dict(self._failures),
             "min_facts": CONFIG.memory_consolidation_min_facts,
             "min_hours": CONFIG.memory_consolidation_min_hours,
@@ -225,7 +265,7 @@ class DreamRunner(BaseBrain):
         return await self._run_dream(mgr, watermark, pending)
 
     def start_force_run(self) -> dict:
-        """Start on-demand consolidation in the background for UI-triggered runs."""
+        """Start on-demand ingest consolidation in the background for UI triggers."""
         if self._lock.locked() or self._phase == "queued":
             return {"ran": False, "started": False, "reason": "already running"}
 
@@ -255,7 +295,42 @@ class DreamRunner(BaseBrain):
                 logger.error(f"[dream] background run failed: {e}")
 
         task.add_done_callback(_done)
-        return {"ran": True, "started": True, "watermark": watermark, "target": target}
+        return {
+            "ran": True,
+            "started": True,
+            "phase": "ingest",
+            "watermark": watermark,
+            "target": target,
+        }
+
+    def start_lint_run(self) -> dict:
+        """Start an on-demand lint pass in the background for UI triggers."""
+        if self._lock.locked() or self._phase == "queued":
+            return {"ran": False, "started": False, "reason": "already running"}
+
+        mgr = get_memory_manager()
+        if not mgr or not mgr.markdown_store or not mgr.llm_client:
+            return {
+                "ran": False,
+                "started": False,
+                "reason": "memory system unavailable",
+            }
+        if not CONFIG.memory_lint_enabled:
+            return {"ran": False, "started": False, "reason": "lint disabled"}
+
+        self._phase = "queued"
+        task = asyncio.create_task(self._run_lint(mgr))
+        self._background_task = task
+
+        def _done(done_task: asyncio.Task) -> None:
+            try:
+                done_task.result()
+            except Exception as e:
+                self._phase = "idle"
+                logger.error(f"[dream] background lint failed: {e}")
+
+        task.add_done_callback(_done)
+        return {"ran": True, "started": True, "phase": "lint"}
 
     async def _run_dream(
         self, mgr, watermark: Optional[str], pending: List[str]
@@ -274,7 +349,12 @@ class DreamRunner(BaseBrain):
                 logger.warning(f"[dream] skipping un-consolidatable batch <= {w_new}")
                 await self._advance_watermark(mgr, w_new)
                 self._failures.pop(w_new, None)
-                result = {"ran": True, "skipped": True, "watermark": w_new}
+                result = {
+                    "ran": True,
+                    "phase": "ingest",
+                    "skipped": True,
+                    "watermark": w_new,
+                }
                 self._record_result(result)
                 return result
 
@@ -285,7 +365,10 @@ class DreamRunner(BaseBrain):
             agent_ok = False
             summary = ""
             try:
-                await self._reset_dream_chat()
+                await self._reset_dream_chat(
+                    DREAM_CHAT_ID,
+                    title="Memory consolidation (dream ingest)",
+                )
                 self._phase = "running_agent"
                 summary = await self._run_agent(start, w_new)
                 agent_ok = True
@@ -316,6 +399,7 @@ class DreamRunner(BaseBrain):
                 )
                 result = {
                     "ran": True,
+                    "phase": "ingest",
                     "changed": changed,
                     "advanced": False,
                     "watermark": watermark,
@@ -325,6 +409,7 @@ class DreamRunner(BaseBrain):
                 return result
 
             self._failures.pop(w_new, None)
+            result_summary = summary or f"Consolidated through {w_new}."
             await self._advance_watermark(mgr, w_new)
             # Promote MEMORY.md (bounded) so the curated summary reflects this batch.
             try:
@@ -337,10 +422,11 @@ class DreamRunner(BaseBrain):
             logger.info(f"[dream] consolidated through {w_new}")
             result = {
                 "ran": True,
+                "phase": "ingest",
                 "changed": True,
                 "advanced": True,
                 "watermark": w_new,
-                "summary": summary or f"Consolidated through {w_new}.",
+                "summary": result_summary,
             }
             # Consolidation is durably complete now (watermark + MEMORY.md). The search
             # reindex is just index maintenance and can be SLOW (minutes on fat early
@@ -354,7 +440,72 @@ class DreamRunner(BaseBrain):
     def _record_result(self, result: dict[str, Any]) -> None:
         self._last_result = result
         self._last_finished_at = datetime.now(timezone.utc).isoformat()
+        if result.get("phase") == "lint":
+            self._last_lint_result = result
+            self._last_lint_finished_at = self._last_finished_at
+        else:
+            self._last_ingest_result = result
+            self._last_ingest_finished_at = self._last_finished_at
         self._phase = "idle"
+
+    @staticmethod
+    def _clean_summary(content: str) -> str:
+        return _REASONING_DETAILS_RE.sub("", content).strip()
+
+    def _extract_final_summary_from_message(self, message: dict[str, Any]) -> str:
+        """Return the final assistant text block from a persisted display message."""
+        parts = message.get("parts")
+        if isinstance(parts, list):
+            final_text_parts: list[str] = []
+            for part in parts:
+                if not isinstance(part, dict):
+                    continue
+                part_type = part.get("type")
+                if part_type == "tool":
+                    final_text_parts.clear()
+                    continue
+                if part_type != "text":
+                    continue
+                text = part.get("text")
+                if isinstance(text, str) and text.strip():
+                    final_text_parts.append(text)
+            if final_text_parts:
+                return self._clean_summary("".join(final_text_parts))
+
+        return self._clean_summary(str(message.get("content") or ""))
+
+    def _load_last_result_from_dream_chat(
+        self,
+        chat_id: str,
+        *,
+        phase: str,
+    ) -> dict[str, Any]:
+        try:
+            chat = get_database().get_chat(chat_id)
+            if not chat:
+                return {}
+            for message in reversed(chat.messages or []):
+                if not isinstance(message, dict) or message.get("role") != "assistant":
+                    continue
+                if message.get("_streaming_draft"):
+                    continue
+                content = self._extract_final_summary_from_message(message)
+                if not content:
+                    continue
+                return {
+                    "last_started_at": None,
+                    "last_finished_at": chat.updated_at.isoformat()
+                    if chat.updated_at
+                    else None,
+                    "last_result": {
+                        "ran": True,
+                        "phase": phase,
+                        "summary": content,
+                    },
+                }
+        except Exception as e:
+            logger.debug(f"[dream] failed to load last result from chat: {e}")
+        return {}
 
     async def _advance_watermark(self, mgr, w_new: str):
         await mgr.markdown_store.write_watermark_entry(self._today_utc(), w_new)
@@ -447,7 +598,10 @@ class DreamRunner(BaseBrain):
             agent_ok = False
             summary = ""
             try:
-                await self._reset_dream_chat()
+                await self._reset_dream_chat(
+                    DREAM_LINT_CHAT_ID,
+                    title="Memory consolidation (dream lint)",
+                )
                 self._phase = "running_lint"
                 summary = await self._run_lint_agent()
                 agent_ok = True
@@ -516,20 +670,20 @@ class DreamRunner(BaseBrain):
 
     # ----- forked agent -----
 
-    async def _reset_dream_chat(self):
+    async def _reset_dream_chat(self, chat_id: str, *, title: str):
         db = get_database()
-        chat = db.get_chat(DREAM_CHAT_ID)
+        chat = db.get_chat(chat_id)
         if not chat:
             db.create_chat(
-                title="Memory consolidation (dream)",
+                title=title,
                 config={"platform": "dream", "auto_approve_tools": True},
-                chat_id=DREAM_CHAT_ID,
+                chat_id=chat_id,
             )
         else:
             # Reset to a clean slate. agent_state=b"" (not None, which means "no change")
             # clears the history; the chat processor treats empty bytes as "no history".
             try:
-                db.update_chat(DREAM_CHAT_ID, agent_state=b"", messages=[])
+                db.update_chat(chat_id, agent_state=b"", messages=[])
             except Exception:
                 pass
 
@@ -539,6 +693,7 @@ class DreamRunner(BaseBrain):
         Returns the agent's one-paragraph summary (shown in the dream panel).
         """
         return await self._run_forked_agent(
+            DREAM_CHAT_ID,
             memory_context.DREAM_SYSTEM_PROMPT,
             memory_context.DREAM_INSTRUCTIONS.format(start=start, end=end),
         )
@@ -546,11 +701,17 @@ class DreamRunner(BaseBrain):
     async def _run_lint_agent(self) -> str:
         """Lint phase: editorial audit/repair of the existing vault. Returns the summary."""
         return await self._run_forked_agent(
+            DREAM_LINT_CHAT_ID,
             memory_context.LINT_SYSTEM_PROMPT,
             memory_context.LINT_INSTRUCTIONS,
         )
 
-    async def _run_forked_agent(self, system_prompt: str, message: str) -> str:
+    async def _run_forked_agent(
+        self,
+        chat_id: str,
+        system_prompt: str,
+        message: str,
+    ) -> str:
         """Run the tool-restricted dream agent; return its FINAL summary text.
 
         process_turn_text concatenates every assistant text segment across the turn,
@@ -593,7 +754,7 @@ class DreamRunner(BaseBrain):
 
         full = await asyncio.wait_for(
             ChatProcessor().process_turn_text(
-                chat_id=DREAM_CHAT_ID,
+                chat_id=chat_id,
                 user_id=CONFIG.user_id,
                 message_content=message,
                 config_override=cfg,
@@ -602,7 +763,7 @@ class DreamRunner(BaseBrain):
             timeout=CONFIG.memory_consolidation_timeout_seconds,
         )
         # Prefer the last block; fall back to the full text if no boundaries were seen.
-        text = "".join(last_block).strip() or (full or "").strip()
+        text = self._clean_summary("".join(last_block).strip() or (full or "").strip())
         # Cap so the panel's LAST RESULT box stays readable (it's a status line, not a log).
         if len(text) > 600:
             text = text[:597].rstrip() + "…"

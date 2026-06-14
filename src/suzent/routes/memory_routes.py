@@ -291,7 +291,7 @@ async def get_memory_stats(request: Request) -> JSONResponse:
 
 
 async def consolidate_memory(request: Request) -> JSONResponse:
-    """Trigger an on-demand memory consolidation (dream) run."""
+    """Trigger an on-demand memory ingest consolidation run."""
     try:
         from suzent.core.dream_runner import get_active_dream_runner
 
@@ -304,6 +304,23 @@ async def consolidate_memory(request: Request) -> JSONResponse:
 
     except Exception as e:
         logger.error(f"Error during memory consolidation: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def lint_memory(request: Request) -> JSONResponse:
+    """Trigger an on-demand memory lint pass."""
+    try:
+        from suzent.core.dream_runner import get_active_dream_runner
+
+        runner = get_active_dream_runner()
+        if runner is None:
+            return JSONResponse({"error": "Dream runner not active"}, status_code=503)
+
+        result = runner.start_lint_run()
+        return JSONResponse({"success": True, "result": result})
+
+    except Exception as e:
+        logger.error(f"Error during memory lint: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 

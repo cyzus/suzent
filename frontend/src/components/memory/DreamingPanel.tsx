@@ -11,6 +11,7 @@ import React from 'react';
 import { useDreamStatus } from '../../hooks/useDreamStatus';
 import { useI18n } from '../../i18n';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
+import type { DreamRunResult } from '../../types/memory';
 
 type StatAccent = 'green' | 'amber' | 'neutral';
 
@@ -33,9 +34,96 @@ function StatCard({ label, value, accent }: { label: string; value: string; acce
     );
 }
 
+function LastResultBox({
+    title,
+    result,
+    finishedAt,
+    fallback,
+    formatDate,
+    actionLabel,
+    actionBusyLabel,
+    onRun,
+    disabled,
+    busy,
+    children,
+}: {
+    title: string;
+    result?: DreamRunResult | null;
+    finishedAt?: string | null;
+    fallback: string;
+    formatDate: (value?: string | null) => string;
+    actionLabel: string;
+    actionBusyLabel: string;
+    onRun: () => void;
+    disabled: boolean;
+    busy: boolean;
+    children?: React.ReactNode;
+}): React.ReactElement {
+    const { t } = useI18n();
+    const summary = result?.summary?.trim() || null;
+    const label = (() => {
+        if (!result) return fallback;
+        if (summary) return summary;
+        if (result.reason) return result.reason;
+        if (result.skipped) return t('settings.memoryConfig.lastResultSkipped');
+        if (result.advanced) return t('settings.memoryConfig.lastResultAdvanced', { watermark: result.watermark || '—' });
+        if (result.advanced === false) return t('settings.memoryConfig.lastResultNotAdvanced');
+        return t('settings.memoryConfig.lastResultRan');
+    })();
+
+    return (
+        <div className="border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 min-w-0 h-full flex flex-col">
+            <div className="px-3 py-3 border-b-2 border-brutal-black">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <div className="text-sm font-black uppercase tracking-wide leading-tight truncate">{title}</div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onRun}
+                        disabled={disabled}
+                        className="px-3 py-2 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-[11px] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap shrink-0"
+                    >
+                        {busy ? actionBusyLabel : actionLabel}
+                    </button>
+                </div>
+                {children && (
+                    <div className="mt-3">
+                        {children}
+                    </div>
+                )}
+            </div>
+            <div className="flex items-center justify-between gap-3 px-3 py-2 border-b-2 border-dashed border-neutral-300 dark:border-zinc-700">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{t('settings.memoryConfig.lastResult')}</span>
+                <span className="font-mono text-[10px] font-bold text-neutral-500 dark:text-neutral-400 shrink-0">{formatDate(finishedAt)}</span>
+            </div>
+            <div className="p-3 min-h-0 flex-1">
+                {summary ? (
+                    <div className="h-44 overflow-y-auto overflow-x-hidden pr-1 text-xs leading-5 break-words" title={summary}>
+                        <MarkdownRenderer content={summary} streamingLite />
+                    </div>
+                ) : (
+                    <div className="h-44 font-mono text-xs font-bold whitespace-pre-wrap break-words flex items-start">
+                        {label}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 export function DreamingPanel(): React.ReactElement {
     const { t } = useI18n();
-    const { status: dreamStatus, loading: dreamLoading, runningNow, error: dreamError, refresh: refreshDreamStatus, runNow } = useDreamStatus();
+    const {
+        status: dreamStatus,
+        loading: dreamLoading,
+        runningIngest,
+        runningLint,
+        error: dreamError,
+        refresh: refreshDreamStatus,
+        runIngest,
+        runLint,
+    } = useDreamStatus();
 
     const formatDate = (value?: string | null): string => {
         if (!value) return t('settings.memoryConfig.never');
@@ -56,46 +144,27 @@ export function DreamingPanel(): React.ReactElement {
         if (!dreamStatus.enabled) return t('settings.memoryConfig.dreamStatus.disabled');
         if (dreamStatus.phase === 'finalizing') return t('settings.memoryConfig.dreamStatus.finalizing');
         if (dreamStatus.phase === 'queued' || dreamStatus.phase === 'preparing') return t('settings.memoryConfig.dreamStatus.preparing');
-        if (dreamStatus.running || runningNow) return t('settings.memoryConfig.dreamStatus.running');
+        if (dreamStatus.running || runningIngest || runningLint) return t('settings.memoryConfig.dreamStatus.running');
         if ((dreamStatus.pending_count ?? 0) > 0) return t('settings.memoryConfig.dreamStatus.pending');
         return t('settings.memoryConfig.dreamStatus.idle');
     })();
 
     const statusClass = (() => {
         if (dreamError || dreamStatus?.last_result?.advanced === false) return 'bg-brutal-red text-white';
-        if (dreamStatus?.running || runningNow) return 'bg-brutal-blue text-white';
+        if (dreamStatus?.running || runningIngest || runningLint) return 'bg-brutal-blue text-white';
         if ((dreamStatus?.pending_count ?? 0) > 0) return 'bg-brutal-yellow text-brutal-black';
         return 'bg-brutal-green text-brutal-black';
     })();
 
-    // The agent's own summary is markdown prose; the fallbacks are plain status labels.
-    const lastResultSummary = dreamStatus?.last_result?.summary?.trim() || null;
-    const lastResultLabel = (() => {
-        const result = dreamStatus?.last_result;
-        if (!result) return t('settings.memoryConfig.noRunsYet');
-        if (lastResultSummary) return lastResultSummary;
-        if (result.reason) return result.reason;
-        if (result.skipped) return t('settings.memoryConfig.lastResultSkipped');
-        if (result.advanced) return t('settings.memoryConfig.lastResultAdvanced', { watermark: result.watermark || '—' });
-        if (result.advanced === false) return t('settings.memoryConfig.lastResultNotAdvanced');
-        return t('settings.memoryConfig.lastResultRan');
-    })();
-
     const pendingDates = dreamStatus?.pending_dates ?? [];
     const pendingCount = dreamStatus?.pending_count ?? 0;
-    const canRunDream = !!dreamStatus?.active && !!dreamStatus?.available && !!dreamStatus?.enabled && !dreamStatus?.running && !runningNow;
+    const canRunDream = !!dreamStatus?.active && !!dreamStatus?.available && !!dreamStatus?.enabled && !dreamStatus?.running && !runningIngest && !runningLint;
+    const canRunLint = canRunDream && !!dreamStatus?.lint_enabled;
     const progressPercent = Math.max(0, Math.min(100, dreamStatus?.progress_percent ?? 0));
     const consolidatedCount = dreamStatus?.consolidated_count ?? 0;
     const archiveCount = dreamStatus?.archive_count ?? 0;
-    const isBusy = !!dreamStatus?.running || runningNow;
-    // Tag the last result with the phase that produced it (ingest vs lint).
-    const lastResultPhaseLabel = (() => {
-        if (!dreamStatus?.last_result) return null;
-        return dreamStatus.last_result.phase === 'lint'
-            ? t('settings.memoryConfig.lintPhase')
-            : t('settings.memoryConfig.ingestPhase');
-    })();
-
+    const isBusy = !!dreamStatus?.running || runningIngest || runningLint;
+    const isIngestBusy = runningIngest || dreamStatus?.phase === 'running_agent';
     return (
         <div className="border-3 border-brutal-black bg-white dark:bg-zinc-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-5">
             {/* Header: icon + title + status/actions */}
@@ -126,14 +195,6 @@ export function DreamingPanel(): React.ReactElement {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
                     </button>
-                    <button
-                        type="button"
-                        onClick={() => void runNow()}
-                        disabled={!canRunDream}
-                        className="px-4 py-2 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-                    >
-                        {isBusy ? t('settings.memoryConfig.runningNow') : t('settings.memoryConfig.runNow')}
-                    </button>
                 </div>
             </div>
 
@@ -150,73 +211,72 @@ export function DreamingPanel(): React.ReactElement {
                 </div>
                 <div className="h-4 border-2 border-brutal-black bg-neutral-100 dark:bg-zinc-900 overflow-hidden">
                     <div
-                        className={`h-full transition-all duration-500 ${isBusy ? 'bg-brutal-blue animate-pulse' : progressPercent >= 100 ? 'bg-brutal-green' : 'bg-brutal-yellow'}`}
+                        className={`h-full transition-all duration-500 ${isIngestBusy ? 'bg-brutal-blue animate-pulse' : progressPercent >= 100 ? 'bg-brutal-green' : 'bg-brutal-yellow'}`}
                         style={{ width: `${progressPercent}%` }}
                     />
                 </div>
             </div>
 
-            {/* Stat grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <StatCard label={t('settings.memoryConfig.consolidatedThrough')} value={dreamStatus?.watermark || '—'} accent="green" />
-                <StatCard label={t('settings.memoryConfig.pendingLogs')} value={String(pendingCount)} accent={pendingCount > 0 ? 'amber' : 'neutral'} />
-                <StatCard label={t('settings.memoryConfig.pendingFacts')} value={String(dreamStatus?.pending_facts ?? 0)} accent={(dreamStatus?.pending_facts ?? 0) > 0 ? 'amber' : 'neutral'} />
-                <StatCard label={t('settings.memoryConfig.lastRun')} value={formatDate(dreamStatus?.last_finished_at)} accent="neutral" />
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
+                <LastResultBox
+                    title={t('settings.memoryConfig.ingestPhase')}
+                    result={dreamStatus?.last_ingest_result}
+                    finishedAt={dreamStatus?.last_ingest_finished_at}
+                    fallback={t('settings.memoryConfig.noRunsYet')}
+                    formatDate={formatDate}
+                    actionLabel={t('settings.memoryConfig.runIngest')}
+                    actionBusyLabel={t('settings.memoryConfig.runningNow')}
+                    onRun={() => void runIngest()}
+                    disabled={!canRunDream}
+                    busy={runningIngest || (dreamStatus?.phase === 'running_agent')}
+                >
+                    <div className="grid grid-cols-3 gap-2">
+                        <StatCard label={t('settings.memoryConfig.consolidatedThrough')} value={dreamStatus?.watermark || '—'} accent="green" />
+                        <StatCard label={t('settings.memoryConfig.pendingLogs')} value={String(pendingCount)} accent={pendingCount > 0 ? 'amber' : 'neutral'} />
+                        <StatCard label={t('settings.memoryConfig.pendingFacts')} value={String(dreamStatus?.pending_facts ?? 0)} accent={(dreamStatus?.pending_facts ?? 0) > 0 ? 'amber' : 'neutral'} />
+                    </div>
+                </LastResultBox>
+                <LastResultBox
+                    title={t('settings.memoryConfig.lintPhase')}
+                    result={dreamStatus?.last_lint_result}
+                    finishedAt={dreamStatus?.last_lint_finished_at}
+                    fallback={t('settings.memoryConfig.noRunsYet')}
+                    formatDate={formatDate}
+                    actionLabel={t('settings.memoryConfig.runLint')}
+                    actionBusyLabel={t('settings.memoryConfig.runningNow')}
+                    onRun={() => void runLint()}
+                    disabled={!canRunLint}
+                    busy={runningLint || (dreamStatus?.phase === 'running_lint')}
+                >
+                    <div className="grid grid-cols-3 gap-2">
+                        <StatCard
+                            label={t('settings.memoryConfig.lintLastRun')}
+                            value={dreamStatus?.lint_last_run || t('settings.memoryConfig.lintNever')}
+                            accent="neutral"
+                        />
+                        <StatCard
+                            label={t('settings.memoryConfig.lintTitle')}
+                            value={dreamStatus?.lint_due ? t('settings.memoryConfig.lintDue') : t('settings.memoryConfig.lintScheduled')}
+                            accent={dreamStatus?.lint_due ? 'amber' : 'green'}
+                        />
+                        <StatCard
+                            label={t('settings.memoryConfig.lintEvery')}
+                            value={dreamStatus?.lint_min_days ? t('settings.memoryConfig.lintEveryDays', { days: String(dreamStatus.lint_min_days) }) : '—'}
+                            accent="neutral"
+                        />
+                    </div>
+                </LastResultBox>
             </div>
-
-            {/* Lint phase status strip */}
-            {dreamStatus?.lint_enabled && (
-                <div className="mt-3 flex items-center gap-2 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2">
-                    <svg className="w-4 h-4 flex-shrink-0 text-neutral-500 dark:text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{t('settings.memoryConfig.lintTitle')}</span>
-                    <span className="font-mono text-[11px] text-neutral-500 dark:text-neutral-400">
-                        {dreamStatus.lint_min_days ? t('settings.memoryConfig.lintEveryDays', { days: String(dreamStatus.lint_min_days) }) : ''}
-                    </span>
-                    <span className="ml-auto font-mono text-[11px] font-bold">
-                        {dreamStatus.lint_last_run
-                            ? `${t('settings.memoryConfig.lintLastRun')}: ${dreamStatus.lint_last_run}`
-                            : t('settings.memoryConfig.lintNever')}
-                    </span>
-                    <span className={`px-2 py-0.5 border-2 border-brutal-black text-[10px] font-bold uppercase ${dreamStatus.lint_due ? 'bg-brutal-yellow text-brutal-black' : 'bg-brutal-green text-brutal-black'}`}>
-                        {dreamStatus.lint_due ? t('settings.memoryConfig.lintDue') : t('settings.memoryConfig.lintScheduled')}
-                    </span>
+            {pendingDates.length > 0 && (
+                <div className="font-mono text-[11px] text-neutral-500 dark:text-neutral-400 mt-3 pt-2 border-t border-dashed border-neutral-300 dark:border-zinc-700 truncate">
+                    {t('settings.memoryConfig.nextBatch')}: {pendingDates.slice(0, dreamStatus?.max_days ?? 14).join(', ')}
                 </div>
             )}
-
-            {/* Last result */}
-            <div className="mt-4 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 min-w-0">
-                <div className="flex items-center justify-between gap-2 px-3 py-2 border-b-2 border-dashed border-neutral-300 dark:border-zinc-700">
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{t('settings.memoryConfig.lastResult')}</span>
-                    {lastResultPhaseLabel && (
-                        <span className="px-2 py-0.5 border border-brutal-black/40 dark:border-zinc-600 text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400">
-                            {lastResultPhaseLabel}
-                        </span>
-                    )}
+            {dreamError && (
+                <div className="font-mono text-[11px] text-brutal-red mt-2">
+                    {dreamError}
                 </div>
-                <div className="p-3">
-                    {lastResultSummary ? (
-                        <div className="overflow-y-auto max-h-40" title={lastResultSummary}>
-                            <MarkdownRenderer content={lastResultSummary} />
-                        </div>
-                    ) : (
-                        <div className="font-mono text-xs font-bold whitespace-pre-wrap break-words">
-                            {lastResultLabel}
-                        </div>
-                    )}
-                    {pendingDates.length > 0 && (
-                        <div className="font-mono text-[11px] text-neutral-500 dark:text-neutral-400 mt-3 pt-2 border-t border-dashed border-neutral-300 dark:border-zinc-700 truncate">
-                            {t('settings.memoryConfig.nextBatch')}: {pendingDates.slice(0, dreamStatus?.max_days ?? 14).join(', ')}
-                        </div>
-                    )}
-                    {dreamError && (
-                        <div className="font-mono text-[11px] text-brutal-red mt-2">
-                            {dreamError}
-                        </div>
-                    )}
-                </div>
-            </div>
+            )}
         </div>
     );
 }

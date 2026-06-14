@@ -128,6 +128,7 @@ from suzent.routes.memory_routes import (
     delete_archival_memory,
     get_memory_stats,
     consolidate_memory,
+    lint_memory,
     get_dream_status,
 )
 from suzent.routes.sandbox_routes import (
@@ -804,6 +805,7 @@ app = Starlette(
         Route("/memory/reindex", reindex_memories, methods=["POST"]),
         Route("/memory/dream/status", get_dream_status, methods=["GET"]),
         Route("/memory/consolidate", consolidate_memory, methods=["POST"]),
+        Route("/memory/lint", lint_memory, methods=["POST"]),
         Route(
             "/session/{session_id}/transcript",
             get_session_transcript,

@@ -296,15 +296,6 @@ export const ArchivalMemoryList: React.FC = () => {
             <div className="w-4 h-4 border-3 border-brutal-black dark:border-white border-t-transparent animate-spin rounded-full"></div>
             <p className="text-neutral-800 dark:text-white font-bold uppercase">{t('archival.loading')}</p>
           </div>
-          <div className="flex gap-1 justify-center mt-3">
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                className="w-2 h-2 bg-brutal-black animate-brutal-blink"
-                style={{ animationDelay: `${i * 0.15}s` }}
-              ></div>
-            ))}
-          </div>
         </div>
       )}
 

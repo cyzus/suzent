@@ -217,4 +217,17 @@ export const memoryApi = {
     }
     return await response.json();
   },
+
+  /**
+   * Trigger dream lint now
+   */
+  async lintMemory(): Promise<DreamConsolidateResponse> {
+    const response = await fetch(`${memoryEndpoint()}/lint`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to lint memory: ${response.statusText}`);
+    }
+    return await response.json();
+  },
 };

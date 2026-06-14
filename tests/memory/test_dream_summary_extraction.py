@@ -7,7 +7,7 @@ keeps only the last contiguous text block — the post-final-tool-call summary.
 
 import pytest
 
-from suzent.core.dream_runner import DreamRunner
+from suzent.core.dream_runner import DREAM_CHAT_ID, DreamRunner
 from suzent.core.stream_parser import TextChunk, ToolCall
 
 
@@ -37,7 +37,7 @@ async def test_run_forked_agent_returns_last_text_block(monkeypatch):
 
     monkeypatch.setattr(cp, "ChatProcessor", _FakeProcessor)
 
-    summary = await runner._run_forked_agent("sys", "msg")
+    summary = await runner._run_forked_agent(DREAM_CHAT_ID, "sys", "msg")
 
     assert summary == "Consolidated 14 logs: created 3 pages, flagged 1 conflict."
     assert "orienting myself" not in summary
@@ -59,7 +59,7 @@ async def test_run_forked_agent_falls_back_to_full_when_no_tools(monkeypatch):
 
     monkeypatch.setattr(cp, "ChatProcessor", _FakeProcessor)
 
-    summary = await runner._run_forked_agent("sys", "msg")
+    summary = await runner._run_forked_agent(DREAM_CHAT_ID, "sys", "msg")
     assert summary == "Nothing to consolidate."
 
 
@@ -79,6 +79,6 @@ async def test_run_forked_agent_caps_length(monkeypatch):
 
     monkeypatch.setattr(cp, "ChatProcessor", _FakeProcessor)
 
-    summary = await runner._run_forked_agent("sys", "msg")
+    summary = await runner._run_forked_agent(DREAM_CHAT_ID, "sys", "msg")
     assert len(summary) <= 600
     assert summary.endswith("…")
