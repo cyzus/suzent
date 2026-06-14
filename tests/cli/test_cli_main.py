@@ -205,17 +205,17 @@ def test_backend_sync_args_use_social_extra_for_bootstrapped_install(tmp_path):
     assert cli_main._backend_sync_args(tmp_path) == ["uv", "sync", "--extra", "social"]
 
 
-def test_windows_image_pids_parse_tasklist_csv(monkeypatch):
+def test_windows_app_suzent_pids_parse_powershell_output(monkeypatch):
     def fake_run(cmd, **kwargs):
-        assert cmd[:2] == ["tasklist", "/FI"]
-        stdout = '"suzent.exe","123","Console","1","10,000 K"\n'
-        stdout += '"suzent.exe","456","Console","1","10,000 K"\n'
-        return subprocess.CompletedProcess(cmd, 0, stdout=stdout, stderr="")
+        assert cmd[:3] == ["powershell", "-NoProfile", "-Command"]
+        return subprocess.CompletedProcess(
+            cmd, 0, stdout="123\nnot-a-pid\n456\n", stderr=""
+        )
 
     monkeypatch.setattr(cli_main, "IS_WINDOWS", True)
     monkeypatch.setattr(cli_main.subprocess, "run", fake_run)
 
-    assert cli_main._windows_image_pids("suzent.exe", exclude_pid=123) == [456]
+    assert cli_main._windows_app_suzent_pids(exclude_pids={123}) == [456]
 
 
 def test_windows_suzent_backend_pids_parse_powershell_output(monkeypatch, tmp_path):
@@ -228,7 +228,7 @@ def test_windows_suzent_backend_pids_parse_powershell_output(monkeypatch, tmp_pa
     monkeypatch.setattr(cli_main, "IS_WINDOWS", True)
     monkeypatch.setattr(cli_main.subprocess, "run", fake_run)
 
-    assert cli_main._windows_suzent_backend_pids(tmp_path, exclude_pid=111) == [222]
+    assert cli_main._windows_suzent_backend_pids(tmp_path, exclude_pids={111}) == [222]
 
 
 @pytest.mark.parametrize(
