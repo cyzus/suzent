@@ -124,7 +124,14 @@ class MemorySearchTool(Tool):
                 tags = metadata.get("tags", [])
                 tag_str = f" [Tags: {', '.join(tags)}]" if tags else ""
 
-                similarity = mem.get("similarity", mem.get("semantic_score", 0))
+                # hybrid_search reports a combined "score"; semantic_search reports
+                # "similarity". Check all so relevance isn't always shown as 0.00.
+                similarity = (
+                    mem.get("similarity")
+                    or mem.get("semantic_score")
+                    or mem.get("score")
+                    or 0
+                )
 
                 formatted.append(
                     f"{i}. {mem['content']}\n"

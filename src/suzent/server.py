@@ -462,11 +462,21 @@ async def startup():
             pass
 
     async def init_background_services(cm, sb):
-        """Run heavy initialization tasks (memory, channels, social, scheduler) in background."""
-        await init_memory_system()
+        """Run heavy initialization tasks (memory, channels, social, scheduler) in background.
+
+        Each subsystem is isolated: memory init must not be skipped or blocked by a
+        social-messaging failure (and vice versa). cm/sb may be None when social
+        config failed to build — that's fine, memory and the rest still start.
+        """
         try:
-            await cm.start_all()
-            await sb.start()
+            await init_memory_system()
+        except Exception as e:
+            logger.error(f"Failed to initialize memory system: {e}")
+        try:
+            if cm is not None:
+                await cm.start_all()
+            if sb is not None:
+                await sb.start()
             logger.info("Background services started successfully")
         except Exception as e:
             logger.error(f"Failed to start background services: {e}")
@@ -519,6 +529,10 @@ async def startup():
     if social_brain is not None:
         logger.warning("Social brain already initialized, skipping duplicate startup.")
         return
+
+    # Build social objects best-effort. A failure here must NOT prevent the
+    # background services (memory, scheduler, heartbeat, sync) from starting —
+    # so the launch below is unconditional and outside this try.
     try:
         import json
         from suzent.config import PROJECT_DIR
@@ -535,12 +549,14 @@ async def startup():
                 logger.error(f"Failed to load social config: {e}")
 
         channel_manager, social_brain = _build_social_from_config(social_config)
-
         app.state.social_brain = social_brain
-        asyncio.create_task(init_background_services(channel_manager, social_brain))
 
     except Exception as e:
         logger.error(f"Failed to initialize Social Messaging: {e}")
+
+    # Launch heavy background init regardless of social outcome. cm/sb may be
+    # None — init_background_services tolerates that.
+    asyncio.create_task(init_background_services(channel_manager, social_brain))
 
     # Silently refresh model lists for all configured providers in the background.
     asyncio.create_task(_refresh_provider_models())
