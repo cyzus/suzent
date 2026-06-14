@@ -261,21 +261,6 @@ export function BackendLoadingScreen({ error, onRetry }: BackendLoadingScreenPro
           <p className="font-bold text-lg leading-tight">
             {error || setupStep || t('app.connectingToCore')}
           </p>
-          {!error && (
-            <div className="mt-3 flex items-end justify-center gap-1" aria-hidden="true">
-              {Array.from({ length: 17 }).map((_, idx) => (
-                <span
-                  key={idx}
-                  className="block w-1 bg-brutal-black"
-                  style={{
-                    height: `${8 + (idx % 5) * 4}px`,
-                    animation: `suzentTick ${0.78 + (idx % 4) * 0.08}s ease-in-out infinite`,
-                    animationDelay: `${idx * 0.06}s`,
-                  }}
-                />
-              ))}
-            </div>
-          )}
         </div>
         {error && onRetry ? (
           <button
