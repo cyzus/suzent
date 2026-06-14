@@ -824,6 +824,45 @@ export async function fetchDailyCost(days = 30): Promise<CostDaily[]> {
   return res.json();
 }
 
+export async function fetchHourlyCost(days = 30): Promise<CostDaily[]> {
+  const res = await fetch(`${getApiBase()}/config/cost/hourly?days=${days}`);
+  if (!res.ok) throw new Error('Failed to fetch hourly cost');
+  return res.json();
+}
+
+export async function fetchActivityGrid(range: string): Promise<CostDaily[]> {
+  const res = await fetch(`${getApiBase()}/config/cost/activity-grid?range=${range}`);
+  if (!res.ok) throw new Error('Failed to fetch activity grid');
+  return res.json();
+}
+
+export interface CostModel {
+  model: string;
+  cost_usd: number;
+  input_tokens: number;
+  output_tokens: number;
+  calls: number;
+}
+
+export async function fetchModelsCost(days = 30): Promise<CostModel[]> {
+  const res = await fetch(`${getApiBase()}/config/cost/models?days=${days}`);
+  if (!res.ok) throw new Error('Failed to fetch models cost');
+  return res.json();
+}
+
+export interface ActivityStats {
+  cumulative_tokens: number;
+  peak_tokens: number;
+  current_streak: number;
+  longest_streak: number;
+}
+
+export async function fetchActivityStats(): Promise<ActivityStats> {
+  const res = await fetch(`${getApiBase()}/config/cost/activity`);
+  if (!res.ok) throw new Error('Failed to fetch activity stats');
+  return res.json();
+}
+
 export async function saveSocialConfig(config: SocialConfig): Promise<boolean> {
   try {
     const res = await fetch(`${getApiBase()}/config/social`, {

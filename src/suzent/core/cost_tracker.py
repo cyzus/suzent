@@ -240,6 +240,217 @@ class CostTracker:
                 for row in rows
             ]
 
+    async def get_hourly_breakdown(self, days: int = 30) -> List[Dict[str, Any]]:
+        """Get per-hour cost breakdown."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._read_hourly_breakdown, days)
+
+    def _read_hourly_breakdown(self, days: int) -> List[Dict[str, Any]]:
+        from suzent.database import get_database, CostLedgerModel
+        from sqlmodel import Session, select, func
+
+        db = get_database()
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+        with Session(db.engine) as session:
+            hour_col = func.strftime(
+                "%Y-%m-%dT%H:00:00.000Z", CostLedgerModel.created_at
+            ).label("hour")
+            stmt = (
+                select(
+                    hour_col,
+                    func.sum(CostLedgerModel.cost_usd).label("cost"),
+                    func.sum(CostLedgerModel.input_tokens).label("input_tokens"),
+                    func.sum(CostLedgerModel.output_tokens).label("output_tokens"),
+                    func.count(CostLedgerModel.id).label("calls"),
+                )
+                .where(CostLedgerModel.created_at >= cutoff)
+                .group_by(hour_col)
+                .order_by(hour_col)
+            )
+            rows = session.exec(stmt).all()
+            return [
+                {
+                    "date": str(row[0]),
+                    "cost_usd": row[1] or 0.0,
+                    "input_tokens": row[2] or 0,
+                    "output_tokens": row[3] or 0,
+                    "calls": row[4] or 0,
+                }
+                for row in rows
+            ]
+
+    async def get_activity_binned(
+        self, days: int, interval_minutes: int
+    ) -> List[Dict[str, Any]]:
+        """Get cost breakdown binned by arbitrary minutes interval."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, self._read_activity_binned, days, interval_minutes
+        )
+
+    def _read_activity_binned(
+        self, days: int, interval_minutes: int
+    ) -> List[Dict[str, Any]]:
+        from suzent.database import get_database, CostLedgerModel
+        from sqlmodel import Session, select, func
+        from sqlalchemy import cast, Integer
+
+        db = get_database()
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        interval_secs = interval_minutes * 60
+
+        with Session(db.engine) as session:
+            epoch_col = cast(func.strftime("%s", CostLedgerModel.created_at), Integer)
+            bin_col = ((epoch_col / interval_secs) * interval_secs).label("bin")
+
+            stmt = (
+                select(
+                    bin_col,
+                    func.sum(CostLedgerModel.cost_usd).label("cost"),
+                    func.sum(CostLedgerModel.input_tokens).label("input_tokens"),
+                    func.sum(CostLedgerModel.output_tokens).label("output_tokens"),
+                    func.count(CostLedgerModel.id).label("calls"),
+                )
+                .where(CostLedgerModel.created_at >= cutoff)
+                .group_by(bin_col)
+                .order_by(bin_col)
+            )
+            rows = session.exec(stmt).all()
+
+            result = []
+            for row in rows:
+                if row[0] is None:
+                    continue
+                dt = datetime.fromtimestamp(int(row[0]), timezone.utc)
+                result.append(
+                    {
+                        "date": dt.strftime("%Y-%m-%dT%H:%M:00.000Z"),
+                        "cost_usd": row[1] or 0.0,
+                        "input_tokens": row[2] or 0,
+                        "output_tokens": row[3] or 0,
+                        "calls": row[4] or 0,
+                    }
+                )
+            return result
+
+    async def get_model_breakdown(self, days: int = 30) -> List[Dict[str, Any]]:
+        """Get per-model cost breakdown."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._read_model_breakdown, days)
+
+    def _read_model_breakdown(self, days: int) -> List[Dict[str, Any]]:
+        from suzent.database import get_database, CostLedgerModel
+        from sqlmodel import Session, select, func
+
+        db = get_database()
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+        with Session(db.engine) as session:
+            stmt = (
+                select(
+                    CostLedgerModel.model,
+                    func.sum(CostLedgerModel.cost_usd).label("cost"),
+                    func.sum(CostLedgerModel.input_tokens).label("input_tokens"),
+                    func.sum(CostLedgerModel.output_tokens).label("output_tokens"),
+                    func.count(CostLedgerModel.id).label("calls"),
+                )
+                .where(CostLedgerModel.created_at >= cutoff)
+                .group_by(CostLedgerModel.model)
+                .order_by(func.sum(CostLedgerModel.cost_usd).desc())
+            )
+            rows = session.exec(stmt).all()
+            return [
+                {
+                    "model": row[0],
+                    "cost_usd": row[1] or 0.0,
+                    "input_tokens": row[2] or 0,
+                    "output_tokens": row[3] or 0,
+                    "calls": row[4] or 0,
+                }
+                for row in rows
+            ]
+
+    async def get_activity_stats(self) -> Dict[str, Any]:
+        """Get activity stats (streaks, peak, cumulative)."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._read_activity_stats)
+
+    def _read_activity_stats(self) -> Dict[str, Any]:
+        from suzent.database import get_database, CostLedgerModel
+        from sqlmodel import Session, select, func
+
+        db = get_database()
+        with Session(db.engine) as session:
+            # 1. Cumulative Tokens
+            stmt_cum = select(
+                func.sum(CostLedgerModel.input_tokens),
+                func.sum(CostLedgerModel.output_tokens),
+            )
+            cum_row = session.exec(stmt_cum).one()
+            cum_input = cum_row[0] or 0
+            cum_output = cum_row[1] or 0
+            cumulative_tokens = cum_input + cum_output
+
+            # 2. Get daily token totals to compute peak and streaks
+            day_col = func.date(CostLedgerModel.created_at).label("day")
+            stmt_daily = (
+                select(
+                    day_col,
+                    func.sum(
+                        CostLedgerModel.input_tokens + CostLedgerModel.output_tokens
+                    ).label("total_tokens"),
+                )
+                .group_by(day_col)
+                .order_by(day_col)
+            )
+            daily_rows = session.exec(stmt_daily).all()
+
+            peak_tokens = 0
+            current_streak = 0
+            longest_streak = 0
+
+            if daily_rows:
+                # We expect daily_rows to be ordered by day ascending
+                peak_tokens = max((row[1] or 0 for row in daily_rows), default=0)
+
+                from datetime import datetime
+
+                streaks = []
+                current = 0
+                last_date = None
+
+                today = datetime.now(timezone.utc).date()
+
+                for row in daily_rows:
+                    dt = datetime.strptime(str(row[0]), "%Y-%m-%d").date()
+                    if last_date is None:
+                        current = 1
+                    else:
+                        if (dt - last_date).days == 1:
+                            current += 1
+                        elif (dt - last_date).days > 1:
+                            streaks.append(current)
+                            current = 1
+                    last_date = dt
+                if current > 0:
+                    streaks.append(current)
+
+                longest_streak = max(streaks, default=0)
+
+                if last_date is not None:
+                    if (today - last_date).days <= 1:
+                        current_streak = current
+                    else:
+                        current_streak = 0
+
+            return {
+                "cumulative_tokens": int(cumulative_tokens),
+                "peak_tokens": int(peak_tokens),
+                "current_streak": current_streak,
+                "longest_streak": longest_streak,
+            }
+
 
 # ---------------------------------------------------------------------------
 # Module-level singleton

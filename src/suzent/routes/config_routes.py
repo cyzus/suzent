@@ -700,6 +700,66 @@ async def get_daily_cost(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+async def get_hourly_cost(request: Request) -> JSONResponse:
+    """GET /api/config/cost/hourly?days=30 — hourly cost breakdown."""
+    try:
+        from suzent.core.cost_tracker import get_cost_tracker
+
+        days = int(request.query_params.get("days", "30"))
+        tracker = get_cost_tracker()
+        data = await tracker.get_hourly_breakdown(days=days)
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def get_activity_grid(request: Request) -> JSONResponse:
+    """GET /api/config/cost/activity-grid?range=1|7|30|all — dynamic activity grid."""
+    try:
+        from suzent.core.cost_tracker import get_cost_tracker
+
+        rng = request.query_params.get("range", "30")
+        tracker = get_cost_tracker()
+
+        if rng == "1":
+            data = await tracker.get_activity_binned(days=1, interval_minutes=4)
+        elif rng == "7":
+            data = await tracker.get_activity_binned(days=7, interval_minutes=30)
+        elif rng == "30":
+            data = await tracker.get_activity_binned(days=30, interval_minutes=120)
+        else:
+            data = await tracker.get_activity_binned(days=365, interval_minutes=1440)
+
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def get_models_cost(request: Request) -> JSONResponse:
+    """GET /api/config/cost/models?days=30 — model cost breakdown."""
+    try:
+        from suzent.core.cost_tracker import get_cost_tracker
+
+        days = int(request.query_params.get("days", "30"))
+        tracker = get_cost_tracker()
+        data = await tracker.get_model_breakdown(days=days)
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def get_activity_cost(request: Request) -> JSONResponse:
+    """GET /api/config/cost/activity — activity statistics (streaks, peak, etc)."""
+    try:
+        from suzent.core.cost_tracker import get_cost_tracker
+
+        tracker = get_cost_tracker()
+        data = await tracker.get_activity_stats()
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 # ---------------------------------------------------------------------------
 # Role Model Endpoints
 # ---------------------------------------------------------------------------
