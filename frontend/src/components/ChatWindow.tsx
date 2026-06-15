@@ -13,6 +13,7 @@ import type { A2UISurface } from '../types/a2ui';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useUnifiedFileUpload } from '../hooks/useUnifiedFileUpload';
 import { useToolApproval } from '../hooks/chat/useToolApproval';
+import { useApprovalRestore } from '../hooks/chat/useApprovalRestore';
 import { NewChatView } from './NewChatView';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
 import { ImageViewer } from './ImageViewer';
@@ -989,6 +990,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     consumeApprovalDecisions,
   });
 
+  const { restorePendingApprovals, clearIfResolved } = useApprovalRestore({
+    restorePartsFromSeed,
+    setIsStreaming,
+    clearParts,
+    streamingChatIdRef,
+  });
+
   // Remove a tool from the approval policy
   const handleRemoveApprovalPolicy = useCallback((toolName: string) => {
     setConfig(prev => {
@@ -1220,32 +1228,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       abandonedStreamChatsRef.current.add(chatIdAtMount);
 
       // If there are pending tool approvals in the seed and no active stream,
-      // restore the parts directly so the approval dialog re-appears — but only
-      // if the backend hasn't already completed the run (isBusStreaming=false and
-      // the stream hasn't been registered yet). We defer to tryConnect below to
-      // do the actual reconnect; restoring here only seeds the visual state.
+      // re-hydrate the approval dialog (with its live approvalId) so the user can
+      // still act on it. The backend keeps the run suspended; reconnect via
+      // /chat/live returns 204 for a suspended run, so the seed is the only
+      // carrier of the approvalId across a chat switch. The pending UI persists
+      // until the user acts or a DB reload proves it resolved — no auto-clear.
       if (!isBusStreaming(chatIdAtMount)) {
-        const hasSeedApprovals = savedSeed.parts.some(
-          p => p.type === 'tool' && p.state === 'approval-requested'
-        );
-        if (hasSeedApprovals) {
-          // Verify the backend still has the run suspended before locking the UI.
-          // loadChat will fire below (abandonedStreamChatsRef was set above); if
-          // the DB snapshot shows no pending approvals the normal reload will
-          // clear the restored parts, so we never get stuck in isStreaming=true.
-          restorePartsFromSeed(savedSeed.parts);
-          setIsStreaming(true, chatIdAtMount);
-          streamingChatIdRef.current = chatIdAtMount;
-          // Schedule a safety reset: if tryConnect doesn't establish a live
-          // stream within 5 s the backend has already finished and we clear.
-          setTimeout(() => {
-            if (streamingChatIdRef.current === chatIdAtMount && !isLiveStreamRef.current) {
-              setIsStreaming(false, chatIdAtMount);
-              streamingChatIdRef.current = null;
-              clearParts();
-            }
-          }, 5000);
-        }
+        restorePendingApprovals(chatIdAtMount, savedSeed.parts);
       }
     }
 
@@ -1395,6 +1384,32 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentChatId, isBackgroundChat]);
+
+  // Tear down restored approval UI once the reloaded DB state proves the
+  // approval was resolved server-side (e.g. acted on in another window while we
+  // were away). This replaces the old blind 5s self-destruct timer: instead of
+  // guessing from the absence of a live stream, we clear only when the persisted
+  // message actually shows the tool call resolved (has output / non-pending).
+  useEffect(() => {
+    if (!currentChatId) return;
+    if (streamingChatIdRef.current !== currentChatId) return;
+
+    const resolvedToolCallIds = new Set<string>();
+    for (const m of messages) {
+      if (m.role !== 'assistant' || !Array.isArray(m.parts)) continue;
+      for (const p of m.parts) {
+        if (
+          p.type === 'tool' &&
+          p.toolCallId &&
+          (p.output != null || p.state !== 'approval-requested')
+        ) {
+          resolvedToolCallIds.add(p.toolCallId);
+        }
+      }
+    }
+
+    clearIfResolved(currentChatId, getStreamingParts(), resolvedToolCallIds);
+  }, [currentChatId, messages, clearIfResolved, getStreamingParts, streamingChatIdRef]);
 
   // Auto-resize textarea
   useEffect(() => {
