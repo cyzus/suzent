@@ -27,7 +27,7 @@ const TABS: { id: MemoryTab; labelKey: string }[] = [
   { id: 'transcripts', labelKey: 'memoryView.tabs.transcripts' },
 ];
 
-export const MemoryView: React.FC = () => {
+export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab }) => {
   const { t } = useI18n();
   const {
     coreMemory,
@@ -42,7 +42,7 @@ export const MemoryView: React.FC = () => {
   const { isStreaming } = useChatStreamingStore();
   const prevStreamingRef = useRef(isStreaming);
 
-  const [activeTab, setActiveTab] = useState<MemoryTab>('overview');
+  const [activeTab, setActiveTab] = useState<MemoryTab>(initialTab ?? 'overview');
   const [showCoreMemory, setShowCoreMemory] = useState(true);
 
   useEffect(() => {

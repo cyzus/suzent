@@ -301,6 +301,7 @@ function UpdateButton(): React.ReactElement | null {
 function AppInner(): React.ReactElement {
   const [sidebarTab, setSidebarTab] = useState<'chats' | 'config'>('chats');
   const [mainView, setMainView] = useState<MainView>('chat');
+  const [memoryInitialTab, setMemoryInitialTab] = useState<'overview' | 'dreaming' | 'daily-logs' | 'transcripts' | undefined>(undefined);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsInitialCategory, setSettingsInitialCategory] = useState<'providers' | 'roles' | 'memory' | 'social' | 'mcp' | 'automation' | 'data' | 'usage' | 'appearance'>('providers');
   const openSettings = (category: typeof settingsInitialCategory = 'providers') => {
@@ -560,7 +561,7 @@ function AppInner(): React.ReactElement {
             </div>
 
             <div className={`flex items-center gap-3 ${showWindowsWindowControls ? 'pr-[108px]' : ''}`}>
-              <NavTabs mainView={mainView} setMainView={setMainView} />
+              <NavTabs mainView={mainView} setMainView={(v) => { setMemoryInitialTab(undefined); setMainView(v); }} />
               <UpdateButton />
 
               {/* Dark mode toggle */}
@@ -652,7 +653,7 @@ function AppInner(): React.ReactElement {
             </div>
           </header>
 
-          <StatusBar onOpenMemorySettings={() => setMainView('memory')} />
+          <StatusBar onOpenMemorySettings={() => { setMemoryInitialTab('dreaming'); setMainView('memory'); }} />
 
           {mainView === 'chat' && (
             <div key="chat" className="flex-1 flex flex-col min-h-0 animate-view-fade">
@@ -668,7 +669,7 @@ function AppInner(): React.ReactElement {
           )}
           {mainView === 'memory' && (
             <div key="memory" className="flex-1 flex flex-col min-h-0 animate-view-fade">
-              <MemoryView />
+              <MemoryView initialTab={memoryInitialTab} />
             </div>
           )}
           {mainView === 'skills' && (

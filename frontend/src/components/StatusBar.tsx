@@ -369,11 +369,11 @@ function DreamWidget({ onOpenMemorySettings }: { onOpenMemorySettings?: () => vo
     : t('settings.memoryConfig.statusBarIdle');
 
   const badgeClass = running
-    ? 'bg-brutal-blue text-white animate-pulse'
+    ? 'bg-brutal-blue text-white animate-pulse border-2 border-brutal-black dark:border-neutral-500'
     : failed
-    ? 'bg-brutal-red text-white'
+    ? 'bg-brutal-red text-white border-2 border-brutal-black dark:border-neutral-500'
     : pending > 0
-    ? 'bg-brutal-yellow text-brutal-black'
+    ? 'bg-brutal-yellow text-brutal-black border-2 border-brutal-black dark:border-neutral-500'
     : 'bg-neutral-200 dark:bg-zinc-700 text-neutral-600 dark:text-neutral-300';
 
   const title = error || status.reason || (status.watermark
@@ -384,7 +384,7 @@ function DreamWidget({ onOpenMemorySettings }: { onOpenMemorySettings?: () => vo
     <button
       type="button"
       onClick={onOpenMemorySettings}
-      className={`flex items-center gap-1.5 flex-shrink-0 ml-3 px-1.5 py-0.5 border-2 border-brutal-black dark:border-neutral-500 font-bold uppercase tracking-wider ${badgeClass}`}
+      className={`flex items-center gap-1.5 flex-shrink-0 ml-3 px-1.5 py-0.5 font-bold uppercase tracking-wider ${badgeClass}`}
       title={title}
     >
       <span className="text-[10px]" aria-hidden="true">{running ? '◐' : failed ? '!' : '◌'}</span>
