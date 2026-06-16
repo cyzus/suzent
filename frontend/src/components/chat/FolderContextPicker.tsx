@@ -286,19 +286,19 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
     );
 
     return (
-        <div className="relative inline-block text-left" ref={containerRef}>
+        <div className="relative min-w-0 shrink text-left" ref={containerRef}>
             <button
                 ref={buttonRef}
                 type="button"
                 onClick={() => setIsOpen(!isOpen)}
                 disabled={disabled}
                 className={`
-                    flex items-center gap-1.5 px-2 h-10 border-2 border-brutal-black brutal-btn shadow-[2px_2px_0_0_#000] transition-all disabled:opacity-50 disabled:cursor-not-allowed group text-xs font-bold uppercase
+                    flex items-center gap-1.5 px-2 h-10 w-full min-w-0 border-2 border-brutal-black brutal-btn shadow-[2px_2px_0_0_#000] transition-all disabled:opacity-50 disabled:cursor-not-allowed group text-xs font-bold uppercase
                     ${activeCount > 0 ? 'bg-brutal-green text-brutal-black' : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'}
                 `}
             >
                 <FolderIcon className="w-4 h-4 shrink-0" />
-                <span className="hidden sm:inline truncate max-w-[120px]">
+                <span className="hidden sm:inline truncate min-w-0">
                     {buttonLabel || dynamicLabel || t('folderContext.context')}
                 </span>
                 <ChevronDownIcon

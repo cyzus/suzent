@@ -580,86 +580,84 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             </div>
 
             {/* Button row */}
-            <div className="flex flex-nowrap gap-2 items-center justify-between pt-1">
-                <div className="flex gap-2 items-center pl-2 shrink-0">
-                    {/* Folder Context Button */}
-                    <FolderContextPicker
-                        onMount={handleMountFolder}
-                        activeVolumes={config.sandbox_volumes || []}
-                        onRemoveVolume={removeVolume}
-                        disabled={!configReady || streamingForCurrentChat || isUploading}
-                        dropUp={modelSelectDropUp}
-                    />
+            <div className="flex flex-nowrap items-center gap-2 pt-1 pl-2 pr-1">
+                {/* Left: folder + attachment — shrink-0 so they're always fully visible */}
+                <FolderContextPicker
+                    onMount={handleMountFolder}
+                    activeVolumes={config.sandbox_volumes || []}
+                    onRemoveVolume={removeVolume}
+                    disabled={!configReady || streamingForCurrentChat || isUploading}
+                    dropUp={modelSelectDropUp}
+                />
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="*"
+                    multiple
+                    onChange={handleFileSelect}
+                    className="hidden"
+                />
+                <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-brutal-black hover:text-brutal-blue transition-colors disabled:opacity-40 shrink-0"
+                    title={t('chatInput.attachFiles')}
+                    disabled={!configReady || streamingForCurrentChat || isUploading}
+                >
+                    <PaperClipIcon className="w-6 h-6" />
+                </button>
 
-                    {/* Unified file input (all types) */}
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="*"
-                        multiple
-                        onChange={handleFileSelect}
-                        className="hidden"
-                    />
+                {/* Spacer */}
+                <div className="flex-1" />
+
+                {/* Right: model picker (shrinks) + action button (fixed) */}
+                {configReady && !hideConfigSelector && (
+                    <div className="relative min-w-0 shrink">
+                        <BrutalSelect
+                            value={config.model}
+                            onChange={(val) => setConfig(prev => ({ ...prev, model: val }))}
+                            options={backendConfig!.models}
+                            placeholder={t('chatInput.modelPlaceholder').toUpperCase()}
+                            dropUp={modelSelectDropUp}
+                            className="h-10 text-sm"
+                            dropdownClassName="min-w-[200px] right-0"
+                        />
+                    </div>
+                )}
+
+                {/* Redirect button (shown when streaming and user has typed) */}
+                {stopStreaming && streamingForCurrentChat && input.trim() ? (
+                    <button
+                        type="submit"
+                        className="h-9 border-2 border-brutal-black shadow-[2px_2px_0_0_#000] brutal-btn duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed uppercase shrink-0 bg-brutal-yellow text-brutal-black"
+                        disabled={!configReady}
+                        title={t('chatInput.redirectAgent')}
+                    >
+                        {t('chatInput.redirect').toUpperCase()}
+                    </button>
+                ) : stopStreaming && streamingForCurrentChat ? (
                     <button
                         type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="text-brutal-black hover:text-brutal-blue transition-colors disabled:opacity-40 shrink-0"
-                        title={t('chatInput.attachFiles')}
-                        disabled={!configReady || streamingForCurrentChat || isUploading}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            stopStreaming();
+                        }}
+                        className="h-9 border-2 border-brutal-black shadow-[2px_2px_0_0_#000] brutal-btn duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-red"
+                        disabled={stopInFlight}
+                        title={t('chatInput.stopGenerating')}
                     >
-                        <PaperClipIcon className="w-6 h-6" />
+                        {t('chatInput.stop').toUpperCase()}
                     </button>
-                </div>
-
-                <div className="flex flex-nowrap gap-2 items-center justify-end flex-1 min-w-0">
-                    {configReady && !hideConfigSelector && (
-                        <div className="relative shrink-0">
-                            <BrutalSelect
-                                value={config.model}
-                                onChange={(val) => setConfig(prev => ({ ...prev, model: val }))}
-                                options={backendConfig!.models}
-                                placeholder={t('chatInput.modelPlaceholder').toUpperCase()}
-                                dropUp={modelSelectDropUp}
-                                className="h-10 text-sm"
-                                dropdownClassName="min-w-[200px] right-0"
-                            />
-                        </div>
-                    )}
-
-                    {/* Redirect button (shown when streaming and user has typed) */}
-                    {stopStreaming && streamingForCurrentChat && input.trim() ? (
-                        <button
-                            type="submit"
-                            className="h-9 border-2 border-brutal-black shadow-[2px_2px_0_0_#000] brutal-btn duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase ml-1 shrink-0 bg-brutal-yellow text-brutal-black"
-                            disabled={!configReady}
-                            title={t('chatInput.redirectAgent')}
-                        >
-                            {t('chatInput.redirect').toUpperCase()}
-                        </button>
-                    ) : stopStreaming && streamingForCurrentChat ? (
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.preventDefault();
-                                stopStreaming();
-                            }}
-                            className="h-9 border-2 border-brutal-black shadow-[2px_2px_0_0_#000] brutal-btn duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase ml-1 shrink-0 bg-brutal-red"
-                            disabled={stopInFlight}
-                            title={t('chatInput.stopGenerating')}
-                        >
-                            {t('chatInput.stop').toUpperCase()}
-                        </button>
-                    ) : (
-                        <button
-                            type="submit"
-                            className="h-9 border-2 border-brutal-black shadow-[2px_2px_0_0_#000] brutal-btn duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase ml-1 shrink-0 bg-brutal-blue"
-                            disabled={streamingForCurrentChat || !configReady}
-                            title={t('chatInput.sendMessage')}
-                        >
-                            {t('chatInput.send').toUpperCase()}
-                        </button>
-                    )}
-                </div>
+                ) : (
+                    <button
+                        type="submit"
+                        className="h-9 border-2 border-brutal-black shadow-[2px_2px_0_0_#000] brutal-btn duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue"
+                        disabled={streamingForCurrentChat || !configReady}
+                        title={t('chatInput.sendMessage')}
+                    >
+                        {t('chatInput.send').toUpperCase()}
+                    </button>
+                )}
             </div>
         </form>
     );
