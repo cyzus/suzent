@@ -963,7 +963,7 @@ export const en = {
     recentFolders: 'Recent folders',
     noRecentFolders: 'No recent folders',
     chooseDifferent: 'Choose a different folder...',
-    context: 'Context',
+    context: 'Working Dir',
   },
   fileLink: {
     clickToView: 'Click to view {path} (Shift+Click for full screen)',

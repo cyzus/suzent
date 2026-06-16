@@ -98,6 +98,15 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
     // Calculate active count for badge
     const activeCount = activeVolumes.length;
 
+    const getDynamicLabel = (): string | null => {
+        if (!activeVolumes.length) return null;
+        const firstName = activeVolumes[0].split(/[\\/]/).filter(Boolean).pop() ?? activeVolumes[0];
+        if (activeVolumes.length === 1) return firstName;
+        return `${firstName} +${activeVolumes.length - 1}`;
+    };
+
+    const dynamicLabel = getDynamicLabel();
+
     const [effectiveDropUp, setEffectiveDropUp] = useState(dropUp);
 
     // Calculate dropdown position
@@ -284,17 +293,14 @@ export const FolderContextPicker: React.FC<FolderContextPickerProps> = ({
                 onClick={() => setIsOpen(!isOpen)}
                 disabled={disabled}
                 className={`
-                    flex items-center gap-1.5 px-2 py-1 border-2 border-brutal-black brutal-btn shadow-[2px_2px_0_0_#000] transition-all disabled:opacity-50 disabled:cursor-not-allowed group text-xs font-bold uppercase
+                    flex items-center gap-1.5 px-2 h-10 border-2 border-brutal-black brutal-btn shadow-[2px_2px_0_0_#000] transition-all disabled:opacity-50 disabled:cursor-not-allowed group text-xs font-bold uppercase
                     ${activeCount > 0 ? 'bg-brutal-green text-brutal-black' : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700'}
                 `}
             >
-                <FolderIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">{buttonLabel || t('folderContext.context')}</span>
-                {activeCount > 0 && (
-                    <span className="bg-brutal-black text-white px-1.5 rounded-full text-[10px] min-w-[1.2em] text-center font-bold">
-                        {activeCount}
-                    </span>
-                )}
+                <FolderIcon className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline truncate max-w-[120px]">
+                    {buttonLabel || dynamicLabel || t('folderContext.context')}
+                </span>
                 <ChevronDownIcon
                     className={`w-3 h-3 ml-0.5 opacity-60 group-hover:opacity-100 transition-transform duration-200 ${isOpen ? (effectiveDropUp ? 'rotate-0' : 'rotate-180') : (effectiveDropUp ? 'rotate-180' : 'rotate-0')}`}
                 />

@@ -889,7 +889,7 @@ export const zhCN = {
     recentFolders: '最近使用',
     noRecentFolders: '暂无最近文件夹',
     chooseDifferent: '选择其他文件夹…',
-    context: '上下文',
+    context: '工作目录',
   },
   fileLink: {
     clickToView: '点击查看 {path}（按住 Shift 点击全屏）',
