@@ -54,6 +54,9 @@
     },
     "anthropic/claude-opus-4-8": {
       "mode": "chat"
+    },
+    "anthropic/claude-fable-5": {
+      "mode": "chat"
     }
   }
 }

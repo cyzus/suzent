@@ -895,6 +895,33 @@
     },
     "dashscope/ZHIPU/GLM-5.1": {
       "mode": "chat"
+    },
+    "dashscope/qwen3.7-plus-2026-05-26": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.7-plus": {
+      "mode": "chat"
+    },
+    "dashscope/sre-gpu-auto-handle": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.7-max-2026-06-08": {
+      "mode": "chat"
+    },
+    "dashscope/qwen3.5-ocr": {
+      "mode": "chat"
+    },
+    "dashscope/qwentype-api-dingtalk": {
+      "mode": "chat"
+    },
+    "dashscope/kimi/kimi-k2.7-code": {
+      "mode": "chat"
+    },
+    "dashscope/kimi-k2.7-code": {
+      "mode": "chat"
+    },
+    "dashscope/glm-5.2": {
+      "mode": "chat"
     }
   }
 }
