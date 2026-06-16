@@ -47,10 +47,15 @@ function formatDuration(startedAt: string | null | undefined, finishedAt: string
   return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
+async function stopSubAgent(taskId: string): Promise<void> {
+  await fetch(`${getApiBase()}/subagents/${encodeURIComponent(taskId)}/stop`, { method: 'POST' });
+}
+
 export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) => {
   const { t } = useI18n();
   const [historicTasks, setHistoricTasks] = useState<SubAgentRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [stopping, setStopping] = useState<Set<string>>(new Set());
   const { activeTasks } = useSubAgentStatus();
   const knownActiveIdsRef = useRef<Set<string>>(new Set());
 
@@ -115,22 +120,23 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
           const hasContext = task.inherit_context;
 
           return (
-            <button
+            <div
               key={task.task_id}
-              onClick={() => onSelect(task.task_id)}
-              className="w-full text-left px-2 py-2 rounded-sm bg-neutral-50 dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 border border-neutral-200 dark:border-zinc-600 transition-colors group"
+              className="w-full text-left px-2 py-2 rounded-sm bg-neutral-50 dark:bg-zinc-800 border border-neutral-200 dark:border-zinc-600 group"
             >
               <div className="flex items-start gap-2">
+                <button className="contents" onClick={() => onSelect(task.task_id)}>
                 <span className="text-[11px] shrink-0 mt-0.5">
                   {STATUS_ICON[task.status] ?? '🤖'}
                 </span>
-                <div className="flex-1 min-w-0">
+                </button>
+                <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onSelect(task.task_id)}>
                   {/* Description */}
                   <div className="text-[11px] text-neutral-700 dark:text-neutral-200 leading-snug line-clamp-2 group-hover:text-neutral-900 dark:group-hover:text-white">
                     {task.description}
                   </div>
 
-                  {/* Meta row: status + time + tool count */}
+                  {/* Meta row: status + time + tool count + stop button */}
                   <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                     <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm ${STATUS_BADGE[task.status] ?? ''}`}>
                       {task.status}
@@ -138,6 +144,22 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
                         <span className="inline-block w-1 h-1 rounded-full bg-current ml-1 animate-pulse" />
                       )}
                     </span>
+                    {isActive && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStopping(s => new Set(s).add(task.task_id));
+                          stopSubAgent(task.task_id).finally(() =>
+                            setStopping(s => { const n = new Set(s); n.delete(task.task_id); return n; })
+                          );
+                        }}
+                        disabled={stopping.has(task.task_id)}
+                        className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800 disabled:opacity-50"
+                        title="Stop sub-agent"
+                      >
+                        {stopping.has(task.task_id) ? '…' : 'stop'}
+                      </button>
+                    )}
 
                     {task.started_at && (
                       <span className="text-[9px] text-neutral-400">
@@ -184,7 +206,7 @@ export const SubAgentList: React.FC<SubAgentListProps> = ({ chatId, onSelect }) 
                   )}
                 </div>
               </div>
-            </button>
+            </div>
           );
         })}
       </div>

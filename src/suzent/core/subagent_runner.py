@@ -439,6 +439,12 @@ async def _run_subagent(
         if wakeup_parent:
             await _schedule_wakeup(task)
 
+    except asyncio.CancelledError:
+        task.status = "failed"
+        task.error = "Sub-agent cancelled"
+        task.finished_at = datetime.now()
+        _broadcast_task_update(task)
+        raise
     except Exception as e:
         logger.error(f"Sub-agent {task.task_id} failed: {e}")
         task.status = "failed"
@@ -761,6 +767,23 @@ async def _notify_parent(task: SubAgentTask, event_name: str, data: dict):
         logger.debug(f"Could not push {event_name} to parent queue: {e}")
 
 
+async def clear_stuck_tasks() -> list[str]:
+    """Mark all queued/running tasks as failed and broadcast updates.
+
+    Used to recover from stuck state after a crash or unexpected shutdown.
+    Returns list of cleared task_ids.
+    """
+    cleared = []
+    for task in list(_tasks.values()):
+        if task.status in ("queued", "running"):
+            task.status = "failed"
+            task.error = "Cleared (orphaned task)"
+            task.finished_at = datetime.now()
+            _broadcast_task_update(task)
+            cleared.append(task.task_id)
+    return cleared
+
+
 async def stop_subagent(task_id: str) -> bool:
     """Request cancellation of a running sub-agent."""
     from suzent.core.stream_registry import stop_stream
@@ -769,4 +792,11 @@ async def stop_subagent(task_id: str) -> bool:
     if not task:
         return False
     stop_stream(task.chat_id, reason=f"Sub-agent {task_id} stopped by user")
+    # Mark failed immediately so the UI clears it even if the coroutine is slow
+    # to observe the cancel signal.
+    if task.status in ("queued", "running"):
+        task.status = "failed"
+        task.error = "Stopped by user"
+        task.finished_at = datetime.now()
+        _broadcast_task_update(task)
     return True

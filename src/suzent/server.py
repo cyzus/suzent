@@ -190,6 +190,7 @@ from suzent.routes.subagent_routes import (
     list_subagents,
     get_subagent,
     stop_subagent_route,
+    clear_stuck_subagents_route,
     stream_subagents,
 )
 from suzent.routes.event_bus_routes import event_bus_stream
@@ -871,6 +872,7 @@ app = Starlette(
         Route("/events/stream", event_bus_stream, methods=["GET"]),
         Route("/subagents/active", list_active_subagents, methods=["GET"]),
         Route("/subagents/stream", stream_subagents, methods=["GET"]),
+        Route("/subagents/clear-stuck", clear_stuck_subagents_route, methods=["POST"]),
         Route("/subagents", list_subagents, methods=["GET"]),
         Route("/subagents/{task_id}", get_subagent, methods=["GET"]),
         Route("/subagents/{task_id}/stop", stop_subagent_route, methods=["POST"]),

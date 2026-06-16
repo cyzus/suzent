@@ -21,6 +21,7 @@ from suzent.core.subagent_runner import (
     register_sse_subscriber,
     stop_subagent,
     unregister_sse_subscriber,
+    clear_stuck_tasks,
     _task_to_sse_dict,
 )
 from suzent.database import get_database
@@ -122,3 +123,8 @@ async def stop_subagent_route(request: Request) -> JSONResponse:
             {"error": "Task not found or already finished"}, status_code=404
         )
     return JSONResponse({"ok": True, "task_id": task_id})
+
+
+async def clear_stuck_subagents_route(request: Request) -> JSONResponse:
+    cleared = await clear_stuck_tasks()
+    return JSONResponse({"ok": True, "cleared": cleared})
