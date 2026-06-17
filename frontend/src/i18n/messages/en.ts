@@ -151,6 +151,8 @@ export const en = {
       systemConfigTitle: 'System Configuration',
       systemConfigDesc: 'Configure the notebook mount path for your workspace.',
       globalMemory: 'Global Memory',
+      modelsLabel: 'Models',
+      editInModelRoles: 'Model Roles',
       embeddingModelLabel: 'Embedding model',
       extractionModelLabel: 'Extraction model',
       modelNotConfigured: 'Not configured',

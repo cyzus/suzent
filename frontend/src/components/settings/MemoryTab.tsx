@@ -12,8 +12,12 @@ interface MemoryTabProps {
     onGlobalNotebookHostPathChange: (path: string) => void;
     memoryEnabled: boolean;
     onMemoryEnabledChange: (enabled: boolean) => void;
+    /** Model assigned to the "embedding" role (Model Roles tab). */
     embeddingModel?: string;
-    extractionModel?: string;
+    /** Model assigned to the "cheap" role — used for memory extraction. */
+    cheapModel?: string;
+    /** Navigate the settings modal to the Model Roles tab. */
+    onOpenModelRoles?: () => void;
 }
 
 export function MemoryTab({
@@ -22,7 +26,8 @@ export function MemoryTab({
     memoryEnabled,
     onMemoryEnabledChange,
     embeddingModel,
-    extractionModel,
+    cheapModel,
+    onOpenModelRoles,
 }: MemoryTabProps): React.ReactElement {
     const { t } = useI18n();
 
@@ -55,17 +60,34 @@ export function MemoryTab({
                     <BrutalOnOff checked={memoryEnabled} onChange={onMemoryEnabledChange} />
                 </div>
 
-                <div className="mt-4 pt-4 border-t-2 border-dashed border-brutal-black dark:border-zinc-600 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                        <div className="text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400 mb-1">{t('settings.memoryConfig.embeddingModelLabel')}</div>
-                        <div className="font-mono text-xs border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2 break-all min-h-[2.25rem]">
-                            {embeddingModel || t('settings.memoryConfig.modelNotConfigured')}
-                        </div>
+                <div className="mt-4 pt-4 border-t-2 border-dashed border-brutal-black dark:border-zinc-600">
+                    <div className="flex items-baseline justify-between gap-2 mb-2">
+                        <span className="text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400">{t('settings.memoryConfig.modelsLabel')}</span>
+                        {onOpenModelRoles && (
+                            <button
+                                type="button"
+                                onClick={onOpenModelRoles}
+                                className="group inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wide border-2 border-brutal-black bg-brutal-yellow text-brutal-black brutal-btn"
+                            >
+                                {t('settings.memoryConfig.editInModelRoles')}
+                                <svg className="w-3 h-3 transition-transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                                </svg>
+                            </button>
+                        )}
                     </div>
-                    <div>
-                        <div className="text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400 mb-1">{t('settings.memoryConfig.extractionModelLabel')}</div>
-                        <div className="font-mono text-xs border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2 break-all min-h-[2.25rem]">
-                            {extractionModel || t('settings.memoryConfig.modelNotConfigured')}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <div className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 mb-1">{t('settings.memoryConfig.embeddingModelLabel')}</div>
+                            <div className="font-mono text-xs border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2 break-all min-h-[2.25rem]">
+                                {embeddingModel || t('settings.memoryConfig.modelNotConfigured')}
+                            </div>
+                        </div>
+                        <div>
+                            <div className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 mb-1">{t('settings.memoryConfig.extractionModelLabel')}</div>
+                            <div className="font-mono text-xs border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2 break-all min-h-[2.25rem]">
+                                {cheapModel || t('settings.memoryConfig.modelNotConfigured')}
+                            </div>
                         </div>
                     </div>
                 </div>

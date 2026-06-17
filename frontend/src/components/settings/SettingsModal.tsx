@@ -574,8 +574,9 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
                       onGlobalNotebookHostPathChange={setGlobalNotebookHostPath}
                       memoryEnabled={memoryEnabled}
                       onMemoryEnabledChange={handleMemoryEnabledChange}
-                      embeddingModel={backendConfig?.userPreferences?.embedding_model}
-                      extractionModel={backendConfig?.userPreferences?.extraction_model}
+                      embeddingModel={roleModels.embedding?.[0]}
+                      cheapModel={roleModels.cheap?.[0]}
+                      onOpenModelRoles={() => setActiveCategory('roles')}
                     />
                   )}
 

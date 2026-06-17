@@ -151,6 +151,8 @@ export const zhCN = {
       systemConfigTitle: '系统配置',
       systemConfigDesc: '配置工作区的笔记目录挂载路径。',
       globalMemory: '全局记忆',
+      modelsLabel: '模型',
+      editInModelRoles: '模型角色',
       embeddingModelLabel: '向量模型',
       extractionModelLabel: '抽取模型',
       modelNotConfigured: '未配置',
