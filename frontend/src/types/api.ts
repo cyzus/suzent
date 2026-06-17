@@ -153,6 +153,8 @@ export interface ConfigOptions {
     memory_enabled: boolean;
     sandbox_enabled?: boolean;
     sandbox_volumes?: string[];
+    embedding_model?: string;
+    extraction_model?: string;
   };
 }
 

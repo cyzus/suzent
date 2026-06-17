@@ -4,15 +4,24 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { useI18n } from '../../i18n';
 import { SettingsHeader } from './SettingsHeader';
 import { SettingsCard, SectionCardHeader } from './SettingsCard';
+import { BrutalOnOff } from '../BrutalOnOff';
 
 interface MemoryTabProps {
     globalNotebookHostPath: string;
     onGlobalNotebookHostPathChange: (path: string) => void;
+    memoryEnabled: boolean;
+    onMemoryEnabledChange: (enabled: boolean) => void;
+    embeddingModel?: string;
+    extractionModel?: string;
 }
 
 export function MemoryTab({
     globalNotebookHostPath,
     onGlobalNotebookHostPathChange,
+    memoryEnabled,
+    onMemoryEnabledChange,
+    embeddingModel,
+    extractionModel,
 }: MemoryTabProps): React.ReactElement {
     const { t } = useI18n();
 
@@ -33,13 +42,33 @@ export function MemoryTab({
         <div className="space-y-6">
             <SettingsHeader title={t('settings.memoryConfig.title')} subtitle={t('settings.memoryConfig.subtitle')} />
 
-            {/* Model roles redirect notice */}
-            <div className="bg-brutal-yellow text-brutal-black border-2 border-brutal-black shadow-brutal-sm p-4 flex items-start gap-3">
-                <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-sm font-bold">{t('settings.memoryConfig.modelRolesHint')}</p>
-            </div>
+            {/* Global memory enable toggle */}
+            <SettingsCard>
+                <div className="flex items-center justify-between gap-4">
+                    <div>
+                        <h3 className="text-base font-bold uppercase">{t('settings.memoryConfig.globalMemory')}</h3>
+                        <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                            {memoryEnabled ? t('config.memory.enabledDesc') : t('config.memory.disabledDesc')}
+                        </p>
+                    </div>
+                    <BrutalOnOff checked={memoryEnabled} onChange={onMemoryEnabledChange} />
+                </div>
+
+                <div className="mt-4 pt-4 border-t-2 border-dashed border-brutal-black dark:border-zinc-600 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <div className="text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400 mb-1">{t('settings.memoryConfig.embeddingModelLabel')}</div>
+                        <div className="font-mono text-xs border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2 break-all min-h-[2.25rem]">
+                            {embeddingModel || t('settings.memoryConfig.modelNotConfigured')}
+                        </div>
+                    </div>
+                    <div>
+                        <div className="text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400 mb-1">{t('settings.memoryConfig.extractionModelLabel')}</div>
+                        <div className="font-mono text-xs border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2 break-all min-h-[2.25rem]">
+                            {extractionModel || t('settings.memoryConfig.modelNotConfigured')}
+                        </div>
+                    </div>
+                </div>
+            </SettingsCard>
 
             <SettingsCard>
                 <SectionCardHeader

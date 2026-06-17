@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 import { useChatStore } from '../../hooks/useChatStore';
-import { ApiProvider, CustomProviderPayload, deleteCustomProvider, fetchApiKeys, fetchRoleModels, fetchRoleSuggestions, fetchSocialConfig, fetchMcpServers, saveApiKeys, saveCustomProvider, saveGlobalSandboxConfig, saveRoleModels, saveSocialConfig, SocialConfig, UserConfig, verifyProvider } from '../../lib/api';
+import { ApiProvider, CustomProviderPayload, deleteCustomProvider, fetchApiKeys, fetchRoleModels, fetchRoleSuggestions, fetchSocialConfig, fetchMcpServers, saveApiKeys, saveCustomProvider, saveGlobalSandboxConfig, saveRoleModels, saveSocialConfig, saveUserPreferences, SocialConfig, UserConfig, verifyProvider } from '../../lib/api';
 import { AppearanceTab } from './AppearanceTab';
 import { AutomationTab } from './AutomationTab';
 import { DataTab } from './DataTab';
@@ -11,6 +11,7 @@ import { ModelRolesTab } from './ModelRolesTab';
 import { ProvidersTab } from './ProvidersTab';
 import { SocialTab } from './SocialTab';
 import { UsageTab } from './UsageTab';
+import { SecurityTab } from './SecurityTab';
 import { useI18n, type Locale } from '../../i18n';
 import { BrutalSelect } from '../BrutalSelect';
 
@@ -39,7 +40,7 @@ interface SettingsModalProps {
 }
 
 type ProviderTab = 'credentials' | 'models';
-type CategoryType = 'providers' | 'roles' | 'memory' | 'social' | 'mcp' | 'automation' | 'data' | 'usage' | 'appearance';
+type CategoryType = 'providers' | 'roles' | 'memory' | 'security' | 'social' | 'mcp' | 'automation' | 'data' | 'usage' | 'appearance';
 
 export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
@@ -74,6 +75,8 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
   const [useCustomTools, setUseCustomTools] = useState(false);
   const [useCustomMcp, setUseCustomMcp] = useState(false);
   const [globalNotebookHostPath, setGlobalNotebookHostPath] = useState('');
+  const [memoryEnabled, setMemoryEnabled] = useState(false);
+  const [sandboxEnabled, setSandboxEnabled] = useState(false);
 
   // MCP Server Management State
   const [mcpServerList, setMcpServerList] = useState<MCPServer[]>([]);
@@ -191,6 +194,8 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
       setGlobalNotebookHostPath('');
     }
     setNotebookLoaded(true);
+    setMemoryEnabled(!!(backendConfig?.userPreferences?.memory_enabled));
+    setSandboxEnabled(!!(backendConfig?.userPreferences?.sandbox_enabled ?? backendConfig?.sandboxEnabled));
   }, [isOpen, initialCategory]);
 
   async function saveProviderSettings(): Promise<void> {
@@ -213,6 +218,28 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
     const socialToSave = { ...socialConfig };
     delete socialToSave.model;
     await saveSocialConfig(socialToSave);
+  }
+
+  async function handleSandboxEnabledChange(enabled: boolean): Promise<void> {
+    setSandboxEnabled(enabled);
+    try {
+      await saveUserPreferences({ sandbox_enabled: enabled });
+      await refreshBackendConfig();
+    } catch (error) {
+      console.error('Failed to save sandbox setting', error);
+      setSandboxEnabled(!enabled);
+    }
+  }
+
+  async function handleMemoryEnabledChange(enabled: boolean): Promise<void> {
+    setMemoryEnabled(enabled);
+    try {
+      await saveUserPreferences({ memory_enabled: enabled });
+      await refreshBackendConfig();
+    } catch (error) {
+      console.error('Failed to save memory setting', error);
+      setMemoryEnabled(!enabled);
+    }
   }
 
   async function saveNotebookSettings(): Promise<void> {
@@ -383,6 +410,13 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
       )
     },
     {
+      id: 'security', label: t('settings.categories.security'), icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+        </svg>
+      )
+    },
+    {
       id: 'social', label: t('settings.categories.social'), icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
@@ -538,6 +572,17 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
                     <MemoryTab
                       globalNotebookHostPath={globalNotebookHostPath}
                       onGlobalNotebookHostPathChange={setGlobalNotebookHostPath}
+                      memoryEnabled={memoryEnabled}
+                      onMemoryEnabledChange={handleMemoryEnabledChange}
+                      embeddingModel={backendConfig?.userPreferences?.embedding_model}
+                      extractionModel={backendConfig?.userPreferences?.extraction_model}
+                    />
+                  )}
+
+                  {activeCategory === 'security' && (
+                    <SecurityTab
+                      sandboxEnabled={sandboxEnabled}
+                      onSandboxEnabledChange={handleSandboxEnabledChange}
                     />
                   )}
 

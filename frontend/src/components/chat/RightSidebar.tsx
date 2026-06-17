@@ -21,12 +21,14 @@ import {
   PencilSquareIcon,
   CpuChipIcon,
   ClipboardDocumentListIcon,
+  WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline';
+import { ToolsPanel } from './ToolsPanel';
 
 // Icon strip width in px — keep in sync with w-11 (2.75rem = 44px)
 const ICON_STRIP_WIDTH = 44;
 
-type TabId = 'files' | 'browser' | 'canvas' | 'agents' | 'plan' | 'project';
+type TabId = 'files' | 'browser' | 'canvas' | 'agents' | 'plan' | 'project' | 'tools';
 
 interface RightSidebarProps {
   isOpen: boolean;
@@ -172,6 +174,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       hasActivity: hasGoalContent,
       activityClass: 'bg-brutal-yellow',
     },
+    {
+      id: 'tools',
+      icon: WrenchScrewdriverIcon,
+      labelKey: 'sidebar.tabs.tools',
+      fallbackLabel: 'Tools',
+      hasContent: true,  // always accessible
+      hasActivity: false,
+    },
   ];
 
   // ── Auto-switch tab when content arrives ───────────────────────────
@@ -213,7 +223,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const handleTabClick = useCallback((tabId: TabId) => {
     const targetTab = tabs.find(tab => tab.id === tabId);
     if (!targetTab) return;
-    if (targetTab.id !== 'files' && targetTab.id !== 'plan' && !targetTab.hasContent) {
+    if (targetTab.id !== 'files' && targetTab.id !== 'plan' && targetTab.id !== 'tools' && !targetTab.hasContent) {
       return;
     }
 
@@ -281,8 +291,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
   // Desktop: icon strip always visible (44px), content panel expands on open
   // Overlay: full hide/show (icon strip is part of the slide)
-  // New chat: hide entirely
-  const desktopWidth = isNewChat ? 0 : isOpen ? desktopOpenWidth : ICON_STRIP_WIDTH;
+  // New chat: in overlay mode hide entirely; in desktop mode show icon strip but only expand for tools tab
+  const isNewChatOverlayHidden = isNewChat && isOverlayMode;
+  const effectiveOpen = isOpen && (!isNewChat || activeTab === 'tools');
+  const desktopWidth = isNewChatOverlayHidden ? 0 : effectiveOpen ? desktopOpenWidth : ICON_STRIP_WIDTH;
 
   // ── Report width via ResizeObserver ────────────────────────────────
   useEffect(() => {
@@ -308,14 +320,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   return (
     <div
       ref={sidebarRef}
-      style={isNewChat
+      style={isNewChatOverlayHidden
         ? { width: 0 }
         : isOverlayMode
           ? { width: ICON_STRIP_WIDTH, maxWidth: ICON_STRIP_WIDTH }
           : { width: desktopWidth, maxWidth: effectiveMaxWidth }}
       className={`
         z-20 flex flex-row shrink-0 min-h-0 h-full overflow-visible
-        ${isNewChat ? 'pointer-events-none' : `bg-white dark:bg-zinc-900 ${!isOverlayMode || isOpen ? 'border-l-3 border-brutal-black' : ''}`}
+        ${isNewChatOverlayHidden ? 'pointer-events-none' : `bg-white dark:bg-zinc-900 ${!isOverlayMode || isOpen ? 'border-l-3 border-brutal-black' : ''}`}
         relative
       `}
     >
@@ -373,6 +385,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   projectTaskCount={kanban?.tasks.length}
                 />
               </div>
+              <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'tools' ? 'flex' : 'hidden'}`}>
+                <ToolsPanel />
+              </div>
             </div>
           </div>
         </div>
@@ -423,6 +438,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   onOpenBoard={onProjectBoardChange ? () => onProjectBoardChange(true) : undefined}
                   projectTaskCount={kanban?.tasks.length}
                 />
+              </div>
+              <div className={`flex-1 h-full flex flex-col min-h-0 ${activeTab === 'tools' ? 'flex' : 'hidden'}`}>
+                <ToolsPanel />
               </div>
             </div>
           </div>

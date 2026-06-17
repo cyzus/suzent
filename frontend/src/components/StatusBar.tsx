@@ -7,6 +7,7 @@ import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
 import { useContextUsageStore, type ContextUsage } from '../hooks/useContextUsageStore';
 import { useCompact } from '../hooks/useCompact';
 import { useDreamStatus } from '../hooks/useDreamStatus';
+import { enableHeartbeat, disableHeartbeat } from '../lib/api';
 
 const getStatusStyles = (type: StatusType) => {
   switch (type) {
@@ -54,12 +55,31 @@ function formatRelativeTime(iso: string | null): string | null {
 }
 
 function HeartbeatWidget() {
-  const { currentChatId, config } = useChatCoreStore();
+  const { currentChatId, config, setConfig } = useChatCoreStore();
   const { t } = useI18n();
   const { inFlight, inFlightChatId, loopRunning, lastPingAt, statusError } = useHeartbeatRunning();
+  const [toggling, setToggling] = useState(false);
 
   const enabled = !!(currentChatId && config?.heartbeat_enabled);
   const inFlightForChat = enabled && inFlight && inFlightChatId === currentChatId;
+
+  const handleToggle = async () => {
+    if (!currentChatId || toggling) return;
+    const newEnabled = !enabled;
+    setToggling(true);
+    setConfig(prev => ({ ...prev, heartbeat_enabled: newEnabled }));
+    try {
+      if (newEnabled) {
+        await enableHeartbeat(currentChatId);
+      } else {
+        await disableHeartbeat(currentChatId);
+      }
+    } catch {
+      setConfig(prev => ({ ...prev, heartbeat_enabled: !newEnabled }));
+    } finally {
+      setToggling(false);
+    }
+  };
 
   const lastPingMs = lastPingAt ? new Date(lastPingAt).getTime() : 0;
   const fresh = enabled && lastPingMs > 0 && (Date.now() - lastPingMs) <= HEARTBEAT_HEALTHY_WINDOW_MS;
@@ -96,7 +116,14 @@ function HeartbeatWidget() {
     : "M 0 25 L 100 25";
 
   return (
-    <div className={`flex items-center gap-1 flex-shrink-0 ml-3 ${!enabled ? 'opacity-40' : ''}`} title={loopRunning ? undefined : 'Heartbeat loop stopped'}>
+    <button
+      type="button"
+      onClick={handleToggle}
+      disabled={!currentChatId || toggling}
+      className={`flex items-center gap-1 flex-shrink-0 ml-3 transition-opacity hover:opacity-80 disabled:cursor-default ${!enabled ? 'opacity-40' : ''}`}
+      title={enabled ? 'Click to disable heartbeat' : 'Click to enable heartbeat'}
+      aria-pressed={enabled}
+    >
       <svg
         className={`w-3 h-3 flex-shrink-0 ${heartClass}`}
         viewBox="0 0 24 24"
@@ -118,7 +145,7 @@ function HeartbeatWidget() {
         </svg>
       </div>
       <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">{text}</span>
-    </div>
+    </button>
   );
 }
 

@@ -3,13 +3,8 @@ import { useI18n } from '../../i18n';
 import { detectDesktopPlatform } from '../../lib/titleBarPlatform';
 import { SuzentLogo } from '../SuzentLogo';
 
-type SidebarTab = 'chats' | 'config';
-
 interface SidebarProps {
-  activeTab: SidebarTab;
-  onTabChange: (tab: SidebarTab) => void;
   chatsContent: React.ReactNode;
-  configContent: React.ReactNode;
   isOpen?: boolean;
   onOpenSettings: () => void;
   onClose?: () => void;
@@ -17,18 +12,12 @@ interface SidebarProps {
 }
 
 export function Sidebar({
-  activeTab,
-  onTabChange,
   chatsContent,
-  configContent,
   isOpen = false,
   onOpenSettings,
   onClose,
   titlebarControls
 }: SidebarProps): React.ReactElement {
-  const TABS: SidebarTab[] = ['chats', 'config'];
-  const [animateContent, setAnimateContent] = useState(false);
-  const [mountedTabs, setMountedTabs] = useState<Set<SidebarTab>>(() => new Set(['chats']));
   const { t } = useI18n();
   const desktopPlatform = React.useMemo(
     () => detectDesktopPlatform(navigator.userAgent, navigator.platform),
@@ -37,84 +26,12 @@ export function Sidebar({
   const canDragWindowFromSidebar = !!window.__TAURI__ && (desktopPlatform === 'windows' || desktopPlatform === 'macos');
   const appWindow = window.__TAURI__?.window.getCurrentWindow();
 
-  const TAB_LABELS: Record<SidebarTab, string> = {
-    chats: t('sidebar.tabs.chats'),
-    config: t('sidebar.tabs.config')
-  };
-
-  useEffect(() => {
-    setAnimateContent(true);
-    const timeout = window.setTimeout(() => setAnimateContent(false), 200);
-    return () => window.clearTimeout(timeout);
-  }, [activeTab]);
-
-  useEffect(() => {
-    setMountedTabs(prev => {
-      if (prev.has(activeTab)) return prev;
-      const next = new Set(prev);
-      next.add(activeTab);
-      return next;
-    });
-  }, [activeTab]);
-
   function handleSidebarHeaderMouseDown(event: React.MouseEvent<HTMLElement>): void {
-    if (!canDragWindowFromSidebar) {
-      return;
-    }
-
+    if (!canDragWindowFromSidebar) return;
     const target = event.target as HTMLElement;
     const interactiveSelector = 'button, a, input, textarea, select, [role="button"]';
-    if (target.closest(interactiveSelector)) {
-      return;
-    }
-
-    appWindow?.startDragging().catch(() => {
-      // No-op: dragging is best-effort for custom titlebars.
-    });
-  }
-
-  function focusTab(tab: SidebarTab): void {
-    const id = `left-sidebar-tab-${tab}`;
-    const el = document.getElementById(id);
-    if (el instanceof HTMLButtonElement) {
-      el.focus();
-    }
-  }
-
-  function handleTabKeyDown(currentTab: SidebarTab, event: React.KeyboardEvent<HTMLButtonElement>): void {
-    const currentIndex = TABS.indexOf(currentTab);
-    if (currentIndex === -1) return;
-
-    if (event.key === 'ArrowRight') {
-      event.preventDefault();
-      const next = TABS[(currentIndex + 1) % TABS.length];
-      onTabChange(next);
-      focusTab(next);
-      return;
-    }
-
-    if (event.key === 'ArrowLeft') {
-      event.preventDefault();
-      const prev = TABS[(currentIndex - 1 + TABS.length) % TABS.length];
-      onTabChange(prev);
-      focusTab(prev);
-      return;
-    }
-
-    if (event.key === 'Home') {
-      event.preventDefault();
-      const first = TABS[0];
-      onTabChange(first);
-      focusTab(first);
-      return;
-    }
-
-    if (event.key === 'End') {
-      event.preventDefault();
-      const last = TABS[TABS.length - 1];
-      onTabChange(last);
-      focusTab(last);
-    }
+    if (target.closest(interactiveSelector)) return;
+    appWindow?.startDragging().catch(() => {});
   }
 
   return (
@@ -159,49 +76,10 @@ export function Sidebar({
           {/* Logo (Static) */}
           <SuzentLogo className="h-7 w-7" interactive />
         </div>
-        <nav className="flex border-b-3 border-brutal-black" role="tablist" aria-label={t('sidebar.tabs.config')}>
-          {TABS.map(tab => {
-            const active = activeTab === tab;
-            return (
-              <button
-                key={tab}
-                id={`left-sidebar-tab-${tab}`}
-                onClick={() => onTabChange(tab)}
-                onKeyDown={e => handleTabKeyDown(tab, e)}
-                role="tab"
-                aria-selected={active}
-                aria-controls={`left-sidebar-panel-${tab}`}
-                tabIndex={active ? 0 : -1}
-                className={`flex-1 py-2 text-xs font-bold uppercase relative transition-colors duration-200 ${active
-                  ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black'
-                  : 'bg-white dark:bg-zinc-800 text-brutal-black dark:text-white hover:bg-brutal-yellow dark:hover:bg-zinc-700 border-r-3 border-brutal-black last:border-r-0'}`}
-              >
-                {TAB_LABELS[tab]}
-              </button>
-            );
-          })}
-        </nav>
-        <div
-          className={`flex-1 flex flex-col overflow-hidden relative min-h-0 ${animateContent ? 'animate-brutal-drop' : ''
-            }`}
-        >
-          <div
-            id="left-sidebar-panel-chats"
-            role="tabpanel"
-            aria-labelledby="left-sidebar-tab-chats"
-            className={activeTab === 'chats' ? 'h-full min-h-0 flex flex-col' : 'hidden'}
-            aria-hidden={activeTab !== 'chats'}
-          >
-            {mountedTabs.has('chats') ? chatsContent : null}
-          </div>
-          <div
-            id="left-sidebar-panel-config"
-            role="tabpanel"
-            aria-labelledby="left-sidebar-tab-config"
-            className={`${activeTab === 'config' ? '' : 'hidden'} h-full overflow-y-auto scrollbar-thin p-4 space-y-4 min-h-0`}
-            aria-hidden={activeTab !== 'config'}
-          >
-            {mountedTabs.has('config') ? configContent : null}
+
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+          <div className="h-full min-h-0 flex flex-col">
+            {chatsContent}
           </div>
         </div>
 

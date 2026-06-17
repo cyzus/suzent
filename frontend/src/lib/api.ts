@@ -260,6 +260,7 @@ export async function saveUserPreferences(preferences: {
   agent?: string;
   tools?: string[];
   memory_enabled?: boolean;
+  sandbox_enabled?: boolean;
   embedding_model?: string;
   extraction_model?: string;
   EXTRACTION_MODEL?: string;

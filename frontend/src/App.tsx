@@ -11,7 +11,6 @@ import { SuzentLogo } from './components/SuzentLogo';
 import { RobotShowcase } from './components/chat/RobotShowcase';
 import { MemoryView } from './components/memory/MemoryView';
 import { SettingsModal } from './components/settings/SettingsModal';
-import { ConfigView } from './components/sidebar/ConfigView';
 import { BrutalSegmentedTabs } from './components/BrutalSegmentedTabs';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { SkillsView } from './components/skills/SkillsView';
@@ -173,18 +172,18 @@ function HeaderTitle({ text, onUnlock }: HeaderTitleProps): React.ReactElement {
 
   return (
     <div
-      className="flex items-center gap-3 cursor-pointer select-none"
+      className="flex min-w-0 items-center gap-2 md:gap-3 cursor-pointer select-none"
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       role="button"
       tabIndex={0}
       aria-label={text || backendConfig?.title || 'SUZENT'}
     >
-      <div className="w-3 h-3 bg-brutal-black dark:bg-brutal-yellow"></div>
-      <h1 className="font-brutal text-3xl text-brutal-black dark:text-white tracking-tighter uppercase leading-none">
+      <div className="w-3 h-3 shrink-0 bg-brutal-black dark:bg-brutal-yellow"></div>
+      <h1 className="min-w-0 truncate whitespace-nowrap font-brutal text-2xl md:text-3xl text-brutal-black dark:text-white uppercase leading-none">
         {text || backendConfig?.title || 'SUZENT'}
       </h1>
-      <div className="w-3 h-3 bg-brutal-black dark:bg-brutal-yellow"></div>
+      <div className="hidden h-3 w-3 shrink-0 bg-brutal-black dark:bg-brutal-yellow sm:block"></div>
     </div>
   );
 }
@@ -299,11 +298,10 @@ function UpdateButton(): React.ReactElement | null {
 }
 
 function AppInner(): React.ReactElement {
-  const [sidebarTab, setSidebarTab] = useState<'chats' | 'config'>('chats');
   const [mainView, setMainView] = useState<MainView>('chat');
   const [memoryInitialTab, setMemoryInitialTab] = useState<'overview' | 'dreaming' | 'daily-logs' | 'transcripts' | undefined>(undefined);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settingsInitialCategory, setSettingsInitialCategory] = useState<'providers' | 'roles' | 'memory' | 'social' | 'mcp' | 'automation' | 'data' | 'usage' | 'appearance'>('providers');
+  const [settingsInitialCategory, setSettingsInitialCategory] = useState<'providers' | 'roles' | 'memory' | 'security' | 'social' | 'mcp' | 'automation' | 'data' | 'usage' | 'appearance'>('providers');
   const openSettings = (category: typeof settingsInitialCategory = 'providers') => {
     setSettingsInitialCategory(category);
     setIsSettingsOpen(true);
@@ -496,28 +494,12 @@ function AppInner(): React.ReactElement {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  function getTitle(): string | undefined {
-    switch (mainView) {
-      case 'memory':
-        return t('views.memorySystem');
-      case 'skills':
-        return t('views.skillsLibrary');
-      case 'emotes':
-        return t('views.robotGallery');
-      default:
-        return undefined;
-    }
-  }
-
   return (
     <div className="h-full w-full bg-neutral-50 dark:bg-zinc-900 text-brutal-black dark:text-white font-sans">
       <TitleBar />
       <div className={`flex h-full relative ${showStandaloneTitleBar ? 'pt-8' : ''}`}>
         <Sidebar
-          activeTab={sidebarTab}
-          onTabChange={setSidebarTab}
           chatsContent={<ChatList />}
-          configContent={<ConfigView isActive={sidebarTab === 'config' && isLeftSidebarOpen} />}
           isOpen={isLeftSidebarOpen}
           onOpenSettings={() => openSettings()}
           onClose={() => setIsLeftSidebarOpen(false)}
@@ -532,7 +514,7 @@ function AppInner(): React.ReactElement {
             className="relative border-b-3 border-brutal-black px-4 md:px-6 flex items-center justify-between bg-brutal-white dark:bg-zinc-800 flex-shrink-0 h-12"
             onMouseDown={handleHeaderMouseDown}
           >
-            <div className="flex items-center gap-2 md:gap-0">
+            <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-0">
               {showMacWindowControls && !isLeftSidebarOpen ? (
                 <MacTrafficLights isMaximized={isWindowMaximized} onMaximize={toggleWindowMaximize} />
               ) : null}
@@ -557,10 +539,10 @@ function AppInner(): React.ReactElement {
                   </div>
                 </div>
               )}
-              <HeaderTitle text={getTitle()} onUnlock={() => setMainView('emotes')} />
+              <HeaderTitle text="SUZENT" onUnlock={() => setMainView('emotes')} />
             </div>
 
-            <div className={`flex items-center gap-3 ${showWindowsWindowControls ? 'pr-[108px]' : ''}`}>
+            <div className={`flex shrink-0 items-center gap-3 ${showWindowsWindowControls ? 'pr-[108px]' : ''}`}>
               <NavTabs mainView={mainView} setMainView={(v) => { setMemoryInitialTab(undefined); setMainView(v); }} />
               <UpdateButton />
 
