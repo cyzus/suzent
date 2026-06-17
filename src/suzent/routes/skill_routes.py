@@ -18,6 +18,7 @@ async def get_skills(request):
         {
             "name": skill.metadata.name,
             "description": skill.metadata.description,
+            "body": skill.body,
             "path": skill.virtual_path
             or PathResolver.get_skill_virtual_path(skill.metadata.name),
             "source": skill.source,

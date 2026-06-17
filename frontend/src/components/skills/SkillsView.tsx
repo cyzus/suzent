@@ -1,15 +1,31 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useSkills } from '../../hooks/useSkills';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 import { useI18n } from '../../i18n';
+import { Skill } from '../../types/skills';
 
 export const SkillsView: React.FC = () => {
     const { skills, loading, error, loadSkills, reload, toggle } = useSkills();
+    const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
     const { t } = useI18n();
 
     useEffect(() => {
         loadSkills();
     }, []);
+
+    useEffect(() => {
+        if (!selectedSkill) return;
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setSelectedSkill(null);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedSkill]);
 
     if (loading && skills.length === 0) {
         return (
@@ -58,11 +74,27 @@ export const SkillsView: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {skills.map(skill => (
-                    <div key={skill.name} className={`bg-white dark:bg-zinc-800 border-3 border-brutal-black p-5 shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] transition-all ${!skill.enabled ? 'opacity-75' : ''}`}>
+                    <div
+                        key={skill.name}
+                        role="button"
+                        tabIndex={0}
+                        title={t('skills.openSkill')}
+                        onClick={() => setSelectedSkill(skill)}
+                        onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                setSelectedSkill(skill);
+                            }
+                        }}
+                        className={`bg-white dark:bg-zinc-800 border-3 border-brutal-black p-5 shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer hover:-translate-y-0.5 hover:shadow-[7px_7px_0px_0px_rgba(0,0,0,1)] focus:outline-none focus:ring-4 focus:ring-brutal-yellow ${!skill.enabled ? 'opacity-75' : ''}`}
+                    >
                         <div className="flex justify-between items-start mb-2">
                             <h3 className="font-brutal text-xl uppercase break-all">{skill.name}</h3>
                             <button
-                                onClick={() => toggle(skill.name)}
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    toggle(skill.name);
+                                }}
                                 className={`w-12 h-6 flex items-center border-2 border-brutal-black p-0.5 transition-colors ${skill.enabled ? 'bg-brutal-black justify-end' : 'bg-white dark:bg-zinc-700 justify-start'}`}
                                 title={skill.enabled ? t('skills.disableSkill') : t('skills.enableSkill')}
                             >
@@ -86,6 +118,53 @@ export const SkillsView: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            {selectedSkill && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="skill-detail-title"
+                    onClick={() => setSelectedSkill(null)}
+                >
+                    <div
+                        className="w-full max-w-5xl max-h-[88vh] overflow-hidden bg-white dark:bg-zinc-900 border-3 border-brutal-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="flex items-start justify-between gap-4 border-b-3 border-brutal-black p-4 bg-white dark:bg-zinc-800">
+                            <div className="min-w-0">
+                                <h3 id="skill-detail-title" className="font-brutal text-2xl uppercase break-words">
+                                    {selectedSkill.name}
+                                </h3>
+                                <p className="mt-2 font-mono text-xs text-neutral-500 dark:text-neutral-400 break-all">
+                                    {selectedSkill.path}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedSkill(null)}
+                                title={t('skills.closeSkill')}
+                                aria-label={t('skills.closeSkill')}
+                                className="shrink-0 p-2 border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-700 brutal-btn transition-all"
+                            >
+                                <XMarkIcon className="h-5 w-5 stroke-[3]" />
+                            </button>
+                        </div>
+                        <div className="overflow-y-auto p-5 md:p-7 scrollbar-thin">
+                            <div className="mb-5 border-b-2 border-neutral-200 dark:border-zinc-700 pb-4">
+                                <p className="font-mono text-xs uppercase text-neutral-500 dark:text-neutral-400 mb-2">
+                                    {t('skills.description')}
+                                </p>
+                                <MarkdownRenderer content={selectedSkill.description || ''} />
+                            </div>
+                            <p className="font-mono text-xs uppercase text-neutral-500 dark:text-neutral-400 mb-2">
+                                {t('skills.mainBody')}
+                            </p>
+                            <MarkdownRenderer content={selectedSkill.body || ''} />
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
