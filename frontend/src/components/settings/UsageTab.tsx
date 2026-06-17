@@ -301,8 +301,7 @@ export function UsageTab(): React.ReactElement {
             key={r}
             onClick={() => setRange(r)}
             className={[
-              'px-4 py-2 border-2 border-brutal-black font-bold uppercase text-xs transition-all',
-              'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none',
+              'px-4 py-2 border-2 border-brutal-black font-bold uppercase text-xs brutal-btn',
               range === r
                 ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black'
                 : 'bg-white dark:bg-zinc-700 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600',

@@ -20,6 +20,7 @@ import { ScheduleBuilder, describeCron } from './ScheduleBuilder';
 import { SettingsHeader } from './SettingsHeader';
 import { SettingsCard, SectionCardHeader, SettingsListItem, SettingsListAction } from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
+import { BrutalButton } from '../BrutalButton';
 
 interface AutomationTabProps {
   models: string[];
@@ -328,13 +329,14 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
             </label>
           </div>
 
-          <button
+          <BrutalButton
+            variant="success"
             onClick={handleCreate}
             disabled={loading || !name.trim() || !cronExpr.trim() || !prompt.trim()}
-            className="px-4 py-2 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-brutal-black hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
+            className="px-4 py-2 uppercase"
           >
             {loading ? t('settings.automation.creating') : t('settings.automation.addJob')}
-          </button>
+          </BrutalButton>
         </div>
       </SettingsCard>
 

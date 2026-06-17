@@ -491,7 +491,7 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
               <button
                 key={item.id}
                 onClick={() => setActiveCategory(item.id as CategoryType)}
-                className={`w-full text-left px-4 py-3 border-2 font-bold uppercase text-sm flex items-center gap-3 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none ${activeCategory === item.id
+                className={`w-full text-left px-4 py-3 border-2 font-bold uppercase text-sm flex items-center gap-3 brutal-btn ${activeCategory === item.id
                   ? 'bg-brutal-black text-white dark:bg-brutal-yellow dark:text-brutal-black border-brutal-black'
                   : 'bg-white dark:bg-zinc-700 text-brutal-black dark:text-white border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-600'
                   }`}
@@ -505,7 +505,7 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
           <div className="p-4 border-t-4 border-brutal-black bg-neutral-50 dark:bg-zinc-800">
             <button
               onClick={handleClose}
-              className="w-full px-4 py-3 bg-white dark:bg-zinc-700 border-2 border-brutal-black font-bold uppercase text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
+              className="w-full px-4 py-3 bg-white dark:bg-zinc-700 border-2 border-brutal-black font-bold uppercase text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 brutal-btn"
             >
               {t('common.close')}
             </button>

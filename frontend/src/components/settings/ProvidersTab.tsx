@@ -4,6 +4,7 @@ import { useI18n } from '../../i18n';
 import { ApiField, ApiProvider, CustomProviderPayload, fetchChatGPTStatus, logoutChatGPT, startChatGPTLogin, syncCapabilities, UserConfig } from '../../lib/api';
 import type { ChatGPTLoginResponse, ChatGPTStatusResponse } from '../../types/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
+import { BrutalButton } from '../BrutalButton';
 import { SettingsHeader } from './SettingsHeader';
 
 // Brand colors keyed by provider id (hex without #). Kept in the frontend only.
@@ -236,13 +237,14 @@ function AddProviderForm({ onSave, onCancel }: AddProviderFormProps) {
                 <button onClick={onCancel} className="px-4 py-2 text-xs font-black uppercase border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-700 dark:text-white">
                     {t('common.cancel')}
                 </button>
-                <button
+                <BrutalButton
+                    variant="dark"
                     onClick={handleSave}
                     disabled={saving}
-                    className="px-4 py-2 text-xs font-black uppercase bg-brutal-black text-white border-2 border-brutal-black hover:bg-zinc-800 disabled:opacity-50 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)] active:shadow-none"
+                    className="text-xs px-4 py-2 font-black uppercase"
                 >
                     {saving ? t('common.saving') : t('settings.providers.addForm.save')}
-                </button>
+                </BrutalButton>
             </div>
         </div>
     );
@@ -426,13 +428,14 @@ function ChatGPTProviderCard({
                         <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
                             {t('settings.providers.modelsTab')}
                         </p>
-                        <button
+                        <BrutalButton
+                            variant="primary"
                             onClick={() => onVerify(provider)}
                             disabled={verifying || !connected}
-                            className="text-xs bg-brutal-blue text-white px-3 py-1 font-black uppercase border-2 border-brutal-black hover:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none transition-all disabled:opacity-50"
+                            className="text-xs px-3 py-1 font-black uppercase"
                         >
                             {verifying ? t('settings.providers.fetching') : t('settings.providers.fetch')}
-                        </button>
+                        </BrutalButton>
                     </div>
                     <BrutalMultiSelect
                         variant="list"
@@ -733,13 +736,14 @@ export function ProvidersTab({
                                                 />
                                                 <button className="bg-brutal-black text-white w-10 font-bold border-2 border-brutal-black hover:bg-neutral-800 flex items-center justify-center text-lg">+</button>
                                             </div>
-                                            <button
+                                            <BrutalButton
+                                                variant="primary"
                                                 onClick={() => onVerify(provider)}
                                                 disabled={verifying[provider.id]}
-                                                className="text-xs bg-brutal-blue text-white px-4 py-2 font-black uppercase border-2 border-brutal-black hover:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none transition-all disabled:opacity-50 shrink-0"
+                                                className="text-xs px-4 py-2 font-black uppercase shrink-0"
                                             >
                                                 {verifying[provider.id] ? t('settings.providers.fetching') : t('settings.providers.fetch')}
-                                            </button>
+                                            </BrutalButton>
                                         </div>
 
                                         {/* Models List (Scrollable) */}

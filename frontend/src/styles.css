@@ -3,8 +3,18 @@
 @tailwind utilities;
 
 @layer components {
+  /* Canonical neo-brutalist press: the button settles into its own drop
+     shadow on click. Single source of truth for the press animation —
+     prefer this (or the BrutalButton component) over hand-written
+     active:translate/​shadow utilities. */
   .brutal-btn {
-    @apply hover:-translate-y-[1px] hover:shadow-[4px_4px_0_0_#000] active:translate-y-[2px] active:shadow-none transition-all;
+    @apply shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-[1px] active:translate-y-[1px] transition-all;
+  }
+
+  /* Variant that also lifts on hover (deeper shadow). Use for large
+     standalone surfaces/links where the hover affordance matters. */
+  .brutal-btn-lift {
+    @apply shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-[1px] hover:shadow-[4px_4px_0_0_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all;
   }
 
   /* Skips paint/composite for off-screen message rows, preventing GPU layer exhaustion on long histories. */

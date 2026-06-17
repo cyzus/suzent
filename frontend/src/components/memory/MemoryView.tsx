@@ -114,7 +114,7 @@ export const MemoryView: React.FC<{ initialTab?: MemoryTab }> = ({ initialTab })
                 </div>
                 <button
                   onClick={() => setShowCoreMemory(!showCoreMemory)}
-                  className="px-2 py-1 border-2 border-brutal-black dark:border-white bg-brutal-black text-white hover:bg-neutral-100 hover:text-brutal-black dark:bg-zinc-700 dark:hover:bg-zinc-600 font-bold text-xs uppercase transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+                  className="px-2 py-1 border-2 border-brutal-black dark:border-white bg-brutal-black text-white hover:bg-neutral-100 hover:text-brutal-black dark:bg-zinc-700 dark:hover:bg-zinc-600 font-bold text-xs uppercase brutal-btn"
                 >
                   {showCoreMemory ? '\u2212' : '+'}
                 </button>

@@ -68,7 +68,7 @@ function ModelDropdown({ options, onSelect }: ModelDropdownProps) {
       <button
         type="button"
         onClick={handleOpen}
-        className="w-full flex items-center justify-between gap-2 px-3 py-1.5 border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white font-bold uppercase text-xs hover:bg-brutal-yellow/20 dark:hover:bg-brutal-yellow/10 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-[1px] active:translate-y-[1px] transition-all"
+        className="w-full flex items-center justify-between gap-2 px-3 py-1.5 border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white font-bold uppercase text-xs hover:bg-brutal-yellow/20 dark:hover:bg-brutal-yellow/10 brutal-btn"
       >
         <span>{t('settings.roles.addFromAvailable')}</span>
         <span className="text-[10px] opacity-60">▼</span>

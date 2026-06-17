@@ -5,6 +5,7 @@ import { useI18n } from '../../i18n';
 import { SettingsHeader } from './SettingsHeader';
 import { SettingsCard, SectionCardHeader } from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
+import { BrutalButton } from '../BrutalButton';
 
 interface MemoryTabProps {
     globalNotebookHostPath: string;
@@ -97,13 +98,14 @@ export function MemoryTab({
                     </div>
 
                     <div className="flex gap-2">
-                        <button
+                        <BrutalButton
                             type="button"
+                            variant="success"
                             onClick={pickDirectory}
-                            className="px-4 py-2 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:brightness-110 transition-colors"
+                            className="px-4 py-2 text-xs uppercase"
                         >
                             {t('settings.sandbox.chooseFolder')}
-                        </button>
+                        </BrutalButton>
                     </div>
 
                     <div className="text-xs text-neutral-600 dark:text-neutral-400">

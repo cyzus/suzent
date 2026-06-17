@@ -20,6 +20,7 @@ import {
 } from '../../lib/dataApi';
 import { ShibbolethPanel } from './ShibbolethPanel';
 import { SettingsCard, SectionCardHeader } from './SettingsCard';
+import { BrutalButton } from '../BrutalButton';
 
 type NotificationHandler = (text: string, isError: boolean) => void;
 
@@ -414,7 +415,7 @@ export function GitHubSyncSection({
           <button
             type="button"
             onClick={() => void openExternal(deviceUrl)}
-            className="w-full px-4 py-2 border-2 border-brutal-black font-bold uppercase text-xs bg-white dark:bg-zinc-700 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:brightness-110 text-left flex items-center justify-between"
+            className="w-full px-4 py-2 border-2 border-brutal-black font-bold uppercase text-xs bg-white dark:bg-zinc-700 hover:brightness-110 text-left flex items-center justify-between brutal-btn"
           >
             <span className="font-mono text-[11px] truncate">{deviceUrl}</span>
             <span className="ml-2 shrink-0">↗</span>
@@ -459,7 +460,7 @@ export function GitHubSyncSection({
           <button
             type="button"
             onClick={() => void openExternal(installUrl)}
-            className="inline-block px-4 py-2 bg-brutal-black border-2 border-brutal-black font-bold uppercase text-xs text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:brightness-110"
+            className="inline-block px-4 py-2 bg-brutal-black border-2 border-brutal-black font-bold uppercase text-xs text-white hover:brightness-110 brutal-btn"
           >
             Install Suzent on GitHub →
           </button>

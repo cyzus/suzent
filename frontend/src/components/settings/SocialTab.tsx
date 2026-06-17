@@ -212,7 +212,7 @@ export function SocialTab({
                                 <button
                                     onClick={refreshPairings}
                                     disabled={pairingLoading}
-                                    className="px-3 py-2 text-xs font-bold uppercase border-2 border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 disabled:opacity-50 shadow-brutal-sm active:shadow-none active:translate-x-[1px] active:translate-y-[1px] transition-all"
+                                    className="px-3 py-2 text-xs font-bold uppercase border-2 border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 disabled:opacity-50 brutal-btn"
                                 >
                                     {pairingLoading ? '…' : t('common.refresh')}
                                 </button>

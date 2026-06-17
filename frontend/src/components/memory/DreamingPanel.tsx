@@ -11,6 +11,7 @@ import React from 'react';
 import { useDreamStatus } from '../../hooks/useDreamStatus';
 import { useI18n } from '../../i18n';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
+import { BrutalButton } from '../BrutalButton';
 import type { DreamRunResult } from '../../types/memory';
 
 type StatAccent = 'green' | 'amber' | 'neutral';
@@ -78,14 +79,15 @@ function LastResultBox({
                     <div className="min-w-0">
                         <div className="text-sm font-black uppercase tracking-wide leading-tight truncate">{title}</div>
                     </div>
-                    <button
+                    <BrutalButton
                         type="button"
+                        variant="success"
                         onClick={onRun}
                         disabled={disabled}
-                        className="px-3 py-2 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-[11px] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap shrink-0"
+                        className="px-3 py-2 text-[11px] uppercase whitespace-nowrap shrink-0 disabled:opacity-40"
                     >
                         {busy ? actionBusyLabel : actionLabel}
-                    </button>
+                    </BrutalButton>
                 </div>
                 {children && (
                     <div className="mt-3">
@@ -189,7 +191,7 @@ export function DreamingPanel(): React.ReactElement {
                         type="button"
                         onClick={() => void refreshDreamStatus()}
                         title={t('common.refresh')}
-                        className="p-2 bg-white dark:bg-zinc-700 border-2 border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-neutral-100 dark:hover:bg-zinc-600 transition-colors"
+                        className="p-2 bg-white dark:bg-zinc-700 border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-600 brutal-btn"
                     >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />

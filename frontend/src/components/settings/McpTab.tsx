@@ -6,6 +6,7 @@ import { BrutalSelect } from '../BrutalSelect';
 import { SettingsHeader } from './SettingsHeader';
 import { SectionCardHeader, SettingsCard, SettingsListItem, SettingsListAction } from './SettingsCard';
 import { BrutalOnOff } from '../BrutalOnOff';
+import { BrutalButton } from '../BrutalButton';
 
 type MCPUrlServer = {
     type: 'url';
@@ -264,13 +265,14 @@ export function McpTab({
                         </div>
                     )}
 
-                    <button
+                    <BrutalButton
+                        variant="success"
                         onClick={handleAddServer}
                         disabled={loading || (addType === 'url' ? !srvUrl.trim() : !stdioCmd.trim())}
-                        className="px-4 py-2 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-brutal-black hover:brightness-110 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50"
+                        className="px-4 py-2 uppercase"
                     >
                         {loading ? t('settings.mcp.adding') : t('settings.mcp.addServer')}
-                    </button>
+                    </BrutalButton>
                 </div>
             </SettingsCard>
 

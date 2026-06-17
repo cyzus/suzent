@@ -8,6 +8,7 @@ import {
   registerDeviceMnemonic,
   rotateMnemonic,
 } from '../../lib/dataApi';
+import { BrutalButton } from '../BrutalButton';
 
 type NotificationHandler = (text: string, isError: boolean) => void;
 
@@ -256,14 +257,15 @@ export function ShibbolethPanel({
           <p className="text-[11px] text-amber-700 dark:text-amber-400">
             Recovery words needed — keyring unavailable on this device.
           </p>
-          <button
+          <BrutalButton
             type="button"
+            variant="primary"
             disabled={busy}
             onClick={() => setMode('enter')}
-            className="px-3 py-1.5 bg-brutal-blue border-2 border-brutal-black font-bold uppercase text-xs text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50 shrink-0"
+            className="px-3 py-1.5 text-xs uppercase shrink-0"
           >
             Enter words
-          </button>
+          </BrutalButton>
         </div>
       )}
 
@@ -280,14 +282,15 @@ export function ShibbolethPanel({
             I have saved these words in a safe place
           </label>
           <div className="flex gap-2 flex-wrap">
-            <button
+            <BrutalButton
               type="button"
+              variant="success"
               disabled={busy || !confirmed}
               onClick={handleEnable}
-              className="px-3 py-1.5 bg-brutal-green border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50"
+              className="px-3 py-1.5 text-xs uppercase"
             >
               {t('settings.data.shibbolethEnable')}
-            </button>
+            </BrutalButton>
             <button type="button" disabled={busy} onClick={cancel} className="px-3 py-1.5 bg-white dark:bg-zinc-700 border-2 border-brutal-black font-bold uppercase text-xs">
               Cancel
             </button>
@@ -312,14 +315,15 @@ export function ShibbolethPanel({
           </p>
           <MnemonicInput value={inputPhrase} onChange={setInputPhrase} placeholder="Enter your 12 recovery words" />
           <div className="flex gap-2 flex-wrap">
-            <button
+            <BrutalButton
               type="button"
+              variant="primary"
               disabled={busy}
               onClick={handleEnterWords}
-              className="px-3 py-1.5 bg-brutal-blue border-2 border-brutal-black font-bold uppercase text-xs text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50"
+              className="px-3 py-1.5 text-xs uppercase"
             >
               Confirm
-            </button>
+            </BrutalButton>
             <button type="button" disabled={busy} onClick={cancel} className="px-3 py-1.5 bg-white dark:bg-zinc-700 border-2 border-brutal-black font-bold uppercase text-xs">
               Cancel
             </button>
@@ -346,14 +350,15 @@ export function ShibbolethPanel({
             I have saved the new words and understand other devices will need updating
           </label>
           <div className="flex gap-2">
-            <button
+            <BrutalButton
               type="button"
+              variant="warning"
               disabled={busy || !confirmed}
               onClick={handleRotate}
-              className="px-3 py-1.5 bg-brutal-yellow border-2 border-brutal-black font-bold uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50"
+              className="px-3 py-1.5 text-xs uppercase"
             >
               Rotate words
-            </button>
+            </BrutalButton>
             <button type="button" disabled={busy} onClick={cancel} className="px-3 py-1.5 bg-white dark:bg-zinc-700 border-2 border-brutal-black font-bold uppercase text-xs">
               Cancel
             </button>
