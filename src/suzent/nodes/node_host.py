@@ -10,6 +10,7 @@ Usage:
 import asyncio
 import json
 import logging
+import os
 import signal
 import sys
 import tempfile
@@ -28,6 +29,35 @@ DEFAULT_GATEWAY_URL = f"ws://{DEFAULT_HOST}:{DEFAULT_PORT}/ws/node"
 DEFAULT_DISPLAY_NAME = "Local PC"
 DEFAULT_PLATFORM = sys.platform
 RECONNECT_DELAY = 5  # seconds between reconnect attempts
+
+# agent.run drives a full agent turn, which can take minutes.
+AGENT_RUN_TIMEOUT = 600  # seconds
+
+# HTTP base URL of the local Suzent server, used by agent.run to reach /chat.
+# Set by NodeHost on construction; defaults to the standard local server.
+_SERVER_BASE_URL: str = f"http://{DEFAULT_HOST}:{DEFAULT_PORT}"
+
+
+def _derive_server_base(gateway_url: str) -> str:
+    """Turn a node gateway WS URL into the server's HTTP base URL.
+
+    ``ws://host:port/ws/node`` → ``http://host:port`` (and wss → https).
+    """
+    base = gateway_url
+    if base.startswith("wss://"):
+        base = "https://" + base[len("wss://") :]
+    elif base.startswith("ws://"):
+        base = "http://" + base[len("ws://") :]
+    # Strip the trailing /ws/node path.
+    for suffix in ("/ws/node", "/ws/node/"):
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+            break
+    return base.rstrip("/")
+
+
+class NodeAuthError(Exception):
+    """Raised when the server rejects the node's connection (do not retry)."""
 
 
 # ─── Capability handlers ─────────────────────────────────────────────
@@ -129,6 +159,99 @@ async def handle_camera_snap(params: dict[str, Any]) -> dict[str, Any]:
     return {"file": path, "format": fmt}
 
 
+@capability(
+    name="agent.run",
+    description=(
+        "Run a prompt through THIS device's own Suzent agent and return its "
+        "final reply. Lets a remote agent delegate work to this device's agent "
+        "(its own files, memory, tools)."
+    ),
+    params_schema={
+        "prompt": "(required) The task/prompt to run on this device's agent",
+        "chat_id": "(optional) Reuse an existing chat for continuity",
+    },
+)
+async def handle_agent_run(params: dict[str, Any]) -> dict[str, Any]:
+    """Drive a full agent turn via the local server's /chat SSE stream."""
+    import json as _json
+
+    import httpx
+
+    prompt = (params.get("prompt") or "").strip()
+    if not prompt:
+        return {"error": "No prompt provided"}
+
+    chat_id = params.get("chat_id")
+    payload: dict[str, Any] = {"message": prompt, "stream": True}
+    if chat_id:
+        payload["chat_id"] = chat_id
+
+    url = f"{_SERVER_BASE_URL}/chat"
+    output = ""
+    try:
+        async with httpx.AsyncClient(timeout=AGENT_RUN_TIMEOUT) as client:
+            async with client.stream("POST", url, json=payload) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data = line[len("data: ") :].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        event = _json.loads(data)
+                    except _json.JSONDecodeError:
+                        continue
+                    etype = event.get("type")
+                    if etype == "TEXT_MESSAGE_CONTENT":
+                        output += event.get("delta", "")
+                    elif etype == "RUN_ERROR":
+                        return {"error": event.get("message") or "Agent run failed"}
+    except httpx.HTTPError as e:
+        return {"error": f"Failed to reach local agent at {url}: {e}"}
+
+    return {"output": output, "chat_id": chat_id}
+
+
+# ─── Durable device-token persistence (node side) ────────────────────
+
+
+def _device_token_path():
+    from suzent.config import USER_CONFIG_DIR
+
+    return USER_CONFIG_DIR / "node_host_devices.json"
+
+
+def _load_device_token(gateway_url: str) -> str:
+    """Load this node's saved per-device token for a given gateway, if any."""
+    try:
+        path = _device_token_path()
+        if not path.exists():
+            return ""
+        with open(path) as f:
+            data = json.load(f)
+        return (data.get("tokens", {}) or {}).get(gateway_url, "")
+    except Exception as e:
+        logger.warning(f"Could not load device token: {e}")
+        return ""
+
+
+def _save_device_token(gateway_url: str, token: str) -> None:
+    """Persist a per-device token keyed by gateway URL."""
+    try:
+        path = _device_token_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {}
+        if path.exists():
+            with open(path) as f:
+                data = json.load(f)
+        data.setdefault("tokens", {})[gateway_url] = token
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        logger.warning(f"Could not persist device token: {e}")
+
+
 # ─── Node host core ──────────────────────────────────────────────────
 
 
@@ -141,6 +264,9 @@ class NodeHost:
         platform: Platform identifier (e.g., "win32", "darwin", "linux").
         capabilities: List of capability names to advertise. If None, all
             registered handlers are advertised.
+        auth_token: Shared secret for the server's "token" auth mode.
+        server_url: Override HTTP base URL for the local agent (agent.run).
+            Defaults to one derived from gateway_url.
     """
 
     def __init__(
@@ -149,12 +275,21 @@ class NodeHost:
         display_name: str = DEFAULT_DISPLAY_NAME,
         platform: str = DEFAULT_PLATFORM,
         capabilities: list[str] | None = None,
+        auth_token: str = "",
+        server_url: str | None = None,
     ):
+        global _SERVER_BASE_URL
         self.gateway_url = gateway_url
         self.display_name = display_name
         self.platform = platform
+        self.auth_token = auth_token
+        # Durable per-device token from a prior approval, presented on connect.
+        self.device_token = _load_device_token(gateway_url)
         self._stop = False
         self._node_id: str | None = None
+
+        # Point agent.run at the local server (override or derived from gateway).
+        _SERVER_BASE_URL = server_url or _derive_server_base(gateway_url)
 
         # Filter handlers to requested capabilities
         if capabilities:
@@ -184,6 +319,8 @@ class NodeHost:
             "display_name": self.display_name,
             "platform": self.platform,
             "capabilities": caps,
+            "auth_token": self.auth_token,
+            "device_token": self.device_token,
         }
 
     async def _handle_invoke(self, ws, data: dict[str, Any]) -> None:
@@ -237,14 +374,37 @@ class NodeHost:
         logger.info(f"🔌 Connecting to {self.gateway_url} ...")
 
         async with websockets.connect(self.gateway_url) as ws:
-            # Handshake
+            # Handshake — may receive a "pending" while awaiting operator
+            # approval (approve mode) before "connected" or "error".
             await ws.send(json.dumps(self._build_connect_message()))
-            resp = json.loads(await ws.recv())
 
-            if resp.get("type") == "error":
-                raise ConnectionError(f"Handshake rejected: {resp.get('error')}")
+            while True:
+                resp = json.loads(await ws.recv())
+                rtype = resp.get("type")
 
-            self._node_id = resp.get("node_id")
+                if rtype == "pending":
+                    code = resp.get("pairing_code", "")
+                    logger.info(
+                        f"⏳ Awaiting approval. Share this code with the operator: "
+                        f"{code}  (approve with: suzent node approve {code})"
+                    )
+                    continue  # keep waiting for connected/error
+
+                if rtype == "error":
+                    # Auth rejections are fatal — reconnecting would just spam.
+                    raise NodeAuthError(resp.get("message") or "Handshake rejected")
+
+                if rtype == "connected":
+                    self._node_id = resp.get("node_id")
+                    new_token = resp.get("device_token") or ""
+                    if new_token and new_token != self.device_token:
+                        self.device_token = new_token
+                        _save_device_token(self.gateway_url, new_token)
+                        logger.info("🔐 Device approved; saved durable token.")
+                    break
+
+                raise ConnectionError(f"Unexpected handshake message: {rtype}")
+
             cap_names = ", ".join(self._handlers.keys())
             logger.info(
                 f"✅ Connected as '{self.display_name}' "
@@ -271,6 +431,12 @@ class NodeHost:
         while not self._stop:
             try:
                 await self.run_once()
+            except NodeAuthError as e:
+                logger.error(
+                    f"⛔ Connection rejected by server: {e}. Not retrying. "
+                    f"Check node_auth_mode / token, or wait for operator approval."
+                )
+                break
             except (ConnectionError, OSError) as e:
                 if self._stop:
                     break
@@ -308,6 +474,18 @@ def main():
         default=None,
         help="Comma-separated capability filter (default: all)",
     )
+    parser.add_argument(
+        "--token",
+        default=os.environ.get("SUZENT_NODE_TOKEN", ""),
+        help="Shared secret for the server's 'token' auth mode "
+        "(or set SUZENT_NODE_TOKEN)",
+    )
+    parser.add_argument(
+        "--server-url",
+        default=None,
+        help="HTTP base URL of the local agent for agent.run "
+        "(default: derived from --url)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -321,6 +499,8 @@ def main():
         gateway_url=args.url,
         display_name=args.name,
         capabilities=caps,
+        auth_token=args.token,
+        server_url=args.server_url,
     )
 
     # Graceful shutdown on Ctrl+C

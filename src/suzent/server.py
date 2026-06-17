@@ -170,6 +170,13 @@ from suzent.routes.node_routes import (
     list_nodes,
     describe_node,
     invoke_node_command,
+    list_pending_nodes,
+    approve_pending_node,
+    deny_pending_node,
+    list_approved_devices,
+    revoke_device,
+    get_node_config,
+    save_node_config,
 )
 from suzent.routes.cron_routes import (
     list_cron_jobs,
@@ -882,6 +889,21 @@ app = Starlette(
         WebSocketRoute("/ws/browser", browser_websocket_endpoint),
         WebSocketRoute("/ws/node", node_websocket_endpoint),
         Route("/nodes", list_nodes, methods=["GET"]),
+        # Specific paths must precede /nodes/{node_id} so they aren't captured
+        # as a node_id by the parametrized describe route.
+        Route("/nodes/config", get_node_config, methods=["GET"]),
+        Route("/nodes/config", save_node_config, methods=["POST"]),
+        Route("/nodes/pending", list_pending_nodes, methods=["GET"]),
+        Route(
+            "/nodes/pending/{pairing_code}/approve",
+            approve_pending_node,
+            methods=["POST"],
+        ),
+        Route(
+            "/nodes/pending/{pairing_code}/deny", deny_pending_node, methods=["POST"]
+        ),
+        Route("/nodes/devices", list_approved_devices, methods=["GET"]),
+        Route("/nodes/devices/{device_id}/revoke", revoke_device, methods=["POST"]),
         Route("/nodes/{node_id}", describe_node, methods=["GET"]),
         Route("/nodes/{node_id}/invoke", invoke_node_command, methods=["POST"]),
         Route("/cron/jobs", list_cron_jobs, methods=["GET"]),

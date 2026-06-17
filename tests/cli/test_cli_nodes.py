@@ -162,8 +162,9 @@ class TestNodesSubcommand:
     def test_nodes_invoke_key_value(self, mock_get_client):
         captured = {}
 
-        async def fake_invoke(node_id, capability, params=None):
+        async def fake_invoke(node_id, capability, params=None, timeout=None):
             captured["params"] = params
+            captured["timeout"] = timeout
             return {"success": True, "result": "ok"}
 
         client = MagicMock()

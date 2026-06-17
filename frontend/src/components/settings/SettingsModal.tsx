@@ -10,6 +10,7 @@ import { MemoryTab } from './MemoryTab';
 import { ModelRolesTab } from './ModelRolesTab';
 import { ProvidersTab } from './ProvidersTab';
 import { SocialTab } from './SocialTab';
+import { DevicesTab } from './DevicesTab';
 import { UsageTab } from './UsageTab';
 import { SecurityTab } from './SecurityTab';
 import { useI18n, type Locale } from '../../i18n';
@@ -41,7 +42,7 @@ interface SettingsModalProps {
 }
 
 type ProviderTab = 'credentials' | 'models';
-type CategoryType = 'providers' | 'roles' | 'memory' | 'security' | 'social' | 'mcp' | 'automation' | 'data' | 'usage' | 'appearance';
+type CategoryType = 'providers' | 'roles' | 'memory' | 'security' | 'social' | 'devices' | 'mcp' | 'automation' | 'data' | 'usage' | 'appearance';
 
 export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }: SettingsModalProps): React.ReactElement | null {
   const { refreshBackendConfig, backendConfig } = useChatStore();
@@ -425,6 +426,13 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
       )
     },
     {
+      id: 'devices', label: t('settings.categories.devices'), icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+      )
+    },
+    {
       id: 'mcp', label: t('settings.categories.mcp'), icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
@@ -602,6 +610,10 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
                       onUseCustomToolsChange={setUseCustomTools}
                       onUseCustomMcpChange={setUseCustomMcp}
                     />
+                  )}
+
+                  {activeCategory === 'devices' && (
+                    <DevicesTab />
                   )}
 
                   {activeCategory === 'mcp' && (

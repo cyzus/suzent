@@ -21,7 +21,8 @@ class MockNode(NodeBase):
         super().__init__(node_id, display_name, platform, capabilities)
         self._invoke_result = {"success": True, "result": "mock_result"}
 
-    async def invoke(self, command, params=None):
+    async def invoke(self, command, params=None, timeout=None):
+        self.last_timeout = timeout
         return self._invoke_result
 
     async def heartbeat(self):

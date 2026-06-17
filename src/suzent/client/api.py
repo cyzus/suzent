@@ -14,12 +14,31 @@ class NodesAPI:
         return await self.client.get(f"/nodes/{node_id}")
 
     async def invoke(
-        self, node_id: str, command: str, params: dict | None = None
+        self,
+        node_id: str,
+        command: str,
+        params: dict | None = None,
+        timeout: float | None = None,
     ) -> dict:
-        return await self.client.post(
-            f"/nodes/{node_id}/invoke",
-            json={"command": command, "params": params or {}},
-        )
+        body: dict = {"command": command, "params": params or {}}
+        if timeout is not None:
+            body["timeout"] = timeout
+        return await self.client.post(f"/nodes/{node_id}/invoke", json=body)
+
+    async def pending(self) -> dict:
+        return await self.client.get("/nodes/pending")
+
+    async def approve(self, pairing_code: str) -> dict:
+        return await self.client.post(f"/nodes/pending/{pairing_code}/approve")
+
+    async def deny(self, pairing_code: str) -> dict:
+        return await self.client.post(f"/nodes/pending/{pairing_code}/deny")
+
+    async def devices(self) -> dict:
+        return await self.client.get("/nodes/devices")
+
+    async def revoke(self, device_id: str) -> dict:
+        return await self.client.post(f"/nodes/devices/{device_id}/revoke")
 
 
 class CronAPI:

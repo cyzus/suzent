@@ -1,0 +1,304 @@
+import React, { useCallback, useEffect, useState } from 'react';
+
+import {
+  fetchNodes,
+  fetchPendingNodes,
+  fetchApprovedDevices,
+  fetchNodeConfig,
+  saveNodeConfig,
+  approvePendingNode,
+  denyPendingNode,
+  revokeDevice,
+  type ConnectedNode,
+  type PendingNode,
+  type ApprovedDevice,
+  type NodeAuthConfig,
+} from '../../lib/api';
+import { BrutalSelect } from '../BrutalSelect';
+import { BrutalButton } from '../BrutalButton';
+import { SettingsHeader } from './SettingsHeader';
+import { SectionCardHeader, SettingsCard, SettingsListItem, SettingsListAction } from './SettingsCard';
+
+const POLL_MS = 4000;
+const AGENT_CAPABILITY = 'agent.run';
+
+function capNames(caps: { name: string }[]): string {
+  return caps.length ? caps.map((c) => c.name).join(', ') : 'none';
+}
+
+function isAgent(node: { capabilities: { name: string }[] }): boolean {
+  return node.capabilities.some((c) => c.name === AGENT_CAPABILITY);
+}
+
+export function DevicesTab(): React.ReactElement {
+  const [nodes, setNodes] = useState<ConnectedNode[]>([]);
+  const [pending, setPending] = useState<PendingNode[]>([]);
+  const [devices, setDevices] = useState<ApprovedDevice[]>([]);
+  const [config, setConfig] = useState<NodeAuthConfig | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [showToken, setShowToken] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    const [n, p, d] = await Promise.all([
+      fetchNodes(),
+      fetchPendingNodes(),
+      fetchApprovedDevices(),
+    ]);
+    setNodes(n);
+    setPending(p);
+    setDevices(d);
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    fetchNodeConfig().then(setConfig).catch(() => {});
+    const id = setInterval(refresh, POLL_MS);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  const updateConfig = useCallback(
+    async (updates: { node_auth_mode?: string; node_auth_token?: string; regenerate?: boolean }) => {
+      setError(null);
+      try {
+        const next = await saveNodeConfig(updates);
+        setConfig(next);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    []
+  );
+
+  const handleApprove = async (code: string) => {
+    setBusy(code);
+    try {
+      await approvePendingNode(code);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleDeny = async (code: string) => {
+    setBusy(code);
+    try {
+      await denyPendingNode(code);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleRevoke = async (deviceId: string) => {
+    setBusy(deviceId);
+    try {
+      await revokeDevice(deviceId);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const mode = config?.node_auth_mode ?? 'open';
+
+  return (
+    <div className="space-y-6">
+      <SettingsHeader
+        title="Devices"
+        subtitle="Companion devices and peer agents connected to this Suzent."
+      />
+
+      {error && (
+        <div className="border-2 border-brutal-red bg-red-50 dark:bg-red-900/20 text-brutal-red px-3 py-2 text-xs font-mono">
+          {error}
+        </div>
+      )}
+
+      {/* ── Connection auth ─────────────────────────────────────────── */}
+      <SettingsCard>
+        <SectionCardHeader
+          title="Connection auth"
+          description="How companion devices are allowed to connect to this server."
+        />
+        <div className="space-y-4 mt-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="font-bold uppercase text-sm">Auth mode</div>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono max-w-md">
+                {mode === 'open' && 'Any device that can reach this server may connect. Use only on a trusted network.'}
+                {mode === 'token' && 'Devices must present the shared secret below.'}
+                {mode === 'approve' && 'New devices must be approved here; approved devices reconnect silently.'}
+              </p>
+            </div>
+            <BrutalSelect
+              value={mode}
+              onChange={(v) => updateConfig({ node_auth_mode: v })}
+              options={[
+                { value: 'open', label: 'Open' },
+                { value: 'token', label: 'Token' },
+                { value: 'approve', label: 'Approve' },
+              ]}
+            />
+          </div>
+
+          {mode === 'token' && (
+            <div className="space-y-2">
+              <div className="font-bold uppercase text-sm">Shared secret</div>
+              <div className="flex items-center gap-2">
+                <input
+                  type={showToken ? 'text' : 'password'}
+                  value={config?.node_auth_token ?? ''}
+                  readOnly
+                  placeholder="No token set — generate one"
+                  className="flex-1 border-2 border-brutal-black dark:border-white bg-transparent px-3 py-2 font-mono text-xs"
+                />
+                <SettingsListAction onClick={() => setShowToken((s) => !s)}>
+                  {showToken ? 'Hide' : 'Show'}
+                </SettingsListAction>
+                <SettingsListAction
+                  tone="blue"
+                  onClick={() => {
+                    if (config?.node_auth_token) navigator.clipboard?.writeText(config.node_auth_token);
+                  }}
+                >
+                  Copy
+                </SettingsListAction>
+                <BrutalButton onClick={() => updateConfig({ regenerate: true })}>
+                  Regenerate
+                </BrutalButton>
+              </div>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
+                Start each peer with <code>suzent node host --token &lt;secret&gt;</code> (or SUZENT_NODE_TOKEN).
+              </p>
+            </div>
+          )}
+
+          <p className="text-[11px] text-neutral-500 dark:text-neutral-400 font-mono">
+            ⚠ ws:// traffic is plaintext — the token only protects you on a trusted network or over wss://.
+          </p>
+        </div>
+      </SettingsCard>
+
+      {/* ── Pending approvals ───────────────────────────────────────── */}
+      {pending.length > 0 && (
+        <SettingsCard>
+          <SectionCardHeader
+            title={`Pending approval (${pending.length})`}
+            description="Devices waiting for you to approve their connection."
+          />
+          <div className="space-y-2 mt-3">
+            {pending.map((p) => (
+              <SettingsListItem key={p.pairing_code}>
+                <div className="flex items-center justify-between gap-3 w-full">
+                  <div className="min-w-0">
+                    <div className="font-bold truncate">
+                      {p.display_name}{' '}
+                      <span className="text-neutral-400 font-normal">({p.platform})</span>
+                    </div>
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
+                      code {p.pairing_code} · {capNames(p.capabilities)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <SettingsListAction
+                      tone="blue"
+                      disabled={busy === p.pairing_code}
+                      onClick={() => handleApprove(p.pairing_code)}
+                    >
+                      Approve
+                    </SettingsListAction>
+                    <SettingsListAction
+                      tone="red"
+                      disabled={busy === p.pairing_code}
+                      onClick={() => handleDeny(p.pairing_code)}
+                    >
+                      Deny
+                    </SettingsListAction>
+                  </div>
+                </div>
+              </SettingsListItem>
+            ))}
+          </div>
+        </SettingsCard>
+      )}
+
+      {/* ── Connected now ───────────────────────────────────────────── */}
+      <SettingsCard>
+        <SectionCardHeader
+          title={`Connected (${nodes.length})`}
+          description="Devices currently online. An AGENT badge means the device exposes its own agent."
+        />
+        <div className="space-y-2 mt-3">
+          {nodes.length === 0 && (
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
+              No devices connected. Run <code>suzent node host</code> on another device.
+            </p>
+          )}
+          {nodes.map((n) => (
+            <SettingsListItem key={n.node_id}>
+              <div className="flex items-center justify-between gap-3 w-full">
+                <div className="min-w-0">
+                  <div className="font-bold truncate flex items-center gap-2">
+                    <span className="text-brutal-green">●</span>
+                    {n.display_name}
+                    <span className="text-neutral-400 font-normal">({n.platform})</span>
+                    {isAgent(n) && (
+                      <span className="px-1.5 py-0.5 text-[10px] font-black uppercase border border-brutal-blue text-brutal-blue rounded-sm">
+                        Agent
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
+                    {capNames(n.capabilities)}
+                  </div>
+                </div>
+              </div>
+            </SettingsListItem>
+          ))}
+        </div>
+      </SettingsCard>
+
+      {/* ── Approved devices (durable) ──────────────────────────────── */}
+      {devices.length > 0 && (
+        <SettingsCard>
+          <SectionCardHeader
+            title={`Approved devices (${devices.length})`}
+            description="Devices with a durable token. Revoke to force them to re-pair."
+          />
+          <div className="space-y-2 mt-3">
+            {devices.map((d) => (
+              <SettingsListItem key={d.device_id}>
+                <div className="flex items-center justify-between gap-3 w-full">
+                  <div className="min-w-0">
+                    <div className="font-bold truncate flex items-center gap-2">
+                      <span className={d.connected ? 'text-brutal-green' : 'text-neutral-400'}>●</span>
+                      {d.display_name}
+                      <span className="text-neutral-400 font-normal">({d.platform})</span>
+                    </div>
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
+                      {d.device_id} · approved {d.approved_at?.slice(0, 10)}
+                    </div>
+                  </div>
+                  <SettingsListAction
+                    tone="red"
+                    disabled={busy === d.device_id}
+                    onClick={() => handleRevoke(d.device_id)}
+                  >
+                    Revoke
+                  </SettingsListAction>
+                </div>
+              </SettingsListItem>
+            ))}
+          </div>
+        </SettingsCard>
+      )}
+    </div>
+  );
+}

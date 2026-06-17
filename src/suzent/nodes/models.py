@@ -29,6 +29,12 @@ class ConnectMessage(BaseModel):
     display_name: str
     platform: str = "unknown"
     capabilities: list[CapabilitySchema] = Field(default_factory=list)
+    # Shared secret presented by the node. Only checked when the server's
+    # node_auth_mode is "token". Ignored in "open" mode.
+    auth_token: str = ""
+    # Durable per-device token previously minted by this server (approve mode).
+    # When present and valid, the node skips the pairing/approval step.
+    device_token: str = ""
 
 
 class ConnectedResponse(BaseModel):
@@ -36,6 +42,23 @@ class ConnectedResponse(BaseModel):
 
     type: str = "connected"
     node_id: str
+    # In approve mode, a freshly approved node receives a durable per-device
+    # token here. The node should persist it and present it on reconnect.
+    device_token: str = ""
+
+
+class PendingResponse(BaseModel):
+    """Server → Node: connection accepted but awaiting operator approval.
+
+    Sent in "approve" mode for a node the server has not seen before. The node
+    keeps the socket open and waits for a subsequent ConnectedResponse
+    (approved) or ErrorResponse (denied/timeout). ``pairing_code`` is the
+    single-use, short-lived handle an operator uses to approve this connection.
+    """
+
+    type: str = "pending"
+    pairing_code: str
+    message: str = "Awaiting operator approval"
 
 
 class InvokeMessage(BaseModel):
@@ -110,6 +133,10 @@ class InvokeRequest(BaseModel):
 
     command: str
     params: dict[str, Any] = Field(default_factory=dict)
+    # Optional override for how long the server waits on the node's response.
+    # Needed for long-running commands like agent.run; falls back to the node
+    # default when omitted.
+    timeout: float | None = None
 
 
 class InvokeResponse(BaseModel):
@@ -118,3 +145,47 @@ class InvokeResponse(BaseModel):
     success: bool
     result: Any = None
     error: str | None = None
+
+
+# ─── Pending / device-token API models ───────────────────────────────
+
+
+class PendingNodeInfo(BaseModel):
+    """A node awaiting operator approval (approve mode)."""
+
+    pairing_code: str
+    display_name: str
+    platform: str
+    capabilities: list[CapabilitySchema] = Field(default_factory=list)
+    requested_at: str
+
+
+class PendingListResponse(BaseModel):
+    """GET /nodes/pending response."""
+
+    pending: list[PendingNodeInfo]
+    count: int
+
+
+class ApprovedDeviceInfo(BaseModel):
+    """A durably-approved device (has a per-device token)."""
+
+    device_id: str
+    display_name: str
+    platform: str
+    approved_at: str
+    connected: bool = False
+
+
+class ApprovedDeviceListResponse(BaseModel):
+    """GET /nodes/devices response."""
+
+    devices: list[ApprovedDeviceInfo]
+    count: int
+
+
+class PairingActionResponse(BaseModel):
+    """Response for approve/deny/revoke actions."""
+
+    success: bool
+    message: str = ""

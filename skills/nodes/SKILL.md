@@ -82,6 +82,29 @@ suzent nodes status
 suzent nodes describe <node_id_or_name>
 suzent nodes invoke <node_id_or_name> <command> key=value [key2=value2 ...]
 suzent nodes invoke <node_id_or_name> <command> --params '{"key": "value"}'
+suzent nodes invoke <node_id_or_name> <command> --timeout 300   # long-running cmds
+
+# Approve-mode pairing & durable devices
+suzent nodes pending
+suzent nodes approve <pairing_code>
+suzent nodes deny <pairing_code>
+suzent nodes devices
+suzent nodes revoke <device_id>
+```
+
+## Peer agents (`agent.run`)
+
+A node may advertise `agent.run`, which runs a prompt through *that device's
+own* Suzent agent and returns its final reply — letting one agent delegate to
+another linked device. Agent runs are slow, so set a generous `timeout`:
+
+```python
+result = requests.post(
+    f"{base}/nodes/{node_id}/invoke",
+    json={"command": "agent.run", "params": {"prompt": "summarize ~/notes"},
+          "timeout": 300},
+    timeout=320,
+).json()
 ```
 
 ## Examples

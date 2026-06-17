@@ -380,7 +380,11 @@ class ConfigModel(BaseModel):
     permission_rules: List[Dict[str, Any]] = []
 
     nodes_enabled: bool = True
+    # Node connection auth: "open" (any device), "token" (shared secret), or
+    # "approve" (operator-gated pairing with durable per-device tokens).
     node_auth_mode: str = "open"
+    # Shared secret required from nodes when node_auth_mode == "token".
+    node_auth_token: str = ""
 
     session_daily_reset_hour: int = 0
     session_idle_timeout_minutes: int = 0

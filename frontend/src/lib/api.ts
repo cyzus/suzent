@@ -305,6 +305,99 @@ export async function fetchBackendConfig(): Promise<ConfigOptions | null> {
   }
 }
 
+// ─── Nodes / Devices ─────────────────────────────────────────────────
+
+export interface NodeCapabilityInfo {
+  name: string;
+  description?: string;
+  params_schema?: Record<string, string>;
+}
+
+export interface ConnectedNode {
+  node_id: string;
+  display_name: string;
+  platform: string;
+  status: string;
+  connected_at?: string;
+  capabilities: NodeCapabilityInfo[];
+}
+
+export interface PendingNode {
+  pairing_code: string;
+  display_name: string;
+  platform: string;
+  capabilities: NodeCapabilityInfo[];
+  requested_at: string;
+}
+
+export interface ApprovedDevice {
+  device_id: string;
+  display_name: string;
+  platform: string;
+  approved_at: string;
+  connected: boolean;
+}
+
+export interface NodeAuthConfig {
+  nodes_enabled: boolean;
+  node_auth_mode: 'open' | 'token' | 'approve';
+  node_auth_token: string;
+}
+
+export async function fetchNodes(): Promise<ConnectedNode[]> {
+  const res = await fetch(`${getApiBase()}/nodes`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.nodes || [];
+}
+
+export async function fetchPendingNodes(): Promise<PendingNode[]> {
+  const res = await fetch(`${getApiBase()}/nodes/pending`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.pending || [];
+}
+
+export async function fetchApprovedDevices(): Promise<ApprovedDevice[]> {
+  const res = await fetch(`${getApiBase()}/nodes/devices`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.devices || [];
+}
+
+export async function approvePendingNode(pairingCode: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/pending/${pairingCode}/approve`, { method: 'POST' });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to approve');
+}
+
+export async function denyPendingNode(pairingCode: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/pending/${pairingCode}/deny`, { method: 'POST' });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to deny');
+}
+
+export async function revokeDevice(deviceId: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/devices/${deviceId}/revoke`, { method: 'POST' });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to revoke');
+}
+
+export async function fetchNodeConfig(): Promise<NodeAuthConfig> {
+  const res = await fetch(`${getApiBase()}/nodes/config`);
+  if (!res.ok) throw new Error('Failed to load node config');
+  return await res.json();
+}
+
+export async function saveNodeConfig(
+  updates: { node_auth_mode?: string; node_auth_token?: string; regenerate?: boolean }
+): Promise<NodeAuthConfig> {
+  const res = await fetch(`${getApiBase()}/nodes/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to save node config');
+  return await res.json();
+}
+
 export async function saveGlobalSandboxConfig(sandbox_volumes: string[]): Promise<string[]> {
   const res = await fetch(`${getApiBase()}/config/sandbox-global`, {
     method: 'POST',

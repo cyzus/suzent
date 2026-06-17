@@ -123,6 +123,12 @@ def node_invoke(
     params: Optional[str] = typer.Option(
         None, "--params", "-p", help='JSON params (e.g., \'{"format":"png"}\')'
     ),
+    timeout: Optional[float] = typer.Option(
+        None,
+        "--timeout",
+        "-t",
+        help="Seconds to wait on the node's response (e.g. agent.run is slow)",
+    ),
     extra_args: list[str] = typer.Argument(
         None, help="Key=value params (e.g. text=hello)"
     ),
@@ -160,7 +166,9 @@ def node_invoke(
         typer.echo(f"⚡ Invoking '{command}' on node '{node}'...")
         try:
             client = get_client()
-            result = await client.nodes.invoke(node, command, parsed_params)
+            result = await client.nodes.invoke(
+                node, command, parsed_params, timeout=timeout
+            )
 
             if result.get("success"):
                 typer.echo(f"✅ Result: {json.dumps(result.get('result'), indent=2)}")
@@ -191,16 +199,37 @@ def node_host(
         "-c",
         help="Comma-separated capability filter (default: all)",
     ),
+    token: Optional[str] = typer.Option(
+        None,
+        "--token",
+        help="Shared secret for the server's 'token' auth mode "
+        "(or set SUZENT_NODE_TOKEN)",
+    ),
+    server_url: Optional[str] = typer.Option(
+        None,
+        "--server-url",
+        help="HTTP base URL of the local agent for agent.run "
+        "(default: derived from --url)",
+    ),
 ):
-    """Start a local node host (speaker, camera) in the foreground."""
+    """Start a local node host (speaker, camera, agent.run) in the foreground."""
+    import os
+
     from suzent.nodes.node_host import NodeHost, DEFAULT_GATEWAY_URL
 
     gateway_url = url or DEFAULT_GATEWAY_URL
     caps = capabilities.split(",") if capabilities else None
-    host = NodeHost(gateway_url=gateway_url, display_name=name, capabilities=caps)
+    auth_token = token if token is not None else os.environ.get("SUZENT_NODE_TOKEN", "")
+    host = NodeHost(
+        gateway_url=gateway_url,
+        display_name=name,
+        capabilities=caps,
+        auth_token=auth_token,
+        server_url=server_url,
+    )
 
     typer.echo(f"🖥️  Starting node host '{name}'...")
-    typer.echo(f"   Gateway: {url}")
+    typer.echo(f"   Gateway: {gateway_url}")
     typer.echo(f"   Capabilities: {capabilities or 'all'}")
     typer.echo("   Press Ctrl+C to stop.\n")
 
@@ -208,3 +237,124 @@ def node_host(
         asyncio.run(host.run())
     except KeyboardInterrupt:
         typer.echo("\n🛑 Node host stopped.")
+
+
+@node_app.command("pending")
+def node_pending():
+    """List node connections awaiting operator approval (approve mode)."""
+
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.nodes.pending()
+            pending = data.get("pending", [])
+            if not pending:
+                typer.echo("No nodes awaiting approval.")
+                return
+            typer.echo(f"⏳ Pending approval ({len(pending)}):\n")
+            for p in pending:
+                caps = ", ".join(c["name"] for c in p.get("capabilities", [])) or "none"
+                typer.echo(
+                    f"  • {p['display_name']} ({p['platform']})\n"
+                    f"     Code: {p['pairing_code']}\n"
+                    f"     Capabilities: {caps}\n"
+                    f"     Requested: {p.get('requested_at', 'unknown')}\n"
+                )
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
+
+
+@node_app.command("approve")
+def node_approve(
+    code: str = typer.Argument(help="Pairing code from `suzent node pending`"),
+):
+    """Approve a pending node connection (mints a durable device token)."""
+
+    async def _run():
+        try:
+            client = get_client()
+            result = await client.nodes.approve(code)
+            if result.get("success"):
+                typer.echo(f"✅ Approved {code}.")
+            else:
+                typer.echo(f"❌ {result.get('message', 'Approval failed')}")
+                raise typer.Exit(code=1)
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
+
+
+@node_app.command("deny")
+def node_deny(
+    code: str = typer.Argument(help="Pairing code from `suzent node pending`"),
+):
+    """Deny a pending node connection."""
+
+    async def _run():
+        try:
+            client = get_client()
+            result = await client.nodes.deny(code)
+            if result.get("success"):
+                typer.echo(f"🚫 Denied {code}.")
+            else:
+                typer.echo(f"❌ {result.get('message', 'Deny failed')}")
+                raise typer.Exit(code=1)
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
+
+
+@node_app.command("devices")
+def node_devices():
+    """List durably-approved devices (per-device tokens)."""
+
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.nodes.devices()
+            devices = data.get("devices", [])
+            if not devices:
+                typer.echo("No approved devices.")
+                return
+            typer.echo(f"🔐 Approved devices ({len(devices)}):\n")
+            for d in devices:
+                dot = "🟢" if d.get("connected") else "⚪"
+                typer.echo(
+                    f"  {dot} {d['display_name']} ({d['platform']})\n"
+                    f"     Device ID: {d['device_id']}\n"
+                    f"     Approved: {d.get('approved_at', 'unknown')}\n"
+                )
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
+
+
+@node_app.command("revoke")
+def node_revoke(
+    device_id: str = typer.Argument(help="Device ID from `suzent node devices`"),
+):
+    """Revoke a device's durable token (it must re-pair to reconnect)."""
+
+    async def _run():
+        try:
+            client = get_client()
+            result = await client.nodes.revoke(device_id)
+            if result.get("success"):
+                typer.echo(f"🗑️  Revoked device {device_id}.")
+            else:
+                typer.echo(f"❌ {result.get('message', 'Revoke failed')}")
+                raise typer.Exit(code=1)
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())

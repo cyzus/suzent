@@ -6,6 +6,8 @@ Provides:
 - REST endpoints for listing, describing, and invoking nodes
 """
 
+import asyncio
+import hmac
 import uuid
 
 from pydantic import ValidationError
@@ -13,8 +15,10 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from suzent.config import CONFIG
 from suzent.logger import get_logger
 from suzent.nodes.base import NodeCapability
+from suzent.nodes.manager import PENDING_TTL_SECONDS
 from suzent.nodes.models import (
     ConnectMessage,
     ConnectedResponse,
@@ -23,10 +27,74 @@ from suzent.nodes.models import (
     InvokeResponse,
     NodeInfo,
     NodeListResponse,
+    PendingResponse,
 )
 from suzent.nodes.ws_node import WebSocketNode
 
 logger = get_logger(__name__)
+
+
+async def _authorize_node(
+    websocket: WebSocket,
+    node_manager,
+    connect_msg: ConnectMessage,
+    capabilities: list[NodeCapability],
+) -> tuple[bool, str]:
+    """Apply node_auth_mode to an incoming connection.
+
+    Returns (authorized, device_token). On rejection, sends an ErrorResponse,
+    closes the socket, and returns (False, ""). The device_token is non-empty
+    only when approve mode freshly mints one (to hand back to the node).
+    """
+    mode = (CONFIG.node_auth_mode or "open").lower()
+
+    # A previously-approved device presents its durable token and skips
+    # straight through, regardless of open/token/approve.
+    if connect_msg.device_token and node_manager.device_store.verify(
+        connect_msg.device_token
+    ):
+        return True, ""
+
+    if mode == "open":
+        return True, ""
+
+    if mode == "token":
+        expected = CONFIG.node_auth_token or ""
+        # Fail closed: an empty server token never authorizes anyone.
+        if expected and hmac.compare_digest(connect_msg.auth_token or "", expected):
+            return True, ""
+        await _reject(websocket, "Invalid or missing node auth token")
+        return False, ""
+
+    if mode == "approve":
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future = loop.create_future()
+        code = node_manager.add_pending(
+            connect_msg.display_name, connect_msg.platform, capabilities, future
+        )
+        await websocket.send_json(PendingResponse(pairing_code=code).model_dump())
+        try:
+            outcome = await asyncio.wait_for(future, timeout=PENDING_TTL_SECONDS)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            node_manager.cancel_pending(code)
+            await _reject(websocket, "Approval timed out")
+            return False, ""
+        if outcome:  # truthy = device_token string
+            return True, str(outcome)
+        await _reject(websocket, "Connection denied by operator")
+        return False, ""
+
+    # Unknown mode → fail closed.
+    await _reject(websocket, f"Unsupported node_auth_mode: {mode}")
+    return False, ""
+
+
+async def _reject(websocket: WebSocket, message: str) -> None:
+    try:
+        await websocket.send_json(ErrorResponse(message=message).model_dump())
+        await websocket.close(code=1008, reason=message[:120])
+    except Exception:
+        pass
 
 
 def _get_node_manager(request_or_ws):
@@ -85,6 +153,14 @@ async def node_websocket_endpoint(websocket: WebSocket):
             for cap in connect_msg.capabilities
         ]
 
+        # Enforce node_auth_mode before registering. Approve mode blocks here
+        # until an operator approves/denies (or the request times out).
+        authorized, device_token = await _authorize_node(
+            websocket, node_manager, connect_msg, capabilities
+        )
+        if not authorized:
+            return
+
         # Create node
         node_id = str(uuid.uuid4())
         node = WebSocketNode(
@@ -97,8 +173,8 @@ async def node_websocket_endpoint(websocket: WebSocket):
 
         node_manager.register_node(node)
 
-        # Confirm connection
-        resp = ConnectedResponse(node_id=node_id)
+        # Confirm connection (handing back a freshly-minted device token, if any)
+        resp = ConnectedResponse(node_id=node_id, device_token=device_token)
         await websocket.send_json(resp.model_dump())
 
         logger.info(
@@ -173,7 +249,7 @@ async def invoke_node_command(request: Request) -> JSONResponse:
 
     try:
         result = await node_manager.invoke(
-            node_id, invoke_req.command, invoke_req.params
+            node_id, invoke_req.command, invoke_req.params, timeout=invoke_req.timeout
         )
         resp = InvokeResponse(**result)
         return JSONResponse(resp.model_dump())
@@ -186,3 +262,136 @@ async def invoke_node_command(request: Request) -> JSONResponse:
     except Exception as e:
         logger.error(f"Error invoking node command: {e}")
         return JSONResponse({"error": f"Internal error: {e}"}, status_code=500)
+
+
+# ─── Approve-mode pairing & device management ────────────────────────
+
+
+async def list_pending_nodes(request: Request) -> JSONResponse:
+    """GET /nodes/pending — Connections awaiting operator approval."""
+    node_manager = _get_node_manager(request)
+    if not node_manager:
+        return JSONResponse({"pending": [], "count": 0})
+    pending = node_manager.list_pending()
+    return JSONResponse({"pending": pending, "count": len(pending)})
+
+
+async def approve_pending_node(request: Request) -> JSONResponse:
+    """POST /nodes/pending/{pairing_code}/approve — Approve a pending node."""
+    node_manager = _get_node_manager(request)
+    code = request.path_params.get("pairing_code", "")
+    if not node_manager:
+        return JSONResponse({"error": "Node system not initialized"}, status_code=503)
+    ok, _token = node_manager.approve_pending(code)
+    if not ok:
+        return JSONResponse(
+            {"success": False, "message": "Unknown or expired pairing code"},
+            status_code=404,
+        )
+    return JSONResponse({"success": True, "message": "Approved"})
+
+
+async def deny_pending_node(request: Request) -> JSONResponse:
+    """POST /nodes/pending/{pairing_code}/deny — Deny a pending node."""
+    node_manager = _get_node_manager(request)
+    code = request.path_params.get("pairing_code", "")
+    if not node_manager:
+        return JSONResponse({"error": "Node system not initialized"}, status_code=503)
+    ok = node_manager.deny_pending(code)
+    if not ok:
+        return JSONResponse(
+            {"success": False, "message": "Unknown or expired pairing code"},
+            status_code=404,
+        )
+    return JSONResponse({"success": True, "message": "Denied"})
+
+
+async def list_approved_devices(request: Request) -> JSONResponse:
+    """GET /nodes/devices — Durably-approved devices (per-device tokens)."""
+    node_manager = _get_node_manager(request)
+    if not node_manager:
+        return JSONResponse({"devices": [], "count": 0})
+    devices = node_manager.list_devices()
+    return JSONResponse({"devices": devices, "count": len(devices)})
+
+
+async def revoke_device(request: Request) -> JSONResponse:
+    """POST /nodes/devices/{device_id}/revoke — Revoke a device's token."""
+    node_manager = _get_node_manager(request)
+    device_id = request.path_params.get("device_id", "")
+    if not node_manager:
+        return JSONResponse({"error": "Node system not initialized"}, status_code=503)
+    ok = node_manager.revoke_device(device_id)
+    if not ok:
+        return JSONResponse(
+            {"success": False, "message": "Unknown device"}, status_code=404
+        )
+    return JSONResponse({"success": True, "message": "Revoked"})
+
+
+# ─── Node auth configuration ─────────────────────────────────────────
+
+_VALID_AUTH_MODES = ("open", "token", "approve")
+
+
+async def get_node_config(request: Request) -> JSONResponse:
+    """GET /nodes/config — Current node auth configuration."""
+    return JSONResponse(
+        {
+            "nodes_enabled": bool(CONFIG.nodes_enabled),
+            "node_auth_mode": (CONFIG.node_auth_mode or "open"),
+            # Local-first app on a trusted machine — surface the token so the
+            # operator can copy it to companion devices.
+            "node_auth_token": CONFIG.node_auth_token or "",
+        }
+    )
+
+
+async def save_node_config(request: Request) -> JSONResponse:
+    """POST /nodes/config — Update node auth mode/token (persisted locally).
+
+    Secrets and machine-specific auth live in local.yaml (never synced), the
+    same place sandbox volumes are kept.
+    """
+    import secrets
+
+    from suzent.routes.config_routes import (
+        _load_local_config_file,
+        _save_local_config_file,
+    )
+
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    cfg = _load_local_config_file()
+
+    mode = payload.get("node_auth_mode")
+    if mode is not None:
+        if mode not in _VALID_AUTH_MODES:
+            return JSONResponse(
+                {"error": f"node_auth_mode must be one of {_VALID_AUTH_MODES}"},
+                status_code=400,
+            )
+        cfg["node_auth_mode"] = mode
+        CONFIG.node_auth_mode = mode
+
+    # Either set an explicit token or ask the server to generate a strong one.
+    if payload.get("regenerate"):
+        token = secrets.token_urlsafe(24)
+        cfg["node_auth_token"] = token
+        CONFIG.node_auth_token = token
+    elif payload.get("node_auth_token") is not None:
+        token = str(payload["node_auth_token"])
+        cfg["node_auth_token"] = token
+        CONFIG.node_auth_token = token
+
+    _save_local_config_file(cfg)
+    return JSONResponse(
+        {
+            "success": True,
+            "node_auth_mode": CONFIG.node_auth_mode or "open",
+            "node_auth_token": CONFIG.node_auth_token or "",
+        }
+    )

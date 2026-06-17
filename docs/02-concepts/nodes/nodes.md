@@ -126,17 +126,28 @@ Nodes connect to the server at `ws://<host>:<port>/ws/node` and follow a JSON-RP
       "description": "Take a photo with the device camera",
       "params_schema": {"format": "str", "quality": "float"}
     }
-  ]
+  ],
+  "auth_token": "",
+  "device_token": ""
 }
 ```
+
+`auth_token` is checked only in `token` mode. `device_token` is a durable token
+from a prior `approve`-mode approval; when valid it connects silently.
 
 **Server → Node** (acknowledgment):
 ```json
 {
   "type": "connected",
-  "node_id": "a1b2c3d4-..."
+  "node_id": "a1b2c3d4-...",
+  "device_token": ""
 }
 ```
+
+In `approve` mode, a node the server has not seen first receives a
+`{"type": "pending", "pairing_code": "ABC123"}` message and waits; on approval
+it gets the `connected` message above with a freshly-minted `device_token` to
+persist. On rejection/timeout it receives `{"type": "error", "message": "..."}`.
 
 ### 2. Command Invocation
 
@@ -215,6 +226,82 @@ async def run_node():
 asyncio.run(run_node())
 ```
 
+## Peer agents (`agent.run`)
+
+A node host advertises an `agent.run` capability that runs a prompt through
+**that device's own Suzent agent** (its own files, memory, tools) and returns
+the final reply. This is what lets each device be both a host and a node and
+**trigger another linked device's agent**:
+
+```bash
+# From device A, delegate a task to device B's agent:
+suzent node invoke "Device B" agent.run prompt="summarize ~/notes" --timeout 300
+```
+
+Agent runs can take minutes, so pass `--timeout` (the REST `invoke` body also
+accepts a `timeout` field). The node host reaches its own local server's
+`/chat` endpoint; override that base URL with `suzent node host --server-url`.
+
+## Authentication
+
+Connections are gated by `node_auth_mode`. A device that has been approved once
+receives a **durable per-device token** and reconnects silently thereafter.
+
+| Mode | Behavior |
+|------|----------|
+| `open` (default) | Any device that can reach the server may connect. Use only on a trusted/loopback network. |
+| `token` | The node must present a shared secret (`node_auth_token`) in its handshake. One key for a mesh you fully control. |
+| `approve` | A new device is parked as **pending** and an operator must approve it. On approval the server mints a durable per-device token the node persists and reuses; revoke it per-device to force re-pairing. |
+
+> ⚠️ **Plaintext transport.** `ws://` traffic is unencrypted — the token only
+> protects you on a trusted network or over `wss://`/a tunnel. `agent.run` is
+> effectively authenticated remote code execution, so never expose an `open`
+> server (or your token) on an untrusted network.
+
+### Token mode
+
+```bash
+# On the server, set the shared secret (stored in machine-local config):
+# (or use the Devices settings tab → Connection auth → Regenerate)
+suzent config set node_auth_mode token
+
+# On each companion device:
+suzent node host --name "My Laptop" --token <shared-secret>
+# or: SUZENT_NODE_TOKEN=<shared-secret> suzent node host --name "My Laptop"
+```
+
+### Approve mode (pairing + durable tokens)
+
+```bash
+# Server in approve mode:
+suzent config set node_auth_mode approve
+
+# Companion device connects and prints a pairing code, then waits:
+suzent node host --name "My Laptop"
+
+# On the server, approve it (mints a durable per-device token):
+suzent node pending                # list codes awaiting approval
+suzent node approve <pairing_code>
+
+# Manage durable devices:
+suzent node devices                # list approved devices
+suzent node revoke <device_id>     # revoke; device must re-pair
+```
+
+The node persists its minted token under the user config dir
+(`node_host_devices.json`, keyed by gateway URL) and presents it on reconnect,
+so approval is a one-time step. The server stores the durable tokens in
+`node_devices.json`.
+
+### REST / Devices tab
+
+The same actions are available via REST (`GET /nodes/pending`,
+`POST /nodes/pending/{code}/approve|deny`, `GET /nodes/devices`,
+`POST /nodes/devices/{device_id}/revoke`, and `GET|POST /nodes/config`) and via
+**Settings → Devices**, which lists connected nodes (with an **Agent** badge for
+`agent.run`-capable devices), pending approvals, durable devices, and the auth
+mode/token.
+
 ## Configuration
 
 Node system settings in Suzent configuration:
@@ -222,7 +309,8 @@ Node system settings in Suzent configuration:
 | Field | Default | Description |
 |-------|---------|-------------|
 | `nodes_enabled` | `true` | Enable/disable node WebSocket connections |
-| `node_auth_mode` | `"open"` | Authentication mode: `open`, `approve`, or `token` |
+| `node_auth_mode` | `"open"` | Authentication mode: `open`, `token`, or `approve` |
+| `node_auth_token` | `""` | Shared secret required in `token` mode (machine-local) |
 
 Modify via CLI:
 ```bash
