@@ -174,27 +174,70 @@ const hasProp = (source: Record<string, unknown> | null | undefined, key: string
   return Boolean(source && key && Object.prototype.hasOwnProperty.call(source, key));
 };
 
+function countChangedLines(original: string, modified: string): { addedLines: number; removedLines: number } {
+  const originalLines = original.split('\n');
+  const modifiedLines = modified.split('\n');
+  const lengths = Array.from({ length: originalLines.length + 1 }, () =>
+    Array<number>(modifiedLines.length + 1).fill(0)
+  );
+
+  for (let i = originalLines.length - 1; i >= 0; i -= 1) {
+    for (let j = modifiedLines.length - 1; j >= 0; j -= 1) {
+      lengths[i][j] = originalLines[i] === modifiedLines[j]
+        ? lengths[i + 1][j + 1] + 1
+        : Math.max(lengths[i + 1][j], lengths[i][j + 1]);
+    }
+  }
+
+  let i = 0;
+  let j = 0;
+  let addedLines = 0;
+  let removedLines = 0;
+
+  while (i < originalLines.length && j < modifiedLines.length) {
+    if (originalLines[i] === modifiedLines[j]) {
+      i += 1;
+      j += 1;
+    } else if (lengths[i + 1][j] >= lengths[i][j + 1]) {
+      removedLines += 1;
+      i += 1;
+    } else {
+      addedLines += 1;
+      j += 1;
+    }
+  }
+
+  removedLines += originalLines.length - i;
+  addedLines += modifiedLines.length - j;
+  return { addedLines, removedLines };
+}
+
 export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsedArgs, metadata, output }) => {
   const { theme, scheme } = useTheme();
   const editorTheme = getMonacoThemeName(theme, scheme);
   const beforeMount = useMemo(() => makeBeforeMount(), []);
 
-  const { filePath, dirPart, namePart, language, isDiff, original, modified, height, canPreview } = useMemo(() => {
+  const { filePath, dirPart, namePart, language, isDiff, original, modified, height, canPreview, addedLines, removedLines } = useMemo(() => {
     const config = FILE_TOOL_PREVIEW_CONFIG[toolName];
-    const filePath = typeof metadata?.abs_path === 'string'
+    const rawPath = typeof metadata?.abs_path === 'string'
       ? metadata.abs_path
       : typeof parsedArgs?.file_path === 'string' ? parsedArgs.file_path
         : typeof parsedArgs?.path === 'string' ? parsedArgs.path
           : '';
-    const lastSep = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
-    const dirPart = lastSep >= 0 ? filePath.slice(0, lastSep + 1) : '';
-    const namePart = lastSep >= 0 ? filePath.slice(lastSep + 1) : filePath;
+          
+    const segments = rawPath.split(/[/\\]/).filter(Boolean);
+    const namePart = segments.pop() || rawPath;
+    const dirPart = '';
+    
+    const filePath = rawPath;
     const language = getLanguageFromPath(filePath);
 
     let isDiff = false;
     let original = '';
     let modified = '';
     let canPreview = false;
+    let addedLines = 0;
+    let removedLines = 0;
 
     if (config) {
       if (toolName === 'read_file' && output) {
@@ -219,13 +262,17 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsed
         if (metadataOriginal === undefined && !config.alwaysDiff) {
           isDiff = false;
         }
+
+        if (isDiff) {
+          ({ addedLines, removedLines } = countChangedLines(original, modified));
+        }
       }
     }
 
     const lineCount = Math.max(original.split('\n').length, modified.split('\n').length);
     const height = Math.min(Math.max(lineCount * 19 + 16, 100), 500);
 
-    return { filePath, dirPart, namePart, language, isDiff, original, modified, height, canPreview };
+    return { filePath, dirPart, namePart, language, isDiff, original, modified, height, canPreview, addedLines, removedLines };
   }, [toolName, parsedArgs, metadata]);
 
   if (!canPreview) {
@@ -240,16 +287,24 @@ export const FileDiffViewer: React.FC<FileDiffViewerProps> = ({ toolName, parsed
 
   return (
     <div className="w-full border-2 border-brutal-black dark:border-zinc-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-none overflow-hidden bg-white dark:bg-[#1e1e1e] flex flex-col mt-2 transition-all">
-      <div className="px-3 py-1.5 bg-neutral-100 dark:bg-zinc-800 border-b-2 border-brutal-black dark:border-zinc-600 flex justify-between items-center text-xs font-mono text-brutal-black dark:text-neutral-300 font-bold uppercase tracking-wider">
+      <div className="px-3 py-1.5 bg-neutral-100 dark:bg-zinc-800 border-b-2 border-brutal-black dark:border-zinc-600 flex justify-between items-center text-xs font-mono text-brutal-black dark:text-neutral-300 font-bold tracking-wider">
         {filePath ? (
-          <span>
-            <span className="opacity-50 font-normal">{dirPart}</span>
-            <span>{namePart}</span>
+          <span className="flex items-center gap-3">
+            <span className="flex-1 truncate uppercase" title={filePath}>
+              <span className="opacity-50 font-normal">{dirPart}</span>
+              <span>{namePart}</span>
+            </span>
+            {isDiff && (addedLines > 0 || removedLines > 0) && (
+              <span className="flex items-center gap-1.5 opacity-90 text-[11px] shrink-0 font-bold">
+                {addedLines > 0 && <span className="text-green-600 dark:text-green-400">+{addedLines}</span>}
+                {removedLines > 0 && <span className="text-red-600 dark:text-red-400">-{removedLines}</span>}
+              </span>
+            )}
           </span>
         ) : (
-          <span>Unknown file</span>
+          <span className="uppercase">Unknown file</span>
         )}
-        <span className="opacity-75">{language}</span>
+        <span className="opacity-75 uppercase shrink-0">{language}</span>
       </div>
       <div style={{ height: `${height}px` }} className="w-full">
         {isDiff ? (

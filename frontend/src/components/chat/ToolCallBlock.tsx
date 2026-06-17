@@ -191,11 +191,6 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
       : undefined;
   }, [parsedOutput]);
 
-  const toolResultMessage = typeof parsedOutput?.message === 'string'
-    ? parsedOutput.message
-    : null;
-  const displayToolArgs = React.useMemo(() => formatToolArgsForDisplay(toolArgs), [toolArgs]);
-
   const parsedToolArgs = React.useMemo<Record<string, unknown> | null>(() => {
     if (!toolArgs) return null;
     try {
@@ -208,6 +203,71 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
       return null;
     }
   }, [toolArgs]);
+
+  const { addedLines, removedLines } = React.useMemo(() => {
+    let added = 0;
+    let removed = 0;
+    const isEditOrWrite = toolName === 'edit_file' || toolName === 'write_file';
+    if (!isEditOrWrite) return { addedLines: 0, removedLines: 0 };
+    
+    try {
+      const original = typeof rendererMetadata?.old_content === 'string' 
+        ? rendererMetadata.old_content 
+        : typeof parsedToolArgs?.old_string === 'string'
+          ? parsedToolArgs.old_string
+          : '';
+      const modified = typeof rendererMetadata?.new_content === 'string'
+        ? rendererMetadata.new_content
+        : typeof parsedToolArgs?.new_string === 'string'
+          ? parsedToolArgs.new_string
+          : typeof parsedToolArgs?.content === 'string'
+            ? parsedToolArgs.content
+            : '';
+      
+      if (!original && !modified) return { addedLines: 0, removedLines: 0 };
+
+      const originalLines = original.split('\n');
+      const modifiedLines = modified.split('\n');
+      const lengths = Array.from({ length: originalLines.length + 1 }, () =>
+        Array<number>(modifiedLines.length + 1).fill(0)
+      );
+
+      for (let i = originalLines.length - 1; i >= 0; i -= 1) {
+        for (let j = modifiedLines.length - 1; j >= 0; j -= 1) {
+          lengths[i][j] = originalLines[i] === modifiedLines[j]
+            ? lengths[i + 1][j + 1] + 1
+            : Math.max(lengths[i + 1][j], lengths[i][j + 1]);
+        }
+      }
+
+      let i = 0;
+      let j = 0;
+
+      while (i < originalLines.length && j < modifiedLines.length) {
+        if (originalLines[i] === modifiedLines[j]) {
+          i += 1;
+          j += 1;
+        } else if (lengths[i + 1][j] >= lengths[i][j + 1]) {
+          removed += 1;
+          i += 1;
+        } else {
+          added += 1;
+          j += 1;
+        }
+      }
+
+      removed += originalLines.length - i;
+      added += modifiedLines.length - j;
+    } catch {
+      // pass
+    }
+    return { addedLines: added, removedLines: removed };
+  }, [toolName, parsedToolArgs, rendererMetadata]);
+
+  const toolResultMessage = typeof parsedOutput?.message === 'string'
+    ? parsedOutput.message
+    : null;
+  const displayToolArgs = React.useMemo(() => formatToolArgsForDisplay(toolArgs), [toolArgs]);
 
   const descriptionText = (() => {
     const raw = parsedToolArgs?.description;
@@ -287,6 +347,14 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
 
         {/* Tool name */}
         <span className="truncate max-w-[280px]">{displayName}</span>
+
+        {/* Diff lines if available */}
+        {!expanded && (addedLines > 0 || removedLines > 0) && (
+          <span className="flex items-center gap-1.5 opacity-90 text-[10px] ml-1 shrink-0 font-bold">
+            {addedLines > 0 && <span className="text-green-600 dark:text-green-400">+{addedLines}</span>}
+            {removedLines > 0 && <span className="text-red-600 dark:text-red-400">-{removedLines}</span>}
+          </span>
+        )}
 
         {/* Status badges */}
         {isPending && (

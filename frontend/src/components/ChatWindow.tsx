@@ -3,6 +3,7 @@ import { useChatStore } from '../hooks/useChatStore';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
 import { getApiBase, getSandboxParams } from '../lib/api';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
+import { hideStreamingDrafts } from '../lib/streamingDrafts';
 import type { Message, FileAttachment } from '../types/api';
 import type { ContentBlock } from '../lib/chatUtils';
 import { buildMessageRenderPlan } from '../lib/messageRenderPlan';
@@ -1030,8 +1031,19 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     error: fileError,
   } = useUnifiedFileUpload();
 
+  const safeBackendConfig = backendConfig || null;
+  const streamingForCurrentChat = isStreaming && activeStreamingChatId === currentChatId;
+  // Keep transient tool approvals attached to their source chat.
+  // Without this guard, switching chats can render stale approval UI
+  // from a different chat because AG-UI parts are kept for resume.
+  const transientPartsChatId = streamingChatIdRef.current || activeStreamingChatId;
+  const hasPendingTransientApprovals =
+    transientPartsChatId === currentChatId &&
+    streamingParts.some(p => p.type === 'tool' && p.state === 'approval-requested');
+  const showTransientAssistant = streamingForCurrentChat || hasPendingTransientApprovals;
+
   // Safe values
-  const safeMessages = messages || [];
+  const safeMessages = hideStreamingDrafts(messages || [], showTransientAssistant);
   const visibleMessageStartIndex = Math.max(0, safeMessages.length - visibleMessageCount);
   const visibleMessages = useMemo(
     () => safeMessages.slice(visibleMessageStartIndex),
@@ -1117,17 +1129,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, [isRightSidebarOpen, onRightSidebarToggle]);
 
-
-  const safeBackendConfig = backendConfig || null;
-  const streamingForCurrentChat = isStreaming && activeStreamingChatId === currentChatId;
-  // Keep transient tool approvals attached to their source chat.
-  // Without this guard, switching chats can render stale approval UI
-  // from a different chat because AG-UI parts are kept for resume.
-  const transientPartsChatId = streamingChatIdRef.current || activeStreamingChatId;
-  const hasPendingTransientApprovals =
-    transientPartsChatId === currentChatId &&
-    streamingParts.some(p => p.type === 'tool' && p.state === 'approval-requested');
-  const showTransientAssistant = streamingForCurrentChat || hasPendingTransientApprovals;
   const configReady = !!(safeBackendConfig && safeConfig.model && safeConfig.agent);
 
   const handleOpenSubAgentSidebar = useCallback((taskId: string) => {
