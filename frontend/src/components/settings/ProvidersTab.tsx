@@ -32,6 +32,12 @@ const PROVIDER_COLORS: Record<string, string> = {
 
 const API_TYPES = ['openai', 'anthropic', 'google', 'xai', 'openrouter', 'ollama', 'litellm_proxy', 'bedrock'] as const;
 
+// Shared styling for the trailing action buttons attached to credential inputs
+// (Change / Save / Cancel). Color denotes hierarchy; everything else stays consistent.
+const FIELD_ACTION_BASE = 'shrink-0 min-w-[5rem] px-3 text-[10px] font-black uppercase text-center border-2 border-brutal-black whitespace-nowrap transition-colors';
+const FIELD_ACTION_OUTLINE = 'bg-white dark:bg-zinc-900 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700';
+const FIELD_ACTION_PRIMARY = 'bg-brutal-black text-white hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed';
+
 type ProviderTab = 'credentials' | 'models';
 
 interface ProvidersTabProps {
@@ -488,6 +494,12 @@ export function ProvidersTab({
         onKeyChange(field.key, field.value);
     };
 
+    // Commits the in-progress edit: exits edit mode keeping the current value.
+    // Persistence is handled by the parent's autosave on apiKeys changes.
+    const confirmEditing = (field: ApiField) => {
+        setEditingFields(prev => { const s = new Set(prev); s.delete(field.key); return s; });
+    };
+
     const handleSaveProvider = async (payload: CustomProviderPayload) => {
         await onAddProvider(payload);
         setShowAddForm(false);
@@ -665,7 +677,7 @@ export function ProvidersTab({
                                                             </div>
                                                             <button
                                                                 onClick={() => startEditing(field.key)}
-                                                                className="shrink-0 px-3 text-[10px] font-black uppercase border-2 border-l-0 border-brutal-black text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700 bg-white dark:bg-zinc-900 whitespace-nowrap"
+                                                                className={`border-l-0 ${FIELD_ACTION_BASE} ${FIELD_ACTION_OUTLINE}`}
                                                             >
                                                                 {t('settings.providers.changeKey')}
                                                             </button>
@@ -673,9 +685,13 @@ export function ProvidersTab({
                                                     ) : (
                                                         /* Edit state */
                                                         (() => {
+                                                            const isEditing = editingFields.has(field.key);
                                                             const showToggle = field.type === 'secret' && val.length > 0;
-                                                            const showCancel = field.isSet && editingFields.has(field.key);
-                                                            const hasRight = showToggle || showCancel;
+                                                            // Confirm/Cancel pair only when actively editing a previously-set field
+                                                            const showConfirm = isEditing;
+                                                            const showCancel = field.isSet && isEditing;
+                                                            const canConfirm = val.trim().length > 0;
+                                                            const hasRight = showToggle || showConfirm || showCancel;
                                                             return (
                                                                 <div className="flex gap-0">
                                                                     <div className="relative flex-1">
@@ -683,24 +699,34 @@ export function ProvidersTab({
                                                                             type={field.type === 'secret' ? (showKey[field.key] ? 'text' : 'password') : 'text'}
                                                                             value={val}
                                                                             onChange={(e) => onKeyChange(field.key, e.target.value)}
+                                                                            onKeyDown={(e) => { if (e.key === 'Enter' && canConfirm) confirmEditing(field); }}
                                                                             placeholder={field.placeholder}
-                                                                            autoFocus={editingFields.has(field.key)}
+                                                                            autoFocus={isEditing}
                                                                             className={`w-full bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 transition-all dark:text-white ${hasRight ? 'border-r-0' : ''}`}
                                                                         />
                                                                     </div>
                                                                     {showToggle && (
                                                                         <button
                                                                             onClick={() => onToggleShowKey(field.key)}
-                                                                            className={`w-9 flex items-center justify-center bg-white dark:bg-zinc-900 border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-800 font-mono text-xs dark:text-white select-none ${showCancel ? 'border-r-0' : ''}`}
+                                                                            className={`w-9 flex items-center justify-center bg-white dark:bg-zinc-900 border-2 border-brutal-black hover:bg-neutral-100 dark:hover:bg-zinc-800 font-mono text-xs dark:text-white select-none ${(showConfirm || showCancel) ? 'border-r-0' : ''}`}
                                                                             title={showKey[field.key] ? t('settings.providers.hideKey') : t('settings.providers.showKey')}
                                                                         >
                                                                             {showKey[field.key] ? '○' : '●'}
                                                                         </button>
                                                                     )}
+                                                                    {showConfirm && (
+                                                                        <button
+                                                                            onClick={() => confirmEditing(field)}
+                                                                            disabled={!canConfirm}
+                                                                            className={`${FIELD_ACTION_BASE} ${FIELD_ACTION_PRIMARY} ${showCancel ? 'border-r-0' : ''}`}
+                                                                        >
+                                                                            {t('common.save')}
+                                                                        </button>
+                                                                    )}
                                                                     {showCancel && (
                                                                         <button
                                                                             onClick={() => cancelEditing(field)}
-                                                                            className="px-3 text-[10px] font-black uppercase border-2 border-brutal-black text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-zinc-700 bg-white dark:bg-zinc-900 whitespace-nowrap"
+                                                                            className={`${FIELD_ACTION_BASE} ${FIELD_ACTION_OUTLINE}`}
                                                                         >
                                                                             {t('common.cancel')}
                                                                         </button>
