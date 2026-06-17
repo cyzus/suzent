@@ -30,6 +30,25 @@ function isAgent(node: { capabilities: { name: string }[] }): boolean {
   return node.capabilities.some((c) => c.name === AGENT_CAPABILITY);
 }
 
+/** A small button that confirms it copied to the clipboard. */
+function CopyButton({ value, tone = 'neutral', label = 'Copy' }: { value: string; tone?: 'blue' | 'red' | 'neutral'; label?: string }): React.ReactElement {
+  const [copied, setCopied] = useState(false);
+  return (
+    <SettingsListAction
+      tone={tone}
+      disabled={!value}
+      onClick={() => {
+        if (!value) return;
+        navigator.clipboard?.writeText(value);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+    >
+      {copied ? 'Copied' : label}
+    </SettingsListAction>
+  );
+}
+
 export function DevicesTab(): React.ReactElement {
   const [nodes, setNodes] = useState<ConnectedNode[]>([]);
   const [pending, setPending] = useState<PendingNode[]>([]);
@@ -38,6 +57,7 @@ export function DevicesTab(): React.ReactElement {
   const [busy, setBusy] = useState<string | null>(null);
   const [showToken, setShowToken] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(async () => {
     const [n, p, d] = await Promise.all([
@@ -48,6 +68,7 @@ export function DevicesTab(): React.ReactElement {
     setNodes(n);
     setPending(p);
     setDevices(d);
+    setLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -62,7 +83,8 @@ export function DevicesTab(): React.ReactElement {
       setError(null);
       try {
         const next = await saveNodeConfig(updates);
-        setConfig(next);
+        // Preserve pairing-address fields the POST response doesn't echo.
+        setConfig((prev) => ({ ...(prev ?? {}), ...next }));
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
@@ -70,34 +92,11 @@ export function DevicesTab(): React.ReactElement {
     []
   );
 
-  const handleApprove = async (code: string) => {
-    setBusy(code);
+  const act = async (key: string, fn: () => Promise<void>) => {
+    setBusy(key);
+    setError(null);
     try {
-      await approvePendingNode(code);
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const handleDeny = async (code: string) => {
-    setBusy(code);
-    try {
-      await denyPendingNode(code);
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const handleRevoke = async (deviceId: string) => {
-    setBusy(deviceId);
-    try {
-      await revokeDevice(deviceId);
+      await fn();
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -107,12 +106,28 @@ export function DevicesTab(): React.ReactElement {
   };
 
   const mode = config?.node_auth_mode ?? 'open';
+  const gatewayUrl = config?.gateway_url ?? 'ws://<this-machine>:25314/ws/node';
+
+  // The exact command to run on the joining device.
+  const hostCommand =
+    `suzent node host --name "My Device" --url ${gatewayUrl}` +
+    (mode === 'token' ? ` --token ${config?.node_auth_token || '<shared-secret>'}` : '');
 
   return (
     <div className="space-y-6">
       <SettingsHeader
         title="Devices"
         subtitle="Companion devices and peer agents connected to this Suzent."
+        actions={
+          <div className="flex items-center gap-2">
+            {loaded && (
+              <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-mono">
+                auto-refresh
+              </span>
+            )}
+            <SettingsListAction onClick={() => refresh()}>Refresh</SettingsListAction>
+          </div>
+        }
       />
 
       {error && (
@@ -162,21 +177,11 @@ export function DevicesTab(): React.ReactElement {
                 <SettingsListAction onClick={() => setShowToken((s) => !s)}>
                   {showToken ? 'Hide' : 'Show'}
                 </SettingsListAction>
-                <SettingsListAction
-                  tone="blue"
-                  onClick={() => {
-                    if (config?.node_auth_token) navigator.clipboard?.writeText(config.node_auth_token);
-                  }}
-                >
-                  Copy
-                </SettingsListAction>
+                <CopyButton value={config?.node_auth_token ?? ''} tone="blue" />
                 <BrutalButton onClick={() => updateConfig({ regenerate: true })}>
                   Regenerate
                 </BrutalButton>
               </div>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
-                Start each peer with <code>suzent node host --token &lt;secret&gt;</code> (or SUZENT_NODE_TOKEN).
-              </p>
             </div>
           )}
 
@@ -186,14 +191,47 @@ export function DevicesTab(): React.ReactElement {
         </div>
       </SettingsCard>
 
+      {/* ── Connect a device (pairing how-to) ───────────────────────── */}
+      <SettingsCard>
+        <SectionCardHeader
+          title="Connect a device"
+          description="Run this on the other device (it needs Suzent installed and network access to this machine)."
+        />
+        <div className="space-y-3 mt-3">
+          <div className="flex items-start gap-2">
+            <pre className="flex-1 border-2 border-brutal-black dark:border-white bg-neutral-50 dark:bg-zinc-900 px-3 py-2 font-mono text-xs overflow-x-auto whitespace-pre-wrap break-all">
+              {hostCommand}
+            </pre>
+            <CopyButton value={hostCommand} tone="blue" />
+          </div>
+          <ol className="text-xs text-neutral-500 dark:text-neutral-400 font-mono list-decimal pl-5 space-y-1">
+            <li>Run the command above on the other device.</li>
+            {mode === 'approve' && (
+              <li>It prints a pairing code and waits — approve it under <span className="font-bold">Pending</span> below.</li>
+            )}
+            {mode === 'token' && <li>It connects once the shared secret matches.</li>}
+            {mode === 'open' && <li>It connects immediately (open mode).</li>}
+            <li>Once approved, it reconnects automatically — no need to re-pair.</li>
+          </ol>
+          <p className="text-[11px] text-neutral-400 font-mono">
+            Tip: opening the Suzent app on another device does not pair it — each app runs its own agent. The command above makes that device a node of this one.
+          </p>
+        </div>
+      </SettingsCard>
+
       {/* ── Pending approvals ───────────────────────────────────────── */}
-      {pending.length > 0 && (
+      {(mode === 'approve' || pending.length > 0) && (
         <SettingsCard>
           <SectionCardHeader
             title={`Pending approval (${pending.length})`}
             description="Devices waiting for you to approve their connection."
           />
           <div className="space-y-2 mt-3">
+            {pending.length === 0 && (
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
+                Nothing waiting. Run the connect command above on another device and its pairing code will appear here.
+              </p>
+            )}
             {pending.map((p) => (
               <SettingsListItem key={p.pairing_code}>
                 <div className="flex items-center justify-between gap-3 w-full">
@@ -203,21 +241,21 @@ export function DevicesTab(): React.ReactElement {
                       <span className="text-neutral-400 font-normal">({p.platform})</span>
                     </div>
                     <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
-                      code {p.pairing_code} · {capNames(p.capabilities)}
+                      code <span className="text-brutal-black dark:text-white font-bold">{p.pairing_code}</span> · {capNames(p.capabilities)}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <SettingsListAction
                       tone="blue"
                       disabled={busy === p.pairing_code}
-                      onClick={() => handleApprove(p.pairing_code)}
+                      onClick={() => act(p.pairing_code, () => approvePendingNode(p.pairing_code))}
                     >
                       Approve
                     </SettingsListAction>
                     <SettingsListAction
                       tone="red"
                       disabled={busy === p.pairing_code}
-                      onClick={() => handleDeny(p.pairing_code)}
+                      onClick={() => act(p.pairing_code, () => denyPendingNode(p.pairing_code))}
                     >
                       Deny
                     </SettingsListAction>
@@ -238,7 +276,7 @@ export function DevicesTab(): React.ReactElement {
         <div className="space-y-2 mt-3">
           {nodes.length === 0 && (
             <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
-              No devices connected. Run <code>suzent node host</code> on another device.
+              No devices connected yet.
             </p>
           )}
           {nodes.map((n) => (
@@ -289,7 +327,7 @@ export function DevicesTab(): React.ReactElement {
                   <SettingsListAction
                     tone="red"
                     disabled={busy === d.device_id}
-                    onClick={() => handleRevoke(d.device_id)}
+                    onClick={() => act(d.device_id, () => revokeDevice(d.device_id))}
                   >
                     Revoke
                   </SettingsListAction>

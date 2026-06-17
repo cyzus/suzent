@@ -334,8 +334,32 @@ async def revoke_device(request: Request) -> JSONResponse:
 _VALID_AUTH_MODES = ("open", "token", "approve")
 
 
+def _best_effort_lan_host() -> str:
+    """Best-effort LAN IP another device can use to reach this server.
+
+    Falls back to the configured host when detection fails (e.g. offline).
+    """
+    import socket
+
+    from suzent.config import DEFAULT_HOST
+
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            # No packets are actually sent; this just picks the outbound iface.
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+        finally:
+            s.close()
+    except Exception:
+        return DEFAULT_HOST
+
+
 async def get_node_config(request: Request) -> JSONResponse:
-    """GET /nodes/config — Current node auth configuration."""
+    """GET /nodes/config — Current node auth configuration + pairing address."""
+    from suzent.config import DEFAULT_PORT
+
+    lan_host = _best_effort_lan_host()
     return JSONResponse(
         {
             "nodes_enabled": bool(CONFIG.nodes_enabled),
@@ -343,6 +367,10 @@ async def get_node_config(request: Request) -> JSONResponse:
             # Local-first app on a trusted machine — surface the token so the
             # operator can copy it to companion devices.
             "node_auth_token": CONFIG.node_auth_token or "",
+            # Where a companion device should point `suzent node host --url`.
+            "lan_host": lan_host,
+            "port": DEFAULT_PORT,
+            "gateway_url": f"ws://{lan_host}:{DEFAULT_PORT}/ws/node",
         }
     )
 

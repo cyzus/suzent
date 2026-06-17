@@ -342,6 +342,9 @@ export interface NodeAuthConfig {
   nodes_enabled: boolean;
   node_auth_mode: 'open' | 'token' | 'approve';
   node_auth_token: string;
+  lan_host?: string;
+  port?: number;
+  gateway_url?: string;
 }
 
 export async function fetchNodes(): Promise<ConnectedNode[]> {
