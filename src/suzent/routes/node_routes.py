@@ -355,11 +355,81 @@ def _best_effort_lan_host() -> str:
         return DEFAULT_HOST
 
 
-async def get_node_config(request: Request) -> JSONResponse:
-    """GET /nodes/config — Current node auth configuration + pairing address."""
+def _tailscale_addresses() -> list[tuple[str, str]]:
+    """Detect this machine's Tailscale address(es) via the local CLI.
+
+    Returns a list of (label, host) — the 100.x IP and, when available, the
+    MagicDNS name. Empty when Tailscale isn't installed/up. Best-effort: a
+    short subprocess timeout, never raises.
+    """
+    import json
+    import os
+    import shutil
+    import subprocess
+
+    exe = shutil.which("tailscale")
+    if not exe:
+        mac_path = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+        if os.path.exists(mac_path):
+            exe = mac_path
+    if not exe:
+        return []
+
+    out: list[tuple[str, str]] = []
+    try:
+        ip_res = subprocess.run(
+            [exe, "ip", "-4"], capture_output=True, text=True, timeout=2
+        )
+        ip = (ip_res.stdout or "").strip().splitlines()
+        if ip and ip[0].strip():
+            out.append(("Tailscale", ip[0].strip()))
+    except Exception:
+        return out
+
+    # MagicDNS name (nice, stable across IP changes) — optional.
+    try:
+        st = subprocess.run(
+            [exe, "status", "--json"], capture_output=True, text=True, timeout=2
+        )
+        data = json.loads(st.stdout or "{}")
+        dns = (data.get("Self", {}) or {}).get("DNSName", "")
+        if dns:
+            out.append(("Tailscale (MagicDNS)", dns.rstrip(".")))
+    except Exception:
+        pass
+
+    return out
+
+
+def _pairing_addresses() -> list[dict]:
+    """Candidate addresses a companion device can use to reach this server."""
     from suzent.config import DEFAULT_PORT
 
-    lan_host = _best_effort_lan_host()
+    candidates: list[tuple[str, str]] = [("LAN", _best_effort_lan_host())]
+    candidates.extend(_tailscale_addresses())
+
+    seen: set[str] = set()
+    result = []
+    for label, host in candidates:
+        if not host or host in seen:
+            continue
+        seen.add(host)
+        result.append(
+            {
+                "label": label,
+                "host": host,
+                "gateway_url": f"ws://{host}:{DEFAULT_PORT}/ws/node",
+            }
+        )
+    return result
+
+
+async def get_node_config(request: Request) -> JSONResponse:
+    """GET /nodes/config — Current node auth configuration + pairing addresses."""
+    from suzent.config import DEFAULT_PORT
+
+    addresses = _pairing_addresses()
+    primary = addresses[0] if addresses else None
     return JSONResponse(
         {
             "nodes_enabled": bool(CONFIG.nodes_enabled),
@@ -367,10 +437,13 @@ async def get_node_config(request: Request) -> JSONResponse:
             # Local-first app on a trusted machine — surface the token so the
             # operator can copy it to companion devices.
             "node_auth_token": CONFIG.node_auth_token or "",
-            # Where a companion device should point `suzent node host --url`.
-            "lan_host": lan_host,
             "port": DEFAULT_PORT,
-            "gateway_url": f"ws://{lan_host}:{DEFAULT_PORT}/ws/node",
+            # All reachable addresses (LAN + Tailscale if present) so the UI can
+            # offer the right one per network. lan_host/gateway_url kept for
+            # backward compatibility.
+            "addresses": addresses,
+            "lan_host": primary["host"] if primary else "",
+            "gateway_url": primary["gateway_url"] if primary else "",
         }
     )
 

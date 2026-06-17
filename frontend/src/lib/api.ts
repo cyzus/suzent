@@ -338,6 +338,12 @@ export interface ApprovedDevice {
   connected: boolean;
 }
 
+export interface PairingAddress {
+  label: string;
+  host: string;
+  gateway_url: string;
+}
+
 export interface NodeAuthConfig {
   nodes_enabled: boolean;
   node_auth_mode: 'open' | 'token' | 'approve';
@@ -345,6 +351,7 @@ export interface NodeAuthConfig {
   lan_host?: string;
   port?: number;
   gateway_url?: string;
+  addresses?: PairingAddress[];
 }
 
 export async function fetchNodes(): Promise<ConnectedNode[]> {

@@ -58,6 +58,7 @@ export function DevicesTab(): React.ReactElement {
   const [showToken, setShowToken] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [addrHost, setAddrHost] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const [n, p, d] = await Promise.all([
@@ -106,7 +107,13 @@ export function DevicesTab(): React.ReactElement {
   };
 
   const mode = config?.node_auth_mode ?? 'open';
-  const gatewayUrl = config?.gateway_url ?? 'ws://<this-machine>:25314/ws/node';
+  const addresses = config?.addresses ?? [];
+  // Pick the selected pairing address (default: first / LAN).
+  const selectedAddr =
+    addresses.find((a) => a.host === addrHost) ?? addresses[0] ?? null;
+  const gatewayUrl =
+    selectedAddr?.gateway_url ?? config?.gateway_url ?? 'ws://<this-machine>:25314/ws/node';
+  const hasTailscale = addresses.some((a) => a.label.startsWith('Tailscale'));
 
   // The exact command to run on the joining device.
   const hostCommand =
@@ -198,6 +205,21 @@ export function DevicesTab(): React.ReactElement {
           description="Run this on the other device (it needs Suzent installed and network access to this machine)."
         />
         <div className="space-y-3 mt-3">
+          {addresses.length > 1 && (
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="font-bold uppercase text-sm">Network</div>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
+                  Which address should the other device reach this machine on?
+                </p>
+              </div>
+              <BrutalSelect
+                value={selectedAddr?.host ?? ''}
+                onChange={setAddrHost}
+                options={addresses.map((a) => ({ value: a.host, label: `${a.label} · ${a.host}` }))}
+              />
+            </div>
+          )}
           <div className="flex items-start gap-2">
             <pre className="flex-1 border-2 border-brutal-black dark:border-white bg-neutral-50 dark:bg-zinc-900 px-3 py-2 font-mono text-xs overflow-x-auto whitespace-pre-wrap break-all">
               {hostCommand}
@@ -216,6 +238,11 @@ export function DevicesTab(): React.ReactElement {
           <p className="text-[11px] text-neutral-400 font-mono">
             Tip: opening the Suzent app on another device does not pair it — each app runs its own agent. The command above makes that device a node of this one.
           </p>
+          {hasTailscale && (
+            <p className="text-[11px] text-neutral-400 font-mono">
+              Tailscale detected — pick the Tailscale address above to pair across networks (no port-forwarding needed). The other device must be on the same tailnet.
+            </p>
+          )}
         </div>
       </SettingsCard>
 
