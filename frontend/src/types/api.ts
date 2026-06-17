@@ -24,6 +24,8 @@ export interface Message {
   timestamp?: string;         // ISO 8601 timestamp when the message was created
   stepInfo?: string; // Step metadata like "Step: 1 | Input tokens: 100 | Output tokens: 50"
   parts?: AGUIPart[]; // Structured assistant display parts; content remains as fallback.
+  _streaming_draft?: boolean; // Backend recovery snapshot for in-progress streams.
+  _streaming_run_id?: string;
   images?: ImageAttachment[]; // Optional image attachments
   files?: FileAttachment[];   // Optional file attachments
 }
