@@ -179,6 +179,8 @@ class SessionSearchTool(Tool):
         )
 
     def _browse(self, db, limit: int, current_chat_id: Optional[str]) -> ToolResult:
+        from suzent.database.search import sanitize_messages
+
         # Over-fetch by one so excluding the current chat still yields `limit` rows.
         summaries = db.list_chats(limit=limit + 1)
         summaries = [s for s in summaries if s.id != current_chat_id][:limit]
@@ -189,10 +191,15 @@ class SessionSearchTool(Tool):
             )
         lines = ["Recent sessions:\n"]
         for s in summaries:
+            # The sidebar summary count (s.messageCount) counts only assistant turns
+            # and can be stale; recompute the visible (user+assistant) message count
+            # live so Browse never reports a misleading "0 messages".
+            chat = db.get_chat(s.id)
+            msg_count = len(sanitize_messages(chat.messages or [])) if chat else 0
             preview = (s.lastMessage or "").strip()
             lines.append(
                 f"- {s.title}  (session_id: {s.id})\n"
-                f"  Updated: {s.updatedAt}  ·  {s.messageCount} messages\n"
+                f"  Updated: {s.updatedAt}  ·  {msg_count} messages\n"
                 f"  {preview}"
             )
         return ToolResult.success_result(

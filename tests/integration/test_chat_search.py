@@ -216,3 +216,22 @@ def test_tool_browse_mode(tool_db):
     assert res.success
     assert res.metadata["mode"] == "browse"
     assert "One" in res.message or "Two" in res.message
+
+
+def test_browse_counts_visible_messages_not_stale_sidebar_count(tool_db):
+    """Browse must recompute the visible message count, not trust the (assistant-only,
+    possibly stale) sidebar summary. A user msg + a text reply = 2 visible messages."""
+    cid = tool_db.create_chat(
+        "Convo",
+        {},
+        [
+            {"role": "user", "content": "question here"},
+            _assistant("the answer"),
+        ],
+    )
+    # Force the sidebar summary count stale (as happens for chats summarized before
+    # their assistant reply landed).
+    tool_db.merge_chat_config(cid, {"_summary_visible_assistant_count": 0})
+    res = asyncio.run(SessionSearchTool().forward(_ctx(tool_db)))
+    assert "0 messages" not in res.message
+    assert "2 messages" in res.message
