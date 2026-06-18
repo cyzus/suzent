@@ -19,6 +19,7 @@ import {
   removePeer,
   requestControl,
   controlStatus,
+  createHostToken,
   type ConnectedNode,
   type PendingNode,
   type ApprovedDevice,
@@ -73,6 +74,7 @@ export function DevicesTab(): React.ReactElement {
   const [showToken, setShowToken] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [restartHint, setRestartHint] = useState(false);
+  const [hostToken, setHostToken] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [addrHost, setAddrHost] = useState<string | null>(null);
   const [connections, setConnections] = useState<OutboundConnection[]>([]);
@@ -198,6 +200,7 @@ export function DevicesTab(): React.ReactElement {
     capabilities?: string;
     deviceId?: string;
     approvedAt?: string;
+    scope?: string;
   };
   const mergedDevices: MergedDevice[] = (() => {
     const byName = new Map<string, MergedDevice>();
@@ -216,6 +219,7 @@ export function DevicesTab(): React.ReactElement {
       if (existing) {
         existing.deviceId = d.device_id;
         existing.approvedAt = d.approved_at;
+        existing.scope = d.scope;
         existing.online = existing.online || d.connected;
       } else {
         byName.set(d.display_name, {
@@ -226,6 +230,7 @@ export function DevicesTab(): React.ReactElement {
           isAgent: false,
           deviceId: d.device_id,
           approvedAt: d.approved_at,
+          scope: d.scope,
         });
       }
     }
@@ -325,6 +330,42 @@ export function DevicesTab(): React.ReactElement {
           {restartHint && (
             <div className="border-2 border-brutal-black dark:border-white bg-brutal-yellow/40 px-3 py-2 text-xs font-mono">
               Restart Suzent on this device for the network-binding change to take effect.
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-4 border-t border-brutal-black/10 dark:border-white/10 pt-3">
+            <div>
+              <div className="font-bold uppercase text-sm">Remote host access</div>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono max-w-md">
+                Mint a <span className="font-bold">full-access</span> token to operate this device remotely (everything, not just the agent). Granted control tokens stay scoped to the agent only.
+              </p>
+            </div>
+            <BrutalButton
+              onClick={async () => {
+                setError(null);
+                try {
+                  const { token } = await createHostToken('Host access');
+                  setHostToken(token);
+                  await refresh();
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : String(e));
+                }
+              }}
+            >
+              Create host token
+            </BrutalButton>
+          </div>
+          {hostToken && (
+            <div className="border-2 border-brutal-red px-3 py-2 space-y-1">
+              <div className="text-[11px] font-bold uppercase text-brutal-red">Copy now — shown once</div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 font-mono text-xs break-all">{hostToken}</code>
+                <CopyButton value={hostToken} tone="red" />
+                <SettingsListAction onClick={() => setHostToken(null)}>Dismiss</SettingsListAction>
+              </div>
+              <p className="text-[11px] text-neutral-400 font-mono">
+                On the remote device, send it as <code>Authorization: Bearer &lt;token&gt;</code>. Revoke it anytime under Devices.
+              </p>
             </div>
           )}
 
@@ -582,6 +623,11 @@ export function DevicesTab(): React.ReactElement {
                     {d.isAgent && (
                       <span className="px-1.5 py-0.5 text-[10px] font-black uppercase border border-brutal-blue text-brutal-blue rounded-sm">
                         Agent
+                      </span>
+                    )}
+                    {d.scope === 'full' && (
+                      <span className="px-1.5 py-0.5 text-[10px] font-black uppercase border border-brutal-red text-brutal-red rounded-sm">
+                        Host
                       </span>
                     )}
                   </div>

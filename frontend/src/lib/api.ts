@@ -334,6 +334,7 @@ export interface ApprovedDevice {
   device_id: string;
   display_name: string;
   platform: string;
+  scope?: 'node' | 'agent' | 'full';
   approved_at: string;
   connected: boolean;
 }
@@ -389,6 +390,17 @@ export async function denyPendingNode(pairingCode: string): Promise<void> {
 export async function revokeDevice(deviceId: string): Promise<void> {
   const res = await fetch(`${getApiBase()}/nodes/devices/${deviceId}/revoke`, { method: 'POST' });
   if (!res.ok) throw new Error((await res.text()) || 'Failed to revoke');
+}
+
+/** Mint a full-access ("host") token to use this server remotely. Shown once. */
+export async function createHostToken(name = ''): Promise<{ token: string; device_id: string }> {
+  const res = await fetch(`${getApiBase()}/nodes/host-token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to create host token');
+  return await res.json();
 }
 
 export interface DiscoveredPeer {

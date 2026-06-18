@@ -295,7 +295,9 @@ class NodeManager:
         g = self._grant_requests.get(request_id)
         if not g or g.status != "pending":
             return False
-        _device_id, token = self.device_store.mint(g.controller_name, "peer")
+        _device_id, token = self.device_store.mint(
+            g.controller_name, "peer", scope="agent"
+        )
         g.status = "approved"
         g.token = token
         return True
@@ -351,7 +353,9 @@ class NodeManager:
         entry = self._pending.pop(pairing_code, None)
         if not entry:
             return False, ""
-        _device_id, token = self.device_store.mint(entry.display_name, entry.platform)
+        _device_id, token = self.device_store.mint(
+            entry.display_name, entry.platform, scope="node"
+        )
         if entry.future and not entry.future.done():
             entry.future.set_result(token)
         return True, token

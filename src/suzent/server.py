@@ -176,6 +176,7 @@ from suzent.routes.node_routes import (
     deny_pending_node,
     list_approved_devices,
     revoke_device,
+    create_host_token,
     get_node_config,
     save_node_config,
     discover_nodes,
@@ -987,6 +988,7 @@ app = Starlette(
             "/nodes/pending/{pairing_code}/deny", deny_pending_node, methods=["POST"]
         ),
         Route("/nodes/devices", list_approved_devices, methods=["GET"]),
+        Route("/nodes/host-token", create_host_token, methods=["POST"]),
         Route("/nodes/devices/{device_id}/revoke", revoke_device, methods=["POST"]),
         Route("/nodes/{node_id}", describe_node, methods=["GET"]),
         Route("/nodes/{node_id}/invoke", invoke_node_command, methods=["POST"]),

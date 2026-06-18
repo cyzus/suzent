@@ -18,8 +18,6 @@ constructing an ASGI scope.
 
 from __future__ import annotations
 
-import hmac
-
 from starlette.responses import JSONResponse
 
 # Hosts treated as the trusted local machine. Empty string and "testclient"
@@ -53,26 +51,32 @@ def extract_token(headers: list[tuple[bytes, bytes]]) -> str:
     return lookup.get(b"x-suzent-token", b"").decode("latin-1").strip()
 
 
-def token_authorized(
-    token: str,
-    device_store,
-    node_auth_mode: str,
-    node_auth_token: str,
-) -> bool:
-    """True if the token is a known device token or the shared secret."""
-    if not token:
-        return False
+# Routes a remote "agent"-scope token (a control grant) may reach — just enough
+# to trigger this device's agent. Everything else (config, sandbox, peers, …)
+# requires a "full"-scope (host) token or loopback.
+AGENT_ALLOWED_PATHS = {"/chat", "/chat/stop"}
+
+
+def token_scope(token: str, device_store) -> str | None:
+    """Return the scope of a token (node | agent | full), or None if invalid."""
+    if not token or device_store is None:
+        return None
     try:
-        if device_store is not None and device_store.verify(token):
-            return True
+        rec = device_store.verify(token)
     except Exception:
-        pass
-    if (
-        (node_auth_mode or "").lower() == "token"
-        and node_auth_token
-        and hmac.compare_digest(token, node_auth_token)
-    ):
+        rec = None
+    if not rec:
+        return None
+    return rec.get("scope", "node")
+
+
+def scope_allows(scope: str | None, path: str) -> bool:
+    """Whether a token scope may reach an HTTP path (remote caller)."""
+    if scope == "full":
         return True
+    if scope == "agent":
+        return path in AGENT_ALLOWED_PATHS
+    # "node" tokens are for the WS handshake only; no HTTP surface.
     return False
 
 
@@ -99,30 +103,36 @@ class AuthBoundaryMiddleware:
         if scope["type"] == "http" and is_http_exempt(path):
             return await self.app(scope, receive, send)
 
-        if self._authorized(scope):
+        tok_scope = self._token_scope(scope)
+        if tok_scope is None:
+            # No/invalid token.
+            if scope["type"] == "http":
+                resp = JSONResponse(
+                    {"error": "Unauthorized: remote access requires a node token"},
+                    status_code=401,
+                )
+                return await resp(scope, receive, send)
+            await send({"type": "websocket.close", "code": 1008})
+            return
+
+        if scope["type"] == "websocket" or scope_allows(tok_scope, path):
             return await self.app(scope, receive, send)
 
-        if scope["type"] == "http":
-            resp = JSONResponse(
-                {"error": "Unauthorized: remote access requires a valid node token"},
-                status_code=401,
-            )
-            return await resp(scope, receive, send)
-        # websocket
-        await send({"type": "websocket.close", "code": 1008})
+        # Valid token, but its scope doesn't cover this route.
+        resp = JSONResponse(
+            {
+                "error": (
+                    f"Forbidden: this token's scope ('{tok_scope}') can't access "
+                    f"{path}. A host-scope token is required for full access."
+                )
+            },
+            status_code=403,
+        )
+        return await resp(scope, receive, send)
 
-    def _authorized(self, scope) -> bool:
-        from suzent.config import CONFIG
-
+    def _token_scope(self, scope) -> str | None:
         token = extract_token(scope.get("headers", []))
-        device_store = None
         app = scope.get("app")
         nm = getattr(getattr(app, "state", None), "node_manager", None)
-        if nm is not None:
-            device_store = getattr(nm, "device_store", None)
-        return token_authorized(
-            token,
-            device_store,
-            getattr(CONFIG, "node_auth_mode", "open"),
-            getattr(CONFIG, "node_auth_token", "") or "",
-        )
+        device_store = getattr(nm, "device_store", None) if nm is not None else None
+        return token_scope(token, device_store)

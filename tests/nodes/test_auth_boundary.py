@@ -11,7 +11,8 @@ from suzent.auth_boundary import (
     AuthBoundaryMiddleware,
     extract_token,
     is_loopback,
-    token_authorized,
+    scope_allows,
+    token_scope,
 )
 from suzent.nodes.device_store import DeviceTokenStore
 
@@ -31,19 +32,29 @@ def test_extract_token():
     assert extract_token([]) == ""
 
 
-def test_token_authorized(tmp_path):
+def test_token_scope(tmp_path):
     store = DeviceTokenStore(path=tmp_path / "d.json")
-    _id, token = store.mint("Phone", "ios")
+    _i, agent_tok = store.mint("Peer", "peer", scope="agent")
+    _j, full_tok = store.mint("Host", "host", scope="full")
+    _k, node_tok = store.mint("Phone", "ios", scope="node")
 
-    # Valid durable device token.
-    assert token_authorized(token, store, "approve", "")
-    # Shared secret in token mode.
-    assert token_authorized("s3cret", store, "token", "s3cret")
-    # Wrong / empty.
-    assert not token_authorized("nope", store, "approve", "")
-    assert not token_authorized("", store, "token", "s3cret")
-    # Shared secret ignored when mode isn't 'token'.
-    assert not token_authorized("s3cret", store, "open", "s3cret")
+    assert token_scope(agent_tok, store) == "agent"
+    assert token_scope(full_tok, store) == "full"
+    assert token_scope(node_tok, store) == "node"
+    assert token_scope("nope", store) is None
+    assert token_scope("", store) is None
+
+
+def test_scope_allows():
+    # full → everything; agent → only the agent routes; node → nothing (HTTP).
+    assert scope_allows("full", "/nodes/config")
+    assert scope_allows("full", "/chat")
+    assert scope_allows("agent", "/chat")
+    assert scope_allows("agent", "/chat/stop")
+    assert not scope_allows("agent", "/nodes/config")
+    assert not scope_allows("agent", "/sandbox/files")
+    assert not scope_allows("node", "/chat")
+    assert not scope_allows(None, "/chat")
 
 
 # ─── Middleware behavior ─────────────────────────────────────────────
@@ -98,17 +109,62 @@ class TestMiddleware:
         assert sent and sent[0]["status"] == 401
 
     @pytest.mark.asyncio
-    async def test_remote_with_valid_token_passes(self, tmp_path):
+    async def test_remote_agent_token_reaches_chat(self, tmp_path):
         store = DeviceTokenStore(path=tmp_path / "d.json")
-        _id, token = store.mint("Peer", "linux")
+        _id, token = store.mint("Peer", "linux", scope="agent")
         scope = _scope(
             "http",
             "100.64.0.5",
             headers=[(b"authorization", f"Bearer {token}".encode())],
+            path="/chat",
             store=store,
         )
         called, _ = await _run(scope)
         assert called
+
+    @pytest.mark.asyncio
+    async def test_remote_agent_token_blocked_on_other_routes(self, tmp_path):
+        store = DeviceTokenStore(path=tmp_path / "d.json")
+        _id, token = store.mint("Peer", "linux", scope="agent")
+        scope = _scope(
+            "http",
+            "100.64.0.5",
+            headers=[(b"authorization", f"Bearer {token}".encode())],
+            path="/nodes/config",
+            store=store,
+        )
+        called, sent = await _run(scope)
+        assert not called
+        assert sent and sent[0]["status"] == 403
+
+    @pytest.mark.asyncio
+    async def test_remote_full_token_reaches_anything(self, tmp_path):
+        store = DeviceTokenStore(path=tmp_path / "d.json")
+        _id, token = store.mint("Host", "host", scope="full")
+        scope = _scope(
+            "http",
+            "100.64.0.5",
+            headers=[(b"authorization", f"Bearer {token}".encode())],
+            path="/nodes/config",
+            store=store,
+        )
+        called, _ = await _run(scope)
+        assert called
+
+    @pytest.mark.asyncio
+    async def test_remote_node_token_blocked_on_http(self, tmp_path):
+        store = DeviceTokenStore(path=tmp_path / "d.json")
+        _id, token = store.mint("Phone", "ios", scope="node")
+        scope = _scope(
+            "http",
+            "100.64.0.5",
+            headers=[(b"authorization", f"Bearer {token}".encode())],
+            path="/chat",
+            store=store,
+        )
+        called, sent = await _run(scope)
+        assert not called
+        assert sent and sent[0]["status"] == 403
 
     @pytest.mark.asyncio
     async def test_remote_ws_node_exempt(self):

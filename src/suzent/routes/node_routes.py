@@ -343,6 +343,26 @@ async def list_approved_devices(request: Request) -> JSONResponse:
     return JSONResponse({"devices": devices, "count": len(devices)})
 
 
+async def create_host_token(request: Request) -> JSONResponse:
+    """POST /nodes/host-token — mint a full-access token for remote host control.
+
+    Loopback-only (the auth boundary blocks remote callers from /nodes/* anyway).
+    The token is returned once; copy it to the remote device. Revoke like any
+    device. This is the deliberate, stronger credential for "use as the host" —
+    distinct from scoped 'agent' grant tokens.
+    """
+    node_manager = _get_node_manager(request)
+    if not node_manager:
+        return JSONResponse({"error": "Node system not initialized"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    name = str(body.get("name") or "").strip() or "Host token"
+    device_id, token = node_manager.device_store.mint(name, "host", scope="full")
+    return JSONResponse({"device_id": device_id, "token": token, "scope": "full"})
+
+
 async def revoke_device(request: Request) -> JSONResponse:
     """POST /nodes/devices/{device_id}/revoke — Revoke a device's token."""
     node_manager = _get_node_manager(request)
@@ -880,7 +900,7 @@ async def set_peer_mode(request: Request) -> JSONResponse:
         from suzent.config import DEFAULT_PORT
 
         device_id, token = node_manager.device_store.mint(
-            peer.get("name") or "peer", "peer"
+            peer.get("name") or "peer", "peer", scope="agent"
         )
         my_base = f"http://{_best_effort_lan_host()}:{DEFAULT_PORT}"
         try:

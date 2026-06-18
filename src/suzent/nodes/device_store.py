@@ -65,8 +65,15 @@ class DeviceTokenStore:
         except Exception as e:
             logger.warning(f"Device store: could not persist {self._path}: {e}")
 
-    def mint(self, display_name: str, platform: str) -> tuple[str, str]:
-        """Create and persist a new device token. Returns (device_id, token)."""
+    def mint(
+        self, display_name: str, platform: str, scope: str = "node"
+    ) -> tuple[str, str]:
+        """Create and persist a new device token. Returns (device_id, token).
+
+        ``scope`` controls what a remote bearer of this token may reach:
+        ``node`` (WS companion, no HTTP), ``agent`` (trigger the agent only), or
+        ``full`` (host access — everything). Enforced in the auth boundary.
+        """
         device_id = uuid.uuid4().hex[:12]
         token = secrets.token_urlsafe(32)
         with self._lock:
@@ -74,10 +81,13 @@ class DeviceTokenStore:
                 "device_id": device_id,
                 "display_name": display_name,
                 "platform": platform,
+                "scope": scope,
                 "approved_at": _now_iso(),
             }
             self._save()
-        logger.info(f"Device store: minted token for '{display_name}' ({device_id})")
+        logger.info(
+            f"Device store: minted {scope} token for '{display_name}' ({device_id})"
+        )
         return device_id, token
 
     def verify(self, token: str) -> dict[str, Any] | None:
@@ -95,6 +105,7 @@ class DeviceTokenStore:
                     "device_id": rec["device_id"],
                     "display_name": rec.get("display_name", ""),
                     "platform": rec.get("platform", "unknown"),
+                    "scope": rec.get("scope", "node"),
                     "approved_at": rec.get("approved_at", ""),
                 }
                 for rec in self._devices.values()

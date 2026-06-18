@@ -274,22 +274,34 @@ use cross-device nodes, enable **Settings → Devices → "Reachable by other
 devices"** (config `node_lan_bind`, default `false`) and **restart** the app —
 the server then binds `0.0.0.0` and is reachable on its LAN/Tailscale address.
 
-### Auth boundary
+### Auth boundary (scoped tokens)
 
-Exposing the server does **not** open the API to the network unauthenticated.
-A middleware enforces:
+Exposing the server does **not** open the API to the network. A middleware
+enforces a loopback-trusted, **scope-gated** model:
 
 - **Loopback (the local app) is trusted** — full access, no token.
-- **Any other address must present a valid node token** (`Authorization: Bearer
-  <token>` or `X-Suzent-Token`) — a durable per-device token, or the shared
-  secret when `node_auth_mode=token`. Otherwise the request is rejected (401).
-- The **`/ws/node` handshake is exempt** (it authenticates in the connect
-  message), and `GET /nodes/config` never returns the shared secret to a
-  non-loopback caller.
+- **Remote callers** present a token (`Authorization: Bearer <token>` or
+  `X-Suzent-Token`); what they can reach depends on the token's **scope**:
 
-So `node_lan_bind` is safe to enable on a trusted LAN/tailnet: remote peers can
-only reach the API with a token they were granted, while the local UI keeps full
-access. The bind host is fixed once the server is listening, hence the restart.
+  | Scope | Issued by | Remote access |
+  |-------|-----------|---------------|
+  | `node` | approve-mode WS pairing | WS handshake only — **no HTTP routes** |
+  | `agent` | a control grant | **only** `/chat` + `/chat/stop` (trigger the agent) |
+  | `full` | an explicit **host token** | the entire API (operate the device remotely) |
+
+  A valid token outside its scope gets **403**; no/invalid token gets **401**.
+
+- The **`/ws/node` handshake** and the **grant bootstrap** endpoints are exempt;
+  `GET /nodes/config` never returns the shared secret to a non-loopback caller.
+
+So a granted peer can drive your agent and **nothing else** — it can't read your
+config or files. To use a device fully from afar, mint a **host token**
+(Settings → Devices → *Remote host access → Create host token*); it carries
+`full` scope, is shown once, and is revocable like any device. This is the
+deliberate, stronger credential — distinct from the scoped grant tokens.
+
+`node_lan_bind` is therefore safe on a trusted LAN/tailnet. The bind host is
+fixed once the server is listening, hence the restart.
 
 ## Discovery (LAN + Tailscale)
 
