@@ -20,7 +20,7 @@ from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
 from suzent.database import get_database
 from suzent.logger import get_logger
-from suzent.tools.base import Tool, ToolErrorCode, ToolResult
+from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 logger = get_logger(__name__)
 
@@ -55,6 +55,7 @@ class SessionSearchTool(Tool):
 
     name = "SessionSearchTool"
     tool_name = "session_search"
+    group = ToolGroup.MEMORY
 
     async def forward(
         self,

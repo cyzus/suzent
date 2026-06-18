@@ -310,6 +310,8 @@ class ConfigModel(BaseModel):
         "BashTool",
         "ImageGenerationTool",
         "AgentTool",
+        "MemorySearchTool",
+        "SessionSearchTool",
     ]
     tool_options: Optional[List[str]] = None
 

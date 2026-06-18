@@ -39,6 +39,7 @@ class ToolGroup(str, Enum):
     WEB = "Web"
     AGENT = "Agent"
     CREATIVE = "Creative"
+    MEMORY = "Memory & recall"
 
 
 class ToolErrorCode(Enum):

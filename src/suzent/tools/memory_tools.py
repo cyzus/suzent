@@ -12,7 +12,7 @@ from datetime import datetime
 from pydantic import Field
 from pydantic_ai import RunContext
 from suzent.core.agent_deps import AgentDeps
-from suzent.tools.base import Tool, ToolErrorCode, ToolResult
+from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 from suzent.logger import get_logger
 
 logger = get_logger(__name__)
@@ -25,6 +25,7 @@ class MemorySearchTool(Tool):
 
     name = "MemorySearchTool"
     tool_name = "memory_search"
+    group = ToolGroup.MEMORY
     deferrable = False
 
     def __init__(self):
