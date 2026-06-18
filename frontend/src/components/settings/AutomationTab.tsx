@@ -258,7 +258,6 @@ export function AutomationTab({ models, tools = [] }: AutomationTabProps): React
                   saveHeartbeatGlobalConfig({ allowed_tools: newTools });
                 }}
                 options={tools
-                  .filter(t => !['MemorySearchTool', 'MemoryBlockUpdateTool'].includes(t))
                   .map(t => ({
                     value: t,
                     label: t.replace(/Tool$/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase(),
