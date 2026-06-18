@@ -7,6 +7,7 @@ from .goals import GoalOperationsMixin
 from .migrations import DatabaseMigrationMixin
 from .postprocess import PostprocessOperationsMixin
 from .projects import ProjectOperationsMixin
+from .search import ChatSearchMixin
 from .settings import SettingsOperationsMixin
 from .tasks import TaskOperationsMixin
 
@@ -17,6 +18,7 @@ class ChatDatabase(
     GoalOperationsMixin,
     TaskOperationsMixin,
     ChatOperationsMixin,
+    ChatSearchMixin,
     PostprocessOperationsMixin,
     SettingsOperationsMixin,
     CronOperationsMixin,

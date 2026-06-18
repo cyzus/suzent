@@ -40,6 +40,7 @@ class ChatDatabaseBase:
         self._migrate_static_config_from_db()
         self._ensure_default_project()
         self._migrate_legacy_session_dirs()
+        self._init_chat_search()
 
     def _session(self) -> Session:
         """Create a new database session."""

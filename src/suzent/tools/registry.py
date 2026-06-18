@@ -98,6 +98,7 @@ def _all_tool_classes() -> list:
     from suzent.tools.image_generation_tool import ImageGenerationTool
     from suzent.tools.image_vision_tool import ImageVisionTool
     from suzent.tools.memory_tools import MemorySearchTool
+    from suzent.tools.session_search_tool import SessionSearchTool
     from suzent.tools.render_ui_tool import RenderUITool
     from suzent.tools.ask_question_tool import AskQuestionTool
     from suzent.tools.agent_tool import AgentTool
@@ -125,6 +126,7 @@ def _all_tool_classes() -> list:
         SocialMessageTool,
         SkillTool,
         MemorySearchTool,
+        SessionSearchTool,
         AgentTool,
     ]
 
