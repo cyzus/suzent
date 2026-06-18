@@ -221,54 +221,6 @@ export function DevicesTab(): React.ReactElement {
         </div>
       </SettingsCard>
 
-      {/* ── Connect a device (pairing how-to) ───────────────────────── */}
-      <SettingsCard>
-        <SectionCardHeader
-          title="Connect a device"
-          description="Run this on the other device (it needs Suzent installed and network access to this machine)."
-        />
-        <div className="space-y-3 mt-3">
-          {addresses.length > 1 && (
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <div className="font-bold uppercase text-sm">Network</div>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
-                  Which address should the other device reach this machine on?
-                </p>
-              </div>
-              <BrutalSelect
-                value={selectedAddr?.host ?? ''}
-                onChange={setAddrHost}
-                options={addresses.map((a) => ({ value: a.host, label: `${a.label} · ${a.host}` }))}
-              />
-            </div>
-          )}
-          <div className="flex items-start gap-2">
-            <pre className="flex-1 border-2 border-brutal-black dark:border-white bg-neutral-50 dark:bg-zinc-900 px-3 py-2 font-mono text-xs overflow-x-auto whitespace-pre-wrap break-all">
-              {hostCommand}
-            </pre>
-            <CopyButton value={hostCommand} tone="blue" />
-          </div>
-          <ol className="text-xs text-neutral-500 dark:text-neutral-400 font-mono list-decimal pl-5 space-y-1">
-            <li>Run the command above on the other device.</li>
-            {mode === 'approve' && (
-              <li>It prints a pairing code and waits — approve it under <span className="font-bold">Pending</span> below.</li>
-            )}
-            {mode === 'token' && <li>It connects once the shared secret matches.</li>}
-            {mode === 'open' && <li>It connects immediately (open mode).</li>}
-            <li>Once approved, it reconnects automatically — no need to re-pair.</li>
-          </ol>
-          <p className="text-[11px] text-neutral-400 font-mono">
-            Tip: opening the Suzent app on another device does not pair it — each app runs its own agent. The command above makes that device a node of this one.
-          </p>
-          {hasTailscale && (
-            <p className="text-[11px] text-neutral-400 font-mono">
-              Tailscale detected — pick the Tailscale address above to pair across networks (no port-forwarding needed). The other device must be on the same tailnet.
-            </p>
-          )}
-        </div>
-      </SettingsCard>
-
       {/* ── Discover peers ──────────────────────────────────────────── */}
       <SettingsCard>
         <SectionCardHeader
@@ -311,6 +263,7 @@ export function DevicesTab(): React.ReactElement {
                             </div>
                             <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
                               {peer.gateway_url}{peer.auth_mode ? ` · ${peer.auth_mode}` : ''}
+                              {peer.reachable === false && <span className="text-neutral-400"> · unreachable (not running Suzent?)</span>}
                             </div>
                           </div>
                           <SettingsListAction
@@ -328,6 +281,31 @@ export function DevicesTab(): React.ReactElement {
               ))}
             </>
           )}
+
+          {/* Fallback for headless / non-discoverable devices. */}
+          <details className="group">
+            <summary className="cursor-pointer text-xs font-bold uppercase text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white">
+              Pair manually
+            </summary>
+            <div className="space-y-2 mt-2">
+              <p className="text-[11px] text-neutral-400 font-mono">
+                Run this on the other device to make it a node of this one (useful for headless servers).
+              </p>
+              {addresses.length > 1 && (
+                <BrutalSelect
+                  value={selectedAddr?.host ?? ''}
+                  onChange={setAddrHost}
+                  options={addresses.map((a) => ({ value: a.host, label: `${a.label} · ${a.host}` }))}
+                />
+              )}
+              <div className="flex items-start gap-2">
+                <pre className="flex-1 border-2 border-brutal-black dark:border-white bg-neutral-50 dark:bg-zinc-900 px-3 py-2 font-mono text-xs overflow-x-auto whitespace-pre-wrap break-all">
+                  {hostCommand}
+                </pre>
+                <CopyButton value={hostCommand} tone="blue" />
+              </div>
+            </div>
+          </details>
         </div>
       </SettingsCard>
 
@@ -348,10 +326,13 @@ export function DevicesTab(): React.ReactElement {
                     </div>
                     <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
                       {c.status}
-                      {c.pairing_code && (
+                      {c.status === 'pending' && c.pairing_code && (
                         <> · approve code <span className="text-brutal-black dark:text-white font-bold">{c.pairing_code}</span> on the remote</>
                       )}
-                      {c.error && <> · {c.error}</>}
+                      {c.status === 'connected' && <> · the remote accepted (it was open or already approved this device)</>}
+                      {(c.status === 'reconnecting' || c.status === 'error') && c.error && (
+                        <span className="text-brutal-red"> · {c.error}</span>
+                      )}
                     </div>
                   </div>
                   <SettingsListAction

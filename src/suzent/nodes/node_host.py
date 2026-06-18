@@ -469,6 +469,17 @@ class NodeHost:
                     f"⚠️  Connection closed: {e}. Reconnecting in {RECONNECT_DELAY}s..."
                 )
                 await asyncio.sleep(RECONNECT_DELAY)
+            except Exception as e:
+                # Anything else (bad URL, DNS failure, handshake error): surface
+                # it instead of crashing the task silently, then retry.
+                if self._stop:
+                    break
+                self.status = "reconnecting"
+                self.last_error = f"{type(e).__name__}: {e}"
+                logger.warning(
+                    f"⚠️  Connection error: {e}. Reconnecting in {RECONNECT_DELAY}s..."
+                )
+                await asyncio.sleep(RECONNECT_DELAY)
 
         if self._stop:
             self.status = "stopped"

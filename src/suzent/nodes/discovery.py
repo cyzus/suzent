@@ -192,17 +192,19 @@ def _tailscale_peers_blocking(port: int) -> list[dict]:
         if not peer.get("Online"):
             continue
         ips = peer.get("TailscaleIPs", []) or []
-        host = next((ip for ip in ips if ip.startswith("100.")), ips[0] if ips else "")
+        ip = next((i for i in ips if i.startswith("100.")), ips[0] if ips else "")
         dns = (peer.get("DNSName", "") or "").rstrip(".")
-        if not host and not dns:
+        if not ip and not dns:
             continue
-        addr = dns or host
+        # Prefer the 100.x IP for the connection URL — it works without MagicDNS,
+        # which the joining device may not have configured. Keep DNS as a label.
+        addr = ip or dns
         peers.append(
             {
-                "name": (peer.get("HostName") or dns or host),
+                "name": (peer.get("HostName") or dns or ip),
                 "host": addr,
                 "port": port,
-                "tailscale_ip": host,
+                "tailscale_ip": ip,
                 "dns_name": dns,
                 "gateway_url": f"ws://{addr}:{port}/ws/node",
                 "source": "tailscale",

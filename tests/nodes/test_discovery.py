@@ -57,7 +57,8 @@ class TestTailscaleParsing:
         assert p["source"] == "tailscale"
         assert p["dns_name"] == "laptop.tail123.ts.net"  # trailing dot stripped
         assert p["tailscale_ip"] == "100.64.0.5"
-        assert p["gateway_url"] == "ws://laptop.tail123.ts.net:25314/ws/node"
+        # Prefer the 100.x IP for the URL (works without MagicDNS).
+        assert p["gateway_url"] == "ws://100.64.0.5:25314/ws/node"
 
     def test_no_tailscale_binary(self, monkeypatch):
         monkeypatch.setattr(discovery, "_tailscale_exe", lambda: None)
