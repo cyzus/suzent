@@ -12,7 +12,6 @@ import {
   discoverNodes,
   connectNode,
   fetchConnections,
-  disconnectNode,
   type ConnectedNode,
   type PendingNode,
   type ApprovedDevice,
@@ -145,6 +144,54 @@ export function DevicesTab(): React.ReactElement {
   const hostCommand =
     `suzent node host --name "My Device" --url ${gatewayUrl}` +
     (mode === 'token' ? ` --token ${config?.node_auth_token || '<shared-secret>'}` : '');
+
+  // Unified device list: online nodes + durably-approved devices, keyed by name.
+  // deviceId is set only when a durable token exists (i.e. Revoke applies).
+  type MergedDevice = {
+    key: string;
+    name: string;
+    platform: string;
+    online: boolean;
+    isAgent: boolean;
+    capabilities?: string;
+    deviceId?: string;
+    approvedAt?: string;
+  };
+  const mergedDevices: MergedDevice[] = (() => {
+    const byName = new Map<string, MergedDevice>();
+    for (const n of nodes) {
+      byName.set(n.display_name, {
+        key: `node:${n.node_id}`,
+        name: n.display_name,
+        platform: n.platform,
+        online: true,
+        isAgent: isAgent(n),
+        capabilities: capNames(n.capabilities),
+      });
+    }
+    for (const d of devices) {
+      const existing = byName.get(d.display_name);
+      if (existing) {
+        existing.deviceId = d.device_id;
+        existing.approvedAt = d.approved_at;
+        existing.online = existing.online || d.connected;
+      } else {
+        byName.set(d.display_name, {
+          key: `dev:${d.device_id}`,
+          name: d.display_name,
+          platform: d.platform,
+          online: d.connected,
+          isAgent: false,
+          deviceId: d.device_id,
+          approvedAt: d.approved_at,
+        });
+      }
+    }
+    // Online first, then by name.
+    return [...byName.values()].sort(
+      (a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name)
+    );
+  })();
 
   return (
     <div className="space-y-6">
@@ -333,46 +380,6 @@ export function DevicesTab(): React.ReactElement {
         </div>
       </SettingsCard>
 
-      {/* ── Outbound connections (this device → others) ─────────────── */}
-      {connections.length > 0 && (
-        <SettingsCard>
-          <SectionCardHeader
-            title={`Joining (${connections.length})`}
-            description="Connections this device initiated to other Suzent servers."
-          />
-          <div className="space-y-2 mt-3">
-            {connections.map((c) => (
-              <SettingsListItem key={c.gateway_url}>
-                <div className="flex items-center justify-between gap-3 w-full">
-                  <div className="min-w-0">
-                    <div className="font-bold truncate">
-                      {c.gateway_url}
-                    </div>
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
-                      {c.status}
-                      {c.status === 'pending' && c.pairing_code && (
-                        <> · approve code <span className="text-brutal-black dark:text-white font-bold">{c.pairing_code}</span> on the remote</>
-                      )}
-                      {c.status === 'connected' && <> · the remote accepted (it was open or already approved this device)</>}
-                      {(c.status === 'reconnecting' || c.status === 'error') && c.error && (
-                        <span className="text-brutal-red"> · {c.error}</span>
-                      )}
-                    </div>
-                  </div>
-                  <SettingsListAction
-                    tone="red"
-                    disabled={busy === c.gateway_url}
-                    onClick={() => act(c.gateway_url, () => disconnectNode(c.gateway_url))}
-                  >
-                    Disconnect
-                  </SettingsListAction>
-                </div>
-              </SettingsListItem>
-            ))}
-          </div>
-        </SettingsCard>
-      )}
-
       {/* ── Pending approvals ───────────────────────────────────────── */}
       {(mode === 'approve' || pending.length > 0) && (
         <SettingsCard>
@@ -421,76 +428,51 @@ export function DevicesTab(): React.ReactElement {
         </SettingsCard>
       )}
 
-      {/* ── Connected now ───────────────────────────────────────────── */}
+      {/* ── Devices (connected + approved, unified) ─────────────────── */}
       <SettingsCard>
         <SectionCardHeader
-          title={`Connected (${nodes.length})`}
-          description="Devices currently online. An AGENT badge means the device exposes its own agent."
+          title={`Devices (${mergedDevices.length})`}
+          description="Online and approved devices. AGENT = exposes its own agent. Revoke removes an approved device's durable token."
         />
         <div className="space-y-2 mt-3">
-          {nodes.length === 0 && (
+          {mergedDevices.length === 0 && (
             <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
-              No devices connected yet.
+              No devices yet.
             </p>
           )}
-          {nodes.map((n) => (
-            <SettingsListItem key={n.node_id}>
+          {mergedDevices.map((d) => (
+            <SettingsListItem key={d.key}>
               <div className="flex items-center justify-between gap-3 w-full">
                 <div className="min-w-0">
                   <div className="font-bold truncate flex items-center gap-2">
-                    <span className="text-brutal-green">●</span>
-                    {n.display_name}
-                    <span className="text-neutral-400 font-normal">({n.platform})</span>
-                    {isAgent(n) && (
+                    <span className={d.online ? 'text-brutal-green' : 'text-neutral-400'}>●</span>
+                    {d.name}
+                    <span className="text-neutral-400 font-normal">({d.platform})</span>
+                    {d.isAgent && (
                       <span className="px-1.5 py-0.5 text-[10px] font-black uppercase border border-brutal-blue text-brutal-blue rounded-sm">
                         Agent
                       </span>
                     )}
                   </div>
                   <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
-                    {capNames(n.capabilities)}
+                    {d.online ? (d.capabilities || 'online') : 'offline'}
+                    {d.approvedAt && <> · approved {d.approvedAt.slice(0, 10)}</>}
                   </div>
                 </div>
+                {d.deviceId && (
+                  <SettingsListAction
+                    tone="red"
+                    disabled={busy === d.deviceId}
+                    onClick={() => act(d.deviceId!, () => revokeDevice(d.deviceId!))}
+                  >
+                    Revoke
+                  </SettingsListAction>
+                )}
               </div>
             </SettingsListItem>
           ))}
         </div>
       </SettingsCard>
-
-      {/* ── Approved devices (durable) ──────────────────────────────── */}
-      {devices.length > 0 && (
-        <SettingsCard>
-          <SectionCardHeader
-            title={`Approved devices (${devices.length})`}
-            description="Devices with a durable token. Revoke to force them to re-pair."
-          />
-          <div className="space-y-2 mt-3">
-            {devices.map((d) => (
-              <SettingsListItem key={d.device_id}>
-                <div className="flex items-center justify-between gap-3 w-full">
-                  <div className="min-w-0">
-                    <div className="font-bold truncate flex items-center gap-2">
-                      <span className={d.connected ? 'text-brutal-green' : 'text-neutral-400'}>●</span>
-                      {d.display_name}
-                      <span className="text-neutral-400 font-normal">({d.platform})</span>
-                    </div>
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
-                      {d.device_id} · approved {d.approved_at?.slice(0, 10)}
-                    </div>
-                  </div>
-                  <SettingsListAction
-                    tone="red"
-                    disabled={busy === d.device_id}
-                    onClick={() => act(d.device_id, () => revokeDevice(d.device_id))}
-                  >
-                    Revoke
-                  </SettingsListAction>
-                </div>
-              </SettingsListItem>
-            ))}
-          </div>
-        </SettingsCard>
-      )}
     </div>
   );
 }
