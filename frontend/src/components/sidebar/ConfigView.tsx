@@ -211,8 +211,7 @@ export function ConfigView({ isActive = true }: ConfigViewProps): React.ReactEle
       <div className="space-y-2">
         <label className="block font-bold tracking-wide text-brutal-black dark:text-white uppercase">{t('config.toolsLabel')}</label>
         {(() => {
-          const EXCLUDED = ['MemorySearchTool', 'MemoryBlockUpdateTool'];
-          const available: string[] = (backendConfig.tools as string[]).filter(t => !EXCLUDED.includes(t));
+          const available: string[] = backendConfig.tools as string[];
           const selected: string[] = config.tools || [];
 
           const sourceGroups: { label: string; tools: string[] }[] = backendConfig.toolGroups ?? [];

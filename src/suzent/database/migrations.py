@@ -746,3 +746,52 @@ class DatabaseMigrationMixin:
             ).all():
                 return chat.id
         return None
+
+    def _init_chat_search(self) -> None:
+        """Create the FTS5 chat-message index and backfill any unindexed chats.
+
+        Idempotent and resumable: the table is created with IF NOT EXISTS, and only
+        chats with no rows in the index are (re)indexed — so an interrupted first
+        backfill is completed on the next startup rather than left permanently
+        partial. Failures are logged, never fatal — chat search degrading must not
+        block startup.
+        """
+        from suzent.logger import logger
+        from suzent.database.search import FTS_TABLE
+
+        try:
+            if not self._ensure_fts_table():
+                return  # FTS5 unavailable; chat search falls back to LIKE.
+        except Exception as exc:
+            logger.warning("Failed to create chat FTS index: {}", exc)
+            return
+
+        try:
+            with self.engine.connect() as conn:
+                indexed_ids = {
+                    cid
+                    for (cid,) in conn.exec_driver_sql(
+                        f"SELECT DISTINCT chat_id FROM {FTS_TABLE}"
+                    )
+                }
+        except Exception as exc:
+            logger.warning("Failed to inspect chat FTS index: {}", exc)
+            return
+
+        backfilled = 0
+        try:
+            with self._session() as session:
+                chat_ids = [c.id for c in session.exec(select(ChatModel)).all()]
+            for chat_id in chat_ids:
+                if chat_id in indexed_ids:
+                    continue  # Already indexed; resume only the rest.
+                chat = self.get_chat(chat_id)
+                if chat and chat.messages:
+                    self.reindex_chat(chat_id, chat.messages)
+                    backfilled += 1
+        except Exception as exc:
+            logger.warning("Chat FTS backfill failed: {}", exc)
+            return
+
+        if backfilled:
+            logger.info("Backfilled chat FTS index for {} chat(s)", backfilled)

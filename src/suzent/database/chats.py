@@ -24,12 +24,17 @@ SUMMARY_VISIBLE_COUNT_KEY = "_summary_visible_assistant_count"
 HIDDEN_CHAT_PLATFORMS = ("dream",)
 
 
-def _apply_chat_filters(statement, search, platform, project_id):
+def _apply_chat_filters(statement, search, platform, project_id, fts_ids=None):
     """Apply common search/platform/project filters to a ChatModel statement.
 
     The hidden dream consolidation chat is always excluded from listing — it is an
     internal background agent, not a user conversation (it surfacing in the sidebar
     is the bug this fixes). Sub-agent chats remain visible by design.
+
+    When *fts_ids* is a list, message-content matching is served by the FTS index
+    (``ChatModel.id IN fts_ids``) instead of the ``LIKE`` scan over the JSON column;
+    title matching still uses ``LIKE``. ``fts_ids=None`` means FTS was unavailable or
+    could not serve the query, so we fall back to the original ``LIKE`` message scan.
     """
     # SQLite json_extract returns the platform string or NULL; exclude the hidden set.
     placeholders = ", ".join(f"'{p}'" for p in HIDDEN_CHAT_PLATFORMS)
@@ -40,11 +45,18 @@ def _apply_chat_filters(statement, search, platform, project_id):
         )
     )
     if search:
+        if fts_ids is None:
+            message_match = messages_search_filter(search)
+        elif fts_ids:
+            message_match = ChatModel.id.in_(fts_ids)
+        else:
+            # FTS ran and matched nothing — no message hits possible.
+            message_match = None
+        title_match = ChatModel.title.contains(search)
         statement = statement.where(
-            or_(
-                ChatModel.title.contains(search),
-                messages_search_filter(search),
-            )
+            or_(title_match, message_match)
+            if message_match is not None
+            else title_match
         )
     if project_id is not None:
         statement = statement.where(ChatModel.project_id == project_id)
@@ -161,6 +173,7 @@ class ChatOperationsMixin:
 
         with self._session() as session:
             session.add(chat)
+            self._reindex_in_session(session, chat_id, messages or [])
             session.commit()
 
         return chat_id
@@ -220,6 +233,8 @@ class ChatOperationsMixin:
                 chat.updated_at = datetime.now()
 
             session.add(chat)
+            if messages is not None:
+                self._reindex_in_session(session, chat_id, messages)
             session.commit()
             return True
 
@@ -237,6 +252,7 @@ class ChatOperationsMixin:
             chat.updated_at = datetime.now()
             flag_modified(chat, "config")
             session.add(chat)
+            self._reindex_in_session(session, chat_id, messages)
             session.commit()
             return True
 
@@ -317,6 +333,7 @@ class ChatOperationsMixin:
                 chat.messages = messages
                 chat.config = _with_message_summary(chat.config, messages)
                 flag_modified(chat, "config")
+                self._reindex_in_session(session, chat_id, messages)
             chat.finalized_revision = expected_revision
             chat.state_stage = "finalized"
             chat.state_updated_at = now
@@ -348,8 +365,55 @@ class ChatOperationsMixin:
                         session.delete(c)
 
             session.delete(chat)
+            self._remove_from_fts_in_session(session, chat_id)
             session.commit()
             return True
+
+    def _reindex_in_session(self, session, chat_id: str, messages) -> None:
+        """Reindex a chat's FTS rows inside an open SQLModel session/transaction.
+
+        Runs on the session's SQLAlchemy Connection so it shares the chat write's
+        transaction. No-op (logged) if FTS is unavailable — search must never break
+        a chat write.
+        """
+        try:
+            if not self.fts_available():
+                return
+            self._reindex_chat_fts(session.connection(), chat_id, messages or [])
+        except Exception as exc:
+            from suzent.logger import get_logger
+
+            get_logger(__name__).warning(
+                "Inline FTS reindex failed for chat {}: {}", chat_id, exc
+            )
+
+    def _search_fts_ids(self, search):
+        """Return FTS-matched chat ids for a chat-list search, or None to use LIKE.
+
+        None means "FTS can't serve this" (no search term, FTS unavailable, or query
+        below the trigram minimum) — callers then fall back to the LIKE message scan,
+        preserving prior behaviour (e.g. 2-char CJK substrings).
+        """
+        if not search:
+            return None
+        return self.fts_match_chat_ids(search)
+
+    def _remove_from_fts_in_session(self, session, chat_id: str) -> None:
+        """Delete a chat's FTS rows inside an open session/transaction."""
+        try:
+            if not self.fts_available():
+                return
+            from suzent.database.search import FTS_TABLE
+
+            session.connection().exec_driver_sql(
+                f"DELETE FROM {FTS_TABLE} WHERE chat_id = ?", (chat_id,)
+            )
+        except Exception as exc:
+            from suzent.logger import get_logger
+
+            get_logger(__name__).warning(
+                "Inline FTS delete failed for chat {}: {}", chat_id, exc
+            )
 
     def set_last_result_at(self, chat_id: str) -> None:
         """Mark that a background executor just completed a turn for this chat."""
@@ -404,7 +468,9 @@ class ChatOperationsMixin:
                 .limit(limit)
             )
 
-            statement = _apply_chat_filters(statement, search, platform, project_id)
+            statement = _apply_chat_filters(
+                statement, search, platform, project_id, self._search_fts_ids(search)
+            )
 
             # Build a slug/name lookup so each summary row can carry project info
             # without a per-row query.
@@ -471,17 +537,22 @@ class ChatOperationsMixin:
         """Get total number of chats."""
         with self._session() as session:
             statement = select(func.count()).select_from(ChatModel)
-            statement = _apply_chat_filters(statement, search, platform, project_id)
+            statement = _apply_chat_filters(
+                statement, search, platform, project_id, self._search_fts_ids(search)
+            )
             return session.exec(statement).one()
 
     def get_chat_kind_counts(
         self, search: str = None, platform: str = None, project_id: str = None
     ) -> Dict[str, int]:
         """Get chat totals for the sidebar kind tabs."""
+        fts_ids = self._search_fts_ids(search)
 
         def count(extra_filter=None) -> int:
             statement = select(func.count()).select_from(ChatModel)
-            statement = _apply_chat_filters(statement, search, platform, project_id)
+            statement = _apply_chat_filters(
+                statement, search, platform, project_id, fts_ids
+            )
             if extra_filter is not None:
                 statement = statement.where(extra_filter)
             return session.exec(statement).one()

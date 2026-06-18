@@ -237,7 +237,8 @@ def create_agent(
         config: Configuration dictionary containing:
             - model: Model identifier (e.g., "gemini/gemini-2.5-pro")
             - tools: List of tool names to enable
-            - memory_enabled: Whether to equip memory tools (default: False)
+            - memory_enabled: Whether to inject memory context (default: False).
+              Does NOT control the memory_search tool, which is equipped via `tools`.
             - mcp_urls: Optional MCP server URLs
             - instructions: Optional custom instructions
 
@@ -266,14 +267,17 @@ def create_agent(
 
     # --- Build tool list ---
     tool_names = (config.get("tools") or CONFIG.default_tools).copy()
-    memory_enabled = config.get("memory_enabled", CONFIG.memory_enabled)
 
     from suzent.tools.registry import get_tool_function, get_tool_session_guidance
 
     tool_functions = []
     enabled_tool_names = set(tool_names)
+    # SkillTool / SocialMessageTool are equipped by their own auto-equip logic below,
+    # so skip them in the normal loop. MemorySearchTool is NOT auto-equipped: it is a
+    # regular sidebar-toggleable equipment tool, equipped when present in `tools`. The
+    # global memory toggle (`memory_enabled`) only governs memory *context injection*,
+    # not whether the search tool is available.
     _auto_equipped = {
-        "MemorySearchTool",
         "SkillTool",
         "SocialMessageTool",
     }
@@ -286,13 +290,6 @@ def create_agent(
             tool_functions.append(fn)
         else:
             logger.warning(f"Tool function not found for: {tool_name}")
-
-    # Equip memory search tool if enabled
-    if memory_enabled and CONFIG.memory_enabled:
-        mem_search = get_tool_function("MemorySearchTool")
-        if mem_search:
-            tool_functions.append(mem_search)
-            enabled_tool_names.add("MemorySearchTool")
 
     # Auto-equip SkillTool if any skills are enabled
     skill_manager = get_skill_manager()

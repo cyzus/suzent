@@ -44,9 +44,8 @@ export function ToolsPanel(): React.ReactElement | null {
     <div className="flex items-center justify-center h-full text-neutral-400 text-xs">Loading…</div>
   );
 
-  const EXCLUDED = ['MemorySearchTool', 'MemoryBlockUpdateTool'];
   const rawTools = Array.isArray(backendConfig.tools) ? backendConfig.tools : [];
-  const available: string[] = rawTools.filter((t: string) => !EXCLUDED.includes(t));
+  const available: string[] = rawTools;
   const selected: string[] = config.tools || [];
 
   const sourceGroups: { label: string; tools: string[] }[] = backendConfig.toolGroups ?? [];
