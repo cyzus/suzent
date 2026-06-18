@@ -242,6 +242,18 @@ Agent runs can take minutes, so pass `--timeout` (the REST `invoke` body also
 accepts a `timeout` field). The node host reaches its own local server's
 `/chat` endpoint; override that base URL with `suzent node host --server-url`.
 
+## Making the server reachable
+
+The desktop app binds the server to **localhost only** by default
+(`SUZENT_HOST=127.0.0.1`), so peer devices can't reach it out of the box. To
+use cross-device nodes, enable **Settings → Devices → "Reachable by other
+devices"** (config `node_lan_bind`, default `false`) and **restart** the app —
+the server then binds `0.0.0.0` and is reachable on its LAN/Tailscale address.
+
+This exposes the HTTP API on the network, so only enable it on a trusted LAN or
+tailnet and pair `token`/`approve` auth with it. The bind host is fixed once the
+server is listening, hence the restart.
+
 ## Discovery (LAN + Tailscale)
 
 Suzent can find peers automatically and let you join them without typing a URL.
@@ -341,6 +353,7 @@ Node system settings in Suzent configuration:
 | `node_auth_mode` | `"open"` | Authentication mode: `open`, `token`, or `approve` |
 | `node_auth_token` | `""` | Shared secret required in `token` mode (machine-local) |
 | `node_discovery_enabled` | `true` | Advertise over mDNS and allow LAN/Tailscale discovery |
+| `node_lan_bind` | `false` | Bind `0.0.0.0` so peers can reach the server (needs restart) |
 
 Modify via CLI:
 ```bash

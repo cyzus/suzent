@@ -22,6 +22,7 @@ import {
 } from '../../lib/api';
 import { BrutalSelect } from '../BrutalSelect';
 import { BrutalButton } from '../BrutalButton';
+import { BrutalOnOff } from '../BrutalOnOff';
 import { SettingsHeader } from './SettingsHeader';
 import { SectionCardHeader, SettingsCard, SettingsListItem, SettingsListAction } from './SettingsCard';
 
@@ -63,6 +64,7 @@ export function DevicesTab(): React.ReactElement {
   const [busy, setBusy] = useState<string | null>(null);
   const [showToken, setShowToken] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [restartHint, setRestartHint] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [addrHost, setAddrHost] = useState<string | null>(null);
   const [connections, setConnections] = useState<OutboundConnection[]>([]);
@@ -103,10 +105,11 @@ export function DevicesTab(): React.ReactElement {
   }, [refresh]);
 
   const updateConfig = useCallback(
-    async (updates: { node_auth_mode?: string; node_auth_token?: string; regenerate?: boolean }) => {
+    async (updates: { node_auth_mode?: string; node_auth_token?: string; regenerate?: boolean; node_lan_bind?: boolean }) => {
       setError(null);
       try {
         const next = await saveNodeConfig(updates);
+        if (next.restart_required) setRestartHint(true);
         // Preserve pairing-address fields the POST response doesn't echo.
         setConfig((prev) => ({ ...(prev ?? {}), ...next }));
       } catch (e) {
@@ -215,8 +218,29 @@ export function DevicesTab(): React.ReactElement {
             </div>
           )}
 
+          <div className="flex items-center justify-between gap-4 border-t border-brutal-black/10 dark:border-white/10 pt-3">
+            <div>
+              <div className="font-bold uppercase text-sm">Reachable by other devices</div>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono max-w-md">
+                Bind the server to all interfaces so peers can connect. Off by
+                default the app listens on localhost only — required for
+                cross-device nodes. Takes effect after a restart.
+              </p>
+            </div>
+            <BrutalOnOff
+              checked={!!config?.node_lan_bind}
+              onChange={(v) => updateConfig({ node_lan_bind: v })}
+            />
+          </div>
+
+          {restartHint && (
+            <div className="border-2 border-brutal-black dark:border-white bg-brutal-yellow/40 px-3 py-2 text-xs font-mono">
+              Restart Suzent on this device for the network-binding change to take effect.
+            </div>
+          )}
+
           <p className="text-[11px] text-neutral-500 dark:text-neutral-400 font-mono">
-            ⚠ ws:// traffic is plaintext — the token only protects you on a trusted network or over wss://.
+            ⚠ ws:// traffic is plaintext, and "reachable by other devices" exposes the HTTP API on your network — keep it to a trusted LAN or tailnet, and use Token/Approve auth.
           </p>
         </div>
       </SettingsCard>

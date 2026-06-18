@@ -348,6 +348,7 @@ export interface NodeAuthConfig {
   nodes_enabled: boolean;
   node_auth_mode: 'open' | 'token' | 'approve';
   node_auth_token: string;
+  node_lan_bind?: boolean;
   lan_host?: string;
   port?: number;
   gateway_url?: string;
@@ -447,8 +448,8 @@ export async function fetchNodeConfig(): Promise<NodeAuthConfig> {
 }
 
 export async function saveNodeConfig(
-  updates: { node_auth_mode?: string; node_auth_token?: string; regenerate?: boolean }
-): Promise<NodeAuthConfig> {
+  updates: { node_auth_mode?: string; node_auth_token?: string; regenerate?: boolean; node_lan_bind?: boolean }
+): Promise<NodeAuthConfig & { restart_required?: boolean }> {
   const res = await fetch(`${getApiBase()}/nodes/config`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

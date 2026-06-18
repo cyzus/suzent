@@ -1021,6 +1021,20 @@ if __name__ == "__main__":
     _port_str = os.getenv("SUZENT_PORT", "").strip()
     port = int(_port_str) if _port_str else DEFAULT_PORT
     host = os.getenv("SUZENT_HOST", "0.0.0.0")
+    # The desktop app pins SUZENT_HOST=127.0.0.1 (loopback only). When the user
+    # opts into the node mesh, bind all interfaces so peer devices can reach the
+    # node WebSocket (still reachable on loopback for the local app).
+    try:
+        from suzent.config import CONFIG as _CFG
+
+        if getattr(_CFG, "node_lan_bind", False) and host not in ("0.0.0.0", "::"):
+            logger.info(
+                f"node_lan_bind enabled: binding 0.0.0.0 instead of {host} "
+                f"so peer devices can reach this server"
+            )
+            host = "0.0.0.0"
+    except Exception:
+        pass
 
     def write_port_file(effective_port: int) -> None:
         """Write the effective port to a file for CLI discovery."""

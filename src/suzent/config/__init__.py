@@ -387,6 +387,10 @@ class ConfigModel(BaseModel):
     node_auth_token: str = ""
     # Advertise this server over mDNS and allow LAN/Tailscale peer discovery.
     node_discovery_enabled: bool = True
+    # Bind the server to all interfaces (0.0.0.0) so peer devices can reach it,
+    # overriding a loopback-only SUZENT_HOST. Required for cross-device nodes;
+    # exposes the HTTP API on the network, so keep on trusted/tailnet only.
+    node_lan_bind: bool = False
 
     session_daily_reset_hour: int = 0
     session_idle_timeout_minutes: int = 0

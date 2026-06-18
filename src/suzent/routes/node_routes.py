@@ -451,6 +451,7 @@ async def get_node_config(request: Request) -> JSONResponse:
             # Local-first app on a trusted machine — surface the token so the
             # operator can copy it to companion devices.
             "node_auth_token": CONFIG.node_auth_token or "",
+            "node_lan_bind": bool(getattr(CONFIG, "node_lan_bind", False)),
             "port": DEFAULT_PORT,
             # All reachable addresses (LAN + Tailscale if present) so the UI can
             # offer the right one per network. lan_host/gateway_url kept for
@@ -502,12 +503,24 @@ async def save_node_config(request: Request) -> JSONResponse:
         cfg["node_auth_token"] = token
         CONFIG.node_auth_token = token
 
+    # LAN/Tailscale exposure. Takes effect on next server restart (the bind host
+    # is fixed once uvicorn is listening).
+    restart_required = False
+    if payload.get("node_lan_bind") is not None:
+        val = bool(payload["node_lan_bind"])
+        if val != bool(getattr(CONFIG, "node_lan_bind", False)):
+            restart_required = True
+        cfg["node_lan_bind"] = val
+        CONFIG.node_lan_bind = val
+
     _save_local_config_file(cfg)
     return JSONResponse(
         {
             "success": True,
             "node_auth_mode": CONFIG.node_auth_mode or "open",
             "node_auth_token": CONFIG.node_auth_token or "",
+            "node_lan_bind": bool(getattr(CONFIG, "node_lan_bind", False)),
+            "restart_required": restart_required,
         }
     )
 
@@ -564,8 +577,9 @@ async def connect_node(request: Request) -> JSONResponse:
         return JSONResponse(
             {
                 "error": (
-                    f"Can't reach {probe_host}:{probe_port}. Is Suzent running "
-                    f"there, and is the port reachable on this network?"
+                    f"Can't reach {probe_host}:{probe_port}. On the other device, "
+                    f"enable Settings → Devices → 'Reachable by other devices' "
+                    f"and restart it (the app binds localhost only by default)."
                 )
             },
             status_code=502,
