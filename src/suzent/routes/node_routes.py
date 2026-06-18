@@ -105,6 +105,20 @@ def _get_node_manager(request_or_ws):
     return getattr(app.state, "node_manager", None)
 
 
+def _get_outbound_manager(request):
+    """Get (or lazily create) the OutboundConnectionManager from app state."""
+    app = getattr(request, "app", None)
+    if app is None:
+        return None
+    mgr = getattr(app.state, "outbound_manager", None)
+    if mgr is None:
+        from suzent.nodes.outbound import OutboundConnectionManager
+
+        mgr = OutboundConnectionManager()
+        app.state.outbound_manager = mgr
+    return mgr
+
+
 async def node_websocket_endpoint(websocket: WebSocket):
     """
     WebSocket endpoint for node connections.
@@ -496,3 +510,86 @@ async def save_node_config(request: Request) -> JSONResponse:
             "node_auth_token": CONFIG.node_auth_token or "",
         }
     )
+
+
+# ─── Discovery & outbound (click-to-pair) ────────────────────────────
+
+
+async def discover_nodes(request: Request) -> JSONResponse:
+    """GET /nodes/discover — Find Suzent peers on the LAN (mDNS) and tailnet."""
+    from suzent.config import DEFAULT_PORT
+    from suzent.nodes import discovery
+
+    try:
+        lan_timeout = float(request.query_params.get("timeout", "2.0"))
+    except ValueError:
+        lan_timeout = 2.0
+    lan_timeout = max(0.5, min(lan_timeout, 5.0))
+
+    result = await discovery.discover_all(
+        self_port=DEFAULT_PORT, lan_timeout=lan_timeout
+    )
+    return JSONResponse(result)
+
+
+async def connect_node(request: Request) -> JSONResponse:
+    """POST /nodes/connect — Join a remote Suzent as a node (outbound).
+
+    Body: {"gateway_url": "ws://host:port/ws/node", "name"?: str, "token"?: str}
+    """
+    mgr = _get_outbound_manager(request)
+    if not mgr:
+        return JSONResponse({"error": "Node system not initialized"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    gateway_url = (body.get("gateway_url") or "").strip()
+    if not gateway_url:
+        return JSONResponse({"error": "gateway_url is required"}, status_code=400)
+
+    host = mgr.start(
+        gateway_url,
+        display_name=(body.get("name") or "").strip(),
+        token=(body.get("token") or "").strip(),
+    )
+    return JSONResponse(
+        {
+            "success": True,
+            "gateway_url": gateway_url,
+            "display_name": host.display_name,
+            "status": host.status,
+        }
+    )
+
+
+async def list_connections(request: Request) -> JSONResponse:
+    """GET /nodes/connections — Outbound connections this device initiated."""
+    mgr = _get_outbound_manager(request)
+    if not mgr:
+        return JSONResponse({"connections": [], "count": 0})
+    conns = mgr.list()
+    return JSONResponse({"connections": conns, "count": len(conns)})
+
+
+async def disconnect_node(request: Request) -> JSONResponse:
+    """POST /nodes/connect/stop — Stop an outbound connection.
+
+    Body: {"gateway_url": "ws://host:port/ws/node"}
+    """
+    mgr = _get_outbound_manager(request)
+    if not mgr:
+        return JSONResponse({"error": "Node system not initialized"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    gateway_url = (body.get("gateway_url") or "").strip()
+    ok = await mgr.stop(gateway_url)
+    if not ok:
+        return JSONResponse(
+            {"success": False, "message": "No such connection"}, status_code=404
+        )
+    return JSONResponse({"success": True, "message": "Disconnected"})

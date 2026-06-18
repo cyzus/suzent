@@ -40,6 +40,26 @@ class NodesAPI:
     async def revoke(self, device_id: str) -> dict:
         return await self.client.post(f"/nodes/devices/{device_id}/revoke")
 
+    async def discover(self, timeout: float | None = None) -> dict:
+        path = "/nodes/discover"
+        if timeout is not None:
+            path += f"?timeout={timeout}"
+        return await self.client.get(path)
+
+    async def connect(self, gateway_url: str, name: str = "", token: str = "") -> dict:
+        return await self.client.post(
+            "/nodes/connect",
+            json={"gateway_url": gateway_url, "name": name, "token": token},
+        )
+
+    async def connections(self) -> dict:
+        return await self.client.get("/nodes/connections")
+
+    async def disconnect(self, gateway_url: str) -> dict:
+        return await self.client.post(
+            "/nodes/connect/stop", json={"gateway_url": gateway_url}
+        )
+
 
 class CronAPI:
     def __init__(self, client: AsyncBaseClient):

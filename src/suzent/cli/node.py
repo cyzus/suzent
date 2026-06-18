@@ -358,3 +358,111 @@ def node_revoke(
             raise typer.Exit(code=1)
 
     asyncio.run(_run())
+
+
+@node_app.command("discover")
+def node_discover(
+    timeout: float = typer.Option(2.0, "--timeout", "-t", help="LAN browse seconds"),
+):
+    """Discover Suzent peers on the local network (mDNS) and tailnet."""
+
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.nodes.discover(timeout=timeout)
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+        def _show(group, items):
+            typer.echo(f"\n{group} ({len(items)}):")
+            if not items:
+                typer.echo("  (none)")
+                return
+            for it in items:
+                reach = it.get("reachable")
+                dot = "🟢" if reach else ("⚪" if reach is False else "  ")
+                typer.echo(f"  {dot} {it['name']} — {it['gateway_url']}")
+
+        _show("📡 LAN (mDNS)", data.get("lan", []))
+        _show("🔒 Tailscale", data.get("tailscale", []))
+        typer.echo("\nConnect with: suzent node connect <gateway_url>")
+
+    asyncio.run(_run())
+
+
+@node_app.command("connect")
+def node_connect(
+    gateway_url: str = typer.Argument(help="ws://host:port/ws/node of the remote"),
+    name: Optional[str] = typer.Option(None, "--name", "-n", help="This node's name"),
+    token: Optional[str] = typer.Option(
+        None, "--token", help="Shared secret (token mode)"
+    ),
+):
+    """Join a remote Suzent as a node (outbound). Approve on the remote if needed."""
+
+    async def _run():
+        try:
+            client = get_client()
+            result = await client.nodes.connect(
+                gateway_url, name=name or "", token=token or ""
+            )
+            typer.echo(
+                f"🔗 Connecting to {gateway_url} as '{result.get('display_name')}' "
+                f"(status: {result.get('status')})."
+            )
+            typer.echo("Check `suzent node connections` for the pairing code/status.")
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
+
+
+@node_app.command("connections")
+def node_connections():
+    """List outbound connections this device has initiated."""
+
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.nodes.connections()
+            conns = data.get("connections", [])
+            if not conns:
+                typer.echo("No outbound connections.")
+                return
+            typer.echo(f"🔗 Outbound connections ({len(conns)}):\n")
+            for c in conns:
+                line = f"  • {c['gateway_url']} — {c['status']}"
+                if c.get("pairing_code"):
+                    line += f" (approve code {c['pairing_code']} on the remote)"
+                if c.get("error"):
+                    line += f" — {c['error']}"
+                typer.echo(line)
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
+
+
+@node_app.command("disconnect")
+def node_disconnect(
+    gateway_url: str = typer.Argument(help="ws://host:port/ws/node to disconnect"),
+):
+    """Stop an outbound connection."""
+
+    async def _run():
+        try:
+            client = get_client()
+            result = await client.nodes.disconnect(gateway_url)
+            if result.get("success"):
+                typer.echo(f"🔌 Disconnected from {gateway_url}.")
+            else:
+                typer.echo(f"❌ {result.get('message', 'Disconnect failed')}")
+                raise typer.Exit(code=1)
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())

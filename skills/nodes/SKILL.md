@@ -90,6 +90,12 @@ suzent nodes approve <pairing_code>
 suzent nodes deny <pairing_code>
 suzent nodes devices
 suzent nodes revoke <device_id>
+
+# Discovery & joining another Suzent (outbound)
+suzent nodes discover                              # LAN (mDNS) + tailnet peers
+suzent nodes connect ws://<peer>:25314/ws/node     # join as a node
+suzent nodes connections                           # outbound status + pairing codes
+suzent nodes disconnect ws://<peer>:25314/ws/node
 ```
 
 ## Peer agents (`agent.run`)

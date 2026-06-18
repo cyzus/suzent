@@ -242,6 +242,35 @@ Agent runs can take minutes, so pass `--timeout` (the REST `invoke` body also
 accepts a `timeout` field). The node host reaches its own local server's
 `/chat` endpoint; override that base URL with `suzent node host --server-url`.
 
+## Discovery (LAN + Tailscale)
+
+Suzent can find peers automatically and let you join them without typing a URL.
+The two networks use **different, non-overlapping** mechanisms:
+
+| Network | Mechanism | Notes |
+|---------|-----------|-------|
+| **LAN** | mDNS/Bonjour — the server advertises `_suzent-node._tcp`; peers browse for it | Same-subnet only. **Does not** traverse Tailscale (multicast isn't forwarded). |
+| **Tailscale** | Enumerates online tailnet peers via the local `tailscale` CLI (`status --json`) | Works across networks; needs Tailscale installed and up. |
+
+```bash
+suzent node discover               # list LAN (mDNS) + tailnet peers
+suzent node connect ws://<peer>:25314/ws/node   # join one as a node (outbound)
+suzent node connections            # status + pairing code of your outbound joins
+suzent node disconnect ws://<peer>:25314/ws/node
+```
+
+In the desktop app, **Settings → Devices → Discover** scans both and offers a
+**Connect** button per peer. Connecting starts an outbound node host from this
+device; if the remote is in `approve` mode, the pairing code shows under
+**Joining**, and the remote operator approves it under **Pending**.
+
+Discovery only *locates* a gateway — it never bypasses `node_auth_mode`. Toggle
+advertising with `node_discovery_enabled` (default `true`).
+
+> mDNS finds LAN peers; Tailscale enumeration finds tailnet peers. A device
+> reachable only over Tailscale will **not** appear in the LAN list, and vice
+> versa — this is expected.
+
 ## Authentication
 
 Connections are gated by `node_auth_mode`. A device that has been approved once
@@ -311,6 +340,7 @@ Node system settings in Suzent configuration:
 | `nodes_enabled` | `true` | Enable/disable node WebSocket connections |
 | `node_auth_mode` | `"open"` | Authentication mode: `open`, `token`, or `approve` |
 | `node_auth_token` | `""` | Shared secret required in `token` mode (machine-local) |
+| `node_discovery_enabled` | `true` | Advertise over mDNS and allow LAN/Tailscale discovery |
 
 Modify via CLI:
 ```bash

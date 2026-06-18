@@ -287,6 +287,11 @@ class NodeHost:
         self.device_token = _load_device_token(gateway_url)
         self._stop = False
         self._node_id: str | None = None
+        # Observable state for the outbound-connection UI:
+        # idle | connecting | pending | connected | reconnecting | error | stopped
+        self.status: str = "idle"
+        self.pairing_code: str | None = None
+        self.last_error: str | None = None
 
         # Point agent.run at the local server (override or derived from gateway).
         _SERVER_BASE_URL = server_url or _derive_server_base(gateway_url)
@@ -372,6 +377,7 @@ class NodeHost:
     async def run_once(self) -> None:
         """Connect, handshake, and run the message loop until disconnect."""
         logger.info(f"🔌 Connecting to {self.gateway_url} ...")
+        self.status = "connecting"
 
         async with websockets.connect(self.gateway_url) as ws:
             # Handshake — may receive a "pending" while awaiting operator
@@ -384,6 +390,8 @@ class NodeHost:
 
                 if rtype == "pending":
                     code = resp.get("pairing_code", "")
+                    self.status = "pending"
+                    self.pairing_code = code
                     logger.info(
                         f"⏳ Awaiting approval. Share this code with the operator: "
                         f"{code}  (approve with: suzent node approve {code})"
@@ -396,6 +404,9 @@ class NodeHost:
 
                 if rtype == "connected":
                     self._node_id = resp.get("node_id")
+                    self.status = "connected"
+                    self.pairing_code = None
+                    self.last_error = None
                     new_token = resp.get("device_token") or ""
                     if new_token and new_token != self.device_token:
                         self.device_token = new_token
@@ -432,6 +443,9 @@ class NodeHost:
             try:
                 await self.run_once()
             except NodeAuthError as e:
+                self.status = "error"
+                self.last_error = str(e)
+                self.pairing_code = None
                 logger.error(
                     f"⛔ Connection rejected by server: {e}. Not retrying. "
                     f"Check node_auth_mode / token, or wait for operator approval."
@@ -440,6 +454,8 @@ class NodeHost:
             except (ConnectionError, OSError) as e:
                 if self._stop:
                     break
+                self.status = "reconnecting"
+                self.last_error = str(e)
                 logger.warning(
                     f"⚠️  Disconnected: {e}. Reconnecting in {RECONNECT_DELAY}s..."
                 )
@@ -447,11 +463,15 @@ class NodeHost:
             except websockets.exceptions.ConnectionClosed as e:
                 if self._stop:
                     break
+                self.status = "reconnecting"
+                self.last_error = str(e)
                 logger.warning(
                     f"⚠️  Connection closed: {e}. Reconnecting in {RECONNECT_DELAY}s..."
                 )
                 await asyncio.sleep(RECONNECT_DELAY)
 
+        if self._stop:
+            self.status = "stopped"
         logger.info("🛑 Node host stopped.")
 
     def stop(self) -> None:

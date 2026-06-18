@@ -385,6 +385,8 @@ class ConfigModel(BaseModel):
     node_auth_mode: str = "open"
     # Shared secret required from nodes when node_auth_mode == "token".
     node_auth_token: str = ""
+    # Advertise this server over mDNS and allow LAN/Tailscale peer discovery.
+    node_discovery_enabled: bool = True
 
     session_daily_reset_hour: int = 0
     session_idle_timeout_minutes: int = 0

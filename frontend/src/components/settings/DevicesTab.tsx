@@ -9,10 +9,16 @@ import {
   approvePendingNode,
   denyPendingNode,
   revokeDevice,
+  discoverNodes,
+  connectNode,
+  fetchConnections,
+  disconnectNode,
   type ConnectedNode,
   type PendingNode,
   type ApprovedDevice,
   type NodeAuthConfig,
+  type DiscoveredPeer,
+  type OutboundConnection,
 } from '../../lib/api';
 import { BrutalSelect } from '../BrutalSelect';
 import { BrutalButton } from '../BrutalButton';
@@ -59,17 +65,34 @@ export function DevicesTab(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [addrHost, setAddrHost] = useState<string | null>(null);
+  const [connections, setConnections] = useState<OutboundConnection[]>([]);
+  const [discovered, setDiscovered] = useState<{ lan: DiscoveredPeer[]; tailscale: DiscoveredPeer[] } | null>(null);
+  const [discovering, setDiscovering] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [n, p, d] = await Promise.all([
+    const [n, p, d, c] = await Promise.all([
       fetchNodes(),
       fetchPendingNodes(),
       fetchApprovedDevices(),
+      fetchConnections(),
     ]);
     setNodes(n);
     setPending(p);
     setDevices(d);
+    setConnections(c);
     setLoaded(true);
+  }, []);
+
+  const runDiscover = useCallback(async () => {
+    setDiscovering(true);
+    setError(null);
+    try {
+      setDiscovered(await discoverNodes(2.0));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDiscovering(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -245,6 +268,105 @@ export function DevicesTab(): React.ReactElement {
           )}
         </div>
       </SettingsCard>
+
+      {/* ── Discover peers ──────────────────────────────────────────── */}
+      <SettingsCard>
+        <SectionCardHeader
+          title="Discover"
+          description="Find other Suzent instances on your network and join them from here."
+          actions={
+            <BrutalButton onClick={runDiscover} disabled={discovering}>
+              {discovering ? 'Scanning…' : 'Discover'}
+            </BrutalButton>
+          }
+        />
+        <div className="space-y-4 mt-3">
+          {!discovered && (
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
+              Scan the LAN (mDNS) and your tailnet for Suzent peers. Discovery only finds the address — the remote still gates the connection by its auth mode.
+            </p>
+          )}
+          {discovered && (
+            <>
+              {([
+                { key: 'lan', title: 'LAN (mDNS)', items: discovered.lan },
+                { key: 'tailscale', title: 'Tailscale', items: discovered.tailscale },
+              ] as const).map((group) => (
+                <div key={group.key} className="space-y-2">
+                  <div className="font-bold uppercase text-xs text-neutral-500 dark:text-neutral-400">
+                    {group.title} ({group.items.length})
+                  </div>
+                  {group.items.length === 0 && (
+                    <p className="text-xs text-neutral-400 font-mono pl-1">No peers found.</p>
+                  )}
+                  {group.items.map((peer) => {
+                    const already = connections.some((c) => c.gateway_url === peer.gateway_url);
+                    return (
+                      <SettingsListItem key={peer.gateway_url}>
+                        <div className="flex items-center justify-between gap-3 w-full">
+                          <div className="min-w-0">
+                            <div className="font-bold truncate flex items-center gap-2">
+                              <span className={peer.reachable === false ? 'text-neutral-400' : 'text-brutal-green'}>●</span>
+                              {peer.name}
+                            </div>
+                            <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
+                              {peer.gateway_url}{peer.auth_mode ? ` · ${peer.auth_mode}` : ''}
+                            </div>
+                          </div>
+                          <SettingsListAction
+                            tone="blue"
+                            disabled={busy === peer.gateway_url || already}
+                            onClick={() => act(peer.gateway_url, () => connectNode(peer.gateway_url))}
+                          >
+                            {already ? 'Connecting' : 'Connect'}
+                          </SettingsListAction>
+                        </div>
+                      </SettingsListItem>
+                    );
+                  })}
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      </SettingsCard>
+
+      {/* ── Outbound connections (this device → others) ─────────────── */}
+      {connections.length > 0 && (
+        <SettingsCard>
+          <SectionCardHeader
+            title={`Joining (${connections.length})`}
+            description="Connections this device initiated to other Suzent servers."
+          />
+          <div className="space-y-2 mt-3">
+            {connections.map((c) => (
+              <SettingsListItem key={c.gateway_url}>
+                <div className="flex items-center justify-between gap-3 w-full">
+                  <div className="min-w-0">
+                    <div className="font-bold truncate">
+                      {c.gateway_url}
+                    </div>
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
+                      {c.status}
+                      {c.pairing_code && (
+                        <> · approve code <span className="text-brutal-black dark:text-white font-bold">{c.pairing_code}</span> on the remote</>
+                      )}
+                      {c.error && <> · {c.error}</>}
+                    </div>
+                  </div>
+                  <SettingsListAction
+                    tone="red"
+                    disabled={busy === c.gateway_url}
+                    onClick={() => act(c.gateway_url, () => disconnectNode(c.gateway_url))}
+                  >
+                    Disconnect
+                  </SettingsListAction>
+                </div>
+              </SettingsListItem>
+            ))}
+          </div>
+        </SettingsCard>
+      )}
 
       {/* ── Pending approvals ───────────────────────────────────────── */}
       {(mode === 'approve' || pending.length > 0) && (

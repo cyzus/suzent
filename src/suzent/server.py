@@ -177,6 +177,10 @@ from suzent.routes.node_routes import (
     revoke_device,
     get_node_config,
     save_node_config,
+    discover_nodes,
+    connect_node,
+    list_connections,
+    disconnect_node,
 )
 from suzent.routes.cron_routes import (
     list_cron_jobs,
@@ -244,6 +248,8 @@ logger = get_logger(__name__)
 social_brain: SocialBrain = None
 channel_manager: ChannelManager = None
 node_manager: NodeManager = None
+node_advertiser = None
+outbound_manager = None
 scheduler_brain: SchedulerBrain = None
 heartbeat_runner: HeartbeatRunner = None
 sync_automation_runner: SyncAutomationRunner = None
@@ -543,6 +549,34 @@ async def startup():
     except Exception as e:
         logger.warning(f"Failed to register local node: {e}")
 
+    # Manager for outbound (click-to-pair) connections this device initiates.
+    global outbound_manager, node_advertiser
+    try:
+        from suzent.nodes.outbound import OutboundConnectionManager
+
+        outbound_manager = OutboundConnectionManager()
+        app.state.outbound_manager = outbound_manager
+    except Exception as e:
+        logger.warning(f"Failed to init outbound manager: {e}")
+
+    # Advertise this server over mDNS so LAN peers can discover it.
+    if getattr(CONFIG, "node_discovery_enabled", True):
+        try:
+            import socket as _socket
+
+            from suzent.config import DEFAULT_PORT
+            from suzent.nodes.discovery import SuzentAdvertiser
+
+            node_advertiser = SuzentAdvertiser(
+                port=DEFAULT_PORT,
+                display_name=_socket.gethostname(),
+                auth_mode=CONFIG.node_auth_mode or "open",
+            )
+            node_advertiser.start()
+            app.state.node_advertiser = node_advertiser
+        except Exception as e:
+            logger.warning(f"Failed to start mDNS advertiser: {e}")
+
     logger.info("Node system initialized")
 
     global social_brain, channel_manager
@@ -645,12 +679,23 @@ async def shutdown():
         social_brain, \
         channel_manager, \
         node_manager, \
+        node_advertiser, \
+        outbound_manager, \
         scheduler_brain, \
         heartbeat_runner, \
         sync_automation_runner
 
     # Cancel any pending ask_question futures so their tasks can exit cleanly
     pending_questions.cancel_all()
+
+    if node_advertiser:
+        try:
+            node_advertiser.stop()
+        except Exception:
+            pass
+
+    if outbound_manager:
+        await _stop(outbound_manager.stop_all(), "OutboundConnectionManager")
 
     if heartbeat_runner:
         await _stop(heartbeat_runner.stop(), "HeartbeatRunner")
@@ -893,6 +938,10 @@ app = Starlette(
         # as a node_id by the parametrized describe route.
         Route("/nodes/config", get_node_config, methods=["GET"]),
         Route("/nodes/config", save_node_config, methods=["POST"]),
+        Route("/nodes/discover", discover_nodes, methods=["GET"]),
+        Route("/nodes/connect", connect_node, methods=["POST"]),
+        Route("/nodes/connect/stop", disconnect_node, methods=["POST"]),
+        Route("/nodes/connections", list_connections, methods=["GET"]),
         Route("/nodes/pending", list_pending_nodes, methods=["GET"]),
         Route(
             "/nodes/pending/{pairing_code}/approve",

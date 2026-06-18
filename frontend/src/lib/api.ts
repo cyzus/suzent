@@ -390,6 +390,56 @@ export async function revokeDevice(deviceId: string): Promise<void> {
   if (!res.ok) throw new Error((await res.text()) || 'Failed to revoke');
 }
 
+export interface DiscoveredPeer {
+  name: string;
+  host: string;
+  port: number;
+  gateway_url: string;
+  source: 'lan' | 'tailscale';
+  auth_mode?: string;
+  reachable?: boolean;
+}
+
+export interface OutboundConnection {
+  gateway_url: string;
+  display_name: string;
+  status: string;
+  pairing_code: string | null;
+  node_id: string | null;
+  error: string | null;
+}
+
+export async function discoverNodes(timeout = 2.0): Promise<{ lan: DiscoveredPeer[]; tailscale: DiscoveredPeer[] }> {
+  const res = await fetch(`${getApiBase()}/nodes/discover?timeout=${timeout}`);
+  if (!res.ok) return { lan: [], tailscale: [] };
+  return await res.json();
+}
+
+export async function connectNode(gateway_url: string, name = '', token = ''): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/connect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ gateway_url, name, token }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to connect');
+}
+
+export async function fetchConnections(): Promise<OutboundConnection[]> {
+  const res = await fetch(`${getApiBase()}/nodes/connections`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.connections || [];
+}
+
+export async function disconnectNode(gateway_url: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/connect/stop`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ gateway_url }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to disconnect');
+}
+
 export async function fetchNodeConfig(): Promise<NodeAuthConfig> {
   const res = await fetch(`${getApiBase()}/nodes/config`);
   if (!res.ok) throw new Error('Failed to load node config');
