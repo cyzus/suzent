@@ -151,9 +151,11 @@ class SessionSearchTool(Tool):
         roles: tuple[str, ...],
         current_chat_id: Optional[str],
     ) -> ToolResult:
-        results = db.search_chat_messages(query, limit=limit, role_filter=roles)
-        # Exclude the current session — recall is about *other* conversations.
-        results = [r for r in results if r["chat_id"] != current_chat_id]
+        # Exclude the current session (recall is about *other* conversations) inside the
+        # query, so excluding it never costs a result slot under the limit.
+        results = db.search_chat_messages(
+            query, limit=limit, role_filter=roles, exclude_chat_id=current_chat_id
+        )
         if not results:
             return ToolResult.success_result(
                 f"No past sessions matched '{query}'.",

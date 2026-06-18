@@ -153,6 +153,59 @@ def test_chat_list_short_cjk_falls_back_to_like(db):
 
 
 # --------------------------------------------------------------------------
+# Codex review fixes
+# --------------------------------------------------------------------------
+
+
+def test_legacy_assistant_without_parts_never_leaks_content():
+    """An assistant row with no `parts` (legacy HTML in `content`) must yield no text,
+    not the raw reasoning/HTML markup."""
+    msgs = [
+        {"role": "user", "content": "a question"},
+        {
+            "role": "assistant",
+            "content": '<details data-reasoning="true">secret cot</details>visible?',
+        },
+    ]
+    out = sanitize_messages(msgs)
+    joined = " ".join(m["text"] for m in out)
+    assert "secret cot" not in joined
+    assert "<details" not in joined
+    # Only the user message survives.
+    assert [m["role"] for m in out] == ["user"]
+
+
+def test_discovery_falls_back_to_like_for_short_query(db):
+    # 2-char CJK is below the trigram minimum; Discovery must still find it via LIKE.
+    db.create_chat("CN", {}, [{"role": "user", "content": "部署火箭的方法"}])
+    assert db.fts_match_chat_ids("火箭") is None
+    results = db.search_chat_messages("火箭")
+    assert [r["title"] for r in results] == ["CN"]
+
+
+def test_discovery_excludes_chat_before_limit(db):
+    # Two chats match; with limit=1 and the higher-ranked one excluded, the other
+    # must still be returned (exclusion must not consume the single slot).
+    a = db.create_chat("A", {}, [{"role": "user", "content": "keyword apple"}])
+    db.create_chat("B", {}, [{"role": "user", "content": "keyword apple"}])
+    results = db.search_chat_messages("apple", limit=1, exclude_chat_id=a)
+    assert len(results) == 1
+    assert results[0]["chat_id"] != a
+
+
+def test_backfill_resumes_for_unindexed_chats(db):
+    # Simulate an interrupted backfill: a chat exists but has no FTS rows.
+    cid = db.create_chat("Resume", {}, [{"role": "user", "content": "resumeword"}])
+    db.remove_chat_from_fts(cid)
+    assert not db.fts_match_chat_ids("resumeword")
+    # Re-running init must index the missing chat rather than skipping because the
+    # index is already non-empty (other chats present).
+    db.create_chat("Other", {}, [{"role": "user", "content": "otherword"}])
+    db._init_chat_search()
+    assert cid in (db.fts_match_chat_ids("resumeword") or [])
+
+
+# --------------------------------------------------------------------------
 # session_search tool: mode dispatch
 # --------------------------------------------------------------------------
 

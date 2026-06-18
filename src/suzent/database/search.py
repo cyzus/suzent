@@ -74,7 +74,12 @@ def _message_searchable_text(message: Dict[str, Any], include_tool: bool) -> str
             # reasoning / a2ui: intentionally skipped
         return "\n".join(c for c in chunks if c).strip()
 
-    # User rows and tool rows carry plain text directly.
+    # User and tool rows carry plain text in `content`. Assistant rows do NOT — their
+    # readable text lives in `parts`; the legacy `content` string is HTML-rendered
+    # markdown (reasoning `<details>`, a2ui `<div>`). An assistant row without `parts`
+    # has no safe text to surface, so return empty rather than leaking that markup.
+    if role == "assistant":
+        return ""
     if role == "tool":
         return str(message.get("content", "")) if include_tool else ""
     content = message.get("content")
@@ -234,6 +239,27 @@ class ChatSearchMixin:
             logger.info("FTS query failed for {!r}: {}", query, exc)
             return None
 
+    def _like_match_chat_ids(self, query: str) -> List[str]:
+        """Substring (LIKE) fallback for Discovery, newest chats first.
+
+        Mirrors the chat-list search's message matching (``messages_search_filter``)
+        so Discovery still works when FTS can't serve the query. Returns [] on error.
+        """
+        from sqlmodel import select
+        from suzent.database.models import ChatModel, messages_search_filter
+
+        try:
+            with self._session() as session:
+                statement = (
+                    select(ChatModel.id)
+                    .where(messages_search_filter(query))
+                    .order_by(ChatModel.updated_at.desc())
+                )
+                return [row for row in session.exec(statement).all()]
+        except Exception as exc:
+            logger.info("LIKE discovery fallback failed for {!r}: {}", query, exc)
+            return []
+
     def search_chat_messages(
         self,
         query: str,
@@ -241,19 +267,32 @@ class ChatSearchMixin:
         context: int = 5,
         bookend: int = 3,
         role_filter: tuple[str, ...] = DEFAULT_ROLE_FILTER,
+        exclude_chat_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Discovery mode: top-*limit* chats matching *query*.
 
         Each result: ``{chat_id, title, updated_at, snippet, context, bookends}``
         where ``context`` is the ±*context* sanitized messages around the first hit
         and ``bookends`` is the first/last *bookend* sanitized messages of the chat.
+
+        Candidates come from FTS when it can serve the query, otherwise from a LIKE
+        scan (short/CJK queries, invalid FTS syntax, or builds without FTS5) so
+        Discovery degrades the same way the chat-list search does. ``exclude_chat_id``
+        is dropped from candidates *before* the limit is applied, so excluding the
+        current session never costs a result slot.
         """
         chat_ids = self.fts_match_chat_ids(query)
+        if chat_ids is None:
+            chat_ids = self._like_match_chat_ids(query)
         if not chat_ids:
             return []
 
         results: List[Dict[str, Any]] = []
-        for chat_id in chat_ids[: max(1, limit)]:
+        for chat_id in chat_ids:
+            if len(results) >= max(1, limit):
+                break
+            if chat_id == exclude_chat_id:
+                continue
             chat = self.get_chat(chat_id)
             if not chat:
                 continue
