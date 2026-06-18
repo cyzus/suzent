@@ -172,9 +172,7 @@ def apply_retry_checkpoint(chat_id: str) -> Optional[dict]:
     so the caller can re-run process_turn() with the original inputs, or None
     if no checkpoint is found.
     """
-    from suzent.database import ChatModel, get_database
-    from sqlmodel import Session
-    from sqlalchemy.orm.attributes import flag_modified
+    from suzent.database import get_database
 
     checkpoint = load_retry_checkpoint(chat_id)
     if checkpoint is None:
@@ -184,14 +182,13 @@ def apply_retry_checkpoint(chat_id: str) -> Optional[dict]:
     try:
         db = get_database()
 
-        # Restore agent state + display messages in DB.
-        with Session(db.engine) as session:
-            chat = session.get(ChatModel, chat_id)
-            if chat:
-                chat.agent_state = checkpoint.agent_state_before
-                chat.messages = list(checkpoint.messages_before)
-                flag_modified(chat, "messages")
-                session.commit()
+        # Restore agent state + display messages in DB. rewrite_chat_messages keeps the
+        # sidebar summary and FTS index in sync with the restored message list.
+        db.rewrite_chat_messages(
+            chat_id,
+            list(checkpoint.messages_before),
+            agent_state=checkpoint.agent_state_before,
+        )
 
         # Restore files using the lightweight file-level snapshot when available.
         file_snapshot_data = getattr(checkpoint, "file_snapshot", None)

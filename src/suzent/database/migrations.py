@@ -795,3 +795,94 @@ class DatabaseMigrationMixin:
 
         if backfilled:
             logger.info("Backfilled chat FTS index for {} chat(s)", backfilled)
+
+    _SUMMARY_REPAIR_FLAG = "chat_summary_repaired_v1"
+
+    def _get_schema_meta(self, key: str) -> Optional[str]:
+        """Read a value from the DB-local ``schema_meta`` key/value table.
+
+        This marker store lives in chats.db (not the synced config.yaml), so one-time
+        data repairs are tracked per-database — a marker set on one device never
+        suppresses the repair on another device's independent chats.db.
+        """
+        with self.engine.connect() as conn:
+            conn.exec_driver_sql(
+                "CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT)"
+            )
+            row = conn.exec_driver_sql(
+                "SELECT value FROM schema_meta WHERE key = ?", (key,)
+            ).fetchone()
+            return row[0] if row else None
+
+    def _set_schema_meta(self, key: str, value: str) -> None:
+        with self.engine.connect() as conn:
+            conn.exec_driver_sql(
+                "CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT)"
+            )
+            conn.exec_driver_sql(
+                "INSERT INTO schema_meta (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+            conn.commit()
+
+    def _repair_stale_chat_summaries(self) -> None:
+        """One-time repair of sidebar summaries that drifted from chat.messages.
+
+        Rollback paths (retry, heartbeat) historically rewrote ``chat.messages``
+        without refreshing the cached summary, leaving stale visible-count/preview
+        values that ``list_chats`` then trusted forever. Recompute every chat's
+        summary once and persist any that differ. Guarded by a DB-local marker so it
+        runs a single time per database; failures are logged, never fatal.
+        """
+        from suzent.logger import logger
+
+        try:
+            if self._get_schema_meta(self._SUMMARY_REPAIR_FLAG):
+                return
+        except Exception as exc:
+            logger.warning("Could not check summary-repair marker: {}", exc)
+            return
+
+        from suzent.database.chats import (
+            SUMMARY_LAST_MESSAGE_KEY,
+            SUMMARY_VISIBLE_COUNT_KEY,
+            _summarize_messages,
+            _with_message_summary,
+        )
+        from sqlalchemy.orm.attributes import flag_modified
+
+        repaired = 0
+        try:
+            with self._session() as session:
+                chat_ids = [c.id for c in session.exec(select(ChatModel)).all()]
+            for chat_id in chat_ids:
+                chat = self.get_chat(chat_id)
+                if not chat:
+                    continue
+                messages = chat.messages or []
+                count, preview = _summarize_messages(messages)
+                config = chat.config or {}
+                if (
+                    config.get(SUMMARY_VISIBLE_COUNT_KEY) != count
+                    or config.get(SUMMARY_LAST_MESSAGE_KEY) != preview
+                ):
+                    with self._session() as session:
+                        row = session.get(ChatModel, chat_id)
+                        if row:
+                            row.config = _with_message_summary(row.config, messages)
+                            flag_modified(row, "config")
+                            session.add(row)
+                            session.commit()
+                            repaired += 1
+        except Exception as exc:
+            logger.warning("Chat summary repair failed: {}", exc)
+            return
+
+        try:
+            self._set_schema_meta(self._SUMMARY_REPAIR_FLAG, "1")
+        except Exception as exc:
+            logger.warning("Could not persist summary-repair marker: {}", exc)
+
+        if repaired:
+            logger.info("Repaired stale sidebar summaries for {} chat(s)", repaired)
