@@ -10,14 +10,23 @@ import {
   denyPendingNode,
   revokeDevice,
   discoverNodes,
-  connectNode,
   fetchConnections,
+  fetchGrants,
+  approveGrant,
+  denyGrant,
+  fetchPeers,
+  setPeerMode,
+  removePeer,
+  requestControl,
+  controlStatus,
   type ConnectedNode,
   type PendingNode,
   type ApprovedDevice,
   type NodeAuthConfig,
   type DiscoveredPeer,
   type OutboundConnection,
+  type ControlRequest,
+  type ControlledPeer,
 } from '../../lib/api';
 import { BrutalSelect } from '../BrutalSelect';
 import { BrutalButton } from '../BrutalButton';
@@ -67,22 +76,55 @@ export function DevicesTab(): React.ReactElement {
   const [loaded, setLoaded] = useState(false);
   const [addrHost, setAddrHost] = useState<string | null>(null);
   const [connections, setConnections] = useState<OutboundConnection[]>([]);
+  const [grants, setGrants] = useState<ControlRequest[]>([]);
+  const [peers, setPeers] = useState<ControlledPeer[]>([]);
   const [discovered, setDiscovered] = useState<{ lan: DiscoveredPeer[]; tailscale: DiscoveredPeer[] } | null>(null);
   const [discovering, setDiscovering] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [n, p, d, c] = await Promise.all([
+    const [n, p, d, c, g, pe] = await Promise.all([
       fetchNodes(),
       fetchPendingNodes(),
       fetchApprovedDevices(),
       fetchConnections(),
+      fetchGrants(),
+      fetchPeers(),
     ]);
     setNodes(n);
     setPending(p);
     setDevices(d);
     setConnections(c);
+    setGrants(g);
+    setPeers(pe);
     setLoaded(true);
   }, []);
+
+  // Connect = "I want to control this device": request a grant, poll until the
+  // peer's operator approves, then it appears under "Controlling".
+  const handleControl = useCallback(
+    async (baseUrl: string) => {
+      setBusy(baseUrl);
+      setError(null);
+      try {
+        const { request_id, base_url } = await requestControl(baseUrl);
+        for (let i = 0; i < 90; i++) {
+          const s = await controlStatus(base_url, request_id);
+          if (s.status === 'approved') break;
+          if (s.status === 'denied' || s.status === 'expired') {
+            setError(`Control request ${s.status}.`);
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+        await refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [refresh]
+  );
 
   const runDiscover = useCallback(async () => {
     setDiscovering(true);
@@ -323,7 +365,11 @@ export function DevicesTab(): React.ReactElement {
                     <p className="text-xs text-neutral-400 font-mono pl-1">No peers found.</p>
                   )}
                   {group.items.map((peer) => {
-                    const already = connections.some((c) => c.gateway_url === peer.gateway_url);
+                    const peerBase = peer.gateway_url
+                      .replace(/^ws:\/\//, 'http://')
+                      .replace(/^wss:\/\//, 'https://')
+                      .replace(/\/ws\/node$/, '');
+                    const already = peers.some((p) => p.base_url === peerBase);
                     return (
                       <SettingsListItem key={peer.gateway_url}>
                         <div className="flex items-center justify-between gap-3 w-full">
@@ -333,16 +379,16 @@ export function DevicesTab(): React.ReactElement {
                               {peer.name}
                             </div>
                             <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
-                              {peer.gateway_url}{peer.auth_mode ? ` · ${peer.auth_mode}` : ''}
+                              {peerBase}
                               {peer.reachable === false && <span className="text-neutral-400"> · unreachable (not running Suzent?)</span>}
                             </div>
                           </div>
                           <SettingsListAction
                             tone="blue"
-                            disabled={busy === peer.gateway_url || already}
-                            onClick={() => act(peer.gateway_url, () => connectNode(peer.gateway_url))}
+                            disabled={busy === peerBase || already}
+                            onClick={() => handleControl(peerBase)}
                           >
-                            {already ? 'Connecting' : 'Connect'}
+                            {already ? 'Controlling' : busy === peerBase ? 'Requesting…' : 'Control'}
                           </SettingsListAction>
                         </div>
                       </SettingsListItem>
@@ -379,6 +425,91 @@ export function DevicesTab(): React.ReactElement {
           </details>
         </div>
       </SettingsCard>
+
+      {/* ── Control requests (another device wants to drive this one) ── */}
+      {grants.length > 0 && (
+        <SettingsCard>
+          <SectionCardHeader
+            title={`Control requests (${grants.length})`}
+            description="Another device wants to control this one (run its agent). Approve to grant it access."
+          />
+          <div className="space-y-2 mt-3">
+            {grants.map((g) => (
+              <SettingsListItem key={g.request_id}>
+                <div className="flex items-center justify-between gap-3 w-full">
+                  <div className="min-w-0">
+                    <div className="font-bold truncate">
+                      {g.controller_name}
+                      <span className="text-neutral-400 font-normal"> ({g.controller_host || 'unknown'})</span>
+                    </div>
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
+                      wants to control this device
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <SettingsListAction
+                      tone="blue"
+                      disabled={busy === g.request_id}
+                      onClick={() => act(g.request_id, () => approveGrant(g.request_id))}
+                    >
+                      Approve
+                    </SettingsListAction>
+                    <SettingsListAction
+                      tone="red"
+                      disabled={busy === g.request_id}
+                      onClick={() => act(g.request_id, () => denyGrant(g.request_id))}
+                    >
+                      Deny
+                    </SettingsListAction>
+                  </div>
+                </div>
+              </SettingsListItem>
+            ))}
+          </div>
+        </SettingsCard>
+      )}
+
+      {/* ── Controlling (peers this device can drive) ───────────────── */}
+      {peers.length > 0 && (
+        <SettingsCard>
+          <SectionCardHeader
+            title={`Controlling (${peers.length})`}
+            description="Devices this one can drive. The dropdown sets direction: trigger them only, mutual, or paused."
+          />
+          <div className="space-y-2 mt-3">
+            {peers.map((p) => (
+              <SettingsListItem key={p.peer_id}>
+                <div className="flex items-center justify-between gap-3 w-full">
+                  <div className="min-w-0">
+                    <div className="font-bold truncate">{p.name}</div>
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
+                      {p.base_url}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <BrutalSelect
+                      value={p.mode}
+                      onChange={(m) => act(p.peer_id, () => setPeerMode(p.peer_id, m))}
+                      options={[
+                        { value: 'one_way', label: 'Trigger them' },
+                        { value: 'mutual', label: 'Mutual' },
+                        { value: 'paused', label: 'Paused' },
+                      ]}
+                    />
+                    <SettingsListAction
+                      tone="red"
+                      disabled={busy === p.peer_id}
+                      onClick={() => act(p.peer_id, () => removePeer(p.peer_id))}
+                    >
+                      Remove
+                    </SettingsListAction>
+                  </div>
+                </div>
+              </SettingsListItem>
+            ))}
+          </div>
+        </SettingsCard>
+      )}
 
       {/* ── Pending approvals ───────────────────────────────────────── */}
       {(mode === 'approve' || pending.length > 0) && (

@@ -23,6 +23,10 @@ _PAIRING_CODE_LEN = 6
 PENDING_TTL_SECONDS = 600  # 10 minutes, matching the social pairing window
 
 
+GRANT_TTL_SECONDS = 600  # control-grant request approval window
+MAX_PENDING_GRANTS = 50  # cap on queued control requests (anti-spam)
+
+
 @dataclass
 class PendingConnection:
     """A node connection parked in approve mode, awaiting operator action."""
@@ -37,6 +41,19 @@ class PendingConnection:
     future: asyncio.Future = field(default=None)  # type: ignore[assignment]
 
 
+@dataclass
+class GrantRequest:
+    """A remote peer asking (over HTTP) for a grant to control this device."""
+
+    request_id: str
+    controller_name: str
+    controller_host: str
+    requested_at: float = field(default_factory=time.time)
+    status: str = "pending"  # pending | approved | denied
+    # Minted on approval, handed to the requester exactly once, then cleared.
+    token: str = ""
+
+
 class NodeManager:
     """
     Central coordinator for all connected nodes.
@@ -47,6 +64,8 @@ class NodeManager:
         self.nodes: dict[str, NodeBase] = {}
         # Approve-mode pairing state, keyed by single-use pairing code.
         self._pending: dict[str, PendingConnection] = {}
+        # Control-grant requests (HTTP), keyed by unguessable request_id.
+        self._grant_requests: dict[str, GrantRequest] = {}
         self.device_store = device_store or DeviceTokenStore()
 
     def register_node(self, node: NodeBase) -> None:
@@ -225,6 +244,81 @@ class NodeManager:
     def cancel_pending(self, pairing_code: str) -> None:
         """Remove a pending entry (e.g. node disconnected before approval)."""
         self._pending.pop(pairing_code, None)
+
+    # ── Control-grant requests (HTTP peer control) ───────────────────
+
+    def _expire_grants(self) -> None:
+        now = time.time()
+        for rid in [
+            r
+            for r, g in self._grant_requests.items()
+            if now - g.requested_at > GRANT_TTL_SECONDS
+        ]:
+            self._grant_requests.pop(rid, None)
+
+    def add_grant_request(self, controller_name: str, controller_host: str) -> str:
+        """Queue a remote peer's request to control this device. Returns its id.
+
+        Issues no token — only an operator approval mints one. Capped + TTL'd.
+        """
+        self._expire_grants()
+        if len(self._grant_requests) >= MAX_PENDING_GRANTS:
+            raise ValueError("Too many pending control requests; try again later")
+        rid = secrets.token_urlsafe(16)
+        self._grant_requests[rid] = GrantRequest(
+            request_id=rid,
+            controller_name=controller_name or "unknown",
+            controller_host=controller_host or "",
+        )
+        logger.info(
+            f"Control request from '{controller_name}' ({controller_host}) [{rid[:6]}…]"
+        )
+        return rid
+
+    def list_grant_requests(self) -> list[dict[str, Any]]:
+        """Pending control requests, for the operator UI."""
+        self._expire_grants()
+        return [
+            {
+                "request_id": g.request_id,
+                "controller_name": g.controller_name,
+                "controller_host": g.controller_host,
+                "requested_at": _iso(g.requested_at),
+            }
+            for g in self._grant_requests.values()
+            if g.status == "pending"
+        ]
+
+    def approve_grant(self, request_id: str) -> bool:
+        """Approve a control request: mint a durable token for the requester."""
+        self._expire_grants()
+        g = self._grant_requests.get(request_id)
+        if not g or g.status != "pending":
+            return False
+        _device_id, token = self.device_store.mint(g.controller_name, "peer")
+        g.status = "approved"
+        g.token = token
+        return True
+
+    def deny_grant(self, request_id: str) -> bool:
+        g = self._grant_requests.get(request_id)
+        if not g or g.status != "pending":
+            return False
+        g.status = "denied"
+        g.token = ""
+        return True
+
+    def take_grant_result(self, request_id: str) -> dict[str, Any] | None:
+        """Requester poll: return {status, token?}. Token is served once."""
+        self._expire_grants()
+        g = self._grant_requests.get(request_id)
+        if not g:
+            return None
+        out: dict[str, Any] = {"status": g.status}
+        if g.status == "approved" and g.token:
+            out["token"] = g.token
+            g.token = ""  # one-time pickup
+        return out
 
     def list_pending(self) -> list[dict[str, Any]]:
         """List connections awaiting operator approval."""

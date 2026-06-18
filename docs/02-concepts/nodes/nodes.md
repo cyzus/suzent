@@ -226,6 +226,30 @@ async def run_node():
 asyncio.run(run_node())
 ```
 
+## Peer control (control-grant)
+
+For two devices that each run a full Suzent server, "drive the other's agent" is
+a **control-grant** over HTTP — simpler and more robust than the WebSocket mesh
+(which is for non-server companions like phones), and it streams like A2A.
+
+- **Connect = "I want to control them."** In **Settings → Devices → Discover**,
+  clicking **Control** on a peer sends it a grant request.
+- **Approve = consent to be driven.** The peer's operator sees it under
+  **Control requests** and approves; the peer mints a durable token and the
+  controller stores it (the controller doesn't gain anything the peer didn't
+  grant).
+- **Trigger.** The controller calls the peer's `/chat` with that token and
+  streams the agent's SSE events back. Gated by the [auth boundary](#auth-boundary).
+- **Direction dropdown** per controlled peer:
+  - **Trigger them** — one-way (you drive them).
+  - **Mutual** — also mint and offer them a reverse grant so they can drive you.
+  - **Paused** — keep the grant but stop driving (and revoke the reverse grant).
+
+The bootstrap endpoints (`POST /nodes/grant-request`, `GET
+/nodes/grant-status/{id}`) are the only unauthenticated surface: they issue no
+secret, only queue an operator-gated request, are rate-capped + TTL'd, and the
+token is served once against an unguessable `request_id`.
+
 ## Peer agents (`agent.run`)
 
 A node host advertises an `agent.run` capability that runs a prompt through

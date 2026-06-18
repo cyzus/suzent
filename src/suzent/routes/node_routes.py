@@ -119,6 +119,20 @@ def _get_outbound_manager(request):
     return mgr
 
 
+def _get_peer_store(request):
+    """Get (or lazily create) the controller-side PeerGrantStore."""
+    app = getattr(request, "app", None)
+    if app is None:
+        return None
+    store = getattr(app.state, "peer_store", None)
+    if store is None:
+        from suzent.nodes.peer_store import PeerGrantStore
+
+        store = PeerGrantStore()
+        app.state.peer_store = store
+    return store
+
+
 async def node_websocket_endpoint(websocket: WebSocket):
     """
     WebSocket endpoint for node connections.
@@ -634,3 +648,320 @@ async def disconnect_node(request: Request) -> JSONResponse:
             {"success": False, "message": "No such connection"}, status_code=404
         )
     return JSONResponse({"success": True, "message": "Disconnected"})
+
+
+# ─── Control-grant: peer-to-peer agent control over HTTP ─────────────
+#
+# Two roles:
+#   * Target (the device being controlled): exposes the bootstrap grant-request
+#     / grant-status endpoints (auth-exempt) and operator approve/deny.
+#   * Controller (the device doing the driving): initiates a control request,
+#     stores the granted token, and triggers the peer's agent.
+
+
+# -- Target side: bootstrap (AUTH-EXEMPT) + operator approval ---------
+
+
+async def grant_request(request: Request) -> JSONResponse:
+    """POST /nodes/grant-request — a remote peer asks to control this device.
+
+    Auth-exempt bootstrap. Issues no token; only queues a request an operator
+    must approve. Body: {"controller_name": str, "controller_addr"?: str}
+    """
+    node_manager = _get_node_manager(request)
+    if not node_manager:
+        return JSONResponse({"error": "Node system not initialized"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    name = str(body.get("controller_name") or "").strip() or "unknown"
+    host = request.client.host if request.client else ""
+    try:
+        rid = node_manager.add_grant_request(name, host)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=429)
+    return JSONResponse({"request_id": rid, "status": "pending"})
+
+
+async def grant_status(request: Request) -> JSONResponse:
+    """GET /nodes/grant-status/{request_id} — requester polls for the token.
+
+    Auth-exempt; request_id is an unguessable capability. Token served once.
+    """
+    node_manager = _get_node_manager(request)
+    if not node_manager:
+        return JSONResponse({"error": "Node system not initialized"}, status_code=503)
+    rid = request.path_params.get("request_id", "")
+    result = node_manager.take_grant_result(rid)
+    if result is None:
+        return JSONResponse({"error": "Unknown or expired request"}, status_code=404)
+    return JSONResponse(result)
+
+
+async def list_grants(request: Request) -> JSONResponse:
+    """GET /nodes/grants — pending control requests (operator UI)."""
+    node_manager = _get_node_manager(request)
+    if not node_manager:
+        return JSONResponse({"grants": [], "count": 0})
+    grants = node_manager.list_grant_requests()
+    return JSONResponse({"grants": grants, "count": len(grants)})
+
+
+async def approve_grant(request: Request) -> JSONResponse:
+    """POST /nodes/grants/{request_id}/approve — allow the peer to control us."""
+    node_manager = _get_node_manager(request)
+    rid = request.path_params.get("request_id", "")
+    if not node_manager:
+        return JSONResponse({"error": "Node system not initialized"}, status_code=503)
+    ok = node_manager.approve_grant(rid)
+    if not ok:
+        return JSONResponse(
+            {"success": False, "message": "Unknown or already-resolved request"},
+            status_code=404,
+        )
+    return JSONResponse({"success": True, "message": "Approved"})
+
+
+async def deny_grant(request: Request) -> JSONResponse:
+    """POST /nodes/grants/{request_id}/deny."""
+    node_manager = _get_node_manager(request)
+    rid = request.path_params.get("request_id", "")
+    if not node_manager:
+        return JSONResponse({"error": "Node system not initialized"}, status_code=503)
+    ok = node_manager.deny_grant(rid)
+    if not ok:
+        return JSONResponse(
+            {"success": False, "message": "Unknown or already-resolved request"},
+            status_code=404,
+        )
+    return JSONResponse({"success": True, "message": "Denied"})
+
+
+# -- Controller side: initiate control, list peers, trigger -----------
+
+
+def _http_base(addr: str) -> str:
+    """Normalize a peer address to an http(s) base URL."""
+    addr = (addr or "").strip().rstrip("/")
+    if addr.startswith(("http://", "https://")):
+        return addr
+    if addr.startswith("ws://"):
+        return "http://" + addr[len("ws://") :]
+    if addr.startswith("wss://"):
+        return "https://" + addr[len("wss://") :]
+    return "http://" + addr
+
+
+async def request_control(request: Request) -> JSONResponse:
+    """POST /nodes/control — start controlling a peer (loopback/operator).
+
+    Body: {"base_url": "http://host:port" | "ws://...", "name"?: str}
+    Sends the peer a grant-request and returns its request_id to poll.
+    """
+    import httpx
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+    base = _http_base(body.get("base_url") or "")
+    if not base:
+        return JSONResponse({"error": "base_url is required"}, status_code=400)
+
+    import socket
+
+    my_name = socket.gethostname()
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post(
+                f"{base}/nodes/grant-request", json={"controller_name": my_name}
+            )
+            r.raise_for_status()
+            data = r.json()
+    except httpx.HTTPError as e:
+        return JSONResponse({"error": f"Couldn't reach {base}: {e}"}, status_code=502)
+    return JSONResponse(
+        {"request_id": data.get("request_id"), "base_url": base, "status": "pending"}
+    )
+
+
+async def control_status(request: Request) -> JSONResponse:
+    """GET /nodes/control-status?base_url=..&request_id=.. — poll + finalize.
+
+    On approval, stores the peer locally and returns peer_id.
+    """
+    import httpx
+
+    base = _http_base(request.query_params.get("base_url") or "")
+    rid = request.query_params.get("request_id") or ""
+    if not base or not rid:
+        return JSONResponse(
+            {"error": "base_url and request_id are required"}, status_code=400
+        )
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(f"{base}/nodes/grant-status/{rid}")
+            if r.status_code == 404:
+                return JSONResponse({"status": "expired"})
+            r.raise_for_status()
+            data = r.json()
+    except httpx.HTTPError as e:
+        return JSONResponse({"error": f"Couldn't reach {base}: {e}"}, status_code=502)
+
+    status = data.get("status")
+    if status == "approved" and data.get("token"):
+        store = _get_peer_store(request)
+        peer_id = store.add(name=base, base_url=base, token=data["token"])
+        return JSONResponse({"status": "approved", "peer_id": peer_id})
+    return JSONResponse({"status": status or "pending"})
+
+
+async def list_peers(request: Request) -> JSONResponse:
+    """GET /nodes/peers — peers this device can control."""
+    store = _get_peer_store(request)
+    peers = store.list_peers() if store else []
+    return JSONResponse({"peers": peers, "count": len(peers)})
+
+
+async def peer_offer(request: Request) -> JSONResponse:
+    """POST /nodes/peer-offer — a controller we drive offers US a reverse grant.
+
+    Authenticated (the offerer holds our token, so the auth boundary let it
+    through). Body: {"name", "base_url", "token"}. We store it as a peer we can
+    now drive too — the 'mutual' direction, from our side.
+    """
+    store = _get_peer_store(request)
+    if not store:
+        return JSONResponse({"error": "Node system not initialized"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+    base = _http_base(body.get("base_url") or "")
+    token = (body.get("token") or "").strip()
+    if not base or not token:
+        return JSONResponse(
+            {"error": "base_url and token are required"}, status_code=400
+        )
+    store.add(name=body.get("name") or base, base_url=base, token=token)
+    return JSONResponse({"success": True})
+
+
+async def set_peer_mode(request: Request) -> JSONResponse:
+    """POST /nodes/peers/{peer_id}/mode — one_way | mutual | paused.
+
+    'mutual' mints a reverse token and offers it to the peer so it can drive us;
+    leaving 'mutual' revokes that reverse token.
+    """
+    import socket
+
+    import httpx
+
+    store = _get_peer_store(request)
+    node_manager = _get_node_manager(request)
+    peer_id = request.path_params.get("peer_id", "")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    mode = str(body.get("mode") or "").strip()
+    if mode not in ("one_way", "mutual", "paused"):
+        return JSONResponse(
+            {"error": "mode must be one_way | mutual | paused"}, status_code=400
+        )
+    peer = store.get(peer_id) if store else None
+    if not peer:
+        return JSONResponse({"error": "Unknown peer"}, status_code=404)
+
+    store.set_mode(peer_id, mode)
+
+    if mode == "mutual" and not peer.get("reverse_device_id") and node_manager:
+        from suzent.config import DEFAULT_PORT
+
+        device_id, token = node_manager.device_store.mint(
+            peer.get("name") or "peer", "peer"
+        )
+        my_base = f"http://{_best_effort_lan_host()}:{DEFAULT_PORT}"
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(
+                    f"{peer['base_url']}/nodes/peer-offer",
+                    json={
+                        "name": socket.gethostname(),
+                        "base_url": my_base,
+                        "token": token,
+                    },
+                    headers={"Authorization": f"Bearer {peer['token']}"},
+                )
+                resp.raise_for_status()
+            store.set_reverse_device_id(peer_id, device_id)
+        except httpx.HTTPError as e:
+            node_manager.device_store.revoke(device_id)
+            return JSONResponse(
+                {"error": f"Couldn't offer reverse grant to peer: {e}"},
+                status_code=502,
+            )
+    elif mode != "mutual" and peer.get("reverse_device_id") and node_manager:
+        node_manager.device_store.revoke(peer["reverse_device_id"])
+        store.set_reverse_device_id(peer_id, None)
+
+    return JSONResponse({"success": True, "mode": mode})
+
+
+async def remove_peer(request: Request) -> JSONResponse:
+    """POST /nodes/peers/{peer_id}/remove — forget a controllable peer."""
+    store = _get_peer_store(request)
+    peer_id = request.path_params.get("peer_id", "")
+    if not store or not store.remove(peer_id):
+        return JSONResponse({"error": "Unknown peer"}, status_code=404)
+    return JSONResponse({"success": True})
+
+
+async def trigger_peer(request: Request):
+    """POST /nodes/peers/{peer_id}/trigger — run a prompt on the peer, stream SSE.
+
+    Body: {"prompt": str, "chat_id"?: str}. Proxies the peer's /chat SSE stream.
+    """
+    from starlette.responses import StreamingResponse
+
+    store = _get_peer_store(request)
+    peer_id = request.path_params.get("peer_id", "")
+    peer = store.get(peer_id) if store else None
+    if not peer:
+        return JSONResponse({"error": "Unknown peer"}, status_code=404)
+    if peer.get("mode") == "paused":
+        return JSONResponse({"error": "Peer is paused"}, status_code=409)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    prompt = (body.get("prompt") or "").strip()
+    if not prompt:
+        return JSONResponse({"error": "prompt is required"}, status_code=400)
+
+    payload = {"message": prompt, "stream": True}
+    if body.get("chat_id"):
+        payload["chat_id"] = body["chat_id"]
+    headers = {"Authorization": f"Bearer {peer['token']}"}
+    url = f"{peer['base_url']}/chat"
+
+    async def _stream():
+        import httpx
+
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream(
+                    "POST", url, json=payload, headers=headers
+                ) as resp:
+                    if resp.status_code != 200:
+                        await resp.aread()
+                        yield f'data: {{"type":"error","data":"peer returned {resp.status_code}"}}\n\n'
+                        return
+                    async for line in resp.aiter_lines():
+                        if line:
+                            yield line + "\n"
+        except httpx.HTTPError as e:
+            yield f'data: {{"type":"error","data":"{e}"}}\n\n'
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")

@@ -441,6 +441,77 @@ export async function disconnectNode(gateway_url: string): Promise<void> {
   if (!res.ok) throw new Error((await res.text()) || 'Failed to disconnect');
 }
 
+// ─── Control-grant (peer agent control) ──────────────────────────────
+
+export interface ControlRequest {
+  request_id: string;
+  controller_name: string;
+  controller_host: string;
+  requested_at: string;
+}
+
+export interface ControlledPeer {
+  peer_id: string;
+  name: string;
+  base_url: string;
+  mode: 'one_way' | 'mutual' | 'paused';
+  added_at: string;
+}
+
+export async function fetchGrants(): Promise<ControlRequest[]> {
+  const res = await fetch(`${getApiBase()}/nodes/grants`);
+  if (!res.ok) return [];
+  return (await res.json()).grants || [];
+}
+
+export async function approveGrant(requestId: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/grants/${requestId}/approve`, { method: 'POST' });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to approve');
+}
+
+export async function denyGrant(requestId: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/grants/${requestId}/deny`, { method: 'POST' });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to deny');
+}
+
+export async function fetchPeers(): Promise<ControlledPeer[]> {
+  const res = await fetch(`${getApiBase()}/nodes/peers`);
+  if (!res.ok) return [];
+  return (await res.json()).peers || [];
+}
+
+export async function setPeerMode(peerId: string, mode: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/peers/${peerId}/mode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to set mode');
+}
+
+export async function removePeer(peerId: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/peers/${peerId}/remove`, { method: 'POST' });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to remove peer');
+}
+
+/** Start controlling a peer: request a grant, then poll until approved. */
+export async function requestControl(baseUrl: string): Promise<{ request_id: string; base_url: string }> {
+  const res = await fetch(`${getApiBase()}/nodes/control`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ base_url: baseUrl }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to request control');
+  return await res.json();
+}
+
+export async function controlStatus(baseUrl: string, requestId: string): Promise<{ status: string; peer_id?: string }> {
+  const url = `${getApiBase()}/nodes/control-status?base_url=${encodeURIComponent(baseUrl)}&request_id=${encodeURIComponent(requestId)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to poll control status');
+  return await res.json();
+}
+
 export async function fetchNodeConfig(): Promise<NodeAuthConfig> {
   const res = await fetch(`${getApiBase()}/nodes/config`);
   if (!res.ok) throw new Error('Failed to load node config');

@@ -30,6 +30,15 @@ LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", "", "testclient"}
 # Paths reachable from remote without a token (they self-authenticate).
 _WS_EXEMPT_PATHS = {"/ws/node"}
 
+# HTTP bootstrap paths reachable from remote without a token. These issue no
+# secret — they only queue a control request an operator must approve, and the
+# requester polls with an unguessable request_id. See node_routes.grant_request.
+_HTTP_EXEMPT_PREFIXES = ("/nodes/grant-request", "/nodes/grant-status/")
+
+
+def is_http_exempt(path: str) -> bool:
+    return any(path.startswith(p) for p in _HTTP_EXEMPT_PREFIXES)
+
 
 def is_loopback(host: str | None) -> bool:
     return (host or "") in LOOPBACK_HOSTS
@@ -85,6 +94,9 @@ class AuthBoundaryMiddleware:
         path = scope.get("path", "")
         # The node WebSocket authenticates itself in its handshake.
         if scope["type"] == "websocket" and path in _WS_EXEMPT_PATHS:
+            return await self.app(scope, receive, send)
+        # HTTP bootstrap endpoints (issue no secret; operator-gated).
+        if scope["type"] == "http" and is_http_exempt(path):
             return await self.app(scope, receive, send)
 
         if self._authorized(scope):

@@ -182,6 +182,18 @@ from suzent.routes.node_routes import (
     connect_node,
     list_connections,
     disconnect_node,
+    grant_request,
+    grant_status,
+    list_grants,
+    approve_grant,
+    deny_grant,
+    request_control,
+    control_status,
+    list_peers,
+    set_peer_mode,
+    remove_peer,
+    trigger_peer,
+    peer_offer,
 )
 from suzent.routes.cron_routes import (
     list_cron_jobs,
@@ -559,6 +571,14 @@ async def startup():
         app.state.outbound_manager = outbound_manager
     except Exception as e:
         logger.warning(f"Failed to init outbound manager: {e}")
+
+    # Controller-side store of peers this device may drive (control-grant).
+    try:
+        from suzent.nodes.peer_store import PeerGrantStore
+
+        app.state.peer_store = PeerGrantStore()
+    except Exception as e:
+        logger.warning(f"Failed to init peer store: {e}")
 
     # Advertise this server over mDNS so LAN peers can discover it.
     if getattr(CONFIG, "node_discovery_enabled", True):
@@ -943,6 +963,20 @@ app = Starlette(
         Route("/nodes/connect", connect_node, methods=["POST"]),
         Route("/nodes/connect/stop", disconnect_node, methods=["POST"]),
         Route("/nodes/connections", list_connections, methods=["GET"]),
+        # Control-grant: target-side bootstrap (auth-exempt) + operator approval
+        Route("/nodes/grant-request", grant_request, methods=["POST"]),
+        Route("/nodes/grant-status/{request_id}", grant_status, methods=["GET"]),
+        Route("/nodes/grants", list_grants, methods=["GET"]),
+        Route("/nodes/grants/{request_id}/approve", approve_grant, methods=["POST"]),
+        Route("/nodes/grants/{request_id}/deny", deny_grant, methods=["POST"]),
+        # Control-grant: controller side
+        Route("/nodes/control", request_control, methods=["POST"]),
+        Route("/nodes/control-status", control_status, methods=["GET"]),
+        Route("/nodes/peer-offer", peer_offer, methods=["POST"]),
+        Route("/nodes/peers", list_peers, methods=["GET"]),
+        Route("/nodes/peers/{peer_id}/mode", set_peer_mode, methods=["POST"]),
+        Route("/nodes/peers/{peer_id}/remove", remove_peer, methods=["POST"]),
+        Route("/nodes/peers/{peer_id}/trigger", trigger_peer, methods=["POST"]),
         Route("/nodes/pending", list_pending_nodes, methods=["GET"]),
         Route(
             "/nodes/pending/{pairing_code}/approve",
