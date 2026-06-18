@@ -70,10 +70,8 @@ def test_one_time_summary_repair_fixes_stale_count(db):
     db.merge_chat_config(cid, {SUMMARY_VISIBLE_COUNT_KEY: 0})
     assert _count(db, cid) == 0
 
-    # Clear the one-time flag so the repair runs again, then run it.
-    from suzent.core.user_config import UserConfigStore
-
-    UserConfigStore().save_config_blob(db._SUMMARY_REPAIR_FLAG, "")
+    # Clear the DB-local one-time marker so the repair runs again, then run it.
+    db._set_schema_meta(db._SUMMARY_REPAIR_FLAG, "")
     db._repair_stale_chat_summaries()
 
     assert _count(db, cid) == 1
@@ -86,3 +84,25 @@ def test_summary_repair_is_one_shot(db):
     db.merge_chat_config(cid, {SUMMARY_VISIBLE_COUNT_KEY: 99})
     db._repair_stale_chat_summaries()
     assert _count(db, cid) == 99
+
+
+def test_rewrite_can_restore_null_agent_state(db):
+    # A checkpoint captured before any state was serialized (first turn) has
+    # agent_state == None; restoring it must actually clear the stored state, not keep
+    # the post-failure state in place.
+    cid = db.create_chat("C", {}, [{"role": "user", "content": "q"}])
+    db.update_chat(cid, agent_state=b"post-failure-state")
+    assert db.get_chat(cid).agent_state == b"post-failure-state"
+
+    db.rewrite_chat_messages(cid, [{"role": "user", "content": "q"}], agent_state=None)
+    assert db.get_chat(cid).agent_state is None
+
+
+def test_rewrite_omitting_agent_state_leaves_it_untouched(db):
+    # The heartbeat rollback omits agent_state; the stored state must be preserved.
+    cid = db.create_chat("C", {}, [{"role": "user", "content": "q"}, _assistant("a")])
+    db.update_chat(cid, agent_state=b"keep-me")
+    db.rewrite_chat_messages(
+        cid, [{"role": "user", "content": "q"}], turn_count_delta=-1
+    )
+    assert db.get_chat(cid).agent_state == b"keep-me"

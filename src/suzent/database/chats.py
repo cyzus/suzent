@@ -18,6 +18,10 @@ from .models import (
 SUMMARY_LAST_MESSAGE_KEY = "_summary_last_message"
 SUMMARY_VISIBLE_COUNT_KEY = "_summary_visible_assistant_count"
 
+# Sentinel for rewrite_chat_messages(agent_state=...) so "omit" (leave stored state)
+# is distinguishable from an explicit None (restore a NULL checkpoint state).
+_UNSET = object()
+
 # Platforms hidden from the user's chat list. Only the autonomous dream consolidation
 # chat is hidden — sub-agent chats are intentionally kept visible (nested under their
 # parent agent in the UI), so they are NOT excluded here.
@@ -260,7 +264,7 @@ class ChatOperationsMixin:
         self,
         chat_id: str,
         messages: List[Dict[str, Any]],
-        agent_state: Optional[bytes] = None,
+        agent_state: Any = _UNSET,
         turn_count_delta: int = 0,
     ) -> bool:
         """Replace a chat's full message list, keeping derived state consistent.
@@ -270,7 +274,10 @@ class ChatOperationsMixin:
         which is exactly what rollback paths (retry, heartbeat) previously skipped.
 
         Args:
-            agent_state: When given, also restored (used by retry rollback).
+            agent_state: When supplied, restored as-is — including ``None``, which is a
+                legitimate value for a checkpoint taken before any state was serialized
+                (e.g. the first turn). Omit it (the ``_UNSET`` default) to leave the
+                stored state untouched, as the heartbeat rollback does.
             turn_count_delta: Added to ``turn_count`` (e.g. -1 for a heartbeat rollback).
         """
         with self._session() as session:
@@ -282,7 +289,7 @@ class ChatOperationsMixin:
             chat.config = _with_message_summary(chat.config, messages)
             flag_modified(chat, "messages")
             flag_modified(chat, "config")
-            if agent_state is not None:
+            if agent_state is not _UNSET:
                 chat.agent_state = agent_state
             if turn_count_delta:
                 chat.turn_count = max(0, (chat.turn_count or 0) + turn_count_delta)
