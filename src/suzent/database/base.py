@@ -41,6 +41,7 @@ class ChatDatabaseBase:
         self._ensure_default_project()
         self._migrate_legacy_session_dirs()
         self._init_chat_search()
+        self._repair_stale_chat_summaries()
 
     def _session(self) -> Session:
         """Create a new database session."""

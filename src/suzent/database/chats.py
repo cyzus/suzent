@@ -256,6 +256,41 @@ class ChatOperationsMixin:
             session.commit()
             return True
 
+    def rewrite_chat_messages(
+        self,
+        chat_id: str,
+        messages: List[Dict[str, Any]],
+        agent_state: Optional[bytes] = None,
+        turn_count_delta: int = 0,
+    ) -> bool:
+        """Replace a chat's full message list, keeping derived state consistent.
+
+        Unlike a raw ``chat.messages = ...`` assignment, this refreshes the sidebar
+        summary (visible count + preview) and the FTS index so they never go stale —
+        which is exactly what rollback paths (retry, heartbeat) previously skipped.
+
+        Args:
+            agent_state: When given, also restored (used by retry rollback).
+            turn_count_delta: Added to ``turn_count`` (e.g. -1 for a heartbeat rollback).
+        """
+        with self._session() as session:
+            chat = session.get(ChatModel, chat_id)
+            if not chat:
+                return False
+
+            chat.messages = messages
+            chat.config = _with_message_summary(chat.config, messages)
+            flag_modified(chat, "messages")
+            flag_modified(chat, "config")
+            if agent_state is not None:
+                chat.agent_state = agent_state
+            if turn_count_delta:
+                chat.turn_count = max(0, (chat.turn_count or 0) + turn_count_delta)
+            self._reindex_in_session(session, chat_id, messages)
+            session.add(chat)
+            session.commit()
+            return True
+
     def merge_chat_config(self, chat_id: str, updates: Dict[str, Any]) -> bool:
         """Atomically merge top-level keys into a chat's config (read-modify-write
         inside one DB session).

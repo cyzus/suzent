@@ -367,21 +367,19 @@ class HeartbeatRunner(BaseBrain):
     def _rollback_heartbeat_messages(self, chat_id: str, original_count: int, db):
         """Remove the heartbeat prompt and Ok response if no action was needed."""
         try:
-            from sqlmodel import Session
-            from sqlalchemy.orm.attributes import flag_modified
-            from suzent.database import ChatModel
-
-            with Session(db.engine) as session:
-                chat = session.get(ChatModel, chat_id)
-                if chat and len(chat.messages) > original_count:
-                    extra = len(chat.messages) - original_count
-                    chat.messages = chat.messages[:original_count]
-                    chat.turn_count = max(0, (chat.turn_count or 0) - 1)
-                    flag_modified(chat, "messages")
-                    session.commit()
-                    logger.debug(
-                        f"Rolled back {extra} heartbeat messages from chat {chat_id}"
-                    )
+            chat = db.get_chat(chat_id)
+            if chat and len(chat.messages) > original_count:
+                extra = len(chat.messages) - original_count
+                # rewrite_chat_messages refreshes the sidebar summary + FTS index so
+                # the rolled-back state doesn't leave a stale message count/preview.
+                db.rewrite_chat_messages(
+                    chat_id,
+                    chat.messages[:original_count],
+                    turn_count_delta=-1,
+                )
+                logger.debug(
+                    f"Rolled back {extra} heartbeat messages from chat {chat_id}"
+                )
         except Exception as e:
             logger.error(f"Failed to rollback heartbeat messages for {chat_id}: {e}")
 

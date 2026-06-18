@@ -795,3 +795,70 @@ class DatabaseMigrationMixin:
 
         if backfilled:
             logger.info("Backfilled chat FTS index for {} chat(s)", backfilled)
+
+    _SUMMARY_REPAIR_FLAG = "_chat_summary_repaired_v1"
+
+    def _repair_stale_chat_summaries(self) -> None:
+        """One-time repair of sidebar summaries that drifted from chat.messages.
+
+        Rollback paths (retry, heartbeat) historically rewrote ``chat.messages``
+        without refreshing the cached summary, leaving stale visible-count/preview
+        values that ``list_chats`` then trusted forever. Recompute every chat's
+        summary once and persist any that differ. Guarded by a config-blob flag so
+        it runs a single time; failures are logged, never fatal.
+        """
+        from suzent.logger import logger
+
+        try:
+            from suzent.core.user_config import UserConfigStore
+
+            store = UserConfigStore()
+            if store.get_config_blob(self._SUMMARY_REPAIR_FLAG):
+                return
+        except Exception as exc:
+            logger.warning("Could not check summary-repair flag: {}", exc)
+            return
+
+        from suzent.database.chats import _summarize_messages, _with_message_summary
+
+        repaired = 0
+        try:
+            with self._session() as session:
+                chat_ids = [c.id for c in session.exec(select(ChatModel)).all()]
+            for chat_id in chat_ids:
+                chat = self.get_chat(chat_id)
+                if not chat:
+                    continue
+                messages = chat.messages or []
+                count, preview = _summarize_messages(messages)
+                config = chat.config or {}
+                from suzent.database.chats import (
+                    SUMMARY_LAST_MESSAGE_KEY,
+                    SUMMARY_VISIBLE_COUNT_KEY,
+                )
+
+                if (
+                    config.get(SUMMARY_VISIBLE_COUNT_KEY) != count
+                    or config.get(SUMMARY_LAST_MESSAGE_KEY) != preview
+                ):
+                    with self._session() as session:
+                        row = session.get(ChatModel, chat_id)
+                        if row:
+                            row.config = _with_message_summary(row.config, messages)
+                            from sqlalchemy.orm.attributes import flag_modified
+
+                            flag_modified(row, "config")
+                            session.add(row)
+                            session.commit()
+                            repaired += 1
+        except Exception as exc:
+            logger.warning("Chat summary repair failed: {}", exc)
+            return
+
+        try:
+            store.save_config_blob(self._SUMMARY_REPAIR_FLAG, "1")
+        except Exception as exc:
+            logger.warning("Could not persist summary-repair flag: {}", exc)
+
+        if repaired:
+            logger.info("Repaired stale sidebar summaries for {} chat(s)", repaired)
