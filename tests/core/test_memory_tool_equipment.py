@@ -41,3 +41,12 @@ def test_session_search_equipped_when_in_tools():
         {"tools": ["ReadFileTool", "SessionSearchTool"], "memory_enabled": False}
     )
     assert "session_search" in names
+
+
+def test_memory_and_recall_tools_are_activatable_via_tool_search():
+    """Both recall tools are deferrable, so tool_search can activate them mid-session
+    when they aren't already equipped."""
+    from suzent.tools.tool_search_tool import TOOL_CATALOG
+
+    assert "MemorySearchTool" in TOOL_CATALOG
+    assert "SessionSearchTool" in TOOL_CATALOG
