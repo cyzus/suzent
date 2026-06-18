@@ -549,6 +549,28 @@ async def connect_node(request: Request) -> JSONResponse:
     if not gateway_url:
         return JSONResponse({"error": "gateway_url is required"}, status_code=400)
 
+    # Probe first so an unreachable gateway fails loudly here, instead of the
+    # NodeHost retrying silently in the background (target sees nothing).
+    from urllib.parse import urlparse
+
+    from suzent.config import DEFAULT_PORT
+    from suzent.nodes import discovery
+
+    parsed = urlparse(gateway_url)
+    probe_host, probe_port = parsed.hostname, parsed.port or DEFAULT_PORT
+    if probe_host and not await discovery.probe_reachable(
+        probe_host, probe_port, timeout=2.0
+    ):
+        return JSONResponse(
+            {
+                "error": (
+                    f"Can't reach {probe_host}:{probe_port}. Is Suzent running "
+                    f"there, and is the port reachable on this network?"
+                )
+            },
+            status_code=502,
+        )
+
     host = mgr.start(
         gateway_url,
         display_name=(body.get("name") or "").strip(),
