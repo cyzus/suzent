@@ -52,7 +52,7 @@ JUDGE_SYSTEM_PROMPT = (
     "the work done so far. Be strict: require concrete evidence of completion, "
     "not promises, intentions, or partial progress. When sub-goals are present, "
     "the goal is done only when the main goal AND every sub-goal are satisfied. "
-    'Reply with a single line of minified JSON and nothing else: '
+    "Reply with a single line of minified JSON and nothing else: "
     '{"done": <true|false>, "reason": "<one short sentence>"}.'
 )
 
@@ -173,10 +173,14 @@ def _budget_exhausted(goal) -> bool:
 
 
 def _goal_config_override() -> dict:
-    """Config for autonomous goal turns: auto-approve tools, memory on."""
+    """Config for autonomous goal turns using headless Auto mode."""
     from suzent.agent_manager import build_agent_config
 
-    base: dict = {"memory_enabled": True, "auto_approve_tools": True}
+    base: dict = {
+        "memory_enabled": True,
+        "permission_mode": "auto",
+        "interaction_profile": "headless",
+    }
     return build_agent_config(base, require_social_tool=False)
 
 
@@ -358,8 +362,10 @@ def format_status(goal) -> str:
         return "No active goal. Set one with `/goal <objective>`."
 
     icon = {STATUS_ACTIVE: "🎯", STATUS_PAUSED: "⏸"}.get(goal.status, "🎯")
-    turns = f"{goal.turns_elapsed}/{goal.max_turns}" if goal.max_turns else str(
-        goal.turns_elapsed
+    turns = (
+        f"{goal.turns_elapsed}/{goal.max_turns}"
+        if goal.max_turns
+        else str(goal.turns_elapsed)
     )
     lines = [
         f"{icon} **Goal** ({goal.status}) — turn {turns}",

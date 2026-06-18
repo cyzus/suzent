@@ -8,3 +8,4 @@ export { ThinkingAnimation, RobotIcon, AgentBadge } from './ThinkingAnimation';
 export { UserMessage } from './UserMessage';
 export { AssistantMessage } from './AssistantMessage';
 export { RightSidebar } from './RightSidebar';
+export { PermissionApprovalDock } from './PermissionApprovalDock';

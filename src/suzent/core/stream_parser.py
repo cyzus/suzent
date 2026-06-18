@@ -8,7 +8,7 @@ and error states.
 
 import json
 from dataclasses import dataclass
-from typing import Iterator, Union
+from typing import Any, Iterator, Union
 
 from suzent.core.stream_events import StreamEventType, CustomEventName
 from suzent.logger import get_logger
@@ -69,6 +69,7 @@ class ApprovalRequest(StreamEvent):
     tool_call_id: str
     tool_name: str
     args: dict
+    decision: dict[str, Any] | None = None
 
     def format_args(self) -> str:
         """Return a pretty JSON string of the arguments."""
@@ -187,6 +188,7 @@ class StreamParser:
                     tool_call_id=val.get("toolCallId", ""),
                     tool_name=val.get("toolName", "unknown"),
                     args=val.get("args", {}),
+                    decision=val.get("decision"),
                 )
         elif evt_type == StreamEventType.RUN_ERROR:
             yield ErrorEvent(payload.get("message", "Unknown error"))

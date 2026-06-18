@@ -153,9 +153,6 @@ class Tool:
     @staticmethod
     def is_tool_denied(deps: Any, tool_name: str) -> Optional[str]:
         """Return a denial reason when policy explicitly blocks a tool."""
-        if getattr(deps, "auto_approve_tools", False):
-            return None
-
         policy = getattr(deps, "tool_approval_policy", {}) or {}
         decision = policy.get(tool_name)
         if decision == "always_deny":

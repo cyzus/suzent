@@ -128,7 +128,9 @@ Executes code in a secure environment. Runs inside an isolated Docker container 
 - `/persistence` — Private storage, persists across sessions (current chat only)
 - `/shared` — Shared storage, accessible by all chats
 
-**Requires approval** — the user must Allow/Always Allow before execution.
+**Permission controlled** — execution is evaluated by the active permission mode,
+shell policy, and persisted rules. It may run, be denied, or show backend-provided
+approval actions.
 
 ### `read_file`
 
@@ -151,7 +153,8 @@ File creation and modification tools.
 - `write_file`: Creates or overwrites a file. Creates parent directories automatically.
 - `edit_file`: Find-and-replace within a file. Supports `replace_all` for bulk replacements.
 
-Both **require approval** before execution.
+Both are **permission controlled**. Default mode asks; Accept Edits and Auto mode
+allow verified workspace edits; Plan mode allows only the project `plan.md`.
 
 ### `glob_search` / `grep_search`
 

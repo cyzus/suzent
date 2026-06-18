@@ -1,4 +1,5 @@
-import { ChatGPTLoginResponse, ChatGPTStatusResponse, ConfigOptions } from '../types/api';
+import { ChatGPTLoginResponse, ChatGPTStatusResponse, ConfigOptions, PermissionMode } from '../types/api';
+import type { PermissionPrompt } from '../types/agui';
 
 // -----------------------------------------------------------------------------
 // Tauri Integration
@@ -39,6 +40,69 @@ export function getApiBase(): string {
   // Fallback for standard dev port if injection missing (e.g. during early init or HMR)
   // or running in browser mode
   return 'http://127.0.0.1:8000';
+}
+
+export interface PermissionModeState {
+  mode: PermissionMode;
+  prePlanMode?: PermissionMode | null;
+  availableModes: PermissionMode[];
+  autoModeAvailable: boolean;
+  unavailableReasons: Record<string, string>;
+}
+
+export async function setChatPermissionMode(
+  chatId: string,
+  mode: PermissionMode,
+): Promise<PermissionModeState> {
+  const response = await fetch(`${getApiBase()}/chats/${chatId}/permission-mode`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to set permission mode: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function restoreChatPermissionMode(
+  chatId: string,
+): Promise<PermissionModeState> {
+  const response = await fetch(`${getApiBase()}/chats/${chatId}/permission-mode`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ restorePrevious: true }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to restore permission mode: ${response.status}`);
+  }
+  return response.json();
+}
+
+export interface PendingPermissionApproval {
+  approvalId: string;
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  decision: PermissionPrompt;
+  savedAt?: string;
+}
+
+export interface ChatPermissionState {
+  chatId: string;
+  mode: PermissionMode;
+  prePlanMode?: PermissionMode | null;
+  pendingApprovals: PendingPermissionApproval[];
+}
+
+export async function getChatPermissionState(
+  chatId: string,
+): Promise<ChatPermissionState> {
+  const response = await fetch(`${getApiBase()}/chats/${chatId}/permission-state`);
+  if (!response.ok) {
+    throw new Error(`Failed to load permission state: ${response.status}`);
+  }
+  return response.json();
 }
 
 // Legacy constant for backward compatibility - but callers should prefer getApiBase()

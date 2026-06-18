@@ -440,6 +440,34 @@ code {
   border-color: #111;
 }
 
+.activity-rail-dot-error {
+  border-color: #111;
+  background: #ff3b30;
+}
+
+.activity-rail-dot-error::before,
+.activity-rail-dot-error::after {
+  content: "";
+  position: absolute;
+  left: 0.19rem;
+  top: -0.01rem;
+  width: 2px;
+  height: 0.42rem;
+  background: #fff;
+}
+
+.activity-rail-dot-error::before {
+  transform: rotate(45deg);
+}
+
+.activity-rail-dot-error::after {
+  transform: rotate(-45deg);
+}
+
+.dark .activity-rail-dot-error {
+  border-color: #fff;
+}
+
 .activity-rail-dot-active {
   background-image: repeating-linear-gradient(
     -45deg,
@@ -499,6 +527,14 @@ code {
 .dark .activity-rail-card-active {
   background: transparent;
   box-shadow: none;
+}
+
+.activity-rail-card-error {
+  color: #b91c1c;
+}
+
+.dark .activity-rail-card-error {
+  color: #fca5a5;
 }
 
 /* Improve prose text selection by reducing margin interference */

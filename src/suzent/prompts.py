@@ -453,6 +453,41 @@ def register_dynamic_instructions(
         )
 
     @agent.instructions
+    def inject_permission_mode(ctx: Any) -> str:
+        mode = str(getattr(ctx.deps, "permission_mode", "default") or "default")
+        if mode == "plan":
+            return (
+                "# Plan Mode\n"
+                "Plan mode is active. Explore and reason using read-only tools. "
+                "Do not modify files, execute mutating commands, commit changes, or "
+                "change external systems. The only writable artifact is plan.md in "
+                "the project workspace. Build the implementation plan there and ask "
+                "the user to switch modes before implementation."
+            )
+        if mode == "auto":
+            return (
+                "# Auto Mode\n"
+                "Work autonomously on low-risk actions and minimize routine "
+                "interruptions. Do not treat Auto mode as permission for destructive "
+                "actions, credential disclosure, data exfiltration, production "
+                "changes, or unsolicited external communication."
+            )
+        return ""
+
+    @agent.instructions
+    def inject_permission_feedback(ctx: Any) -> str:
+        feedback = getattr(ctx.deps, "permission_feedback", None) or []
+        if not feedback:
+            return ""
+        items = "\n".join(f"- {item}" for item in feedback if item)
+        return (
+            "# Permission Feedback\n"
+            "The user rejected one or more requested actions and supplied this "
+            "guidance. Respect it when choosing the next approach:\n"
+            f"{items}"
+        )
+
+    @agent.instructions
     def inject_memory_context(_: Any) -> str:
         return memory_context or ""
 

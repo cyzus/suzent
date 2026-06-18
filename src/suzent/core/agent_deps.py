@@ -69,6 +69,10 @@ class AgentDeps:
     )  # tool_name -> "always_allow" | "always_deny"
     auto_approve_tools: bool = False
     tool_permission_policies: dict = field(default_factory=dict)
+    permission_mode: str = "default"
+    interaction_profile: str = "interactive"
+    permission_rules: list = field(default_factory=list)
+    permission_feedback: list[str] = field(default_factory=list)
     cancel_event: Any = None  # asyncio.Event - set when stream is cancelled
     last_messages: Optional[list] = None  # To preserve session history correctly
 

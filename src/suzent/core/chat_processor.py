@@ -18,11 +18,17 @@ from typing import AsyncGenerator, List, Dict, Any, Optional
 
 from ag_ui.core import CustomEvent
 from ag_ui.encoder import EventEncoder
+from pydantic_ai.tools import ToolDenied
 
 from suzent.logger import get_logger
 from suzent.config import CONFIG, PROJECT_DIR, USER_CONFIG_DIR, get_effective_volumes
 from suzent.agent_manager import get_or_create_agent
-from suzent.permissions.loader import persist_global_command_rule
+from suzent.permissions.loader import (
+    persist_global_permission_rule,
+)
+from suzent.permissions.actions import get_offered_action, resolve_action
+from suzent.permissions.models import PermissionRule
+from suzent.permissions.audit import record_permission_audit
 
 from suzent.core.context_injection import build_agent_deps
 from suzent.core.agent_serializer import serialize_state, deserialize_state
@@ -32,7 +38,7 @@ from suzent.core.context_compressor import (
     estimate_tokens,
 )
 from suzent.memory.lifecycle import get_memory_manager
-from suzent.streaming import stream_agent_responses
+from suzent.streaming import remove_pending_approvals, stream_agent_responses
 from suzent.memory import ConversationTurn, Message, AgentAction
 from suzent.database import (
     get_database,
@@ -91,66 +97,108 @@ def _coerce_approval_args(raw_args: Any) -> dict[str, Any]:
     return {}
 
 
-def _upsert_command_rule(
-    policies: dict[str, Any],
-    *,
-    tool_name: str,
-    command_pattern: str,
-    action: str,
-    match_type: str = "exact",
-) -> None:
-    if not isinstance(policies, dict):
-        return
+def _resolve_resume_approval_actions(
+    chat_id: str,
+    resume_approvals: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Resolve backend-offered action IDs while retaining legacy payloads."""
 
-    cleaned_pattern = command_pattern.strip()
-    cleaned_action = action.strip().lower()
-    cleaned_match = match_type.strip().lower()
-    if not cleaned_pattern:
-        return
+    db = get_database()
+    chat = db.get_chat(chat_id)
+    pending = (
+        dict(chat.config or {}).get("_pending_approvals", [])
+        if chat is not None
+        else []
+    )
+    pending_by_id = {
+        str(item.get("approvalId")): item
+        for item in pending
+        if isinstance(item, dict) and item.get("approvalId")
+    }
 
-    tool_policy_raw = policies.get(tool_name)
-    tool_policy = dict(tool_policy_raw) if isinstance(tool_policy_raw, dict) else {}
-    tool_policy["enabled"] = True
-    tool_policy.setdefault("mode", "accept_edits")
-    tool_policy.setdefault("default_action", "ask")
+    resolved: list[dict[str, Any]] = []
+    for approval in resume_approvals:
+        action_id = str(approval.get("action_id") or "").strip()
+        if not action_id:
+            resolved.append({**approval, "remember": ""})
+            continue
 
-    raw_rules = tool_policy.get("command_rules")
-    rules: list[dict[str, Any]] = []
-    if isinstance(raw_rules, list):
-        rules = [r for r in raw_rules if isinstance(r, dict)]
+        approval_id = str(
+            approval.get("approval_id")
+            or approval.get("request_id")
+            or approval.get("tool_call_id")
+            or ""
+        )
+        pending_request = pending_by_id.get(approval_id)
+        if pending_request is None:
+            raise ValueError(f"Unknown or stale approval request: {approval_id}")
 
-    updated = False
-    for idx, rule in enumerate(rules):
-        if (
-            str(rule.get("pattern", "")).strip() == cleaned_pattern
-            and str(rule.get("match_type", "")).strip().lower() == cleaned_match
-        ):
-            rules[idx] = {
-                "pattern": cleaned_pattern,
-                "match_type": cleaned_match,
-                "action": cleaned_action,
-            }
-            updated = True
-            break
+        decision = pending_request.get("decision")
+        if not isinstance(decision, dict):
+            raise ValueError(
+                f"Approval request has no decision contract: {approval_id}"
+            )
 
-    if not updated:
-        rules.append(
+        approved, remember = resolve_action(decision, action_id)
+        offered_action = get_offered_action(decision, action_id)
+        resolved.append(
             {
-                "pattern": cleaned_pattern,
-                "match_type": cleaned_match,
-                "action": cleaned_action,
+                **approval,
+                "request_id": approval_id,
+                "tool_call_id": approval.get("tool_call_id")
+                or pending_request.get("toolCallId")
+                or approval_id,
+                "tool_name": approval.get("tool_name")
+                or pending_request.get("toolName"),
+                "args": pending_request.get("args") or {},
+                "approved": approved,
+                "remember": remember,
+                "_permission_updates": offered_action.get("permissionUpdates", []),
             }
         )
-
-    tool_policy["command_rules"] = rules
-    policies[tool_name] = tool_policy
+    return resolved
 
 
-def _normalize_remember_scope(scope: Any) -> str:
-    value = str(scope or "").strip().lower()
-    if value == "project":
-        return "global"
-    return value
+def _apply_permission_updates(
+    chat_id: str,
+    updates: list[dict[str, Any]],
+) -> None:
+    for update in updates:
+        if not isinstance(update, dict) or update.get("type") != "add_rule":
+            continue
+        payload = update.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        destination = str(update.get("destination") or "")
+        source = "global" if destination == "global" else "session"
+        rule = PermissionRule.model_validate({**payload, "source": source})
+        if destination == "global":
+            persist_global_permission_rule(
+                PROJECT_DIR,
+                logger,
+                rule,
+                user_config_dir=USER_CONFIG_DIR,
+            )
+            CONFIG.permission_rules = [
+                existing
+                for existing in CONFIG.permission_rules
+                if existing.get("id") != rule.id
+            ]
+            CONFIG.permission_rules.append(rule.model_dump(mode="json", by_alias=True))
+            continue
+        if destination == "session":
+            db = get_database()
+            chat = db.get_chat(chat_id)
+            rules = list(
+                ((chat.config or {}) if chat else {}).get("permission_rules") or []
+            )
+            rules = [
+                existing
+                for existing in rules
+                if not isinstance(existing, dict) or existing.get("id") != rule.id
+            ]
+            rules.append(rule.model_dump(mode="json", by_alias=True))
+            db.merge_chat_config(chat_id, {"permission_rules": rules})
 
 
 def _collect_unprocessed_tool_call_ids(messages: list[Any]) -> set[str]:
@@ -184,6 +232,26 @@ def _collect_unprocessed_tool_call_ids(messages: list[Any]) -> set[str]:
                     pending_ids.add(part.tool_call_id)
 
     return pending_ids
+
+
+def _deferred_approval_result(approval: dict[str, Any]) -> bool | ToolDenied:
+    """Build the pydantic-ai approval result, preserving rejection feedback."""
+    if approval.get("approved"):
+        return True
+
+    feedback = str(approval.get("feedback") or "").strip()
+    if not feedback:
+        return ToolDenied()
+    return ToolDenied(
+        message=(f"The user denied this tool call and provided guidance: {feedback}")
+    )
+
+
+def _is_denied_tool_return(content: Any) -> bool:
+    text = str(content or "").strip().lower()
+    return text.startswith("the tool call was denied") or text.startswith(
+        "the user denied this tool call"
+    )
 
 
 class ChatProcessor:
@@ -620,6 +688,21 @@ class ChatProcessor:
         if resume_approvals:
             from pydantic_ai.tools import DeferredToolResults
 
+            resume_approvals = _resolve_resume_approval_actions(
+                chat_id, resume_approvals
+            )
+            resolved_tool_call_ids = {
+                str(app.get("tool_call_id") or app.get("request_id") or "")
+                for app in resume_approvals
+                if app.get("tool_call_id") or app.get("request_id")
+            }
+            if resolved_tool_call_ids:
+                await remove_pending_approvals(chat_id, resolved_tool_call_ids)
+            deps.permission_feedback = [
+                str(app.get("feedback")).strip()
+                for app in resume_approvals
+                if not app.get("approved") and str(app.get("feedback") or "").strip()
+            ]
             approvals_dict = {}
             # Include policy-decided approvals cached when a previous stream
             # paused with a mixed auto/user approval batch.
@@ -629,7 +712,7 @@ class ChatProcessor:
             for app in resume_approvals:
                 tool_call_id = app.get("tool_call_id") or app.get("request_id")
                 if tool_call_id:
-                    approvals_dict[tool_call_id] = bool(app.get("approved"))
+                    approvals_dict[tool_call_id] = _deferred_approval_result(app)
 
             pending_tool_call_ids = _collect_unprocessed_tool_call_ids(message_history)
             if approvals_dict and pending_tool_call_ids:
@@ -650,116 +733,21 @@ class ChatProcessor:
 
                 # Also handle remembered policy updates from approval UI.
                 for app in resume_approvals:
-                    remember_scope = _normalize_remember_scope(app.get("remember"))
-                    tool_name = str(app.get("tool_name") or "").strip()
-                    approved = bool(app.get("approved"))
-                    if not tool_name or remember_scope not in {"session", "global"}:
-                        continue
-
-                    args = _coerce_approval_args(app.get("args"))
-
-                    # Bash approvals can be remembered per command.
-                    # Bash tool uses "content" for the command; fall back to "command"
-                    # for any legacy callers that normalised the field name.
-                    if tool_name == "bash_execute":
-                        command_pattern = str(
-                            args.get("content") or args.get("command") or ""
-                        ).strip()
-                        if command_pattern:
-                            action = "allow" if approved else "deny"
-                            _upsert_command_rule(
-                                deps.tool_permission_policies,
-                                tool_name=tool_name,
-                                command_pattern=command_pattern,
-                                action=action,
-                            )
-
-                            if remember_scope == "session":
-                                # Persist per-chat session rule to DB so it survives
-                                # page refresh and is scoped to this chat only.
-                                try:
-                                    _db = get_database()
-                                    _chat = _db.get_chat(chat_id)
-                                    _chat_cfg = dict(
-                                        (_chat.config or {}) if _chat else {}
-                                    )
-                                    _chat_perm = dict(
-                                        _chat_cfg.get("permission_policies") or {}
-                                    )
-                                    _upsert_command_rule(
-                                        _chat_perm,
-                                        tool_name=tool_name,
-                                        command_pattern=command_pattern,
-                                        action=action,
-                                        user_config_dir=USER_CONFIG_DIR,
-                                    )
-                                    _chat_cfg["permission_policies"] = _chat_perm
-                                    _db.update_chat(chat_id, config=_chat_cfg)
-                                except Exception as exc:
-                                    logger.warning(
-                                        "Failed to persist session command rule for {}: {}",
-                                        chat_id,
-                                        exc,
-                                    )
-
-                            elif remember_scope == "global":
-                                try:
-                                    persist_global_command_rule(
-                                        PROJECT_DIR,
-                                        logger,
-                                        tool_name=tool_name,
-                                        command_pattern=command_pattern,
-                                        action=action,
-                                    )
-                                    _upsert_command_rule(
-                                        CONFIG.permission_policies,
-                                        tool_name=tool_name,
-                                        command_pattern=command_pattern,
-                                        action=action,
-                                    )
-                                except Exception as exc:
-                                    logger.warning(
-                                        "Failed to persist global approval rule for {}: {}",
-                                        tool_name,
-                                        exc,
-                                    )
-                            continue
-
-                    # Non-bash tools use legacy per-tool remember semantics.
-                    # Bash is handled as command-level rules above, so skip it here.
-                    if tool_name != "bash_execute" and remember_scope in {
-                        "session",
-                        "global",
-                    }:
-                        _policy_value = "always_allow" if approved else "always_deny"
-                        deps.tool_approval_policy[tool_name] = _policy_value
-
-                        # Persist to the per-chat DB config so the decision survives
-                        # to the next turn even if the client doesn't re-send
-                        # tool_approval_policy in the request config. (Both session
-                        # and global remember are at least chat-scoped here; true
-                        # cross-chat global persistence is out of scope.)
-                        # Use merge_chat_config so this write can't clobber a
-                        # concurrent _pending_approvals write from streaming.py.
-                        try:
-                            _db = get_database()
-                            _chat = _db.get_chat(chat_id)
-                            _chat_ap = dict(
-                                ((_chat.config or {}) if _chat else {}).get(
-                                    "tool_approval_policy"
-                                )
-                                or {}
-                            )
-                            _chat_ap[tool_name] = _policy_value
-                            _db.merge_chat_config(
-                                chat_id, {"tool_approval_policy": _chat_ap}
-                            )
-                        except Exception as exc:
-                            logger.warning(
-                                "Failed to persist approval policy for {}: {}",
-                                chat_id,
-                                exc,
-                            )
+                    record_permission_audit(
+                        chat_id=chat_id,
+                        tool_call_id=str(app.get("tool_call_id") or ""),
+                        tool_name=str(app.get("tool_name") or "unknown"),
+                        args=_coerce_approval_args(app.get("args")),
+                        decision="allow" if app.get("approved") else "deny",
+                        reason="User resolved a pending permission request",
+                        reason_code="user_permission_action",
+                        mode=str(getattr(deps, "permission_mode", "default")),
+                        user_action=str(app.get("action_id") or "legacy"),
+                        feedback=str(app.get("feedback") or "") or None,
+                    )
+                    permission_updates = app.get("_permission_updates")
+                    if isinstance(permission_updates, list) and permission_updates:
+                        _apply_permission_updates(chat_id, permission_updates)
         else:
             # New user turn (not resume): clear any stale cached auto approvals.
             pop_pending_auto_approvals(chat_id)
@@ -1889,12 +1877,15 @@ def _rebuild_display_messages(messages: list) -> list:
     # First pass: find all tool returns so assistant rows can also carry
     # AG-UI-compatible parts for stable historical rendering.
     executed_tool_calls = set()
+    denied_tool_calls = set()
     tool_returns_by_id: dict[str, str] = {}
     for msg in messages:
         if isinstance(msg, ModelRequest):
             for part in msg.parts:
                 if isinstance(part, ToolReturnPart):
                     executed_tool_calls.add(part.tool_call_id)
+                    if _is_denied_tool_return(part.content):
+                        denied_tool_calls.add(part.tool_call_id)
                     tool_returns_by_id[part.tool_call_id] = (
                         serialize_tool_return_content(part.content)
                     )
@@ -1980,7 +1971,13 @@ def _rebuild_display_messages(messages: list) -> list:
                     args_str = stringify_tool_args(part.args)
                     tool_output = tool_returns_by_id.get(part.tool_call_id)
                     was_executed = part.tool_call_id in executed_tool_calls
-                    tool_state = "completed" if was_executed else "approval-requested"
+                    tool_state = (
+                        "error"
+                        if part.tool_call_id in denied_tool_calls
+                        else "completed"
+                        if was_executed
+                        else "approval-requested"
+                    )
                     structured_tool_part: dict[str, Any] = {
                         "type": "tool",
                         "toolCallId": part.tool_call_id,

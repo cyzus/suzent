@@ -676,7 +676,11 @@ class DreamRunner(BaseBrain):
         if not chat:
             db.create_chat(
                 title=title,
-                config={"platform": "dream", "auto_approve_tools": True},
+                config={
+                    "platform": "dream",
+                    "permission_mode": "auto",
+                    "interaction_profile": "headless",
+                },
                 chat_id=chat_id,
             )
         else:
@@ -728,7 +732,8 @@ class DreamRunner(BaseBrain):
         base = {
             "platform": "dream",
             "memory_enabled": False,
-            "auto_approve_tools": True,
+            "permission_mode": "auto",
+            "interaction_profile": "headless",
             "suppress_environment_context": True,
             "tools": list(CONFIG.memory_dream_tools),
             "static_instructions": system_prompt,

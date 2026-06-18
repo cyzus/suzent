@@ -1,150 +1,135 @@
-# Tool Approval
+# Tool Permissions and Human Approval
 
-Dangerous tools require explicit user approval before execution. This prevents the agent from running destructive commands, overwriting files, or sending messages without the user's consent.
+Suzent evaluates every deferred tool call through one backend permission engine. The engine decides whether to allow, deny, or ask, and it supplies the exact actions shown by the frontend. The client never constructs permission rules itself.
 
-## Gated Tools
+## Deferred Tools
 
-| Tool | Function | What's gated |
-|------|----------|-------------|
-| BashTool | `bash_execute` | All executions |
-| WriteFileTool | `write_file` | All writes |
-| EditFileTool | `edit_file` | All edits |
-| SocialMessageTool | `social_message` | Sending messages (listing contacts is ungated) |
+| Tool | Function | Gated operation |
+|------|----------|-----------------|
+| BashTool | `bash_execute` | Command and code execution |
+| WriteFileTool | `write_file` | File creation and overwrite |
+| EditFileTool | `edit_file` | File edits |
+| ProcessTool | `process_manage` | Mutating process operations |
+| SocialMessageTool | `social_message` | Sending messages |
+| ImageGenerationTool | `image_generate` | Image generation |
 
-## User Experience
+Read-only variants such as contact listing and process polling are allowed without prompting when the active mode permits read operations.
 
-When a gated tool is invoked, the chat UI pauses and shows an approval dialog:
+## Approval Actions
 
-- **Allow** — approve this single execution, resume the tool
-- **Always Allow** — approve and remember for this chat (no further prompts for this tool in this chat)
-- **Deny** — block execution, the tool returns `[Tool execution denied by user.]`
+An approval prompt can offer:
 
-The agent sees the denial message and can adjust its approach (e.g. ask the user for an alternative).
+- **Allow**: approve this call once.
+- **Allow for session**: create a rule in this chat.
+- **Allow globally**: create a rule in the user `permissions.yaml`.
+- **Reject**: deny the call, optionally with guidance for the agent.
 
-## Chat-Scoped Memory
+The available actions are backend-owned and can vary by tool. Bash persistence uses an exact-command matcher; it does not approve the entire Bash tool. Other tools currently use a tool-wide matcher unless a narrower matcher is supplied.
 
-Clicking **"Always Allow"** sets a chat-scoped policy:
+The complete pending decision is stored with the chat. On resume, the backend validates the selected action ID against that stored contract and ignores client-supplied arguments when applying permission updates.
 
+## Permission Modes
+
+| Mode | Behavior |
+|------|----------|
+| `default` | Ask before workspace edits and other state-changing operations |
+| `accept_edits` | Allow verified workspace edits; continue asking for dangerous or external actions |
+| `plan` | Allow read-only exploration and writes only to the project `plan.md` |
+| `auto` | Allow deterministic low-risk operations and classify unresolved requests with a separate security model |
+| `strict_readonly` | Deny every non-read-only deferred operation |
+
+Entering Plan mode stores the previous mode. The mode API can restore it with `{"restorePrevious": true}`.
+
+Auto mode is not blanket approval. Explicit denies, shell safety checks, path restrictions, and normalized deny rules run before the classifier. Interactive classifier failures fall back to asking; headless classifier failures deny.
+
+## Rule Scopes
+
+- `once`: no persisted rule.
+- `session`: stored in `ChatConfig.permission_rules`.
+- `global`: stored in the user configuration directory's `permissions.yaml`.
+
+Rules contain a tool, behavior (`allow`, `ask`, or `deny`), matcher, source, ID, and creation time. Supported matchers are:
+
+- `all`
+- `exact_input`
+- `command_prefix`
+- `path_prefix`
+- `destination`
+
+For matching rules, precedence is `deny`, then `ask`, then `allow`. More specific matchers win within the same behavior.
+
+## APIs
+
+```text
+GET    /permissions?chat_id={chat_id}
+POST   /permissions/rules
+DELETE /permissions/rules/{rule_id}?destination=session|global&chat_id={chat_id}
+GET    /chats/{chat_id}/permission-state
+GET    /chats/{chat_id}/permission-mode
+PUT    /chats/{chat_id}/permission-mode
 ```
-tool_approval_policy["bash_execute"] = "always_allow"
-```
 
-This persists for the lifetime of the current chat. Subsequent calls to the same tool skip the approval dialog entirely. The policy:
-
-- **Persists** across multiple messages within the same chat
-- **Persists** across page refreshes (stored in database per-chat)
-- **Resets** when you create a new chat or switch to a different chat
-- **Is isolated** per chat — approvals in Chat A don't affect Chat B
-
-Each chat maintains its own independent set of tool approval policies, giving you fine-grained control over which tools are auto-approved in different contexts.
-
-## How It Works
-
-### Architecture
-
-The HITL system uses a queue-based streaming architecture:
-
-```
-Agent Task (background)
-    │
-    ├── Tool calls _require_approval()
-    │       │
-    │       ├── Check session policy → auto-approve/deny if set
-    │       ├── Push "tool_approval_required" to SSE queue
-    │       └── await asyncio.Event (blocks tool execution)
-    │
-SSE Generator (drains queue)
-    │
-    ├── Yields regular stream events
-    └── Yields tool_approval_required event → Frontend
-                                                │
-                                          User clicks
-                                                │
-                                    POST /chat/approve-tool
-                                                │
-                                    asyncio.Event.set() → Tool resumes
-```
-
-The agent runs in a background `asyncio.Task`. When a tool needs approval, it pushes a request to the SSE queue and waits on an `asyncio.Event`. The SSE generator delivers the approval request to the frontend. When the user responds, the HTTP endpoint sets the event, unblocking the tool.
-
-### SSE Event
+Resume a suspended call through `/chat` or `/chat/send`:
 
 ```json
 {
-  "type": "tool_approval_required",
-  "data": {
-    "request_id": "550e8400-e29b-41d4-a716-446655440000",
-    "tool_name": "bash_execute",
-    "args_preview": {
-      "content": "rm -rf /tmp/old-data",
-      "language": "command"
-    }
-  }
-}
-```
-
-### API Endpoint
-
-```
-POST /chat (with resume_approvals)
-
-{
-  "chat_id": "...",
+  "chat_id": "chat-id",
   "message": "",
-  "config": {
-    "tool_approval_policy": {
-      "bash_execute": "always_allow"  // Updated when remember: "session" is set
-    }
-  },
   "resume_approvals": [
     {
-      "request_id": "...",
-      "tool_call_id": "...",
-      "approved": true,
-      "remember": "session",  // or null for one-time approval
-      "tool_name": "bash_execute"
+      "request_id": "tool-call-id",
+      "tool_call_id": "tool-call-id",
+      "action_id": "allow_session",
+      "feedback": "Optional user guidance"
     }
   ]
 }
 ```
 
-Note: The `/chat/approve-tool` endpoint is deprecated. Approvals are now batched and sent via the main `/chat` endpoint with the updated config.
+Legacy binary approval payloads remain accepted as allow-once or deny-only decisions. They cannot create remembered policies.
 
-### Timeout & Cancellation
+## Streaming Contract
 
-- **Timeout**: If the user doesn't respond within 5 minutes, the tool is auto-denied.
-- **Cancel**: If the user stops the stream while approval is pending, all pending approvals are auto-denied.
-- **Cleanup**: On stream end, the `active_deps` registry is cleared.
+The `tool_approval_request` custom event contains:
 
-## Adding HITL to a New Tool
-
-To gate a new tool behind approval:
-
-1. Add the tool name to `TOOLS_REQUIRING_APPROVAL` in `tool_functions.py`:
-
-```python
-TOOLS_REQUIRING_APPROVAL = frozenset({
-    "bash_execute",
-    "write_file",
-    "edit_file",
-    "social_message",
-    "my_new_tool",       # ← add here
-})
+```json
+{
+  "approvalId": "tool-call-id",
+  "toolCallId": "tool-call-id",
+  "toolName": "bash_execute",
+  "args": {"content": "npm test"},
+  "decision": {
+    "behavior": "ask",
+    "reason": "Git commands require approval",
+    "reasonCode": "shell_policy_ask",
+    "risk": "high",
+    "actions": []
+  }
+}
 ```
 
-2. Make the tool function `async` and call `_require_approval()`:
+The frontend renders `decision.actions` in order, including feedback inputs and rule explanations declared by the backend. Pending contracts are persisted in `_pending_approvals` so the same prompt can be restored after refresh.
+
+## Audit Trail
+
+Permission evaluations and user resolutions are appended to `permission-audit.jsonl` in the user configuration directory. Entries include chat, run, tool-call, mode, decision, reason, user action, and classifier or matched-rule metadata.
+
+Arguments are bounded and recursively sanitized. Sensitive keys and common inline credential forms are redacted.
+
+## Adding Approval to a Tool
+
+Set `requires_approval = True` on the tool class:
 
 ```python
-async def my_new_tool(ctx: RunContext[AgentDeps], param: str) -> str:
-    """Tool description."""
-    if not await _require_approval(ctx, "my_new_tool", {"param": param}):
-        return "[Tool execution denied by user.]"
-
-    # ... proceed with tool logic ...
+class MyTool(BaseTool):
+    tool_name = "my_tool"
+    requires_approval = True
 ```
 
-The frontend automatically handles the approval UI for any tool that emits a `tool_approval_required` event — no frontend changes needed.
+The registry wraps it as a pydantic-ai deferred tool. Add deterministic read-only or mode-specific behavior to `PermissionEngine` when needed; otherwise the default decision asks before execution.
 
-## Non-Streaming Mode
+Keep execution-time validation inside the tool. Permission approval answers whether an operation may proceed, while the tool must still validate paths, symlinks, arguments, and current external state immediately before execution.
 
-In contexts where HITL is not available (cron jobs, social messaging responses, headless mode), tools auto-approve. This is detected by the absence of `sse_queue` on `AgentDeps`.
+## Headless Runs
+
+Cron, heartbeat, goals, dream jobs, and subagents use Auto mode with a non-interactive profile. They do not use blanket `auto_approve_tools` behavior. A headless action that cannot be classified safely is denied.

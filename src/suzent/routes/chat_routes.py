@@ -160,8 +160,8 @@ async def chat(request: Request) -> StreamingResponse:
                             **existing,
                             **hb_policy,
                         }
-                    else:
-                        config_override["auto_approve_tools"] = True
+                    config_override["permission_mode"] = "auto"
+                    config_override["interaction_profile"] = "headless"
 
                     # Update heartbeat_last_run_at so the deferred fallback doesn't double-run.
                     db = get_database()
@@ -787,6 +787,86 @@ async def mark_chat_read(request: Request) -> JSONResponse:
         return JSONResponse({"ok": True})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+_PERMISSION_MODES = {
+    "default",
+    "accept_edits",
+    "plan",
+    "auto",
+    "strict_readonly",
+}
+
+
+async def get_permission_mode(request: Request) -> JSONResponse:
+    chat_id = request.path_params["chat_id"]
+    chat = get_database().get_chat(chat_id)
+    if chat is None:
+        return JSONResponse({"error": "Chat not found"}, status_code=404)
+    mode = str((chat.config or {}).get("permission_mode") or "default")
+    pre_plan_mode = str((chat.config or {}).get("pre_plan_permission_mode") or "")
+    if mode not in _PERMISSION_MODES:
+        mode = "default"
+    if pre_plan_mode not in _PERMISSION_MODES or pre_plan_mode == "plan":
+        pre_plan_mode = ""
+    return JSONResponse(
+        {
+            "mode": mode,
+            "prePlanMode": pre_plan_mode or None,
+            "availableModes": [
+                "default",
+                "accept_edits",
+                "plan",
+                "auto",
+                "strict_readonly",
+            ],
+            "autoModeAvailable": True,
+            "unavailableReasons": {},
+        }
+    )
+
+
+async def set_permission_mode(request: Request) -> JSONResponse:
+    chat_id = request.path_params["chat_id"]
+    data = await request.json()
+    mode = str(data.get("mode") or "").strip().lower()
+    restore_previous = bool(data.get("restorePrevious"))
+    db = get_database()
+    chat = db.get_chat(chat_id)
+    if chat is None:
+        return JSONResponse({"error": "Chat not found"}, status_code=404)
+
+    current_mode = str((chat.config or {}).get("permission_mode") or "default")
+    pre_plan_mode = str((chat.config or {}).get("pre_plan_permission_mode") or "")
+    if restore_previous:
+        if current_mode != "plan":
+            return JSONResponse(
+                {"error": "Previous mode can only be restored from Plan mode"},
+                status_code=409,
+            )
+        mode = (
+            pre_plan_mode
+            if pre_plan_mode in _PERMISSION_MODES and pre_plan_mode != "plan"
+            else "default"
+        )
+
+    if mode not in _PERMISSION_MODES:
+        return JSONResponse(
+            {
+                "error": "Invalid permission mode",
+                "validModes": sorted(_PERMISSION_MODES),
+            },
+            status_code=400,
+        )
+    updates: dict[str, str | None] = {"permission_mode": mode}
+    if mode == "plan" and current_mode != "plan":
+        updates["pre_plan_permission_mode"] = (
+            current_mode if current_mode in _PERMISSION_MODES else "default"
+        )
+    elif current_mode == "plan" and mode != "plan":
+        updates["pre_plan_permission_mode"] = None
+    db.merge_chat_config(chat_id, updates)
+    return await get_permission_mode(request)
 
 
 async def steer_chat(request: Request) -> StreamingResponse:

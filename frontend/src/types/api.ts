@@ -40,12 +40,20 @@ export interface ChatConfig {
   sandbox_volumes?: string[];
   tool_approval_policy?: Record<string, string>;
   permission_policies?: Record<string, Record<string, unknown>>;
+  permission_mode?: PermissionMode;
   heartbeat_enabled?: boolean;
   heartbeat_interval_minutes?: number;
   heartbeat_instructions?: string;
   heartbeat_last_run_at?: string;
   platform?: string;
 }
+
+export type PermissionMode =
+  | 'default'
+  | 'accept_edits'
+  | 'plan'
+  | 'auto'
+  | 'strict_readonly';
 
 export interface Chat {
   id: string;

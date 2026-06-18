@@ -6,6 +6,7 @@ import { ToolGroupIcon } from './toolGroupIcon';
 import { FileDiffViewer } from './FileDiffViewer';
 import { BashCommandRenderer, BashOutputRenderer } from './BashRenderer';
 import type { ApprovalRememberScope } from '../../hooks/useAGUI';
+import type { PermissionAction, PermissionPrompt } from '../../types/agui';
 
 export interface ToolRendererProps {
   toolName: string;
@@ -122,8 +123,9 @@ interface ToolCallBlockProps {
   defaultCollapsed?: boolean;
   approvalState?: ApprovalState;
   isStreaming?: boolean;
-  onApprove?: (remember: ApprovalRememberScope) => void;
-  onDeny?: () => void;
+  onApprove?: (remember: ApprovalRememberScope, actionId?: string, feedback?: string) => void;
+  onDeny?: (actionId?: string, feedback?: string) => void;
+  permission?: PermissionPrompt;
   isAutoApproved?: boolean;
   onRemovePolicy?: () => void;
   toolCallId?: string;
@@ -140,6 +142,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   isStreaming = false,
   onApprove,
   onDeny,
+  permission,
   isAutoApproved = false,
   onRemovePolicy,
   toolCallId,
@@ -147,6 +150,7 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
   inActivityRail = false,
 }) => {
   const [expanded, setExpanded] = useState(!defaultCollapsed);
+  const [rejectFeedback, setRejectFeedback] = useState('');
   const { t } = useI18n();
 
   // Track whether the current expansion was forced open by a pending approval
@@ -275,19 +279,73 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
     return raw.trim().replace(/\s+/g, ' ');
   })();
 
-  const previewRememberedCommand = (() => {
-    if (!isBashTool || !parsedToolArgs) return '';
+  const permissionActions = React.useMemo<PermissionAction[]>(() => {
+    return permission?.actions ?? [];
+  }, [permission]);
 
-    const rawCommand = typeof parsedToolArgs.content === 'string'
-      ? parsedToolArgs.content
-      : typeof parsedToolArgs.command === 'string'
-        ? parsedToolArgs.command
-        : '';
+  const selectPermissionAction = (action: PermissionAction) => {
+    if (action.behavior === 'deny') {
+      onDeny?.(action.id, rejectFeedback.trim() || undefined);
+      return;
+    }
+    onApprove?.(
+      action.scope === 'session' || action.scope === 'global'
+        ? action.scope
+        : null,
+      action.id,
+    );
+  };
 
-    const compact = rawCommand.trim().replace(/\s+/g, ' ');
-    if (!compact) return '';
-    return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact;
-  })();
+  const permissionActionLabel = (action: PermissionAction): string => {
+    const knownLabels: Record<string, string> = {
+      allow_once: t('toolCallBlock.permissionActions.allowOnce'),
+      allow_session: isBashTool
+        ? t('toolCallBlock.permissionActions.allowCommandSession')
+        : t('toolCallBlock.permissionActions.allowSession'),
+      allow_global: isBashTool
+        ? t('toolCallBlock.permissionActions.allowCommandGlobal')
+        : t('toolCallBlock.permissionActions.allowGlobal'),
+      reject: t('toolCallBlock.permissionActions.reject'),
+    };
+    return knownLabels[action.id] || action.label;
+  };
+
+  const persistentActionExplanations = permissionActions.flatMap(action => {
+    const update = action.permissionUpdates?.find(item => item.type === 'add_rule');
+    if (!update) return [];
+    const matcher = update.payload.matcher;
+    const matcherObject = matcher && typeof matcher === 'object' && !Array.isArray(matcher)
+      ? matcher as Record<string, unknown>
+      : {};
+    const destination = update.destination === 'global'
+      ? t('toolCallBlock.ruleScopeGlobal')
+      : t('toolCallBlock.ruleScopeSession');
+    if (matcherObject.type === 'exact_input') {
+      const value = matcherObject.value;
+      const valueObject = value && typeof value === 'object' && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {};
+      const rawCommand = String(valueObject.command || '');
+      const compact = rawCommand.trim().replace(/\s+/g, ' ');
+      const command = compact.length > 120 ? `${compact.slice(0, 117)}...` : compact;
+      return [t('toolCallBlock.ruleExplanationCommand', {
+        action: permissionActionLabel(action),
+        scope: destination,
+        command,
+      })];
+    }
+    if (matcherObject.type === 'all') {
+      return [t('toolCallBlock.ruleExplanationTool', {
+        action: permissionActionLabel(action),
+        scope: destination,
+        tool: displayName,
+      })];
+    }
+    return [t('toolCallBlock.ruleExplanationGeneric', {
+      action: permissionActionLabel(action),
+      scope: destination,
+    })];
+  });
 
   const headerClassName = [
     'group/tool-header inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wide rounded-sm transition-colors select-none',
@@ -482,85 +540,57 @@ export const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
             {/* Approval buttons — shown when tool is waiting for user decision */}
             {isPending && onApprove && onDeny && (
               <>
-                <div className="flex items-center gap-2 py-2">
-                  <button
-                    onClick={() => onApprove(null)}
-                    className={approveButtonClass}
-                  >
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                    Allow
-                  </button>
-                  <>
+                {permission?.reason && (
+                  <div className="rounded-sm border border-neutral-300 dark:border-zinc-700 px-2.5 py-2 text-[11px] text-neutral-600 dark:text-neutral-300">
+                    <span className="font-bold uppercase tracking-wide">
+                      {permission.risk} risk
+                    </span>
+                    <span className="mx-1.5">—</span>
+                    {permission.reason}
+                  </div>
+                )}
+                {permissionActions.some(action => action.feedbackKind === 'reject') && (
+                  <textarea
+                    value={rejectFeedback}
+                    onChange={event => setRejectFeedback(event.target.value)}
+                    rows={2}
+                    placeholder={t('toolCallBlock.permissionRejectPlaceholder')}
+                    className="w-full resize-y rounded-sm border border-neutral-300 bg-white px-2 py-1.5 text-[11px] text-neutral-800 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-neutral-200"
+                  />
+                )}
+                {permissionActions.length === 0 && (
+                  <div className="text-[11px] text-red-600 dark:text-red-300">
+                    {t('toolCallBlock.permissionContractUnavailable')}
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-2 py-2">
+                  {permissionActions.map(action => (
                     <button
-                      onClick={() => onApprove('session')}
-                      className={rememberSessionButtonClass}
-                      title={
-                        isBashTool
-                          ? (previewRememberedCommand
-                            ? `Remember this exact bash command for the rest of this session: ${previewRememberedCommand}`
-                            : 'Remember this exact bash command for the rest of this session')
-                          : `Always allow ${displayName} for the rest of this session`
+                      key={action.id}
+                      onClick={() => selectPermissionAction(action)}
+                      className={
+                        action.behavior === 'deny'
+                          ? denyButtonClass
+                          : action.scope === 'session'
+                            ? rememberSessionButtonClass
+                            : action.scope === 'global'
+                              ? rememberGlobalButtonClass
+                              : approveButtonClass
                       }
                     >
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                      </svg>
-                      {isBashTool ? 'Remember This Command' : 'Always Allow (Session)'}
+                      {permissionActionLabel(action)}
                     </button>
-                    <button
-                      onClick={() => onApprove('global')}
-                      className={rememberGlobalButtonClass}
-                      title={
-                        isBashTool
-                          ? (previewRememberedCommand
-                            ? `Allow this exact bash command globally: ${previewRememberedCommand}`
-                            : 'Allow this exact bash command globally')
-                          : `Always allow ${displayName} globally`
-                      }
-                    >
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 9.75L12 4l9 5.75M4.5 10.5v7.25L12 22l7.5-4.25V10.5" />
-                      </svg>
-                      Always Allow (Global)
-                    </button>
-                  </>
-                  <button
-                    onClick={() => onDeny()}
-                    className={denyButtonClass}
-                  >
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                    Deny
-                  </button>
+                  ))}
                 </div>
-                <div className="space-y-1 text-[10px] text-neutral-500 leading-tight min-w-0 w-full overflow-hidden">
-                  {isBashTool ? (
-                    <>
-                      {previewRememberedCommand ? (
-                        <div className="break-words">
-                          Applies to:{' '}
-                          <span className="font-mono text-neutral-700 dark:text-neutral-300 break-all whitespace-pre-wrap">
-                            {previewRememberedCommand}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="break-words">
-                          These buttons remember the exact bash command, not the whole bash tool.
-                        </div>
-                      )}
-                      <div className="break-words">
-                        Remember This Command applies only for the current session. Always Allow (Global) writes a reusable bash command rule.
+                {persistentActionExplanations.length > 0 && (
+                  <div className="space-y-1 text-[10px] text-neutral-500 leading-tight min-w-0 w-full overflow-hidden">
+                    {persistentActionExplanations.map(explanation => (
+                      <div key={explanation} className="break-words">
+                        {explanation}
                       </div>
-                    </>
-                  ) : (
-                    <div className="break-words">
-                      Always Allow (Session) applies only in this chat session. Always Allow (Global) applies to this tool by name in future approvals.
-                    </div>
-                  )}
-                </div>
+                    ))}
+                  </div>
+                )}
               </>
             )}
 
