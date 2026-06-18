@@ -24,6 +24,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 
+from suzent.auth_boundary import AuthBoundaryMiddleware
 from suzent.logger import get_logger, setup_logging
 from suzent.routes.chat_routes import (
     approve_tool,
@@ -989,7 +990,10 @@ app = Starlette(
             allow_origins=["*"],
             allow_methods=["*"],
             allow_headers=["*"],
-        )
+        ),
+        # Loopback is trusted (local app); remote callers need a valid node
+        # token. Keeps the API safe when node_lan_bind exposes it on the network.
+        Middleware(AuthBoundaryMiddleware),
     ],
 )
 

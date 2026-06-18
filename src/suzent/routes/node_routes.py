@@ -441,16 +441,21 @@ def _pairing_addresses() -> list[dict]:
 async def get_node_config(request: Request) -> JSONResponse:
     """GET /nodes/config — Current node auth configuration + pairing addresses."""
     from suzent.config import DEFAULT_PORT
+    from suzent.auth_boundary import is_loopback
 
     addresses = _pairing_addresses()
     primary = addresses[0] if addresses else None
+    # Only reveal the shared secret to the local app (loopback). A remote caller
+    # must never be able to read it back, even with a valid token.
+    client_host = request.client.host if request.client else ""
+    token_visible = CONFIG.node_auth_token or "" if is_loopback(client_host) else ""
     return JSONResponse(
         {
             "nodes_enabled": bool(CONFIG.nodes_enabled),
             "node_auth_mode": (CONFIG.node_auth_mode or "open"),
-            # Local-first app on a trusted machine — surface the token so the
-            # operator can copy it to companion devices.
-            "node_auth_token": CONFIG.node_auth_token or "",
+            # Surfaced to the local operator only (see token_visible above).
+            "node_auth_token": token_visible,
+            "node_auth_token_set": bool(CONFIG.node_auth_token),
             "node_lan_bind": bool(getattr(CONFIG, "node_lan_bind", False)),
             "port": DEFAULT_PORT,
             # All reachable addresses (LAN + Tailscale if present) so the UI can

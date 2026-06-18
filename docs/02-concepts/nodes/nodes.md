@@ -250,9 +250,22 @@ use cross-device nodes, enable **Settings → Devices → "Reachable by other
 devices"** (config `node_lan_bind`, default `false`) and **restart** the app —
 the server then binds `0.0.0.0` and is reachable on its LAN/Tailscale address.
 
-This exposes the HTTP API on the network, so only enable it on a trusted LAN or
-tailnet and pair `token`/`approve` auth with it. The bind host is fixed once the
-server is listening, hence the restart.
+### Auth boundary
+
+Exposing the server does **not** open the API to the network unauthenticated.
+A middleware enforces:
+
+- **Loopback (the local app) is trusted** — full access, no token.
+- **Any other address must present a valid node token** (`Authorization: Bearer
+  <token>` or `X-Suzent-Token`) — a durable per-device token, or the shared
+  secret when `node_auth_mode=token`. Otherwise the request is rejected (401).
+- The **`/ws/node` handshake is exempt** (it authenticates in the connect
+  message), and `GET /nodes/config` never returns the shared secret to a
+  non-loopback caller.
+
+So `node_lan_bind` is safe to enable on a trusted LAN/tailnet: remote peers can
+only reach the API with a token they were granted, while the local UI keeps full
+access. The bind host is fixed once the server is listening, hence the restart.
 
 ## Discovery (LAN + Tailscale)
 
