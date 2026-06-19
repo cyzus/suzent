@@ -58,7 +58,12 @@ def extract_token(headers: list[tuple[bytes, bytes]]) -> str:
 #   /chat, /chat/stop  → trigger / stop the agent
 #   /nodes/peer-offer  → the peer offers us a reverse grant (mutual setup);
 #                        it only adds a peer record, can't read or change ours.
-AGENT_ALLOWED_PATHS = {"/chat", "/chat/stop", "/nodes/peer-offer"}
+AGENT_ALLOWED_PATHS = {
+    "/chat",
+    "/chat/stop",
+    "/nodes/peer-offer",
+    "/nodes/peer-invoke",  # run a local capability on behalf of a controller
+}
 
 
 def token_scope(token: str, device_store) -> str | None:

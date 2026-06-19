@@ -94,6 +94,29 @@ class TestNodesSubcommand:
         assert "Jessair" in result.output and "mutual" in result.output
 
     @patch("suzent.cli.node.get_client")
+    def test_nodes_invoke_routes_to_peer(self, mock_get_client):
+        from suzent.client.base import ClientError
+
+        client = MagicMock()
+        # invoke on the node manager fails (it's a peer, not a WS node)…
+        client.nodes.invoke = AsyncMock(side_effect=ClientError("Node not found: p1"))
+        client.nodes.peers = AsyncMock(
+            return_value={"peers": [{"peer_id": "p1", "name": "Jessair"}]}
+        )
+        # …so the CLI proxies to the peer and gets a result back.
+        client.nodes.invoke_peer = AsyncMock(
+            return_value={"success": True, "result": {"spoke": "hi"}}
+        )
+        mock_get_client.return_value = client
+
+        result = runner.invoke(
+            app, ["nodes", "invoke", "Jessair", "speaker.speak", "text=hi"]
+        )
+        assert result.exit_code == 0
+        assert "spoke" in result.output
+        client.nodes.invoke_peer.assert_awaited_once()
+
+    @patch("suzent.cli.node.get_client")
     def test_nodes_trigger_streams_reply(self, mock_get_client):
         client = MagicMock()
         client.nodes.peers = AsyncMock(

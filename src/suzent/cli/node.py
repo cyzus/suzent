@@ -65,10 +65,7 @@ def node_list():
                 "paused": "paused",
             }.get(p.get("mode", "one_way"), p.get("mode"))
             typer.echo(f"  {dot} {p['name']}")
-            typer.echo(
-                f"     peer · {direction} · {p['base_url']} · "
-                f'drive with: nodes trigger {p["name"]} "<prompt>"'
-            )
+            typer.echo(f"     peer · {direction} · {p['base_url']}")
         for d in inbound:
             dot = "🟢" if d.get("connected") else "⚪"
             scope = d.get("scope", "agent")
@@ -259,8 +256,8 @@ def node_invoke(
                 typer.echo(f"❌ Failed: {error}")
                 raise typer.Exit(code=1)
         except ClientError as e:
-            # `invoke` only works on WS nodes. If the target is actually a
-            # control-grant peer, point the user at `trigger` instead.
+            # `invoke` targets WS nodes. If the target is a control-grant peer,
+            # transparently proxy the capability to that peer.
             if "not found" in str(e).lower():
                 try:
                     peers = (await client.nodes.peers()).get("peers", [])
@@ -276,13 +273,15 @@ def node_invoke(
                     None,
                 )
                 if match:
-                    typer.echo(
-                        f"❌ '{match['name']}' is a control-grant peer, not a node — "
-                        f"it exposes its agent, not capabilities like '{command}'.\n"
-                        f"   Run its agent instead:  "
-                        f'suzent nodes trigger {match["name"]} "<prompt>"'
+                    result = await client.nodes.invoke_peer(
+                        match["peer_id"], command, parsed_params, timeout=timeout
                     )
-                    raise typer.Exit(code=1)
+                    if result.get("error"):
+                        typer.echo(f"❌ Failed on peer: {result['error']}")
+                        raise typer.Exit(code=1)
+                    payload = result.get("result", result)
+                    typer.echo(f"✅ Result: {json.dumps(payload, indent=2)}")
+                    return
             typer.echo(f"❌ {e}")
             raise typer.Exit(code=1)
 

@@ -883,6 +883,83 @@ async def list_peers(request: Request) -> JSONResponse:
     return JSONResponse({"peers": peers, "count": len(peers)})
 
 
+async def peer_invoke(request: Request) -> JSONResponse:
+    """POST /nodes/peer-invoke — a controller runs a capability on US.
+
+    Authenticated (agent-scope grant). Routes to one of our own local nodes that
+    advertises the command, so a control grant can drive our hardware/agent just
+    like a WS node could. Body: {"command", "params"?, "timeout"?}
+    """
+    node_manager = _get_node_manager(request)
+    if not node_manager:
+        return JSONResponse({"error": "Node system not initialized"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+    command = (body.get("command") or "").strip()
+    if not command:
+        return JSONResponse({"error": "command is required"}, status_code=400)
+    params = body.get("params") or {}
+    timeout = body.get("timeout")
+
+    target = next(
+        (n for n in node_manager.nodes.values() if n.has_capability(command)), None
+    )
+    if not target:
+        return JSONResponse(
+            {"error": f"No local node provides '{command}'"}, status_code=404
+        )
+    try:
+        result = await node_manager.invoke(
+            target.node_id, command, params, timeout=timeout
+        )
+        return JSONResponse(result)
+    except TimeoutError as e:
+        return JSONResponse({"error": str(e)}, status_code=504)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def invoke_peer(request: Request) -> JSONResponse:
+    """POST /nodes/peers/{peer_id}/invoke — run a capability on a peer (proxy).
+
+    Body: {"command", "params"?, "timeout"?}. Calls the peer's /nodes/peer-invoke
+    with our grant token. Lets `nodes invoke <peer> speaker.speak …` work.
+    """
+    import httpx
+
+    store = _get_peer_store(request)
+    peer_id = request.path_params.get("peer_id", "")
+    peer = store.get(peer_id) if store else None
+    if not peer:
+        return JSONResponse({"error": "Unknown peer"}, status_code=404)
+    if peer.get("mode") == "paused":
+        return JSONResponse({"error": "Peer is paused"}, status_code=409)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    command = (body.get("command") or "").strip()
+    if not command:
+        return JSONResponse({"error": "command is required"}, status_code=400)
+
+    payload = {"command": command, "params": body.get("params") or {}}
+    if body.get("timeout") is not None:
+        payload["timeout"] = body["timeout"]
+    try:
+        async with httpx.AsyncClient(timeout=body.get("timeout") or 60) as client:
+            r = await client.post(
+                f"{peer['base_url']}/nodes/peer-invoke",
+                json=payload,
+                headers={"Authorization": f"Bearer {peer['token']}"},
+            )
+            data = r.json()
+            return JSONResponse(data, status_code=r.status_code)
+    except httpx.HTTPError as e:
+        return JSONResponse({"error": f"Couldn't reach peer: {e}"}, status_code=502)
+
+
 async def peer_offer(request: Request) -> JSONResponse:
     """POST /nodes/peer-offer — a controller we drive offers US a reverse grant.
 

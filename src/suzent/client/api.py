@@ -75,6 +75,18 @@ class NodesAPI:
             f"/nodes/peers/{peer_id}/mode", json={"mode": mode}
         )
 
+    async def invoke_peer(
+        self,
+        peer_id: str,
+        command: str,
+        params: dict | None = None,
+        timeout: float | None = None,
+    ) -> dict:
+        body: dict = {"command": command, "params": params or {}}
+        if timeout is not None:
+            body["timeout"] = timeout
+        return await self.client.post(f"/nodes/peers/{peer_id}/invoke", json=body)
+
     async def trigger(self, peer_id: str, prompt: str, chat_id: str | None = None):
         """Stream a peer agent run; yields raw SSE chunks (bytes)."""
         payload: dict = {"prompt": prompt}
