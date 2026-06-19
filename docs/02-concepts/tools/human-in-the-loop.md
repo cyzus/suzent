@@ -28,11 +28,38 @@ The available actions are backend-owned and can vary by tool. Bash persistence u
 
 The complete pending decision is stored with the chat. On resume, the backend validates the selected action ID against that stored contract and ignores client-supplied arguments when applying permission updates.
 
+## Approval Lifecycle
+
+```text
+Agent issues a deferred tool call
+        │
+        ▼
+   PermissionEngine evaluates it against rules, mode, and safety checks
+        │
+        ├── allow ──► tool executes
+        ├── deny  ──► call is rejected, agent is told
+        │
+        ▼ ask
+   Decision (with its offered actions) is persisted as a pending approval,
+   and a tool_approval_request event is streamed to the frontend
+        │
+        ▼
+   Frontend renders the offered actions; user selects one:
+   Allow · Allow for session · Allow globally · Reject (+ optional feedback)
+        │
+        ▼
+   Backend validates the selected action against the stored decision,
+   creates the session/global rule if the action calls for one,
+   resolves the deferred call, and the run resumes
+```
+
+The pending decision is stored with the chat, so the same prompt is restored after a page refresh. The backend only honors actions that were part of the stored decision and ignores client-supplied arguments, so a client cannot widen a rule beyond what was offered. A resume that targets an approval that is no longer pending — a duplicate submission, a retry, or a click after the run already finished — is ignored rather than treated as an error.
+
 ## Permission Modes
 
 | Mode | Behavior |
 |------|----------|
-| `default` | Ask before workspace edits and other state-changing operations |
+| `default` | Allow read-only commands; ask before workspace edits and other state-changing operations |
 | `accept_edits` | Allow verified workspace edits; continue asking for dangerous or external actions |
 | `plan` | Allow read-only exploration and writes only to the project `plan.md` |
 | `auto` | Allow deterministic low-risk operations and classify unresolved requests with a separate security model |
@@ -114,7 +141,7 @@ The frontend renders `decision.actions` in order, including feedback inputs and 
 
 Permission evaluations and user resolutions are appended to `permission-audit.jsonl` in the user configuration directory. Entries include chat, run, tool-call, mode, decision, reason, user action, and classifier or matched-rule metadata.
 
-Arguments are bounded and recursively sanitized. Sensitive keys and common inline credential forms are redacted.
+Arguments are bounded and recursively sanitized. Sensitive keys and common inline credential forms are redacted. The append is offloaded to a worker thread so audit logging never blocks the streaming event loop.
 
 ## Adding Approval to a Tool
 
