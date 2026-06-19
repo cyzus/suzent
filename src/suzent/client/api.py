@@ -60,6 +60,31 @@ class NodesAPI:
             "/nodes/connect/stop", json={"gateway_url": gateway_url}
         )
 
+    # Control-grant peers (devices this one can drive over HTTP)
+    async def peers(self) -> dict:
+        return await self.client.get("/nodes/peers")
+
+    async def grants(self) -> dict:
+        return await self.client.get("/nodes/grants")
+
+    async def remove_peer(self, peer_id: str) -> dict:
+        return await self.client.post(f"/nodes/peers/{peer_id}/remove")
+
+    async def set_peer_mode(self, peer_id: str, mode: str) -> dict:
+        return await self.client.post(
+            f"/nodes/peers/{peer_id}/mode", json={"mode": mode}
+        )
+
+    async def trigger(self, peer_id: str, prompt: str, chat_id: str | None = None):
+        """Stream a peer agent run; yields raw SSE chunks (bytes)."""
+        payload: dict = {"prompt": prompt}
+        if chat_id:
+            payload["chat_id"] = chat_id
+        async for chunk in self.client.stream_post(
+            f"/nodes/peers/{peer_id}/trigger", json=payload, timeout=None
+        ):
+            yield chunk
+
 
 class CronAPI:
     def __init__(self, client: AsyncBaseClient):

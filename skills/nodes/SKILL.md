@@ -98,6 +98,14 @@ suzent nodes connections                           # outbound status + pairing c
 suzent nodes disconnect ws://<peer>:25314/ws/node
 ```
 
+`suzent nodes list` is unified — it shows WS-mesh nodes, control-grant **peers**
+this device can drive, and **devices** that can drive it (each row tagged by
+kind/direction). Drive a peer's agent from the terminal:
+
+```bash
+suzent nodes trigger <peer-name-or-id> "summarize ~/notes"
+```
+
 ## Peer agents (`agent.run`)
 
 A node may advertise `agent.run`, which runs a prompt through *that device's

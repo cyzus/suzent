@@ -23,30 +23,109 @@ node_app = typer.Typer(help="Manage connected nodes (companion devices)")
 
 @node_app.command("list")
 def node_list():
-    """List all connected nodes."""
+    """List everything this device is linked to: WS nodes, peers it drives, and
+    devices that can drive it."""
 
     async def _run():
         try:
             client = get_client()
-            data = await client.nodes.list()
-            nodes = data.get("nodes", [])
-
-            if not nodes:
-                typer.echo("No nodes connected.")
-                return
-
-            typer.echo(f"📡 Connected nodes ({len(nodes)}):\n")
-            for node in nodes:
-                status_icon = "🟢" if node.get("status") == "connected" else "🔴"
-                caps = node.get("capabilities", [])
-                cap_names = ", ".join(c["name"] for c in caps) if caps else "none"
-                typer.echo(
-                    f"  {status_icon} {node['display_name']} ({node['platform']})\n"
-                    f"     ID: {node['node_id']}\n"
-                    f"     Capabilities: {cap_names}\n"
-                )
+            nodes_data, peers_data, devices_data = await asyncio.gather(
+                client.nodes.list(),
+                client.nodes.peers(),
+                client.nodes.devices(),
+            )
         except ClientError as e:
             typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+        nodes = nodes_data.get("nodes", [])
+        peers = peers_data.get("peers", [])
+        devices = devices_data.get("devices", [])
+        # Devices that can drive us but aren't also peers we drive (dedupe by name).
+        peer_names = {p.get("name", "").lower() for p in peers}
+        inbound = [
+            d for d in devices if d.get("display_name", "").lower() not in peer_names
+        ]
+
+        if not (nodes or peers or inbound):
+            typer.echo("No nodes or linked devices.")
+            return
+
+        typer.echo("📡 Nodes & devices\n")
+        for n in nodes:
+            dot = "🟢" if n.get("status") == "connected" else "⚪"
+            caps = ", ".join(c["name"] for c in n.get("capabilities", [])) or "none"
+            typer.echo(f"  {dot} {n['display_name']} ({n['platform']})")
+            typer.echo(f"     node · {caps}")
+        for p in peers:
+            dot = "🟢" if p.get("online") else "⚪"
+            direction = {
+                "one_way": "you drive it",
+                "mutual": "mutual",
+                "paused": "paused",
+            }.get(p.get("mode", "one_way"), p.get("mode"))
+            typer.echo(f"  {dot} {p['name']}")
+            typer.echo(f"     peer · {direction} · {p['base_url']} · id={p['peer_id']}")
+        for d in inbound:
+            dot = "🟢" if d.get("connected") else "⚪"
+            scope = d.get("scope", "agent")
+            typer.echo(f"  {dot} {d['display_name']} ({d.get('platform', 'unknown')})")
+            typer.echo(f"     device · can control this device ({scope})")
+        typer.echo("")
+
+    asyncio.run(_run())
+
+
+@node_app.command("trigger")
+def node_trigger(
+    peer: str = typer.Argument(help="Peer id or name from `suzent node list`"),
+    prompt: str = typer.Argument(help="Prompt to run on the peer's agent"),
+    chat_id: Optional[str] = typer.Option(None, "--chat-id", help="Reuse a chat"),
+):
+    """Run a prompt on a peer device's agent and stream the reply."""
+    import json as _json
+
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.nodes.peers()
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+        peers = data.get("peers", [])
+        match = next(
+            (
+                p
+                for p in peers
+                if p["peer_id"] == peer or p.get("name", "").lower() == peer.lower()
+            ),
+            None,
+        )
+        if not match:
+            typer.echo(f"❌ No peer '{peer}'. See `suzent node list`.")
+            raise typer.Exit(code=1)
+
+        typer.echo(f"⚡ {match['name']}: ")
+        try:
+            async for chunk in client.nodes.trigger(match["peer_id"], prompt, chat_id):
+                for line in chunk.decode("utf-8", "replace").splitlines():
+                    if not line.startswith("data: "):
+                        continue
+                    body = line[6:].strip()
+                    if body == "[DONE]":
+                        continue
+                    try:
+                        event = _json.loads(body)
+                    except _json.JSONDecodeError:
+                        continue
+                    if event.get("type") == "TEXT_MESSAGE_CONTENT":
+                        typer.echo(event.get("delta", ""), nl=False)
+                    elif event.get("type") in ("error", "RUN_ERROR"):
+                        typer.echo(f"\n❌ {event.get('data') or event.get('message')}")
+            typer.echo("")
+        except ClientError as e:
+            typer.echo(f"\n❌ {e}")
             raise typer.Exit(code=1)
 
     asyncio.run(_run())

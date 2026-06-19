@@ -42,14 +42,16 @@ class TestNodesSubcommand:
     def test_nodes_list_empty(self, mock_get_client):
         client = MagicMock()
         client.nodes.list = AsyncMock(return_value={"nodes": [], "count": 0})
+        client.nodes.peers = AsyncMock(return_value={"peers": [], "count": 0})
+        client.nodes.devices = AsyncMock(return_value={"devices": [], "count": 0})
         mock_get_client.return_value = client
 
         result = runner.invoke(app, ["nodes", "list"])
         assert result.exit_code == 0
-        assert "No nodes connected" in result.output
+        assert "No nodes or linked devices" in result.output
 
     @patch("suzent.cli.node.get_client")
-    def test_nodes_list_with_nodes(self, mock_get_client):
+    def test_nodes_list_unified(self, mock_get_client):
         client = MagicMock()
         client.nodes.list = AsyncMock(
             return_value={
@@ -67,13 +69,63 @@ class TestNodesSubcommand:
                 "count": 1,
             }
         )
+        client.nodes.peers = AsyncMock(
+            return_value={
+                "peers": [
+                    {
+                        "peer_id": "p1",
+                        "name": "Jessair",
+                        "base_url": "http://100.64.50.42:25314",
+                        "mode": "mutual",
+                        "online": True,
+                    }
+                ],
+                "count": 1,
+            }
+        )
+        client.nodes.devices = AsyncMock(return_value={"devices": [], "count": 0})
         mock_get_client.return_value = client
 
         result = runner.invoke(app, ["nodes", "list"])
         assert result.exit_code == 0
-        assert "MyPhone" in result.output
-        assert "ios" in result.output
-        assert "camera.snap" in result.output
+        # WS node
+        assert "MyPhone" in result.output and "camera.snap" in result.output
+        # control-grant peer, with direction
+        assert "Jessair" in result.output and "mutual" in result.output
+
+    @patch("suzent.cli.node.get_client")
+    def test_nodes_trigger_streams_reply(self, mock_get_client):
+        client = MagicMock()
+        client.nodes.peers = AsyncMock(
+            return_value={
+                "peers": [
+                    {"peer_id": "p1", "name": "Jessair", "base_url": "http://h:1"}
+                ]
+            }
+        )
+
+        async def fake_trigger(peer_id, prompt, chat_id=None):
+            assert peer_id == "p1"
+            yield b'data: {"type":"TEXT_MESSAGE_CONTENT","delta":"Hi "}\n\n'
+            yield b'data: {"type":"TEXT_MESSAGE_CONTENT","delta":"there"}\n\n'
+            yield b"data: [DONE]\n\n"
+
+        client.nodes.trigger = fake_trigger
+        mock_get_client.return_value = client
+
+        result = runner.invoke(app, ["nodes", "trigger", "Jessair", "hello"])
+        assert result.exit_code == 0
+        assert "Hi there" in result.output
+
+    @patch("suzent.cli.node.get_client")
+    def test_nodes_trigger_unknown_peer(self, mock_get_client):
+        client = MagicMock()
+        client.nodes.peers = AsyncMock(return_value={"peers": []})
+        mock_get_client.return_value = client
+
+        result = runner.invoke(app, ["nodes", "trigger", "ghost", "hi"])
+        assert result.exit_code == 1
+        assert "No peer" in result.output
 
     @patch("suzent.cli.node.get_client")
     def test_nodes_status(self, mock_get_client):
