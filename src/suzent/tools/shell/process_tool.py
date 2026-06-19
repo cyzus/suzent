@@ -49,7 +49,7 @@ class ProcessTool(Tool):
     name = "ProcessTool"
     tool_name = "process_manage"
     group = ToolGroup.EXECUTION
-    requires_approval = False
+    requires_approval = True
     _VALID_ACTIONS = {"poll", "status", "kill"}
 
     def __init__(self, *args, **kwargs):

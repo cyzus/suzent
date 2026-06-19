@@ -34,11 +34,13 @@ from suzent.routes.chat_routes import (
     delete_chat,
     get_chat,
     get_chats,
+    get_permission_mode,
     live_stream,
     mark_chat_read,
     retry_chat,
     steer_chat,
     steer_chat_send,
+    set_permission_mode,
     stop_chat,
     update_chat,
 )
@@ -56,6 +58,12 @@ from suzent.routes.project_routes import (
     move_all_chats,
     move_chat_to_project,
     update_project,
+)
+from suzent.routes.permission_routes import (
+    create_permission_rule,
+    delete_permission_rule,
+    get_chat_permission_state,
+    get_permissions,
 )
 from suzent.routes.config_routes import (
     get_api_keys_status,
@@ -718,10 +726,32 @@ app = Starlette(
         Route("/chats", get_chats, methods=["GET"]),
         Route("/chats", create_chat, methods=["POST"]),
         Route("/chats/{chat_id}/mark-read", mark_chat_read, methods=["POST"]),
+        Route(
+            "/chats/{chat_id}/permission-mode",
+            get_permission_mode,
+            methods=["GET"],
+        ),
+        Route(
+            "/chats/{chat_id}/permission-mode",
+            set_permission_mode,
+            methods=["PUT"],
+        ),
+        Route(
+            "/chats/{chat_id}/permission-state",
+            get_chat_permission_state,
+            methods=["GET"],
+        ),
         Route("/chats/{chat_id}/project", move_chat_to_project, methods=["POST"]),
         Route("/chats/{chat_id}", get_chat, methods=["GET"]),
         Route("/chats/{chat_id}", update_chat, methods=["PUT"]),
         Route("/chats/{chat_id}", delete_chat, methods=["DELETE"]),
+        Route("/permissions", get_permissions, methods=["GET"]),
+        Route("/permissions/rules", create_permission_rule, methods=["POST"]),
+        Route(
+            "/permissions/rules/{rule_id}",
+            delete_permission_rule,
+            methods=["DELETE"],
+        ),
         Route("/projects", list_projects, methods=["GET"]),
         Route("/projects", create_project, methods=["POST"]),
         Route("/projects/{project_id}", update_project, methods=["PATCH"]),

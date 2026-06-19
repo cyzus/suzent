@@ -176,6 +176,21 @@ def build_agent_deps(
     tool_approval_policy.update(_request_approval_policy)
     # SECURITY: defensive copy so each AgentDeps has its own independent dict.
     tool_approval_policy = dict(tool_approval_policy)
+    permission_mode = _get_config_value(config, "permission_mode", None)
+    if permission_mode is None and _chat_obj is not None:
+        permission_mode = (_chat_obj.config or {}).get("permission_mode")
+    permission_mode = str(permission_mode or "default")
+    interaction_profile = str(
+        _get_config_value(config, "interaction_profile", "interactive")
+    )
+    global_rules = list(getattr(CONFIG, "permission_rules", []) or [])
+    chat_rules = (
+        list((_chat_obj.config or {}).get("permission_rules") or [])
+        if _chat_obj is not None
+        else []
+    )
+    request_rules = list(_get_config_value(config, "permission_rules", []) or [])
+    permission_rules = [*global_rules, *chat_rules, *request_rules]
 
     from suzent.core.file_tracker import FileTracker
 
@@ -201,6 +216,9 @@ def build_agent_deps(
         auto_approve_tools=auto_approve_tools,
         tool_permission_policies=dict(tool_permission_policies or {}),
         tool_approval_policy=tool_approval_policy,
+        permission_mode=permission_mode,
+        interaction_profile=interaction_profile,
+        permission_rules=permission_rules,
         base_tool_names=base_tool_names,
         a2ui_queue=asyncio.Queue(),
         inline_a2ui_surfaces={},

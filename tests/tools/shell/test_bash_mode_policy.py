@@ -19,3 +19,10 @@ def test_accept_edits_allows_write_limited():
 def test_full_approval_asks_unknown():
     decision = evaluate_mode(PermissionMode.FULL_APPROVAL, CommandClass.UNKNOWN)
     assert decision == CommandDecision.ASK
+
+
+def test_full_approval_allows_read_only():
+    # Default mode asks before state-changing ops, but read-only commands
+    # (ls, cat, …) should not prompt.
+    decision = evaluate_mode(PermissionMode.FULL_APPROVAL, CommandClass.READ_ONLY)
+    assert decision == CommandDecision.ALLOW

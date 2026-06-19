@@ -68,6 +68,35 @@ def test_rebuild_display_messages_preserves_reasoning_order_before_text():
     assert content.index('data-reasoning="true"') < content.index("then final")
 
 
+def test_rebuild_display_messages_marks_denied_tool_return_as_error():
+    messages = [
+        ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="bash_execute",
+                    args={"content": "python --version"},
+                    tool_call_id="tool-denied",
+                )
+            ]
+        ),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(
+                    tool_name="bash_execute",
+                    tool_call_id="tool-denied",
+                    content="The tool call was denied.",
+                )
+            ]
+        ),
+    ]
+
+    display = _rebuild_display_messages(messages)
+
+    assistant = display[0]
+    assert assistant["parts"][0]["state"] == "error"
+    assert assistant["parts"][0]["output"] == "The tool call was denied."
+
+
 def test_append_inline_a2ui_surfaces_attaches_to_last_assistant_message():
     display = [
         {"role": "user", "content": "hello"},

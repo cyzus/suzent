@@ -220,7 +220,7 @@ export const ActivityRail: React.FC<{
 };
 
 export const ActivityRailItem: React.FC<{
-  state?: 'active' | 'done' | 'neutral' | 'pending';
+  state?: 'active' | 'done' | 'error' | 'neutral' | 'pending';
   children: React.ReactNode;
 }> = ({ state = 'neutral', children }) => (
   <div className="activity-rail-item min-w-0">
@@ -230,6 +230,8 @@ export const ActivityRailItem: React.FC<{
           ? 'activity-rail-dot-pending'
           : state === 'active'
           ? 'activity-rail-dot-active'
+          : state === 'error'
+            ? 'activity-rail-dot-error'
           : state === 'done'
             ? 'activity-rail-dot-done'
             : ''
@@ -238,6 +240,8 @@ export const ActivityRailItem: React.FC<{
     <div className={`activity-rail-card ${
       state === 'pending'
         ? 'activity-rail-card-pending'
+        : state === 'error'
+          ? 'activity-rail-card-error'
         : state === 'active'
           ? 'activity-rail-card-active'
           : ''

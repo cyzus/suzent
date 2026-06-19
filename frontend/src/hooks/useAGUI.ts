@@ -54,6 +54,8 @@ interface UseAGUIReturn {
     remember?: ApprovalRememberScope,
     toolName?: string,
     args?: Record<string, unknown> | null,
+    actionId?: string,
+    feedback?: string,
   ) => boolean;
   /** Get accumulated approval decisions and clear the buffer */
   consumeApprovalDecisions: () => Array<{
@@ -63,6 +65,8 @@ interface UseAGUIReturn {
     remember?: ApprovalRememberScope;
     toolName?: string;
     args?: Record<string, unknown> | null;
+    actionId?: string;
+    feedback?: string;
   }>;
 }
 
@@ -123,7 +127,7 @@ function stringifyContent(raw: unknown): string {
   }
 }
 
-function processEvent(
+export function processEvent(
   event: ParsedSSEEvent,
   parts: AGUIPart[],
   onCustomEvent?: (name: string, value: unknown) => void,
@@ -271,6 +275,7 @@ function processEvent(
               ...next[i],
               state: 'approval-requested',
               approvalId,
+              permission: approval.decision as AGUIPart['permission'],
               // Fill in name/args if not yet present (approval may arrive before tool_call_start)
               toolName: next[i].toolName || (approval.toolName as string) || 'unknown',
               args: next[i].args || (
@@ -294,6 +299,7 @@ function processEvent(
               : '',
             state: 'approval-requested',
             approvalId,
+            permission: approval.decision as AGUIPart['permission'],
           });
         }
       } else if (name === 'tool_approval_result') {
@@ -436,6 +442,8 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     remember?: ApprovalRememberScope;
     toolName?: string;
     args?: Record<string, unknown> | null;
+    actionId?: string;
+    feedback?: string;
   }>>([]);
 
   // Stable refs for callbacks to avoid re-creating sendMessage
@@ -517,8 +525,10 @@ export function useAGUI(options: UseAGUIOptions): UseAGUIReturn {
     remember?: ApprovalRememberScope,
     toolName?: string,
     args?: Record<string, unknown> | null,
+    actionId?: string,
+    feedback?: string,
   ): boolean => {
-    const nextDecision = { approvalId, toolCallId, approved, remember, toolName, args };
+    const nextDecision = { approvalId, toolCallId, approved, remember, toolName, args, actionId, feedback };
     const existingIdx = approvalDecisionsRef.current.findIndex(
       d => d.approvalId === approvalId
     );

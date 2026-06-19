@@ -1,9 +1,10 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
-import { getApiBase, getSandboxParams } from '../lib/api';
+import { getApiBase, getChatPermissionState, getSandboxParams } from '../lib/api';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import { hideStreamingDrafts } from '../lib/streamingDrafts';
+import { reconcileToolCallMessages } from '../lib/toolCallReconciliation';
 import type { Message, FileAttachment } from '../types/api';
 import type { ContentBlock } from '../lib/chatUtils';
 import { buildMessageRenderPlan } from '../lib/messageRenderPlan';
@@ -14,12 +15,21 @@ import type { A2UISurface } from '../types/a2ui';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useUnifiedFileUpload } from '../hooks/useUnifiedFileUpload';
 import { useToolApproval } from '../hooks/chat/useToolApproval';
-import { useApprovalRestore } from '../hooks/chat/useApprovalRestore';
+import {
+  permissionApprovalsToParts,
+  useApprovalRestore,
+} from '../hooks/chat/useApprovalRestore';
 import { NewChatView } from './NewChatView';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
 import { ImageViewer } from './ImageViewer';
 import { FileViewer } from './FileViewer';
-import { UserMessage, AssistantMessage, RightSidebar, MarkdownRenderer } from './chat';
+import {
+  UserMessage,
+  AssistantMessage,
+  RightSidebar,
+  MarkdownRenderer,
+  PermissionApprovalDock,
+} from './chat';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
 import { SubAgentView } from './sidebar/SubAgentView';
@@ -1043,7 +1053,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const showTransientAssistant = streamingForCurrentChat || hasPendingTransientApprovals;
 
   // Safe values
-  const safeMessages = hideStreamingDrafts(messages || [], showTransientAssistant);
+  const safeMessages = useMemo(
+    () => reconcileToolCallMessages(
+      hideStreamingDrafts(messages || [], showTransientAssistant),
+      showTransientAssistant ? streamingParts : [],
+    ),
+    [messages, showTransientAssistant, streamingParts],
+  );
   const visibleMessageStartIndex = Math.max(0, safeMessages.length - visibleMessageCount);
   const visibleMessages = useMemo(
     () => safeMessages.slice(visibleMessageStartIndex),
@@ -1239,6 +1255,42 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     }
 
+    // A seed is only a local fast path. Always validate it against the
+    // backend-owned approval contracts: a completed stream may have left a stale
+    // sessionStorage snapshot even though its tool calls are already resolved.
+    if (!isBusStreaming(chatIdAtMount)) {
+      getChatPermissionState(chatIdAtMount)
+        .then(state => {
+          if (cancelled || isBusStreaming(chatIdAtMount)) return;
+          if (state.pendingApprovals.length > 0) {
+            restorePendingApprovals(
+              chatIdAtMount,
+              permissionApprovalsToParts(state.pendingApprovals),
+            );
+            return;
+          }
+
+          const hasRestoredApprovals = getStreamingParts().some(
+            part => part.type === 'tool'
+              && part.state === 'approval-requested'
+              && !!part.approvalId,
+          );
+          if (
+            hasRestoredApprovals
+            && streamingChatIdRef.current === chatIdAtMount
+          ) {
+            setIsStreaming(false, chatIdAtMount);
+            streamingChatIdRef.current = null;
+            abandonedPartsRef.current.delete(chatIdAtMount);
+            streamStartByChatRef.current.delete(chatIdAtMount);
+            clearParts();
+          }
+        })
+        .catch(() => {
+          // Keep the local seed visible when authoritative validation fails.
+        });
+    }
+
     // On entry: reload from DB so any stream that completed while we were away
     // is visible. Covers platform/heartbeat chats and regular chats whose live
     // stream we abandoned on a previous navigation.
@@ -1416,8 +1468,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
-      textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+      textarea.style.height = '0px';
+      textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 40), 120)}px`;
     }
   }, [input, isRightSidebarOpen]);
 
@@ -1738,7 +1790,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             ref={scrollContainerRef}
             className={safeMessages.length === 0
               ? "h-full overflow-hidden p-4 md:p-6 pb-2 bg-neutral-50 dark:bg-zinc-900"
-              : "h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-6 scrollbar-thin bg-neutral-50 dark:bg-zinc-900"
+              : "h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-2 scrollbar-thin bg-neutral-50 dark:bg-zinc-900"
             }
           >
             {isProbablyLoadingChatMessages ? (
@@ -1813,7 +1865,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                             onFileClick={handleFileClick}
                             aguiParts={streamingParts}
                             streamStartedAtMs={currentChatId ? streamStartByChatRef.current.get(currentChatId) : undefined}
-                            onToolApproval={handleToolApproval}
                             usage={currentUsage}
                             toolApprovalPolicy={safeConfig.tool_approval_policy}
                             onRemoveApprovalPolicy={handleRemoveApprovalPolicy}
@@ -1840,7 +1891,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
         {/* Input Panel (shown when messages exist) */}
         {safeMessages.length > 0 && (
-          <div className="p-4 flex flex-col gap-3 bg-neutral-50 dark:bg-zinc-900 relative z-10 shrink-0">
+          <div className="px-2 pt-2 pb-1 flex flex-col gap-2 bg-neutral-50 dark:bg-zinc-900 relative z-10 shrink-0">
+            {hasPendingTransientApprovals && (
+              <PermissionApprovalDock
+                parts={streamingParts}
+                onDecision={handleToolApproval}
+              />
+            )}
             <ChatInputPanel
               input={input}
               setInput={setInput}

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .models import PermissionsConfig, ToolPermissionPolicy
+from .models import PermissionRule, PermissionsConfig, ToolPermissionPolicy
 
 
 def normalize_keys(data: dict[str, Any]) -> dict[str, Any]:
@@ -86,7 +86,30 @@ def load_permission_overrides(
             {k: v.model_dump(mode="json") for k, v in cfg.tools.items()}
         )
 
-    return {"permission_policies": merged_tools}
+    merged_rules: list[dict[str, Any]] = []
+    for path in paths:
+        if not path.exists():
+            continue
+        raw = _read_config_file(path, logger)
+        if not isinstance(raw, dict):
+            continue
+        payload = _extract_permissions_payload(raw)
+        raw_rules = payload.get("rules", [])
+        if not isinstance(raw_rules, list):
+            continue
+        for raw_rule in raw_rules:
+            if not isinstance(raw_rule, dict):
+                continue
+            try:
+                rule = PermissionRule.model_validate({**raw_rule, "source": "global"})
+                merged_rules.append(rule.model_dump(mode="json", by_alias=True))
+            except Exception:
+                continue
+
+    return {
+        "permission_policies": merged_tools,
+        "permission_rules": merged_rules,
+    }
 
 
 def _load_permissions_user_file(path: Path, logger) -> tuple[dict[str, Any], bool]:
@@ -210,4 +233,125 @@ def persist_global_command_rule(
     with user_path.open("w", encoding="utf-8") as fh:
         yaml.safe_dump(document, fh, sort_keys=False, allow_unicode=False)
 
+    return True
+
+
+def persist_global_permission_rule(
+    project_dir: Path,
+    logger,
+    rule: PermissionRule,
+    *,
+    user_config_dir: Path | None = None,
+) -> bool:
+    cfg_dir = user_config_dir if user_config_dir is not None else project_dir / "config"
+    user_path = cfg_dir / "permissions.yaml"
+    document, has_wrapper = _load_permissions_user_file(user_path, logger)
+    if has_wrapper:
+        wrapper_key = "PERMISSIONS" if "PERMISSIONS" in document else "permissions"
+        payload = document.setdefault(wrapper_key, {})
+    else:
+        payload = document
+    rules = payload.setdefault("rules", [])
+    if not isinstance(rules, list):
+        rules = []
+        payload["rules"] = rules
+    serialized = rule.model_copy(update={"source": "global"}).model_dump(
+        mode="json", by_alias=True
+    )
+    rules[:] = [
+        existing
+        for existing in rules
+        if not isinstance(existing, dict) or existing.get("id") != rule.id
+    ]
+    rules.append(serialized)
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    import yaml  # type: ignore
+
+    with user_path.open("w", encoding="utf-8") as fh:
+        yaml.safe_dump(document, fh, sort_keys=False, allow_unicode=True)
+    return True
+
+
+def _dedup_append(rules: list[Any], rule: PermissionRule) -> list[Any]:
+    """Drop any existing rule sharing this id, then append the serialized rule."""
+    deduped = [
+        existing
+        for existing in rules
+        if not isinstance(existing, dict) or existing.get("id") != rule.id
+    ]
+    deduped.append(rule.model_dump(mode="json", by_alias=True))
+    return deduped
+
+
+def upsert_permission_rule(
+    rule: PermissionRule,
+    *,
+    destination: str,
+    project_dir: Path,
+    logger,
+    config,
+    database=None,
+    chat_id: str | None = None,
+    user_config_dir: Path | None = None,
+) -> None:
+    """Add (or replace by id) a permission rule in global or session storage.
+
+    Shared by the approval-resume path and the REST rule endpoint so the two
+    cannot drift in how they dedup and persist rules.
+    """
+    if destination == "global":
+        persist_global_permission_rule(
+            project_dir,
+            logger,
+            rule,
+            user_config_dir=user_config_dir,
+        )
+        config.permission_rules = _dedup_append(list(config.permission_rules), rule)
+        return
+
+    if destination == "session":
+        if database is None or not chat_id:
+            raise ValueError("session rules require a database and chat_id")
+        chat = database.get_chat(chat_id)
+        existing = list(
+            ((chat.config or {}) if chat else {}).get("permission_rules") or []
+        )
+        database.merge_chat_config(
+            chat_id, {"permission_rules": _dedup_append(existing, rule)}
+        )
+        return
+
+    raise ValueError(f"Unknown rule destination: {destination}")
+
+
+def delete_global_permission_rule(
+    project_dir: Path,
+    logger,
+    rule_id: str,
+    *,
+    user_config_dir: Path | None = None,
+) -> bool:
+    cfg_dir = user_config_dir if user_config_dir is not None else project_dir / "config"
+    user_path = cfg_dir / "permissions.yaml"
+    document, has_wrapper = _load_permissions_user_file(user_path, logger)
+    if has_wrapper:
+        wrapper_key = "PERMISSIONS" if "PERMISSIONS" in document else "permissions"
+        payload = document.get(wrapper_key, {})
+    else:
+        payload = document
+    rules = payload.get("rules", [])
+    if not isinstance(rules, list):
+        return False
+    filtered = [
+        rule
+        for rule in rules
+        if not isinstance(rule, dict) or str(rule.get("id")) != rule_id
+    ]
+    if len(filtered) == len(rules):
+        return False
+    payload["rules"] = filtered
+    import yaml  # type: ignore
+
+    with user_path.open("w", encoding="utf-8") as fh:
+        yaml.safe_dump(document, fh, sort_keys=False, allow_unicode=True)
     return True

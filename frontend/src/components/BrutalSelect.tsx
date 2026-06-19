@@ -14,7 +14,10 @@ interface BrutalSelectProps {
   label?: string;
   placeholder?: string;
   dropUp?: boolean;
+  disabled?: boolean;
+  hideChevron?: boolean;
   className?: string;
+  buttonClassName?: string;
   dropdownClassName?: string;
 }
 
@@ -25,7 +28,10 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
   label,
   placeholder,
   dropUp = false,
+  disabled = false,
+  hideChevron = false,
   className = '',
+  buttonClassName = '',
   dropdownClassName = '',
 }) => {
   const { t } = useI18n();
@@ -120,7 +126,7 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
   const dropdown = isOpen && dropdownPosition && createPortal(
     <div
       ref={dropdownRef}
-      className={`fixed z-[9999] bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-60 overflow-y-auto overflow-x-hidden animate-brutal-drop scrollbar-thin ${dropdownClassName}`}
+      className={`fixed z-[9999] bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-h-60 overflow-x-hidden animate-brutal-drop ${showScrollbar ? 'overflow-y-auto scrollbar-thin' : 'overflow-y-hidden'} ${dropdownClassName}`}
       style={{
         top: dropdownPosition.top,
         left: dropdownPosition.left,
@@ -158,8 +164,11 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
       <button
         ref={buttonRef}
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className={`w-full bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black px-3 py-2 font-bold text-sm text-left flex items-center justify-between transition-all duration-200 hover:bg-brutal-yellow dark:hover:bg-zinc-700 focus:outline-none ${isOpen ? 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[1px] translate-y-[1px]' : 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn'}`}
+        disabled={disabled}
+        onClick={() => {
+          if (!disabled) setIsOpen(!isOpen);
+        }}
+        className={`w-full bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black px-3 py-2 font-bold text-sm text-left flex items-center justify-between transition-all duration-200 hover:bg-brutal-yellow dark:hover:bg-zinc-700 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white dark:disabled:hover:bg-zinc-800 ${isOpen ? 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[1px] translate-y-[1px]' : 'shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] brutal-btn'} ${buttonClassName}`}
       >
         <span className="truncate">
           {selectedOption
@@ -168,15 +177,17 @@ export const BrutalSelect: React.FC<BrutalSelectProps> = ({
                 : selectedOption.label)
             : effectivePlaceholder}
         </span>
-        <svg
-          className={`w-4 h-4 transition-transform duration-200 ${isOpen ? (effectiveDropUp ? 'rotate-0' : 'rotate-180') : (effectiveDropUp ? 'rotate-180' : 'rotate-0')}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-          strokeWidth={3}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
+        {!hideChevron && (
+          <svg
+            className={`w-4 h-4 transition-transform duration-200 ${isOpen ? (effectiveDropUp ? 'rotate-0' : 'rotate-180') : (effectiveDropUp ? 'rotate-180' : 'rotate-0')}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            strokeWidth={3}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        )}
       </button>
 
       {dropdown}

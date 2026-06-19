@@ -48,7 +48,7 @@ interface AssistantMessageProps {
   /** Wall-clock start time (ms) of the active stream, so the activity timer resumes across reconnects */
   streamStartedAtMs?: number;
   /** HITL approval handler: (approvalId, toolCallId, approved, remember?, toolName?) */
-  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string) => void;
+  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string, actionId?: string, feedback?: string) => void;
   /** Tool approval policy for showing auto-approval badges */
   toolApprovalPolicy?: Record<string, string>;
   /** Callback to remove a tool from auto-approval */
@@ -105,7 +105,7 @@ const AGUIPartsContent: React.FC<{
   streamStartedAtMs?: number;
   isStreaming?: boolean;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
-  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string) => void;
+  onToolApproval?: (approvalId: string, toolCallId: string, approved: boolean, remember?: ApprovalRememberScope, toolName?: string, actionId?: string, feedback?: string) => void;
   toolApprovalPolicy?: Record<string, string>;
   onRemoveApprovalPolicy?: (toolName: string) => void;
   onInlineAction?: (surfaceId: string, action: string, context: Record<string, unknown>) => void;
@@ -133,6 +133,7 @@ const AGUIPartsContent: React.FC<{
             args: part.args ?? existing.args,
             output: part.output ?? existing.output,
             approvalId: part.approvalId ?? existing.approvalId,
+            permission: part.permission ?? existing.permission,
             state: part.state ?? existing.state,
           };
           continue;
@@ -206,11 +207,11 @@ const AGUIPartsContent: React.FC<{
                 }
 
                 const tools = chunk.items.map((tp, ti) => {
-                  // Pending = approval-requested with no output AND an actionable approvalId (live stream).
-                  // approval-requested with no output but no approvalId = was skipped/denied historically → show denied.
+                  // A historical approval snapshot without an actionable ID is
+                  // unresolved/stale, not proof that the user denied the call.
                   const isActionablyPending = tp.state === 'approval-requested' && !tp.output && !!tp.approvalId && !!isStreaming;
                   const approvalState = isActionablyPending ? 'pending' as const
-                    : (tp.state === 'error' || (tp.state === 'approval-requested' && !tp.output)) ? 'denied' as const
+                    : tp.state === 'error' ? 'denied' as const
                       : undefined;
 
                   return {
@@ -219,11 +220,12 @@ const AGUIPartsContent: React.FC<{
                     toolArgs: tp.args || undefined,
                     output: tp.output || undefined,
                     approvalState,
+                    permission: tp.permission,
                     onApprove: (isActionablyPending && tp.approvalId && onToolApproval)
-                      ? (remember: ApprovalRememberScope) => onToolApproval(tp.approvalId!, tp.toolCallId || '', true, remember, tp.toolName)
+                      ? (remember: ApprovalRememberScope, actionId?: string, feedback?: string) => onToolApproval(tp.approvalId!, tp.toolCallId || '', true, remember, tp.toolName, actionId, feedback)
                       : undefined,
                     onDeny: (isActionablyPending && tp.approvalId && onToolApproval)
-                      ? () => onToolApproval(tp.approvalId!, tp.toolCallId || '', false, null, tp.toolName)
+                      ? (actionId?: string, feedback?: string) => onToolApproval(tp.approvalId!, tp.toolCallId || '', false, null, tp.toolName, actionId, feedback)
                       : undefined,
                   };
                 });
@@ -231,9 +233,11 @@ const AGUIPartsContent: React.FC<{
                 return tools.map((t, i) => {
                   const itemState = t.approvalState === 'pending'
                     ? 'pending' as const
+                    : t.approvalState === 'denied'
+                      ? 'error' as const
                     : isStreaming && !t.output
                       ? 'active' as const
-                      : t.output || t.approvalState === 'denied'
+                      : t.output
                       ? 'done' as const
                       : 'neutral' as const;
 
@@ -272,6 +276,7 @@ const AGUIPartsContent: React.FC<{
                         isStreaming={isStreaming && !t.output}
                         onApprove={t.onApprove}
                         onDeny={t.onDeny}
+                        permission={t.permission}
                         isAutoApproved={isAutoApproved}
                         onRemovePolicy={isAutoApproved && onRemoveApprovalPolicy ? () => onRemoveApprovalPolicy(t.toolName) : undefined}
                         onForceWebContext={onForceWebContext}
@@ -289,11 +294,11 @@ const AGUIPartsContent: React.FC<{
         const { chunk, index: ci } = group;
         if (chunk.type === 'tool') {
           const tools = chunk.items.map((tp, ti) => {
-            // Pending = approval-requested with no output AND an actionable approvalId (live stream).
-            // approval-requested with no output but no approvalId = was skipped/denied historically → show denied.
+            // A historical approval snapshot without an actionable ID is
+            // unresolved/stale, not proof that the user denied the call.
             const isActionablyPending = tp.state === 'approval-requested' && !tp.output && !!tp.approvalId && !!isStreaming;
             const approvalState = isActionablyPending ? 'pending' as const
-              : (tp.state === 'error' || (tp.state === 'approval-requested' && !tp.output)) ? 'denied' as const
+              : tp.state === 'error' ? 'denied' as const
                 : undefined;
 
             return {
@@ -303,10 +308,10 @@ const AGUIPartsContent: React.FC<{
               output: tp.output || undefined,
               approvalState,
               onApprove: (isActionablyPending && tp.approvalId && onToolApproval)
-                ? (remember: ApprovalRememberScope) => onToolApproval(tp.approvalId!, tp.toolCallId || '', true, remember, tp.toolName)
+                ? (remember: ApprovalRememberScope, actionId?: string, feedback?: string) => onToolApproval(tp.approvalId!, tp.toolCallId || '', true, remember, tp.toolName, actionId, feedback)
                 : undefined,
               onDeny: (isActionablyPending && tp.approvalId && onToolApproval)
-                ? () => onToolApproval(tp.approvalId!, tp.toolCallId || '', false, null, tp.toolName)
+                ? (actionId?: string, feedback?: string) => onToolApproval(tp.approvalId!, tp.toolCallId || '', false, null, tp.toolName, actionId, feedback)
                 : undefined,
             };
           });
@@ -743,11 +748,12 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                     return chunk.blocks.map((b, bi) => {
                       const isPending = b.approvalState === 'pending' && !b.content;
                       const isActive = isStreamingThis && !b.content;
-                      const isDone = Boolean(b.content) || b.approvalState === 'denied';
+                      const isDenied = b.approvalState === 'denied';
+                      const isDone = Boolean(b.content);
                       return (
                         <ActivityRailItem
                           key={`legacy-tool-${idx}-${bi}`}
-                          state={isPending ? 'pending' : isActive ? 'active' : isDone ? 'done' : 'neutral'}
+                          state={isPending ? 'pending' : isDenied ? 'error' : isActive ? 'active' : isDone ? 'done' : 'neutral'}
                         >
                           <StaticContent
                             blocks={[b]}

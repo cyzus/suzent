@@ -377,6 +377,7 @@ class ConfigModel(BaseModel):
     workspace_root: str = str(DATA_DIR)
 
     permission_policies: Dict[str, Dict[str, Any]] = {}
+    permission_rules: List[Dict[str, Any]] = []
 
     nodes_enabled: bool = True
     node_auth_mode: str = "open"

@@ -15,7 +15,9 @@ def test_stream_parser_approval_request():
     # The actual wire protocol seen in logs: {"type":"CUSTOM","name":"tool_approval_request","value":{...}}
     chunk = (
         'data: {"type": "CUSTOM", "name": "tool_approval_request", '
-        '"value": {"approvalId": "req123", "toolName": "search", "args": {"q": "test"}}}'
+        '"value": {"approvalId": "req123", "toolName": "search", "args": {"q": "test"}, '
+        '"decision": {"behavior": "ask", "reason": "Approval required", '
+        '"reasonCode": "tool_requires_approval", "risk": "medium", "actions": []}}}'
         "\n\n"
     )
     events = list(parser.parse([chunk]))
@@ -26,6 +28,8 @@ def test_stream_parser_approval_request():
     assert event.request_id == "req123"
     assert event.tool_name == "search"
     assert event.args == {"q": "test"}
+    assert event.decision is not None
+    assert event.decision["reasonCode"] == "tool_requires_approval"
 
 
 def test_approval_request_formatting():

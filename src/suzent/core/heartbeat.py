@@ -386,16 +386,16 @@ class HeartbeatRunner(BaseBrain):
     def _build_config_override(self, heartbeat_allowed_tools: list = None) -> dict:
         from suzent.agent_manager import build_agent_config
 
-        base: dict = {"memory_enabled": True}
+        base: dict = {
+            "memory_enabled": True,
+            "permission_mode": "auto",
+            "interaction_profile": "headless",
+        }
         if heartbeat_allowed_tools:
             # Only auto-approve the explicitly allowed tools.
             base["tool_approval_policy"] = {
                 tool: "always_allow" for tool in heartbeat_allowed_tools
             }
-        else:
-            # Default: auto-approve all tools (original behaviour).
-            base["auto_approve_tools"] = True
-
         return build_agent_config(base, require_social_tool=False)
 
     def _is_heartbeat_ok(self, response: str) -> bool:

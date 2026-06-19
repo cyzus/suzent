@@ -1,5 +1,6 @@
 import { useCallback, type MutableRefObject } from 'react';
 import type { AGUIPart } from '../useAGUI';
+import type { PendingPermissionApproval } from '../../lib/api';
 
 /**
  * Restores a suspended-for-approval run's transient UI when a chat is re-entered.
@@ -69,6 +70,25 @@ function seedHasPendingApprovals(parts: AGUIPart[]): boolean {
   return parts.some(
     p => p.type === 'tool' && p.state === 'approval-requested' && !!p.approvalId,
   );
+}
+
+export function permissionApprovalsToParts(
+  approvals: PendingPermissionApproval[],
+): AGUIPart[] {
+  return approvals.flatMap(approval => {
+    if (!approval.approvalId || !approval.toolCallId || !approval.decision) {
+      return [];
+    }
+    return [{
+      type: 'tool' as const,
+      toolCallId: approval.toolCallId,
+      toolName: approval.toolName || 'unknown',
+      args: JSON.stringify(approval.args || {}, null, 2),
+      state: 'approval-requested' as const,
+      approvalId: approval.approvalId,
+      permission: approval.decision,
+    }];
+  });
 }
 
 export function useApprovalRestore(

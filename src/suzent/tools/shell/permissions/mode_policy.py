@@ -18,7 +18,11 @@ def evaluate_mode(mode: PermissionMode, command_class: CommandClass) -> CommandD
             return CommandDecision.DENY
         return CommandDecision.ASK
 
-    # FULL_APPROVAL
+    # FULL_APPROVAL (the default mode): ask before state-changing operations,
+    # but read-only commands (ls, cat, …) are not state-changing, so allow them
+    # without a prompt rather than interrupting on every benign inspection.
+    if command_class == CommandClass.READ_ONLY:
+        return CommandDecision.ALLOW
     if command_class == CommandClass.DANGEROUS:
         return CommandDecision.DENY
     return CommandDecision.ASK

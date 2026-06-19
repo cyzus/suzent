@@ -320,7 +320,11 @@ class SchedulerBrain(BaseBrain):
         """Build config override dict, resolving model from override or user prefs."""
         from suzent.agent_manager import build_agent_config
 
-        base_config: dict = {"memory_enabled": True, "auto_approve_tools": True}
+        base_config: dict = {
+            "memory_enabled": True,
+            "permission_mode": "auto",
+            "interaction_profile": "headless",
+        }
         if model_override:
             base_config["model"] = model_override
 

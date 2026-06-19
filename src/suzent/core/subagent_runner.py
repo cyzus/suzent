@@ -334,7 +334,8 @@ async def _run_subagent(
                 "platform": "subagent",
                 "parent_chat_id": task.parent_chat_id,
                 "subagent_task_id": task.task_id,
-                "auto_approve_tools": True,
+                "permission_mode": "auto",
+                "interaction_profile": "subagent",
             },
             chat_id=task.chat_id,
             project_id=parent_project_id,
@@ -396,9 +397,18 @@ async def _run_subagent(
         parent_sandbox_volumes = (
             (parent_chat.config or {}).get("sandbox_volumes") if parent_chat else None
         )
+        parent_permission_mode = (
+            (parent_chat.config or {}).get("permission_mode") if parent_chat else None
+        )
+        subagent_permission_mode = (
+            parent_permission_mode
+            if parent_permission_mode in {"plan", "strict_readonly"}
+            else "auto"
+        )
 
         base_config: dict = {
-            "auto_approve_tools": True,
+            "permission_mode": subagent_permission_mode,
+            "interaction_profile": "subagent",
             "memory_enabled": False,
             "platform": "subagent",
             "static_instructions": subagent_prompt,

@@ -111,7 +111,8 @@ const defaultConfig: ChatConfig = {
   tools: [],
   mcp_urls: [],
   mcp_enabled: {},
-  sandbox_enabled: true // Default to true to match backend
+  sandbox_enabled: true, // Default to true to match backend
+  permission_mode: 'default',
 };
 
 const UNSAVED_CHAT_KEY = '__unsaved__';
@@ -123,6 +124,7 @@ const stripReusableConfig = (config: ChatConfig): ChatConfig => {
   [
     'tool_approval_policy',
     'permission_policies',
+    'permission_mode',
     'heartbeat_enabled',
     'heartbeat_interval_minutes',
     'heartbeat_instructions',

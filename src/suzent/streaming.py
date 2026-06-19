@@ -24,7 +24,7 @@ from pydantic_ai import (
     Agent,
 )
 from pydantic_ai.run import AgentRunResultEvent
-from pydantic_ai.tools import DeferredToolRequests, DeferredToolResults
+from pydantic_ai.tools import DeferredToolRequests, DeferredToolResults, ToolDenied
 from pydantic_ai.ui.ag_ui._event_stream import AGUIEventStream
 from ag_ui.core import (
     RunAgentInput,
@@ -45,6 +45,13 @@ from suzent.core.stream_registry import (
     unregister_active_stream,
 )
 from suzent.database import get_database
+from suzent.permissions import (
+    PermissionContext,
+    PermissionEngine,
+    ToolPermissionRequest,
+)
+from suzent.permissions.models import CommandDecision
+from suzent.permissions.audit import record_permission_audit
 from loguru import logger
 
 
@@ -59,6 +66,38 @@ def _get_approval_lock(chat_id: str) -> asyncio.Lock:
     if chat_id not in _pending_approval_locks:
         _pending_approval_locks[chat_id] = asyncio.Lock()
     return _pending_approval_locks[chat_id]
+
+
+async def remove_pending_approvals(
+    chat_id: str,
+    tool_call_ids: set[str] | None = None,
+) -> None:
+    """Remove resolved approvals, or clear all approvals when IDs are omitted."""
+
+    def _remove() -> None:
+        db = get_database()
+        chat = db.get_chat(chat_id)
+        if chat is None:
+            return
+        existing = (chat.config or {}).get("_pending_approvals") or []
+        if not isinstance(existing, list) or not existing:
+            return
+        remaining = (
+            []
+            if tool_call_ids is None
+            else [
+                item
+                for item in existing
+                if not isinstance(item, dict)
+                or str(item.get("toolCallId") or item.get("approvalId") or "")
+                not in tool_call_ids
+            ]
+        )
+        if remaining != existing:
+            db.merge_chat_config(chat_id, {"_pending_approvals": remaining})
+
+    async with _get_approval_lock(chat_id):
+        await asyncio.to_thread(_remove)
 
 
 _FIRST_STREAM_EVENT_TIMEOUT_SECONDS = 45.0
@@ -88,6 +127,11 @@ def _serialize_tool_output(output: Any) -> str:
         except Exception:
             return str(output)
     return str(output) if output else ""
+
+
+def _deferred_approval_status(result: Any) -> str:
+    """Map deferred approval results without relying on object truthiness."""
+    return "denied" if result is False or isinstance(result, ToolDenied) else "executed"
 
 
 def _event_type_value(event: Any) -> str:
@@ -253,6 +297,7 @@ class _DraftDisplayAccumulator:
             tool = self._ensure_tool(tool_call_id)
             tool["state"] = "approval-requested"
             tool["approvalId"] = value.get("approvalId")
+            tool["permission"] = value.get("decision")
             tool["toolName"] = (
                 tool.get("toolName") or value.get("toolName") or "unknown"
             )
@@ -393,112 +438,6 @@ async def _iter_stream_events_with_timeout(
                 pass
 
 
-def _bash_command_decision(tc: Any, deps: "AgentDeps") -> "bool | None":
-    """Check a bash tool call against session command-level rules.
-
-    Returns True (allow), False (deny), or None (no match → ask user).
-    """
-    try:
-        from suzent.tools.shell.permissions.rule_engine import (
-            normalize_rules,
-            evaluate_rules,
-        )
-        from suzent.tools.shell.permissions import CommandDecision
-
-        perm_policies = getattr(deps, "tool_permission_policies", {}) or {}
-        bash_policy = (
-            perm_policies.get("bash_execute") or perm_policies.get("BashTool") or {}
-        )
-        raw_rules = (
-            bash_policy.get("command_rules", [])
-            if isinstance(bash_policy, dict)
-            else []
-        )
-        if not raw_rules:
-            return None
-
-        command_text = ""
-        if isinstance(tc.args, dict):
-            command_text = tc.args.get("content", "") or ""
-        if not command_text:
-            return None
-
-        rules = normalize_rules(raw_rules)
-        decision = evaluate_rules(command_text, rules)
-        if decision == CommandDecision.ALLOW:
-            return True
-        if decision == CommandDecision.DENY:
-            return False
-    except Exception:
-        pass
-    return None
-
-
-def _bash_baseline_decision(tc: Any, deps: "AgentDeps") -> "bool | None":
-    """Mirror bash_tool.py's internal baseline policy check.
-
-    Auto-approves commands that bash would run without raising ApprovalRequired,
-    so that setting requires_approval=True on BashTool doesn't break the desktop
-    experience for simple commands.
-
-    Returns:
-        True  → safe, auto-approve (no dialog)
-        False → hard-deny (dangerous pattern or blocked path)
-        None  → needs user decision (git, chaining, policy-ASK)
-    """
-    try:
-        from suzent.tools.shell.permissions import (
-            evaluate_command_policy,
-            CommandDecision,
-        )
-        from suzent.tools.filesystem.file_tool_utils import get_or_create_path_resolver
-
-        if not isinstance(tc.args, dict):
-            return True  # malformed args — let bash handle it
-
-        language = (tc.args.get("language") or "command").strip().lower()
-        if language != "command":
-            return True  # python / nodejs: no baseline restriction
-
-        command_text = tc.args.get("content", "") or ""
-        if not command_text:
-            return True
-
-        resolver = get_or_create_path_resolver(deps)
-        baseline_eval = evaluate_command_policy(
-            command_text=command_text,
-            resolver=resolver,
-            mode_value="accept_edits",
-            raw_rules=[],
-            default_action="ask",
-        )
-
-        _HARD_DENY_PREFIXES = (
-            "Command blocked by high-risk shell semantics",
-            "Path denied by policy",
-            "Dangerous delete target blocked",
-        )
-        if (
-            baseline_eval.decision == CommandDecision.DENY
-            and baseline_eval.reason.startswith(_HARD_DENY_PREFIXES)
-        ):
-            return False
-
-        _ASK_PREFIXES = (
-            "Command requires approval due to shell chaining semantics",
-            "Git commands require approval",
-        )
-        if (
-            baseline_eval.decision == CommandDecision.ASK
-            and baseline_eval.reason.startswith(_ASK_PREFIXES)
-        ):
-            return None  # show user dialog
-
-        return True  # everything else is safe
-    except Exception:
-        return None  # on error, fall through to user dialog
-
-
 def _safe_args_preview(args: Any, max_len: int = 500) -> dict:
     """Truncate large arg values for the approval dialog."""
     if not isinstance(args, dict):
@@ -510,6 +449,29 @@ def _safe_args_preview(args: Any, max_len: int = 500) -> dict:
         s = str(v)
         preview[k] = (s[:max_len] + "\u2026") if len(s) > max_len else s
     return preview
+
+
+def _tool_call_args_dict(tool_call: Any) -> dict[str, Any]:
+    """Decode provider-specific tool-call argument representations."""
+    args_as_dict = getattr(tool_call, "args_as_dict", None)
+    if callable(args_as_dict):
+        try:
+            parsed = args_as_dict()
+            if isinstance(parsed, dict):
+                return parsed
+        except (TypeError, ValueError, json.JSONDecodeError):
+            pass
+
+    raw = getattr(tool_call, "args", None)
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+    return {}
 
 
 def _find_tool_return_parts(
@@ -541,8 +503,8 @@ def _find_tool_return_parts(
                 ):
                     continue
                 tool_name = getattr(part, "tool_name", "unknown")
-                status = (
-                    "executed" if current_deferred.approvals[tool_call_id] else "denied"
+                status = _deferred_approval_status(
+                    current_deferred.approvals[tool_call_id]
                 )
                 output = (
                     getattr(part, "output", None)
@@ -588,6 +550,7 @@ async def stream_agent_responses(
     the generator gracefully ends the stream, saving the agent state.
     """
     control = StreamControl()
+    run_id = str(uuid.uuid4())
     if chat_id:
         stream_controls[chat_id] = control
     # Indicates whether the stream paused waiting for user approvals.
@@ -780,11 +743,11 @@ async def stream_agent_responses(
                                                         "tool_name": getattr(
                                                             _trp, "tool_name", ""
                                                         ),
-                                                        "status": "executed"
-                                                        if current_deferred.approvals[
-                                                            _tcid
-                                                        ]
-                                                        else "denied",
+                                                        "status": _deferred_approval_status(
+                                                            current_deferred.approvals[
+                                                                _tcid
+                                                            ]
+                                                        ),
                                                         "output": _serialize_tool_output(
                                                             getattr(
                                                                 _trp, "output", None
@@ -886,77 +849,51 @@ async def stream_agent_responses(
 
                         deferred = last_run_result.output
                         if deferred.approvals:
-                            # Short-circuit: if auto_approve_tools is set (e.g. heartbeat / scheduler),
-                            # approve all tools immediately without prompting the user.
-                            if getattr(deps, "auto_approve_tools", False):
-                                auto_approvals: Dict[str, bool] = {
-                                    tc.tool_call_id: True for tc in deferred.approvals
-                                }
-                                current_deferred = DeferredToolResults(
-                                    approvals=auto_approvals
-                                )
-                                history = current_history
-                                prompt = ""
-                                continue
-
-                            # Split approvals into policy-decided (auto) and those
-                            # still requiring the user's explicit decision.
+                            # Evaluate all deferred calls through the centralized
+                            # permission engine. Calls that resolve to allow/deny
+                            # can resume immediately; only ASK decisions suspend.
                             auto_approvals: Dict[str, bool] = {}
-                            pending_approvals = []
+                            pending_approvals: list[tuple[Any, Any]] = []
+                            permission_engine = PermissionEngine()
+                            permission_context = PermissionContext.from_deps(deps)
                             for tc in deferred.approvals:
-                                policy = deps.tool_approval_policy.get(tc.tool_name, "")
-                                if policy == "always_allow":
+                                args_dict = _tool_call_args_dict(tc)
+                                decision = await permission_engine.evaluate(
+                                    ToolPermissionRequest(
+                                        tool_name=tc.tool_name,
+                                        args=args_dict,
+                                        tool_call_id=tc.tool_call_id,
+                                    ),
+                                    permission_context,
+                                )
+                                await record_permission_audit(
+                                    chat_id=chat_id or "",
+                                    tool_call_id=tc.tool_call_id,
+                                    tool_name=tc.tool_name,
+                                    args=args_dict,
+                                    decision=decision.behavior.value,
+                                    reason=decision.reason,
+                                    reason_code=decision.reason_code,
+                                    mode=permission_context.mode.value,
+                                    run_id=run_id,
+                                    metadata=decision.metadata,
+                                )
+                                if decision.behavior == CommandDecision.ALLOW:
                                     auto_approvals[tc.tool_call_id] = True
                                     logger.debug(
-                                        f"[Streaming] Auto-approving '{tc.tool_name}' "
-                                        f"(always_allow policy)"
+                                        "[Streaming] Permission engine allowed '{}': {}",
+                                        tc.tool_name,
+                                        decision.reason,
                                     )
-                                elif policy == "always_deny":
+                                elif decision.behavior == CommandDecision.DENY:
                                     auto_approvals[tc.tool_call_id] = False
                                     logger.debug(
-                                        f"[Streaming] Auto-denying '{tc.tool_name}' "
-                                        f"(always_deny policy)"
+                                        "[Streaming] Permission engine denied '{}': {}",
+                                        tc.tool_name,
+                                        decision.reason,
                                     )
                                 else:
-                                    # For bash: check rules then baseline before asking user.
-                                    # This preserves the original requires_approval=False
-                                    # behaviour (only git/chained/dangerous require a dialog)
-                                    # now that BashTool.requires_approval=True.
-                                    if tc.tool_name in ("bash_execute", "BashTool"):
-                                        # 1. Session/global command rules (remembered decisions)
-                                        cmd_decision = _bash_command_decision(tc, deps)
-                                        if cmd_decision is True:
-                                            auto_approvals[tc.tool_call_id] = True
-                                            logger.debug(
-                                                "[Streaming] Auto-approving bash "
-                                                "(command rule match)"
-                                            )
-                                            continue
-                                        if cmd_decision is False:
-                                            auto_approvals[tc.tool_call_id] = False
-                                            logger.debug(
-                                                "[Streaming] Auto-denying bash "
-                                                "(command rule match)"
-                                            )
-                                            continue
-                                        # 2. Baseline safety check (mirrors bash_tool.py logic)
-                                        baseline = _bash_baseline_decision(tc, deps)
-                                        if baseline is True:
-                                            auto_approvals[tc.tool_call_id] = True
-                                            logger.debug(
-                                                "[Streaming] Auto-approving bash "
-                                                "(baseline: safe command)"
-                                            )
-                                            continue
-                                        if baseline is False:
-                                            auto_approvals[tc.tool_call_id] = False
-                                            logger.debug(
-                                                "[Streaming] Auto-denying bash "
-                                                "(baseline: dangerous command)"
-                                            )
-                                            continue
-                                        # baseline is None → show approval dialog
-                                    pending_approvals.append(tc)
+                                    pending_approvals.append((tc, decision))
 
                             if not pending_approvals:
                                 # All tool approvals decided by policy — loop back
@@ -974,13 +911,8 @@ async def stream_agent_responses(
                             if chat_id and auto_approvals:
                                 merge_pending_auto_approvals(chat_id, auto_approvals)
                             deps.is_suspended = True  # Signal stream is pausing
-                            for tc in pending_approvals:
-                                try:
-                                    args_dict = (
-                                        tc.args if isinstance(tc.args, dict) else {}
-                                    )
-                                except Exception:
-                                    args_dict = {}
+                            for tc, decision in pending_approvals:
+                                args_dict = _tool_call_args_dict(tc)
 
                                 await sse_queue.put(
                                     (
@@ -990,6 +922,10 @@ async def stream_agent_responses(
                                             "tool_name": tc.tool_name,
                                             "tool_call_id": tc.tool_call_id,
                                             "args": _safe_args_preview(args_dict),
+                                            "permission_decision": decision.model_dump(
+                                                mode="json",
+                                                by_alias=True,
+                                            ),
                                         },
                                     )
                                 )
@@ -1160,6 +1096,7 @@ async def stream_agent_responses(
                         "toolName": payload.get("tool_name", ""),
                         "args": payload.get("args", {}),
                         "chatId": chat_id,
+                        "decision": payload.get("permission_decision", {}),
                     }
                     await _queue_custom_event(
                         out_queue,
@@ -1193,6 +1130,7 @@ async def stream_agent_responses(
                                             "toolCallId": approval_info["toolCallId"],
                                             "toolName": approval_info["toolName"],
                                             "args": approval_info["args"],
+                                            "decision": approval_info["decision"],
                                             "savedAt": datetime.utcnow().isoformat(),
                                         }
                                     )
@@ -1244,7 +1182,6 @@ async def stream_agent_responses(
     async def encode_worker() -> None:
         draft_accumulator: Optional[_DraftDisplayAccumulator] = None
         try:
-            run_id = str(uuid.uuid4())
             if not is_heartbeat:
                 draft_accumulator = _DraftDisplayAccumulator(chat_id, run_id)
             run_input = RunAgentInput(
@@ -1344,34 +1281,24 @@ async def stream_agent_responses(
 
                 # Clear persisted pending approvals so the frontend doesn't
                 # show a stale dialog on next load.
-                async def _clear_pending_approvals_task():
-                    try:
-
-                        def _do_clear():
-                            _db = get_database()
-                            _chat = _db.get_chat(chat_id)
-                            if _chat is not None and (_chat.config or {}).get(
-                                "_pending_approvals"
-                            ):
-                                # Set to [] (rather than deleting) via merge so a
-                                # concurrent write to another config key isn't lost.
-                                _db.merge_chat_config(
-                                    chat_id, {"_pending_approvals": []}
-                                )
-
-                        async with _get_approval_lock(chat_id):
-                            await asyncio.to_thread(_do_clear)
-                    except Exception:
-                        pass
-                    finally:
-                        _pending_approval_locks.pop(chat_id, None)
-
-                asyncio.create_task(_clear_pending_approvals_task())
+                try:
+                    await remove_pending_approvals(chat_id)
+                except Exception as exc:
+                    logger.debug(
+                        f"[Streaming] Failed to clear pending approvals: {exc}"
+                    )
 
             existing = stream_controls.get(chat_id)
             if existing is control:
                 stream_controls.pop(chat_id, None)
             unregister_active_stream(chat_id)
+            # Deliberately do NOT pop _pending_approval_locks here: an
+            # overlapping stream or a permission-state writer may still hold or
+            # be about to acquire this chat's lock. Popping it would let
+            # _get_approval_lock mint a fresh Lock, so two writers would
+            # serialise on different objects and interleave their
+            # read-modify-write of _pending_approvals. The lock is a tiny,
+            # bounded per-chat object, so keeping it is cheap.
 
         # Signal that all cleanup (including post-processing trigger) is done
         control.completed_event.set()

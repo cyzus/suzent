@@ -4,3 +4,19 @@
 
 PERMISSIONS:
   tools: {}
+  # Normalized rules are evaluated before mode behavior.
+  # rules:
+  #   - id: allow-npm-test
+  #     tool: bash_execute
+  #     behavior: allow
+  #     matcher:
+  #       type: exact_input
+  #       value:
+  #         command: npm test
+  #     description: Allow the test command
+  #   - id: protect-secrets
+  #     tool: write_file
+  #     behavior: deny
+  #     matcher:
+  #       type: path_prefix
+  #       value: secrets/

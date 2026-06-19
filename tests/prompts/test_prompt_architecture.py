@@ -35,7 +35,27 @@ def test_register_dynamic_instructions_registers_all_sections():
         memory_context="",
     )
 
-    assert len(agent.functions) == 8
+    assert len(agent.functions) == 10
+
+
+def test_permission_feedback_instruction_includes_user_guidance():
+    agent = _FakeAgent()
+    register_dynamic_instructions(
+        agent,
+        base_instructions="",
+        memory_context="",
+    )
+    funcs = {fn.__name__: fn for fn in agent.functions}
+    ctx = SimpleNamespace(
+        deps=SimpleNamespace(
+            permission_feedback=["Use the staging environment instead"],
+        )
+    )
+
+    result = funcs["inject_permission_feedback"](ctx)
+
+    assert "# Permission Feedback" in result
+    assert "Use the staging environment instead" in result
 
 
 def test_register_dynamic_instructions_environment_uses_host_paths():
