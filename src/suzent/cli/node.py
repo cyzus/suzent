@@ -273,15 +273,26 @@ def node_invoke(
                     None,
                 )
                 if match:
-                    result = await client.nodes.invoke_peer(
-                        match["peer_id"], command, parsed_params, timeout=timeout
-                    )
+                    try:
+                        result = await client.nodes.invoke_peer(
+                            match["peer_id"], command, parsed_params, timeout=timeout
+                        )
+                    except ClientError as pe:
+                        typer.echo(f"❌ Couldn't reach peer '{match['name']}': {pe}")
+                        raise typer.Exit(code=1)
                     if result.get("error"):
                         typer.echo(f"❌ Failed on peer: {result['error']}")
                         raise typer.Exit(code=1)
                     payload = result.get("result", result)
                     typer.echo(f"✅ Result: {json.dumps(payload, indent=2)}")
                     return
+                # Neither a node nor a known peer on this device.
+                typer.echo(
+                    f"❌ No node or peer matching '{node}' on this device.\n"
+                    f"   Run `suzent nodes list` and invoke by NAME — peer ids "
+                    f"differ per device. To invoke back, the link must be Mutual."
+                )
+                raise typer.Exit(code=1)
             typer.echo(f"❌ {e}")
             raise typer.Exit(code=1)
 
