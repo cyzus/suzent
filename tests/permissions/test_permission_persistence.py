@@ -58,14 +58,14 @@ def test_global_permission_rule_round_trip(tmp_path: Path) -> None:
     assert document["permissions"]["rules"] == []
 
 
-def test_permission_audit_redacts_sensitive_values(
+async def test_permission_audit_redacts_sensitive_values(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     import suzent.config
 
     monkeypatch.setattr(suzent.config, "USER_CONFIG_DIR", tmp_path)
-    record_permission_audit(
+    await record_permission_audit(
         chat_id="chat-1",
         tool_call_id="call-1",
         tool_name="deploy",

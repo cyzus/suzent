@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from pydantic import ValidationError
@@ -14,7 +15,7 @@ from suzent.database import get_database
 from suzent.logger import get_logger
 from suzent.permissions.loader import (
     delete_global_permission_rule,
-    persist_global_permission_rule,
+    upsert_permission_rule,
 )
 from suzent.permissions.actions import build_approval_decision
 from suzent.permissions.models import PermissionRule
@@ -103,18 +104,32 @@ async def get_chat_permission_state(request: Request) -> JSONResponse:
     stored_pending = config.get("_pending_approvals") or []
     unanswered_ids = _unanswered_tool_call_ids(getattr(chat, "agent_state", None))
     if unanswered_ids is not None:
-        filtered_pending = [
-            item
-            for item in stored_pending
-            if isinstance(item, dict)
-            and str(item.get("toolCallId") or item.get("approvalId") or "")
-            in unanswered_ids
-        ]
-        if filtered_pending != stored_pending:
-            get_database().merge_chat_config(
-                chat_id, {"_pending_approvals": filtered_pending}
+        # Prune answered approvals under the per-chat approval lock so this
+        # read-modify-write cannot race a concurrent stream writer (which
+        # appends a newly-suspended approval via the same lock) and drop it.
+        from suzent.streaming import _get_approval_lock
+
+        def _prune() -> list[dict[str, Any]]:
+            db = get_database()
+            current_chat = db.get_chat(chat_id)
+            current = (
+                (current_chat.config or {}).get("_pending_approvals") or []
+                if current_chat is not None
+                else []
             )
-        stored_pending = filtered_pending
+            filtered = [
+                item
+                for item in current
+                if isinstance(item, dict)
+                and str(item.get("toolCallId") or item.get("approvalId") or "")
+                in unanswered_ids
+            ]
+            if filtered != current:
+                db.merge_chat_config(chat_id, {"_pending_approvals": filtered})
+            return filtered
+
+        async with _get_approval_lock(chat_id):
+            stored_pending = await asyncio.to_thread(_prune)
 
     pending: list[dict[str, Any]] = []
     for item in stored_pending:
@@ -182,20 +197,9 @@ async def create_permission_rule(request: Request) -> JSONResponse:
             status_code=422,
         )
 
-    if destination == "global":
-        persist_global_permission_rule(
-            PROJECT_DIR,
-            logger,
-            rule,
-            user_config_dir=USER_CONFIG_DIR,
-        )
-        CONFIG.permission_rules = [
-            existing
-            for existing in CONFIG.permission_rules
-            if not isinstance(existing, dict) or existing.get("id") != rule.id
-        ]
-        CONFIG.permission_rules.append(rule.model_dump(mode="json", by_alias=True))
-    else:
+    chat_id: str | None = None
+    db = None
+    if destination == "session":
         chat_id = str(data.get("chat_id") or data.get("chatId") or "").strip()
         if not chat_id:
             return JSONResponse(
@@ -203,17 +207,19 @@ async def create_permission_rule(request: Request) -> JSONResponse:
                 status_code=400,
             )
         db = get_database()
-        chat = db.get_chat(chat_id)
-        if chat is None:
+        if db.get_chat(chat_id) is None:
             return JSONResponse({"error": "Chat not found"}, status_code=404)
-        rules = list((chat.config or {}).get("permission_rules") or [])
-        rules = [
-            existing
-            for existing in rules
-            if not isinstance(existing, dict) or existing.get("id") != rule.id
-        ]
-        rules.append(rule.model_dump(mode="json", by_alias=True))
-        db.merge_chat_config(chat_id, {"permission_rules": rules})
+
+    upsert_permission_rule(
+        rule,
+        destination=destination,
+        project_dir=PROJECT_DIR,
+        logger=logger,
+        config=CONFIG,
+        database=db,
+        chat_id=chat_id,
+        user_config_dir=USER_CONFIG_DIR,
+    )
 
     return JSONResponse(
         {"rule": rule.model_dump(mode="json", by_alias=True)},

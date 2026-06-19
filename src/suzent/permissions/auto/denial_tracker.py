@@ -17,6 +17,12 @@ _states: dict[str, DenialState] = {}
 def record_allowed(chat_id: str) -> DenialState:
     state = _states.setdefault(chat_id, DenialState())
     state.consecutive = 0
+    # Decay the lifetime total on success so a long-lived, mostly-healthy chat
+    # recovers from the total cap instead of latching into manual-review
+    # escalation forever. A genuinely runaway denial loop (no successes) still
+    # trips the cap because total only decays when an action is allowed.
+    if state.total > 0:
+        state.total -= 1
     return state
 
 

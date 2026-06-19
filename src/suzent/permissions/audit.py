@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from datetime import datetime, timezone
@@ -19,19 +20,22 @@ _SENSITIVE_KEYS = {
     "secret",
     "token",
 }
-_SENSITIVE_VALUE_PATTERNS = (
-    re.compile(r"(?i)\b(bearer\s+)[^\s\"']+"),
-    re.compile(r"(?i)\b(api[_-]?key|password|secret|token)\s*[:=]\s*([^\s,;]+)"),
+# Each entry pairs a compiled pattern with its replacement template so the
+# substitution intent lives with the pattern instead of being re-derived per
+# call by substring-searching the regex source.
+_SENSITIVE_VALUE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"(?i)\b(bearer\s+)[^\s\"']+"), r"\1[redacted]"),
+    (
+        re.compile(r"(?i)\b(api[_-]?key|password|secret|token)\s*[:=]\s*([^\s,;]+)"),
+        r"\1=[redacted]",
+    ),
 )
 
 
 def _sanitize_text(value: str) -> str:
     sanitized = value
-    for pattern in _SENSITIVE_VALUE_PATTERNS:
-        if pattern.pattern.lower().find("bearer") >= 0:
-            sanitized = pattern.sub(r"\1[redacted]", sanitized)
-        else:
-            sanitized = pattern.sub(r"\1=[redacted]", sanitized)
+    for pattern, replacement in _SENSITIVE_VALUE_PATTERNS:
+        sanitized = pattern.sub(replacement, sanitized)
     return sanitized if len(sanitized) <= 300 else sanitized[:300] + "…"
 
 
@@ -59,7 +63,19 @@ def sanitize_args(args: dict[str, Any]) -> dict[str, Any]:
     return sanitized if isinstance(sanitized, dict) else {}
 
 
-def record_permission_audit(
+def _write_audit_event(event: dict[str, Any]) -> None:
+    try:
+        from suzent.config import USER_CONFIG_DIR
+
+        path = Path(USER_CONFIG_DIR) / "permission-audit.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        logger.warning("Failed to record permission audit event: {}", exc)
+
+
+async def record_permission_audit(
     *,
     chat_id: str,
     tool_call_id: str,
@@ -74,27 +90,21 @@ def record_permission_audit(
     feedback: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
-    try:
-        from suzent.config import USER_CONFIG_DIR
-
-        path = Path(USER_CONFIG_DIR) / "permission-audit.jsonl"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        event = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "chat_id": chat_id,
-            "run_id": run_id,
-            "tool_call_id": tool_call_id,
-            "tool": tool_name,
-            "args": sanitize_args(args),
-            "decision": decision,
-            "reason": reason,
-            "reason_code": reason_code,
-            "mode": mode,
-            "user_action": user_action,
-            "feedback": feedback[:500] if feedback else None,
-            "metadata": sanitize_args(metadata or {}),
-        }
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(event, ensure_ascii=False) + "\n")
-    except Exception as exc:
-        logger.warning("Failed to record permission audit event: {}", exc)
+    event = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "chat_id": chat_id,
+        "run_id": run_id,
+        "tool_call_id": tool_call_id,
+        "tool": tool_name,
+        "args": sanitize_args(args),
+        "decision": decision,
+        "reason": reason,
+        "reason_code": reason_code,
+        "mode": mode,
+        "user_action": user_action,
+        "feedback": feedback[:500] if feedback else None,
+        "metadata": sanitize_args(metadata or {}),
+    }
+    # Offload the blocking filesystem append so it never stalls the event loop
+    # (and thus token streaming for all chats sharing it) on the hot path.
+    await asyncio.to_thread(_write_audit_event, event)

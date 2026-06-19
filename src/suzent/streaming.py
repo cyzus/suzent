@@ -866,7 +866,7 @@ async def stream_agent_responses(
                                     ),
                                     permission_context,
                                 )
-                                record_permission_audit(
+                                await record_permission_audit(
                                     chat_id=chat_id or "",
                                     tool_call_id=tc.tool_call_id,
                                     tool_name=tc.tool_name,
@@ -1292,7 +1292,13 @@ async def stream_agent_responses(
             if existing is control:
                 stream_controls.pop(chat_id, None)
             unregister_active_stream(chat_id)
-            _pending_approval_locks.pop(chat_id, None)
+            # Deliberately do NOT pop _pending_approval_locks here: an
+            # overlapping stream or a permission-state writer may still hold or
+            # be about to acquire this chat's lock. Popping it would let
+            # _get_approval_lock mint a fresh Lock, so two writers would
+            # serialise on different objects and interleave their
+            # read-modify-write of _pending_approvals. The lock is a tiny,
+            # bounded per-chat object, so keeping it is cheap.
 
         # Signal that all cleanup (including post-processing trigger) is done
         control.completed_event.set()

@@ -23,9 +23,7 @@ from pydantic_ai.tools import ToolDenied
 from suzent.logger import get_logger
 from suzent.config import CONFIG, PROJECT_DIR, USER_CONFIG_DIR, get_effective_volumes
 from suzent.agent_manager import get_or_create_agent
-from suzent.permissions.loader import (
-    persist_global_permission_rule,
-)
+from suzent.permissions.loader import upsert_permission_rule
 from suzent.permissions.actions import get_offered_action, resolve_action
 from suzent.permissions.models import PermissionRule
 from suzent.permissions.audit import record_permission_audit
@@ -131,13 +129,21 @@ def _resolve_resume_approval_actions(
         )
         pending_request = pending_by_id.get(approval_id)
         if pending_request is None:
-            raise ValueError(f"Unknown or stale approval request: {approval_id}")
+            # Stale or duplicate resume (e.g. double-click, retry, or the
+            # pending list was already cleared on stream completion). The
+            # response is already a committed StreamingResponse, so raising
+            # here would abort the connection mid-stream with no error event.
+            # Skip the already-resolved approval instead.
+            logger.info("Skipping unknown or stale approval request: %s", approval_id)
+            continue
 
         decision = pending_request.get("decision")
         if not isinstance(decision, dict):
-            raise ValueError(
-                f"Approval request has no decision contract: {approval_id}"
+            logger.warning(
+                "Approval request has no decision contract, skipping: %s",
+                approval_id,
             )
+            continue
 
         approved, remember = resolve_action(decision, action_id)
         offered_action = get_offered_action(decision, action_id)
@@ -169,36 +175,18 @@ def _apply_permission_updates(
         payload = update.get("payload")
         if not isinstance(payload, dict):
             continue
-        destination = str(update.get("destination") or "")
-        source = "global" if destination == "global" else "session"
-        rule = PermissionRule.model_validate({**payload, "source": source})
-        if destination == "global":
-            persist_global_permission_rule(
-                PROJECT_DIR,
-                logger,
-                rule,
-                user_config_dir=USER_CONFIG_DIR,
-            )
-            CONFIG.permission_rules = [
-                existing
-                for existing in CONFIG.permission_rules
-                if existing.get("id") != rule.id
-            ]
-            CONFIG.permission_rules.append(rule.model_dump(mode="json", by_alias=True))
-            continue
-        if destination == "session":
-            db = get_database()
-            chat = db.get_chat(chat_id)
-            rules = list(
-                ((chat.config or {}) if chat else {}).get("permission_rules") or []
-            )
-            rules = [
-                existing
-                for existing in rules
-                if not isinstance(existing, dict) or existing.get("id") != rule.id
-            ]
-            rules.append(rule.model_dump(mode="json", by_alias=True))
-            db.merge_chat_config(chat_id, {"permission_rules": rules})
+        destination = "global" if update.get("destination") == "global" else "session"
+        rule = PermissionRule.model_validate({**payload, "source": destination})
+        upsert_permission_rule(
+            rule,
+            destination=destination,
+            project_dir=PROJECT_DIR,
+            logger=logger,
+            config=CONFIG,
+            database=get_database(),
+            chat_id=chat_id,
+            user_config_dir=USER_CONFIG_DIR,
+        )
 
 
 def _collect_unprocessed_tool_call_ids(messages: list[Any]) -> set[str]:
@@ -733,7 +721,7 @@ class ChatProcessor:
 
                 # Also handle remembered policy updates from approval UI.
                 for app in resume_approvals:
-                    record_permission_audit(
+                    await record_permission_audit(
                         chat_id=chat_id,
                         tool_call_id=str(app.get("tool_call_id") or ""),
                         tool_name=str(app.get("tool_name") or "unknown"),

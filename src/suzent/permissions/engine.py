@@ -19,7 +19,6 @@ from suzent.permissions.models import (
     PermissionRisk,
 )
 from suzent.permissions.rules import find_rule
-from suzent.tools.shell.permissions import evaluate_command_policy
 
 
 FILESYSTEM_WRITE_TOOLS = frozenset({"write_file", "edit_file"})
@@ -332,6 +331,11 @@ class PermissionEngine:
                 reason_code="code_execution",
                 risk=PermissionRisk.HIGH,
             )
+
+        # Imported lazily to break the import cycle between this module
+        # (reachable from suzent.permissions.__init__) and the shell-permissions
+        # package, whose policy_models imports back into suzent.permissions.
+        from suzent.tools.shell.permissions import evaluate_command_policy
 
         policy = context.tool_permission_policies.get("bash_execute", {})
         raw_rules = policy.get("command_rules", [])

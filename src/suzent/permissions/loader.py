@@ -272,6 +272,58 @@ def persist_global_permission_rule(
     return True
 
 
+def _dedup_append(rules: list[Any], rule: PermissionRule) -> list[Any]:
+    """Drop any existing rule sharing this id, then append the serialized rule."""
+    deduped = [
+        existing
+        for existing in rules
+        if not isinstance(existing, dict) or existing.get("id") != rule.id
+    ]
+    deduped.append(rule.model_dump(mode="json", by_alias=True))
+    return deduped
+
+
+def upsert_permission_rule(
+    rule: PermissionRule,
+    *,
+    destination: str,
+    project_dir: Path,
+    logger,
+    config,
+    database=None,
+    chat_id: str | None = None,
+    user_config_dir: Path | None = None,
+) -> None:
+    """Add (or replace by id) a permission rule in global or session storage.
+
+    Shared by the approval-resume path and the REST rule endpoint so the two
+    cannot drift in how they dedup and persist rules.
+    """
+    if destination == "global":
+        persist_global_permission_rule(
+            project_dir,
+            logger,
+            rule,
+            user_config_dir=user_config_dir,
+        )
+        config.permission_rules = _dedup_append(list(config.permission_rules), rule)
+        return
+
+    if destination == "session":
+        if database is None or not chat_id:
+            raise ValueError("session rules require a database and chat_id")
+        chat = database.get_chat(chat_id)
+        existing = list(
+            ((chat.config or {}) if chat else {}).get("permission_rules") or []
+        )
+        database.merge_chat_config(
+            chat_id, {"permission_rules": _dedup_append(existing, rule)}
+        )
+        return
+
+    raise ValueError(f"Unknown rule destination: {destination}")
+
+
 def delete_global_permission_rule(
     project_dir: Path,
     logger,
