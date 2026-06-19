@@ -65,7 +65,10 @@ def node_list():
                 "paused": "paused",
             }.get(p.get("mode", "one_way"), p.get("mode"))
             typer.echo(f"  {dot} {p['name']}")
-            typer.echo(f"     peer · {direction} · {p['base_url']} · id={p['peer_id']}")
+            typer.echo(
+                f"     peer · {direction} · {p['base_url']} · "
+                f'drive with: nodes trigger {p["name"]} "<prompt>"'
+            )
         for d in inbound:
             dot = "🟢" if d.get("connected") else "⚪"
             scope = d.get("scope", "agent")
@@ -243,8 +246,8 @@ def node_invoke(
                 parsed_params[key] = infer_type(value_str)
 
         typer.echo(f"⚡ Invoking '{command}' on node '{node}'...")
+        client = get_client()
         try:
-            client = get_client()
             result = await client.nodes.invoke(
                 node, command, parsed_params, timeout=timeout
             )
@@ -256,6 +259,30 @@ def node_invoke(
                 typer.echo(f"❌ Failed: {error}")
                 raise typer.Exit(code=1)
         except ClientError as e:
+            # `invoke` only works on WS nodes. If the target is actually a
+            # control-grant peer, point the user at `trigger` instead.
+            if "not found" in str(e).lower():
+                try:
+                    peers = (await client.nodes.peers()).get("peers", [])
+                except ClientError:
+                    peers = []
+                match = next(
+                    (
+                        p
+                        for p in peers
+                        if p["peer_id"] == node
+                        or p.get("name", "").lower() == node.lower()
+                    ),
+                    None,
+                )
+                if match:
+                    typer.echo(
+                        f"❌ '{match['name']}' is a control-grant peer, not a node — "
+                        f"it exposes its agent, not capabilities like '{command}'.\n"
+                        f"   Run its agent instead:  "
+                        f'suzent nodes trigger {match["name"]} "<prompt>"'
+                    )
+                    raise typer.Exit(code=1)
             typer.echo(f"❌ {e}")
             raise typer.Exit(code=1)
 
