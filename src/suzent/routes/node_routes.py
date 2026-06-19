@@ -773,6 +773,31 @@ def _http_base(addr: str) -> str:
     return "http://" + addr
 
 
+def _host_of(base_url: str) -> str:
+    from urllib.parse import urlparse
+
+    return (urlparse(base_url).hostname or base_url).strip()
+
+
+def _is_tailscale_host(host: str) -> bool:
+    return host.startswith("100.") or host.endswith(".ts.net")
+
+
+def _my_base_for_peer(peer_base_url: str) -> str:
+    """Pick an address of *this* server reachable on the peer's network.
+
+    If we reach the peer over Tailscale, offer our Tailscale address (a LAN IP
+    wouldn't be reachable from their network), otherwise our LAN address.
+    """
+    from suzent.config import DEFAULT_PORT
+
+    if _is_tailscale_host(_host_of(peer_base_url)):
+        for _label, host in _tailscale_addresses():
+            if host.startswith("100."):
+                return f"http://{host}:{DEFAULT_PORT}"
+    return f"http://{_best_effort_lan_host()}:{DEFAULT_PORT}"
+
+
 async def request_control(request: Request) -> JSONResponse:
     """POST /nodes/control — start controlling a peer (loopback/operator).
 
@@ -832,15 +857,29 @@ async def control_status(request: Request) -> JSONResponse:
     status = data.get("status")
     if status == "approved" and data.get("token"):
         store = _get_peer_store(request)
-        peer_id = store.add(name=base, base_url=base, token=data["token"])
+        # Prefer a human name (from discovery) over the bare URL.
+        name = (request.query_params.get("name") or "").strip() or _host_of(base)
+        peer_id = store.add(name=name, base_url=base, token=data["token"])
         return JSONResponse({"status": "approved", "peer_id": peer_id})
     return JSONResponse({"status": status or "pending"})
 
 
 async def list_peers(request: Request) -> JSONResponse:
-    """GET /nodes/peers — peers this device can control."""
+    """GET /nodes/peers — peers this device can control, with live reachability."""
+    from suzent.config import DEFAULT_PORT
+    from suzent.nodes import discovery
+
     store = _get_peer_store(request)
     peers = store.list_peers() if store else []
+
+    async def _probe(p):
+        host = _host_of(p["base_url"])
+        from urllib.parse import urlparse
+
+        port = urlparse(p["base_url"]).port or DEFAULT_PORT
+        p["online"] = await discovery.probe_reachable(host, port, timeout=1.5)
+
+    await asyncio.gather(*(_probe(p) for p in peers), return_exceptions=True)
     return JSONResponse({"peers": peers, "count": len(peers)})
 
 
@@ -897,12 +936,11 @@ async def set_peer_mode(request: Request) -> JSONResponse:
     store.set_mode(peer_id, mode)
 
     if mode == "mutual" and not peer.get("reverse_device_id") and node_manager:
-        from suzent.config import DEFAULT_PORT
-
         device_id, token = node_manager.device_store.mint(
             peer.get("name") or "peer", "peer", scope="agent"
         )
-        my_base = f"http://{_best_effort_lan_host()}:{DEFAULT_PORT}"
+        # Offer an address reachable on the peer's network (Tailscale vs LAN).
+        my_base = _my_base_for_peer(peer["base_url"])
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.post(

@@ -104,13 +104,13 @@ export function DevicesTab(): React.ReactElement {
   // Connect = "I want to control this device": request a grant, poll until the
   // peer's operator approves, then it appears under "Controlling".
   const handleControl = useCallback(
-    async (baseUrl: string) => {
+    async (baseUrl: string, name = '') => {
       setBusy(baseUrl);
       setError(null);
       try {
         const { request_id, base_url } = await requestControl(baseUrl);
         for (let i = 0; i < 90; i++) {
-          const s = await controlStatus(base_url, request_id);
+          const s = await controlStatus(base_url, request_id, name);
           if (s.status === 'approved') break;
           if (s.status === 'denied' || s.status === 'expired') {
             setError(`Control request ${s.status}.`);
@@ -242,15 +242,18 @@ export function DevicesTab(): React.ReactElement {
     for (const p of peers) {
       const k = keyFor(p.name);
       const ex = byKey.get(k);
-      if (ex) ex.peer = p;
-      else
+      if (ex) {
+        ex.peer = p;
+        ex.online = ex.online || !!p.online;
+      } else {
         byKey.set(k, {
           key: `peer:${p.peer_id}`,
           name: p.name,
-          online: false,
+          online: !!p.online,
           isAgent: false,
           peer: p,
         });
+      }
     }
     return [...byKey.values()].sort(
       (a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name)
@@ -427,7 +430,15 @@ export function DevicesTab(): React.ReactElement {
                       .replace(/^ws:\/\//, 'http://')
                       .replace(/^wss:\/\//, 'https://')
                       .replace(/\/ws\/node$/, '');
-                    const already = peers.some((p) => p.base_url === peerBase);
+                    const peerHost = peer.host;
+                    // Already linked if we control it under any address, or by name
+                    // (it may be stored under a different network's address).
+                    const already = peers.some(
+                      (p) =>
+                        p.base_url === peerBase ||
+                        p.base_url.includes(peerHost) ||
+                        p.name.toLowerCase() === peer.name.toLowerCase()
+                    );
                     return (
                       <SettingsListItem key={peer.gateway_url}>
                         <div className="flex items-center justify-between gap-3 w-full">
@@ -444,9 +455,9 @@ export function DevicesTab(): React.ReactElement {
                           <SettingsListAction
                             tone="blue"
                             disabled={busy === peerBase || already}
-                            onClick={() => handleControl(peerBase)}
+                            onClick={() => handleControl(peerBase, peer.name)}
                           >
-                            {already ? 'Controlling' : busy === peerBase ? 'Requesting…' : 'Control'}
+                            {already ? 'Linked' : busy === peerBase ? 'Requesting…' : 'Control'}
                           </SettingsListAction>
                         </div>
                       </SettingsListItem>

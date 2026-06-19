@@ -468,6 +468,7 @@ export interface ControlledPeer {
   base_url: string;
   mode: 'one_way' | 'mutual' | 'paused';
   added_at: string;
+  online?: boolean;
 }
 
 export async function fetchGrants(): Promise<ControlRequest[]> {
@@ -517,8 +518,8 @@ export async function requestControl(baseUrl: string): Promise<{ request_id: str
   return await res.json();
 }
 
-export async function controlStatus(baseUrl: string, requestId: string): Promise<{ status: string; peer_id?: string }> {
-  const url = `${getApiBase()}/nodes/control-status?base_url=${encodeURIComponent(baseUrl)}&request_id=${encodeURIComponent(requestId)}`;
+export async function controlStatus(baseUrl: string, requestId: string, name = ''): Promise<{ status: string; peer_id?: string }> {
+  const url = `${getApiBase()}/nodes/control-status?base_url=${encodeURIComponent(baseUrl)}&request_id=${encodeURIComponent(requestId)}&name=${encodeURIComponent(name)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error((await res.text()) || 'Failed to poll control status');
   return await res.json();
