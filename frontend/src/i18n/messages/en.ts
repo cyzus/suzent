@@ -929,8 +929,10 @@ export const en = {
     ctrlEnter: 'Ctrl+Enter',
     yes: 'Yes',
     yesAnd: 'Yes, and {action}',
+    yesAllowCommandSession: 'Yes, allow {command} for this session',
+    yesAllowCommandGlobal: 'Yes, always allow {command}',
+    no: 'No',
     feedbackPlaceholder: 'No, and tell Suzent what to do differently',
-    skip: 'Skip',
     submit: 'Submit',
   },
   codeStepBlock: {

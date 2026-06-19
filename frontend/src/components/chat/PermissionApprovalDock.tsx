@@ -75,6 +75,23 @@ function getActionDisplayOrder(actions: PermissionAction[]): PermissionAction[] 
   return [...once, ...persistent, ...deny];
 }
 
+function getActionCommand(action: PermissionAction): string | null {
+  for (const update of action.permissionUpdates ?? []) {
+    if (update.type !== 'add_rule') continue;
+    const matcher = update.payload.matcher;
+    if (!matcher || typeof matcher !== 'object' || Array.isArray(matcher)) continue;
+
+    const matcherRecord = matcher as Record<string, unknown>;
+    if (matcherRecord.type !== 'exact_input') continue;
+    const value = matcherRecord.value;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+
+    const command = (value as Record<string, unknown>).command;
+    if (typeof command === 'string' && command.trim()) return command.trim();
+  }
+  return null;
+}
+
 const ApprovalCard: React.FC<{
   approval: PendingApproval;
   onDecision: PermissionApprovalDockProps['onDecision'];
@@ -128,10 +145,6 @@ const ApprovalCard: React.FC<{
     submitAction(action);
   }, [submitAction]);
 
-  const allowActions = React.useMemo(
-    () => orderedActions.filter(action => action.behavior === 'allow'),
-    [orderedActions],
-  );
   const rejectAction = orderedActions.find(action => action.behavior === 'deny');
   React.useEffect(() => {
     if (!keyboardActive) return;
@@ -143,7 +156,7 @@ const ApprovalCard: React.FC<{
       if (isTyping) return;
 
       if (event.ctrlKey && event.key === 'Enter') {
-        const allowOnce = allowActions.find(
+        const allowOnce = orderedActions.find(
           action => action.behavior === 'allow' && action.scope === 'once',
         );
         if (allowOnce) {
@@ -156,20 +169,27 @@ const ApprovalCard: React.FC<{
       if (event.ctrlKey || event.altKey || event.metaKey) return;
 
       const index = Number(event.key) - 1;
-      if (Number.isInteger(index) && allowActions[index]) {
+      if (Number.isInteger(index) && orderedActions[index]) {
         event.preventDefault();
-        selectAction(allowActions[index]);
+        selectAction(orderedActions[index]);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [allowActions, keyboardActive, selectAction]);
+  }, [keyboardActive, orderedActions, selectAction]);
 
   const shortcutFor = (action: PermissionAction) =>
-    allowActions.findIndex(candidate => candidate.id === action.id) + 1;
+    orderedActions.findIndex(candidate => candidate.id === action.id) + 1;
 
-  const allowLabel = (action: PermissionAction): string => {
+  const actionLabel = (action: PermissionAction): string => {
+    if (action.behavior === 'deny') return t('permissionDock.no');
     if (action.scope === 'once') return t('permissionDock.yes');
+    const actionCommand = getActionCommand(action);
+    if (actionCommand) {
+      return action.scope === 'session'
+        ? t('permissionDock.yesAllowCommandSession', { command: actionCommand })
+        : t('permissionDock.yesAllowCommandGlobal', { command: actionCommand });
+    }
     const actionText = `${action.label.charAt(0).toLowerCase()}${action.label.slice(1)}`;
     return t('permissionDock.yesAnd', { action: actionText });
   };
@@ -206,20 +226,20 @@ const ApprovalCard: React.FC<{
       )}
 
       <div className="mx-3 mt-2 overflow-hidden border border-neutral-300 dark:border-zinc-700">
-        {allowActions.map(action => (
+        {orderedActions.map(action => (
           <button
             key={action.id}
             type="button"
             onClick={() => selectAction(action)}
             className="group flex min-h-9 w-full items-center gap-2 border-b border-neutral-200 px-2 text-left text-[10px] font-bold transition-colors last:border-b-0 hover:bg-brutal-yellow hover:text-brutal-black dark:border-zinc-700 dark:hover:bg-brutal-yellow dark:hover:text-brutal-black"
           >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center border border-brutal-black bg-white text-[9px] font-bold text-brutal-black shadow-[1px_1px_0_0_#000] dark:border-neutral-500 dark:bg-zinc-800 dark:text-white group-hover:bg-white group-hover:text-brutal-black">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center border border-neutral-300 bg-transparent text-[9px] font-medium text-neutral-500 dark:border-zinc-600 dark:text-neutral-400 group-hover:border-brutal-black group-hover:bg-white group-hover:text-brutal-black">
               {shortcutFor(action)}
             </span>
-            <span className="min-w-0 flex-1 truncate">
-              {allowLabel(action)}
+            <span className="min-w-0 flex-1 truncate" title={actionLabel(action)}>
+              {actionLabel(action)}
             </span>
-            {action.scope === 'once' && (
+            {action.behavior === 'allow' && action.scope === 'once' && (
               <span className="shrink-0 text-[8px] font-normal uppercase tracking-wide text-neutral-400 group-hover:text-brutal-black/60 dark:text-neutral-500">
                 {t('permissionDock.ctrlEnter')}
               </span>
@@ -249,13 +269,6 @@ const ApprovalCard: React.FC<{
             placeholder={t('permissionDock.feedbackPlaceholder')}
             className="h-7 min-w-0 flex-1 border border-brutal-black bg-white px-2 text-[10px] text-brutal-black outline-none placeholder:text-neutral-400 focus:bg-brutal-yellow/10 dark:border-neutral-500 dark:bg-zinc-800 dark:text-white dark:placeholder:text-neutral-500"
           />
-          <button
-            type="button"
-            onClick={() => submitAction(rejectAction)}
-            className="h-7 shrink-0 border border-brutal-black bg-white px-2 text-[9px] font-bold uppercase tracking-wide text-brutal-black transition-colors hover:bg-brutal-red hover:text-white dark:border-neutral-500 dark:bg-zinc-800 dark:text-white dark:hover:bg-brutal-red"
-          >
-            {t('permissionDock.skip')}
-          </button>
           <button
             type="button"
             disabled={!feedback.trim()}
