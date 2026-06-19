@@ -52,9 +52,13 @@ def extract_token(headers: list[tuple[bytes, bytes]]) -> str:
 
 
 # Routes a remote "agent"-scope token (a control grant) may reach — just enough
-# to trigger this device's agent. Everything else (config, sandbox, peers, …)
-# requires a "full"-scope (host) token or loopback.
-AGENT_ALLOWED_PATHS = {"/chat", "/chat/stop"}
+# to trigger this device's agent and complete the mutual handshake. Everything
+# else (config, sandbox, devices, …) requires a "full"-scope (host) token or
+# loopback.
+#   /chat, /chat/stop  → trigger / stop the agent
+#   /nodes/peer-offer  → the peer offers us a reverse grant (mutual setup);
+#                        it only adds a peer record, can't read or change ours.
+AGENT_ALLOWED_PATHS = {"/chat", "/chat/stop", "/nodes/peer-offer"}
 
 
 def token_scope(token: str, device_store) -> str | None:
