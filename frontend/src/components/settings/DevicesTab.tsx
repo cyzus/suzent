@@ -189,23 +189,27 @@ export function DevicesTab(): React.ReactElement {
     `suzent node host --name "My Device" --url ${gatewayUrl}` +
     (mode === 'token' ? ` --token ${config?.node_auth_token || '<shared-secret>'}` : '');
 
-  // Unified device list: online nodes + durably-approved devices, keyed by name.
-  // deviceId is set only when a durable token exists (i.e. Revoke applies).
-  type MergedDevice = {
+  // One unified row per device, keyed by name, carrying every relationship:
+  //   peer      → I can drive them (mode dropdown)
+  //   deviceId  → they can drive me (a grant I issued; Revoke)
+  //   isAgent / capabilities → currently connected as a WS node
+  type DeviceRow = {
     key: string;
     name: string;
-    platform: string;
+    platform?: string;
     online: boolean;
     isAgent: boolean;
     capabilities?: string;
-    deviceId?: string;
-    approvedAt?: string;
+    deviceId?: string; // grant I issued (they drive me)
     scope?: string;
+    approvedAt?: string;
+    peer?: ControlledPeer; // I drive them
   };
-  const mergedDevices: MergedDevice[] = (() => {
-    const byName = new Map<string, MergedDevice>();
+  const deviceRows: DeviceRow[] = (() => {
+    const byKey = new Map<string, DeviceRow>();
+    const keyFor = (s: string) => s.trim().toLowerCase();
     for (const n of nodes) {
-      byName.set(n.display_name, {
+      byKey.set(keyFor(n.display_name), {
         key: `node:${n.node_id}`,
         name: n.display_name,
         platform: n.platform,
@@ -215,27 +219,40 @@ export function DevicesTab(): React.ReactElement {
       });
     }
     for (const d of devices) {
-      const existing = byName.get(d.display_name);
-      if (existing) {
-        existing.deviceId = d.device_id;
-        existing.approvedAt = d.approved_at;
-        existing.scope = d.scope;
-        existing.online = existing.online || d.connected;
+      const k = keyFor(d.display_name);
+      const ex = byKey.get(k);
+      if (ex) {
+        ex.deviceId = d.device_id;
+        ex.scope = d.scope;
+        ex.approvedAt = d.approved_at;
+        ex.online = ex.online || d.connected;
       } else {
-        byName.set(d.display_name, {
+        byKey.set(k, {
           key: `dev:${d.device_id}`,
           name: d.display_name,
           platform: d.platform,
           online: d.connected,
           isAgent: false,
           deviceId: d.device_id,
-          approvedAt: d.approved_at,
           scope: d.scope,
+          approvedAt: d.approved_at,
         });
       }
     }
-    // Online first, then by name.
-    return [...byName.values()].sort(
+    for (const p of peers) {
+      const k = keyFor(p.name);
+      const ex = byKey.get(k);
+      if (ex) ex.peer = p;
+      else
+        byKey.set(k, {
+          key: `peer:${p.peer_id}`,
+          name: p.name,
+          online: false,
+          isAgent: false,
+          peer: p,
+        });
+    }
+    return [...byKey.values()].sort(
       (a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name)
     );
   })();
@@ -467,187 +484,125 @@ export function DevicesTab(): React.ReactElement {
         </div>
       </SettingsCard>
 
-      {/* ── Control requests (another device wants to drive this one) ── */}
-      {grants.length > 0 && (
-        <SettingsCard>
-          <SectionCardHeader
-            title={`Control requests (${grants.length})`}
-            description="Another device wants to control this one (run its agent). Approve to grant it access."
-          />
-          <div className="space-y-2 mt-3">
-            {grants.map((g) => (
-              <SettingsListItem key={g.request_id}>
-                <div className="flex items-center justify-between gap-3 w-full">
-                  <div className="min-w-0">
-                    <div className="font-bold truncate">
-                      {g.controller_name}
-                      <span className="text-neutral-400 font-normal"> ({g.controller_host || 'unknown'})</span>
-                    </div>
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
-                      wants to control this device
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <SettingsListAction
-                      tone="blue"
-                      disabled={busy === g.request_id}
-                      onClick={() => act(g.request_id, () => approveGrant(g.request_id))}
-                    >
-                      Approve
-                    </SettingsListAction>
-                    <SettingsListAction
-                      tone="red"
-                      disabled={busy === g.request_id}
-                      onClick={() => act(g.request_id, () => denyGrant(g.request_id))}
-                    >
-                      Deny
-                    </SettingsListAction>
-                  </div>
-                </div>
-              </SettingsListItem>
-            ))}
-          </div>
-        </SettingsCard>
-      )}
-
-      {/* ── Controlling (peers this device can drive) ───────────────── */}
-      {peers.length > 0 && (
-        <SettingsCard>
-          <SectionCardHeader
-            title={`Controlling (${peers.length})`}
-            description="Devices this one can drive. The dropdown sets direction: trigger them only, mutual, or paused."
-          />
-          <div className="space-y-2 mt-3">
-            {peers.map((p) => (
-              <SettingsListItem key={p.peer_id}>
-                <div className="flex items-center justify-between gap-3 w-full">
-                  <div className="min-w-0">
-                    <div className="font-bold truncate">{p.name}</div>
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
-                      {p.base_url}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <BrutalSelect
-                      value={p.mode}
-                      onChange={(m) => act(p.peer_id, () => setPeerMode(p.peer_id, m))}
-                      options={[
-                        { value: 'one_way', label: 'Trigger them' },
-                        { value: 'mutual', label: 'Mutual' },
-                        { value: 'paused', label: 'Paused' },
-                      ]}
-                    />
-                    <SettingsListAction
-                      tone="red"
-                      disabled={busy === p.peer_id}
-                      onClick={() => act(p.peer_id, () => removePeer(p.peer_id))}
-                    >
-                      Remove
-                    </SettingsListAction>
-                  </div>
-                </div>
-              </SettingsListItem>
-            ))}
-          </div>
-        </SettingsCard>
-      )}
-
-      {/* ── Pending approvals ───────────────────────────────────────── */}
-      {(mode === 'approve' || pending.length > 0) && (
-        <SettingsCard>
-          <SectionCardHeader
-            title={`Pending approval (${pending.length})`}
-            description="Devices waiting for you to approve their connection."
-          />
-          <div className="space-y-2 mt-3">
-            {pending.length === 0 && (
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
-                Nothing waiting. Run the connect command above on another device and its pairing code will appear here.
-              </p>
-            )}
-            {pending.map((p) => (
-              <SettingsListItem key={p.pairing_code}>
-                <div className="flex items-center justify-between gap-3 w-full">
-                  <div className="min-w-0">
-                    <div className="font-bold truncate">
-                      {p.display_name}{' '}
-                      <span className="text-neutral-400 font-normal">({p.platform})</span>
-                    </div>
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
-                      code <span className="text-brutal-black dark:text-white font-bold">{p.pairing_code}</span> · {capNames(p.capabilities)}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <SettingsListAction
-                      tone="blue"
-                      disabled={busy === p.pairing_code}
-                      onClick={() => act(p.pairing_code, () => approvePendingNode(p.pairing_code))}
-                    >
-                      Approve
-                    </SettingsListAction>
-                    <SettingsListAction
-                      tone="red"
-                      disabled={busy === p.pairing_code}
-                      onClick={() => act(p.pairing_code, () => denyPendingNode(p.pairing_code))}
-                    >
-                      Deny
-                    </SettingsListAction>
-                  </div>
-                </div>
-              </SettingsListItem>
-            ))}
-          </div>
-        </SettingsCard>
-      )}
-
-      {/* ── Devices (connected + approved, unified) ─────────────────── */}
+      {/* ── Devices (one unified card) ──────────────────────────────── */}
       <SettingsCard>
         <SectionCardHeader
-          title={`Devices (${mergedDevices.length})`}
-          description="Online and approved devices. AGENT = exposes its own agent. Revoke removes an approved device's durable token."
+          title={`Devices (${deviceRows.length})`}
+          description="Every device this one is linked to. Requests to approve appear at the top; each linked device shows its direction and controls."
         />
         <div className="space-y-2 mt-3">
-          {mergedDevices.length === 0 && (
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
-              No devices yet.
-            </p>
-          )}
-          {mergedDevices.map((d) => (
-            <SettingsListItem key={d.key}>
+          {/* Incoming requests — another device wants to control this one. */}
+          {grants.map((g) => (
+            <SettingsListItem key={`grant:${g.request_id}`}>
               <div className="flex items-center justify-between gap-3 w-full">
                 <div className="min-w-0">
-                  <div className="font-bold truncate flex items-center gap-2">
-                    <span className={d.online ? 'text-brutal-green' : 'text-neutral-400'}>●</span>
-                    {d.name}
-                    <span className="text-neutral-400 font-normal">({d.platform})</span>
-                    {d.isAgent && (
-                      <span className="px-1.5 py-0.5 text-[10px] font-black uppercase border border-brutal-blue text-brutal-blue rounded-sm">
-                        Agent
-                      </span>
-                    )}
-                    {d.scope === 'full' && (
-                      <span className="px-1.5 py-0.5 text-[10px] font-black uppercase border border-brutal-red text-brutal-red rounded-sm">
-                        Host
-                      </span>
-                    )}
+                  <div className="font-bold truncate">
+                    {g.controller_name}
+                    <span className="text-neutral-400 font-normal"> ({g.controller_host || 'unknown'})</span>
                   </div>
-                  <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
-                    {d.online ? (d.capabilities || 'online') : 'offline'}
-                    {d.approvedAt && <> · approved {d.approvedAt.slice(0, 10)}</>}
+                  <div className="text-xs text-brutal-blue font-mono truncate">
+                    wants to control this device
                   </div>
                 </div>
-                {d.deviceId && (
-                  <SettingsListAction
-                    tone="red"
-                    disabled={busy === d.deviceId}
-                    onClick={() => act(d.deviceId!, () => revokeDevice(d.deviceId!))}
-                  >
-                    Revoke
+                <div className="flex items-center gap-2 shrink-0">
+                  <SettingsListAction tone="blue" disabled={busy === g.request_id} onClick={() => act(g.request_id, () => approveGrant(g.request_id))}>
+                    Approve
                   </SettingsListAction>
-                )}
+                  <SettingsListAction tone="red" disabled={busy === g.request_id} onClick={() => act(g.request_id, () => denyGrant(g.request_id))}>
+                    Deny
+                  </SettingsListAction>
+                </div>
               </div>
             </SettingsListItem>
           ))}
+
+          {/* Incoming WS companion pairings (phones etc.). */}
+          {pending.map((p) => (
+            <SettingsListItem key={`wspend:${p.pairing_code}`}>
+              <div className="flex items-center justify-between gap-3 w-full">
+                <div className="min-w-0">
+                  <div className="font-bold truncate">
+                    {p.display_name}{' '}
+                    <span className="text-neutral-400 font-normal">({p.platform})</span>
+                  </div>
+                  <div className="text-xs text-brutal-blue font-mono truncate">
+                    wants to connect · code {p.pairing_code}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <SettingsListAction tone="blue" disabled={busy === p.pairing_code} onClick={() => act(p.pairing_code, () => approvePendingNode(p.pairing_code))}>
+                    Approve
+                  </SettingsListAction>
+                  <SettingsListAction tone="red" disabled={busy === p.pairing_code} onClick={() => act(p.pairing_code, () => denyPendingNode(p.pairing_code))}>
+                    Deny
+                  </SettingsListAction>
+                </div>
+              </div>
+            </SettingsListItem>
+          ))}
+
+          {deviceRows.length === 0 && grants.length === 0 && pending.length === 0 && (
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
+              No linked devices yet. Use Discover above to find and control another device.
+            </p>
+          )}
+
+          {/* Established links — one row per device, both directions. */}
+          {deviceRows.map((d) => {
+            const drivesThem = !!d.peer; // I can drive them
+            const drivenByMe = !!d.deviceId && !d.peer; // they drive me (one-way inbound)
+            const dirLabel = drivenByMe
+              ? 'can control this device'
+              : d.online
+                ? (d.capabilities || 'online')
+                : 'offline';
+            return (
+              <SettingsListItem key={d.key}>
+                <div className="flex items-center justify-between gap-3 w-full">
+                  <div className="min-w-0">
+                    <div className="font-bold truncate flex items-center gap-2">
+                      <span className={d.online ? 'text-brutal-green' : 'text-neutral-400'}>●</span>
+                      {d.name}
+                      {d.platform && <span className="text-neutral-400 font-normal">({d.platform})</span>}
+                      {d.isAgent && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-black uppercase border border-brutal-blue text-brutal-blue rounded-sm">Agent</span>
+                      )}
+                      {d.scope === 'full' && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-black uppercase border border-brutal-red text-brutal-red rounded-sm">Host</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
+                      {dirLabel}
+                      {d.peer?.base_url ? ` · ${d.peer.base_url}` : ''}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {drivesThem && d.peer && (
+                      <BrutalSelect
+                        value={d.peer.mode}
+                        onChange={(m) => act(d.peer!.peer_id, () => setPeerMode(d.peer!.peer_id, m))}
+                        options={[
+                          { value: 'one_way', label: 'Trigger them' },
+                          { value: 'mutual', label: 'Mutual' },
+                          { value: 'paused', label: 'Paused' },
+                        ]}
+                      />
+                    )}
+                    {drivesThem && d.peer && (
+                      <SettingsListAction tone="red" disabled={busy === d.peer.peer_id} onClick={() => act(d.peer!.peer_id, () => removePeer(d.peer!.peer_id))}>
+                        Remove
+                      </SettingsListAction>
+                    )}
+                    {drivenByMe && d.deviceId && (
+                      <SettingsListAction tone="red" disabled={busy === d.deviceId} onClick={() => act(d.deviceId!, () => revokeDevice(d.deviceId!))}>
+                        Revoke
+                      </SettingsListAction>
+                    )}
+                  </div>
+                </div>
+              </SettingsListItem>
+            );
+          })}
         </div>
       </SettingsCard>
     </div>
