@@ -316,10 +316,10 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     };
 
     return (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1">
           <form
               onSubmit={(e) => { e.preventDefault(); send(); }}
-              className="bg-neutral-50 dark:bg-zinc-800 border-2 border-brutal-black shadow-brutal-sm p-2 flex flex-col gap-2 relative group focus-within:shadow-brutal focus-within:-translate-y-[1px] transition-all duration-200 z-20 text-left"
+              className="bg-neutral-50 dark:bg-zinc-800 border-2 border-brutal-black shadow-brutal-sm p-1.5 flex flex-col gap-1 relative group focus-within:shadow-brutal focus-within:-translate-y-[1px] transition-all duration-200 z-20 text-left"
           >
             {/* Unified file preview section */}
             {selectedFiles.length > 0 && (
@@ -472,7 +472,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                     <pre
                         ref={highlightRef}
                         aria-hidden="true"
-                        className={`absolute inset-0 w-full min-h-[44px] max-h-[200px] overflow-hidden whitespace-pre-wrap break-words pointer-events-none text-brutal-black dark:text-white border-none p-2 ${INPUT_TEXT_METRIC_CLASS}`}
+                        className={`absolute inset-0 w-full min-h-[40px] max-h-[120px] overflow-hidden whitespace-pre-wrap break-words pointer-events-none text-brutal-black dark:text-white border-none px-2 py-1.5 ${INPUT_TEXT_METRIC_CLASS}`}
                     >
                         {renderInputWithFileMentionHighlights(input)}
                         {' '}
@@ -481,7 +481,8 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 <textarea
                     autoFocus
                     ref={textareaRef}
-                    className={`relative w-full resize-none overflow-y-auto min-h-[44px] max-h-[200px] bg-transparent focus:outline-none caret-brutal-black dark:caret-white placeholder-neutral-400 dark:placeholder-neutral-500 placeholder:font-bold border-none p-2 selection:bg-brutal-blue/30 text-left ${shouldHighlightFileMentions ? 'text-transparent' : 'text-brutal-black dark:text-white'} ${INPUT_TEXT_METRIC_CLASS}`}
+                    rows={1}
+                    className={`relative w-full resize-none overflow-y-auto min-h-[40px] max-h-[120px] bg-transparent focus:outline-none caret-brutal-black dark:caret-white placeholder-neutral-400 dark:placeholder-neutral-500 placeholder:font-bold border-none px-2 py-1.5 selection:bg-brutal-blue/30 text-left ${shouldHighlightFileMentions ? 'text-transparent' : 'text-brutal-black dark:text-white'} ${INPUT_TEXT_METRIC_CLASS}`}
                     value={input}
                     onScroll={(e) => {
                         if (shouldHighlightFileMentions && highlightRef.current) {
@@ -624,7 +625,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             </div>
 
             {/* Button row */}
-            <div className="flex flex-nowrap items-center gap-2 pt-1 pl-2 pr-1">
+            <div className="flex flex-nowrap items-center gap-2 px-1 pb-0.5">
                 {/* Left: folder + attachment */}
                 <FolderContextPicker
                     onMount={handleMountFolder}
@@ -707,7 +708,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 
           {!hideConfigSelector && (
             <div
-              className="flex items-center px-2"
+              className="flex items-center px-1"
               title={t(`chatWindow.permissionModeDescriptions.${permissionMode}`)}
             >
               <BrutalSelect
@@ -721,7 +722,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 hideChevron={true}
                 disabled={!configReady || streamingForCurrentChat || isSavingPermissionMode}
                 className="inline-block w-auto"
-                buttonClassName="!h-7 !w-auto !gap-1.5 !border-0 !bg-transparent dark:!bg-transparent !px-0 !py-0 !font-sans !text-[13px] !font-medium !normal-case !tracking-normal !text-neutral-600 dark:!text-neutral-400 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-transparent hover:!text-brutal-black dark:hover:!bg-transparent dark:hover:!text-white"
+                buttonClassName="!h-6 !w-auto !gap-1.5 !border-0 !bg-transparent dark:!bg-transparent !px-0 !py-0 !font-sans !text-xs !font-medium !normal-case !tracking-normal !text-neutral-600 dark:!text-neutral-400 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-transparent hover:!text-brutal-black dark:hover:!bg-transparent dark:hover:!text-white"
                 dropdownClassName="min-w-[220px] font-mono text-[10px]"
               />
             </div>

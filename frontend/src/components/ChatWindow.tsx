@@ -1468,8 +1468,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
-      textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+      textarea.style.height = '0px';
+      textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 40), 120)}px`;
     }
   }, [input, isRightSidebarOpen]);
 
@@ -1790,7 +1790,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             ref={scrollContainerRef}
             className={safeMessages.length === 0
               ? "h-full overflow-hidden p-4 md:p-6 pb-2 bg-neutral-50 dark:bg-zinc-900"
-              : "h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-6 scrollbar-thin bg-neutral-50 dark:bg-zinc-900"
+              : "h-full overflow-y-auto overflow-x-hidden px-4 md:px-6 pt-3 pb-2 scrollbar-thin bg-neutral-50 dark:bg-zinc-900"
             }
           >
             {isProbablyLoadingChatMessages ? (
@@ -1891,7 +1891,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
         {/* Input Panel (shown when messages exist) */}
         {safeMessages.length > 0 && (
-          <div className="p-4 flex flex-col gap-3 bg-neutral-50 dark:bg-zinc-900 relative z-10 shrink-0">
+          <div className="px-2 pt-2 pb-1 flex flex-col gap-2 bg-neutral-50 dark:bg-zinc-900 relative z-10 shrink-0">
             {hasPendingTransientApprovals && (
               <PermissionApprovalDock
                 parts={streamingParts}
