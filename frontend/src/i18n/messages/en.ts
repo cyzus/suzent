@@ -703,11 +703,21 @@ export const en = {
     permissionModeTitle: 'Tool permission mode',
     permissionModeLabel: 'Mode',
     autoModeConfirmation: 'Auto mode uses a security classifier to approve low-risk actions without asking. Hard denies still apply. Enable Auto mode?',
+    autoModeDialogTitle: 'Enable Auto mode?',
+    autoModeCancel: 'Cancel',
+    autoModeEnable: 'Enable',
     permissionModes: {
       default: 'Ask',
       accept_edits: 'Edit',
       plan: 'Plan',
       auto: 'Auto',
+      strict_readonly: 'Read only',
+    },
+    permissionModeInputLabels: {
+      default: 'Ask permissions',
+      accept_edits: 'Edit automatically',
+      plan: 'Plan mode',
+      auto: 'Auto mode',
       strict_readonly: 'Read only',
     },
     permissionModeDescriptions: {

@@ -1,13 +1,14 @@
 import React from 'react';
 import { BrutalSelect } from './BrutalSelect';
-import { ConfigOptions, ChatConfig } from '../types/api';
+import { BrutalDialog } from './BrutalDialog';
+import { ConfigOptions, ChatConfig, type PermissionMode } from '../types/api';
 import { open } from '@tauri-apps/plugin-dialog';
 import { FileIcon } from './FileIcon';
 import { PaperClipIcon, XMarkIcon, FolderIcon } from '@heroicons/react/24/outline';
 import { FolderContextPicker } from './chat/FolderContextPicker';
 import { useI18n } from '../i18n';
 import { useSlashCommands } from '../hooks/useSlashCommands';
-import { getApiBase } from '../lib/api';
+import { getApiBase, setChatPermissionMode } from '../lib/api';
 import { buildMountedVolumes } from '../lib/volumeMounts';
 
 interface ChatInputPanelProps {
@@ -52,6 +53,13 @@ interface FileMentionSuggestion extends FileMentionSelection {
 const FILE_MENTION_PATTERN = /(^|\s)(@(?:"[^"]+"|\[[^\]]+\]|\/[^\s@]+))/g;
 const INPUT_TEXT_METRIC_CLASS =
     'text-lg leading-7 tracking-normal font-sans font-medium [tab-size:4]';
+const PERMISSION_MODES: PermissionMode[] = [
+    'default',
+    'accept_edits',
+    'plan',
+    'auto',
+    'strict_readonly',
+];
 
 function getFileExtensionLabel(filename: string): string {
     const ext = filename.split('.').pop()?.trim().toUpperCase();
@@ -163,12 +171,47 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     const [selectedMentionSuggestion, setSelectedMentionSuggestion] = React.useState(0);
     const [mentionRange, setMentionRange] = React.useState<{ start: number; end: number; query: string } | null>(null);
     const [isMentionLoading, setIsMentionLoading] = React.useState(false);
+    const [isSavingPermissionMode, setIsSavingPermissionMode] = React.useState(false);
+    const [pendingPermissionMode, setPendingPermissionMode] = React.useState<PermissionMode | null>(null);
     const highlightRef = React.useRef<HTMLPreElement | null>(null);
     const isComposingRef = React.useRef(false);
     const shouldHighlightFileMentions = hasFileMentionHighlight(input);
     const suggestions = useSlashCommands(input);
+    const permissionMode = config.permission_mode ?? 'default';
     React.useEffect(() => { setSelectedSuggestion(0); }, [suggestions.length]);
     React.useEffect(() => { setSelectedMentionSuggestion(0); }, [mentionSuggestions.length]);
+
+    const applyPermissionMode = React.useCallback(async (nextMode: PermissionMode) => {
+        if (isSavingPermissionMode || nextMode === permissionMode) return;
+
+        const previous = permissionMode;
+        setConfig(prev => ({ ...prev, permission_mode: nextMode }));
+        if (!currentChatId) return;
+
+        setIsSavingPermissionMode(true);
+        try {
+            const state = await setChatPermissionMode(currentChatId, nextMode);
+            setConfig(prev => ({ ...prev, permission_mode: state.mode }));
+        } catch {
+            setConfig(prev => ({ ...prev, permission_mode: previous }));
+        } finally {
+            setIsSavingPermissionMode(false);
+        }
+    }, [
+        currentChatId,
+        isSavingPermissionMode,
+        permissionMode,
+        setConfig,
+    ]);
+
+    const changePermissionMode = React.useCallback((nextMode: PermissionMode) => {
+        if (isSavingPermissionMode || nextMode === permissionMode) return;
+        if (nextMode === 'auto') {
+            setPendingPermissionMode(nextMode);
+            return;
+        }
+        void applyPermissionMode(nextMode);
+    }, [applyPermissionMode, isSavingPermissionMode, permissionMode]);
 
     const updateMentionRange = React.useCallback((value: string, caret: number | null | undefined) => {
         if (caret == null) {
@@ -273,10 +316,11 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     };
 
     return (
-        <form
-            onSubmit={(e) => { e.preventDefault(); send(); }}
-            className="bg-neutral-50 dark:bg-zinc-800 border-2 border-brutal-black shadow-brutal-sm p-2 flex flex-col gap-2 relative group focus-within:shadow-brutal focus-within:-translate-y-[1px] transition-all duration-200 z-20 text-left"
-        >
+        <div className="flex flex-col gap-2">
+          <form
+              onSubmit={(e) => { e.preventDefault(); send(); }}
+              className="bg-neutral-50 dark:bg-zinc-800 border-2 border-brutal-black shadow-brutal-sm p-2 flex flex-col gap-2 relative group focus-within:shadow-brutal focus-within:-translate-y-[1px] transition-all duration-200 z-20 text-left"
+          >
             {/* Unified file preview section */}
             {selectedFiles.length > 0 && (
                 <div className="flex flex-col gap-2 p-2 mb-1">
@@ -581,7 +625,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 
             {/* Button row */}
             <div className="flex flex-nowrap items-center gap-2 pt-1 pl-2 pr-1">
-                {/* Left: folder + attachment — shrink-0 so they're always fully visible */}
+                {/* Left: folder + attachment */}
                 <FolderContextPicker
                     onMount={handleMountFolder}
                     activeVolumes={config.sandbox_volumes || []}
@@ -659,6 +703,47 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                     </button>
                 )}
             </div>
-        </form>
+          </form>
+
+          {!hideConfigSelector && (
+            <div
+              className="flex items-center px-2"
+              title={t(`chatWindow.permissionModeDescriptions.${permissionMode}`)}
+            >
+              <BrutalSelect
+                value={permissionMode}
+                onChange={value => changePermissionMode(value as PermissionMode)}
+                options={PERMISSION_MODES.map(option => ({
+                  value: option,
+                  label: t(`chatWindow.permissionModeInputLabels.${option}`),
+                }))}
+                dropUp={true}
+                hideChevron={true}
+                disabled={!configReady || streamingForCurrentChat || isSavingPermissionMode}
+                className="inline-block w-auto"
+                buttonClassName="!h-7 !w-auto !gap-1.5 !border-0 !bg-transparent dark:!bg-transparent !px-0 !py-0 !font-sans !text-[13px] !font-medium !normal-case !tracking-normal !text-neutral-600 dark:!text-neutral-400 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-transparent hover:!text-brutal-black dark:hover:!bg-transparent dark:hover:!text-white"
+                dropdownClassName="min-w-[220px] font-mono text-[10px]"
+              />
+            </div>
+          )}
+
+          <BrutalDialog
+            open={pendingPermissionMode === 'auto'}
+            title={t('chatWindow.autoModeDialogTitle')}
+            message={t('chatWindow.autoModeConfirmation')}
+            onClose={() => setPendingPermissionMode(null)}
+            actions={[
+              {
+                label: t('chatWindow.autoModeCancel'),
+                tone: 'default',
+              },
+              {
+                label: t('chatWindow.autoModeEnable'),
+                tone: 'primary',
+                onClick: () => applyPermissionMode('auto'),
+              },
+            ]}
+          />
+        </div>
     );
 };

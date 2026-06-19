@@ -7,8 +7,7 @@ import { useSubAgentStatus } from '../hooks/useSubAgentStatus';
 import { useContextUsageStore, type ContextUsage } from '../hooks/useContextUsageStore';
 import { useCompact } from '../hooks/useCompact';
 import { useDreamStatus } from '../hooks/useDreamStatus';
-import { enableHeartbeat, disableHeartbeat, setHeartbeatInterval, fetchHeartbeatMd, saveHeartbeatMd, setChatPermissionMode } from '../lib/api';
-import type { PermissionMode } from '../types/api';
+import { enableHeartbeat, disableHeartbeat, setHeartbeatInterval, fetchHeartbeatMd, saveHeartbeatMd } from '../lib/api';
 import { BrutalOnOff } from './BrutalOnOff';
 
 const getStatusStyles = (type: StatusType) => {
@@ -618,64 +617,6 @@ function SubAgentWidget() {
   );
 }
 
-const PERMISSION_MODES: PermissionMode[] = [
-  'default',
-  'accept_edits',
-  'plan',
-  'auto',
-  'strict_readonly',
-];
-
-function PermissionModeWidget() {
-  const { currentChatId, config, setConfig } = useChatCoreStore();
-  const { t } = useI18n();
-  const [saving, setSaving] = useState(false);
-  const mode = config.permission_mode ?? 'default';
-
-  const changeMode = async (nextMode: PermissionMode) => {
-    if (saving || nextMode === mode) return;
-    if (
-      nextMode === 'auto'
-      && !window.confirm(t('chatWindow.autoModeConfirmation'))
-    ) {
-      return;
-    }
-    const previous = mode;
-    setConfig(prev => ({ ...prev, permission_mode: nextMode }));
-    if (!currentChatId) return;
-    setSaving(true);
-    try {
-      const state = await setChatPermissionMode(currentChatId, nextMode);
-      setConfig(prev => ({ ...prev, permission_mode: state.mode }));
-    } catch {
-      setConfig(prev => ({ ...prev, permission_mode: previous }));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <label
-      className="ml-3 flex items-center gap-1 text-[9px]"
-      title={t(`chatWindow.permissionModeDescriptions.${mode}`)}
-    >
-      <span className="hidden md:inline opacity-60">{t('chatWindow.permissionModeLabel')}</span>
-      <select
-        value={mode}
-        disabled={saving}
-        onChange={event => changeMode(event.target.value as PermissionMode)}
-        className="h-5 border border-current bg-transparent px-1 text-[9px] font-bold uppercase focus:outline-none disabled:opacity-50"
-      >
-        {PERMISSION_MODES.map(option => (
-          <option key={option} value={option} className="text-black">
-            {t(`chatWindow.permissionModes.${option}`)}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
 function DreamWidget({ onOpenMemorySettings }: { onOpenMemorySettings?: () => void }) {
   const { status, loading, error } = useDreamStatus();
   const { t } = useI18n();
@@ -747,7 +688,6 @@ export const StatusBar: React.FC<StatusBarProps> = ({ onOpenMemorySettings }) =>
       </div>
       {/* Right: context usage + sub-agent indicator + heartbeat */}
       <ContextWidget />
-      <PermissionModeWidget />
       <SubAgentWidget />
       <DreamWidget onOpenMemorySettings={onOpenMemorySettings} />
       <HeartbeatWidget />

@@ -629,12 +629,22 @@ export const zhCN = {
     permissionModeTitle: '工具权限模式',
     permissionModeLabel: '模式',
     autoModeConfirmation: '自动模式会使用安全分类器在不询问的情况下批准低风险操作，强制拒绝规则仍然生效。是否启用自动模式？',
+    autoModeDialogTitle: '启用自动模式？',
+    autoModeCancel: '取消',
+    autoModeEnable: '启用',
     permissionModes: {
       default: '询问',
       accept_edits: '自动编辑',
       plan: '计划',
       auto: '自动',
       strict_readonly: '只读',
+    },
+    permissionModeInputLabels: {
+      default: '询问权限',
+      accept_edits: '自动编辑',
+      plan: '计划模式',
+      auto: '自动模式',
+      strict_readonly: '只读模式',
     },
     permissionModeDescriptions: {
       default: '执行会改变状态的工具操作前先询问。',
