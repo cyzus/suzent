@@ -106,20 +106,19 @@ kind/direction). Drive a peer's agent from the terminal:
 suzent nodes trigger <peer-name-or-id> "summarize ~/notes"
 ```
 
-## Peer agents (`agent.run`)
+## Peer agents (Suzent channel)
 
-A node may advertise `agent.run`, which runs a prompt through *that device's
-own* Suzent agent and returns its final reply — letting one agent delegate to
-another linked device. Agent runs are slow, so set a generous `timeout`:
+Drive another linked device's agent through the **Suzent channel** — the target
+runs *its own* agent for your session and streams the reply back:
 
-```python
-result = requests.post(
-    f"{base}/nodes/{node_id}/invoke",
-    json={"command": "agent.run", "params": {"prompt": "summarize ~/notes"},
-          "timeout": 300},
-    timeout=320,
-).json()
+```bash
+suzent nodes trigger <peer-name-or-id> "summarize ~/notes"
 ```
+
+Programmatically, a controller POSTs to the peer's `/channels/suzent/inbound`
+with its grant token (`Authorization: Bearer <token>`) and reads the SSE reply.
+The old `agent.run` node capability was removed (node capabilities are now just
+device hardware like `speaker.speak`/`camera.snap`).
 
 ## Examples
 

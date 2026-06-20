@@ -1,8 +1,15 @@
 # Migration Plan — Agent-to-Agent Triggering → a Suzent Channel
 
-Status: proposed. Experimental PR — **no backward-compat constraints**; we can
-delete the duplicate path outright. See [nodes.md](./nodes.md) and
-[security-plan.md](./security-plan.md).
+Status: **implemented** (experimental PR, no backward-compat). See
+[nodes.md](./nodes.md) and [security-plan.md](./security-plan.md).
+
+Done: SuzentChannel inbound + inline streaming (`/channels/suzent/inbound`);
+session keyed by the authenticated peer id; `trigger` routes through the channel;
+`agent.run` removed; revocation propagation (`grant-changed` + `whoami`
+self-verify). Refinement: the scoped device token *is* the per-peer auth, so the
+grant-request/approve flow is kept as the pairing (no separate allowlist) and
+only `agent.run` + the `/chat`-based trigger were deleted. Not done (deferred):
+a full `SocialChannel` driver in `ChannelManager` (inline was chosen per §10.4).
 
 ## 1. Problem
 

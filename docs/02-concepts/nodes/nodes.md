@@ -250,21 +250,22 @@ The bootstrap endpoints (`POST /nodes/grant-request`, `GET
 secret, only queue an operator-gated request, are rate-capped + TTL'd, and the
 token is served once against an unguessable `request_id`.
 
-## Peer agents (`agent.run`)
+## Peer agents (Suzent channel)
 
-A node host advertises an `agent.run` capability that runs a prompt through
-**that device's own Suzent agent** (its own files, memory, tools) and returns
-the final reply. This is what lets each device be both a host and a node and
-**trigger another linked device's agent**:
+Triggering another linked device's agent goes through the **Suzent channel**
+(`POST /channels/suzent/inbound`), not a node capability. A peer you control
+sends the prompt; the target runs *its own* agent (its files, memory, tools) for
+your session (`suzent:<peer_id>`) and streams the reply back. See the
+[migration plan](./agent-channel-migration-plan.md).
 
 ```bash
-# From device A, delegate a task to device B's agent:
-suzent node invoke "Device B" agent.run prompt="summarize ~/notes" --timeout 300
+# From device A, drive device B's agent (B must have granted A control):
+suzent nodes trigger "Device B" "summarize ~/notes"
 ```
 
-Agent runs can take minutes, so pass `--timeout` (the REST `invoke` body also
-accepts a `timeout` field). The node host reaches its own local server's
-`/chat` endpoint; override that base URL with `suzent node host --server-url`.
+> `agent.run` (the old node capability) was removed — node capabilities are now
+> only device hardware (`speaker.speak`, `camera.snap`). Agent-to-agent runs use
+> the channel, which streams and reuses the `/chat` machinery.
 
 ## Making the server reachable
 
@@ -347,9 +348,9 @@ receives a **durable per-device token** and reconnects silently thereafter.
 | `approve` | A new device is parked as **pending** and an operator must approve it. On approval the server mints a durable per-device token the node persists and reuses; revoke it per-device to force re-pairing. |
 
 > ⚠️ **Plaintext transport.** `ws://` traffic is unencrypted — the token only
-> protects you on a trusted network or over `wss://`/a tunnel. `agent.run` is
-> effectively authenticated remote code execution, so never expose an `open`
-> server (or your token) on an untrusted network.
+> protects you on a trusted network or over `wss://`/a tunnel. Driving a peer's
+> agent is effectively authenticated remote code execution, so never expose an
+> `open` server (or your token) on an untrusted network.
 
 ### Token mode
 
@@ -391,9 +392,9 @@ so approval is a one-time step. The server stores the durable tokens in
 The same actions are available via REST (`GET /nodes/pending`,
 `POST /nodes/pending/{code}/approve|deny`, `GET /nodes/devices`,
 `POST /nodes/devices/{device_id}/revoke`, and `GET|POST /nodes/config`) and via
-**Settings → Devices**, which lists connected nodes (with an **Agent** badge for
-`agent.run`-capable devices), pending approvals, durable devices, and the auth
-mode/token.
+**Settings → Devices**, a single unified list (connected nodes, peers you drive
+with a direction dropdown, devices that can drive you), pending approvals, and
+the auth mode/token.
 
 ## Configuration
 
