@@ -31,7 +31,11 @@ _WS_EXEMPT_PATHS = {"/ws/node"}
 # HTTP bootstrap paths reachable from remote without a token. These issue no
 # secret — they only queue a control request an operator must approve, and the
 # requester polls with an unguessable request_id. See node_routes.grant_request.
-_HTTP_EXEMPT_PREFIXES = ("/nodes/grant-request", "/nodes/grant-status/")
+_HTTP_EXEMPT_PREFIXES = (
+    "/nodes/grant-request",
+    "/nodes/grant-status/",
+    "/channels/suzent/grant-changed",  # untrusted revoke hint; receiver re-verifies
+)
 
 
 def is_http_exempt(path: str) -> bool:
@@ -64,6 +68,7 @@ AGENT_ALLOWED_PATHS = {
     "/nodes/peer-offer",
     "/nodes/peer-invoke",  # run a local capability on behalf of a controller
     "/channels/suzent/inbound",  # peer agent-to-agent messages
+    "/channels/suzent/whoami",  # peer token-validity self-check
 }
 
 

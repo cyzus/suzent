@@ -364,16 +364,31 @@ async def create_host_token(request: Request) -> JSONResponse:
 
 
 async def revoke_device(request: Request) -> JSONResponse:
-    """POST /nodes/devices/{device_id}/revoke — Revoke a device's token."""
+    """POST /nodes/devices/{device_id}/revoke — Revoke a device's token.
+
+    Best-effort notifies the holder (revocation propagation) so its UI/contact
+    can update; the holder self-verifies, so the hint needn't be authenticated.
+    """
     node_manager = _get_node_manager(request)
     device_id = request.path_params.get("device_id", "")
     if not node_manager:
         return JSONResponse({"error": "Node system not initialized"}, status_code=503)
+    # Capture the holder's callback before the record is gone.
+    rec = node_manager.device_store.get_by_device_id(device_id)
     ok = node_manager.revoke_device(device_id)
     if not ok:
         return JSONResponse(
             {"success": False, "message": "Unknown device"}, status_code=404
         )
+    callback = (rec or {}).get("callback_url")
+    if callback:
+        import httpx
+
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                await client.post(f"{callback}/channels/suzent/grant-changed", json={})
+        except httpx.HTTPError:
+            pass  # best-effort; the holder also discovers it on next call
     return JSONResponse({"success": True, "message": "Revoked"})
 
 
@@ -697,8 +712,13 @@ async def grant_request(request: Request) -> JSONResponse:
         body = {}
     name = str(body.get("controller_name") or "").strip() or "unknown"
     host = request.client.host if request.client else ""
+    addr = (
+        _http_base(str(body.get("controller_addr") or ""))
+        if body.get("controller_addr")
+        else ""
+    )
     try:
-        rid = node_manager.add_grant_request(name, host)
+        rid = node_manager.add_grant_request(name, host, controller_addr=addr)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=429)
     return JSONResponse({"request_id": rid, "status": "pending"})
@@ -817,10 +837,14 @@ async def request_control(request: Request) -> JSONResponse:
     import socket
 
     my_name = socket.gethostname()
+    # Tell the grantor where to reach us (for revoke notifications), on the same
+    # network we're reaching them.
+    my_addr = _my_base_for_peer(base)
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.post(
-                f"{base}/nodes/grant-request", json={"controller_name": my_name}
+                f"{base}/nodes/grant-request",
+                json={"controller_name": my_name, "controller_addr": my_addr},
             )
             r.raise_for_status()
             data = r.json()

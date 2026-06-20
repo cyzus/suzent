@@ -48,6 +48,8 @@ class GrantRequest:
     request_id: str
     controller_name: str
     controller_host: str
+    # The requester's own reachable base URL, so we can notify it on revoke.
+    controller_addr: str = ""
     requested_at: float = field(default_factory=time.time)
     status: str = "pending"  # pending | approved | denied
     # Minted on approval, handed to the requester exactly once, then cleared.
@@ -256,10 +258,14 @@ class NodeManager:
         ]:
             self._grant_requests.pop(rid, None)
 
-    def add_grant_request(self, controller_name: str, controller_host: str) -> str:
+    def add_grant_request(
+        self, controller_name: str, controller_host: str, controller_addr: str = ""
+    ) -> str:
         """Queue a remote peer's request to control this device. Returns its id.
 
         Issues no token — only an operator approval mints one. Capped + TTL'd.
+        ``controller_addr`` is the requester's reachable base URL (for revoke
+        notifications).
         """
         self._expire_grants()
         if len(self._grant_requests) >= MAX_PENDING_GRANTS:
@@ -269,6 +275,7 @@ class NodeManager:
             request_id=rid,
             controller_name=controller_name or "unknown",
             controller_host=controller_host or "",
+            controller_addr=controller_addr or "",
         )
         logger.info(
             f"Control request from '{controller_name}' ({controller_host}) [{rid[:6]}…]"
@@ -296,7 +303,7 @@ class NodeManager:
         if not g or g.status != "pending":
             return False
         _device_id, token = self.device_store.mint(
-            g.controller_name, "peer", scope="agent"
+            g.controller_name, "peer", scope="agent", callback_url=g.controller_addr
         )
         g.status = "approved"
         g.token = token

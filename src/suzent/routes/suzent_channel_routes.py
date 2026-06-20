@@ -65,3 +65,51 @@ async def suzent_channel_inbound(request: Request):
         config_override=config_override,
     )
     return StreamingResponse(generator, media_type="text/event-stream")
+
+
+async def suzent_channel_whoami(request: Request) -> JSONResponse:
+    """GET /channels/suzent/whoami — lightweight token check for peers.
+
+    Agent-scoped: a peer calls this with its grant token to confirm the token is
+    still valid (used by revocation self-verification). Returns the peer id.
+    """
+    from suzent.auth_boundary import extract_token
+
+    nm = getattr(getattr(request, "app", None).state, "node_manager", None)
+    token = extract_token(request.headers.raw)
+    rec = nm.device_store.verify(token) if (nm and token) else None
+    return JSONResponse({"ok": True, "peer_id": (rec or {}).get("device_id")})
+
+
+async def suzent_channel_grant_changed(request: Request) -> JSONResponse:
+    """POST /channels/suzent/grant-changed — a grantor signals our access changed.
+
+    Auth-exempt **hint** (not trusted): on receipt we re-verify each peer we hold
+    a token for by calling its /whoami; peers whose token is now rejected are
+    dropped. A spoofed notice just triggers a harmless re-check.
+    """
+    import httpx
+
+    store = getattr(getattr(request, "app", None).state, "peer_store", None)
+    if not store:
+        return JSONResponse({"ok": True, "removed": 0})
+
+    removed = 0
+    for listed in store.list_peers():
+        rec = store.get(listed["peer_id"])
+        if not rec:
+            continue
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                r = await client.get(
+                    f"{rec['base_url']}/channels/suzent/whoami",
+                    headers={"Authorization": f"Bearer {rec['token']}"},
+                )
+            if r.status_code in (401, 403):
+                store.remove(listed["peer_id"])
+                removed += 1
+        except httpx.HTTPError:
+            pass  # unreachable != revoked — keep it
+    if removed:
+        logger.info(f"Suzent channel: dropped {removed} revoked peer(s)")
+    return JSONResponse({"ok": True, "removed": removed})

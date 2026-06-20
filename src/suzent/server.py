@@ -230,7 +230,11 @@ from suzent.routes.subagent_routes import (
     stream_subagents,
 )
 from suzent.routes.event_bus_routes import event_bus_stream
-from suzent.routes.suzent_channel_routes import suzent_channel_inbound
+from suzent.routes.suzent_channel_routes import (
+    suzent_channel_inbound,
+    suzent_channel_whoami,
+    suzent_channel_grant_changed,
+)
 from suzent.channels.manager import ChannelManager
 from suzent.nodes.manager import NodeManager
 
@@ -979,6 +983,12 @@ app = Starlette(
         Route("/nodes/peer-offer", peer_offer, methods=["POST"]),
         Route("/nodes/peer-invoke", peer_invoke, methods=["POST"]),
         Route("/channels/suzent/inbound", suzent_channel_inbound, methods=["POST"]),
+        Route("/channels/suzent/whoami", suzent_channel_whoami, methods=["GET"]),
+        Route(
+            "/channels/suzent/grant-changed",
+            suzent_channel_grant_changed,
+            methods=["POST"],
+        ),
         Route("/nodes/peers", list_peers, methods=["GET"]),
         Route("/nodes/peers/{peer_id}/invoke", invoke_peer, methods=["POST"]),
         Route("/nodes/peers/{peer_id}/mode", set_peer_mode, methods=["POST"]),

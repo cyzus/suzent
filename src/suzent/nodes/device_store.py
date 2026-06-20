@@ -66,13 +66,19 @@ class DeviceTokenStore:
             logger.warning(f"Device store: could not persist {self._path}: {e}")
 
     def mint(
-        self, display_name: str, platform: str, scope: str = "node"
+        self,
+        display_name: str,
+        platform: str,
+        scope: str = "node",
+        callback_url: str = "",
     ) -> tuple[str, str]:
         """Create and persist a new device token. Returns (device_id, token).
 
         ``scope`` controls what a remote bearer of this token may reach:
         ``node`` (WS companion, no HTTP), ``agent`` (trigger the agent only), or
         ``full`` (host access — everything). Enforced in the auth boundary.
+        ``callback_url`` is the holder's address, used to notify it if we later
+        revoke this token (revocation propagation).
         """
         device_id = uuid.uuid4().hex[:12]
         token = secrets.token_urlsafe(32)
@@ -82,6 +88,7 @@ class DeviceTokenStore:
                 "display_name": display_name,
                 "platform": platform,
                 "scope": scope,
+                "callback_url": callback_url,
                 "approved_at": _now_iso(),
             }
             self._save()
@@ -89,6 +96,14 @@ class DeviceTokenStore:
             f"Device store: minted {scope} token for '{display_name}' ({device_id})"
         )
         return device_id, token
+
+    def get_by_device_id(self, device_id: str) -> dict[str, Any] | None:
+        """Return a device record by its device_id (no token), else None."""
+        with self._lock:
+            for rec in self._devices.values():
+                if rec.get("device_id") == device_id:
+                    return dict(rec)
+        return None
 
     def verify(self, token: str) -> dict[str, Any] | None:
         """Return the device record for a valid token, else None."""

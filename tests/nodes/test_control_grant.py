@@ -89,3 +89,62 @@ class TestPeerStore:
         pid = s1.add("Mac", "http://h:1", "t")
         s2 = PeerGrantStore(path=path)
         assert s2.get(pid) is not None
+
+
+# ─── Revocation propagation (Phase 2b) ───────────────────────────────
+
+
+def test_device_store_callback(tmp_path):
+    store = DeviceTokenStore(path=tmp_path / "d.json")
+    did, _tok = store.mint("Peer", "peer", scope="agent", callback_url="http://b:1")
+    rec = store.get_by_device_id(did)
+    assert rec is not None and rec["callback_url"] == "http://b:1"
+    assert store.get_by_device_id("nope") is None
+
+
+def test_grant_changed_drops_revoked_peer(tmp_path, monkeypatch):
+    import httpx
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    from suzent.nodes.peer_store import PeerGrantStore
+    from suzent.routes.suzent_channel_routes import suzent_channel_grant_changed
+
+    store = PeerGrantStore(path=tmp_path / "peers.json")
+    pid = store.add("B", "http://b:1", "tok")
+
+    class FakeResp:
+        status_code = 403  # peer says our token is no longer valid
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *e):
+            return False
+
+        async def get(self, *a, **k):
+            return FakeResp()
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+
+    app = Starlette(
+        routes=[
+            Route(
+                "/channels/suzent/grant-changed",
+                suzent_channel_grant_changed,
+                methods=["POST"],
+            )
+        ]
+    )
+    app.state.peer_store = store
+    client = TestClient(app)
+
+    r = client.post("/channels/suzent/grant-changed", json={})
+    assert r.status_code == 200
+    assert r.json()["removed"] == 1
+    assert store.get(pid) is None  # revoked peer dropped after self-verify
