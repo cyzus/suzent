@@ -1056,7 +1056,9 @@ async def remove_peer(request: Request) -> JSONResponse:
 async def trigger_peer(request: Request):
     """POST /nodes/peers/{peer_id}/trigger — run a prompt on the peer, stream SSE.
 
-    Body: {"prompt": str, "chat_id"?: str}. Proxies the peer's /chat SSE stream.
+    Body: {"prompt": str, "chat_id"?: str}. Sends through the peer's Suzent
+    channel (/channels/suzent/inbound) — the peer keys the session by our
+    authenticated identity and streams its agent's reply back.
     """
     from starlette.responses import StreamingResponse
 
@@ -1075,11 +1077,11 @@ async def trigger_peer(request: Request):
     if not prompt:
         return JSONResponse({"error": "prompt is required"}, status_code=400)
 
-    payload = {"message": prompt, "stream": True}
+    payload = {"content": prompt}
     if body.get("chat_id"):
         payload["chat_id"] = body["chat_id"]
     headers = {"Authorization": f"Bearer {peer['token']}"}
-    url = f"{peer['base_url']}/chat"
+    url = f"{peer['base_url']}/channels/suzent/inbound"
 
     async def _stream():
         import httpx

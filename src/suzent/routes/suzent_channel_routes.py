@@ -31,9 +31,21 @@ async def suzent_channel_inbound(request: Request):
     if not content:
         return JSONResponse({"error": "content is required"}, status_code=400)
 
-    from_id = (body.get("from_id") or "peer").strip()
-    # Stable per-peer session, keyed by the contact (peer) id — decision §10.1.
-    chat_id = body.get("chat_id") or f"suzent:{from_id}"
+    # Identify the peer from its authenticated token (the contact/device id) —
+    # decision §10.1: session keyed by peer id, not a spoofable body field. The
+    # scoped device token *is* the per-peer authorization (no separate allowlist).
+    peer_id = (body.get("from_id") or "peer").strip()
+    try:
+        from suzent.auth_boundary import extract_token
+
+        nm = getattr(getattr(request, "app", None).state, "node_manager", None)
+        token = extract_token(request.headers.raw)
+        rec = nm.device_store.verify(token) if (nm and token) else None
+        if rec:
+            peer_id = rec.get("device_id", peer_id)
+    except Exception:
+        pass
+    chat_id = body.get("chat_id") or f"suzent:{peer_id}"
 
     from suzent.agent_manager import build_agent_config
     from suzent.core.chat_processor import ChatProcessor
