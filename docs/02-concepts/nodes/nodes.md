@@ -294,6 +294,9 @@ enforces a loopback-trusted, **scope-gated** model:
 - The **`/ws/node` handshake** and the **grant bootstrap** endpoints are exempt;
   `GET /nodes/config` never returns the shared secret to a non-loopback caller.
 
+> Identity model and the plan to harden it (bearer tokens today, TLS/key options
+> for untrusted networks) live in [security-plan.md](./security-plan.md).
+
 So a granted peer can drive your agent and **nothing else** — it can't read your
 config or files. To use a device fully from afar, mint a **host token**
 (Settings → Devices → *Remote host access → Create host token*); it carries
