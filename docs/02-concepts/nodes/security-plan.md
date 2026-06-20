@@ -1,7 +1,10 @@
 # Node Mesh — Security & Identity Plan
 
 Status: living doc. Captures how device identity/auth works today and the
-hardening roadmap. See [nodes.md](./nodes.md) for the user-facing feature docs.
+hardening roadmap. See [nodes.md](./nodes.md) for the user-facing feature docs
+and [agent-channel-migration-plan.md](./agent-channel-migration-plan.md) for the
+plan to move agent-to-agent triggering behind the channels stack (which unifies
+the duplicate pairing flow this doc describes).
 
 ## 1. How a device is bound today
 
