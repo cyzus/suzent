@@ -1,6 +1,6 @@
 """
-Tests for node auth (open/token/approve), durable device tokens, the
-agent.run capability, and per-invoke timeout.
+Tests for node auth (open/token/approve), durable device tokens, and
+per-invoke timeout.
 """
 
 import asyncio
@@ -224,83 +224,3 @@ class TestInvokeTimeout:
         # No result is ever delivered, so a short override must time out fast.
         with pytest.raises(TimeoutError):
             await node.invoke("x", {}, timeout=0.05)
-
-
-# ─── agent.run capability ────────────────────────────────────────────
-
-
-class _FakeResp:
-    def __init__(self, lines):
-        self._lines = lines
-
-    def raise_for_status(self):
-        pass
-
-    async def aiter_lines(self):
-        for line in self._lines:
-            yield line
-
-
-class _FakeStream:
-    def __init__(self, lines):
-        self._lines = lines
-
-    async def __aenter__(self):
-        return _FakeResp(self._lines)
-
-    async def __aexit__(self, *exc):
-        return False
-
-
-class _FakeClient:
-    lines: list = []
-
-    def __init__(self, *args, **kwargs):
-        pass
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
-
-    def stream(self, method, url, json=None):
-        return _FakeStream(_FakeClient.lines)
-
-
-class TestAgentRun:
-    @pytest.mark.asyncio
-    async def test_accumulates_text_deltas(self, monkeypatch):
-        import httpx
-
-        from suzent.nodes.node_host import _HANDLERS
-
-        _FakeClient.lines = [
-            'data: {"type":"TEXT_MESSAGE_CONTENT","delta":"Hello "}',
-            'data: {"type":"TEXT_MESSAGE_CONTENT","delta":"world"}',
-            "data: [DONE]",
-        ]
-        monkeypatch.setattr(httpx, "AsyncClient", _FakeClient)
-        result = await _HANDLERS["agent.run"]({"prompt": "hi"})
-        assert result["output"] == "Hello world"
-
-    @pytest.mark.asyncio
-    async def test_empty_prompt(self):
-        from suzent.nodes.node_host import _HANDLERS
-
-        result = await _HANDLERS["agent.run"]({"prompt": "   "})
-        assert "error" in result
-
-    @pytest.mark.asyncio
-    async def test_run_error_surfaced(self, monkeypatch):
-        import httpx
-
-        from suzent.nodes.node_host import _HANDLERS
-
-        _FakeClient.lines = [
-            'data: {"type":"RUN_ERROR","message":"boom"}',
-            "data: [DONE]",
-        ]
-        monkeypatch.setattr(httpx, "AsyncClient", _FakeClient)
-        result = await _HANDLERS["agent.run"]({"prompt": "x"})
-        assert result["error"] == "boom"

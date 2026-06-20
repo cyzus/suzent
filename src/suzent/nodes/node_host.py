@@ -30,11 +30,8 @@ DEFAULT_DISPLAY_NAME = "Local PC"
 DEFAULT_PLATFORM = sys.platform
 RECONNECT_DELAY = 5  # seconds between reconnect attempts
 
-# agent.run drives a full agent turn, which can take minutes.
-AGENT_RUN_TIMEOUT = 600  # seconds
-
-# HTTP base URL of the local Suzent server, used by agent.run to reach /chat.
-# Set by NodeHost on construction; defaults to the standard local server.
+# HTTP base URL of the local Suzent server (reserved for future local-server
+# capabilities). Set by NodeHost on construction.
 _SERVER_BASE_URL: str = f"http://{DEFAULT_HOST}:{DEFAULT_PORT}"
 
 
@@ -159,58 +156,10 @@ async def handle_camera_snap(params: dict[str, Any]) -> dict[str, Any]:
     return {"file": path, "format": fmt}
 
 
-@capability(
-    name="agent.run",
-    description=(
-        "Run a prompt through THIS device's own Suzent agent and return its "
-        "final reply. Lets a remote agent delegate work to this device's agent "
-        "(its own files, memory, tools)."
-    ),
-    params_schema={
-        "prompt": "(required) The task/prompt to run on this device's agent",
-        "chat_id": "(optional) Reuse an existing chat for continuity",
-    },
-)
-async def handle_agent_run(params: dict[str, Any]) -> dict[str, Any]:
-    """Drive a full agent turn via the local server's /chat SSE stream."""
-    import json as _json
-
-    import httpx
-
-    prompt = (params.get("prompt") or "").strip()
-    if not prompt:
-        return {"error": "No prompt provided"}
-
-    chat_id = params.get("chat_id")
-    payload: dict[str, Any] = {"message": prompt, "stream": True}
-    if chat_id:
-        payload["chat_id"] = chat_id
-
-    url = f"{_SERVER_BASE_URL}/chat"
-    output = ""
-    try:
-        async with httpx.AsyncClient(timeout=AGENT_RUN_TIMEOUT) as client:
-            async with client.stream("POST", url, json=payload) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    data = line[len("data: ") :].strip()
-                    if data == "[DONE]":
-                        break
-                    try:
-                        event = _json.loads(data)
-                    except _json.JSONDecodeError:
-                        continue
-                    etype = event.get("type")
-                    if etype == "TEXT_MESSAGE_CONTENT":
-                        output += event.get("delta", "")
-                    elif etype == "RUN_ERROR":
-                        return {"error": event.get("message") or "Agent run failed"}
-    except httpx.HTTPError as e:
-        return {"error": f"Failed to reach local agent at {url}: {e}"}
-
-    return {"output": output, "chat_id": chat_id}
+# NOTE: agent.run was removed. Triggering a device's agent now goes through the
+# Suzent channel (POST /channels/suzent/inbound), not a node capability. Node
+# capabilities are for device hardware (speaker, camera). See
+# docs/02-concepts/nodes/agent-channel-migration-plan.md.
 
 
 # ─── Durable device-token persistence (node side) ────────────────────
