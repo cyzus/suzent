@@ -63,6 +63,7 @@ AGENT_ALLOWED_PATHS = {
     "/chat/stop",
     "/nodes/peer-offer",
     "/nodes/peer-invoke",  # run a local capability on behalf of a controller
+    "/channels/suzent/inbound",  # peer agent-to-agent messages
 }
 
 

@@ -132,11 +132,33 @@ unaffected.
 - Capability RPC (`peer-invoke`) still works against the repurposed contact store.
 - Auth boundary: `agent` scope reaches `/channels/suzent/inbound`, not config.
 
-## 10. Open decisions
+## 10. Decisions (resolved)
 
-- [ ] Contact identity: peer **id** vs **name** vs base_url as `sender_id`
-      (affects session continuity + dedup we already hit).
-- [ ] Does mutual = two contacts, or one bidirectional contact record?
-- [ ] Keep `agent.run` as a node capability at all, or is it fully subsumed by
-      the SuzentChannel message path? (Lean: subsumed; drop `agent.run`.)
-- [ ] Streaming sink shape in `SocialBrain` (per-request callback vs return-gen).
+- [x] **Contact identity = peer id.** `sender_id` is the stable contact/device id
+      minted at pairing (one per side); name is display only, address is
+      reachability only. Chat session = `suzent:<peer_id>`.
+- [x] **Two independent contacts.** Each side owns its contact + token; "mutual"
+      is derived ("I have them AND they have me"). **Added requirement:** when A
+      revokes B or changes B's scope, **B must be notified** — propagate the
+      change (B self-verifies on receipt; see §2b below).
+- [x] **`agent.run` fully subsumed.** Drop it as a node capability; agent
+      triggering goes only through the SuzentChannel. Node capabilities stay for
+      hardware (`speaker.speak`, `camera.snap`).
+- [x] **Start inline.** The SuzentChannel inbound route runs the turn directly and
+      streams (reusing the `/chat` path); SocialBrain is used for auth/allowlist/
+      session bookkeeping. Upgrade to a streaming sink only if steer/queue is
+      needed for peer sessions.
+
+## 2b. Revocation / scope-change propagation
+
+Two independent contacts means a grantor must tell the grantee when access
+changes. When the grantor (B) revokes or re-scopes the holder (A):
+
+1. B records A's callback base_url at pairing.
+2. On revoke/scope change, B sends a best-effort
+   `POST {A}/channels/suzent/grant-changed { status: revoked|rescoped, scope? }`.
+3. The notice is a **hint, not trusted**: on receipt A re-verifies by making a
+   real authenticated call back to B; if it now 401/403s (or returns the new
+   scope), A updates its contact record + UI. This avoids needing strong auth on
+   the callback (a spoofed notice just makes A double-check and find nothing
+   changed).
