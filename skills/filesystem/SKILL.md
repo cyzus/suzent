@@ -15,8 +15,9 @@ You are running directly on the host machine.
 
 ### Sandbox Mode (Isolated)
 When sandbox is enabled, you MUST use **virtual paths**:
-- `/persistence` - session private directory
-- `/shared` - workspace shared across sessions
+- `/workspace` - project workspace (your cwd; shared across all chats in this project)
+- `/persistence` - legacy alias for `/workspace` (same project workspace)
+- `/shared` - global directory, shared across all projects
 - `/mnt/skills` - skills directory
 - `/mnt/...` - other mapped volumes
 
