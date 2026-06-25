@@ -31,6 +31,6 @@ When referencing files for the user, format as clickable markdown links:
 
 Examples:
 - "I saved the report to [report.pdf](file:///D:/workspace/report.pdf)" (Host example)
-- "Check [data.csv](file:///persistence/data.csv) for the analysis" (Sandbox example)
+- "Check [data.csv](file:///workspace/data.csv) for the analysis" (Sandbox example)
 - "Created [config.json](file:///shared/config.json)" (Sandbox example)
 
