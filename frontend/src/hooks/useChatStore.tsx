@@ -218,11 +218,34 @@ const configsEqual = (a?: ChatConfig | null, b?: ChatConfig | null): boolean => 
     return false;
   };
 
+  const recordEqual = (
+    left?: Record<string, unknown>,
+    right?: Record<string, unknown>
+  ) => {
+    if (left === right) return true;
+    const l = left ?? {};
+    const r = right ?? {};
+    const lKeys = Object.keys(l).sort();
+    const rKeys = Object.keys(r).sort();
+    if (!arrayEqual(lKeys, rKeys)) return false;
+    return lKeys.every(key => l[key] === r[key]);
+  };
+
   return (
     a.model === b.model &&
     a.agent === b.agent &&
     arrayEqual(a.tools, b.tools) &&
-    mcpUrlsEqual(a.mcp_urls, b.mcp_urls)
+    mcpUrlsEqual(a.mcp_urls, b.mcp_urls) &&
+    // Chat-scoped fields that affect a turn must be compared too, otherwise a
+    // mid-chat change (e.g. mounting a folder via the working-dir picker) is
+    // treated as a no-op and never persisted to the chat's config — leaving the
+    // backend with stale sandbox_volumes / permissions for the next turn.
+    a.sandbox_enabled === b.sandbox_enabled &&
+    arrayEqual(a.sandbox_volumes, b.sandbox_volumes) &&
+    a.memory_enabled === b.memory_enabled &&
+    a.permission_mode === b.permission_mode &&
+    recordEqual(a.mcp_enabled, b.mcp_enabled) &&
+    recordEqual(a.tool_approval_policy, b.tool_approval_policy)
   );
 };
 
