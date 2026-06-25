@@ -50,6 +50,24 @@
       "max_output_tokens": 8192,
       "supports_function_calling": true,
       "supports_prompt_caching": true
+    },
+    "deepseek/deepseek-v4-flash": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 8192,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
+    },
+    "deepseek/deepseek-v4-pro": {
+      "mode": "chat",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 8192,
+      "supports_vision": false,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
     }
   }
 }

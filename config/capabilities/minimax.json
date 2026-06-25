@@ -66,7 +66,7 @@
     },
     "minimax/MiniMax-M3": {
       "mode": "chat",
-      "max_input_tokens": 512000,
+      "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
       "supports_vision": true,
       "supports_function_calling": true,

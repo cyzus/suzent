@@ -922,6 +922,15 @@
     },
     "dashscope/glm-5.2": {
       "mode": "chat"
+    },
+    "dashscope/fun-asr-flash-2026-06-15": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-image-2.0-pro-2026-06-22": {
+      "mode": "chat"
+    },
+    "dashscope/test-sre-gpu-auto-handle": {
+      "mode": "chat"
     }
   }
 }
