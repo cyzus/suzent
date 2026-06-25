@@ -361,6 +361,7 @@ async def _refresh_provider_models() -> None:
         from suzent.core.providers.helpers import resolve_api_key
         from suzent.core.model_registry import (
             save_discovered_models,
+            prune_stale_models,
             get_model_registry,
         )
 
@@ -374,7 +375,9 @@ async def _refresh_provider_models() -> None:
                 provider = ProviderFactory.get_provider(spec.id, {})
                 models = await provider.list_models()
                 if models:
-                    save_discovered_models(spec.id, [m.id for m in models])
+                    model_ids = [m.id for m in models]
+                    save_discovered_models(spec.id, model_ids)
+                    prune_stale_models(spec.id, model_ids)
                     refreshed += 1
             except Exception:
                 pass  # credentials invalid or network unreachable — skip silently

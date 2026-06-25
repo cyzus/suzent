@@ -8,6 +8,7 @@ from suzent.core.model_registry import (
     ModelCapabilities,
     ModelRegistry,
     get_model_registry,
+    prune_stale_models,
 )
 
 
@@ -170,3 +171,70 @@ class TestModelRegistryCustomJSON:
             )
             registry.reload()
             assert len(registry.list_models()) == 2
+
+
+class TestPruneStaleModels:
+    """Tests for prune_stale_models — automatic deprecation cleanup."""
+
+    def _write(self, tmp_path, provider_id, models):
+        cap_dir = tmp_path / "capabilities"
+        cap_dir.mkdir(exist_ok=True)
+        (cap_dir / f"{provider_id}.json").write_text(
+            json.dumps({"models": models}), encoding="utf-8"
+        )
+        return cap_dir
+
+    def _read(self, cap_dir, provider_id):
+        return json.loads(
+            (cap_dir / f"{provider_id}.json").read_text(encoding="utf-8")
+        )["models"]
+
+    def test_removes_stale_stub(self, tmp_path):
+        cap_dir = self._write(
+            tmp_path,
+            "acme",
+            {"acme/new": {"mode": "chat"}, "acme/old": {"mode": "chat"}},
+        )
+        with patch("suzent.core.model_registry._CAPABILITIES_DIR", cap_dir):
+            removed = prune_stale_models("acme", ["acme/new"])
+
+        assert removed == ["acme/old"]
+        assert set(self._read(cap_dir, "acme")) == {"acme/new"}
+
+    def test_keeps_curated_entry_even_if_absent(self, tmp_path):
+        cap_dir = self._write(
+            tmp_path,
+            "acme",
+            {
+                "acme/curated": {"mode": "chat", "max_input_tokens": 128000},
+                "acme/stub": {"mode": "chat"},
+            },
+        )
+        with patch("suzent.core.model_registry._CAPABILITIES_DIR", cap_dir):
+            removed = prune_stale_models("acme", ["acme/something-else"])
+
+        assert removed == ["acme/stub"]
+        assert "acme/curated" in self._read(cap_dir, "acme")
+
+    def test_empty_live_list_is_noop(self, tmp_path):
+        cap_dir = self._write(tmp_path, "acme", {"acme/old": {"mode": "chat"}})
+        with patch("suzent.core.model_registry._CAPABILITIES_DIR", cap_dir):
+            removed = prune_stale_models("acme", [])
+
+        assert removed == []
+        assert "acme/old" in self._read(cap_dir, "acme")
+
+    def test_preserves_doc_keys(self, tmp_path):
+        cap_dir = self._write(
+            tmp_path, "acme", {"_doc": {"mode": "chat"}, "acme/old": {"mode": "chat"}}
+        )
+        with patch("suzent.core.model_registry._CAPABILITIES_DIR", cap_dir):
+            prune_stale_models("acme", ["acme/keep-nothing"])
+
+        assert "_doc" in self._read(cap_dir, "acme")
+
+    def test_missing_file_returns_empty(self, tmp_path):
+        cap_dir = tmp_path / "capabilities"
+        cap_dir.mkdir()
+        with patch("suzent.core.model_registry._CAPABILITIES_DIR", cap_dir):
+            assert prune_stale_models("nope", ["nope/x"]) == []

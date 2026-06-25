@@ -461,10 +461,13 @@ async def verify_provider(request: Request) -> JSONResponse:
             if models:
                 from suzent.core.model_registry import (
                     save_discovered_models,
+                    prune_stale_models,
                     get_model_registry,
                 )
 
-                save_discovered_models("chatgpt", [m.id for m in models])
+                chatgpt_ids = [m.id for m in models]
+                save_discovered_models("chatgpt", chatgpt_ids)
+                prune_stale_models("chatgpt", chatgpt_ids)
                 get_model_registry().reload()
             return JSONResponse(
                 {
@@ -486,10 +489,13 @@ async def verify_provider(request: Request) -> JSONResponse:
         if models:
             from suzent.core.model_registry import (
                 save_discovered_models,
+                prune_stale_models,
                 get_model_registry,
             )
 
-            save_discovered_models(provider_id, [m.id for m in models])
+            discovered_ids = [m.id for m in models]
+            save_discovered_models(provider_id, discovered_ids)
+            prune_stale_models(provider_id, discovered_ids)
             get_model_registry().reload()
 
         return JSONResponse(

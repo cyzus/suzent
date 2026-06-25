@@ -221,6 +221,62 @@ async def sync_from_litellm() -> dict[str, int]:
     return stats
 
 
+def _is_auto_discovered(entry: dict) -> bool:
+    """True if an entry is a bare discovery stub (only a ``mode`` key, no
+    curated metadata). Such entries are safe to prune when the provider no
+    longer lists the model; hand-curated entries (with token limits, flags,
+    pricing, etc.) are always preserved.
+    """
+    return set(entry.keys()) <= {"mode"}
+
+
+def prune_stale_models(provider_id: str, live_model_ids: list[str]) -> list[str]:
+    """Remove auto-discovered model stubs that the provider no longer offers.
+
+    Compares the stored models in ``config/capabilities/{provider_id}.json``
+    against ``live_model_ids`` (the provider's current catalog). Any entry that
+    is a bare discovery stub (see :func:`_is_auto_discovered`) and is absent
+    from the live catalog is treated as deprecated and removed. Curated entries
+    are never touched, since not every provider's ``list_models`` is exhaustive.
+
+    Returns the list of removed model IDs. No-op (returns ``[]``) when the live
+    catalog is empty, to avoid wiping a file on a failed/partial discovery.
+    """
+    if not live_model_ids:
+        return []
+
+    cap_file = _CAPABILITIES_DIR / f"{provider_id}.json"
+    if not cap_file.exists():
+        return []
+
+    try:
+        existing = json.loads(cap_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+
+    models: dict = existing.get("models", {})
+    live = set(live_model_ids)
+    removed: list[str] = []
+
+    for model_id in list(models):
+        if model_id.startswith("_"):
+            continue  # preserve doc/example keys
+        if model_id in live:
+            continue
+        if _is_auto_discovered(models[model_id]):
+            del models[model_id]
+            removed.append(model_id)
+
+    if removed:
+        existing["models"] = models
+        cap_file.write_text(
+            json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        logger.info("Pruned {} stale model(s) from {}", len(removed), cap_file.name)
+
+    return removed
+
+
 def save_discovered_models(provider_id: str, model_ids: list[str]) -> None:
     """Persist newly discovered model IDs to config/capabilities/{provider_id}.json.
 
