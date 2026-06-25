@@ -84,15 +84,6 @@
       "supports_response_schema": true,
       "supports_prompt_caching": true
     },
-    "gemini/gemma-3-1b-it": {
-      "mode": "chat"
-    },
-    "gemini/gemma-3-4b-it": {
-      "mode": "chat"
-    },
-    "gemini/gemma-3-12b-it": {
-      "mode": "chat"
-    },
     "gemini/gemma-3-27b-it": {
       "mode": "chat",
       "max_input_tokens": 131072,
@@ -100,12 +91,6 @@
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true
-    },
-    "gemini/gemma-3n-e4b-it": {
-      "mode": "chat"
-    },
-    "gemini/gemma-3n-e2b-it": {
-      "mode": "chat"
     },
     "gemini/gemma-4-26b-a4b-it": {
       "mode": "chat"
@@ -397,15 +382,6 @@
       "supports_vision": true,
       "supports_function_calling": true
     },
-    "gemini/imagen-3.0-fast-generate-001": {
-      "mode": "image_generation"
-    },
-    "gemini/imagen-3.0-generate-001": {
-      "mode": "image_generation"
-    },
-    "gemini/imagen-3.0-generate-002": {
-      "mode": "image_generation"
-    },
     "gemini/learnlm-1.5-pro-experimental": {
       "mode": "chat",
       "max_input_tokens": 32767,
@@ -482,6 +458,15 @@
     },
     "gemini/gemini-3.1-flash-image": {
       "mode": "chat"
+    },
+    "gemini/imagen-3.0-fast-generate-001": {
+      "mode": "image_generation"
+    },
+    "gemini/imagen-3.0-generate-001": {
+      "mode": "image_generation"
+    },
+    "gemini/imagen-3.0-generate-002": {
+      "mode": "image_generation"
     }
   }
 }

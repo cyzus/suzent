@@ -16,18 +16,6 @@
       "supports_reasoning": true,
       "supports_prompt_caching": true
     },
-    "minimax/speech-02-hd": {
-      "mode": "tts"
-    },
-    "minimax/speech-02-turbo": {
-      "mode": "tts"
-    },
-    "minimax/speech-2.6-hd": {
-      "mode": "tts"
-    },
-    "minimax/speech-2.6-turbo": {
-      "mode": "tts"
-    },
     "minimax/MiniMax-M2.1-lightning": {
       "mode": "chat",
       "max_input_tokens": 1000000,
@@ -52,18 +40,6 @@
       "supports_reasoning": true,
       "supports_prompt_caching": true
     },
-    "minimax/MiniMax-M2.7": {
-      "mode": "chat"
-    },
-    "minimax/MiniMax-M2.7-highspeed": {
-      "mode": "chat"
-    },
-    "minimax/MiniMax-M2.5-highspeed": {
-      "mode": "chat"
-    },
-    "minimax/MiniMax-M2.1-highspeed": {
-      "mode": "chat"
-    },
     "minimax/MiniMax-M3": {
       "mode": "chat",
       "max_input_tokens": 1000000,
@@ -72,6 +48,18 @@
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
+    },
+    "minimax/speech-02-hd": {
+      "mode": "tts"
+    },
+    "minimax/speech-02-turbo": {
+      "mode": "tts"
+    },
+    "minimax/speech-2.6-hd": {
+      "mode": "tts"
+    },
+    "minimax/speech-2.6-turbo": {
+      "mode": "tts"
     }
   }
 }

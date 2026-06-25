@@ -575,43 +575,10 @@
     "dashscope/qwen3-livetranslate-flash-realtime-2025-09-22": {
       "mode": "chat"
     },
-    "dashscope/qwen2.5-14b-instruct-1m": {
-      "mode": "chat"
-    },
-    "dashscope/qwen2.5-7b-instruct-1m": {
-      "mode": "chat"
-    },
-    "dashscope/qwen-max-2025-01-25": {
-      "mode": "chat"
-    },
-    "dashscope/qwq-plus-2025-03-05": {
-      "mode": "chat"
-    },
-    "dashscope/qwen2.5-vl-32b-instruct": {
-      "mode": "chat"
-    },
     "dashscope/qvq-max": {
       "mode": "chat"
     },
     "dashscope/qwen-omni-turbo": {
-      "mode": "chat"
-    },
-    "dashscope/qwen-vl-max-2025-04-08": {
-      "mode": "chat"
-    },
-    "dashscope/qwen-vl-plus-2025-01-25": {
-      "mode": "chat"
-    },
-    "dashscope/qwen-vl-plus-latest": {
-      "mode": "chat"
-    },
-    "dashscope/qwen-vl-max-latest": {
-      "mode": "chat"
-    },
-    "dashscope/qwen-vl-plus-2025-05-07": {
-      "mode": "chat"
-    },
-    "dashscope/qwen-turbo-2025-07-15": {
       "mode": "chat"
     },
     "dashscope/qwen3-235b-a22b-instruct-2507": {
@@ -638,9 +605,6 @@
     "dashscope/deepseek-v3.1": {
       "mode": "chat"
     },
-    "dashscope/qwen-vl-plus-2025-08-15": {
-      "mode": "chat"
-    },
     "dashscope/qwen3-coder-480b-a35b-instruct": {
       "mode": "chat"
     },
@@ -656,15 +620,6 @@
     "dashscope/qvq-plus": {
       "mode": "chat"
     },
-    "dashscope/qvq-plus-2025-05-15": {
-      "mode": "chat"
-    },
-    "dashscope/qvq-max-2025-05-15": {
-      "mode": "chat"
-    },
-    "dashscope/qwen3-4b": {
-      "mode": "chat"
-    },
     "dashscope/qwen3-32b": {
       "mode": "chat"
     },
@@ -674,16 +629,7 @@
     "dashscope/qwen3-14b": {
       "mode": "chat"
     },
-    "dashscope/qwen3-1.7b": {
-      "mode": "chat"
-    },
-    "dashscope/qwen3-0.6b": {
-      "mode": "chat"
-    },
     "dashscope/qwen3-8b": {
-      "mode": "chat"
-    },
-    "dashscope/qwen-vl-max-2025-04-02": {
       "mode": "chat"
     },
     "dashscope/deepseek-v3": {
@@ -725,49 +671,13 @@
     "dashscope/qwen-coder-plus": {
       "mode": "chat"
     },
-    "dashscope/qwen-coder-plus-latest": {
-      "mode": "chat"
-    },
-    "dashscope/qwen2.5-coder-14b-instruct": {
-      "mode": "chat"
-    },
-    "dashscope/qwen2.5-coder-32b-instruct": {
-      "mode": "chat"
-    },
-    "dashscope/qwen2.5-32b-instruct": {
-      "mode": "chat"
-    },
-    "dashscope/qwen-max-latest": {
-      "mode": "chat"
-    },
     "dashscope/qwen-turbo-0919": {
-      "mode": "chat"
-    },
-    "dashscope/qwen-math-turbo-0919": {
-      "mode": "chat"
-    },
-    "dashscope/qwen-coder-turbo-latest": {
-      "mode": "chat"
-    },
-    "dashscope/qwen2.5-math-72b-instruct": {
-      "mode": "chat"
-    },
-    "dashscope/qwen2.5-7b-instruct": {
-      "mode": "chat"
-    },
-    "dashscope/qwen2.5-14b-instruct": {
       "mode": "chat"
     },
     "dashscope/qwen2.5-0.5b-instruct": {
       "mode": "chat"
     },
     "dashscope/qwen-math-plus": {
-      "mode": "chat"
-    },
-    "dashscope/qwen-max-0919": {
-      "mode": "chat"
-    },
-    "dashscope/qwen-math-turbo-latest": {
       "mode": "chat"
     },
     "dashscope/qwen-math-turbo": {
@@ -779,28 +689,13 @@
     "dashscope/qwen-math-plus-0919": {
       "mode": "chat"
     },
-    "dashscope/qwen-coder-turbo-0919": {
-      "mode": "chat"
-    },
     "dashscope/qwen-coder-turbo": {
-      "mode": "chat"
-    },
-    "dashscope/qwen2.5-math-7b-instruct": {
-      "mode": "chat"
-    },
-    "dashscope/qwen2.5-coder-7b-instruct": {
-      "mode": "chat"
-    },
-    "dashscope/qwen2.5-72b-instruct": {
       "mode": "chat"
     },
     "dashscope/qwen2.5-1.5b-instruct": {
       "mode": "chat"
     },
     "dashscope/qwen2.5-math-1.5b-instruct": {
-      "mode": "chat"
-    },
-    "dashscope/qwen2.5-3b-instruct": {
       "mode": "chat"
     },
     "dashscope/qwen2-1.5b-instruct": {
@@ -822,9 +717,6 @@
       "mode": "chat"
     },
     "dashscope/qwen-vl-plus": {
-      "mode": "chat"
-    },
-    "dashscope/qwen-max-0428": {
       "mode": "chat"
     },
     "dashscope/qwen1.5-110b-chat": {
@@ -909,9 +801,6 @@
       "mode": "chat"
     },
     "dashscope/qwen3.5-ocr": {
-      "mode": "chat"
-    },
-    "dashscope/qwentype-api-dingtalk": {
       "mode": "chat"
     },
     "dashscope/kimi/kimi-k2.7-code": {

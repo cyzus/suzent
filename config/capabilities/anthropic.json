@@ -46,12 +46,6 @@
     "anthropic/claude-opus-4-1-20250805": {
       "mode": "chat"
     },
-    "anthropic/claude-opus-4-20250514": {
-      "mode": "chat"
-    },
-    "anthropic/claude-sonnet-4-20250514": {
-      "mode": "chat"
-    },
     "anthropic/claude-opus-4-8": {
       "mode": "chat"
     },

@@ -21,9 +21,6 @@
     "zhipuai/glm-5.1": {
       "mode": "chat"
     },
-    "zai/glm-4.7-flash": {
-      "mode": "chat"
-    },
     "zhipuai/glm-5.2": {
       "mode": "chat"
     }
