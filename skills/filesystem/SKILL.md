@@ -8,8 +8,8 @@ description: Become a helpful co-worker in the workspace. Use it whenever you ne
 ### Host Mode
 You are running directly on the host machine.
 - **Environment Variables**: Use standard locations via environment variables:
-  - Windows: `%PERSISTENCE_PATH%`, `%SHARED_PATH%`, `%MOUNT_SKILLS%`
-  - POSIX: `$PERSISTENCE_PATH`, `$SHARED_PATH`, `$MOUNT_SKILLS`
+  - Windows: `%PROJECT_PATH%`, `%SHARED_PATH%`, `%MOUNT_SKILLS%`
+  - POSIX: `$PROJECT_PATH`, `$SHARED_PATH`, `$MOUNT_SKILLS`
 - **Host Paths**: `GlobTool` and `GrepTool` return absolute host paths (e.g., `D:\workspace\...`). Use them directly.
 - **Tools**: `ReadFileTool`, `WriteFileTool`, and `BashTool` all accept host paths.
 

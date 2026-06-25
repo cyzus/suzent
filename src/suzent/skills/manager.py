@@ -212,6 +212,10 @@ class SkillManager:
             ("/shared/memory", "${SHARED_PATH}/memory"),
             ("/shared", "${SHARED_PATH}"),
             ("/workspace", "${PROJECT_PATH}"),
+            # /persistence is a legacy virtual alias for the per-chat project dir
+            # (PathResolver maps it to project_dir). On the host it maps to PROJECT_PATH;
+            # there is no PERSISTENCE_PATH env var.
+            ("/persistence", "${PROJECT_PATH}"),
         ]
 
         adapted = content

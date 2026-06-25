@@ -7,7 +7,7 @@ Suzent provides secure file access and code execution through two modes: **Sandb
 | Mode | BashTool | File Tools | Path Style |
 |------|----------|------------|------------|
 | **Sandbox** | Runs in Docker container | Virtual filesystem | `/persistence`, `/shared`, `/mnt/*` |
-| **Host** | Runs on host | Host filesystem | `$PERSISTENCE_PATH`, `$SHARED_PATH`, `$MOUNT_*` |
+| **Host** | Runs on host | Host filesystem | `$PROJECT_PATH`, `$SHARED_PATH`, `$MOUNT_*` |
 
 Toggle sandbox in the chat settings panel when creating a conversation.
 
@@ -146,7 +146,7 @@ In host mode, use these environment variables in bash commands:
 
 | Variable | Points To |
 |----------|-----------|
-| `$PERSISTENCE_PATH` | Session directory (same as `pwd`) |
+| `$PROJECT_PATH` | Session directory (same as `pwd`) |
 | `$SHARED_PATH` | Shared directory |
 | `$MOUNT_SKILLS` | Skills directory |
 | `$MOUNT_*` | Other mounted volumes |

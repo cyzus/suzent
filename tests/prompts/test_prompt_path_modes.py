@@ -54,6 +54,30 @@ def test_skill_content_host_mode_rewrites_virtual_paths():
     assert "${MOUNT_NOTEBOOK}" in content
 
 
+def test_skill_content_host_mode_rewrites_persistence_alias():
+    # /persistence is a legacy virtual alias for the per-chat project dir. On the
+    # host there is no PERSISTENCE_PATH env var, so it must be rewritten to
+    # ${PROJECT_PATH} (the filesystem skill references /persistence in its
+    # sandbox-mode section).
+    manager = SkillManager(skills_dir=PROJECT_DIR / "skills")
+
+    content = manager.get_skill_content("filesystem-skill", sandbox_enabled=False)
+
+    assert content is not None
+    assert "/persistence" not in content
+    assert "PERSISTENCE_PATH" not in content
+    assert "${PROJECT_PATH}" in content
+
+
+def test_skill_content_sandbox_mode_keeps_persistence_alias():
+    manager = SkillManager(skills_dir=PROJECT_DIR / "skills")
+
+    content = manager.get_skill_content("filesystem-skill", sandbox_enabled=True)
+
+    assert content is not None
+    assert "/persistence" in content
+
+
 def test_prompt_assembly_host_mode_has_no_virtual_notebook_paths():
     memory_context = format_core_memory_section(_sample_blocks(), sandbox_enabled=False)
     skills_context = "- notebook: Notebook operations (Location: ${MOUNT_SKILLS}/official/notebook/SKILL.md)"
