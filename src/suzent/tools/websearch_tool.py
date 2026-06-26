@@ -15,7 +15,10 @@ from urllib.parse import urlparse
 from typing import Annotated, Optional, List, Dict, Any, Literal
 
 from pydantic import Field
+from pydantic_ai import RunContext
 
+from suzent.core.agent_deps import AgentDeps
+from suzent.core.citation_manager import CitationSourceType
 from suzent.tools.base import Tool, ToolGroup, ToolResult, ToolErrorCode
 from suzent.logger import get_logger
 
@@ -87,6 +90,7 @@ class WebSearchTool(Tool):
 
     async def forward(
         self,
+        ctx: RunContext[AgentDeps],
         query: Annotated[
             str, Field(description="Search query to send to the web search provider.")
         ],
@@ -126,13 +130,64 @@ class WebSearchTool(Tool):
             page: Page number for pagination (default 1).
         """
         if self.use_searxng:
-            return await self._search_with_searxng(
+            result = await self._search_with_searxng(
                 query, categories, max_results, time_range, page
             )
         else:
-            return await self._search_with_ddgs(
+            result = await self._search_with_ddgs(
                 query, categories, max_results, time_range, page
             )
+
+        self._register_citations(ctx, result)
+        return result
+
+    def _register_citations(
+        self, ctx: "RunContext[AgentDeps]", result: ToolResult
+    ) -> None:
+        """Register each search result as a citable source and label it inline.
+
+        CitationManager owns the source ids. After registering, the assigned
+        ``src_N`` id is written back into each result object so the model sees
+        the id right next to the content it will cite (``result.message`` is the
+        text the model reads).
+        """
+        mgr = getattr(ctx.deps, "citation_manager", None)
+        if mgr is None or not result.success:
+            logger.debug(
+                f"[citation] websearch skip register: mgr={mgr is not None} "
+                f"success={result.success}"
+            )
+            return
+        try:
+            payload = json.loads(result.message)
+        except (json.JSONDecodeError, TypeError):
+            logger.debug("[citation] websearch result message not JSON; skip register")
+            return
+        before = len(mgr.get_all())
+        for r in payload.get("results", []):
+            url = r.get("url") or ""
+            if not url:
+                continue
+            netloc = urlparse(url).netloc
+            source_id = mgr.register(
+                type=CitationSourceType.WEB_SEARCH,
+                title=r.get("title") or url,
+                url=url,
+                snippet=r.get("description"),
+                favicon=(
+                    f"https://www.google.com/s2/favicons?domain={netloc}&sz=32"
+                    if netloc
+                    else None
+                ),
+            )
+            # Surface the id to the model alongside this result.
+            r["source_id"] = source_id
+        # Re-serialise so the model reads the ids embedded in the results.
+        result.message = json.dumps(payload, ensure_ascii=False)
+        logger.debug(
+            f"[citation] websearch registered {len(mgr.get_all()) - before} sources "
+            f"(total {len(mgr.get_all())})"
+        )
 
     async def _search_with_ddgs(
         self,

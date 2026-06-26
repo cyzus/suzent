@@ -7,6 +7,7 @@
 import { useState, useCallback, useRef } from 'react';
 import type { A2UISurface } from '../types/a2ui';
 import type { AGUIPart, ApprovalRememberScope } from '../types/agui';
+import type { CitationSource } from '../lib/streamEvents';
 
 // ── Types ────────────────────────────────────────────────────────────
 export type AGUIStatus = 'idle' | 'submitted' | 'streaming' | 'error';
@@ -376,6 +377,23 @@ export function processEvent(
           if (next[i].type === 'tool' && next[i].toolCallId === tcId) {
             next[i] = { ...next[i], displayData: display };
             break;
+          }
+        }
+      } else if (name === 'citation_sources') {
+        // Citable sources registered during this run. Stored as a single part so
+        // they travel with the message (persist + reload) and so badges can
+        // resolve src ids to titles/urls. Merge in case the event fires twice.
+        const payload = value as { sources?: CitationSource[] };
+        const incoming = Array.isArray(payload?.sources) ? payload.sources : [];
+        if (incoming.length > 0) {
+          const idx = next.findIndex(p => p.type === 'citation-sources');
+          if (idx >= 0) {
+            const existing = next[idx].citationSources || [];
+            const byId = new Map(existing.map(s => [s.id, s]));
+            for (const s of incoming) byId.set(s.id, s);
+            next[idx] = { ...next[idx], citationSources: Array.from(byId.values()) };
+          } else {
+            next.push({ type: 'citation-sources', citationSources: incoming });
           }
         }
       } else if (name === 'a2ui.render') {

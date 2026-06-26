@@ -40,6 +40,7 @@ import { useStatusStore } from '../hooks/useStatusStore';
 import { useContextUsageStore } from '../hooks/useContextUsageStore';
 import { useActivatedToolsStore } from '../hooks/useActivatedToolsStore';
 import type { SubAgentStatus } from './chat/SubAgentCallBlock';
+import type { CitationSourcesMap } from './chat/Citations';
 import type {
   SubAgentSpawnedPayload,
   SubAgentCompletedPayload,
@@ -192,6 +193,10 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any, role: Message['
       const encoded = encodeURIComponent(JSON.stringify(part.surface));
       content += `\n\n<div data-a2ui="${encoded}"></div>\n\n`;
       persistedParts.push({ ...part, surface: { ...part.surface } });
+    } else if (part.type === 'citation-sources' && part.citationSources?.length) {
+      // Citation sources travel with the message so inline badges + the sources
+      // panel survive stream completion and reload. They carry no visible text.
+      persistedParts.push({ ...part, citationSources: [...part.citationSources] });
     }
   }
   return { role, content, parts: persistedParts, timestamp: new Date().toISOString(), stepInfo: usage ? formatUsage(usage) : undefined };
@@ -387,7 +392,8 @@ const MessageList: React.FC<{
   onStopSubAgent?: (taskId: string) => void;
   onForceWebContext?: (contextId: string) => void;
   onRetry?: () => void;
-}> = ({ messages, streamingForCurrentChat, messageIndexOffset = 0, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext, onRetry }) => {
+  chatCitationSources?: CitationSourcesMap;
+}> = ({ messages, streamingForCurrentChat, messageIndexOffset = 0, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext, onRetry, chatCitationSources }) => {
   const { skipIndices, groupRenders, stepSummaryByMessageIndex } = useMemo(
     () => buildMessageRenderPlan(messages),
     [messages],
@@ -445,6 +451,7 @@ const MessageList: React.FC<{
                   onOpenSubAgentSidebar={onOpenSubAgentSidebar}
                   onStopSubAgent={onStopSubAgent}
                   onForceWebContext={onForceWebContext}
+                  chatCitationSources={chatCitationSources}
                 />
               </div>
             </div>
@@ -505,6 +512,7 @@ const MessageList: React.FC<{
                   onStopSubAgent={onStopSubAgent}
                   onForceWebContext={onForceWebContext}
                   onRetry={idx === lastAssistantIdx && !streamingForCurrentChat ? onRetry : undefined}
+                  chatCitationSources={chatCitationSources}
                 />
               )}
             </div>
@@ -1065,6 +1073,24 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     () => safeMessages.slice(visibleMessageStartIndex),
     [safeMessages, visibleMessageStartIndex],
   );
+
+  // Chat-wide citation sources: aggregate every message's citation-sources parts
+  // (plus the live streaming parts) into one map. Source ids are globally unique
+  // across turns (t{turn}_src_n), so a single flat map lets a badge in any
+  // message resolve a source registered in any (earlier) turn.
+  const chatCitationSources = useMemo<CitationSourcesMap>(() => {
+    const map: CitationSourcesMap = new Map();
+    const addParts = (parts?: AGUIPart[]) => {
+      for (const p of parts || []) {
+        if (p.type === 'citation-sources' && p.citationSources) {
+          for (const s of p.citationSources) if (!map.has(s.id)) map.set(s.id, s);
+        }
+      }
+    };
+    for (const m of safeMessages) addParts(m.parts);
+    if (showTransientAssistant) addParts(streamingParts);
+    return map;
+  }, [safeMessages, streamingParts, showTransientAssistant]);
   const hasHiddenOlderMessages = visibleMessageStartIndex > 0;
   const _prefs = backendConfig?.userPreferences;
   const _base = config || { model: '', agent: '', tools: [] as string[] };
@@ -1824,6 +1850,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   <MessageListMemo
                     messages={visibleMessages}
                     streamingForCurrentChat={false}
+                    chatCitationSources={chatCitationSources}
                     messageIndexOffset={visibleMessageStartIndex}
                     chatId={currentChatId ?? undefined}
                     onImageClick={setViewingImage}
@@ -1873,6 +1900,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                             onOpenSubAgentSidebar={handleOpenSubAgentSidebar}
                             onStopSubAgent={handleStopSubAgent}
                             onForceWebContext={handleForceWebContext}
+                            chatCitationSources={chatCitationSources}
                           />
                         )}
                       </div>

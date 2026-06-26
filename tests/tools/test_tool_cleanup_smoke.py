@@ -203,7 +203,8 @@ async def test_webpage_tool_wraps_result(monkeypatch):
         "suzent.tools.webpage_tool.AsyncWebCrawler", lambda: _DummyCrawler()
     )
 
-    result = await WebpageTool().forward("https://example.com")
+    ctx = SimpleNamespace(deps=SimpleNamespace(citation_manager=None))
+    result = await WebpageTool().forward(ctx, url="https://example.com")
 
     assert result.success
     assert result.metadata["url"] == "https://example.com"
@@ -229,8 +230,9 @@ async def test_websearch_tool_can_be_mocked(monkeypatch):
 
     monkeypatch.setattr(tool, "_search_with_ddgs", fake_ddgs)
 
+    ctx = SimpleNamespace(deps=SimpleNamespace(citation_manager=None))
     result = await tool.forward(
-        query="test", categories="general", max_results=3, time_range="day", page=1
+        ctx, query="test", categories="general", max_results=3, time_range="day", page=1
     )
 
     assert result.success

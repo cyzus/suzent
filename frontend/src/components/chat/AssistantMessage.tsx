@@ -17,6 +17,8 @@ import {
   ToolSequenceGroup,
   parseSubAgentTaskId,
 } from './AssistantContent';
+import { CitationProvider, SourcesPanel, formatTextWithCitationReferences, type CitationSourcesMap } from './Citations';
+import type { CitationSource } from '../../lib/streamEvents';
 import {
   ActivityRail,
   ActivityRailItem,
@@ -65,6 +67,8 @@ interface AssistantMessageProps {
   onForceWebContext?: (contextId: string) => void;
   /** Retry handler — re-runs the last user message from this point */
   onRetry?: () => void;
+  /** Chat-wide citation sources (all turns), so inline badges resolve cross-turn ids. */
+  chatCitationSources?: CitationSourcesMap;
 }
 
 // Names that should be filtered out from tool call display
@@ -151,6 +155,8 @@ const AGUIPartsContent: React.FC<{
   let currentType: 'tool' | 'reasoning' | 'text' | 'a2ui' | null = null;
 
   for (const part of normalizedParts) {
+    // citation-sources parts carry metadata, not display content — skip them.
+    if (part.type === 'citation-sources') continue;
     const type = part.type as 'tool' | 'reasoning' | 'text' | 'a2ui';
     if (current.length === 0) {
       currentType = type;
@@ -472,6 +478,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   onStopSubAgent,
   onForceWebContext,
   onRetry,
+  chatCitationSources,
 }) => {
   const isStreamingThis = isStreaming && isLastMessage;
   const effectiveParts = aguiParts ?? message.parts;
@@ -485,6 +492,32 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
     () => (effectiveParts === undefined ? filterBlocks(splitAssistantContent(message.content || '')) : []),
     [effectiveParts, message.content],
   );
+
+  // Citation sources for this message: collected from the 'citation-sources'
+  // part (live stream or persisted parts). Feeds both inline badges (via
+  // context) and the bottom SourcesPanel.
+  const citationSourcesList = useMemo<CitationSource[]>(() => {
+    const parts = effectiveParts ?? message.parts ?? [];
+    const out: CitationSource[] = [];
+    const seen = new Set<string>();
+    for (const p of parts) {
+      if (p.type === 'citation-sources' && p.citationSources) {
+        for (const s of p.citationSources) {
+          if (!seen.has(s.id)) { seen.add(s.id); out.push(s); }
+        }
+      }
+    }
+    return out;
+  }, [effectiveParts, message.parts]);
+
+  // Map used to resolve inline badges. Prefer the chat-wide map (so a badge can
+  // reference a source registered in an earlier turn — ids are globally unique),
+  // falling back to this message's own sources. The per-message
+  // citationSourcesList still drives the bottom SourcesPanel.
+  const citationSourcesMap = useMemo<CitationSourcesMap>(() => {
+    if (chatCitationSources && chatCitationSources.size > 0) return chatCitationSources;
+    return new Map(citationSourcesList.map(s => [s.id, s]));
+  }, [chatCitationSources, citationSourcesList]);
 
   // Suppress the streaming cursor during the assembly→reveal animation.
   // Delay showing the cursor so it doesn't flash while the box is still opening.
@@ -502,21 +535,24 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   }, [isStreamingThis, cursorReady]);
 
   // ── Compute full message text for copying ──
+  // Convert inline citation protocol markers into portable Markdown references.
   const fullMessageText = useMemo(() => {
     if (effectiveParts) {
-      return effectiveParts
-        .filter(p => p.type === 'text')
-        .map(p => p.text || '')
-        .join('')
-        .trim();
+      return formatTextWithCitationReferences(
+        effectiveParts
+          .filter(p => p.type === 'text')
+          .map(p => p.text || '')
+          .join(''),
+        citationSourcesMap,
+      ).trim();
     } else {
-      return legacyBlocks
+      const text = legacyBlocks
         .filter(b => b.type !== 'log' && b.type !== 'reasoning' && b.type !== 'toolCall' && b.type !== 'a2ui')
         .map(b => (b.type === 'code' ? '```' + (b.lang || '') + '\n' + b.content + '\n```' : b.content))
-        .join('\n\n')
-        .trim();
+        .join('\n\n');
+      return formatTextWithCitationReferences(text, citationSourcesMap).trim();
     }
-  }, [effectiveParts, legacyBlocks]);
+  }, [effectiveParts, legacyBlocks, citationSourcesMap]);
 
   // 1. 抓取当前正在跑的 Tool 和 错误状态
   let currentToolName: string | undefined = undefined;
@@ -588,6 +624,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   // ── AG-UI parts-based rendering path (for streaming messages) ──
   if (effectiveParts !== undefined) {
     return (
+      <CitationProvider sources={citationSourcesMap}>
       <div className="group w-full max-w-4xl break-all overflow-x-hidden text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
         {/* Badge/Assembly Container */}
         {badgeContainer}
@@ -619,6 +656,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               {onRetry && !isStreamingThis && !isThinking && (
                 <RetryButton onClick={onRetry} />
               )}
+              {!isThinking && <SourcesPanel sources={citationSourcesList} />}
               {message.timestamp && !isStreamingThis && (
                 <div className="text-[10px] text-neutral-400 select-none">
                   {formatMessageTime(message.timestamp)}
@@ -628,6 +666,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
           </div>
         </div>
       </div>
+      </CitationProvider>
     );
   }
 
@@ -712,6 +751,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   );
 
   return (
+    <CitationProvider sources={citationSourcesMap}>
     <div className="group w-full max-w-4xl break-all overflow-x-hidden text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
       {/* Badge/Assembly Container is rendered at the top of the entire message timeline */}
       {badgeContainer}
@@ -883,6 +923,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
             {onRetry && !isStreamingThis && !isThinking && (
               <RetryButton onClick={onRetry} />
             )}
+            {!isThinking && <SourcesPanel sources={citationSourcesList} />}
             {message.timestamp && !isStreamingThis && (
               <div className="text-[10px] text-neutral-400 select-none">
                 {formatMessageTime(message.timestamp)}
@@ -892,5 +933,6 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
         </div>
       </div>
     </div>
+    </CitationProvider>
   );
 };

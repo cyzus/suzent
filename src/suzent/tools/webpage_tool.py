@@ -1,7 +1,10 @@
 from typing import Annotated
 
 from pydantic import Field
+from pydantic_ai import RunContext
 
+from suzent.core.agent_deps import AgentDeps
+from suzent.core.citation_manager import CitationSourceType
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 
@@ -11,6 +14,17 @@ def __getattr__(name):
 
         return AsyncWebCrawler
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _title_from_markdown(markdown: str) -> str | None:
+    """Return the first markdown heading text, if any, for use as a source title."""
+    for line in markdown.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            title = stripped.lstrip("#").strip()
+            if title:
+                return title[:120]
+    return None
 
 
 class WebpageTool(Tool):
@@ -51,6 +65,7 @@ class WebpageTool(Tool):
 
     async def forward(
         self,
+        ctx: RunContext[AgentDeps],
         url: Annotated[
             str,
             Field(
@@ -63,4 +78,18 @@ class WebpageTool(Tool):
         Args:
             url: The URL of the page to retrieve content from.
         """
-        return await self._crawl_url(url)
+        result = await self._crawl_url(url)
+        if result.success:
+            mgr = getattr(ctx.deps, "citation_manager", None)
+            if mgr is not None:
+                # Derive a display title from the first markdown heading, else host.
+                title = _title_from_markdown(result.message) or url
+                source_id = mgr.register(
+                    type=CitationSourceType.WEBPAGE,
+                    title=title,
+                    url=url,
+                    snippet=result.message,
+                )
+                # Label the content with its id so the model cites it correctly.
+                result.message = f"[{source_id}] {title}\n\n{result.message}"
+        return result

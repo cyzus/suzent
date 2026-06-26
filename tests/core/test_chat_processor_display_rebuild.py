@@ -1,3 +1,5 @@
+import json
+
 from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
@@ -12,6 +14,7 @@ from suzent.core.chat_processor import (
     _append_command_messages,
     _append_inline_a2ui_surfaces,
     _build_file_mention_context,
+    _preserve_citation_sources,
     _rebuild_display_messages,
     _strip_attachment_annotations,
 )
@@ -117,6 +120,110 @@ def test_append_inline_a2ui_surfaces_attaches_to_last_assistant_message():
 
     assert updated[1]["role"] == "assistant"
     assert "data-a2ui=" in updated[1]["content"]
+
+
+def test_preserve_citation_sources_attaches_matching_sources_to_rebuilt_message():
+    rebuilt = [
+        {"role": "user", "content": "what happened?"},
+        {
+            "role": "assistant",
+            "content": "Gold rose\ue200cite\ue202t0_src_1\ue201.",
+            "parts": [
+                {"type": "text", "text": "Gold rose\ue200cite\ue202t0_src_1\ue201."}
+            ],
+        },
+    ]
+    existing = [
+        {
+            "role": "assistant",
+            "content": "draft",
+            "parts": [
+                {
+                    "type": "citation-sources",
+                    "citationSources": [
+                        {
+                            "id": "t0_src_1",
+                            "type": "search",
+                            "title": "Reuters",
+                            "url": "https://reuters.com/a",
+                        },
+                        {
+                            "id": "t0_src_2",
+                            "type": "search",
+                            "title": "Unused",
+                            "url": "https://example.com/unused",
+                        },
+                    ],
+                }
+            ],
+        }
+    ]
+
+    updated = _preserve_citation_sources(rebuilt, existing)
+
+    assert updated[1]["parts"][1] == {
+        "type": "citation-sources",
+        "citationSources": [
+            {
+                "id": "t0_src_1",
+                "type": "search",
+                "title": "Reuters",
+                "url": "https://reuters.com/a",
+            }
+        ],
+    }
+
+
+def test_preserve_citation_sources_recovers_sources_from_tool_results():
+    tool_content = {
+        "success": True,
+        "message": json.dumps(
+            {
+                "source": "DDGS (news)",
+                "results": [
+                    {
+                        "title": "Stock Market Today",
+                        "url": "https://example.com/markets",
+                        "description": "Nasdaq and S&P 500 moved lower.",
+                        "source_id": "t0_src_14",
+                    },
+                    {
+                        "title": "Unused",
+                        "url": "https://example.com/unused",
+                        "description": "Unused source.",
+                        "source_id": "t0_src_15",
+                    },
+                ],
+            }
+        ),
+    }
+    rebuilt = [
+        {"role": "tool", "content": json.dumps(tool_content)},
+        {
+            "role": "assistant",
+            "content": "Tech stocks fell \ue200cite\ue202t0_src_14\ue201.",
+            "parts": [
+                {
+                    "type": "text",
+                    "text": "Tech stocks fell \ue200cite\ue202t0_src_14\ue201.",
+                }
+            ],
+        },
+    ]
+
+    updated = _preserve_citation_sources(rebuilt, [])
+
+    assert updated[1]["parts"][1]["type"] == "citation-sources"
+    assert updated[1]["parts"][1]["citationSources"] == [
+        {
+            "id": "t0_src_14",
+            "type": "search",
+            "title": "Stock Market Today",
+            "url": "https://example.com/markets",
+            "snippet": "Nasdaq and S&P 500 moved lower.",
+            "favicon": "https://www.google.com/s2/favicons?domain=example.com&sz=32",
+        }
+    ]
 
 
 def test_append_command_messages_adds_user_and_notice_entries():

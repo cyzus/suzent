@@ -609,6 +609,12 @@ async def get_chat(request: Request) -> JSONResponse:
         response_chat = chat.model_dump(
             mode="json", by_alias=True, exclude={"agent_state"}
         )
+        if isinstance(response_chat.get("messages"), list):
+            from suzent.core.chat_processor import _preserve_citation_sources
+
+            response_chat["messages"] = _preserve_citation_sources(
+                response_chat["messages"], []
+            )
         context_usage = dict(chat.context_usage or {})
 
         if chat.agent_state and context_usage.get("context_tokens") is None:

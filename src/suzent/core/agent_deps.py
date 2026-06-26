@@ -87,6 +87,11 @@ class AgentDeps:
     )
     inline_a2ui_surfaces: dict[str, dict[str, Any]] = field(default_factory=dict)
 
+    # --- Inline citations ---
+    # CitationManager instance for this run; tools register citable sources on it
+    # and streaming.py injects its prompt context + emits citation events.
+    citation_manager: Any = None
+
     # --- Prompt Context Cache ---
     section_cache: dict[str, str] = field(default_factory=dict)
 
