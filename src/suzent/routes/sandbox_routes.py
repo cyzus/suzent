@@ -158,6 +158,33 @@ def _get_resolver_for_request(
     )
 
 
+async def get_sandbox_volumes(request: Request) -> JSONResponse:
+    """Return the effective sandbox volumes for a chat.
+
+    The frontend needs the *effective* mounts (server defaults like /mnt/notebook
+    and /mnt/skills merged with global + per-chat volumes) so it can map an
+    absolute host path from a file:// link to its virtual mount path before
+    calling /sandbox/serve.
+    """
+    chat_id = request.query_params.get("chat_id")
+
+    custom_volumes: list[str] = []
+    if chat_id:
+        try:
+            db = get_database()
+            chat = db.get_chat(chat_id)
+            cv = (
+                chat["config"].get("sandbox_volumes", [])
+                if chat and "config" in chat
+                else []
+            )
+            custom_volumes = cv if isinstance(cv, list) else []
+        except Exception as e:
+            logger.warning(f"Failed to fetch chat config for volumes: {e}")
+
+    return JSONResponse({"volumes": get_effective_volumes(custom_volumes)})
+
+
 async def list_sandbox_files(request: Request) -> JSONResponse:
     """List files in sandbox directory."""
     chat_id = request.query_params.get("chat_id")
@@ -683,7 +710,10 @@ async def serve_sandbox_file_wildcard(request: Request):
         # FIX: Ensure path is treated as absolute virtual path (relative to sandbox root)
         # The frontend strips the leading slash to avoid double-slashes in the URL,
         # but the resolver needs it to differentiate "/workspace" (virtual root) from "workspace" (folder in project).
-        if not raw_path.startswith("/"):
+        # Exception: a Windows drive-letter host path ("C:/Users/...") must NOT get a
+        # leading slash (that yields the invalid "/C:/..." which the resolver rejects).
+        is_windows_drive = len(raw_path) >= 2 and raw_path[1] == ":"
+        if not raw_path.startswith("/") and not is_windows_drive:
             raw_path = "/" + raw_path
 
         target_host_path = resolver.resolve(raw_path)

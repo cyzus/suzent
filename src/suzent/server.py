@@ -151,6 +151,7 @@ from suzent.routes.sandbox_routes import (
     delete_sandbox_file,
     serve_sandbox_file,
     serve_sandbox_file_wildcard,
+    get_sandbox_volumes,
     upload_files,
 )
 from suzent.routes.skill_routes import get_skills, reload_skills, toggle_skill
@@ -841,6 +842,7 @@ app = Starlette(
         Route("/sandbox/read_file", read_sandbox_file, methods=["GET"]),
         Route("/sandbox/file", write_sandbox_file, methods=["POST", "PUT"]),
         Route("/sandbox/file", delete_sandbox_file, methods=["DELETE"]),
+        Route("/sandbox/volumes", get_sandbox_volumes, methods=["GET"]),
         Route("/sandbox/serve", serve_sandbox_file, methods=["GET"]),
         Route(
             "/sandbox/serve/{chat_id}/{file_path:path}",

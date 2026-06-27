@@ -39,6 +39,9 @@ interface SandboxFilesProps {
     onViewModeChange?: (isViewingFile: boolean) => void;
     externalFilePath?: string | null;
     externalFileName?: string | null;
+    // Bumps on every external open request so re-selecting the same file (after
+    // navigating back to the list) re-triggers the preview.
+    externalFileNonce?: number | null;
     onMaximize?: (filePath: string, fileName: string) => void;
 }
 
@@ -164,6 +167,7 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
     onViewModeChange,
     externalFilePath,
     externalFileName,
+    externalFileNonce,
     onMaximize
 }) => {
     const { t } = useI18n();
@@ -289,7 +293,9 @@ export const SandboxFiles: React.FC<SandboxFilesProps> = ({
             }
             onViewModeChange?.(true);
         }
-    }, [externalFilePath, externalFileName, fetchFileContent, onViewModeChange]);
+        // externalFileNonce is included so re-clicking the same file (which keeps
+        // path/name identical) still re-opens it after a "back".
+    }, [externalFilePath, externalFileName, externalFileNonce, fetchFileContent, onViewModeChange]);
 
     const openRootInExplorer = async () => {
         if (!currentChatId) return;

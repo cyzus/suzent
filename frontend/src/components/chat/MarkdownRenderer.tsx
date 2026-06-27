@@ -548,7 +548,12 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
 
             // Handle file:// links and absolute paths as clickable file buttons
             if (onFileClick && (hrefStr.startsWith('file://') || hrefStr.startsWith('/workspace/') || hrefStr.startsWith('/shared/') || hrefStr.startsWith('/mnt/'))) {
-              const path = hrefStr.startsWith('file://') ? hrefStr.replace('file://', '') : hrefStr;
+              // file:// hrefs are percent-encoded (CJK, spaces, etc.) — decode via
+              // fileUrlToPath rather than a naive replace, otherwise the encoded
+              // bytes get double-encoded downstream and the file is never found.
+              const path = hrefStr.startsWith('file://')
+                ? (fileUrlToPath(hrefStr) ?? hrefStr.replace('file://', ''))
+                : hrefStr;
               return <FileButton path={path} displayName={String(children)} onFileClick={onFileClick} />;
             }
 

@@ -45,7 +45,7 @@ interface RightSidebarProps {
   currentProjectId?: string | null;
   chatTitles?: Record<string, string>;
   onProjectBoardChange?: (open: boolean) => void;
-  fileToPreview?: { path: string; name: string } | null;
+  fileToPreview?: { path: string; name: string; nonce?: number } | null;
   onMaximizeFile?: (filePath: string, fileName: string) => void;
   canvas?: CanvasState;
   onCanvasDispatch?: (action: string, context: Record<string, unknown>, surfaceId: string) => void;
@@ -353,6 +353,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   onViewModeChange={setIsFileExpanded}
                   externalFilePath={fileToPreview?.path ?? null}
                   externalFileName={fileToPreview?.name ?? null}
+                  externalFileNonce={fileToPreview?.nonce ?? null}
                   onMaximize={onMaximizeFile}
                 />
               </div>
@@ -407,6 +408,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   onViewModeChange={setIsFileExpanded}
                   externalFilePath={fileToPreview?.path ?? null}
                   externalFileName={fileToPreview?.name ?? null}
+                  externalFileNonce={fileToPreview?.nonce ?? null}
                   onMaximize={onMaximizeFile}
                 />
               </div>
