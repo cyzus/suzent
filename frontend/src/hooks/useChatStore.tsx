@@ -1251,6 +1251,26 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           if (rollbackExpected && existing.length > 0 && mappedMessages.length > existing.length) {
             return prev;
           }
+          // Guard (edit flow): an edit optimistically replaces the last user
+          // message with new text, then the backend rolls history back and
+          // replays it via /retry-edit. Until that replay re-persists the edited
+          // message, the server snapshot still carries the ORIGINAL text. Keep the
+          // optimistic local state — and crucially preserve the rollback flag — so
+          // a sync arriving mid-rollback can't revert the bubble to the old text.
+          if (rollbackExpected) {
+            const lastLocalUser = [...existing].reverse().find((m: Message) => m.role === 'user');
+            const lastServerUser = [...mappedMessages].reverse().find((m: Message) => m.role === 'user');
+            if (
+              lastLocalUser &&
+              typeof lastLocalUser.content === 'string' &&
+              lastLocalUser.content.trim() &&
+              (!lastServerUser ||
+                (typeof lastServerUser.content === 'string' &&
+                  lastServerUser.content.trim() !== lastLocalUser.content.trim()))
+            ) {
+              return prev;
+            }
+          }
           if (existing.length > mappedMessages.length && !rollbackExpected) {
             return prev;
           }

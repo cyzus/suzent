@@ -697,7 +697,7 @@ export const zhCN = {
     edit: '编辑',
     rerun: '重新运行',
     copy: '复制',
-    save: '保存',
+    resend: '重新发送',
     cancel: '取消',
     editHint: '编辑此消息将重新发送，并移除下方的回复。',
   },

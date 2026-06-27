@@ -8,6 +8,7 @@ import { formatMessageTime } from '../../lib/chatUtils';
 import { useChatStore } from '../../hooks/useChatStore';
 import { useI18n } from '../../i18n';
 import { CopyButton } from './CopyButton';
+import { BrutalButton } from '../BrutalButton';
 
 // Must match the CSS max-w-sm / max-h-64 constraints on the rendered <img>.
 const IMG_MAX_W = 384;
@@ -157,7 +158,7 @@ export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onIma
     setDraft('');
   };
 
-  const saveEditing = () => {
+  const resendEditing = () => {
     const next = draft.trim();
     if (next && next !== content) {
       onEdit?.(next);
@@ -302,7 +303,7 @@ export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onIma
                 cancelEditing();
               } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
-                saveEditing();
+                resendEditing();
               }
             }}
             className="w-full resize-none bg-white dark:bg-zinc-800 border-3 border-brutal-blue shadow-[3px_3px_0_0_#000] px-4 py-3 text-sm font-sans text-brutal-black dark:text-white focus:outline-none"
@@ -312,21 +313,18 @@ export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onIma
               {t('chatMessage.editHint')}
             </span>
             <div className="flex gap-2 shrink-0">
-              <button
-                onClick={cancelEditing}
-                type="button"
-                className="px-4 py-1.5 text-sm font-bold bg-white dark:bg-zinc-800 border-2 border-brutal-black text-brutal-black dark:text-white hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
-              >
+              <BrutalButton onClick={cancelEditing} type="button" size="sm">
                 {t('chatMessage.cancel')}
-              </button>
-              <button
-                onClick={saveEditing}
+              </BrutalButton>
+              <BrutalButton
+                onClick={resendEditing}
                 type="button"
+                variant="primary"
+                size="sm"
                 disabled={!draft.trim() || draft.trim() === content}
-                className="px-4 py-1.5 text-sm font-bold bg-brutal-blue border-2 border-brutal-black text-white hover:translate-x-[1px] hover:translate-y-[1px] transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0"
               >
-                {t('chatMessage.save')}
-              </button>
+                {t('chatMessage.resend')}
+              </BrutalButton>
             </div>
           </div>
         </div>

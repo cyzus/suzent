@@ -771,7 +771,7 @@ export const en = {
     edit: 'Edit',
     rerun: 'Rerun',
     copy: 'Copy',
-    save: 'Save',
+    resend: 'Resend',
     cancel: 'Cancel',
     editHint: 'Editing this message will resend it and remove the responses below.',
   },
