@@ -9,3 +9,4 @@ export { UserMessage } from './UserMessage';
 export { AssistantMessage } from './AssistantMessage';
 export { RightSidebar } from './RightSidebar';
 export { PermissionApprovalDock } from './PermissionApprovalDock';
+export { ChatMinimap } from './ChatMinimap';

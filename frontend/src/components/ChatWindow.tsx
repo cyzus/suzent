@@ -29,6 +29,7 @@ import {
   RightSidebar,
   MarkdownRenderer,
   PermissionApprovalDock,
+  ChatMinimap,
 } from './chat';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
@@ -299,22 +300,6 @@ const DragOverlay: React.FC = () => {
   );
 };
 
-// Scroll to bottom button
-const ScrollToBottomButton: React.FC<{ onClick: () => void }> = ({ onClick }) => {
-  const { t } = useI18n();
-  return (
-    <button
-      onClick={onClick}
-      className="absolute bottom-6 right-6 z-20 w-10 h-10 bg-white dark:bg-zinc-800 text-brutal-black dark:text-white border-2 border-brutal-black dark:border-zinc-600 shadow-[4px_4px_0_0_#000] flex items-center justify-center hover:bg-neutral-100 dark:hover:bg-zinc-700 active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all animate-brutal-pop"
-      title={t('chatWindow.scrollToBottom')}
-    >
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-      </svg>
-    </button>
-  );
-};
-
 // Loading indicator
 const LoadingIndicator: React.FC = () => {
   const { t } = useI18n();
@@ -434,7 +419,7 @@ const MessageList: React.FC<{
             timestamp: m.timestamp,
           };
           return (
-            <div key={globalIdx} className="chat-msg-row w-full flex flex-col group/message">
+            <div key={globalIdx} data-message-index={globalIdx} className="chat-msg-row w-full flex flex-col group/message">
               <div className="flex justify-start w-full">
                 <AssistantMessage
                   message={groupedMessage}
@@ -464,7 +449,7 @@ const MessageList: React.FC<{
         // Canvas action message — lightweight dashed pill
         if (m.role === 'canvas_action') {
           return (
-            <div key={globalIdx} className="chat-msg-row w-full flex justify-start pl-2">
+            <div key={globalIdx} data-message-index={globalIdx} className="chat-msg-row w-full flex justify-start pl-2">
               <div className="border-2 border-dashed border-brutal-black px-4 py-2 text-sm font-mono text-neutral-500 dark:text-neutral-400 italic bg-white dark:bg-zinc-800">
                 {m.content}
               </div>
@@ -476,7 +461,7 @@ const MessageList: React.FC<{
         // showing what kicked off this agent turn.
         if (m.role === 'system_triggered') {
           return (
-            <div key={globalIdx} className="chat-msg-row w-full flex justify-start">
+            <div key={globalIdx} data-message-index={globalIdx} className="chat-msg-row w-full flex justify-start">
               <SystemTriggeredMessage message={m} />
             </div>
           );
@@ -484,14 +469,14 @@ const MessageList: React.FC<{
 
         if (isNotice) {
           return (
-            <div key={globalIdx} className="chat-msg-row w-full flex justify-start">
+            <div key={globalIdx} data-message-index={globalIdx} className="chat-msg-row w-full flex justify-start">
               <NoticeMessage message={m} />
             </div>
           );
         }
 
         return (
-          <div key={globalIdx} className="chat-msg-row w-full flex flex-col group/message">
+          <div key={globalIdx} data-message-index={globalIdx} className="chat-msg-row w-full flex flex-col group/message">
             <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} w-full`}>
               {isUser ? (
                 <UserMessage message={m} chatId={chatId} onImageClick={onImageClick} onFileClick={onFileClick} />
@@ -601,6 +586,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [visibleMessageCount, setVisibleMessageCount] = useState(INITIAL_VISIBLE_MESSAGES);
   const [compactNotice, setCompactNoticeLocal] = useState<string | null>(null);
   const prependScrollSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
+  const pendingMinimapJumpRef = useRef<number | null>(null);
   const { onSpawned: onSubAgentSpawned, onCompleted: onSubAgentCompleted, onFailed: onSubAgentFailed } = useSubAgentStatus();
   const { setStatus: setStatusBar } = useStatusStore();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1186,7 +1172,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
 
   // Auto-scroll
-  const { scrollContainerRef, bottomRef, showScrollButton, scrollToBottom } = useAutoScroll(
+  const { scrollContainerRef, bottomRef, scrollToBottom } = useAutoScroll(
     [safeMessages, isStreaming],
     { resetKey: `${currentChatId ?? 'new'}:${safeMessages.length > 0}` },
   );
@@ -1212,6 +1198,26 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setVisibleMessageCount(prev => Math.min(safeMessages.length, prev + LOAD_MORE_MESSAGES));
   }, [hasHiddenOlderMessages, safeMessages.length, scrollContainerRef]);
 
+  const scrollToMessageIndex = useCallback((index: number) => {
+    const el = scrollContainerRef.current;
+    if (!el) return false;
+
+    const row = el.querySelector<HTMLElement>(`[data-message-index="${index}"]`);
+    if (!row) return false;
+
+    const targetTop = row.offsetTop - 24;
+    el.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
+    return true;
+  }, [scrollContainerRef]);
+
+  const jumpToMinimapMessage = useCallback((index: number) => {
+    if (scrollToMessageIndex(index)) return;
+
+    pendingMinimapJumpRef.current = index;
+    const messagesNeeded = safeMessages.length - index;
+    setVisibleMessageCount(prev => Math.max(prev, Math.min(safeMessages.length, messagesNeeded)));
+  }, [safeMessages.length, scrollToMessageIndex]);
+
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el || !hasHiddenOlderMessages) return;
@@ -1234,11 +1240,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useLayoutEffect(() => {
     const snapshot = prependScrollSnapshotRef.current;
     const el = scrollContainerRef.current;
-    if (!snapshot || !el) return;
+    if (!el) return;
+
+    const pendingJumpIndex = pendingMinimapJumpRef.current;
+    if (pendingJumpIndex != null) {
+      pendingMinimapJumpRef.current = null;
+      requestAnimationFrame(() => scrollToMessageIndex(pendingJumpIndex));
+      prependScrollSnapshotRef.current = null;
+      return;
+    }
+
+    if (!snapshot) return;
 
     el.scrollTop = el.scrollHeight - snapshot.scrollHeight + snapshot.scrollTop;
     prependScrollSnapshotRef.current = null;
-  }, [visibleMessages.length, scrollContainerRef]);
+  }, [visibleMessages.length, scrollContainerRef, scrollToMessageIndex]);
 
   // Background stream subscription: connect to /chat/live the moment the event bus
   // fires stream_started for this chat. Works for all chat types (heartbeat, cron,
@@ -1914,7 +1930,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             <div ref={bottomRef} className="h-0" />
           </div>
 
-          {showScrollButton && <ScrollToBottomButton onClick={scrollToBottom} />}
+          {safeMessages.length > 0 && (
+            <ChatMinimap
+              messages={safeMessages}
+              scrollContainerRef={scrollContainerRef}
+              onJumpToMessage={jumpToMinimapMessage}
+            />
+          )}
         </div>
 
         {/* Input Panel (shown when messages exist) */}
