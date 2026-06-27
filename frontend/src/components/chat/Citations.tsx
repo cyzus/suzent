@@ -57,6 +57,23 @@ export function hasCitationMarker(text: string): boolean {
   );
 }
 
+// A marker that has begun streaming but not yet closed \u2014 e.g. `[[cite:t0`,
+// `\ue200cite\ue202t0`, or `\ufffccite\ufffct0`. While streaming, the closing
+// delimiter (`]]`, `\ue201`, trailing `\ufffc`) may not have arrived yet, so the
+// full marker regexes don't match and the raw glyphs (including the U+E200/E202
+// private-use boxes/stars) would otherwise leak into the rendered text.
+const PARTIAL_MARKER_RE =
+  /(?:\[\[|\ue200|\ufffc)[a-zA-Z]*(?:[:\ue202\ufffc][^\]\ue201]*)?$/;
+
+/**
+ * Strip a single incomplete typed marker anchored at the end of the string. Used
+ * to hide partially-streamed citation markers until the closing delimiter
+ * arrives, at which point the full regex takes over and renders a badge.
+ */
+export function stripTrailingPartialMarker(text: string): string {
+  return text.replace(PARTIAL_MARKER_RE, '');
+}
+
 /** Source-id separators: comma, PUA separator, or OBJ-normalized separator. */
 const ID_SEPARATORS = /[,\ue202\ufffc]/;
 
@@ -137,7 +154,10 @@ export function renderTextWithCitations(
   sourcesMap: CitationSourcesMap | null,
   keyPrefix: string,
 ): React.ReactNode[] {
-  if (!sourcesMap || !hasCitationMarker(text)) return [text];
+  if (!sourcesMap || !hasCitationMarker(text)) {
+    // No complete marker, but a partial one may be mid-stream at the end.
+    return [stripTrailingPartialMarker(text)];
+  }
 
   const nodes: React.ReactNode[] = [];
   const re = new RegExp(CITATION_MARKER_RE.source, 'g');
@@ -160,7 +180,9 @@ export function renderTextWithCitations(
       nodes.push(before);
     }
   }
-  if (last < text.length) nodes.push(text.slice(last));
+  // A partial marker may still be streaming at the very end; hide it until the
+  // closing delimiter arrives and the full regex above turns it into a badge.
+  if (last < text.length) nodes.push(stripTrailingPartialMarker(text.slice(last)));
   return nodes;
 }
 
@@ -437,17 +459,54 @@ export const CitationBadge: React.FC<{ sourceIds: string[] }> = ({ sourceIds }) 
 /**
  * Compact, inline sources control meant to sit on the message action row next to
  * copy/retry. The collapsed pill shows stacked favicons + a count; clicking pops
- * an absolutely-positioned source list above it (so it doesn't shift the row).
- * Closes on outside click and Escape.
+ * a source list anchored to the pill. The list is portaled to <body> and
+ * positioned in the viewport (preferring above the pill, flipping below when
+ * there's more room) with a height cap, so a long/streaming list never clips
+ * off-screen. Closes on outside click and Escape.
  */
+/**
+ * Bounds to keep a popover inside the chat: the nearest scrollable ancestor's
+ * rect, intersected with the viewport (so we never exceed the window either).
+ * Falls back to the viewport when no scroll container is found.
+ */
+function scrollContainerBounds(el: HTMLElement): { top: number; bottom: number; left: number; right: number } {
+  const viewport = { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
+  let node: HTMLElement | null = el.parentElement;
+  while (node) {
+    const style = getComputedStyle(node);
+    // Must be an actual scroll *and* really clip content. Note: a div with
+    // `overflow-x: hidden` reports computed `overflow-y: auto` per the CSS spec
+    // even when it never scrolls — so we also require the element to overflow on
+    // that axis, otherwise these `overflow-x-hidden` message wrappers would be
+    // mistaken for the chat's scroll container (full height -> bounds too tall).
+    const scrollsY = /(auto|scroll|overlay)/.test(style.overflowY) && node.scrollHeight > node.clientHeight;
+    const scrollsX = /(auto|scroll|overlay)/.test(style.overflowX) && node.scrollWidth > node.clientWidth;
+    if (scrollsY || scrollsX) {
+      const r = node.getBoundingClientRect();
+      return {
+        top: Math.max(viewport.top, r.top),
+        bottom: Math.min(viewport.bottom, r.bottom),
+        left: Math.max(viewport.left, r.left),
+        right: Math.min(viewport.right, r.right),
+      };
+    }
+    node = node.parentElement;
+  }
+  return viewport;
+}
+
 export const SourcesPanel: React.FC<{ sources: CitationSource[] }> = ({ sources }) => {
   const [expanded, setExpanded] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelStyle, setPanelStyle] = useState<React.CSSProperties | null>(null);
 
   React.useEffect(() => {
     if (!expanded) return;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setExpanded(false);
+      const target = e.target as Node;
+      if (ref.current?.contains(target) || panelRef.current?.contains(target)) return;
+      setExpanded(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setExpanded(false);
@@ -459,6 +518,66 @@ export const SourcesPanel: React.FC<{ sources: CitationSource[] }> = ({ sources 
       document.removeEventListener('keydown', onKey);
     };
   }, [expanded]);
+
+  // Position the dropdown in the viewport (it's portaled to <body> so it escapes
+  // any scroll/overflow ancestor). The action row sits low and the list grows
+  // upward, so without a viewport-aware cap the top entries clip off-screen —
+  // especially while sources are still streaming in. We prefer opening above the
+  // pill but flip below when there's more room, and cap max-height to the space
+  // available on the chosen side so the whole list stays scrollable on-screen.
+  React.useEffect(() => {
+    if (!expanded) return;
+
+    const updatePosition = () => {
+      const anchor = ref.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+
+      // Clamp to the chat's scroll container so the panel never spills outside the
+      // chat window (over the toolbar or the app chrome). Fall back to the viewport.
+      const bounds = scrollContainerBounds(anchor);
+
+      const margin = 12;
+      const gap = 6;
+      const availWidth = bounds.right - bounds.left - margin * 2;
+      const width = Math.min(440, Math.max(220, availWidth));
+      const left = Math.min(
+        Math.max(rect.left, bounds.left + margin),
+        bounds.right - width - margin,
+      );
+      const spaceAbove = rect.top - bounds.top - margin;
+      const spaceBelow = bounds.bottom - rect.bottom - margin;
+      const placeBelow = spaceBelow > spaceAbove;
+      const maxHeight = Math.max(120, (placeBelow ? spaceBelow : spaceAbove) - gap);
+
+      // Measure the panel's natural height so we can pin its top edge ourselves
+      // (no translateY), which lets us hard-clamp it inside the bounds — otherwise
+      // an upward-growing panel can poke above the chat container / over the
+      // toolbar when our space estimate and the real content height disagree.
+      const naturalHeight = panelRef.current?.scrollHeight ?? maxHeight;
+      const height = Math.min(naturalHeight, maxHeight);
+      const rawTop = placeBelow ? rect.bottom + gap : rect.top - gap - height;
+      const top = Math.min(
+        Math.max(rawTop, bounds.top + margin),
+        bounds.bottom - height - margin,
+      );
+
+      setPanelStyle({ left, top, width, maxHeight });
+    };
+
+    // First pass positions with an estimated height (panel not yet measured);
+    // a second pass after paint re-runs with the panel's real scrollHeight so the
+    // top-edge clamp is exact. Re-runs again as sources stream in (length dep).
+    updatePosition();
+    const raf = requestAnimationFrame(updatePosition);
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [expanded, sources.length]);
 
   if (sources.length === 0) return null;
 
@@ -494,12 +613,13 @@ export const SourcesPanel: React.FC<{ sources: CitationSource[] }> = ({ sources 
         </svg>
       </button>
 
-      {expanded && (
+      {expanded && typeof document !== 'undefined' && createPortal(
         <div
-          className="absolute bottom-full left-0 mb-1.5 z-50 flex flex-col gap-0.5
+          ref={panelRef}
+          className="fixed z-[9999] flex flex-col gap-0.5
             bg-white dark:bg-zinc-800 border-2 border-brutal-black dark:border-zinc-500
-            rounded-[3px] p-1.5 min-w-[280px] max-w-[440px]
-            max-h-[320px] overflow-y-auto"
+            rounded-[3px] p-1.5 overflow-y-auto"
+          style={panelStyle ?? { left: -9999, top: -9999, width: 360 }}
         >
           {sources.map((s, i) => {
             const domain = domainOf(s.url);
@@ -530,7 +650,8 @@ export const SourcesPanel: React.FC<{ sources: CitationSource[] }> = ({ sources 
               </a>
             );
           })}
-        </div>
+        </div>,
+        document.body,
       )}
     </span>
   );

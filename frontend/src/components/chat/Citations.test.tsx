@@ -90,6 +90,24 @@ describe('citation rendering', () => {
     expect(html).not.toContain('cite-t0_src_1');
   });
 
+  it('hides a partially-streamed PUA marker until it closes', () => {
+    // Mid-stream the closing  has not arrived yet; the raw glyphs
+    // ( box /  star) must not leak into the rendered text.
+    const html = render('Factcitet0');
+
+    expect(html).not.toContain('cite');
+    expect(html).not.toContain('');
+    expect(html).not.toContain('');
+    expect(html).toContain('Fact');
+  });
+
+  it('hides a partially-streamed ASCII marker until it closes', () => {
+    const html = render('Fact [[cite:t0');
+
+    expect(html).not.toContain('[[cite');
+    expect(html).toContain('Fact');
+  });
+
   it('formats citation markers as markdown references for copy', () => {
     const text = formatTextWithCitationReferences(
       'Fact\ue200cite\ue202t0_src_1\ue201. More\ufffccite\ufffct0_src_1\ufffct0_src_2\ufffc.',
