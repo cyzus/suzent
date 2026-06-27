@@ -16,6 +16,7 @@ Two hook types:
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from typing import Any, Callable, Awaitable, Optional, List
 
@@ -25,6 +26,14 @@ logger = get_logger(__name__)
 
 REMINDER_TAG = "system-reminder"
 DISPLAY_TRIGGER_TAG = "system-reminder-display-trigger"
+
+# PUA (private-use area) delimiters used to wrap reminder blocks invisibly. The
+# citation system already owns U+E200–U+E202 (see Citations.tsx), so we use the
+# next free codepoints. These render as nothing in the UI, so reminders stay
+# fully hidden without relying on the model to honor an XML tag convention.
+PUA_START = ""  # hidden-content start
+PUA_END = ""  # hidden-content end
+
 _STRIP_RE = re.compile(
     r"<system-reminder>.*?</system-reminder>",
     re.DOTALL | re.IGNORECASE,
@@ -33,6 +42,8 @@ _EXTRACT_RE = re.compile(
     r"<system-reminder>(.*?)</system-reminder>",
     re.DOTALL | re.IGNORECASE,
 )
+_PUA_STRIP_RE = re.compile(rf"{PUA_START}.*?{PUA_END}", re.DOTALL)
+_PUA_EXTRACT_RE = re.compile(rf"{PUA_START}(.*?){PUA_END}", re.DOTALL)
 _DISPLAY_TRIGGER_RE = re.compile(
     rf"<{DISPLAY_TRIGGER_TAG}>(.*?)</{DISPLAY_TRIGGER_TAG}>",
     re.DOTALL | re.IGNORECASE,
@@ -40,7 +51,16 @@ _DISPLAY_TRIGGER_RE = re.compile(
 
 
 def wrap_in_system_reminder(content: str, display_trigger: Optional[str] = None) -> str:
-    """Wrap content in a <system-reminder> xml tag block."""
+    """Wrap content in a hidden reminder block.
+
+    Defaults to invisible PUA delimiters (``PUA_START``/``PUA_END``). Set the
+    ``SUZENT_XML_SYSTEM_REMINDER`` env var to fall back to ``<system-reminder>``
+    XML tags, which is easier to read when debugging the raw context.
+
+    The optional ``display_trigger`` is nested as a ``<system-reminder-display-trigger>``
+    XML sub-tag *inside* the block regardless of the outer delimiter, so the
+    display-rebuild path can still extract it.
+    """
     body = content.strip()
     if display_trigger and display_trigger.strip():
         body = (
@@ -49,21 +69,26 @@ def wrap_in_system_reminder(content: str, display_trigger: Optional[str] = None)
             f"</{DISPLAY_TRIGGER_TAG}>\n\n"
             f"{body}"
         )
-    return f"\n<{REMINDER_TAG}>\n{body}\n</{REMINDER_TAG}>\n"
+    if os.environ.get("SUZENT_XML_SYSTEM_REMINDER"):
+        return f"\n<{REMINDER_TAG}>\n{body}\n</{REMINDER_TAG}>\n"
+    return f"\n{PUA_START}\n{body}\n{PUA_END}\n"
 
 
 def strip_system_reminders(text: str) -> str:
-    """Remove all <system-reminder>...</system-reminder> blocks from text."""
+    """Remove all reminder blocks (PUA or XML) from text."""
     if not text:
         return text
-    return _STRIP_RE.sub("", text).strip()
+    text = _PUA_STRIP_RE.sub("", text)
+    text = _STRIP_RE.sub("", text)
+    return text.strip()
 
 
 def extract_system_reminder_content(text: str) -> str:
-    """Return the concatenated inner text of all <system-reminder> blocks."""
+    """Return the concatenated inner text of all reminder blocks (PUA + XML)."""
     if not text:
         return ""
-    parts = [m.strip() for m in _EXTRACT_RE.findall(text) if m.strip()]
+    parts = [m.strip() for m in _PUA_EXTRACT_RE.findall(text) if m.strip()]
+    parts += [m.strip() for m in _EXTRACT_RE.findall(text) if m.strip()]
     return "\n\n".join(parts)
 
 

@@ -83,7 +83,11 @@ function normalizeMarkdownUrl(url: string): string {
   if (!trimmed) return '';
 
   if (/^file:/i.test(trimmed)) {
-    return suzentSessionFileUrlToServeUrl(trimmed) || '';
+    // Session-workspace files are rewritten to a /sandbox/serve URL. Any other
+    // file:// URL (e.g. an absolute repo path) is left intact so the `a`
+    // renderer can turn it into a clickable FileButton (opened in the file view
+    // via onFileClick) instead of being blanked into a dead href.
+    return suzentSessionFileUrlToServeUrl(trimmed) || trimmed;
   }
 
   return trimmed;
@@ -336,7 +340,10 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
   const openingLinksRef = React.useRef(new Map<string, number>());
 
   const isExternalLink = React.useCallback((href: string): boolean => {
-    return /^(https?:|mailto:|tel:)/i.test(href.trim());
+    // Includes file: so renderers without an onFileClick handler still open the
+    // link (via openExternalLink -> Tauri shell.open) instead of letting the
+    // browser navigate to an http -> file:// URL and bounce back to the app root.
+    return /^(https?:|mailto:|tel:|file:)/i.test(href.trim());
   }, []);
 
   const openExternalLink = React.useCallback(async (href: string) => {
@@ -418,8 +425,11 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
     const normalizedUrl = normalizeMarkdownUrl(url);
     const urlLower = normalizedUrl.toLowerCase().trim();
 
-    // Allow safe protocols
-    const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:'];
+    // Allow safe protocols. `file:` is permitted because the `a` renderer
+    // intercepts file:// hrefs into a FileButton (opened in the in-app file
+    // view via onFileClick) rather than letting the browser navigate to them —
+    // so it must survive this transform instead of being stripped to ''.
+    const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'file:'];
     const hasProtocol = urlLower.includes(':');
 
     if (urlLower.startsWith('data:image/')) {

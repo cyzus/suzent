@@ -199,14 +199,35 @@ const TYPE_ICON: Record<string, string> = {
   subagent: '🤖',
 };
 
-function typeIcon(type?: string): string {
+/** Per-extension emoji for `file` sources that have no favicon. */
+const FILE_EXT_ICONS: Record<string, string> = {
+  md: '📝', txt: '📄', pdf: '📕',
+  py: '🐍', ts: '📘', tsx: '📘', js: '📜', jsx: '📜',
+  json: '📋', yaml: '📋', yml: '📋', toml: '📋',
+  png: '🖼️', jpg: '🖼️', jpeg: '🖼️', gif: '🎞️', svg: '🖼️',
+};
+
+function typeIcon(type?: string, url?: string | null): string {
+  if (type === 'file' && url) {
+    const ext = url.split(/[?#]/)[0].split('.').pop()?.toLowerCase();
+    if (ext && FILE_EXT_ICONS[ext]) return FILE_EXT_ICONS[ext];
+  }
   return (type && TYPE_ICON[type]) || '🔗';
 }
 
-/** Best-effort hostname for display (e.g. "www.bbc.co.uk" -> "bbc.co.uk"). */
+/**
+ * Best-effort display label for a source url: hostname for web urls
+ * (e.g. "www.bbc.co.uk" -> "bbc.co.uk"), filename for `file://` urls.
+ */
 function domainOf(url?: string | null): string {
   if (!url) return '';
   try {
+    if (url.startsWith('file://')) {
+      // Windows: /C:/Users/x.txt, Unix: /home/user/x.txt — take the basename.
+      const path = new URL(url).pathname.replace(/\\/g, '/');
+      const name = path.split('/').filter(Boolean).pop();
+      return name ? decodeURIComponent(name) : 'file';
+    }
     const host = new URL(url).hostname.replace(/^www\./, '');
     return host;
   } catch {
@@ -233,6 +254,17 @@ function sourceName(s: CitationSource): string {
 async function openSource(url: string) {
   if (!url) return;
   try {
+    // file:// — open natively under Tauri; in the browser, file:// can't be
+    // opened programmatically, so copy the path to the clipboard instead.
+    if (url.startsWith('file://')) {
+      if (window.__TAURI__) {
+        const { open } = await import('@tauri-apps/plugin-shell');
+        await open(url);
+      } else {
+        await navigator.clipboard.writeText(url.replace(/^file:\/\//, ''));
+      }
+      return;
+    }
     if (window.__TAURI__) {
       const { open } = await import('@tauri-apps/plugin-shell');
       await open(url);
@@ -249,14 +281,15 @@ async function openSource(url: string) {
  * favicon url), render the source type's emoji instead so we never show a
  * broken-image glyph.
  */
-const Favicon: React.FC<{ src?: string | null; type?: string; className?: string }> = ({
+const Favicon: React.FC<{ src?: string | null; type?: string; url?: string | null; className?: string }> = ({
   src,
   type,
+  url,
   className = 'w-3.5 h-3.5',
 }) => {
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
-    return <span className={`inline-flex items-center justify-center leading-none ${className}`}>{typeIcon(type)}</span>;
+    return <span className={`inline-flex items-center justify-center leading-none ${className}`}>{typeIcon(type, url)}</span>;
   }
   return (
     <img
@@ -306,7 +339,7 @@ const SourceCardRow: React.FC<{ source: CitationSource }> = ({ source: s }) => {
       }}
       className="flex items-start gap-2 p-2 rounded-[2px] hover:bg-neutral-100 dark:hover:bg-zinc-700/70 no-underline group/srow max-w-full overflow-hidden"
     >
-      <Favicon src={s.favicon} type={s.type} className="w-4 h-4 mt-0.5" />
+      <Favicon src={s.favicon} type={s.type} url={s.url} className="w-4 h-4 mt-0.5" />
       <span className="min-w-0 flex flex-col leading-tight">
         <span className="text-[12px] font-bold text-brutal-black dark:text-neutral-100 line-clamp-2 break-words group-hover/srow:underline">
           {sourceLabel(s)}
@@ -441,6 +474,7 @@ export const CitationBadge: React.FC<{ sourceIds: string[] }> = ({ sourceIds }) 
               key={i}
               src={s.favicon}
               type={s.type}
+              url={s.url}
               className={`w-3 h-3 ${i > 0 ? '-ml-1 ring-1 ring-neutral-50 dark:ring-zinc-800 rounded-full' : ''}`}
             />
           ))}
@@ -594,6 +628,7 @@ export const SourcesPanel: React.FC<{ sources: CitationSource[] }> = ({ sources 
               key={i}
               src={s.favicon}
               type={s.type}
+              url={s.url}
               className={`w-3.5 h-3.5 ${i > 0 ? '-ml-1 ring-1 ring-white dark:ring-zinc-900 rounded-full' : ''}`}
             />
           ))}
@@ -638,7 +673,7 @@ export const SourcesPanel: React.FC<{ sources: CitationSource[] }> = ({ sources 
                 className="flex items-start gap-2 p-2 rounded-[2px] hover:bg-neutral-100 dark:hover:bg-zinc-700/70 group no-underline"
               >
                 <span className="font-mono font-bold text-neutral-400 text-[11px] w-4 shrink-0 mt-0.5 text-right">{i + 1}</span>
-                <Favicon src={s.favicon} type={s.type} className="w-4 h-4 mt-0.5" />
+                <Favicon src={s.favicon} type={s.type} url={s.url} className="w-4 h-4 mt-0.5" />
                 <span className="min-w-0 flex flex-col leading-tight">
                   <span className="text-[12px] font-semibold text-brutal-black dark:text-neutral-100 line-clamp-1 group-hover:underline">
                     {sourceLabel(s)}

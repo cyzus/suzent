@@ -552,6 +552,65 @@ export function getSandboxParams(chatId: string, path: string, volumes?: string[
   return params.toString();
 }
 
+/**
+ * Parse a volume string "host:container" into [host, container].
+ * Handles Windows hosts whose drive letter contains a colon (e.g.
+ * "D:\\workspace\\suzent:/mnt/suzent") by splitting on the ":/" that starts the
+ * container path rather than the first colon. Returns null if it can't parse.
+ */
+export function parseVolumeString(vol: string): [string, string] | null {
+  const trimmed = vol.trim();
+  if (!trimmed) return null;
+  // The container path is absolute (starts with "/"), so split on the last ":"
+  // that is immediately followed by "/".
+  const idx = trimmed.search(/:\/(?!\/)/);
+  if (idx <= 0) return null;
+  const host = trimmed.slice(0, idx);
+  const container = trimmed.slice(idx + 1); // keep leading "/"
+  if (!host || !container.startsWith('/')) return null;
+  return [host, container];
+}
+
+/** Normalize a host path: backslashes to "/", strip a leading "/" before a drive letter. */
+function normalizeHostPath(p: string): string {
+  let s = p.replace(/\\/g, '/');
+  // file:// on Windows yields "/D:/..." — drop the leading slash before the drive.
+  if (/^\/[a-zA-Z]:\//.test(s)) s = s.slice(1);
+  return s;
+}
+
+/**
+ * Map an absolute host path to its virtual (container) path using the active
+ * sandbox volume mounts. If the path lives under a mounted host root, returns
+ * "<container>/<relative>"; otherwise returns the path unchanged (normalized).
+ * Used so file:// links to real host files resolve through /sandbox/serve.
+ */
+export function mapHostPathToVirtual(path: string, volumes?: string[]): string {
+  const normalizedPath = normalizeHostPath(path);
+  // Already a virtual path — nothing to map.
+  if (/^\/(workspace|shared|mnt)\b/.test(normalizedPath)) return normalizedPath;
+  if (!volumes || volumes.length === 0) return normalizedPath;
+
+  const lower = normalizedPath.toLowerCase();
+  let best: { container: string; hostNorm: string } | null = null;
+  for (const vol of volumes) {
+    const parsed = parseVolumeString(vol);
+    if (!parsed) continue;
+    const hostNorm = normalizeHostPath(parsed[0]).replace(/\/+$/, '');
+    const hostLower = hostNorm.toLowerCase();
+    if (lower === hostLower || lower.startsWith(hostLower + '/')) {
+      // Prefer the longest (most specific) matching host root.
+      if (!best || hostNorm.length > best.hostNorm.length) {
+        best = { container: parsed[1].replace(/\/+$/, ''), hostNorm };
+      }
+    }
+  }
+  if (!best) return normalizedPath;
+
+  const rest = normalizedPath.slice(best.hostNorm.length).replace(/^\/+/, '');
+  return rest ? `${best.container}/${rest}` : best.container;
+}
+
 // -----------------------------------------------------------------------------
 // Social Configuration
 // -----------------------------------------------------------------------------

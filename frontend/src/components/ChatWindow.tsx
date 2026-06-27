@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
-import { getApiBase, getChatPermissionState, getSandboxParams } from '../lib/api';
+import { getApiBase, getChatPermissionState, getSandboxParams, mapHostPathToVirtual } from '../lib/api';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import { hideStreamingDrafts } from '../lib/streamingDrafts';
 import { reconcileToolCallMessages } from '../lib/toolCallReconciliation';
@@ -1774,10 +1774,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     // Let the click animation finish first
     await new Promise(resolve => setTimeout(resolve, 150));
 
+    // A file:// link yields a host path (e.g. "/D:/workspace/suzent/docs/x.md").
+    // The sandbox serve endpoint resolves *virtual* paths, so map host paths that
+    // live under a mounted volume to their container path (e.g. "/mnt/suzent/docs/x.md").
+    const resolvedPath = mapHostPathToVirtual(path, config.sandbox_volumes);
+
     // Check if file exists before opening (silently fail if not)
     try {
       // Use helper to include volumes in existence check
-      const queryParams = getSandboxParams(currentChatId || '', path, config.sandbox_volumes);
+      const queryParams = getSandboxParams(currentChatId || '', resolvedPath, config.sandbox_volumes);
       const response = await fetch(`${getApiBase()}/sandbox/serve?${queryParams}`, {
         method: 'HEAD'
       });
@@ -1789,10 +1794,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       if (shiftKey) {
         // Shift+Click: Open full-screen modal directly
-        setViewingFile({ path, name });
+        setViewingFile({ path: resolvedPath, name });
       } else {
         // Normal click: Open in right sidebar
-        setSidebarFilePreview({ path, name });
+        setSidebarFilePreview({ path: resolvedPath, name });
         if (!isRightSidebarOpen) {
           onRightSidebarToggle(true);
         }

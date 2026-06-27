@@ -130,3 +130,28 @@ describe('citation rendering', () => {
     expect(text).not.toContain('cite-t0_src_1');
   });
 });
+
+describe('file citation support', () => {
+  const fileSources: CitationSourcesMap = new Map([
+    [
+      't0_src_1',
+      {
+        id: 't0_src_1',
+        type: 'file',
+        title: 'README.md',
+        url: 'file:///D:/workspace/suzent/README.md',
+      },
+    ],
+  ]);
+
+  it('displays the filename for file:// urls', () => {
+    const html = renderWithSources('See citet0_src_1.', fileSources);
+    expect(html).toContain('README.md');
+  });
+
+  it('renders an extension-based icon for file sources without a favicon', () => {
+    const html = renderWithSources('See citet0_src_1.', fileSources);
+    // .md maps to 📝 in FILE_EXT_ICONS
+    expect(html).toContain('📝');
+  });
+});

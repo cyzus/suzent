@@ -1,7 +1,10 @@
 import pytest
 from suzent.core.system_reminder import (
+    PUA_START,
+    PUA_END,
     wrap_in_system_reminder,
     strip_system_reminders,
+    extract_system_reminder_content,
     build_combined_reminder,
     register_global_hook,
     clear_global_hooks,
@@ -11,9 +14,40 @@ from suzent.core.system_reminder import (
 def test_wrap_strip_roundtrip():
     content = "hello world"
     wrapped = wrap_in_system_reminder(content)
-    assert "<system-reminder>" in wrapped
+    # default format uses invisible PUA delimiters, not XML
+    assert PUA_START in wrapped
+    assert PUA_END in wrapped
+    assert "<system-reminder>" not in wrapped
     assert "hello world" in wrapped
     # stripping a wrapped reminder should yield an empty string
+    assert strip_system_reminders(wrapped) == ""
+
+
+def test_strip_pua_format():
+    text = f"before{PUA_START}hidden{PUA_END}after"
+    assert strip_system_reminders(text) == "beforeafter"
+
+
+def test_strip_mixed_formats():
+    text = f"A{PUA_START}PUA{PUA_END}B<system-reminder>XML</system-reminder>C"
+    assert strip_system_reminders(text) == "ABC"
+
+
+def test_extract_content_pua_and_xml():
+    text = (
+        f"{PUA_START}pua-content{PUA_END}<system-reminder>xml-content</system-reminder>"
+    )
+    extracted = extract_system_reminder_content(text)
+    assert "pua-content" in extracted
+    assert "xml-content" in extracted
+
+
+def test_xml_fallback_via_env(monkeypatch):
+    monkeypatch.setenv("SUZENT_XML_SYSTEM_REMINDER", "1")
+    wrapped = wrap_in_system_reminder("hello")
+    assert "<system-reminder>" in wrapped
+    assert PUA_START not in wrapped
+    # strip still removes the XML form
     assert strip_system_reminders(wrapped) == ""
 
 
