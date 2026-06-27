@@ -549,6 +549,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     consumeResetFlag,
     updateMessage,
     truncateMessagesFrom,
+    markChatRollbackExpected,
     setIsStreaming,
     currentChatId,
     createNewChat,
@@ -1689,11 +1690,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     }
     if (lastUserIdx >= 0) {
+      markChatRollbackExpected(currentChatId);
       truncateMessagesFrom(lastUserIdx + 1, currentChatId);
     }
 
     const chatIdForRetry = currentChatId;
     clearParts();
+    liveStreamPartsRef.current = [];
     streamStartByChatRef.current.set(chatIdForRetry, Date.now());
     setIsStreaming(true, chatIdForRetry);
     // Don't set streamingChatIdRef here — tryConnect sets it in onStreamStart,
@@ -1719,7 +1722,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }).finally(() => {
       stopInFlightRef.current = false;
     });
-  }, [currentChatId, isStreaming, messages, truncateMessagesFrom, setIsStreaming, clearParts, safeConfig, setStatusBar]);
+  }, [currentChatId, isStreaming, messages, markChatRollbackExpected, truncateMessagesFrom, setIsStreaming, clearParts, safeConfig, setStatusBar]);
 
   // Stop streaming handler
   const stopStreaming = async () => {

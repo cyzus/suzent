@@ -92,6 +92,7 @@ interface ChatCoreContextValue {
   updateChatTitleLocally: (chatId: string, title: string) => void;
   updateMessage: (index: number, update: Partial<Message>, chatId?: string | null) => void;
   truncateMessagesFrom: (fromIndex: number, chatId?: string | null) => void;
+  markChatRollbackExpected: (chatId?: string | null) => void;
   setViewSwitcher?: (switcher: (view: 'chat' | 'memory') => void) => void;
   switchToView?: (view: 'chat' | 'memory') => void;
   hideToolCalls: boolean;
@@ -319,6 +320,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   const searchRequestIdRef = useRef(0);
   const chatCreationPromiseRef = useRef<Promise<string | null> | null>(null);
   const saveTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const rollbackExpectedChatIdsRef = useRef<Set<string>>(new Set());
   const messagesByChatRef = useRef(messagesByChat);
   const configByChatRef = useRef(configByChat);
   const viewSwitcherRef = useRef<((view: 'chat' | 'memory') => void) | null>(null);
@@ -950,6 +952,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     });
   }, [currentChatId, setMessagesForChat]);
 
+  const markChatRollbackExpected = useCallback((chatId: string | null = currentChatId) => {
+    if (!chatId) return;
+    rollbackExpectedChatIdsRef.current.add(chatId);
+  }, [currentChatId]);
+
   const setStreamingState = useCallback((streaming: boolean, chatId?: string | null) => {
     setIsStreamingState(streaming);
     const targetChatId = chatId ?? currentChatId;
@@ -1161,6 +1168,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           console.warn('Failed to save config to localStorage:', e);
         }
         setMessagesByChat(prev => {
+          const rollbackExpected = rollbackExpectedChatIdsRef.current.has(chatId);
           // 100% Backend Authored: backend is ALWAYS the source of truth for ALL chats.
           // Map backend JSON (which includes strict tool_calls arrays and 'tool' roles)
           // into the legacy HTML `<details>` string blocks that the UI parser expects.
@@ -1240,21 +1248,24 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           // Prevent UI flicker: if local store has more messages (e.g. optimistic append right after stream),
           // don't let stale backend DB state overwrite it. Wait until DB catches up.
           const existing = prev[key] || [];
-          if (existing.length > mappedMessages.length) {
+          if (rollbackExpected && existing.length > 0 && mappedMessages.length > existing.length) {
+            return prev;
+          }
+          if (existing.length > mappedMessages.length && !rollbackExpected) {
             return prev;
           }
           // Guard: a force reload can arrive after the frontend optimistically
           // appended the user's message but before the backend display log has
           // caught up. Keep the local user bubble visible while the agent stream
           // continues, then let the next fresh server snapshot replace it.
-          if (shouldKeepOptimisticUserMessage(existing, mappedMessages)) {
+          if (!rollbackExpected && shouldKeepOptimisticUserMessage(existing, mappedMessages)) {
             return prev;
           }
           // Guard: keep optimistic local content when server is still mid-postprocess.
           // Covers both equal-count and server-has-more cases: if local last assistant has
           // real text and server last assistant is tool-only (intermediate), backend hasn't
           // finished writing the final reply yet.
-          if (shouldKeepLocalAssistantContent(existing, mappedMessages)) {
+          if (!rollbackExpected && shouldKeepLocalAssistantContent(existing, mappedMessages)) {
             return prev;
           }
           // Guard against replacing locally-resolved content with a stale pending-approval
@@ -1274,7 +1285,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             ? [...existing].reverse().find((m: Message) => m.role === 'assistant')
             : undefined;
           const localLastAssistantHasNoPending = lastLocalAssistant != null && !msgHasPendingApproval(lastLocalAssistant);
-          if (serverHasPendingApproval && localLastAssistantHasNoPending) {
+          if (!rollbackExpected && serverHasPendingApproval && localLastAssistantHasNoPending) {
             return prev;
           }
           // Guard: local has completed tool outputs (📦) that the server hasn't persisted yet.
@@ -1282,7 +1293,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           const countOutputs = (msgs: Message[]) => msgs.reduce(
             (n, m) => n + (typeof m.content === 'string' ? (m.content.match(/<summary>📦/g) ?? []).length : 0), 0
           );
-          if (existing.length > 0 && countOutputs(existing) > countOutputs(mappedMessages)) {
+          if (!rollbackExpected && existing.length > 0 && countOutputs(existing) > countOutputs(mappedMessages)) {
             return prev;
           }
 
@@ -1292,7 +1303,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
             msgs.length > 0 ? [...msgs].reverse().find((m: Message) => m.role === 'assistant') : undefined;
           const localLastAssistant = getLastAssistant(existing);
           const serverLastAssistant = getLastAssistant(mappedMessages);
-          if (localLastAssistant && serverLastAssistant) {
+          if (!rollbackExpected && localLastAssistant && serverLastAssistant) {
             const localContent = typeof localLastAssistant.content === 'string' ? localLastAssistant.content.trim() : '';
             const serverContent = typeof serverLastAssistant.content === 'string' ? serverLastAssistant.content.trim() : '';
 
@@ -1316,6 +1327,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
               return prev;
             }
           }
+          rollbackExpectedChatIdsRef.current.delete(chatId);
           return { ...prev, [key]: mappedMessages };
         });
         setShouldResetNext(false);
@@ -1451,6 +1463,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
       updateChatTitleLocally,
       updateMessage,
       truncateMessagesFrom,
+      markChatRollbackExpected,
       setViewSwitcher,
       switchToView,
       hideToolCalls,
@@ -1493,6 +1506,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     updateChatTitleLocally,
     updateMessage,
     truncateMessagesFrom,
+    markChatRollbackExpected,
     setViewSwitcher,
     switchToView,
     hideToolCalls,
