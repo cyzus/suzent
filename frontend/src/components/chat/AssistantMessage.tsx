@@ -33,6 +33,7 @@ import {
   hasAguiPendingApproval,
   hasLegacyPendingApproval,
 } from './ActivityRail';
+import { useI18n } from '../../i18n';
 
 const LARGE_MARKDOWN_RENDER_THRESHOLD = 12000;
 
@@ -69,6 +70,8 @@ interface AssistantMessageProps {
   onRetry?: () => void;
   /** Chat-wide citation sources (all turns), so inline badges resolve cross-turn ids. */
   chatCitationSources?: CitationSourcesMap;
+  /** Chat config model fallback for older messages without per-message metadata. */
+  fallbackModel?: string;
 }
 
 // Names that should be filtered out from tool call display
@@ -459,6 +462,21 @@ const RetryButton: React.FC<{ onClick: () => void; className?: string }> = ({ on
   );
 };
 
+const ModelSignature: React.FC<{ model?: string }> = ({ model }) => {
+  const { t } = useI18n();
+  const modelId = model?.trim();
+  if (!modelId) return null;
+
+  return (
+    <div
+      className="max-w-[16rem] truncate text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 select-none"
+      title={t('chatMessage.modelSignature', { model: modelId })}
+    >
+      {t('chatMessage.modelSignature', { model: modelId })}
+    </div>
+  );
+};
+
 export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   message,
   previousMessageTimestamp,
@@ -479,6 +497,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   onForceWebContext,
   onRetry,
   chatCitationSources,
+  fallbackModel,
 }) => {
   const isStreamingThis = isStreaming && isLastMessage;
   const effectiveParts = aguiParts ?? message.parts;
@@ -553,6 +572,8 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
       return formatTextWithCitationReferences(text, citationSourcesMap).trim();
     }
   }, [effectiveParts, legacyBlocks, citationSourcesMap]);
+
+  const modelSignature = message.model || fallbackModel;
 
   // 1. 抓取当前正在跑的 Tool 和 错误状态
   let currentToolName: string | undefined = undefined;
@@ -654,6 +675,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                 <RetryButton onClick={onRetry} />
               )}
               {!isThinking && <SourcesPanel sources={citationSourcesList} />}
+              {!isThinking && <ModelSignature model={modelSignature} />}
               {message.timestamp && !isStreamingThis && (
                 <div className="text-[10px] text-neutral-400 select-none">
                   {formatMessageTime(message.timestamp)}
@@ -921,6 +943,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               <RetryButton onClick={onRetry} />
             )}
             {!isThinking && <SourcesPanel sources={citationSourcesList} />}
+            {!isThinking && <ModelSignature model={modelSignature} />}
             {message.timestamp && !isStreamingThis && (
               <div className="text-[10px] text-neutral-400 select-none">
                 {formatMessageTime(message.timestamp)}

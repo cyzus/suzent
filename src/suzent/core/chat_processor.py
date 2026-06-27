@@ -1601,7 +1601,7 @@ class ChatProcessor:
             else:
                 # 100% Backend Authored: rebuild the complete display log from the full agent history
                 # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
-                rebuilt = _rebuild_display_messages(messages)
+                rebuilt = _rebuild_display_messages(messages, model_id=model_id)
                 rebuilt = _preserve_citation_sources(rebuilt, chat_messages)
                 rebuilt = _append_inline_a2ui_surfaces(rebuilt, inline_a2ui_surfaces)
 
@@ -1804,7 +1804,7 @@ def _extract_tool_calls(messages: list) -> List[AgentAction]:
     return actions
 
 
-def _rebuild_display_messages(messages: list) -> list:
+def _rebuild_display_messages(messages: list, model_id: str | None = None) -> list:
     """
     Reconstruct an OpenAI-like JSON display log from pydantic-ai message history.
     This ensures that tool calls and tool results are preserved in the database.
@@ -2009,6 +2009,8 @@ def _rebuild_display_messages(messages: list) -> list:
 
             ts = msg.timestamp.isoformat() if getattr(msg, "timestamp", None) else None
             entry = {"role": "assistant", "content": ordered_content}
+            if model_id:
+                entry["model"] = model_id
             if structured_parts:
                 entry["parts"] = structured_parts
             if tool_calls:

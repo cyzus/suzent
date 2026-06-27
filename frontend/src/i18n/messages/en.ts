@@ -766,6 +766,7 @@ export const en = {
     viewFile: 'View file (Shift+Click for full screen)',
     downloadFile: 'Download file',
     userLabel: 'User',
+    modelSignature: 'Model: {model}',
   },
   fileViewer: {
     title: 'File Preview',

@@ -133,7 +133,7 @@ function formatToolArgsForStore(toolName: string, args: string): string {
  * Tool invocations are serialized as HTML <details> blocks with emoji conventions
  * so the existing historical message rendering pipeline can display them.
  */
-function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any, role: Message['role'] = 'assistant'): Message {
+function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any, role: Message['role'] = 'assistant', model?: string): Message {
   // Normalize: merge duplicate tool parts (same toolCallId) so only the final
   // state is stored. Without this, a tool that went through approval-requested →
   // completed would write two 🔧 blocks, the first with data-approval-state="pending".
@@ -200,7 +200,7 @@ function aguiPartsToStoreMessage(parts: AGUIPart[], usage?: any, role: Message['
       persistedParts.push({ ...part, citationSources: [...part.citationSources] });
     }
   }
-  return { role, content, parts: persistedParts, timestamp: new Date().toISOString(), stepInfo: usage ? formatUsage(usage) : undefined };
+  return { role, content, parts: persistedParts, timestamp: new Date().toISOString(), model: model || undefined, stepInfo: usage ? formatUsage(usage) : undefined };
 }
 
 function finalizeInterruptedParts(parts: AGUIPart[]): AGUIPart[] {
@@ -378,7 +378,8 @@ const MessageList: React.FC<{
   onForceWebContext?: (contextId: string) => void;
   onRetry?: () => void;
   chatCitationSources?: CitationSourcesMap;
-}> = ({ messages, streamingForCurrentChat, messageIndexOffset = 0, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext, onRetry, chatCitationSources }) => {
+  fallbackModel?: string;
+}> = ({ messages, streamingForCurrentChat, messageIndexOffset = 0, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext, onRetry, chatCitationSources, fallbackModel }) => {
   const { skipIndices, groupRenders, stepSummaryByMessageIndex } = useMemo(
     () => buildMessageRenderPlan(messages),
     [messages],
@@ -417,6 +418,7 @@ const MessageList: React.FC<{
             role: 'assistant',
             content: groupedBlocksToAssistantContent(group.mergedBlocks),
             timestamp: m.timestamp,
+            model: m.model,
           };
           return (
             <div key={globalIdx} data-message-index={globalIdx} className="chat-msg-row w-full flex flex-col group/message">
@@ -437,6 +439,7 @@ const MessageList: React.FC<{
                   onStopSubAgent={onStopSubAgent}
                   onForceWebContext={onForceWebContext}
                   chatCitationSources={chatCitationSources}
+                  fallbackModel={fallbackModel}
                 />
               </div>
             </div>
@@ -498,6 +501,7 @@ const MessageList: React.FC<{
                   onForceWebContext={onForceWebContext}
                   onRetry={idx === lastAssistantIdx && !streamingForCurrentChat ? onRetry : undefined}
                   chatCitationSources={chatCitationSources}
+                  fallbackModel={fallbackModel}
                 />
               )}
             </div>
@@ -755,7 +759,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       // Optimistic append: convert parts to HTML and store locally so the
       // message is visible immediately — no blank flash while loadChat fetches DB.
-      const storeMsg = aguiPartsToStoreMessage(parts, currentUsage, streamDisplayRoleRef.current);
+      const storeMsg = aguiPartsToStoreMessage(parts, currentUsage, streamDisplayRoleRef.current, safeConfig.model);
       if (storeMsg.content.trim()) {
         addMessage(storeMsg, chatId!);
         if (/context compacted/i.test(storeMsg.content)) {
@@ -883,7 +887,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         : (errorMessage || t('chatWindow.genericError'));
 
       if (!wasHeartbeat && !isNetworkError) {
-        const partialMessage = aguiPartsToStoreMessage(parts, currentUsage, streamDisplayRoleRef.current);
+        const partialMessage = aguiPartsToStoreMessage(parts, currentUsage, streamDisplayRoleRef.current, safeConfig.model);
         if (partialMessage.content.trim()) {
           addMessage(partialMessage, chatId);
           addMessage({ role: 'notice', content: `\u26a0\ufe0f Error: ${displayMessage}` }, chatId);
@@ -1408,7 +1412,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         return;
       }
 
-      const richMsg = aguiPartsToStoreMessage(liveStreamPartsRef.current, null);
+      const richMsg = aguiPartsToStoreMessage(liveStreamPartsRef.current, null, 'assistant', safeConfig.model);
       const isSocialStream = chatIdAtMount.startsWith('social-');
       setIsStreaming(false, chatIdAtMount);
       // Stream finished cleanly — drop preserved reconnect state for this chat.
@@ -1528,6 +1532,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         finalizeInterruptedParts(streamingParts),
         currentUsage,
         streamDisplayRoleRef.current,
+        safeConfig.model,
       );
       if (interruptedMessage.content.trim()) {
         addMessage(interruptedMessage, currentChatId);
@@ -1883,6 +1888,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     onStopSubAgent={handleStopSubAgent}
                     onForceWebContext={handleForceWebContext}
                     onRetry={!isStreaming ? handleRetry : undefined}
+                    fallbackModel={safeConfig.model}
                   />
                 )}
                 {compactNotice && (
@@ -1920,6 +1926,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                             onStopSubAgent={handleStopSubAgent}
                             onForceWebContext={handleForceWebContext}
                             chatCitationSources={chatCitationSources}
+                            fallbackModel={safeConfig.model}
                           />
                         )}
                       </div>
