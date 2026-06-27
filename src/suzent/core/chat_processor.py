@@ -393,6 +393,74 @@ class ChatProcessor:
                 yield chunk
             return
 
+        # Handle /retry-edit — like /retry, but replays with NEW user text.
+        # Body format: "/retry-edit <new message text>". Restores state to before
+        # the last user turn, then re-runs with the edited message.
+        if (
+            message_content
+            and message_content.strip().lower().startswith("/retry-edit ")
+            and not resume_approvals
+            and not is_heartbeat
+        ):
+            from suzent.core.retry import apply_retry_checkpoint
+            from ag_ui.core import (
+                CustomEvent,
+                RunStartedEvent,
+                RunFinishedEvent,
+                TextMessageStartEvent,
+                TextMessageContentEvent,
+                TextMessageEndEvent,
+            )
+            from ag_ui.encoder import EventEncoder as _EditEnc
+
+            edited_message = message_content.split(" ", 1)[1].strip()
+
+            checkpoint_data = apply_retry_checkpoint(chat_id)
+            if checkpoint_data is None or not edited_message:
+                _enc = _EditEnc()
+                run_id = str(uuid.uuid4())
+                msg_id = str(uuid.uuid4())
+                err_msg = (
+                    "Nothing to edit — send a message first."
+                    if checkpoint_data is None
+                    else "Edited message is empty."
+                )
+                yield _enc.encode(RunStartedEvent(run_id=run_id, thread_id=chat_id))
+                yield _enc.encode(
+                    CustomEvent(name="stream_display_role", value={"role": "notice"})
+                )
+                yield _enc.encode(
+                    TextMessageStartEvent(message_id=msg_id, role="assistant")
+                )
+                yield _enc.encode(
+                    TextMessageContentEvent(message_id=msg_id, delta=err_msg)
+                )
+                yield _enc.encode(TextMessageEndEvent(message_id=msg_id))
+                yield _enc.encode(RunFinishedEvent(run_id=run_id, thread_id=chat_id))
+                yield "data: [DONE]\n\n"
+                return
+
+            # Replay with the edited message, but keep the original turn's files
+            # and config snapshot so attachments survive the edit.
+            edit_files = checkpoint_data["user_files"] or []
+            edit_config = checkpoint_data.get("config_snapshot") or {}
+            merged_config = {
+                **config,
+                **edit_config,
+                "_user_id": user_id,
+                "_chat_id": chat_id,
+            }
+            async for chunk in self.process_turn(
+                chat_id=chat_id,
+                user_id=user_id,
+                message_content=edited_message,
+                files=edit_files if edit_files else None,
+                config_override=merged_config,
+                is_social=is_social,
+            ):
+                yield chunk
+            return
+
         # Save retry checkpoint now that we have the pre-turn state.
         # Skip for resume/heartbeat/steer flows.
         if (

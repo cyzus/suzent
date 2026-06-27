@@ -2,11 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { Message } from '../../types/api';
 import { FileIcon } from '../FileIcon';
 import { ClickableContent } from '../ClickableContent';
-import { ArrowDownTrayIcon, EyeIcon } from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, EyeIcon, PencilSquareIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { getApiBase, getSandboxParams } from '../../lib/api';
 import { formatMessageTime } from '../../lib/chatUtils';
 import { useChatStore } from '../../hooks/useChatStore';
 import { useI18n } from '../../i18n';
+import { CopyButton } from './CopyButton';
 
 // Must match the CSS max-w-sm / max-h-64 constraints on the rendered <img>.
 const IMG_MAX_W = 384;
@@ -128,11 +129,53 @@ interface UserMessageProps {
   chatId?: string;
   onImageClick?: (src: string) => void;
   onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
+  /** Whether this is the latest user message — only it shows edit/rerun controls. */
+  isLatest?: boolean;
+  /** Resend the latest user message with new text (truncates responses below). */
+  onEdit?: (newContent: string) => void;
+  /** Re-run the latest user message unchanged. */
+  onRerun?: () => void;
 }
 
-export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onImageClick, onFileClick }) => {
+export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onImageClick, onFileClick, isLatest, onEdit, onRerun }) => {
   const { config } = useChatStore();
   const { t } = useI18n();
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const content = message.content ? sanitizeContent(message.content) : '';
+  const canEdit = isLatest && !!content && (!!onEdit || !!onRerun);
+
+  const startEditing = () => {
+    setDraft(content);
+    setIsEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setIsEditing(false);
+    setDraft('');
+  };
+
+  const saveEditing = () => {
+    const next = draft.trim();
+    if (next && next !== content) {
+      onEdit?.(next);
+    }
+    setIsEditing(false);
+    setDraft('');
+  };
+
+  // Focus + size the edit textarea when entering edit mode.
+  useEffect(() => {
+    if (!isEditing) return;
+    const ta = editTextareaRef.current;
+    if (!ta) return;
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    ta.style.height = '0px';
+    ta.style.height = `${Math.min(Math.max(ta.scrollHeight, 40), 240)}px`;
+  }, [isEditing]);
 
   const imageFiles = message.files?.filter(f => f.mime_type.startsWith('image/')) ?? [];
   const otherFiles = message.files?.filter(f => !f.mime_type.startsWith('image/')) ?? [];
@@ -230,26 +273,103 @@ export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onIma
         </div>
       )}
 
-      {/* Text content */}
-      {message.content && (
+      {/* Text content — edit mode swaps the bubble for a textarea */}
+      {message.content && !isEditing && (
         <div className="flex justify-end pr-1 pb-1">
           <div className="bg-brutal-yellow border-3 border-brutal-black shadow-[3px_3px_0_0_#000] px-5 py-4 max-w-full font-medium relative select-text">
             <div className="prose prose-sm max-w-none break-words text-brutal-black font-sans whitespace-pre-wrap">
-              <ClickableContent content={sanitizeContent(message.content)} onFileClick={onFileClick} />
+              <ClickableContent content={content} onFileClick={onFileClick} />
             </div>
           </div>
         </div>
       )}
 
-      {/* User label + timestamp */}
-      <div className="text-[10px] font-bold text-neutral-400 uppercase text-right pr-1 opacity-0 group-hover/message:opacity-100 transition-opacity select-none flex justify-end gap-2">
-        {message.timestamp && (
-          <span className="normal-case font-normal">
-            {formatMessageTime(message.timestamp)}
-          </span>
-        )}
-        <span>{t('chatMessage.userLabel')}</span>
-      </div>
+      {/* Inline edit form */}
+      {isEditing && (
+        <div className="pr-1 pb-1 space-y-2">
+          <textarea
+            ref={editTextareaRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onInput={(e) => {
+              const ta = e.currentTarget;
+              ta.style.height = '0px';
+              ta.style.height = `${Math.min(Math.max(ta.scrollHeight, 40), 240)}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelEditing();
+              } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                saveEditing();
+              }
+            }}
+            className="w-full resize-none bg-white dark:bg-zinc-800 border-3 border-brutal-blue shadow-[3px_3px_0_0_#000] px-4 py-3 text-sm font-sans text-brutal-black dark:text-white focus:outline-none"
+          />
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs text-neutral-500 dark:text-neutral-400 flex-1">
+              {t('chatMessage.editHint')}
+            </span>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={cancelEditing}
+                type="button"
+                className="px-4 py-1.5 text-sm font-bold bg-white dark:bg-zinc-800 border-2 border-brutal-black text-brutal-black dark:text-white hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
+              >
+                {t('chatMessage.cancel')}
+              </button>
+              <button
+                onClick={saveEditing}
+                type="button"
+                disabled={!draft.trim() || draft.trim() === content}
+                className="px-4 py-1.5 text-sm font-bold bg-brutal-blue border-2 border-brutal-black text-white hover:translate-x-[1px] hover:translate-y-[1px] transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0"
+              >
+                {t('chatMessage.save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Action toolbar + label + timestamp */}
+      {!isEditing && (
+        <div className="flex items-center justify-end gap-2 pr-1">
+          {canEdit && (
+            <div className="flex items-center gap-1 opacity-0 group-hover/message:opacity-100 focus-within:opacity-100 transition-opacity">
+              <CopyButton text={content} className="w-6 h-6 flex items-center justify-center bg-transparent text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors" />
+              {onEdit && (
+                <button
+                  onClick={startEditing}
+                  type="button"
+                  title={t('chatMessage.edit')}
+                  className="w-6 h-6 flex items-center justify-center bg-transparent text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors"
+                >
+                  <PencilSquareIcon className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {onRerun && (
+                <button
+                  onClick={() => onRerun()}
+                  type="button"
+                  title={t('chatMessage.rerun')}
+                  className="w-6 h-6 flex items-center justify-center bg-transparent text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors"
+                >
+                  <ArrowPathIcon className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+          <div className="text-[10px] font-bold text-neutral-400 uppercase select-none flex items-center gap-2 opacity-0 group-hover/message:opacity-100 transition-opacity">
+            {message.timestamp && (
+              <span className="normal-case font-normal">
+                {formatMessageTime(message.timestamp)}
+              </span>
+            )}
+            <span>{t('chatMessage.userLabel')}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

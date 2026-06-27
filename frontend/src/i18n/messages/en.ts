@@ -768,6 +768,12 @@ export const en = {
     userLabel: 'User',
     modelLabel: 'Model',
     modelSignature: 'Model: {model}',
+    edit: 'Edit',
+    rerun: 'Rerun',
+    copy: 'Copy',
+    save: 'Save',
+    cancel: 'Cancel',
+    editHint: 'Editing this message will resend it and remove the responses below.',
   },
   fileViewer: {
     title: 'File Preview',

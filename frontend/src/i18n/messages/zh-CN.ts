@@ -694,6 +694,12 @@ export const zhCN = {
     userLabel: '用户',
     modelLabel: '模型',
     modelSignature: '模型：{model}',
+    edit: '编辑',
+    rerun: '重新运行',
+    copy: '复制',
+    save: '保存',
+    cancel: '取消',
+    editHint: '编辑此消息将重新发送，并移除下方的回复。',
   },
   fileViewer: {
     title: '文件预览',

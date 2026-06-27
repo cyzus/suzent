@@ -377,9 +377,10 @@ const MessageList: React.FC<{
   onStopSubAgent?: (taskId: string) => void;
   onForceWebContext?: (contextId: string) => void;
   onRetry?: () => void;
+  onEditUserMessage?: (newContent: string) => void;
   chatCitationSources?: CitationSourcesMap;
   fallbackModel?: string;
-}> = ({ messages, streamingForCurrentChat, messageIndexOffset = 0, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext, onRetry, chatCitationSources, fallbackModel }) => {
+}> = ({ messages, streamingForCurrentChat, messageIndexOffset = 0, chatId, onImageClick, onFileClick, onToolApproval, toolApprovalPolicy, onRemoveApprovalPolicy, onInlineAction, subAgentTasks, onOpenSubAgentSidebar, onStopSubAgent, onForceWebContext, onRetry, onEditUserMessage, chatCitationSources, fallbackModel }) => {
   const { skipIndices, groupRenders, stepSummaryByMessageIndex } = useMemo(
     () => buildMessageRenderPlan(messages),
     [messages],
@@ -389,6 +390,14 @@ const MessageList: React.FC<{
   const lastAssistantIdx = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === 'assistant' && !skipIndices.has(i)) return i;
+    }
+    return -1;
+  }, [messages, skipIndices]);
+
+  // Index of the last user message — only it shows edit/rerun controls.
+  const lastUserIdx = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user' && !skipIndices.has(i)) return i;
     }
     return -1;
   }, [messages, skipIndices]);
@@ -482,7 +491,15 @@ const MessageList: React.FC<{
           <div key={globalIdx} data-message-index={globalIdx} className="chat-msg-row w-full flex flex-col group/message">
             <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} w-full`}>
               {isUser ? (
-                <UserMessage message={m} chatId={chatId} onImageClick={onImageClick} onFileClick={onFileClick} />
+                <UserMessage
+                  message={m}
+                  chatId={chatId}
+                  onImageClick={onImageClick}
+                  onFileClick={onFileClick}
+                  isLatest={idx === lastUserIdx && !streamingForCurrentChat}
+                  onEdit={idx === lastUserIdx && !streamingForCurrentChat ? onEditUserMessage : undefined}
+                  onRerun={idx === lastUserIdx && !streamingForCurrentChat ? onRetry : undefined}
+                />
               ) : (
                 <AssistantMessage
                   message={m}
@@ -1731,6 +1748,70 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     });
   }, [currentChatId, isStreaming, messages, markChatRollbackExpected, truncateMessagesFrom, setIsStreaming, clearParts, safeConfig, setStatusBar]);
 
+  // Edit handler — re-sends the last user message with new text, dropping that
+  // message and everything after it, then streaming a fresh response. Uses the
+  // background queue (/chat/send) so it is reconnectable after a page refresh,
+  // matching handleRetry / the main send path.
+  const handleEditUserMessage = useCallback((newContent: string) => {
+    if (!currentChatId || isStreaming) return;
+    const prompt = newContent.trim();
+    if (!prompt) return;
+
+    const safeMessages = messages ?? [];
+    let lastUserIdx = -1;
+    for (let i = safeMessages.length - 1; i >= 0; i--) {
+      if (safeMessages[i].role === 'user') {
+        lastUserIdx = i;
+        break;
+      }
+    }
+    if (lastUserIdx < 0) return;
+
+    const original = safeMessages[lastUserIdx];
+
+    // Optimistically drop the original user message and all responses below it,
+    // then re-add the edited message. The backend's /retry-edit command restores
+    // history to before this turn and replays it with the new text, so the
+    // persisted state will match.
+    markChatRollbackExpected(currentChatId);
+    truncateMessagesFrom(lastUserIdx, currentChatId);
+
+    const chatIdForEdit = currentChatId;
+    addMessage({
+      role: 'user',
+      content: prompt,
+      timestamp: new Date().toISOString(),
+      images: original.images,
+      files: original.files,
+    }, chatIdForEdit);
+
+    clearParts();
+    liveStreamPartsRef.current = [];
+    streamStartByChatRef.current.set(chatIdForEdit, Date.now());
+    setIsStreaming(true, chatIdForEdit);
+    activeChatIdRef.current = chatIdForEdit;
+    stopInFlightRef.current = false;
+
+    fetch(`${getApiBase()}/chat/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: `/retry-edit ${prompt}`, chat_id: chatIdForEdit, config: safeConfig }),
+    }).then(resp => {
+      if (!resp.ok) {
+        const msg = resp.status === 409 ? 'Chat is already responding' : `Edit failed (${resp.status})`;
+        setStatusBar(msg, 'error', 4000);
+        setIsStreaming(false, chatIdForEdit);
+        return;
+      }
+      tryConnectRef.current?.();
+    }).catch(err => {
+      console.error('[handleEditUserMessage] /chat/send failed:', err);
+      setIsStreaming(false, chatIdForEdit);
+    }).finally(() => {
+      stopInFlightRef.current = false;
+    });
+  }, [currentChatId, isStreaming, messages, markChatRollbackExpected, truncateMessagesFrom, addMessage, setIsStreaming, clearParts, safeConfig, setStatusBar]);
+
   // Stop streaming handler
   const stopStreaming = async () => {
     if (!isStreaming || stopInFlightRef.current) return;
@@ -1892,6 +1973,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     onStopSubAgent={handleStopSubAgent}
                     onForceWebContext={handleForceWebContext}
                     onRetry={!isStreaming ? handleRetry : undefined}
+                    onEditUserMessage={!isStreaming ? handleEditUserMessage : undefined}
                     fallbackModel={safeConfig.model}
                   />
                 )}
