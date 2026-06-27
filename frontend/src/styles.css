@@ -28,11 +28,14 @@
     height: min(22rem, calc(100% - 4rem));
   }
 
+  /* Rail height is set inline from the marker count and the rail is
+     centered in the container, so a sparse stack stays compact and
+     vertically centered rather than stretched edge to edge. */
   .chat-minimap-rail {
     position: absolute;
-    top: 0;
+    top: 50%;
     right: 0.35rem;
-    bottom: 0;
+    transform: translateY(-50%);
     width: 2rem;
     cursor: pointer;
   }

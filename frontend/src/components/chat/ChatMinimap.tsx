@@ -16,7 +16,12 @@ interface ChatMinimapMarker {
 }
 
 const MIN_MARKERS_TO_SHOW = 4;
-const RAIL_INSET_PERCENT = 4;
+// Ticks sit a fixed distance apart and the whole stack is centered in the
+// rail, so a short conversation stays compact instead of being flung across
+// the full height. Past MAX_RAIL_PX the interval shrinks to keep dense
+// conversations bounded.
+const TICK_INTERVAL_PX = 14;
+const MAX_RAIL_PX = 340;
 
 interface ChatMinimapProps {
   messages: Message[];
@@ -192,13 +197,17 @@ export const ChatMinimap: React.FC<ChatMinimapProps> = ({
     [messages, labels],
   );
 
-  // Ticks are spaced evenly by their order in the marker list, not by
-  // message height — a uniform interval regardless of how long each turn
-  // is. The rail is inset top/bottom so the first/last ticks aren't flush.
+  // The rail's pixel height grows with the marker count up to a cap, so
+  // ticks land a fixed distance apart and the centered stack stays compact
+  // when sparse. Within that height, ticks are spaced evenly by list order.
+  const railHeightPx = markers.length < 2
+    ? 0
+    : Math.min(MAX_RAIL_PX, (markers.length - 1) * TICK_INTERVAL_PX);
+
   const getMarkerTop = useCallback((marker: ChatMinimapMarker): number => {
     const order = markers.indexOf(marker);
     if (order < 0 || markers.length === 1) return 50;
-    return RAIL_INSET_PERCENT + (order / (markers.length - 1)) * (100 - 2 * RAIL_INSET_PERCENT);
+    return (order / (markers.length - 1)) * 100;
   }, [markers]);
 
   const getNearestMarkerAtPercent = useCallback((percent: number): ChatMinimapMarker | null => {
@@ -211,8 +220,9 @@ export const ChatMinimap: React.FC<ChatMinimapProps> = ({
   }, [getMarkerTop, markers]);
 
   const hoveredMarker = hoveredMarkerId == null ? null : markers.find(marker => marker.id === hoveredMarkerId) ?? null;
-  const hoveredTop = hoveredMarker ? getMarkerTop(hoveredMarker) : 50;
-  const previewTop = Math.max(12, Math.min(88, hoveredTop));
+  // Aligned to the hovered tick within the (short, centered) rail; the
+  // card is translateY(-50%) centered on it and the container doesn't clip.
+  const previewTop = hoveredMarker ? getMarkerTop(hoveredMarker) : 50;
 
   const updateMetrics = useCallback(() => {
     const el = scrollContainerRef.current;
@@ -275,42 +285,43 @@ export const ChatMinimap: React.FC<ChatMinimapProps> = ({
         setHoverPercent(null);
       }}
     >
-      {hoveredMarker && (
-        <div
-          className="chat-minimap-preview pointer-events-none"
-          style={{
-            top: `${previewTop}%`,
-          }}
-        >
-          <div className="chat-minimap-preview-accent" />
-          <div className="min-w-0">
-            <div className="truncate text-[13px] font-semibold leading-snug text-neutral-900 dark:text-neutral-50">
-              {hoveredMarker.title}
-            </div>
-            {hoveredMarker.snippet && (
-              <div className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-neutral-500 dark:text-neutral-300">
-                {hoveredMarker.snippet}
-              </div>
-            )}
-            {hoveredMarker.meta.length > 0 && (
-              <div className="mt-2 flex min-w-0 items-center gap-2 text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500">
-                {hoveredMarker.meta.map(item => (
-                  <span key={item} className="truncate">{item}</span>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       <div
         ref={railRef}
         className="chat-minimap-rail pointer-events-auto"
+        style={{ height: `${railHeightPx}px` }}
         onPointerDown={scrollFromRailPointer}
         onPointerMove={updateHoverFromPointer}
         onPointerEnter={updateHoverFromPointer}
         title={t('chatWindow.minimapLabel')}
       >
+        {hoveredMarker && (
+          <div
+            className="chat-minimap-preview pointer-events-none"
+            style={{
+              top: `${previewTop}%`,
+            }}
+          >
+            <div className="chat-minimap-preview-accent" />
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-semibold leading-snug text-neutral-900 dark:text-neutral-50">
+                {hoveredMarker.title}
+              </div>
+              {hoveredMarker.snippet && (
+                <div className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-neutral-500 dark:text-neutral-300">
+                  {hoveredMarker.snippet}
+                </div>
+              )}
+              {hoveredMarker.meta.length > 0 && (
+                <div className="mt-2 flex min-w-0 items-center gap-2 text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500">
+                  {hoveredMarker.meta.map(item => (
+                    <span key={item} className="truncate">{item}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {markers.map(marker => {
           const top = getMarkerTop(marker);
           const waveCenter = hoverPercent ?? scrollCenterTop;
