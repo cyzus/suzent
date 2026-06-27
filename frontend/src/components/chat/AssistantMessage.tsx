@@ -497,17 +497,13 @@ const ModelSignature: React.FC<{ model?: string }> = ({ model }) => {
   const { t } = useI18n();
   const modelId = model?.trim();
   if (!modelId) return null;
-  const label = t('chatMessage.modelLabel');
 
   return (
     <div
-      className="inline-flex max-w-[22rem] items-center gap-1.5 border border-neutral-200 bg-white/70 px-1.5 py-0.5 text-neutral-500 dark:border-neutral-700 dark:bg-zinc-900/70 dark:text-neutral-400 select-none"
+      className="inline-flex min-w-0 max-w-[14rem] items-center gap-1.5 border border-neutral-200 bg-white/70 px-1.5 py-0.5 text-neutral-500 dark:border-neutral-700 dark:bg-zinc-900/70 dark:text-neutral-400 select-none"
       title={t('chatMessage.modelSignature', { model: modelId })}
     >
       <ProviderFavicon model={modelId} />
-      <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
-        {label}
-      </span>
       <span className="truncate font-mono text-[10px] font-semibold normal-case tracking-normal text-neutral-500 dark:text-neutral-400">
         {modelId}
       </span>
@@ -705,7 +701,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
                 onForceWebContext={onForceWebContext}
               />
             ) : null}
-            <div className="flex items-center gap-2 mt-2 pl-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 pl-1">
               {fullMessageText && !isThinking && (
                 <CopyButton text={fullMessageText} className="relative" />
               )}
@@ -715,7 +711,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               {!isThinking && <SourcesPanel sources={citationSourcesList} />}
               {!isThinking && <ModelSignature model={modelSignature} />}
               {message.timestamp && !isStreamingThis && (
-                <div className="text-[10px] text-neutral-400 select-none">
+                <div className="ml-auto text-[10px] text-neutral-400 select-none">
                   {formatMessageTime(message.timestamp)}
                 </div>
               )}
@@ -973,7 +969,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               </div>
             );
           })}
-          <div className="flex items-center gap-2 mt-2 pl-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 pl-1">
             {fullMessageText && !isThinking && (
               <CopyButton text={fullMessageText} className="relative" />
             )}
@@ -983,7 +979,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
             {!isThinking && <SourcesPanel sources={citationSourcesList} />}
             {!isThinking && <ModelSignature model={modelSignature} />}
             {message.timestamp && !isStreamingThis && (
-              <div className="text-[10px] text-neutral-400 select-none">
+              <div className="ml-auto text-[10px] text-neutral-400 select-none">
                 {formatMessageTime(message.timestamp)}
               </div>
             )}
