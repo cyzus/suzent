@@ -34,6 +34,7 @@ import {
   hasLegacyPendingApproval,
 } from './ActivityRail';
 import { useI18n } from '../../i18n';
+import { getProviderInitials, getProviderVisualForModel, normalizeProviderLogoUrl } from '../../lib/providerVisuals';
 
 const LARGE_MARKDOWN_RENDER_THRESHOLD = 12000;
 
@@ -462,17 +463,54 @@ const RetryButton: React.FC<{ onClick: () => void; className?: string }> = ({ on
   );
 };
 
+const ProviderFavicon: React.FC<{ model: string }> = ({ model }) => {
+  const [imgFailed, setImgFailed] = useState(false);
+  const visual = getProviderVisualForModel(model);
+  if (!visual) return null;
+
+  const logoUrl = normalizeProviderLogoUrl(visual.logoUrl);
+  const initials = getProviderInitials(visual.label);
+
+  return (
+    <span
+      className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center overflow-hidden border border-neutral-200 dark:border-neutral-700"
+      style={{ backgroundColor: `#${visual.color}` }}
+      aria-hidden="true"
+    >
+      {logoUrl && !imgFailed ? (
+        <img
+          src={logoUrl}
+          alt=""
+          className="h-2 w-2 object-contain"
+          onError={() => setImgFailed(true)}
+        />
+      ) : (
+        <span className="text-[5px] font-black leading-none text-white">
+          {initials}
+        </span>
+      )}
+    </span>
+  );
+};
+
 const ModelSignature: React.FC<{ model?: string }> = ({ model }) => {
   const { t } = useI18n();
   const modelId = model?.trim();
   if (!modelId) return null;
+  const label = t('chatMessage.modelLabel');
 
   return (
     <div
-      className="max-w-[16rem] truncate text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 select-none"
+      className="inline-flex max-w-[22rem] items-center gap-1.5 border border-neutral-200 bg-white/70 px-1.5 py-0.5 text-neutral-500 dark:border-neutral-700 dark:bg-zinc-900/70 dark:text-neutral-400 select-none"
       title={t('chatMessage.modelSignature', { model: modelId })}
     >
-      {t('chatMessage.modelSignature', { model: modelId })}
+      <ProviderFavicon model={modelId} />
+      <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+        {label}
+      </span>
+      <span className="truncate font-mono text-[10px] font-semibold normal-case tracking-normal text-neutral-500 dark:text-neutral-400">
+        {modelId}
+      </span>
     </div>
   );
 };

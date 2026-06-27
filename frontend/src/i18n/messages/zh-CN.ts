@@ -692,6 +692,7 @@ export const zhCN = {
     viewFile: '查看文件（按住 Shift 点击全屏）',
     downloadFile: '下载文件',
     userLabel: '用户',
+    modelLabel: '模型',
     modelSignature: '模型：{model}',
   },
   fileViewer: {

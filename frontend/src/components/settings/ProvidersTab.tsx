@@ -6,29 +6,7 @@ import type { ChatGPTLoginResponse, ChatGPTStatusResponse } from '../../types/ap
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalButton } from '../BrutalButton';
 import { SettingsHeader } from './SettingsHeader';
-
-// Brand colors keyed by provider id (hex without #). Kept in the frontend only.
-const PROVIDER_COLORS: Record<string, string> = {
-    openai:        '000000',
-    chatgpt:       '74AA9C',
-    anthropic:     'D97757',
-    gemini:        '4285F4',
-    xai:           '000000',
-    dashscope:     'FF6A00',
-    deepseek:      '4D6BFE',
-    minimax:       '1F1E33',
-    moonshot:      '1C1C1E',
-    zhipuai:       '2B60D6',
-    openrouter:    '6467F2',
-    litellm_proxy: '7C3AED',
-    ollama:        '000000',
-    perplexity:    '20808D',
-    together:      'FF5733',
-    fireworks:     '9B59B6',
-    sambanova:     'E34A34',
-    bedrock:       'FF9900',
-    xiaomi_mimo:   'FF6900',
-};
+import { getProviderColor, getProviderInitials, normalizeProviderLogoUrl } from '../../lib/providerVisuals';
 
 const API_TYPES = ['openai', 'anthropic', 'google', 'xai', 'openrouter', 'ollama', 'litellm_proxy', 'bedrock'] as const;
 
@@ -76,16 +54,17 @@ function KeyStatusBadge({ fields }: { fields: ApiField[] }) {
 
 function ProviderIcon({ provider }: { provider: ApiProvider }) {
     const [imgFailed, setImgFailed] = useState(false);
-    const color = PROVIDER_COLORS[provider.id] ?? (provider.user_defined ? '6B7280' : 'e5e5e5');
-    const initials = provider.label.slice(0, 2).toUpperCase();
+    const color = getProviderColor(provider.id, provider.user_defined);
+    const logoUrl = normalizeProviderLogoUrl(provider.logo_url);
+    const initials = getProviderInitials(provider.label);
     return (
         <div
             className="w-9 h-9 border-2 border-brutal-black flex items-center justify-center flex-shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
             style={{ backgroundColor: `#${color}` }}
         >
-            {provider.logo_url && !imgFailed ? (
+            {logoUrl && !imgFailed ? (
                 <img
-                    src={provider.logo_url.includes('simpleicons.org') ? `${provider.logo_url}/ffffff` : provider.logo_url}
+                    src={logoUrl}
                     alt={provider.label}
                     className="w-5 h-5 object-contain"
                     onError={() => setImgFailed(true)}
