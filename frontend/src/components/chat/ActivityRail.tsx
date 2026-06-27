@@ -210,8 +210,10 @@ export const ActivityRail: React.FC<{
       </button>
       <div className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
         <div className="min-h-0 overflow-hidden">
-          <div className="activity-rail min-w-0 w-full">
-            {children}
+          <div className="activity-rail-scroll min-w-0 w-full">
+            <div className="activity-rail min-w-0 w-full">
+              {children}
+            </div>
           </div>
         </div>
       </div>

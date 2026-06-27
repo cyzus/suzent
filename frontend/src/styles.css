@@ -471,6 +471,56 @@ code {
   background: #3f3f46;
 }
 
+.activity-rail-scroll {
+  max-height: 18rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/*
+ * Reserve a constant scrollbar gutter on the rail and any nested scrollers
+ * (tool argument/output blocks) so content never shifts. The thumb is
+ * transparent at rest and only colors in on hover.
+ */
+.activity-rail-scroll,
+.activity-rail [class*="overflow-y-auto"] {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: transparent transparent; /* Firefox: hidden thumb */
+}
+
+.activity-rail-scroll:hover,
+.activity-rail [class*="overflow-y-auto"]:hover {
+  scrollbar-color: rgba(0, 0, 0, 0.25) transparent; /* Firefox */
+}
+
+.dark .activity-rail-scroll:hover,
+.dark .activity-rail [class*="overflow-y-auto"]:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+
+.activity-rail-scroll::-webkit-scrollbar,
+.activity-rail [class*="overflow-y-auto"]::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.activity-rail-scroll::-webkit-scrollbar-thumb,
+.activity-rail [class*="overflow-y-auto"]::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 0;
+}
+
+.activity-rail-scroll:hover::-webkit-scrollbar-thumb,
+.activity-rail [class*="overflow-y-auto"]:hover::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.dark .activity-rail-scroll:hover::-webkit-scrollbar-thumb,
+.dark .activity-rail [class*="overflow-y-auto"]:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+}
+
 .activity-rail {
   position: relative;
   margin: 0 0 0.65rem;
