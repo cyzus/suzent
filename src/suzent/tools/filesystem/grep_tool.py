@@ -13,22 +13,15 @@ from suzent.core.agent_deps import AgentDeps
 from suzent.tools.base import Tool, ToolErrorCode, ToolGroup, ToolResult
 
 from suzent.logger import get_logger
-from suzent.tools.filesystem.path_resolver import PathResolver
+from suzent.tools.filesystem.path_resolver import DEFAULT_PRUNED_DIRS, PathResolver
 
 logger = get_logger(__name__)
 
 MAX_GREP_FILE_SIZE = 2 * 1024 * 1024  # 2 MiB
 MAX_GREP_FILES_SCANNED = 5000
-DEFAULT_EXCLUDED_DIRS = {
-    ".git",
-    "node_modules",
-    ".venv",
-    "venv",
-    "__pycache__",
-    "target",
-    "dist",
-    "build",
-}
+# Shared with find_files' walk pruning; kept here as a defense for the case
+# where the caller explicitly targets a path inside a pruned dir.
+DEFAULT_EXCLUDED_DIRS = DEFAULT_PRUNED_DIRS
 
 
 class GrepTool(Tool):

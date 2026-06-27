@@ -14,6 +14,28 @@ from typing import Dict, List, Optional, Tuple
 
 from loguru import logger
 
+# Directories pruned from recursive walks. Searching these (a Rust target dir,
+# node_modules, .venv, .git, etc.) is almost never intended and can multiply the
+# number of paths visited by orders of magnitude — enough to time out grep/glob.
+# They are still searched when the caller explicitly targets a path inside one.
+DEFAULT_PRUNED_DIRS = frozenset(
+    {
+        ".git",
+        "node_modules",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "target",
+        "dist",
+        "build",
+        ".next",
+        ".cargo",
+    }
+)
+
 
 class PathResolver:
     """
@@ -490,6 +512,56 @@ class PathResolver:
 
         return best_candidate
 
+    def _glob_with_pruning(
+        self, root: Path, pattern: str, allow_pruned: bool
+    ) -> List[Path]:
+        """Glob ``pattern`` under ``root``, pruning heavy directories.
+
+        For recursive patterns (containing ``**``) this walks the tree with
+        ``os.walk`` and removes pruned directories in place so they are never
+        descended into — the key to keeping grep/glob fast on large repos.
+        Non-recursive patterns fall back to the cheap ``Path.glob`` since they
+        don't descend deeply.
+
+        ``allow_pruned`` keeps the pruned directories when the caller explicitly
+        targeted a path inside one (e.g. root already sits in node_modules).
+        """
+        if "**" not in pattern:
+            try:
+                return list(root.glob(pattern))
+            except Exception:
+                return []
+
+        # Split the recursive pattern into the part before "**" (a directory
+        # prefix to enter) and the part after (the per-file match).
+        before, _, after = pattern.partition("**")
+        prefix = before.strip("/")
+        suffix = after.strip("/") or "*"
+
+        start = root
+        if prefix:
+            start = root / prefix
+            if not start.is_dir():
+                # Prefix may itself contain wildcards; fall back to plain glob.
+                try:
+                    return list(root.glob(pattern))
+                except Exception:
+                    return []
+
+        results: List[Path] = []
+        for dirpath, dirnames, filenames in os.walk(start):
+            if not allow_pruned:
+                # Prune in place so os.walk never descends into these dirs.
+                dirnames[:] = [d for d in dirnames if d not in DEFAULT_PRUNED_DIRS]
+            base = Path(dirpath)
+            # "**/x" matches across directories, so test both files and dirs.
+            for name in filenames + dirnames:
+                if fnmatch.fnmatch(name, suffix):
+                    results.append(base / name)
+            # A bare "**" (suffix defaulted to "*") should also yield the dirs
+            # themselves; fnmatch above already covers that via dirnames.
+        return results
+
     def find_files(
         self, pattern: str, search_path: Optional[str] = "/"
     ) -> List[Tuple[Path, str]]:
@@ -559,25 +631,39 @@ class PathResolver:
             if not local_pattern:
                 continue
 
-            # Run glob
-            try:
-                matches = list(h_root.glob(local_pattern))
-            except Exception:
-                continue
+            # Keep pruned dirs only when the search root itself sits inside one
+            # (the caller explicitly targeted e.g. node_modules/foo).
+            allow_pruned = any(part in DEFAULT_PRUNED_DIRS for part in h_root.parts)
 
+            # Glob with directory pruning so heavy trees (.git, node_modules,
+            # .venv, target, ...) are never walked unless explicitly targeted.
+            matches = self._glob_with_pruning(h_root, local_pattern, allow_pruned)
+
+            # h_root was already validated as inside an allowed boundary and the
+            # walker only descends within it, so every match is allowed — skip
+            # the per-file resolve()/relative_to() that was the prior hot path.
+            # Resolve the root's virtual prefix once and derive children from it
+            # by cheap string joins instead of one to_virtual_path() per match.
+            root_prefix = v_root_prefix or self.to_virtual_path(h_root)
             for match in matches:
-                if not self.is_path_allowed(match):
-                    continue
-
-                v_path = self.to_virtual_path(match)
-
-                # Fallback path construction
-                if not v_path and v_root_prefix and h_root in match.parents:
-                    rel = match.relative_to(h_root)
-                    v_path = f"{v_root_prefix}/{rel}".replace("\\", "/")
-
+                v_path = None
+                if root_prefix is not None:
+                    try:
+                        rel = match.relative_to(h_root)
+                    except ValueError:
+                        rel = None
+                    if rel is not None:
+                        v_path = (
+                            root_prefix
+                            if str(rel) == "."
+                            else f"{root_prefix}/{rel}".replace("\\", "/")
+                        )
                 if not v_path:
-                    v_path = match.name
+                    # The root has no virtual mapping (a plain host path search).
+                    # Use the host path itself — host-mode callers display the host
+                    # path anyway, and it's a stable, cheap dedup key. Avoid the
+                    # per-file to_virtual_path()/resolve() that dominated runtime.
+                    v_path = str(match).replace("\\", "/")
 
                 if v_path not in seen_virtual_paths:
                     seen_virtual_paths.add(v_path)
