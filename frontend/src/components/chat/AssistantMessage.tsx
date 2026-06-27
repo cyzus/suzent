@@ -580,43 +580,40 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   }
 
   // 2. 核心动画容器 (丝滑形变 UI)
+  // Two distinct badges depending on whether this turn is live:
+  //  • Active (streaming / thinking / awaiting approval): the animated robot
+  //    card. It's `sticky` so it pins to the top of the chat viewport while a
+  //    long reply scrolls past — you always see what the agent is doing. It's
+  //    wide (400×80) only while thinking, so the assembly-line / conveyor
+  //    animation has room; otherwise the compact 90×40 single-robot card.
+  //  • History (finished, previous turns): a small, static "Suzent" pill in
+  //    normal flow — no animation, not sticky — so old turns stay quiet and we
+  //    never show two animated/sticky badges at once.
   const isHistory = !isLastMessage && !isPendingApproval;
-  const badgeContainer = (
+
+  const badgeContainer = isHistory ? (
+    <div className="mb-2 mt-1 flex items-center gap-1.5 text-neutral-400 dark:text-neutral-500">
+      <RobotIcon className="w-4 h-4" />
+      <span className="text-[10px] font-mono font-bold uppercase tracking-wider">
+        Suzent
+      </span>
+    </div>
+  ) : (
     <div className={`
-      relative overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]
-      ml-0 mr-auto
-      ${isThinking
-        ? 'w-[400px] h-[80px] bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal-lg mb-3'
-        : isHistory
-          ? 'w-[75px] h-[24px] bg-transparent border-0 border-transparent shadow-none mb-1 mt-1' // 变成历史记录的样式
-          : 'w-[90px] h-[40px] bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal-lg mb-3'
-      }
+      sticky top-2 z-20 ml-0 mr-auto mb-3 overflow-hidden
+      transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] max-w-full
+      bg-white dark:bg-zinc-800 border-3 border-brutal-black shadow-brutal-lg
+      ${isThinking ? 'w-[400px] h-[80px]' : 'w-[90px] h-[40px]'}
     `}>
-      {/* 活跃状态：动态机器人 */}
-      <div className={`
-        absolute inset-0 transition-all duration-500 
-        ${isHistory ? 'opacity-0 scale-75 pointer-events-none' : 'opacity-100 scale-100'}
-      `}>
+      <div className="absolute inset-0 opacity-100 scale-100">
         <ThinkingAnimation isThinking={isThinking} />
-        <AgentBadge 
-          isThinking={isThinking} 
-          isStreaming={isStreamingThis} 
+        <AgentBadge
+          isThinking={isThinking}
+          isStreaming={isStreamingThis}
           currentToolName={currentToolName}
           hasError={hasError}
           isPendingApproval={isPendingApproval}
         />
-      </div>
-
-      {/* 历史状态：静态小图标 */}
-      <div className={`
-        absolute inset-0 flex items-center gap-1.5 text-neutral-400 dark:text-neutral-500
-        transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)]
-        ${isHistory ? 'opacity-100 scale-100 translate-x-0' : 'opacity-0 scale-50 -translate-x-4 pointer-events-none'}
-      `}>
-        <RobotIcon className={`w-4 h-4 transition-transform duration-700 ${isHistory ? 'rotate-0' : '-rotate-90'}`} />
-        <span className="text-[10px] font-mono font-bold uppercase tracking-wider">
-          Suzent
-        </span>
       </div>
     </div>
   );
@@ -625,7 +622,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   if (effectiveParts !== undefined) {
     return (
       <CitationProvider sources={citationSourcesMap}>
-      <div className="group w-full max-w-4xl break-all overflow-x-hidden text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
+      <div className="group w-full max-w-4xl break-all overflow-x-clip text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
         {/* Badge/Assembly Container */}
         {badgeContainer}
 
@@ -691,7 +688,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
 
   if (toolOnly) {
     return (
-      <div className="group w-full max-w-4xl break-all overflow-x-hidden text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
+      <div className="group w-full max-w-4xl break-all overflow-x-clip text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
         {badgeContainer}
         <div className="pl-1 pr-2 pb-1">
           <StepPills
@@ -752,7 +749,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
 
   return (
     <CitationProvider sources={citationSourcesMap}>
-    <div className="group w-full max-w-4xl break-all overflow-x-hidden text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
+    <div className="group w-full max-w-4xl break-all overflow-x-clip text-sm leading-relaxed relative pr-4 md:pr-12 animate-brutal-pop">
       {/* Badge/Assembly Container is rendered at the top of the entire message timeline */}
       {badgeContainer}
 
