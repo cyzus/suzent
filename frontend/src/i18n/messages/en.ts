@@ -929,6 +929,10 @@ export const en = {
     done: 'Done',
     arguments: 'Arguments',
     output: 'Output',
+    noArguments: '(no arguments)',
+    resultOne: '{count} result',
+    resultMany: '{count} results',
+    viaEngine: 'via {engine}',
   },
   permissionDock: {
     title: 'May I {action}?',

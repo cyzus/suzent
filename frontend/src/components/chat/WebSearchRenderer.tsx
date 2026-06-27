@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { useI18n } from '../../i18n';
 
 interface WebSearchRendererProps {
   output: string;
@@ -12,61 +13,89 @@ interface SearchResult {
   sources?: string;
 }
 
-export const WebSearchRenderer: React.FC<WebSearchRendererProps> = ({ output }) => {
-  const parseResults = (): { source: string; results: SearchResult[]; isSuccess: boolean } => {
-    try {
-      const parsedOutput = JSON.parse(output);
-      
-      // Check if it is a ToolResult envelope
-      let data = parsedOutput;
-      if (parsedOutput && typeof parsedOutput === 'object' && 'success' in parsedOutput && typeof parsedOutput.message === 'string') {
-        if (!parsedOutput.success) {
-           return { source: 'Web Search', results: [], isSuccess: false };
-        }
-        // Parse the inner JSON payload
-        try {
-          data = JSON.parse(parsedOutput.message);
-        } catch (e) {
-          // Inner message is not JSON, might be raw text
-          data = { results: [] };
-        }
-      }
+/** Hostname for a result url, stripped of a leading www. (e.g. "bbc.co.uk"). */
+function domainOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
 
-      if (data && data.results && Array.isArray(data.results)) {
-        return { 
-          source: data.source || 'Web Search', 
-          results: data.results, 
-          isSuccess: data.results.length > 0 
-        };
-      }
-      return { source: 'Web Search', results: [], isSuccess: false };
-    } catch (e) {
-      // Fallback for older markdown outputs
-      try {
-        const sourceMatch = output.match(/# Search Results \(via (.*)\)/);
-        const source = sourceMatch ? sourceMatch[1] : 'Web Search';
+/** Favicon via Google's service, with a 🔗 fallback if it fails to load. */
+const ResultFavicon: React.FC<{ url: string; className?: string }> = ({ url, className = 'w-4 h-4' }) => {
+  const [failed, setFailed] = useState(false);
+  const domain = domainOf(url);
+  if (failed || !domain) {
+    return <span className={`inline-flex items-center justify-center leading-none ${className}`}>🔗</span>;
+  }
+  return (
+    <img
+      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`}
+      alt=""
+      className={`${className} shrink-0 rounded-[2px] object-contain`}
+      onError={() => setFailed(true)}
+      loading="lazy"
+    />
+  );
+};
 
-        const results: SearchResult[] = [];
-        const resultRegex = /## \d+\. (.*?)\n\*\*URL:\*\* (.*?)\n\*\*Description:\*\* (.*?)(?:\n\*\*Sources:\*\* (.*?))?(?=\n## \d+\. |\n*$)/gs;
-        
-        let match;
-        while ((match = resultRegex.exec(output)) !== null) {
-          results.push({
-            title: match[1]?.trim() || '',
-            url: match[2]?.trim() || '',
-            description: match[3]?.trim() || '',
-            sources: match[4]?.trim()
-          });
-        }
+export function parseSearchResults(output: string): { source: string; results: SearchResult[]; isSuccess: boolean } {
+  try {
+    const parsedOutput = JSON.parse(output);
 
-        return { source, results, isSuccess: results.length > 0 };
-      } catch (fallbackError) {
+    // Check if it is a ToolResult envelope
+    let data = parsedOutput;
+    if (parsedOutput && typeof parsedOutput === 'object' && 'success' in parsedOutput && typeof parsedOutput.message === 'string') {
+      if (!parsedOutput.success) {
         return { source: 'Web Search', results: [], isSuccess: false };
       }
+      // Parse the inner JSON payload
+      try {
+        data = JSON.parse(parsedOutput.message);
+      } catch (e) {
+        // Inner message is not JSON, might be raw text
+        data = { results: [] };
+      }
     }
-  };
 
-  const { source, results, isSuccess } = parseResults();
+    if (data && data.results && Array.isArray(data.results)) {
+      return {
+        source: data.source || 'Web Search',
+        results: data.results,
+        isSuccess: data.results.length > 0,
+      };
+    }
+    return { source: 'Web Search', results: [], isSuccess: false };
+  } catch (e) {
+    // Fallback for older markdown outputs
+    try {
+      const sourceMatch = output.match(/# Search Results \(via (.*)\)/);
+      const source = sourceMatch ? sourceMatch[1] : 'Web Search';
+
+      const results: SearchResult[] = [];
+      const resultRegex = /## \d+\. (.*?)\n\*\*URL:\*\* (.*?)\n\*\*Description:\*\* (.*?)(?:\n\*\*Sources:\*\* (.*?))?(?=\n## \d+\. |\n*$)/gs;
+
+      let match;
+      while ((match = resultRegex.exec(output)) !== null) {
+        results.push({
+          title: match[1]?.trim() || '',
+          url: match[2]?.trim() || '',
+          description: match[3]?.trim() || '',
+          sources: match[4]?.trim(),
+        });
+      }
+
+      return { source, results, isSuccess: results.length > 0 };
+    } catch (fallbackError) {
+      return { source: 'Web Search', results: [], isSuccess: false };
+    }
+  }
+}
+
+export const WebSearchRenderer: React.FC<WebSearchRendererProps> = ({ output }) => {
+  const { t } = useI18n();
+  const { source, results, isSuccess } = parseSearchResults(output);
 
   // Fallback to MarkdownRenderer if parsing fails or no results (e.g. error messages)
   if (!isSuccess) {
@@ -78,47 +107,41 @@ export const WebSearchRenderer: React.FC<WebSearchRendererProps> = ({ output }) 
   }
 
   return (
-    <div className="flex flex-col gap-3 font-brutal">
-      <div className="flex items-center gap-1.5 mb-1 pl-0.5">
-        <span className="text-[10px] font-black text-brutal-black uppercase tracking-widest bg-white border-2 border-brutal-black px-2 py-0.5">
-          Sources via {source}
+    <div className="flex flex-col gap-2.5 font-brutal">
+      <div className="flex items-center gap-1.5 pl-0.5">
+        <span className="text-[10px] font-black text-brutal-black dark:text-neutral-100 uppercase tracking-widest bg-white dark:bg-zinc-800 border-2 border-brutal-black dark:border-zinc-500 px-2 py-0.5">
+          {source}
         </span>
         <span className="text-[10px] font-mono font-bold text-brutal-black bg-brutal-yellow border-2 border-brutal-black px-2 py-0.5">
-          {results.length} results
+          {t(results.length === 1 ? 'toolCallBlock.resultOne' : 'toolCallBlock.resultMany', { count: results.length })}
         </span>
       </div>
-      
-      <div className="grid grid-cols-1 gap-3 p-1.5 pr-2 pb-2">
+
+      <div className="flex flex-col gap-2 p-1 pr-1.5 pb-1.5">
         {results.map((result, i) => (
           <a
             key={i}
             href={result.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="block bg-white dark:bg-zinc-800 border-2 border-brutal-black p-2.5 hover:-translate-y-[2px] hover:-translate-x-[2px] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-brutal-yellow/10 dark:hover:bg-brutal-yellow/20 transition-all cursor-pointer group"
+            className="block bg-white dark:bg-zinc-800 border-2 border-brutal-black dark:border-zinc-500 p-2.5 no-underline shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-[2px] hover:-translate-x-[2px] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-brutal-yellow/10 dark:hover:bg-brutal-yellow/20 transition-all group"
           >
-            <div className="flex justify-between items-start gap-4 mb-1">
-              <h4 className="text-[13px] font-bold text-blue-700 dark:text-blue-400 group-hover:underline tracking-wide line-clamp-2">
-                {result.title}
-              </h4>
-            </div>
-            
-            <div className="mb-1.5 flex items-center gap-1 text-[10px] font-mono font-semibold text-green-700 dark:text-green-400 truncate w-full">
-              <svg className="w-3 h-3 stroke-[3] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-              </svg>
-              <span className="truncate max-w-[90%]">{result.url}</span>
-            </div>
-            
-            <p className="text-[11px] font-medium text-neutral-800 dark:text-neutral-200 line-clamp-3 leading-relaxed font-sans mt-1">
+            <span className="flex items-center gap-1.5 min-w-0">
+              <ResultFavicon url={result.url} className="w-3.5 h-3.5" />
+              <span className="text-[10px] font-mono font-bold text-neutral-500 dark:text-neutral-400 truncate">
+                {domainOf(result.url)}
+              </span>
+            </span>
+            <span className="block mt-0.5 text-[13px] font-bold text-brutal-black dark:text-neutral-100 group-hover:underline tracking-wide line-clamp-2">
+              {result.title}
+            </span>
+            <span className="block mt-1 text-[11px] font-medium text-neutral-700 dark:text-neutral-300 line-clamp-2 leading-relaxed font-sans">
               {result.description}
-            </p>
-            
+            </span>
             {result.sources && (
-              <div className="mt-2 text-[9px] text-neutral-500 font-mono font-bold flex gap-1 items-center">
-                <span className="uppercase leading-none">Engines:</span> 
-                <span>{result.sources}</span>
-              </div>
+              <span className="block mt-1.5 text-[9px] font-mono font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wide">
+                {t('toolCallBlock.viaEngine', { engine: result.sources })}
+              </span>
             )}
           </a>
         ))}

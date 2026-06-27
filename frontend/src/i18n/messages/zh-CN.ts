@@ -855,6 +855,10 @@ export const zhCN = {
     done: '完成',
     arguments: '参数',
     output: '输出',
+    noArguments: '（无参数）',
+    resultOne: '{count} 条结果',
+    resultMany: '{count} 条结果',
+    viaEngine: '来自 {engine}',
   },
   permissionDock: {
     title: '我可以{action}吗？',
