@@ -59,6 +59,25 @@ from loguru import logger
 # Module-level encoder for custom events
 _encoder = EventEncoder()
 
+
+class _ToolResultTimeout(TimeoutError):
+    """Raised when a tool runs long enough that the LLM stream never delivers
+    its result.
+
+    Unlike the other stream timeouts (first event / idle), a tool-result
+    timeout does not mean the provider connection is dead — it means a single
+    tool call hung. The run loop catches this, synthesizes a failed tool result
+    for the in-flight call(s), and resumes the agent so it can continue working
+    instead of aborting the whole turn.
+    """
+
+    def __init__(self, timeout: float):
+        super().__init__(
+            f"Timed out waiting for LLM stream tool result after {timeout:.0f}s"
+        )
+        self.timeout = timeout
+
+
 # Per-chat lock serialising reads+writes to _pending_approvals in chat.config.
 _pending_approval_locks: dict[str, asyncio.Lock] = {}
 
@@ -452,6 +471,10 @@ async def _iter_stream_events_with_timeout(
             except StopAsyncIteration:
                 break
             except asyncio.TimeoutError as exc:
+                if phase == "tool result":
+                    # A single tool hung; let the run loop recover by feeding a
+                    # failed tool result back to the agent rather than aborting.
+                    raise _ToolResultTimeout(timeout) from exc
                 raise TimeoutError(
                     f"Timed out waiting for LLM stream {phase} after {timeout:.0f}s"
                 ) from exc
@@ -752,17 +775,29 @@ async def stream_agent_responses(
                     # _chk_resp_parts: index → complete ModelResponsePart (from PartEndEvent)
                     # _chk_tool_returns: ToolReturnParts collected this batch
                     # _chk_in_flight: tool calls awaiting their result event
+                    # _chk_inflight_calls: tool_call_id → ToolCallPart still running,
+                    #     used to synthesize failed results on a tool-result timeout
                     # _chk_base: the message history baseline for this run iteration
                     _chk_resp_parts: Dict[int, Any] = {}
                     _chk_tool_returns: list = []
                     _chk_in_flight: int = 0
+                    _chk_inflight_calls: Dict[str, Any] = {}
                     _chk_base: list = list(history or [])
 
                     last_run_result = None
+                    _tool_timeout: Optional[_ToolResultTimeout] = None
                     logger.debug("[Streaming] Calling agent.run_stream_events()...")
-                    async for event in _iter_stream_events_with_timeout(
+                    _events = _iter_stream_events_with_timeout(
                         agent, prompt, run_kwargs
-                    ):
+                    )
+                    while True:
+                        try:
+                            event = await anext(_events)
+                        except StopAsyncIteration:
+                            break
+                        except _ToolResultTimeout as exc:
+                            _tool_timeout = exc
+                            break
                         if control.cancel_event.is_set():
                             break
                         try:
@@ -778,7 +813,18 @@ async def stream_agent_responses(
                                 _chk_resp_parts[event.index] = event.part
                             elif _event_kind == "function_tool_call":
                                 _chk_in_flight += 1
+                                _call_part = getattr(event, "part", None)
+                                _call_id = getattr(_call_part, "tool_call_id", None)
+                                if _call_id:
+                                    _chk_inflight_calls[_call_id] = _call_part
                             elif _event_kind == "function_tool_result":
+                                _res_id = getattr(
+                                    getattr(event, "result", None),
+                                    "tool_call_id",
+                                    None,
+                                )
+                                if _res_id:
+                                    _chk_inflight_calls.pop(_res_id, None)
                                 if isinstance(event.result, _TRP):
                                     _chk_tool_returns.append(event.result)
                                     # For deferred (auto-approved) tools, the result
@@ -897,6 +943,71 @@ async def stream_agent_responses(
                             )
                             # Continue processing other events
                             continue
+
+                    # A tool ran long enough that its result never arrived on the
+                    # stream. Rather than aborting the turn, synthesize a failed
+                    # tool result for each in-flight call and resume the agent so
+                    # it can react to the failure and keep working.
+                    if _tool_timeout is not None and _chk_inflight_calls:
+                        timed_out_msg = (
+                            f"Tool execution timed out after "
+                            f"{_tool_timeout.timeout:.0f}s and was cancelled. "
+                            "The result is unavailable; treat this tool call as "
+                            "failed and decide how to proceed."
+                        )
+                        _resp_parts = [
+                            _chk_resp_parts[i] for i in sorted(_chk_resp_parts)
+                        ]
+                        _resp_call_ids = {
+                            getattr(p, "tool_call_id", None) for p in _resp_parts
+                        }
+                        _failed_returns: list = []
+                        for _tcid, _call_part in _chk_inflight_calls.items():
+                            _tname = getattr(_call_part, "tool_name", "") or ""
+                            # The model response must contain the ToolCallPart that
+                            # each failed result answers, or the continuation is
+                            # invalid. Add it if the part_end never arrived.
+                            if _tcid not in _resp_call_ids and _call_part is not None:
+                                _resp_parts.append(_call_part)
+                                _resp_call_ids.add(_tcid)
+                            _failed_returns.append(
+                                _TRP(
+                                    tool_name=_tname,
+                                    content=timed_out_msg,
+                                    tool_call_id=_tcid,
+                                )
+                            )
+                            # Surface the failure on the frontend so the tool
+                            # stops showing as "running".
+                            await sse_queue.put(
+                                (
+                                    "tool_recovery",
+                                    {
+                                        "tool_call_id": _tcid,
+                                        "tool_name": _tname,
+                                        "status": "error",
+                                        "output": timed_out_msg,
+                                    },
+                                )
+                            )
+                        # Reconstruct a valid run state: the model's (partial)
+                        # response plus a request carrying the failed results.
+                        continuation = _chk_base + [
+                            _MResp(parts=_resp_parts),
+                            _MReq(parts=_failed_returns),
+                        ]
+                        partial_history = continuation
+                        deps.last_messages = continuation
+                        asyncio.create_task(_save_mid_run_checkpoint(continuation))
+                        logger.warning(
+                            "[Streaming] {} in-flight tool call(s) timed out; "
+                            "resuming agent with failed tool result(s).",
+                            len(_failed_returns),
+                        )
+                        history = continuation
+                        prompt = ""  # no new user message on resume
+                        current_deferred = None
+                        continue  # restart loop so the agent reacts
 
                     # Check if deferred tools need approval before terminating
                     if last_run_result and isinstance(
