@@ -35,7 +35,58 @@ def test_register_dynamic_instructions_registers_all_sections():
         memory_context="",
     )
 
-    assert len(agent.functions) == 10
+    assert len(agent.functions) == 11
+
+
+def test_citation_rules_available_before_sources_exist():
+    agent = _FakeAgent()
+    register_dynamic_instructions(agent, base_instructions="", memory_context="")
+    funcs = {fn.__name__: fn for fn in agent.functions}
+
+    # The model needs the marker rules before it calls tools; labelled tool
+    # output will provide the source ids later in the run.
+    ctx = SimpleNamespace(deps=SimpleNamespace(citation_manager=None))
+    result = funcs["inject_citation_rules"](ctx)
+    assert "# Citation Rules" in result
+    assert "citet0_src_1" in result
+
+
+def test_citation_rules_appear_once_sources_exist():
+    from suzent.core.citation_manager import CitationManager, CitationSourceType
+
+    agent = _FakeAgent()
+    register_dynamic_instructions(agent, base_instructions="", memory_context="")
+    funcs = {fn.__name__: fn for fn in agent.functions}
+
+    mgr = CitationManager()
+    mgr.register(CitationSourceType.WEB_SEARCH, "Reuters", url="https://r.com")
+    ctx = SimpleNamespace(deps=SimpleNamespace(citation_manager=mgr))
+
+    result = funcs["inject_citation_rules"](ctx)
+    # Rules show the marker syntax but NOT the source list — ids travel with
+    # tool output, not the prompt.
+    assert "# Citation Rules" in result
+    assert "citet0_src_1" in result
+    assert "Reuters" not in result
+    assert "https://r.com" not in result
+
+
+def test_citation_rules_are_static_and_cacheable():
+    """Same string regardless of which sources are registered (no interpolation)."""
+    from suzent.core.citation_manager import CitationManager, CitationSourceType
+
+    agent = _FakeAgent()
+    register_dynamic_instructions(agent, base_instructions="", memory_context="")
+    inject = {fn.__name__: fn for fn in agent.functions}["inject_citation_rules"]
+
+    mgr_a = CitationManager()
+    mgr_a.register(CitationSourceType.WEB_SEARCH, "A", url="https://a.com")
+    mgr_b = CitationManager()
+    mgr_b.register(CitationSourceType.WEBPAGE, "B", url="https://b.com")
+
+    out_a = inject(SimpleNamespace(deps=SimpleNamespace(citation_manager=mgr_a)))
+    out_b = inject(SimpleNamespace(deps=SimpleNamespace(citation_manager=mgr_b)))
+    assert out_a == out_b
 
 
 def test_permission_feedback_instruction_includes_user_guidance():

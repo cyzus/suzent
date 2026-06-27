@@ -1,7 +1,8 @@
 import type { A2UISurface } from './a2ui';
+import type { CitationSource } from '../lib/streamEvents';
 
 export interface AGUIPart {
-  type: 'text' | 'reasoning' | 'tool' | 'a2ui';
+  type: 'text' | 'reasoning' | 'tool' | 'a2ui' | 'citation-sources';
   text?: string;
   messageId?: string;
   toolCallId?: string;
@@ -14,6 +15,8 @@ export interface AGUIPart {
   permission?: PermissionPrompt;
   displayData?: unknown;
   surface?: A2UISurface & { target?: string };
+  /** For 'citation-sources' parts: the sources registered during this run. */
+  citationSources?: CitationSource[];
 }
 
 export type ApprovalRememberScope = 'session' | 'global' | null;

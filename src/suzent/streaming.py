@@ -35,6 +35,7 @@ from ag_ui.encoder import EventEncoder
 
 from suzent.core.agent_serializer import serialize_state
 from suzent.core.agent_deps import AgentDeps
+from suzent.core.citation_manager import CitationManager
 from suzent.core.stream_registry import (
     StreamControl,
     stream_controls,
@@ -247,6 +248,9 @@ class _DraftDisplayAccumulator:
         if event_type == "CUSTOM":
             self._apply_custom(event)
 
+    def apply_citation_sources(self, sources: list[dict[str, Any]]) -> None:
+        self._merge_citation_sources(sources)
+
     async def maybe_persist(self, *, force: bool = False) -> None:
         if not self.chat_id or not self.parts or not self.dirty:
             return
@@ -322,6 +326,40 @@ class _DraftDisplayAccumulator:
             if value.get("target") == "inline":
                 self.parts.append({"type": "a2ui", "surface": value})
                 self.dirty = True
+        elif name == "citation_sources" and isinstance(value, dict):
+            self._merge_citation_sources(value.get("sources"))
+
+    def _merge_citation_sources(self, incoming: Any) -> None:
+        if not isinstance(incoming, list) or not incoming:
+            return
+        for part in self.parts:
+            if part.get("type") != "citation-sources":
+                continue
+            existing = part.get("citationSources")
+            if not isinstance(existing, list):
+                existing = []
+            by_id = {
+                str(source.get("id")): dict(source)
+                for source in existing
+                if isinstance(source, dict) and source.get("id")
+            }
+            for source in incoming:
+                if isinstance(source, dict) and source.get("id"):
+                    by_id[str(source["id"])] = dict(source)
+            part["citationSources"] = list(by_id.values())
+            self.dirty = True
+            return
+        self.parts.append(
+            {
+                "type": "citation-sources",
+                "citationSources": [
+                    dict(source)
+                    for source in incoming
+                    if isinstance(source, dict) and source.get("id")
+                ],
+            }
+        )
+        self.dirty = True
 
 
 def _persist_draft_display_message(
@@ -559,6 +597,27 @@ async def stream_agent_responses(
 
     sse_queue: asyncio.Queue = asyncio.Queue()
     deps.cancel_event = control.cancel_event
+
+    # --- Inline citations ---
+    # One manager per run. Tools register citable sources on the manager via
+    # deps and embed [[cite:t{turn}_src_n]] markers in their output; the model
+    # echoes those markers in its answer. The markers are emitted to the client
+    # as-is (the frontend renders them as badges). We re-emit citation_sources
+    # whenever new sources are registered so the frontend can resolve every cited
+    # id — tracked by the count last sent.
+    #
+    # The turn index makes ids globally unique across the conversation, so a
+    # citation that references an earlier turn's source resolves correctly. It is
+    # the count of prior model responses in the history.
+    _turn_index = sum(
+        1
+        for _m in (message_history or [])
+        if getattr(_m, "kind", None) == "response"
+        or (isinstance(_m, dict) and _m.get("role") == "assistant")
+    )
+    citation_mgr = CitationManager(turn=_turn_index)
+    deps.citation_manager = citation_mgr
+    citation_sources_last_sent = 0
 
     # Auto-title: kick off in parallel for the first turn using only the user message
     # Extract text content for title generation
@@ -955,6 +1014,8 @@ async def stream_agent_responses(
 
     # --- Native stream generator that feeds AGUIEventStream ---
     async def native_stream_generator() -> AsyncGenerator[Any, None]:
+        nonlocal citation_sources_last_sent
+
         async def _drain_a2ui_events() -> None:
             a2ui_queue = getattr(deps, "a2ui_queue", None)
             while a2ui_queue and not a2ui_queue.empty():
@@ -1087,6 +1148,27 @@ async def stream_agent_responses(
                         )
                         # Continue to next event instead of crashing
 
+                    # Re-emit citation sources whenever new ones were registered
+                    # (each tool call can add more). The frontend merges by id, so
+                    # sending the full list each time keeps every cited id
+                    # resolvable.
+                    _all_sources = citation_mgr.get_all()
+                    if len(_all_sources) > citation_sources_last_sent:
+                        logger.debug(
+                            f"[citation] emitting citation_sources event with "
+                            f"{len(_all_sources)} sources"
+                        )
+                        await out_queue.put(
+                            (
+                                "chunk",
+                                _encode_custom(
+                                    "citation_sources",
+                                    {"sources": citation_mgr.to_event_payload()},
+                                ),
+                            )
+                        )
+                        citation_sources_last_sent = len(_all_sources)
+
                 elif msg_type == "approval":
                     # HITL: emit as AG-UI CustomEvent with all approval info
                     approval_info = {
@@ -1198,6 +1280,13 @@ async def stream_agent_responses(
             async for agui_event in agui_events:
                 if control.cancel_event.is_set():
                     break
+
+                # Inline citation markers ([[cite:src_1]]) are intentionally left
+                # in the assistant text: the frontend MarkdownRenderer transforms
+                # them into citation badges and looks up titles via the
+                # citation_sources custom event. Keeping them in the text (and
+                # therefore in the persisted draft) means reloaded chats render
+                # identical badges.
                 if draft_accumulator is not None:
                     draft_accumulator.apply(agui_event)
                     await draft_accumulator.maybe_persist()
@@ -1209,6 +1298,9 @@ async def stream_agent_responses(
         finally:
             if draft_accumulator is not None:
                 try:
+                    final_sources = citation_mgr.to_event_payload()
+                    if final_sources:
+                        draft_accumulator.apply_citation_sources(final_sources)
                     await draft_accumulator.maybe_persist(force=True)
                 except Exception as exc:
                     logger.debug(f"[Streaming] Failed to persist final draft: {exc}")

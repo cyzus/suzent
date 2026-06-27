@@ -45,11 +45,39 @@ export enum CustomEventName {
   TOOL_DISPLAY = 'tool_display',
   PLAN_REFRESH = 'plan_refresh',
   USAGE_UPDATE = 'usage_update',
+  // Inline citations
+  CITATION_SOURCES = 'citation_sources',
   // Sub-agent lifecycle events (S2O Phase 3)
   SUBAGENT_SPAWNED = 'subagent_spawned',
   SUBAGENT_PROGRESS = 'subagent_progress',
   SUBAGENT_COMPLETED = 'subagent_completed',
   SUBAGENT_FAILED = 'subagent_failed',
+}
+
+// ─── Inline citation payloads ──────────────────────────────────────────────
+
+export type CitationSourceType =
+  | 'search'
+  | 'webpage'
+  | 'file'
+  | 'notebook'
+  | 'memory'
+  | 'mcp'
+  | 'code'
+  | 'browser'
+  | 'subagent';
+
+export interface CitationSource {
+  id: string; // "src_1", "src_2", ...
+  type: CitationSourceType;
+  title: string;
+  url?: string | null;
+  snippet?: string | null;
+  favicon?: string | null;
+}
+
+export interface CitationSourcesPayload {
+  sources: CitationSource[];
 }
 
 // ─── Sub-agent event payloads ──────────────────────────────────────────────

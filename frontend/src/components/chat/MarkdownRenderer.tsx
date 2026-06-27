@@ -3,6 +3,12 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CodeBlockComponent } from './CodeBlockComponent';
 import { ClickableContent } from '../ClickableContent';
+import {
+  hasCitationMarker,
+  renderTextWithCitations,
+  useCitationSources,
+  type CitationSourcesMap,
+} from './Citations';
 import { DocumentTextIcon } from '@heroicons/react/24/outline';
 import { useI18n } from '../../i18n';
 import { getApiBase } from '../../lib/api';
@@ -126,15 +132,25 @@ function extractCodeText(children: React.ReactNode): string {
   return children == null ? '' : String(children);
 }
 
-function renderLiteInline(text: string): React.ReactNode[] {
+function renderLiteInline(text: string, sourcesMap?: CitationSourcesMap | null): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   const pattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*)/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
+  // Plain-text segments are routed through the citation splitter so [[cite:..]]
+  // markers become badges; code/bold tokens pass through untouched.
+  const pushText = (value: string, key: string) => {
+    if (sourcesMap && hasCitationMarker(value)) {
+      nodes.push(...renderTextWithCitations(value, sourcesMap, key));
+    } else {
+      nodes.push(value);
+    }
+  };
+
   while ((match = pattern.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      nodes.push(text.slice(lastIndex, match.index));
+      pushText(text.slice(lastIndex, match.index), `lite-${lastIndex}`);
     }
 
     const token = match[0];
@@ -152,7 +168,7 @@ function renderLiteInline(text: string): React.ReactNode[] {
   }
 
   if (lastIndex < text.length) {
-    nodes.push(text.slice(lastIndex));
+    pushText(text.slice(lastIndex), `lite-${lastIndex}`);
   }
 
   return nodes;
@@ -185,7 +201,7 @@ function isLiteTableSeparator(line: string): boolean {
   return cells.length > 0 && cells.every(cell => /^:?-{3,}:?$/.test(cell));
 }
 
-const LiteTable: React.FC<{ lines: string[] }> = ({ lines }) => {
+const LiteTable: React.FC<{ lines: string[]; sourcesMap?: CitationSourcesMap | null }> = ({ lines, sourcesMap }) => {
   const headers = splitLiteTableRow(lines[0] || '');
   const rows = lines.slice(2).map(splitLiteTableRow);
 
@@ -196,7 +212,7 @@ const LiteTable: React.FC<{ lines: string[] }> = ({ lines }) => {
           <tr>
             {headers.map((header, idx) => (
               <th key={idx} className="border-2 border-brutal-black dark:border-zinc-500 px-2 py-1 bg-brutal-yellow text-brutal-black font-black uppercase text-left align-top">
-                {renderLiteInline(header)}
+                {renderLiteInline(header, sourcesMap)}
               </th>
             ))}
           </tr>
@@ -206,7 +222,7 @@ const LiteTable: React.FC<{ lines: string[] }> = ({ lines }) => {
             <tr key={rowIdx}>
               {headers.map((_header, colIdx) => (
                 <td key={colIdx} className="border-2 border-brutal-black dark:border-zinc-500 px-2 py-1 align-top text-brutal-black dark:text-neutral-100">
-                  {renderLiteInline(row[colIdx] ?? '')}
+                  {renderLiteInline(row[colIdx] ?? '', sourcesMap)}
                 </td>
               ))}
             </tr>
@@ -218,6 +234,7 @@ const LiteTable: React.FC<{ lines: string[] }> = ({ lines }) => {
 };
 
 const LiteMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
+  const sourcesMap = useCitationSources();
   const parts: React.ReactNode[] = [];
   const fencePattern = /```([a-zA-Z0-9_-]*)[ \t]*\n?([\s\S]*?)(?:```|$)/g;
   let lastIndex = 0;
@@ -247,11 +264,11 @@ const LiteMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
           : level === 2
             ? 'text-lg font-brutal font-bold mb-2 break-words uppercase'
             : 'text-base font-bold mb-1 break-words uppercase';
-        parts.push(<div key={key} className={className}>{renderLiteInline(body)}</div>);
+        parts.push(<div key={key} className={className}>{renderLiteInline(body, sourcesMap)}</div>);
         return;
       }
 
-      parts.push(<p key={key} className="leading-relaxed break-words whitespace-pre-wrap m-0">{renderLiteInline(text)}</p>);
+      parts.push(<p key={key} className="leading-relaxed break-words whitespace-pre-wrap m-0">{renderLiteInline(text, sourcesMap)}</p>);
     };
 
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
@@ -274,7 +291,7 @@ const LiteMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
           lineIndex++;
         }
         lineIndex--;
-        parts.push(<LiteTable key={`${keyPrefix}-table-${parts.length}`} lines={tableLines} />);
+        parts.push(<LiteTable key={`${keyPrefix}-table-${parts.length}`} lines={tableLines} sourcesMap={sourcesMap} />);
         continue;
       }
 
@@ -286,7 +303,7 @@ const LiteMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
         parts.push(
           <div key={`${keyPrefix}-li-${parts.length}-${lineIndex}`} className="flex gap-2 leading-relaxed">
             <span className="shrink-0 text-neutral-500">{ordered ? `${ordered[1]}.` : '•'}</span>
-            <span className="min-w-0 break-words">{renderLiteInline(body)}</span>
+            <span className="min-w-0 break-words">{renderLiteInline(body, sourcesMap)}</span>
           </div>,
         );
         continue;
@@ -315,6 +332,7 @@ const LiteMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
 
 export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, onFileClick, streamingLite = false }) => {
   const RM: any = ReactMarkdown;
+  const sourcesMap = useCitationSources();
   const openingLinksRef = React.useRef(new Map<string, number>());
 
   const isExternalLink = React.useCallback((href: string): boolean => {
@@ -350,6 +368,35 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
       }, 750);
     }
   }, []);
+
+  // Walk rendered children, splitting string nodes that contain a citation
+  // marker into text + <CitationBadge> nodes. This is recursive because
+  // react-markdown may wrap text in <strong>, <em>, links, etc.
+  const applyCitations = React.useCallback((children: React.ReactNode, keyPrefix: string): React.ReactNode => {
+    if (!sourcesMap) return children;
+
+    const walk = (child: React.ReactNode, key: string): React.ReactNode => {
+      if (typeof child === 'string' && hasCitationMarker(child)) {
+        return renderTextWithCitations(child, sourcesMap, key);
+      }
+      if (React.isValidElement(child) && child.props?.children) {
+        if (child.type === 'code' || child.props?.node?.tagName === 'code') {
+          return child;
+        }
+        const nextChildren = React.Children.map(child.props.children, (nested, i) =>
+          walk(nested, `${key}-${i}`),
+        );
+        return React.cloneElement(child as React.ReactElement<any>, undefined, nextChildren);
+      }
+      return child;
+    };
+
+    const arr = React.Children.toArray(children);
+    if (!arr.some(c => typeof c === 'string' ? hasCitationMarker(c) : React.isValidElement(c))) {
+      return children;
+    }
+    return arr.map((child, i) => walk(child, `${keyPrefix}-${i}`));
+  }, [sourcesMap]);
 
   // Normalize content
   const normalized = String(content)
@@ -445,6 +492,10 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
             const isMultilineInlineCode = !lang && codeContent.includes('\n');
             const isInline = inline !== false && !lang && !isMultilineInlineCode;
 
+            if (isInline && sourcesMap && hasCitationMarker(codeContent)) {
+              return <>{renderTextWithCitations(codeContent, sourcesMap, 'code')}</>;
+            }
+
             // Check if inline code contains a file path pattern
             if (isInline && onFileClick) {
               // Pattern 1: Markdown file:// link in backticks: `[text](file:///path)`
@@ -529,13 +580,14 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
               <table className="text-xs border-3 border-brutal-black">{p.children}</table>
             </div>
           ),
-          th: (p: any) => <th className="border-2 border-brutal-black px-2 py-1 bg-brutal-yellow font-bold">{p.children}</th>,
-          td: (p: any) => <td className="border-2 border-brutal-black px-2 py-1 align-top">{p.children}</td>,
+          th: (p: any) => <th className="border-2 border-brutal-black px-2 py-1 bg-brutal-yellow font-bold">{applyCitations(p.children, 'th')}</th>,
+          td: (p: any) => <td className="border-2 border-brutal-black px-2 py-1 align-top">{applyCitations(p.children, 'td')}</td>,
           ul: (p: any) => <ul className="list-disc pl-5">{p.children}</ul>,
           ol: (p: any) => <ol className="list-decimal pl-5">{p.children}</ol>,
-          h1: (p: any) => <h1 className="text-xl font-brutal font-bold mb-2 break-words uppercase">{p.children}</h1>,
-          h2: (p: any) => <h2 className="text-lg font-brutal font-bold mb-2 break-words uppercase">{p.children}</h2>,
-          h3: (p: any) => <h3 className="text-base font-bold mb-1 break-words uppercase">{p.children}</h3>,
+          li: (p: any) => <li>{applyCitations(p.children, 'li')}</li>,
+          h1: (p: any) => <h1 className="text-xl font-brutal font-bold mb-2 break-words uppercase">{applyCitations(p.children, 'h1')}</h1>,
+          h2: (p: any) => <h2 className="text-lg font-brutal font-bold mb-2 break-words uppercase">{applyCitations(p.children, 'h2')}</h2>,
+          h3: (p: any) => <h3 className="text-base font-bold mb-1 break-words uppercase">{applyCitations(p.children, 'h3')}</h3>,
           p: (pArg: any) => {
             const text = String(pArg.children?.[0] || '');
             if (text.startsWith('Step: ') && text.includes('tokens')) {
@@ -553,8 +605,13 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
                 (React.isValidElement(child) && (child.type === 'strong' || child.type === 'em'))
             );
 
-            // Apply ClickableContent for plain text paragraphs to detect file paths
-            if (isSimpleText && onFileClick) {
+            // Apply ClickableContent for plain text paragraphs to detect file
+            // paths — but only when there are no citation markers, since that
+            // path flattens children to a string and would drop citation badges.
+            const hasCite = React.Children.toArray(pArg.children).some(
+              c => typeof c === 'string' && hasCitationMarker(c),
+            );
+            if (isSimpleText && onFileClick && !hasCite) {
               const extractText = (children: any): string => {
                 return React.Children.toArray(children)
                   .map((child) => {
@@ -575,7 +632,7 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
               );
             }
 
-            return <p className="leading-relaxed break-words whitespace-pre-wrap m-0">{pArg.children}</p>;
+            return <p className="leading-relaxed break-words whitespace-pre-wrap m-0">{applyCitations(pArg.children, 'p')}</p>;
           },
           blockquote: (p: any) => (
             <blockquote className="border-l-4 border-brutal-black pl-3 italic text-neutral-600 dark:text-neutral-400 break-words bg-neutral-50 dark:bg-zinc-800 py-1 pr-2">

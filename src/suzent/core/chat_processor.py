@@ -1590,6 +1590,7 @@ class ChatProcessor:
                 # 100% Backend Authored: rebuild the complete display log from the full agent history
                 # so chat.messages is always a faithful log of all exchanges, including tools and reasoning.
                 rebuilt = _rebuild_display_messages(messages)
+                rebuilt = _preserve_citation_sources(rebuilt, chat_messages)
                 rebuilt = _append_inline_a2ui_surfaces(rebuilt, inline_a2ui_surfaces)
 
                 # Guard: if the agent produced no output and this is a social chat, the
@@ -2005,6 +2006,155 @@ def _rebuild_display_messages(messages: list) -> list:
             result.append(entry)
 
     return result
+
+
+def _preserve_citation_sources(rebuilt: list, existing: list | None) -> list:
+    """Carry citation metadata from draft display rows into rebuilt rows."""
+    sources_by_id = _collect_citation_sources(existing or [])
+    sources_by_id.update(_collect_citation_sources(rebuilt))
+
+    if not sources_by_id:
+        return rebuilt
+
+    for message in rebuilt:
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+        content = str(message.get("content") or "")
+        matched = [
+            source
+            for source_id, source in sources_by_id.items()
+            if source_id in content
+        ]
+        if not matched:
+            continue
+
+        parts = message.setdefault("parts", [])
+        if not isinstance(parts, list):
+            continue
+
+        existing_idx = next(
+            (
+                idx
+                for idx, part in enumerate(parts)
+                if isinstance(part, dict) and part.get("type") == "citation-sources"
+            ),
+            None,
+        )
+        if existing_idx is None:
+            parts.append({"type": "citation-sources", "citationSources": matched})
+            continue
+
+        part = parts[existing_idx]
+        existing_sources = part.get("citationSources")
+        if not isinstance(existing_sources, list):
+            existing_sources = []
+        merged = {
+            str(source.get("id")): dict(source)
+            for source in existing_sources
+            if isinstance(source, dict) and source.get("id")
+        }
+        for source in matched:
+            merged[str(source["id"])] = dict(source)
+        part["citationSources"] = list(merged.values())
+
+    return rebuilt
+
+
+def _collect_citation_sources(messages: list) -> dict[str, dict]:
+    sources_by_id: dict[str, dict] = {}
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        for part in message.get("parts") or []:
+            if not isinstance(part, dict) or part.get("type") != "citation-sources":
+                continue
+            for source in part.get("citationSources") or []:
+                if isinstance(source, dict) and source.get("id"):
+                    sources_by_id[str(source["id"])] = dict(source)
+        if message.get("role") == "tool":
+            sources_by_id.update(_extract_sources_from_tool_content(message))
+    return sources_by_id
+
+
+def _extract_sources_from_tool_content(message: dict) -> dict[str, dict]:
+    """Recover citation metadata from persisted tool results.
+
+    Streaming drafts should normally carry a citation-sources part, but final
+    post-processing can rebuild display rows from model/tool history after that
+    draft. Tool returns still contain the source ids plus titles/URLs, so use
+    them as the durable fallback.
+    """
+    content = message.get("content")
+    if not isinstance(content, str) or not content.strip():
+        return {}
+    try:
+        envelope = json.loads(content)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(envelope, dict):
+        return {}
+
+    raw_message = envelope.get("message")
+    if not isinstance(raw_message, str):
+        return {}
+
+    parsed_message: Any
+    try:
+        parsed_message = json.loads(raw_message)
+    except json.JSONDecodeError:
+        parsed_message = raw_message
+
+    if isinstance(parsed_message, dict):
+        return _extract_sources_from_search_payload(parsed_message)
+    return _extract_sources_from_labeled_webpage(raw_message, envelope)
+
+
+def _extract_sources_from_search_payload(payload: dict) -> dict[str, dict]:
+    from urllib.parse import urlparse
+
+    sources: dict[str, dict] = {}
+    for result in payload.get("results") or []:
+        if not isinstance(result, dict):
+            continue
+        source_id = result.get("source_id")
+        if not source_id:
+            continue
+        url = result.get("url") or result.get("href")
+        netloc = urlparse(str(url)).netloc if url else ""
+        source: dict[str, Any] = {
+            "id": str(source_id),
+            "type": "search",
+            "title": result.get("title") or url or str(source_id),
+            "url": url,
+            "snippet": result.get("description") or result.get("body"),
+        }
+        if netloc:
+            source["favicon"] = (
+                f"https://www.google.com/s2/favicons?domain={netloc}&sz=32"
+            )
+        sources[str(source_id)] = {k: v for k, v in source.items() if v is not None}
+    return sources
+
+
+def _extract_sources_from_labeled_webpage(
+    raw_message: str, envelope: dict
+) -> dict[str, dict]:
+    match = re.match(r"^\[(t\d+_src_\d+)\]\s+(.+?)(?:\r?\n|$)", raw_message)
+    if not match:
+        return {}
+    source_id, title = match.groups()
+    metadata = envelope.get("metadata")
+    url = metadata.get("url") if isinstance(metadata, dict) else None
+    snippet = raw_message[:200] if raw_message else None
+    return {
+        source_id: {
+            "id": source_id,
+            "type": "webpage",
+            "title": title.strip() or url or source_id,
+            "url": url,
+            "snippet": snippet,
+        }
+    }
 
 
 def _append_inline_a2ui_surfaces(

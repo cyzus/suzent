@@ -392,6 +392,48 @@ def format_session_guidance_debug(entries: list[dict]) -> str:
     return "\n".join(lines)
 
 
+# Inline-citation rules. STATIC behavioural instruction — kept separate from the
+# (dynamic) source list, which is NOT injected here: each tool prefixes its
+# results with the assigned `t{turn}_src_N` id, so the model sees the id right next to
+# the evidence it cites. The citation marker is rendered as a badge by the
+# frontend MarkdownRenderer.
+#
+# Uses ChatGPT-style invisible PUA characters
+# (U+E200 cite U+E202 {id} U+E201) as the model-facing marker. The frontend
+# also parses the ASCII [[cite:t0_src_N]] fallback for older/debug output.
+CITATION_RULES_SECTION = """# Citation Rules (REQUIRED)
+Tool results may be labelled with source ids like `[t0_src_1]`. Whenever your answer states a specific fact, figure, date, name, or quote that came from a labelled tool result, you MUST attach an inline citation marker for that exact source id. This is not optional: an answer drawn from labelled sources that contains no markers is incorrect.
+
+## Marker syntax
+Output a citation marker by copying this exact sequence, replacing only the id with the exact id shown in the tool result:
+
+    citet0_src_1
+
+The delimiter glyphs around `cite` and the id are special marker characters. Copy them exactly from the example; do not replace them with plain text, square brackets, parentheses, or words like "cite".
+
+Place the marker immediately after the phrase it supports, before punctuation. For several sources, repeat the separator character: citet0_src_1t0_src_2.
+
+## Examples
+- The UK's all-time record is 40.3Ccitet0_src_1, set in July 2022citet0_src_1.
+- Both the UK and France saw extreme heatcitet0_src_2t0_src_4.
+
+## Rules
+- Cite EACH sourced sentence (or clause). Do not gather all citations only at the end.
+- Copy the exact marker characters shown above; do not put them in backticks or code formatting, spell them out, or use any other style such as (src_1), [1], superscripts, or footnotes.
+- Use only the source ids shown in the tool results. Never invent an id, shorten it, remove the turn prefix, or put a source's name or URL inside the marker.
+- Do NOT cite general knowledge, your own reasoning, or analysis.
+- The markers are rendered as small badges and stripped from display, so never mention or describe them in prose."""
+
+
+def build_citation_section(deps: Any) -> str:
+    """Return the static citation rules.
+
+    The rules are constant (so this string is cacheable); the source *list* is
+    not injected here — tools embed source ids in their own output.
+    """
+    return CITATION_RULES_SECTION
+
+
 def register_dynamic_instructions(
     agent: Any,
     *,
@@ -451,6 +493,12 @@ def register_dynamic_instructions(
             "session_guidance",
             lambda: build_session_guidance_section(session_guidance_items),
         )
+
+    @agent.instructions
+    def inject_citation_rules(ctx: Any) -> str:
+        # Static rules only; source ids travel in tool output and source metadata
+        # travels in citation_sources stream events.
+        return build_citation_section(ctx.deps)
 
     @agent.instructions
     def inject_permission_mode(ctx: Any) -> str:

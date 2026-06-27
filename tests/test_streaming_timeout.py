@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 from pydantic_ai.messages import FunctionToolCallEvent, FunctionToolResultEvent
@@ -93,3 +94,90 @@ def test_non_bash_tool_stream_timeout_defaults_to_one_minute():
     )
 
     assert streaming._tool_timeout_from_event(event) == 60.0
+
+
+def test_draft_accumulator_persists_citation_sources():
+    acc = streaming._DraftDisplayAccumulator(chat_id="chat-1", run_id="run-1")
+
+    acc.apply(
+        SimpleNamespace(
+            type="CUSTOM",
+            name="citation_sources",
+            value={
+                "sources": [
+                    {
+                        "id": "t0_src_1",
+                        "type": "search",
+                        "title": "Example",
+                        "url": "https://example.com",
+                    }
+                ]
+            },
+        )
+    )
+
+    assert acc.parts == [
+        {
+            "type": "citation-sources",
+            "citationSources": [
+                {
+                    "id": "t0_src_1",
+                    "type": "search",
+                    "title": "Example",
+                    "url": "https://example.com",
+                }
+            ],
+        }
+    ]
+    assert acc.dirty is True
+
+
+def test_draft_accumulator_merges_citation_sources_by_id():
+    acc = streaming._DraftDisplayAccumulator(chat_id="chat-1", run_id="run-1")
+
+    acc.apply(
+        SimpleNamespace(
+            type="CUSTOM",
+            name="citation_sources",
+            value={"sources": [{"id": "t0_src_1", "type": "search", "title": "Old"}]},
+        )
+    )
+    acc.apply(
+        SimpleNamespace(
+            type="CUSTOM",
+            name="citation_sources",
+            value={
+                "sources": [
+                    {"id": "t0_src_1", "type": "search", "title": "New"},
+                    {"id": "t0_src_2", "type": "webpage", "title": "Page"},
+                ]
+            },
+        )
+    )
+
+    assert acc.parts == [
+        {
+            "type": "citation-sources",
+            "citationSources": [
+                {"id": "t0_src_1", "type": "search", "title": "New"},
+                {"id": "t0_src_2", "type": "webpage", "title": "Page"},
+            ],
+        }
+    ]
+
+
+def test_draft_accumulator_snapshots_final_citation_sources():
+    acc = streaming._DraftDisplayAccumulator(chat_id="chat-1", run_id="run-1")
+
+    acc.apply_citation_sources(
+        [{"id": "t0_src_1", "type": "search", "title": "Example"}]
+    )
+
+    assert acc.parts == [
+        {
+            "type": "citation-sources",
+            "citationSources": [
+                {"id": "t0_src_1", "type": "search", "title": "Example"}
+            ],
+        }
+    ]
