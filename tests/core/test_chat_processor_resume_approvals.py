@@ -7,10 +7,12 @@ from pydantic_ai.messages import (
 from pydantic_ai.tools import ToolDenied
 
 from suzent.core.chat_processor import (
+    _apply_permission_updates,
     _collect_unprocessed_tool_call_ids,
     _deferred_approval_result,
     _resolve_resume_approval_actions,
 )
+from suzent.permissions.rules import parse_rules
 from suzent.permissions.actions import build_approval_decision
 
 
@@ -212,3 +214,40 @@ def test_legacy_resume_cannot_persist_permission(monkeypatch) -> None:
 
     assert resolved[0]["approved"] is True
     assert resolved[0]["remember"] == ""
+
+
+def test_apply_permission_updates_refreshes_active_rules(monkeypatch) -> None:
+    calls = []
+
+    def fake_upsert_permission_rule(rule, **kwargs):
+        calls.append((rule, kwargs))
+
+    monkeypatch.setattr(
+        "suzent.core.chat_processor.upsert_permission_rule",
+        fake_upsert_permission_rule,
+    )
+
+    active_rules = []
+    _apply_permission_updates(
+        "chat-1",
+        [
+            {
+                "type": "add_rule",
+                "destination": "session",
+                "payload": {
+                    "id": "remember-edit",
+                    "tool": "edit_file",
+                    "behavior": "allow",
+                    "matcher": {"type": "all"},
+                },
+            }
+        ],
+        active_rules,
+    )
+
+    parsed = parse_rules(active_rules)
+
+    assert len(calls) == 1
+    assert calls[0][0].id == "remember-edit"
+    assert parsed[0].tool == "edit_file"
+    assert parsed[0].behavior == "allow"

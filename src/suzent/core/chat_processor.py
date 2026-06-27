@@ -168,6 +168,7 @@ def _resolve_resume_approval_actions(
 def _apply_permission_updates(
     chat_id: str,
     updates: list[dict[str, Any]],
+    active_rules: list[Any] | None = None,
 ) -> None:
     for update in updates:
         if not isinstance(update, dict) or update.get("type") != "add_rule":
@@ -187,6 +188,13 @@ def _apply_permission_updates(
             chat_id=chat_id,
             user_config_dir=USER_CONFIG_DIR,
         )
+        if active_rules is not None:
+            active_rules[:] = [
+                existing
+                for existing in active_rules
+                if not isinstance(existing, dict) or existing.get("id") != rule.id
+            ]
+            active_rules.append(rule.model_dump(mode="json", by_alias=True))
 
 
 def _collect_unprocessed_tool_call_ids(messages: list[Any]) -> set[str]:
@@ -735,7 +743,11 @@ class ChatProcessor:
                     )
                     permission_updates = app.get("_permission_updates")
                     if isinstance(permission_updates, list) and permission_updates:
-                        _apply_permission_updates(chat_id, permission_updates)
+                        _apply_permission_updates(
+                            chat_id,
+                            permission_updates,
+                            getattr(deps, "permission_rules", None),
+                        )
         else:
             # New user turn (not resume): clear any stale cached auto approvals.
             pop_pending_auto_approvals(chat_id)

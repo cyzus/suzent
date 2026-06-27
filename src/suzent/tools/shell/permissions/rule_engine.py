@@ -31,6 +31,14 @@ def normalize_rules(raw_rules: list[dict] | None) -> list[BashCommandPolicyRule]
     return rules
 
 
+def _resolve_match_actions(rules: list[BashCommandPolicyRule]) -> CommandDecision:
+    if any(rule.action == CommandDecision.DENY for rule in rules):
+        return CommandDecision.DENY
+    if any(rule.action == CommandDecision.ASK for rule in rules):
+        return CommandDecision.ASK
+    return CommandDecision.ALLOW
+
+
 def evaluate_rules(
     command_text: str, rules: list[BashCommandPolicyRule]
 ) -> CommandDecision | None:
@@ -40,20 +48,12 @@ def evaluate_rules(
 
     exact_matches = [r for r in rules if r.match_type == "exact" and r.pattern == text]
     if exact_matches:
-        if any(r.action == CommandDecision.DENY for r in exact_matches):
-            return CommandDecision.DENY
-        if any(r.action == CommandDecision.ASK for r in exact_matches):
-            return CommandDecision.ASK
-        return CommandDecision.ALLOW
+        return _resolve_match_actions(exact_matches)
 
     prefix_matches = [
         r for r in rules if r.match_type == "prefix" and text.startswith(r.pattern)
     ]
     if prefix_matches:
-        if any(r.action == CommandDecision.DENY for r in prefix_matches):
-            return CommandDecision.DENY
-        if any(r.action == CommandDecision.ASK for r in prefix_matches):
-            return CommandDecision.ASK
-        return CommandDecision.ALLOW
+        return _resolve_match_actions(prefix_matches)
 
     return None

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .command_classifier import classify_command, is_high_risk
+from .command_classifier import classify_command
 from .command_parser import parse_command
 from .mode_policy import evaluate_mode
 from .path_extractor import extract_path_uses
@@ -50,7 +50,7 @@ def evaluate_command_policy(
             metadata={"base_command": ctx.base_command},
         )
 
-    if is_high_risk(ctx, command_class):
+    if command_class == CommandClass.DANGEROUS:
         return PermissionEvaluation(
             decision=CommandDecision.DENY,
             reason="Command blocked by high-risk shell semantics",
