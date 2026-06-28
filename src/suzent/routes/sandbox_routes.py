@@ -6,7 +6,6 @@ import re
 import json
 import shutil
 import mimetypes
-import time
 import uuid
 from collections import deque
 from pathlib import Path
@@ -777,15 +776,19 @@ async def upload_files(request: Request) -> JSONResponse:
             # Comprehensive filename sanitization
             safe_filename = sanitize_filename(upload_file.filename)
 
-            # Handle filename conflicts by appending timestamp
+            # Handle filename conflicts by appending a random token. A timestamp
+            # is NOT unique here: a single multipart request carrying several
+            # same-named files (e.g. pasted screenshots, all named "image.png")
+            # is written in a tight loop within the same millisecond, so a
+            # millisecond stamp collides and later files overwrite earlier ones.
             target_path = uploads_host_path / safe_filename
             if target_path.exists():
-                # Append timestamp before extension
                 stem = target_path.stem
                 suffix = target_path.suffix
-                timestamp = int(time.time() * 1000)  # milliseconds
-                safe_filename = f"{stem}_{timestamp}{suffix}"
-                target_path = uploads_host_path / safe_filename
+                while target_path.exists():
+                    token = uuid.uuid4().hex[:8]
+                    safe_filename = f"{stem}_{token}{suffix}"
+                    target_path = uploads_host_path / safe_filename
 
             # Write file to disk
             content = await upload_file.read()

@@ -273,6 +273,19 @@ export function useUnifiedFileUpload() {
         ? await convertImagesToBase64(imageFiles)
         : [];
 
+      // Attach each preview's base64 to the matching image metadata entry so the
+      // optimistic message can render instantly (no flicker while the serve URL
+      // loads). Correlate by ORDER, not filename: the server may rename colliding
+      // files (e.g. several pasted "image.png"), so filenames aren't reliable, but
+      // both the upload loop and the preview list preserve the input order.
+      let previewIdx = 0;
+      for (const meta of fileMetadata) {
+        if (meta.mime_type.startsWith('image/') && previewIdx < imagePreviews.length) {
+          meta.preview_data = imagePreviews[previewIdx].data;
+          previewIdx += 1;
+        }
+      }
+
       return { fileMetadata, imagePreviews };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Upload failed';

@@ -16,6 +16,10 @@ export interface FileAttachment {
   size: number;           // Bytes
   mime_type: string;
   uploaded_at?: string;
+  // Client-only: base64 image data captured at upload time so the optimistic
+  // bubble can render instantly instead of flickering while the sandbox-serve
+  // URL loads. Not persisted; absent after reload (serve URL is used then).
+  preview_data?: string;
 }
 
 export interface Message {

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { Message } from '../../types/api';
 import { FileIcon } from '../FileIcon';
 import { ClickableContent } from '../ClickableContent';
-import { ArrowDownTrayIcon, EyeIcon, PencilSquareIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, EyeIcon, PencilSquareIcon, ArrowPathIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { getApiBase, getSandboxParams } from '../../lib/api';
 import { formatMessageTime } from '../../lib/chatUtils';
 import { useChatStore } from '../../hooks/useChatStore';
@@ -124,6 +124,124 @@ function sanitizeContent(content: string): string {
   return cleaned;
 }
 
+/** A user-attached image normalized from either base64 (`images`) or a file (`files`). */
+interface UserImage {
+  key: string;
+  /** Full-size source for click-to-zoom (data URL or serve URL). */
+  fullSrc: string;
+  /** base64 payload when available — lets LazyImage downsample without a fetch. */
+  data?: string;
+  mimeType: string;
+  filename?: string;
+}
+
+/**
+ * Renders a user's image attachment(s). A single image shows as one thumbnail;
+ * multiple images become a slideshow with prev/next controls and a counter.
+ */
+function UserImageGallery({
+  images,
+  onImageClick,
+}: {
+  images: UserImage[];
+  onImageClick?: (src: string) => void;
+}) {
+  const [index, setIndex] = useState(0);
+  // Clamp if the image list shrinks (e.g. an edit removed attachments).
+  const safeIndex = Math.min(index, images.length - 1);
+  const current = images[safeIndex];
+
+  const go = (delta: number) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIndex(i => (i + delta + images.length) % images.length);
+  };
+
+  const renderThumb = (img: UserImage) =>
+    img.data ? (
+      <LazyImage
+        data={img.data}
+        mimeType={img.mimeType}
+        alt={img.filename}
+        className="max-w-sm max-h-64 border-4 border-brutal-black shadow-brutal-lg object-contain bg-white"
+        title={img.filename}
+        onClick={() => onImageClick?.(img.fullSrc)}
+        style={{ cursor: onImageClick ? 'pointer' : 'default' }}
+      />
+    ) : (
+      <img
+        src={img.fullSrc}
+        alt={img.filename}
+        className="max-w-sm max-h-64 border-4 border-brutal-black shadow-brutal-lg object-contain bg-white"
+        title={img.filename}
+        onClick={() => onImageClick?.(img.fullSrc)}
+        style={{ cursor: onImageClick ? 'pointer' : 'default' }}
+        loading="lazy"
+        decoding="async"
+      />
+    );
+
+  if (images.length === 0) return null;
+
+  if (images.length === 1) {
+    return (
+      <div className="flex flex-wrap gap-3 justify-end">
+        <div className="relative group animate-brutal-pop">
+          {renderThumb(current)}
+          {current.filename && (
+            <div className="absolute bottom-0 left-0 right-0 bg-brutal-black text-brutal-white text-xs px-2 py-1 font-bold opacity-0 group-hover:opacity-100 transition-opacity duration-100">
+              {current.filename}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex justify-end">
+      <div className="relative group animate-brutal-pop inline-block">
+        {renderThumb(current)}
+
+        {/* Prev / next controls */}
+        <button
+          type="button"
+          onClick={go(-1)}
+          className="absolute left-1 top-1/2 -translate-y-1/2 w-7 h-7 bg-brutal-white border-2 border-brutal-black text-brutal-black flex items-center justify-center shadow-brutal-sm hover:bg-brutal-yellow opacity-0 group-hover:opacity-100 transition-opacity"
+          aria-label="Previous image"
+        >
+          <ChevronLeftIcon className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onClick={go(1)}
+          className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 bg-brutal-white border-2 border-brutal-black text-brutal-black flex items-center justify-center shadow-brutal-sm hover:bg-brutal-yellow opacity-0 group-hover:opacity-100 transition-opacity"
+          aria-label="Next image"
+        >
+          <ChevronRightIcon className="w-4 h-4" />
+        </button>
+
+        {/* Counter + filename */}
+        <div className="absolute bottom-0 left-0 right-0 bg-brutal-black text-brutal-white text-xs px-2 py-1 font-bold flex items-center justify-between gap-2">
+          <span className="truncate">{current.filename}</span>
+          <span className="shrink-0">{safeIndex + 1} / {images.length}</span>
+        </div>
+
+        {/* Dot indicators */}
+        <div className="absolute top-1 left-1/2 -translate-x-1/2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {images.map((img, i) => (
+            <button
+              key={img.key}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setIndex(i); }}
+              className={`w-2 h-2 border border-brutal-black ${i === safeIndex ? 'bg-brutal-yellow' : 'bg-brutal-white'}`}
+              aria-label={`Go to image ${i + 1}`}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface UserMessageProps {
   message: Message;
@@ -181,59 +299,37 @@ export const UserMessage: React.FC<UserMessageProps> = ({ message, chatId, onIma
   const imageFiles = message.files?.filter(f => f.mime_type.startsWith('image/')) ?? [];
   const otherFiles = message.files?.filter(f => !f.mime_type.startsWith('image/')) ?? [];
 
+  // Normalize images into one list for the gallery. Image `files` are
+  // authoritative (they carry a serve URL that survives reload, plus an optional
+  // base64 preview for instant display); only fall back to the base64-only
+  // `message.images` when there are no image files. This prevents the same image
+  // rendering twice when a message happens to carry both.
+  const galleryImages: UserImage[] = imageFiles.length > 0
+    ? imageFiles.map((file, idx) => ({
+        key: file.id || file.path || String(idx),
+        fullSrc: file.preview_data
+          ? `data:${file.mime_type};base64,${file.preview_data}`
+          : `${getApiBase()}/sandbox/serve?${getSandboxParams(chatId || '', file.path, config.sandbox_volumes)}`,
+        data: file.preview_data,
+        mimeType: file.mime_type,
+        filename: file.filename,
+      }))
+    : (message.images ?? []).map((img, idx) => ({
+        key: img.id || String(idx),
+        fullSrc: `data:${img.mime_type};base64,${img.data}`,
+        data: img.data,
+        mimeType: img.mime_type,
+        filename: img.filename,
+      }));
+
   if (!message.content?.trim() && !message.images?.length && !message.files?.length) {
     return null;
   }
 
   return (
     <div className="w-full max-w-3xl space-y-3 pl-8 md:pl-16">
-      {/* Images */}
-      {message.images && message.images.length > 0 && (
-        <div className="flex flex-wrap gap-3 justify-end">
-          {message.images.map((img, imgIdx) => (
-            <div key={imgIdx} className="relative group animate-brutal-pop">
-              <LazyImage
-                data={img.data}
-                mimeType={img.mime_type}
-                alt={img.filename}
-                className="max-w-sm max-h-64 border-4 border-brutal-black shadow-brutal-lg object-contain bg-white"
-                title={img.filename}
-                onClick={() => onImageClick?.(`data:${img.mime_type};base64,${img.data}`)}
-                style={{ cursor: onImageClick ? 'pointer' : 'default' }}
-              />
-              <div className="absolute bottom-0 left-0 right-0 bg-brutal-black text-brutal-white text-xs px-2 py-1 font-bold opacity-0 group-hover:opacity-100 transition-opacity duration-100">
-                {img.filename}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Image files — render inline via sandbox serve URL */}
-      {imageFiles.length > 0 && (
-        <div className="flex flex-wrap gap-3 justify-end">
-          {imageFiles.map((file, idx) => {
-            const serveUrl = `${getApiBase()}/sandbox/serve?${getSandboxParams(chatId || '', file.path, config.sandbox_volumes)}`;
-            return (
-              <div key={idx} className="relative group animate-brutal-pop">
-                <img
-                  src={serveUrl}
-                  alt={file.filename}
-                  className="max-w-sm max-h-64 border-4 border-brutal-black shadow-brutal-lg object-contain bg-white"
-                  title={file.filename}
-                  onClick={() => onImageClick?.(serveUrl)}
-                  style={{ cursor: onImageClick ? 'pointer' : 'default' }}
-                  loading="lazy"
-                  decoding="async"
-                />
-                <div className="absolute bottom-0 left-0 right-0 bg-brutal-black text-brutal-white text-xs px-2 py-1 font-bold opacity-0 group-hover:opacity-100 transition-opacity duration-100">
-                  {file.filename}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {/* Images — single thumbnail or a slideshow when there are several */}
+      <UserImageGallery images={galleryImages} onImageClick={onImageClick} />
 
       {/* Non-image file attachments — download cards */}
       {otherFiles.length > 0 && (

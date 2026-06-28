@@ -132,7 +132,7 @@ const ImagePreviewThumbnail: React.FC<{
         <img
             src={previewUrl}
             alt={file.name}
-            className="w-20 h-20 object-cover border-3 border-brutal-black cursor-pointer hover:opacity-80 transition-opacity"
+            className="w-16 h-16 object-cover border-3 border-brutal-black cursor-pointer hover:opacity-80 transition-opacity"
             onClick={() => onImageClick?.(previewUrl)}
         />
     );
@@ -321,18 +321,17 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
               onSubmit={(e) => { e.preventDefault(); send(); }}
               className="bg-neutral-50 dark:bg-zinc-800 border-2 border-brutal-black shadow-brutal-sm p-1.5 flex flex-col gap-1 relative group focus-within:shadow-brutal focus-within:-translate-y-[1px] transition-all duration-200 z-20 text-left"
           >
-            {/* Unified file preview section */}
+            {/* Unified file preview section. Capped height + scroll so a large
+                batch of attachments never inflates the input box; images wrap into
+                a compact grid, files stack as cards. */}
             {selectedFiles.length > 0 && (
-                <div className="flex flex-col gap-2 p-2 mb-1">
-                    {selectedFiles.map((file, idx) => {
-                        const isImage = file.type.startsWith('image/');
-
-                        return (
-                            <div key={idx}>
-                                {isImage ? (
-                                    // Image preview (larger, visual)
-                                    // Image preview with proper URL cleanup
-                                    <div className="relative group/image inline-block">
+                <div className="flex flex-col gap-2 p-2 mb-1 max-h-44 overflow-y-auto">
+                    {/* Images — compact wrapping grid */}
+                    {selectedFiles.some(f => f.type.startsWith('image/')) && (
+                        <div className="flex flex-wrap gap-2">
+                            {selectedFiles.map((file, idx) => (
+                                file.type.startsWith('image/') && (
+                                    <div key={idx} className="relative group/image shrink-0">
                                         <ImagePreviewThumbnail
                                             file={file}
                                             onImageClick={onImageClick}
@@ -340,35 +339,39 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                                         <button
                                             type="button"
                                             onClick={() => removeFile(idx)}
-                                            className="absolute -top-2 -right-2 w-6 h-6 bg-brutal-red border-2 border-brutal-black text-white text-sm flex items-center justify-center font-bold shadow-brutal-sm hover:shadow-none transition-all"
+                                            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-brutal-red border-2 border-brutal-black text-white text-xs flex items-center justify-center font-bold shadow-brutal-sm hover:shadow-none transition-all opacity-0 group-hover/image:opacity-100"
                                             title={t('chatInput.removeFile')}
                                         >
                                             ×
                                         </button>
                                     </div>
-                                ) : (
-                                    // File card (icon + name + size)
-                                    <div className="flex items-center gap-2 bg-white dark:bg-zinc-700 border-2 border-brutal-black p-2">
-                                        <FileIcon mimeType={file.type} className="w-5 h-5 shrink-0" />
-                                        <div className="flex-1 min-w-0">
-                                            <div className="text-sm font-bold text-brutal-black dark:text-white truncate">{file.name}</div>
-                                            <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                                                {(file.size / 1024).toFixed(1)} KB
-                                            </div>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => removeFile(idx)}
-                                            className="shrink-0 w-6 h-6 bg-brutal-red border-2 border-brutal-black text-white flex items-center justify-center hover:bg-red-600 transition-colors"
-                                            title={t('chatInput.removeFile')}
-                                        >
-                                            <XMarkIcon className="w-4 h-4" />
-                                        </button>
+                                )
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Non-image files — stacked cards */}
+                    {selectedFiles.map((file, idx) => (
+                        !file.type.startsWith('image/') && (
+                            <div key={idx} className="flex items-center gap-2 bg-white dark:bg-zinc-700 border-2 border-brutal-black p-2">
+                                <FileIcon mimeType={file.type} className="w-5 h-5 shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-bold text-brutal-black dark:text-white truncate">{file.name}</div>
+                                    <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                                        {(file.size / 1024).toFixed(1)} KB
                                     </div>
-                                )}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => removeFile(idx)}
+                                    className="shrink-0 w-6 h-6 bg-brutal-red border-2 border-brutal-black text-white flex items-center justify-center hover:bg-red-600 transition-colors"
+                                    title={t('chatInput.removeFile')}
+                                >
+                                    <XMarkIcon className="w-4 h-4" />
+                                </button>
                             </div>
-                        );
-                    })}
+                        )
+                    ))}
                 </div>
             )}
 
