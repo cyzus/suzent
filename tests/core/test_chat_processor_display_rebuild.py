@@ -122,7 +122,10 @@ def test_append_inline_a2ui_surfaces_attaches_to_last_assistant_message():
     assert "data-a2ui=" in updated[1]["content"]
 
 
-def test_preserve_citation_sources_attaches_matching_sources_to_rebuilt_message():
+def test_preserve_citation_sources_attaches_turn_sources_to_rebuilt_message():
+    # Both sources were registered in turn 0; only t0_src_1 is cited inline. Both
+    # must survive onto the turn-0 assistant message \u2014 registration, not inline
+    # citation, decides persistence (mirrors the streaming path).
     rebuilt = [
         {"role": "user", "content": "what happened?"},
         {
@@ -150,8 +153,8 @@ def test_preserve_citation_sources_attaches_matching_sources_to_rebuilt_message(
                         {
                             "id": "t0_src_2",
                             "type": "search",
-                            "title": "Unused",
-                            "url": "https://example.com/unused",
+                            "title": "Uncited",
+                            "url": "https://example.com/uncited",
                         },
                     ],
                 }
@@ -169,8 +172,59 @@ def test_preserve_citation_sources_attaches_matching_sources_to_rebuilt_message(
                 "type": "search",
                 "title": "Reuters",
                 "url": "https://reuters.com/a",
-            }
+            },
+            {
+                "id": "t0_src_2",
+                "type": "search",
+                "title": "Uncited",
+                "url": "https://example.com/uncited",
+            },
         ],
+    }
+
+
+def test_preserve_citation_sources_associates_sources_by_turn():
+    # Two turns, each with one source. Each source must land on its own turn's
+    # assistant message \u2014 not bleed across turns and not require an inline marker.
+    rebuilt = [
+        {"role": "user", "content": "q1"},
+        {
+            "role": "assistant",
+            "content": "answer one",
+            "parts": [{"type": "text", "text": "answer one"}],
+        },
+        {"role": "user", "content": "q2"},
+        {
+            "role": "assistant",
+            "content": "answer two",
+            "parts": [{"type": "text", "text": "answer two"}],
+        },
+    ]
+    existing = [
+        {
+            "role": "assistant",
+            "content": "draft",
+            "parts": [
+                {
+                    "type": "citation-sources",
+                    "citationSources": [
+                        {"id": "t0_src_1", "type": "search", "title": "First"},
+                        {"id": "t1_src_1", "type": "search", "title": "Second"},
+                    ],
+                }
+            ],
+        }
+    ]
+
+    updated = _preserve_citation_sources(rebuilt, existing)
+
+    assert updated[1]["parts"][1] == {
+        "type": "citation-sources",
+        "citationSources": [{"id": "t0_src_1", "type": "search", "title": "First"}],
+    }
+    assert updated[3]["parts"][1] == {
+        "type": "citation-sources",
+        "citationSources": [{"id": "t1_src_1", "type": "search", "title": "Second"}],
     }
 
 
@@ -213,6 +267,8 @@ def test_preserve_citation_sources_recovers_sources_from_tool_results():
 
     updated = _preserve_citation_sources(rebuilt, [])
 
+    # Both sources from the turn-0 tool result are recovered, including the one
+    # the model never cited inline (t0_src_15).
     assert updated[1]["parts"][1]["type"] == "citation-sources"
     assert updated[1]["parts"][1]["citationSources"] == [
         {
@@ -222,7 +278,15 @@ def test_preserve_citation_sources_recovers_sources_from_tool_results():
             "url": "https://example.com/markets",
             "snippet": "Nasdaq and S&P 500 moved lower.",
             "favicon": "https://www.google.com/s2/favicons?domain=example.com&sz=32",
-        }
+        },
+        {
+            "id": "t0_src_15",
+            "type": "search",
+            "title": "Unused",
+            "url": "https://example.com/unused",
+            "snippet": "Unused source.",
+            "favicon": "https://www.google.com/s2/favicons?domain=example.com&sz=32",
+        },
     ]
 
 

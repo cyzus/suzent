@@ -2090,26 +2090,56 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
     return result
 
 
+_SOURCE_TURN_RE = re.compile(r"^t(\d+)_src_\d+$")
+
+
+def _source_turn(source_id: str) -> int | None:
+    """Turn index encoded in a ``t{turn}_src_{n}`` id, or None if unparseable."""
+    match = _SOURCE_TURN_RE.match(str(source_id))
+    return int(match.group(1)) if match else None
+
+
 def _preserve_citation_sources(rebuilt: list, existing: list | None) -> list:
-    """Carry citation metadata from draft display rows into rebuilt rows."""
+    """Carry citation metadata from draft display rows into rebuilt rows.
+
+    A source belongs to the assistant message produced in its turn, whether or
+    not the model emitted an inline ``[[cite:...]]`` marker for it — this mirrors
+    the streaming path, which persists *every* registered source onto that turn's
+    message. Association is by the turn index encoded in the source id
+    (``t{turn}_src_n``): the k-th assistant message (0-based) in the rebuilt log
+    is turn k, matching how ``CitationManager`` is seeded in streaming.py (turn =
+    count of prior responses). Sources whose turn falls outside the rebuilt range
+    (or have an unparseable id) are attached to the last assistant message so
+    they are never silently dropped.
+    """
     sources_by_id = _collect_citation_sources(existing or [])
     sources_by_id.update(_collect_citation_sources(rebuilt))
 
     if not sources_by_id:
         return rebuilt
 
-    for message in rebuilt:
-        if not isinstance(message, dict) or message.get("role") != "assistant":
-            continue
-        content = str(message.get("content") or "")
-        matched = [
-            source
-            for source_id, source in sources_by_id.items()
-            if source_id in content
-        ]
-        if not matched:
-            continue
+    # assistant message index (0-based) -> its position in `rebuilt`.
+    assistant_positions = [
+        idx
+        for idx, message in enumerate(rebuilt)
+        if isinstance(message, dict) and message.get("role") == "assistant"
+    ]
+    if not assistant_positions:
+        return rebuilt
 
+    last_turn = len(assistant_positions) - 1
+    # Group sources by the assistant-message index they belong to.
+    sources_for_message: dict[int, list[dict]] = {}
+    for source_id, source in sources_by_id.items():
+        turn = _source_turn(source_id)
+        if turn is None or turn < 0 or turn > last_turn:
+            # Unparseable id or a turn outside the rebuilt range — fall back to
+            # the final assistant message rather than dropping the source.
+            turn = last_turn
+        sources_for_message.setdefault(turn, []).append(source)
+
+    for turn, matched in sources_for_message.items():
+        message = rebuilt[assistant_positions[turn]]
         parts = message.setdefault("parts", [])
         if not isinstance(parts, list):
             continue
