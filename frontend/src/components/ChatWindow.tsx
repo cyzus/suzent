@@ -352,9 +352,17 @@ const NoticeMessage: React.FC<{ message: Message }> = ({ message }) => {
 
   return (
     <div className="w-full max-w-3xl pl-2 md:pl-6">
-      <div className="border-2 border-dashed border-brutal-black bg-brutal-yellow/20 px-4 py-3 shadow-[3px_3px_0_0_#000]">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-brutal-black">Notice</div>
-        <div className="text-sm leading-relaxed text-brutal-black"><MarkdownRenderer content={message.content} /></div>
+      <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_rgba(255,255,255,0.18)]">
+        <div className="flex items-start gap-3">
+          <div className="w-2 self-stretch bg-brutal-black dark:bg-neutral-500" aria-hidden="true" />
+          <div className="min-w-0 py-3 pr-4">
+            <span className="mb-1.5 inline-flex h-2 w-2 bg-neutral-200 border border-brutal-black dark:bg-zinc-600 dark:border-neutral-300" aria-hidden="true" />
+            <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Notice</div>
+            <div className="text-sm leading-relaxed text-brutal-black dark:text-neutral-100">
+              <MarkdownRenderer content={message.content} />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -608,9 +616,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [isBoardFullscreen, setIsBoardFullscreen] = useState(false);
   const [fileMentions, setFileMentions] = useState<FileMentionSelection[]>([]);
   const [visibleMessageCount, setVisibleMessageCount] = useState(INITIAL_VISIBLE_MESSAGES);
-  const [compactNotice, setCompactNoticeLocal] = useState<string | null>(null);
   const prependScrollSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
   const pendingMinimapJumpRef = useRef<number | null>(null);
+  const messagesRef = useRef<Message[]>(messages || []);
+  const compactNoticeMessageRef = useRef<{ chatId: string; index: number } | null>(null);
   const { onSpawned: onSubAgentSpawned, onCompleted: onSubAgentCompleted, onFailed: onSubAgentFailed } = useSubAgentStatus();
   const { setStatus: setStatusBar } = useStatusStore();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -622,6 +631,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const activeChatIdRef = useRef<string | null>(currentChatId);
   useEffect(() => {
     activeChatIdRef.current = currentChatId;
+    compactNoticeMessageRef.current = null;
     setVisibleMessageCount(INITIAL_VISIBLE_MESSAGES);
     setIsBoardFullscreen(false);
     prependScrollSnapshotRef.current = null;
@@ -648,18 +658,47 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   }, [currentChatId]);
 
   useEffect(() => {
-    if (!currentChatId) {
-      setCompactNoticeLocal(null);
+    messagesRef.current = messages || [];
+  }, [messages]);
+
+  const upsertCompactNotice = useCallback((content: string | null) => {
+    const notice = content?.trim();
+    if (!notice || !currentChatId) return;
+
+    const existing = compactNoticeMessageRef.current;
+    const currentMessages = messagesRef.current;
+    const timestamp = new Date().toISOString();
+
+    if (
+      existing?.chatId === currentChatId &&
+      currentMessages[existing.index]?.role === 'notice'
+    ) {
+      const updatedMessages = [...currentMessages];
+      updatedMessages[existing.index] = { ...updatedMessages[existing.index], content: notice, timestamp };
+      messagesRef.current = updatedMessages;
+      updateMessage(existing.index, { content: notice, timestamp }, currentChatId);
       return;
     }
+
+    const message: Message = { role: 'notice', content: notice, timestamp };
+    compactNoticeMessageRef.current = {
+      chatId: currentChatId,
+      index: currentMessages.length,
+    };
+    messagesRef.current = [...currentMessages, message];
+    addMessage(message, currentChatId);
+  }, [addMessage, currentChatId, updateMessage]);
+
+  useEffect(() => {
+    if (!currentChatId) return;
 
     const unsub = subscribeToBusPayloads((payload) => {
       if (!payload || payload.event !== 'auto_compaction') return;
       if (payload.chat_id !== currentChatId) return;
-      setCompactNoticeLocal(formatCompactLifecycleNotice(payload));
+      upsertCompactNotice(formatCompactLifecycleNotice(payload));
     });
     return unsub;
-  }, [currentChatId]);
+  }, [currentChatId, upsertCompactNotice]);
 
   // Ref to lock the chat ID for the current stream so switching chats doesn't misroute messages
   const streamingChatIdRef = useRef<string | null>(null);
@@ -782,7 +821,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (storeMsg.content.trim()) {
         addMessage(storeMsg, chatId!);
         if (/context compacted/i.test(storeMsg.content)) {
-          setCompactNoticeLocal('Context compacted');
+          upsertCompactNotice('Context compacted');
         }
       }
 
@@ -820,9 +859,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (name === 'processing_status') {
         const phase = (value as { phase?: string } | null)?.phase;
         if (phase === 'compressing_context') {
-          setCompactNoticeLocal('Compaction running...');
+          upsertCompactNotice('Compaction running...');
         } else if (phase === 'running' || phase === 'complete') {
-          setCompactNoticeLocal('Compaction complete');
+          upsertCompactNotice('Compaction complete');
         }
         return;
       }
@@ -1976,15 +2015,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     onEditUserMessage={!isStreaming ? handleEditUserMessage : undefined}
                     fallbackModel={safeConfig.model}
                   />
-                )}
-                {compactNotice && (
-                  <div className="space-y-6 mt-6">
-                    <div className="w-full flex flex-col group/message">
-                      <div className="flex justify-start w-full">
-                        <NoticeMessage message={{ role: 'notice', content: compactNotice }} />
-                      </div>
-                    </div>
-                  </div>
                 )}
                 {/* Streaming/transient message from AG-UI */}
                 {showTransientAssistant && (
