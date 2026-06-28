@@ -41,7 +41,7 @@ def handle_compact(
                 stage="skipped",
                 source=event_source,
                 message="No conversation history to compact.",
-                persist_result=event_source == "manual",
+                persist_result=True,
             )
             return "ℹ No conversation history to compact."
 
@@ -52,7 +52,7 @@ def handle_compact(
                 stage="skipped",
                 source=event_source,
                 message="No message history found.",
-                persist_result=event_source == "manual",
+                persist_result=True,
             )
             return "ℹ No message history found."
 
@@ -85,7 +85,7 @@ def handle_compact(
                 messages_before=messages_before,
                 tokens_before=tokens_before,
                 message=str(e),
-                persist_result=event_source == "manual",
+                persist_result=True,
             )
             raise
 
@@ -105,7 +105,7 @@ def handle_compact(
             messages_after=len(compressed),
             tokens_before=tokens_before,
             tokens_after=tokens_after,
-            persist_result=event_source == "manual",
+            persist_result=True,
         )
         before_k = round(tokens_before / 1000)
         after_k = round(tokens_after / 1000)

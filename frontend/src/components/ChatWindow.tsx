@@ -65,7 +65,6 @@ function formatCompactLifecycleNotice(payload: any): string | null {
   const prefix = source === 'auto' ? 'Auto compaction' : 'Compaction';
 
   if (payload.stage === 'start') return `${prefix} running...`;
-  if (source === 'slash') return null;
   if (payload.stage === 'skipped') return payload.message || `${prefix} skipped`;
   if (payload.stage === 'error') return payload.message || `${prefix} failed`;
 

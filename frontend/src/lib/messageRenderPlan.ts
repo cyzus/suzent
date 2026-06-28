@@ -14,6 +14,19 @@ export interface MessageRenderPlan {
 
 const IGNORED_TOOL_NAMES = ['final_answer', 'final answer'];
 
+// Synthetic compaction summary messages are injected into the LLM context only.
+// Older chats may have persisted them into the display log before this was
+// fixed backend-side; hide them so users see only their original interactions.
+const COMPACTION_SUMMARY_MARKERS = [
+  '[CONTEXT SUMMARY — READ BEFORE RESPONDING]',
+  '--- ARCHIVED CONTEXT SUMMARY ---',
+];
+
+function isCompactionSummaryMessage(message: Message): boolean {
+  const content = message.content || '';
+  return COMPACTION_SUMMARY_MARKERS.some((marker) => content.includes(marker));
+}
+
 function isEmptyAssistantPlaceholder(message: Message): boolean {
   if (message.parts && message.parts.length > 0) return false;
   return message.role !== 'user' && !message.content?.trim() && !message.stepInfo;
@@ -59,6 +72,13 @@ export function buildMessageRenderPlan(messages: Message[]): MessageRenderPlan {
   const skipIndices = new Set<number>();
   const groupRenders = new Map<number, StepGroupRender>();
   const stepSummaryByMessageIndex = new Map<number, string>();
+
+  // Hide any synthetic compaction summary rows that leaked into the display log.
+  for (let k = 0; k < messages.length; k++) {
+    if (isCompactionSummaryMessage(messages[k])) {
+      skipIndices.add(k);
+    }
+  }
 
   let i = 0;
   while (i < messages.length) {

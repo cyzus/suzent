@@ -56,6 +56,22 @@ REQUIRED_SECTIONS = [
     "## Exact Identifiers",
 ]
 
+# Stable markers identifying the synthetic summary messages injected into the
+# LLM context after compaction. These exist only to fit the model's context
+# window and must never surface in the user-facing display log.
+COMPACTION_SUMMARY_REQUEST_MARKER = "[CONTEXT SUMMARY — READ BEFORE RESPONDING]"
+COMPACTION_SUMMARY_RESPONSE_MARKER = "--- ARCHIVED CONTEXT SUMMARY ---"
+
+
+def is_compaction_summary_text(text: Any) -> bool:
+    """True if `text` is one of the synthetic compaction summary messages."""
+    if not isinstance(text, str):
+        return False
+    return (
+        COMPACTION_SUMMARY_REQUEST_MARKER in text
+        or COMPACTION_SUMMARY_RESPONSE_MARKER in text
+    )
+
 
 def _fmt_tokens(tokens: int) -> str:
     return f"{tokens / 1000:.1f}k" if tokens >= 1000 else str(tokens)
@@ -456,7 +472,7 @@ class ContextCompressor:
             parts=[
                 UserPromptPart(
                     content=(
-                        "[CONTEXT SUMMARY — READ BEFORE RESPONDING]\n"
+                        f"{COMPACTION_SUMMARY_REQUEST_MARKER}\n"
                         "The following is an authoritative summary of prior conversation history."
                     )
                 )
@@ -466,7 +482,7 @@ class ContextCompressor:
             parts=[
                 TextPart(
                     content=(
-                        "--- ARCHIVED CONTEXT SUMMARY ---\n"
+                        f"{COMPACTION_SUMMARY_RESPONSE_MARKER}\n"
                         f"{summary}\n"
                         "---\n"
                         "This summary supersedes any earlier tool outputs or conversation fragments "

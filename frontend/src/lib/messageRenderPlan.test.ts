@@ -42,6 +42,24 @@ describe('buildMessageRenderPlan', () => {
     expect(plan.stepSummaryByMessageIndex.size).toBe(0);
   });
 
+  it('skips synthetic compaction summary rows that leaked into the display log', () => {
+    const messages: Message[] = [
+      user('original question'),
+      assistant('original answer'),
+      user('[CONTEXT SUMMARY — READ BEFORE RESPONDING]\nThe following is an authoritative summary.'),
+      assistant('--- ARCHIVED CONTEXT SUMMARY ---\nsummary body\n--- END ARCHIVED CONTEXT ---'),
+      user('new question'),
+      assistant('new answer'),
+    ];
+
+    const plan = buildMessageRenderPlan(messages);
+
+    expect(plan.skipIndices.has(2)).toBe(true);
+    expect(plan.skipIndices.has(3)).toBe(true);
+    expect(plan.skipIndices.has(0)).toBe(false);
+    expect(plan.skipIndices.has(5)).toBe(false);
+  });
+
   it('ignores final_answer tool calls when deciding intermediate step grouping', () => {
     const messages: Message[] = [
       assistant('<details><summary>🔧 final_answer</summary><pre><code class="language-text">ignored</code></pre></details>'),

@@ -11,12 +11,18 @@ from pydantic_ai.messages import (
 )
 
 from suzent.core.chat_processor import (
+    _agent_history_is_compacted,
     _append_command_messages,
     _append_inline_a2ui_surfaces,
     _build_file_mention_context,
+    _merge_rebuilt_after_compaction,
     _preserve_citation_sources,
     _rebuild_display_messages,
     _strip_attachment_annotations,
+)
+from suzent.core.context_compressor import (
+    COMPACTION_SUMMARY_REQUEST_MARKER,
+    COMPACTION_SUMMARY_RESPONSE_MARKER,
 )
 
 
@@ -288,6 +294,84 @@ def test_preserve_citation_sources_recovers_sources_from_tool_results():
             "favicon": "https://www.google.com/s2/favicons?domain=example.com&sz=32",
         },
     ]
+
+
+def test_rebuild_display_messages_skips_compaction_summary():
+    messages = [
+        ModelRequest(parts=[UserPromptPart(content="original question")]),
+        ModelResponse(parts=[TextPart(content="original answer")]),
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content=f"{COMPACTION_SUMMARY_REQUEST_MARKER}\nsummary preface"
+                )
+            ]
+        ),
+        ModelResponse(
+            parts=[
+                TextPart(content=f"{COMPACTION_SUMMARY_RESPONSE_MARKER}\nthe summary")
+            ]
+        ),
+        ModelRequest(parts=[UserPromptPart(content="new question")]),
+        ModelResponse(parts=[TextPart(content="new answer")]),
+    ]
+
+    display = _rebuild_display_messages(messages)
+
+    contents = [m.get("content", "") for m in display]
+    assert not any(COMPACTION_SUMMARY_REQUEST_MARKER in c for c in contents)
+    assert not any(COMPACTION_SUMMARY_RESPONSE_MARKER in c for c in contents)
+    assert any("original question" in c for c in contents)
+    assert any("new answer" in c for c in contents)
+
+
+def test_agent_history_is_compacted_detects_summary():
+    not_compacted = [ModelRequest(parts=[UserPromptPart(content="hi")])]
+    compacted = not_compacted + [
+        ModelResponse(
+            parts=[TextPart(content=f"{COMPACTION_SUMMARY_RESPONSE_MARKER}\nx")]
+        )
+    ]
+    assert _agent_history_is_compacted(not_compacted) is False
+    assert _agent_history_is_compacted(compacted) is True
+
+
+def test_merge_rebuilt_after_compaction_preserves_original_history():
+    # Stored display log holds the full history, including this turn's pre-saved
+    # user message. The compacted rebuild only covers the surviving tail.
+    stored = [
+        {"role": "user", "content": "old q1"},
+        {"role": "assistant", "content": "old a1"},
+        {"role": "user", "content": "old q2"},
+        {"role": "assistant", "content": "old a2"},
+        {"role": "user", "content": "new q"},
+    ]
+    rebuilt = [
+        {"role": "user", "content": "old q2"},
+        {"role": "assistant", "content": "old a2"},
+        {"role": "user", "content": "new q"},
+        {"role": "assistant", "content": "new a"},
+    ]
+
+    merged = _merge_rebuilt_after_compaction(stored, rebuilt)
+
+    # Originals preserved, no duplication of the new user turn, new answer appended.
+    assert [m["content"] for m in merged] == [
+        "old q1",
+        "old a1",
+        "old q2",
+        "old a2",
+        "new q",
+        "new a",
+    ]
+
+
+def test_merge_rebuilt_after_compaction_falls_back_without_stored():
+    rebuilt = [
+        {"role": "user", "content": "q"},
+        {"role": "assistant", "content": "a"},
+    ]
+    assert _merge_rebuilt_after_compaction([], rebuilt) == rebuilt
 
 
 def test_append_command_messages_adds_user_and_notice_entries():

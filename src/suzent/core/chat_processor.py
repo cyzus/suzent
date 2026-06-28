@@ -1688,7 +1688,17 @@ class ChatProcessor:
                             m.get("role") == "user" and m.get("content") == user_content
                         )
                     ]
-                target_messages = rebuilt or chat_messages
+                # When the agent history has been compacted, the rebuild is a
+                # lossy subset: the original middle messages were dropped from
+                # the LLM context. The stored display log still holds them, so
+                # keep it as the base and append only this turn's new rows
+                # rather than overwriting (and losing) the originals.
+                if _agent_history_is_compacted(messages):
+                    target_messages = _merge_rebuilt_after_compaction(
+                        chat_messages, rebuilt
+                    )
+                else:
+                    target_messages = rebuilt or chat_messages
 
             if expected_revision is not None:
                 finalized = db.finalize_state_if_revision_matches(
@@ -1872,6 +1882,60 @@ def _extract_tool_calls(messages: list) -> List[AgentAction]:
     return actions
 
 
+def _is_compaction_summary_message(msg: Any) -> bool:
+    """True if `msg` is a synthetic compaction summary request/response.
+
+    These are injected into the agent's message history after context
+    compaction purely to keep the LLM oriented; they are not part of the
+    user-visible conversation and must be excluded from the display log.
+    """
+    from suzent.core.context_compressor import is_compaction_summary_text
+
+    for part in getattr(msg, "parts", []) or []:
+        content = getattr(part, "content", None)
+        if isinstance(content, str) and is_compaction_summary_text(content):
+            return True
+    return False
+
+
+def _agent_history_is_compacted(messages: list) -> bool:
+    """True if the agent message history contains a compaction summary marker."""
+    for msg in messages or []:
+        if _is_compaction_summary_message(msg):
+            return True
+    return False
+
+
+def _merge_rebuilt_after_compaction(chat_messages: list, rebuilt: list) -> list:
+    """Preserve the stored display log across a compacted turn.
+
+    After compaction the rebuilt log only covers the surviving tail of the
+    agent history plus this turn's new output — the original earlier messages
+    are gone from the LLM context. The stored ``chat_messages`` still holds the
+    full history (including this turn's pre-saved user message), so we keep it
+    as the base and append only the rows the current turn produced: everything
+    in ``rebuilt`` after its last user message.
+    """
+    stored = list(chat_messages or [])
+    rebuilt = list(rebuilt or [])
+    if not rebuilt:
+        return stored
+    if not stored:
+        # No prior display log to preserve — fall back to the rebuild, which at
+        # least omits the synthetic summary rows.
+        return rebuilt
+
+    # The new turn's output is everything after the last user message in the
+    # rebuilt log (that user message is already present in the stored log via
+    # the turn-start pre-save).
+    last_user_idx = -1
+    for idx, m in enumerate(rebuilt):
+        if m.get("role") == "user":
+            last_user_idx = idx
+    new_rows = rebuilt[last_user_idx + 1 :] if last_user_idx >= 0 else rebuilt
+    return stored + new_rows
+
+
 def _rebuild_display_messages(messages: list, model_id: str | None = None) -> list:
     """
     Reconstruct an OpenAI-like JSON display log from pydantic-ai message history.
@@ -1961,6 +2025,10 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
 
     result = []
     for msg in messages:
+        # Synthetic compaction summary messages live only in the LLM context to
+        # fit the model's window. They must never appear in the display log.
+        if _is_compaction_summary_message(msg):
+            continue
         if isinstance(msg, ModelRequest):
             for part in msg.parts:
                 if isinstance(part, UserPromptPart):
