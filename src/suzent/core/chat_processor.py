@@ -493,6 +493,7 @@ class ChatProcessor:
         # stay on disk and readable via analyze_image (a separate vision-role
         # model), so we keep a note in the prompt and warn the UI afterwards.
         stripped_image_names: list[str] = []
+        stripped_image_paths: list[str] = []
 
         from suzent.core.model_registry import get_model_registry
 
@@ -542,15 +543,12 @@ class ChatProcessor:
                     if result["is_image"] and not _vision_ok:
                         # Active model can't read images — don't ship raw bytes
                         # (the provider would reject them). Keep the file on disk
-                        # and point the model at analyze_image so it can still
-                        # inspect the image through the vision-role model.
+                        # and record the virtual path so we can tell the model, via
+                        # a hidden system reminder, to inspect it with analyze_image
+                        # (the directive must not appear in the user's bubble).
                         name = result.get("filename") or result["virtual_path"]
                         stripped_image_names.append(name)
-                        attachment_context += (
-                            f"\n[User attached an image ({result['virtual_path']}). "
-                            f"The active model can't view images directly — use the "
-                            f"analyze_image tool on this path to inspect it.]"
-                        )
+                        stripped_image_paths.append(result["virtual_path"])
                     elif result["is_image"]:
                         try:
                             # pydantic-ai uses BinaryContent for images
@@ -739,13 +737,24 @@ class ChatProcessor:
         # must not receive skill-discovery / plan / RAG reminders — that ambient
         # chatter (e.g. the automation/cron skill hint) is what made the dream agent
         # hallucinate "this scheduled task already fired, skip it" and no-op.
+        # A non-vision model can't see the stripped image(s); tell it (invisibly
+        # to the user) to inspect them via analyze_image. Merge into the adhoc
+        # reminders so it rides the normal hidden <system-reminder> channel.
+        _adhoc_reminders = list(system_reminders or [])
+        if stripped_image_paths:
+            _paths = ", ".join(stripped_image_paths)
+            _adhoc_reminders.append(
+                f"The user attached {len(stripped_image_paths)} image(s) at: "
+                f"{_paths}. The active model cannot view images directly. Use the "
+                f"analyze_image tool on these path(s) to inspect them when relevant."
+            )
         reminder = (
             None
             if getattr(deps, "stateless", False)
             else await build_combined_reminder(
                 chat_id,
                 deps,
-                adhoc_reminders=system_reminders,
+                adhoc_reminders=_adhoc_reminders,
                 user_message=_turn_message,
                 display_trigger=display_trigger,
             )
