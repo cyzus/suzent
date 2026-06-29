@@ -1,9 +1,16 @@
 """
 Model capabilities registry.
 
-Loads model metadata (context window, pricing, capability flags) from
-``config/capabilities/{provider}.json`` (per-provider files) and the legacy
-``config/model_capabilities.json`` (global overrides applied last).
+Loads model metadata (context window, pricing, capability flags) from three
+layers, later layers overlaying earlier ones:
+
+1. ``config/capabilities/{provider}.json`` — shipped, hand-curated, tracked in
+   git. Treated as read-only at runtime so ``suzent update`` (git pull) never
+   conflicts with local changes.
+2. ``<data dir>/capabilities/{provider}.json`` — local overlay of models found
+   by runtime discovery / LiteLLM sync. Lives outside the repo; all runtime
+   writes go here. Only supplies models not already shipped (curated wins).
+3. ``config/model_capabilities.json`` — legacy global overrides, applied last.
 
 Provides fast lookups used by context compression, role routing, cost
 estimation, and the frontend UI.
@@ -12,6 +19,7 @@ estimation, and the frontend UI.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional
@@ -21,8 +29,42 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 _PROJECT_DIR = Path(__file__).resolve().parents[3]
+# Shipped, hand-curated capability files. Tracked in git; treated as read-only
+# at runtime so `suzent update` (git pull) never hits local modifications.
 _CAPABILITIES_DIR = _PROJECT_DIR / "config" / "capabilities"
 _CAPABILITIES_PATH = _PROJECT_DIR / "config" / "model_capabilities.json"
+
+
+def _local_capabilities_dir() -> Path:
+    """Writable overlay for runtime-discovered capabilities.
+
+    Lives in the user data directory (outside the repo), so auto-discovery and
+    LiteLLM sync never dirty the tracked ``config/capabilities/*.json`` files.
+    Loaded after the shipped files, so curated data shipped in the repo wins.
+    """
+    from suzent.config import get_data_dir
+
+    return get_data_dir() / "capabilities"
+
+
+def _writes_to_repo() -> bool:
+    """Whether runtime discovery should write into the tracked repo dir.
+
+    Enabled by the CLI in developer mode (``suzent start --dev`` / ``serve
+    --dev``) via ``SUZENT_CAPABILITIES_TO_REPO=1``, so newly discovered models
+    land in ``config/capabilities/`` ready to commit. Off by default, where
+    writes go to the user-data overlay and never dirty the repo.
+    """
+    return os.getenv("SUZENT_CAPABILITIES_TO_REPO", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def _write_target_dir() -> Path:
+    """Directory that runtime discovery writes to (repo in dev, else overlay)."""
+    return _CAPABILITIES_DIR if _writes_to_repo() else _local_capabilities_dir()
 
 
 @dataclass(frozen=True)
@@ -66,13 +108,21 @@ def _parse_model_entry(attrs: dict) -> ModelCapabilities:
     )
 
 
-def _load_file(path: Path, result: Dict[str, ModelCapabilities]) -> None:
-    """Merge models from a single capabilities JSON file into result."""
+def _load_file(
+    path: Path, result: Dict[str, ModelCapabilities], *, overlay: bool = False
+) -> None:
+    """Merge models from a single capabilities JSON file into result.
+
+    When ``overlay`` is True, only models not already present are added, so a
+    shipped curated entry is never clobbered by a runtime-discovered stub.
+    """
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
         for model_id, attrs in raw.get("models", {}).items():
             if model_id.startswith("_"):
                 continue  # skip example/doc keys
+            if overlay and model_id in result:
+                continue  # shipped curated data wins
             try:
                 result[model_id] = _parse_model_entry(attrs)
             except Exception as exc:
@@ -86,12 +136,20 @@ def _load_file(path: Path, result: Dict[str, ModelCapabilities]) -> None:
 def _load_capabilities() -> Dict[str, ModelCapabilities]:
     result: Dict[str, ModelCapabilities] = {}
 
-    # 1. Per-provider files from config/capabilities/*.json (alphabetical order)
+    # 1. Shipped per-provider files from config/capabilities/*.json (alpha order)
     if _CAPABILITIES_DIR.exists():
         for cap_file in sorted(_CAPABILITIES_DIR.glob("*.json")):
             _load_file(cap_file, result)
 
-    # 2. Global override file applied last (takes precedence over per-provider)
+    # 2. Local overlay of runtime-discovered models (user data dir). Adds models
+    #    not shipped in the repo; shipped curated entries above take precedence
+    #    for fields they define, but overlay-only models are merged in.
+    local_dir = _local_capabilities_dir()
+    if local_dir.exists():
+        for cap_file in sorted(local_dir.glob("*.json")):
+            _load_file(cap_file, result, overlay=True)
+
+    # 3. Global override file applied last (takes precedence over per-provider)
     if _CAPABILITIES_PATH.exists():
         _load_file(_CAPABILITIES_PATH, result)
 
@@ -115,6 +173,86 @@ _LITELLM_MODE_MAP: dict[str, str | None] = {
     "moderations": None,
     "rerank": None,
 }
+
+
+def _read_models_file(path: Path) -> dict[str, dict]:
+    """Return the ``models`` dict from a capabilities file, or ``{}``."""
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("models", {})
+    except json.JSONDecodeError:
+        return {}
+
+
+def _shipped_provider_models(provider_id: str) -> dict[str, dict]:
+    """Curated models shipped in the repo for a provider (read-only)."""
+    return _read_models_file(_CAPABILITIES_DIR / f"{provider_id}.json")
+
+
+def _local_provider_models(provider_id: str) -> dict[str, dict]:
+    """Runtime-discovered models stored in the local overlay for a provider."""
+    return _read_models_file(_local_capabilities_dir() / f"{provider_id}.json")
+
+
+def _read_provider_models(provider_id: str) -> dict[str, dict]:
+    """Merge a provider's models from the shipped file and the local overlay.
+
+    Shipped (curated) entries take precedence; overlay supplies discovered
+    models not present in the shipped file.
+    """
+    merged: dict[str, dict] = dict(_local_provider_models(provider_id))
+    merged.update(_shipped_provider_models(provider_id))  # curated wins
+    return merged
+
+
+def _write_provider(provider_id: str, models: dict[str, dict]) -> None:
+    """Persist a provider's models to the active write target.
+
+    In developer mode (``SUZENT_CAPABILITIES_TO_REPO``) this is the tracked
+    ``config/capabilities/`` dir, so discovered models can be committed. By
+    default it is the user-data overlay, where model IDs already present in the
+    shipped repo file are dropped — the shipped curated entry wins at load time,
+    so an overlay copy is redundant and would go stale if the shipped entry is
+    later edited.
+    """
+    target_dir = _write_target_dir()
+    to_repo = target_dir == _CAPABILITIES_DIR
+
+    models = {mid: attrs for mid, attrs in models.items() if not mid.startswith("_")}
+    if not to_repo:
+        shipped = _shipped_provider_models(provider_id)
+        models = {mid: attrs for mid, attrs in models.items() if mid not in shipped}
+
+    cap_file = target_dir / f"{provider_id}.json"
+
+    # Overlay only: nothing provider-specific left — remove a stale empty file.
+    if not models and not to_repo:
+        if cap_file.exists():
+            try:
+                cap_file.unlink()
+            except OSError:
+                pass
+        return
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    existing: dict = {}
+    if cap_file.exists():
+        try:
+            existing = json.loads(cap_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            pass
+    if not to_repo:
+        # Stamp the overlay doc string. Repo files keep their curated _doc as-is.
+        existing["_doc"] = (
+            "Runtime-discovered model capabilities (local overlay). "
+            "Auto-generated; safe to delete. Curated defaults live in "
+            "config/capabilities/ inside the repo."
+        )
+    existing["models"] = models
+    cap_file.write_text(
+        json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
 
 
 async def sync_from_litellm() -> dict[str, int]:
@@ -157,19 +295,12 @@ async def sync_from_litellm() -> dict[str, int]:
             continue
         by_provider.setdefault(provider_id, {})[key] = info
 
-    _CAPABILITIES_DIR.mkdir(parents=True, exist_ok=True)
     stats: dict[str, int] = {}
 
     for provider_id, models in by_provider.items():
-        cap_file = _CAPABILITIES_DIR / f"{provider_id}.json"
-        existing: dict = {}
-        if cap_file.exists():
-            try:
-                existing = json.loads(cap_file.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                pass
-
-        curr: dict[str, dict] = existing.get("models", {})
+        # Read merged shipped + overlay so we preserve any existing fields, but
+        # write results only to the local overlay (never the tracked repo file).
+        curr: dict[str, dict] = _read_provider_models(provider_id)
         updated = 0
 
         for model_id, info in models.items():
@@ -207,10 +338,7 @@ async def sync_from_litellm() -> dict[str, int]:
             updated += 1
 
         if updated:
-            existing["models"] = curr
-            cap_file.write_text(
-                json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8"
-            )
+            _write_provider(provider_id, curr)
             stats[provider_id] = updated
 
     logger.info(
@@ -233,11 +361,10 @@ def _is_auto_discovered(entry: dict) -> bool:
 def prune_stale_models(provider_id: str, live_model_ids: list[str]) -> list[str]:
     """Remove auto-discovered model stubs that the provider no longer offers.
 
-    Compares the stored models in ``config/capabilities/{provider_id}.json``
-    against ``live_model_ids`` (the provider's current catalog). Any entry that
-    is a bare discovery stub (see :func:`_is_auto_discovered`) and is absent
-    from the live catalog is treated as deprecated and removed. Curated entries
-    are never touched, since not every provider's ``list_models`` is exhaustive.
+    Operates on the active write target (the overlay by default, or the tracked
+    repo dir in developer mode). Bare discovery stubs (see
+    :func:`_is_auto_discovered`) absent from the live catalog are removed;
+    curated entries are never touched.
 
     Returns the list of removed model IDs. No-op (returns ``[]``) when the live
     catalog is empty, to avoid wiping a file on a failed/partial discovery.
@@ -245,16 +372,12 @@ def prune_stale_models(provider_id: str, live_model_ids: list[str]) -> list[str]
     if not live_model_ids:
         return []
 
-    cap_file = _CAPABILITIES_DIR / f"{provider_id}.json"
-    if not cap_file.exists():
+    target_dir = _write_target_dir()
+    cap_file = target_dir / f"{provider_id}.json"
+    models: dict = _read_models_file(cap_file)
+    if not models:
         return []
 
-    try:
-        existing = json.loads(cap_file.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return []
-
-    models: dict = existing.get("models", {})
     live = set(live_model_ids)
     removed: list[str] = []
 
@@ -268,31 +391,23 @@ def prune_stale_models(provider_id: str, live_model_ids: list[str]) -> list[str]
             removed.append(model_id)
 
     if removed:
-        existing["models"] = models
-        cap_file.write_text(
-            json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        _write_provider(provider_id, models)
         logger.info("Pruned {} stale model(s) from {}", len(removed), cap_file.name)
 
     return removed
 
 
 def save_discovered_models(provider_id: str, model_ids: list[str]) -> None:
-    """Persist newly discovered model IDs to config/capabilities/{provider_id}.json.
+    """Persist newly discovered model IDs to the active write target.
 
-    Only adds models that are not already present; never overwrites curated data.
+    Writes to the user-data overlay by default, or to the tracked repo dir in
+    developer mode (``SUZENT_CAPABILITIES_TO_REPO``). Only adds models not
+    already present in the shipped file or the overlay; never overwrites
+    curated data.
     """
-    _CAPABILITIES_DIR.mkdir(parents=True, exist_ok=True)
-    cap_file = _CAPABILITIES_DIR / f"{provider_id}.json"
-
-    existing: dict = {}
-    if cap_file.exists():
-        try:
-            existing = json.loads(cap_file.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            pass
-
-    models: dict = existing.get("models", {})
+    # "Already present" is judged against the merged shipped + overlay view, so
+    # a model already curated in the repo isn't re-added as a bare stub.
+    models: dict = _read_provider_models(provider_id)
     added = 0
     for model_id in model_ids:
         if model_id not in models:
@@ -300,11 +415,8 @@ def save_discovered_models(provider_id: str, model_ids: list[str]) -> None:
             added += 1
 
     if added > 0:
-        existing["models"] = models
-        cap_file.write_text(
-            json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
-        logger.info("Added {} new model(s) to {}", added, cap_file.name)
+        _write_provider(provider_id, models)
+        logger.info("Added {} new model(s) to {}.json", added, provider_id)
 
 
 class ModelRegistry:

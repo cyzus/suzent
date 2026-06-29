@@ -765,6 +765,10 @@ def register_commands(app: typer.Typer):
 
         backend_env = os.environ.copy()
         backend_env["SUZENT_PORT"] = str(DEFAULT_PORT)
+        # Dev mode: let runtime model discovery write into the tracked
+        # config/capabilities/ files so new models can be committed.
+        if dev:
+            backend_env["SUZENT_CAPABILITIES_TO_REPO"] = "1"
 
         typer.echo("  • Starting backend...")
         backend_cmd = [sys.executable, "-m", "suzent.server"]
@@ -794,6 +798,12 @@ def register_commands(app: typer.Typer):
         host: str = typer.Option("127.0.0.1", help="Host to bind to"),
         port: int = typer.Option(DEFAULT_PORT, help="Port to bind to"),
         debug: bool = typer.Option(False, "--debug", help="Run in debug mode"),
+        dev: bool = typer.Option(
+            False,
+            "--dev",
+            help="Developer mode: write runtime-discovered model capabilities "
+            "into the tracked config/capabilities/ files so they can be committed",
+        ),
     ):
         """Start the Suzent backend server (headless/standalone mode)."""
         typer.echo(f"🚀 Starting Suzent Server on {host}:{port}...")
@@ -801,6 +811,8 @@ def register_commands(app: typer.Typer):
         env = os.environ.copy()
         env["SUZENT_HOST"] = host
         env["SUZENT_PORT"] = str(port)
+        if dev:
+            env["SUZENT_CAPABILITIES_TO_REPO"] = "1"
 
         # Launch the server module using the same python interpreter
         cmd = [sys.executable, "-m", "suzent.server"]
@@ -993,6 +1005,19 @@ def register_commands(app: typer.Typer):
     def _run_update() -> None:
         typer.echo("🔄 Updating Suzent...")
         root = get_project_root()
+
+        # Self-heal installs dirtied by the old behavior, where runtime model
+        # discovery wrote into the tracked config/capabilities/ files and made
+        # every `git pull` conflict. Those writes now go to the user data dir,
+        # so any local change here is stale runtime noise — discard it so the
+        # pull is clean. Curated updates ship from the repo and land normally.
+        try:
+            run_command(
+                ["git", "checkout", "--", "config/capabilities"],
+                cwd=root,
+            )
+        except subprocess.CalledProcessError:
+            pass  # No such path / nothing to discard — fine.
 
         typer.echo("  • Pulling latest changes...")
         try:

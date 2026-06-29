@@ -4,9 +4,24 @@
 
 Get SUZENT running in development mode in under 2 minutes.
 
-| **Desktop app** | Native window | Yes | `python src/suzent/server.py` AND `cd src-tauri && npm run dev` |
+```bash
+# 1. Install Python dependencies (including dev + social extras)
+uv sync --all-extras
 
-> **Note**: Simply run `suzent start` to launch the full development environment.
+# 2. Launch the full development environment (backend + desktop window)
+uv run suzent start --dev
+```
+
+> **Note**: `suzent start` launches the full development environment. The
+> `--dev` flag forces developer mode (debug backend + Tauri dev, skipping the
+> pre-built UI binary). For a headless backend only, use `uv run suzent serve --dev`.
+
+`uv sync --all-extras` installs both the `social` and `dev` optional
+dependency groups (equivalent to the `all` extra). For a minimal runtime
+without dev tooling, use `uv sync --extra social`.
+
+To run the backend and frontend in separate terminals instead, see
+[Development Modes](#development-modes) below.
 
 ## Prerequisites
 
@@ -49,9 +64,11 @@ sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev \
 
 Uses Tauri to create a native desktop window. Requires Rust.
 
+> Install Python dependencies first with `uv sync --all-extras` (see [Quick Start](#quick-start)).
+
 **Terminal 1** - Start Python backend:
 ```bash
-python src/suzent/server.py
+uv run python src/suzent/server.py
 ```
 
 Expected output:
@@ -118,6 +135,7 @@ The backend automatically detects bundled environment through:
 | `LANCEDB_URI` | LanceDB vector store path |
 | `SANDBOX_DATA_PATH` | Sandbox data directory |
 | `SKILLS_DIR` | Advanced extra skills directory override |
+| `SUZENT_CAPABILITIES_TO_REPO` | When set (`1`), runtime model discovery writes capability data into the tracked `config/capabilities/` files instead of the user-data overlay — set automatically by `suzent start --dev` / `suzent serve --dev`. See [Model Capabilities](../02-concepts/providers/model-capabilities.md). |
 
 ### Tauri Configuration
 
@@ -139,7 +157,8 @@ Edit `src-tauri/tauri.conf.json` to customize:
 
 | Task | Command |
 |------|---------|
-| Start backend | `python src/suzent/server.py` |
+| Install dependencies | `uv sync --all-extras` |
+| Start backend | `uv run python src/suzent/server.py` |
 | Start Tauri dev | `cd src-tauri && npm run dev` |
 | Bundle Python backend | `python scripts/bundle_python.py` |
 | Build full app | `cd src-tauri && npm run build:full` |

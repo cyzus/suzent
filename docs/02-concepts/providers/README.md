@@ -57,3 +57,5 @@ API keys are stored in the local database — never in plain text config files.
 **Environment variables** — You can set provider keys as env vars before launching Suzent instead of using the UI. The app checks the database first, then falls back to the environment. Keys set via env show up in Settings as **"Set in env"** and cannot be overwritten from the UI.
 
 **Custom models** — For each provider you can add custom model IDs on top of the default list. In **Settings → Providers → [Provider] → Custom Models**, enter the model ID in LiteLLM format: `provider/model-name` (e.g. `openai/gpt-4o-2024-11-20`).
+
+**Model capabilities** — Suzent tracks per-model metadata (context window, vision/reasoning/tool-calling flags, pricing) used for routing, compression, and cost estimation. See [Model Capabilities](./model-capabilities.md) for how this data is layered and how runtime discovery is stored.

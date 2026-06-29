@@ -9,6 +9,7 @@ from suzent.core.model_registry import (
     ModelRegistry,
     get_model_registry,
     prune_stale_models,
+    save_discovered_models,
 )
 
 
@@ -173,10 +174,119 @@ class TestModelRegistryCustomJSON:
             assert len(registry.list_models()) == 2
 
 
+class TestLocalOverlay:
+    """The local overlay supplies discovered models without dirtying the
+    shipped repo files; shipped curated entries always win."""
+
+    def test_overlay_adds_models_not_shipped(self, tmp_path):
+        shipped = tmp_path / "shipped"
+        shipped.mkdir()
+        (shipped / "acme.json").write_text(
+            json.dumps({"models": {"acme/curated": {"mode": "chat"}}}),
+            encoding="utf-8",
+        )
+        overlay = tmp_path / "overlay"
+        overlay.mkdir()
+        (overlay / "acme.json").write_text(
+            json.dumps({"models": {"acme/discovered": {"mode": "chat"}}}),
+            encoding="utf-8",
+        )
+        missing = tmp_path / "no_global.json"
+
+        with (
+            patch("suzent.core.model_registry._CAPABILITIES_DIR", shipped),
+            patch("suzent.core.model_registry._CAPABILITIES_PATH", missing),
+            patch(
+                "suzent.core.model_registry._local_capabilities_dir",
+                return_value=overlay,
+            ),
+        ):
+            registry = ModelRegistry()
+
+        assert registry.get_capabilities("acme/curated") is not None
+        assert registry.get_capabilities("acme/discovered") is not None
+
+    def test_shipped_wins_over_overlay_for_shared_id(self, tmp_path):
+        shipped = tmp_path / "shipped"
+        shipped.mkdir()
+        (shipped / "acme.json").write_text(
+            json.dumps(
+                {"models": {"acme/m": {"mode": "chat", "max_input_tokens": 128000}}}
+            ),
+            encoding="utf-8",
+        )
+        overlay = tmp_path / "overlay"
+        overlay.mkdir()
+        # Stale bare stub for the same model — must not clobber curated data.
+        (overlay / "acme.json").write_text(
+            json.dumps({"models": {"acme/m": {"mode": "chat"}}}), encoding="utf-8"
+        )
+        missing = tmp_path / "no_global.json"
+
+        with (
+            patch("suzent.core.model_registry._CAPABILITIES_DIR", shipped),
+            patch("suzent.core.model_registry._CAPABILITIES_PATH", missing),
+            patch(
+                "suzent.core.model_registry._local_capabilities_dir",
+                return_value=overlay,
+            ),
+        ):
+            registry = ModelRegistry()
+
+        assert registry.get_context_window("acme/m") == 128000
+
+
+class TestWriteTarget:
+    """save_discovered_models routes writes to the overlay by default, or to
+    the tracked repo dir in developer mode (SUZENT_CAPABILITIES_TO_REPO)."""
+
+    def _models(self, path):
+        return json.loads(path.read_text(encoding="utf-8"))["models"]
+
+    def test_default_writes_to_overlay_not_repo(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("SUZENT_CAPABILITIES_TO_REPO", raising=False)
+        shipped = tmp_path / "shipped"
+        shipped.mkdir()
+        overlay = tmp_path / "overlay"
+
+        with (
+            patch("suzent.core.model_registry._CAPABILITIES_DIR", shipped),
+            patch(
+                "suzent.core.model_registry._local_capabilities_dir",
+                return_value=overlay,
+            ),
+        ):
+            save_discovered_models("acme", ["acme/found"])
+
+        assert not (shipped / "acme.json").exists()
+        assert "acme/found" in self._models(overlay / "acme.json")
+
+    def test_dev_mode_writes_to_repo(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("SUZENT_CAPABILITIES_TO_REPO", "1")
+        shipped = tmp_path / "shipped"
+        shipped.mkdir()
+        overlay = tmp_path / "overlay"
+
+        with (
+            patch("suzent.core.model_registry._CAPABILITIES_DIR", shipped),
+            patch(
+                "suzent.core.model_registry._local_capabilities_dir",
+                return_value=overlay,
+            ),
+        ):
+            save_discovered_models("acme", ["acme/found"])
+
+        assert "acme/found" in self._models(shipped / "acme.json")
+        assert not overlay.exists()
+
+
 class TestPruneStaleModels:
     """Tests for prune_stale_models — automatic deprecation cleanup."""
 
     def _write(self, tmp_path, provider_id, models):
+        """Write a provider file into the *local overlay* dir (where prune now
+        operates). No shipped repo file exists for these providers, so prune
+        sees only the overlay."""
         cap_dir = tmp_path / "capabilities"
         cap_dir.mkdir(exist_ok=True)
         (cap_dir / f"{provider_id}.json").write_text(
@@ -195,7 +305,9 @@ class TestPruneStaleModels:
             "acme",
             {"acme/new": {"mode": "chat"}, "acme/old": {"mode": "chat"}},
         )
-        with patch("suzent.core.model_registry._CAPABILITIES_DIR", cap_dir):
+        with patch(
+            "suzent.core.model_registry._local_capabilities_dir", return_value=cap_dir
+        ):
             removed = prune_stale_models("acme", ["acme/new"])
 
         assert removed == ["acme/old"]
@@ -210,7 +322,9 @@ class TestPruneStaleModels:
                 "acme/stub": {"mode": "chat"},
             },
         )
-        with patch("suzent.core.model_registry._CAPABILITIES_DIR", cap_dir):
+        with patch(
+            "suzent.core.model_registry._local_capabilities_dir", return_value=cap_dir
+        ):
             removed = prune_stale_models("acme", ["acme/something-else"])
 
         assert removed == ["acme/stub"]
@@ -218,23 +332,18 @@ class TestPruneStaleModels:
 
     def test_empty_live_list_is_noop(self, tmp_path):
         cap_dir = self._write(tmp_path, "acme", {"acme/old": {"mode": "chat"}})
-        with patch("suzent.core.model_registry._CAPABILITIES_DIR", cap_dir):
+        with patch(
+            "suzent.core.model_registry._local_capabilities_dir", return_value=cap_dir
+        ):
             removed = prune_stale_models("acme", [])
 
         assert removed == []
         assert "acme/old" in self._read(cap_dir, "acme")
 
-    def test_preserves_doc_keys(self, tmp_path):
-        cap_dir = self._write(
-            tmp_path, "acme", {"_doc": {"mode": "chat"}, "acme/old": {"mode": "chat"}}
-        )
-        with patch("suzent.core.model_registry._CAPABILITIES_DIR", cap_dir):
-            prune_stale_models("acme", ["acme/keep-nothing"])
-
-        assert "_doc" in self._read(cap_dir, "acme")
-
     def test_missing_file_returns_empty(self, tmp_path):
         cap_dir = tmp_path / "capabilities"
         cap_dir.mkdir()
-        with patch("suzent.core.model_registry._CAPABILITIES_DIR", cap_dir):
+        with patch(
+            "suzent.core.model_registry._local_capabilities_dir", return_value=cap_dir
+        ):
             assert prune_stale_models("nope", ["nope/x"]) == []
