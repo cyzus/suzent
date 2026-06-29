@@ -708,6 +708,11 @@ def register_commands(app: typer.Typer):
     @app.command()
     def start(
         debug: bool = typer.Option(False, "--debug", help="Run server in debug mode"),
+        dev: bool = typer.Option(
+            False,
+            "--dev",
+            help="Force developer mode (backend in debug + Tauri dev), skipping the pre-built UI binary",
+        ),
         docs: bool = typer.Option(
             False, "--docs", help="Run documentation server instead of app"
         ),
@@ -722,7 +727,11 @@ def register_commands(app: typer.Typer):
         typer.echo("🚀 Starting SUZENT...")
         _notify_update_available(root)
 
-        ui_bin = _get_ui_binary(root)
+        # --dev implies running the backend in debug mode.
+        if dev:
+            debug = True
+
+        ui_bin = None if dev else _get_ui_binary(root)
         if ui_bin:
             # Pre-built binary manages both backend and webview internally.
             typer.echo(f"  • Launching UI binary ({ui_bin.name})...")
@@ -758,8 +767,11 @@ def register_commands(app: typer.Typer):
         backend_env["SUZENT_PORT"] = str(DEFAULT_PORT)
 
         typer.echo("  • Starting backend...")
+        backend_cmd = [sys.executable, "-m", "suzent.server"]
+        if debug:
+            backend_cmd.append("--debug")
         backend_proc = subprocess.Popen(
-            [sys.executable, "-m", "suzent.server"],
+            backend_cmd,
             cwd=root,
             env=backend_env,
         )
