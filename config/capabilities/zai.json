@@ -74,6 +74,22 @@
       "max_input_tokens": 128000,
       "max_output_tokens": 32000,
       "supports_function_calling": true
+    },
+    "zai/glm-5.1": {
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 128000,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "zai/glm-4.7-flash": {
+      "mode": "chat",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 128000,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     }
   }
 }

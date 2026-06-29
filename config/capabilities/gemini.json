@@ -454,10 +454,22 @@
       "mode": "chat"
     },
     "gemini/gemini-3-pro-image": {
-      "mode": "chat"
+      "mode": "image_generation",
+      "max_input_tokens": 65536,
+      "max_output_tokens": 32768,
+      "supports_vision": true,
+      "supports_function_calling": false,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
     },
     "gemini/gemini-3.1-flash-image": {
-      "mode": "chat"
+      "mode": "image_generation",
+      "max_input_tokens": 65536,
+      "max_output_tokens": 32768,
+      "supports_vision": true,
+      "supports_function_calling": false,
+      "supports_response_schema": true,
+      "supports_prompt_caching": true
     },
     "gemini/imagen-3.0-fast-generate-001": {
       "mode": "image_generation"

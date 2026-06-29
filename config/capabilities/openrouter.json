@@ -713,6 +713,14 @@
       "supports_response_schema": true,
       "supports_reasoning": true,
       "supports_prompt_caching": true
+    },
+    "openrouter/z-ai/glm-5.1": {
+      "mode": "chat",
+      "max_input_tokens": 202752,
+      "max_output_tokens": 65535,
+      "supports_function_calling": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
     }
   }
 }
