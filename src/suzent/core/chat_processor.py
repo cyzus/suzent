@@ -250,6 +250,37 @@ def _is_denied_tool_return(content: Any) -> bool:
     )
 
 
+# User-facing notice when image(s) were dropped because the active model lacks
+# vision. Deliberately free of tool jargon — the directive to actually call
+# analyze_image goes to the model via a hidden <system-reminder> built from
+# ``STRIPPED_IMAGE_REMINDER_TEMPLATE`` (in suzent.prompts).
+STRIPPED_IMAGE_NOTICE_TEMPLATE = """\
+The current model ({model_id}) can't read images. {count} image(s) were not \
+sent, but the assistant can still inspect them with analyze_image."""
+
+
+def _stripped_image_notice(model_id: str | None, count: int) -> str:
+    """Render the user-facing notice for image(s) dropped from a blind model.
+
+    Shown as an in-chat ``notice`` row and as the ``image_not_supported``
+    custom event's message (see :func:`_stripped_image_reminder` for the
+    model-facing counterpart).
+    """
+    return STRIPPED_IMAGE_NOTICE_TEMPLATE.format(model_id=model_id, count=count)
+
+
+def _stripped_image_reminder(virtual_paths: list[str]) -> str | None:
+    """Render the hidden model-only directive, or ``None`` if nothing stripped."""
+    if not virtual_paths:
+        return None
+    from suzent.prompts import STRIPPED_IMAGE_REMINDER_TEMPLATE
+
+    return STRIPPED_IMAGE_REMINDER_TEMPLATE.format(
+        count=len(virtual_paths),
+        paths=", ".join(virtual_paths),
+    )
+
+
 class ChatProcessor:
     """Encapsulates the lifecycle of a single conversation turn."""
 
@@ -580,10 +611,8 @@ class ChatProcessor:
             attachment_context += _build_file_mention_context(file_mentions)
 
         if stripped_image_names:
-            _vision_notice = (
-                f"The current model ({_model_id}) can't read images. "
-                f"{len(stripped_image_names)} image(s) were not sent, but "
-                f"the assistant can still inspect them with analyze_image."
+            _vision_notice = _stripped_image_notice(
+                _model_id, len(stripped_image_names)
             )
             # Emit a live custom event so the notice shows immediately, AND
             # persist it to the chat's display log so it survives the post-stream
@@ -741,13 +770,9 @@ class ChatProcessor:
         # to the user) to inspect them via analyze_image. Merge into the adhoc
         # reminders so it rides the normal hidden <system-reminder> channel.
         _adhoc_reminders = list(system_reminders or [])
-        if stripped_image_paths:
-            _paths = ", ".join(stripped_image_paths)
-            _adhoc_reminders.append(
-                f"The user attached {len(stripped_image_paths)} image(s) at: "
-                f"{_paths}. The active model cannot view images directly. Use the "
-                f"analyze_image tool on these path(s) to inspect them when relevant."
-            )
+        _vision_reminder = _stripped_image_reminder(stripped_image_paths)
+        if _vision_reminder:
+            _adhoc_reminders.append(_vision_reminder)
         reminder = (
             None
             if getattr(deps, "stateless", False)

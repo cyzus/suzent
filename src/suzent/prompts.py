@@ -200,6 +200,16 @@ Result:
 {result_summary}
 """
 
+# Hidden (model-only) directive injected as a <system-reminder> when image(s)
+# were dropped because the active model lacks vision. Paths are virtual
+# (``/workspace/uploads/...``) so the agent's PathResolver-backed tools can
+# resolve them. The user-facing counterpart (a plain-language UI notice) lives
+# with the display logic in chat_processor.
+STRIPPED_IMAGE_REMINDER_TEMPLATE = """\
+The user attached {count} image(s) at: {paths}. The active model cannot view \
+images directly. Use the analyze_image tool on these path(s) to inspect them \
+when relevant."""
+
 SUBAGENT_WAKEUP_BATCH_HEADER = "{count} sub-agents finished simultaneously:"
 
 SUBAGENT_WAKEUP_BATCH_ITEM = """
