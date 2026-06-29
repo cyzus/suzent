@@ -489,6 +489,15 @@ class ChatProcessor:
         # 5. Attachment Handling
         agent_images = []
         attachment_context = ""
+        # Names of images stripped because the active model lacks vision. They
+        # stay on disk and readable via analyze_image (a separate vision-role
+        # model), so we keep a note in the prompt and warn the UI afterwards.
+        stripped_image_names: list[str] = []
+
+        from suzent.core.model_registry import get_model_registry
+
+        _model_id = getattr(agent, "_model_id", None)
+        _vision_ok = bool(_model_id) and get_model_registry().supports_vision(_model_id)
 
         if files:
             logger.debug(f"[ChatProcessor] Processing {len(files)} files")
@@ -530,7 +539,19 @@ class ChatProcessor:
                             file_item, uploads_host_path, uploads_virtual_path
                         )
 
-                    if result["is_image"]:
+                    if result["is_image"] and not _vision_ok:
+                        # Active model can't read images — don't ship raw bytes
+                        # (the provider would reject them). Keep the file on disk
+                        # and point the model at analyze_image so it can still
+                        # inspect the image through the vision-role model.
+                        name = result.get("filename") or result["virtual_path"]
+                        stripped_image_names.append(name)
+                        attachment_context += (
+                            f"\n[User attached an image ({result['virtual_path']}). "
+                            f"The active model can't view images directly — use the "
+                            f"analyze_image tool on this path to inspect it.]"
+                        )
+                    elif result["is_image"]:
                         try:
                             # pydantic-ai uses BinaryContent for images
                             from pydantic_ai import BinaryContent
@@ -559,6 +580,36 @@ class ChatProcessor:
 
         if file_mentions:
             attachment_context += _build_file_mention_context(file_mentions)
+
+        if stripped_image_names:
+            _vision_notice = (
+                f"The current model ({_model_id}) can't read images. "
+                f"{len(stripped_image_names)} image(s) were not sent, but "
+                f"the assistant can still inspect them with analyze_image."
+            )
+            # Emit a live custom event so the notice shows immediately, AND
+            # persist it to the chat's display log so it survives the post-stream
+            # reload (loadChat force-replaces local state from the server
+            # snapshot, which only contains messages written to the DB).
+            yield _encode_custom_event(
+                "image_not_supported",
+                {
+                    "chat_id": chat_id,
+                    "model": _model_id,
+                    "files": stripped_image_names,
+                    "message": _vision_notice,
+                },
+            )
+            if chat_id:
+                try:
+                    get_database().append_chat_message(
+                        chat_id,
+                        {"role": "notice", "content": f"⚠️ {_vision_notice}"},
+                    )
+                except Exception as _notice_err:
+                    logger.debug(
+                        f"Failed to persist image_not_supported notice: {_notice_err}"
+                    )
 
         # 6. Prepare Prompt or Resume
         from pydantic_ai.messages import ModelRequest, UserPromptPart

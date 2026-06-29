@@ -352,12 +352,11 @@ const NoticeMessage: React.FC<{ message: Message }> = ({ message }) => {
   return (
     <div className="w-full max-w-3xl pl-2 md:pl-6">
       <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_rgba(255,255,255,0.18)]">
-        <div className="flex items-start gap-3">
-          <div className="w-2 self-stretch bg-brutal-black dark:bg-neutral-500" aria-hidden="true" />
-          <div className="min-w-0 py-3 pr-4">
-            <span className="mb-1.5 inline-flex h-2 w-2 bg-neutral-200 border border-brutal-black dark:bg-zinc-600 dark:border-neutral-300" aria-hidden="true" />
+        <div className="flex items-stretch gap-2.5">
+          <div className="w-1.5 self-stretch bg-brutal-black dark:bg-neutral-500" aria-hidden="true" />
+          <div className="min-w-0 py-1.5 pr-3">
             <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Notice</div>
-            <div className="text-sm leading-relaxed text-brutal-black dark:text-neutral-100">
+            <div className="text-sm leading-snug text-brutal-black dark:text-neutral-100">
               <MarkdownRenderer content={message.content} />
             </div>
           </div>
@@ -897,6 +896,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onSubAgentFailed(p);
         setSubAgentTasks(prev => ({ ...prev, [p.task_id]: { status: 'failed', error: p.error } }));
         setStatusBar(`Sub-agent failed — ${p.task_id}`, 'error', 5000);
+      } else if (name === 'image_not_supported') {
+        // Active model lacks vision; backend stripped the image(s) but kept them
+        // on disk so analyze_image can still inspect them. Surface the warning
+        // as an in-chat notice rather than a transient status-bar toast.
+        const payload = value as { message?: string; chat_id?: string } | null;
+        const msg = payload?.message || "The current model can't read images.";
+        const targetChatId = payload?.chat_id
+          || streamingChatIdRef.current
+          || activeChatIdRef.current;
+        if (targetChatId) {
+          addMessage({ role: 'notice', content: `⚠️ ${msg}` }, targetChatId);
+        }
       } else if (name === 'tool_activated') {
         const { toolNames } = value as { toolNames: string[] };
         if (Array.isArray(toolNames)) addActivatedTools(toolNames);
