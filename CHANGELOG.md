@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.7.0] - 2026-06-29
+
+### 🚀 Added
+- **Session Search**: New `session_search` tool backed by FTS5 full-text chat search across sessions.
+- **Goal Mode**: Persistent, self-continuing objectives that let an agent resume work toward a long-running goal.
+- **Permission Engine**: Unified permission handling with a backend-owned approval engine, fixing silent unwanted tool rejections.
+- **MCP & Skill CLI**: Added MCP and skill CLI command groups, plus `skill-creator` and `skill-installer` skills.
+- **MCP Server Management**: Added connection testing for MCP servers and support for editing MCP tools.
+- **Dreaming Agent**: Surfaced the dreaming/memory agent in the main Memory tab with status UX, a lint phase, and run summaries; it no longer redoes work on restart.
+- **Minimap**: Added a chat minimap with configurable interval.
+- **Inline Citations**: Added inline citation badges and an improved citation panel, with broader file-link support.
+- **Model Signatures**: Added a model signature visual to each assistant message.
+- **Source Persistence**: Implemented backend source persistence and lossless backend message restoration.
+- **`suzent start --dev`**: Added a development start mode with development-mode detection.
+- **Skill Inspection**: Skills view now lets you inspect each skill's main body.
+
+### ⚡ Changed
+- **Simplified Frontend**: Removed the standalone config tab and improved overall layout, chatbox consistency, and status bar logic.
+- **Faster Memory Stats**: Sped up memory statistics computation.
+- **Faster Grep**: Significantly reduced search time for the grep tool.
+- **Deprecated Models**: Automatically remove deprecated models and refreshed provider model configs.
+- **System Reminders**: Reworked system-reminder usage and visuals.
+- **Refactors**: DRY'd the brutal button and refactored settings UI; numerous UI polish passes (retry logic, web search/input blocks, file views, activity rail).
+
+### 🐛 Fixed
+- **Streaming**: Fixed a streaming repeat issue and an unexpected tool timeout that could terminate the whole process.
+- **Permissions**: Removed permission redundancy and fixed silent unwanted tool rejections in frontend approval.
+- **Subagents**: Fixed incorrect subagent status display.
+- **File Upload**: Resolved a file-upload name collision and chat input visual issues.
+- **Persistence**: Kept the sidebar message summary consistent across rollbacks; fixed file-tab auto-resetting and notebook path resets.
+- **Cron**: Stopped the last error of a cron job from persisting.
+- **Host Mode**: Fixed path leakage in host mode.
+- **Memory**: Fixed memory search.
+- **Updates**: Fixed update button logic and update-failure handling; patched an update-script race condition.
+- **Dream Runner**: Fixed an encoding issue in the dream runner.
+
 ## [v0.6.6] - 2026-06-08
 
 ### 🐛 Fixed
