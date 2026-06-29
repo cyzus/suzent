@@ -84,7 +84,9 @@ class TranscriptIndexer:
         try:
             # Read all turns
             turns = []
-            for line in transcript_path.read_text(encoding="utf-8").splitlines():
+            for line in transcript_path.read_text(
+                encoding="utf-8", errors="replace"
+            ).splitlines():
                 line = line.strip()
                 if not line:
                     continue
@@ -351,7 +353,9 @@ class CoreMemoryFileIndexer:
                 date = filename.removesuffix(".md")
                 if date <= watermark:
                     if path_key in self._mtimes:
-                        await lancedb_store.delete_memories_by_source_date(date, user_id)
+                        await lancedb_store.delete_memories_by_source_date(
+                            date, user_id
+                        )
                         del self._mtimes[path_key]
                         state_dirty = True
                     continue
@@ -361,7 +365,7 @@ class CoreMemoryFileIndexer:
                 continue  # File unchanged — nothing to do
 
             try:
-                content = path.read_text(encoding="utf-8").strip()
+                content = path.read_text(encoding="utf-8", errors="replace").strip()
                 if not content:
                     self._mtimes[path_key] = mtime
                     state_dirty = True
@@ -419,7 +423,7 @@ class CoreMemoryFileIndexer:
             if not path.exists():
                 return 0
 
-            content = path.read_text(encoding="utf-8").strip()
+            content = path.read_text(encoding="utf-8", errors="replace").strip()
             if not content:
                 self._mtimes[str(path)] = path.stat().st_mtime
                 self._save_state()
@@ -517,8 +521,7 @@ class CoreMemoryFileIndexer:
                     0.5,
                 )
                 for i, chunk in enumerate(self._chunk_by_paragraphs(content))
-                if chunk.strip()
-                and " ".join(chunk.lower().split()) not in tombstones
+                if chunk.strip() and " ".join(chunk.lower().split()) not in tombstones
             ]
 
         # 2. Embed ALL rows BEFORE mutating the index. embedding_gen.generate() raises

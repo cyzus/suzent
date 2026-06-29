@@ -105,7 +105,7 @@ class DreamRunner(BaseBrain):
             p = mgr.markdown_store.archive_dir / f"{d}.md"
             if not p.exists():
                 continue
-            for line in p.read_text(encoding="utf-8").splitlines():
+            for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
                 if re.match(r"^-\s*\[", line.strip()):
                     n += 1
         return n

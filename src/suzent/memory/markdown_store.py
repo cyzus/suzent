@@ -24,6 +24,19 @@ from suzent.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _read_text(path: Path) -> str:
+    """Read a memory file as UTF-8, tolerating stray non-UTF-8 bytes.
+
+    Memory files are edited by the agent, hand-edited by the user, and appended to
+    by the system; any one of them can slip in a non-UTF-8 byte (e.g. a Latin-1 `é`
+    pasted into a daily log). A strict `read_text(encoding="utf-8")` then raises a
+    UnicodeDecodeError that wedges the whole reader (the dream loop, the indexer,
+    recall). Decoding with `errors="replace"` keeps the rest of the content readable
+    instead of losing the file — the offending byte becomes U+FFFD.
+    """
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
 class MarkdownMemoryStore:
     """
     Manages markdown memory files in the shared workspace.
@@ -85,7 +98,7 @@ class MarkdownMemoryStore:
 
     def read_notebook_log(self) -> str:
         p = self.notebook_log_path
-        return p.read_text(encoding="utf-8") if p.exists() else ""
+        return _read_text(p) if p.exists() else ""
 
     async def append_notebook_log(self, entry: str) -> None:
         async with self._write_lock:
@@ -147,7 +160,7 @@ class MarkdownMemoryStore:
         p = self.recall_log_path
         if not p.exists():
             return out
-        for line in p.read_text(encoding="utf-8").splitlines():
+        for line in _read_text(p).splitlines():
             line = line.strip()
             if line:
                 try:
@@ -182,7 +195,7 @@ class MarkdownMemoryStore:
         p = self.tombstones_path
         if not p.exists():
             return out
-        for line in p.read_text(encoding="utf-8").splitlines():
+        for line in _read_text(p).splitlines():
             line = line.strip()
             if line:
                 try:
@@ -266,7 +279,7 @@ class MarkdownMemoryStore:
         path = self._daily_log_path(date)
         if not path.exists():
             return None
-        return path.read_text(encoding="utf-8")
+        return _read_text(path)
 
     async def get_recent_logs(self, days: int = 2) -> str:
         """
@@ -333,7 +346,7 @@ class MarkdownMemoryStore:
         """
         if not self.memory_file_path.exists():
             return None
-        return self.memory_file_path.read_text(encoding="utf-8")
+        return _read_text(self.memory_file_path)
 
     # --- Core Memory Blocks (persona.md, user.md, etc.) ---
 
@@ -363,7 +376,7 @@ class MarkdownMemoryStore:
         path = self._block_path(label)
         if not path.exists():
             return None
-        return path.read_text(encoding="utf-8")
+        return _read_text(path)
 
     async def write_block(self, label: str, content: str) -> None:
         """Write a named core memory block file.
@@ -385,7 +398,7 @@ class MarkdownMemoryStore:
         path = self._context_path(chat_id)
         if not path.exists():
             return None
-        return path.read_text(encoding="utf-8")
+        return _read_text(path)
 
     async def write_session_context(self, chat_id: str, content: str) -> None:
         """Write the project-scoped context.md for a chat.
