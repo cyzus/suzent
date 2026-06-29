@@ -133,7 +133,7 @@ def test_quickstart_clones_existing_remote_repo(
     source = tmp_path / "source"
     remote = tmp_path / "remote.git"
     target = tmp_path / "fresh-sync"
-    git(tmp_path, "init", "--bare", str(remote))
+    git(tmp_path, "init", "--bare", "--initial-branch=main", str(remote))
     git(tmp_path, "clone", str(remote), str(source))
     git(source, "config", "user.email", "test@example.com")
     git(source, "config", "user.name", "Test User")
