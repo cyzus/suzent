@@ -71,6 +71,9 @@ config/skills.json
 config/social.json
 data/
 .suzent/
+# Per-machine bootstrap marker written by the installers (setup.sh/.ps1 and the
+# Rust installer). Local install state — must not be committed.
+.suzent-bootstrap-complete
 
 # Docker
 *.override.yml
