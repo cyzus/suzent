@@ -140,7 +140,8 @@ def test_quickstart_clones_existing_remote_repo(
     (source / "README.md").write_text("remote history", encoding="utf-8")
     git(source, "add", "README.md")
     git(source, "commit", "-m", "seed remote")
-    git(source, "push", "origin", "master")
+    git(source, "branch", "-M", "main")
+    git(source, "push", "origin", "main")
 
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("GH_TOKEN", raising=False)

@@ -56,7 +56,9 @@ async def test_persist_state_agent_state_by_platform(
     monkeypatch.setattr(cp, "get_database", lambda: db)
     # Make serialization deterministic and non-empty for the "normal chat" case.
     monkeypatch.setattr(cp, "serialize_state", lambda *a, **k: b"real-state")
-    monkeypatch.setattr(cp, "_rebuild_display_messages", lambda msgs: [{"role": "x"}])
+    monkeypatch.setattr(
+        cp, "_rebuild_display_messages", lambda msgs, *a, **k: [{"role": "x"}]
+    )
     monkeypatch.setattr(
         cp, "_append_inline_a2ui_surfaces", lambda rebuilt, surfaces: rebuilt
     )

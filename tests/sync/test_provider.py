@@ -29,6 +29,7 @@ def make_repo(tmp_path: Path) -> Path:
     (repo / "README.md").write_text("initial", encoding="utf-8")
     git(repo, "add", "README.md")
     git(repo, "commit", "-m", "initial")
+    git(repo, "branch", "-M", "master")
     git(repo, "push", "origin", "master")
     return repo
 
