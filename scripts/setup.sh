@@ -246,6 +246,15 @@ EOF
 chmod +x "$SHIM"
 ok "CLI shim written to $SHIM"
 
+# ── Bootstrap marker ──────────────────────────────────────────────────────────
+# The pre-built UI binary refuses to launch unless the workspace is marked as
+# bootstrapped (see is_workspace_bootstrapped in src-tauri). The Rust installer
+# writes this; the bash path must do the same or `suzent start` shows the setup
+# screen and fails with "installer helper was not found". protocol=1 matches
+# PROTOCOL_VERSION in apps/suzent-installer.
+printf 'protocol=1\n' > "$SUZENT_DIR/.suzent-bootstrap-complete"
+ok "Workspace marked as bootstrapped"
+
 add_to_path_config "$INSTALL_BIN"
 refresh_path
 

@@ -255,6 +255,16 @@ $ShimContent = "@echo off`r`ncd /d `"$SuzentDir`"`r`nuv run suzent %*`r`n"
 Set-Content -Path $ShimPath -Value $ShimContent -NoNewline -Encoding ASCII
 Write-Ok "CLI shim written to $ShimPath"
 
+# ── Bootstrap marker ──────────────────────────────────────────────────────────
+# The pre-built UI binary refuses to launch unless the workspace is marked as
+# bootstrapped (see is_workspace_bootstrapped in src-tauri). The Rust installer
+# writes this; the script path must do the same or `suzent start` shows the setup
+# screen and fails with "installer helper was not found". protocol=1 matches
+# PROTOCOL_VERSION in apps/suzent-installer.
+$MarkerPath = Join-Path $SuzentDir ".suzent-bootstrap-complete"
+Set-Content -Path $MarkerPath -Value "protocol=1`n" -NoNewline -Encoding ASCII
+Write-Ok "Workspace marked as bootstrapped"
+
 Add-ToUserPath $BinDir
 
 # Also add scripts/ dir (legacy, for suzent.ps1 wrapper)
