@@ -16,7 +16,14 @@ import uuid
 from pathlib import Path
 from typing import AsyncGenerator, List, Dict, Any, Optional
 
-from ag_ui.core import CustomEvent
+from ag_ui.core import (
+    CustomEvent,
+    RunStartedEvent,
+    RunFinishedEvent,
+    TextMessageStartEvent,
+    TextMessageContentEvent,
+    TextMessageEndEvent,
+)
 from ag_ui.encoder import EventEncoder
 from pydantic_ai.tools import ToolDenied
 
@@ -59,6 +66,30 @@ _event_encoder = EventEncoder()
 
 def _encode_custom_event(name: str, value: dict[str, Any]) -> str:
     return _event_encoder.encode(CustomEvent(name=name, value=value))
+
+
+def _emit_notice_stream(chat_id: str, text: str) -> AsyncGenerator[str, None]:
+    """Yield a minimal self-contained SSE run that shows ``text`` as a notice row.
+
+    Used by terminal paths (slash commands, /retry errors) that need to surface
+    a one-shot message and finish the stream without invoking the agent.
+    """
+
+    async def _gen() -> AsyncGenerator[str, None]:
+        enc = _event_encoder
+        run_id = str(uuid.uuid4())
+        msg_id = str(uuid.uuid4())
+        yield enc.encode(RunStartedEvent(run_id=run_id, thread_id=chat_id))
+        yield enc.encode(
+            CustomEvent(name="stream_display_role", value={"role": "notice"})
+        )
+        yield enc.encode(TextMessageStartEvent(message_id=msg_id, role="assistant"))
+        yield enc.encode(TextMessageContentEvent(message_id=msg_id, delta=text))
+        yield enc.encode(TextMessageEndEvent(message_id=msg_id))
+        yield enc.encode(RunFinishedEvent(run_id=run_id, thread_id=chat_id))
+        yield "data: [DONE]\n\n"
+
+    return _gen()
 
 
 def _resolve_target_path(host_path: Path, filename: str) -> Path:
@@ -243,6 +274,30 @@ def _deferred_approval_result(approval: dict[str, Any]) -> bool | ToolDenied:
     )
 
 
+def _preserve_partial_response(messages: list, full_response: str) -> list:
+    """Append generated text as a ModelResponse when the stream didn't emit one.
+
+    On an interrupted or failed stream pydantic-ai may never produce the final
+    ``ModelResponse``. Preserve the visible partial assistant text so the next
+    turn (and the display log) can continue from it. No-op when ``messages``
+    already ends in a ``ModelResponse`` or there's nothing to preserve.
+    """
+    if not full_response.strip():
+        return messages
+
+    from pydantic_ai.messages import ModelResponse, TextPart
+
+    messages = list(messages or [])
+    if not messages or not isinstance(messages[-1], ModelResponse):
+        logger.debug(
+            "[ChatProcessor] Preserving partial assistant text for "
+            "interrupted/failed stream: {} chars",
+            len(full_response),
+        )
+        messages.append(ModelResponse(parts=[TextPart(content=full_response.strip())]))
+    return messages
+
+
 def _is_denied_tool_return(content: Any) -> bool:
     text = str(content or "").strip().lower()
     return text.startswith("the tool call was denied") or text.startswith(
@@ -364,131 +419,19 @@ class ChatProcessor:
             except Exception as e:
                 logger.error(f"Error restoring message history: {e}")
 
-        # Handle /retry before anything else so it can restore state and replay
-        if (
-            message_content
-            and message_content.strip().lower() == "/retry"
-            and not resume_approvals
-            and not is_heartbeat
-        ):
-            from suzent.core.retry import apply_retry_checkpoint
-            from ag_ui.core import (
-                CustomEvent,
-                RunStartedEvent,
-                RunFinishedEvent,
-                TextMessageStartEvent,
-                TextMessageContentEvent,
-                TextMessageEndEvent,
-            )
-            from ag_ui.encoder import EventEncoder as _RetryEnc
-
-            checkpoint_data = apply_retry_checkpoint(chat_id)
-            if checkpoint_data is None:
-                _enc = _RetryEnc()
-                run_id = str(uuid.uuid4())
-                msg_id = str(uuid.uuid4())
-                err_msg = "No retry checkpoint found. Send a message first."
-                yield _enc.encode(RunStartedEvent(run_id=run_id, thread_id=chat_id))
-                yield _enc.encode(
-                    CustomEvent(name="stream_display_role", value={"role": "notice"})
-                )
-                yield _enc.encode(
-                    TextMessageStartEvent(message_id=msg_id, role="assistant")
-                )
-                yield _enc.encode(
-                    TextMessageContentEvent(message_id=msg_id, delta=err_msg)
-                )
-                yield _enc.encode(TextMessageEndEvent(message_id=msg_id))
-                yield _enc.encode(RunFinishedEvent(run_id=run_id, thread_id=chat_id))
-                yield "data: [DONE]\n\n"
-                return
-
-            # Replay the original turn with restored state.
-            retry_message = checkpoint_data["user_message"]
-            retry_files = checkpoint_data["user_files"] or []
-            retry_config = checkpoint_data.get("config_snapshot") or {}
-            merged_config = {
-                **config,
-                **retry_config,
-                "_user_id": user_id,
-                "_chat_id": chat_id,
-            }
-            async for chunk in self.process_turn(
-                chat_id=chat_id,
-                user_id=user_id,
-                message_content=retry_message,
-                files=retry_files if retry_files else None,
-                config_override=merged_config,
-                is_social=is_social,
-            ):
-                yield chunk
-            return
-
-        # Handle /retry-edit — like /retry, but replays with NEW user text.
-        # Body format: "/retry-edit <new message text>". Restores state to before
-        # the last user turn, then re-runs with the edited message.
-        if (
-            message_content
-            and message_content.strip().lower().startswith("/retry-edit ")
-            and not resume_approvals
-            and not is_heartbeat
-        ):
-            from suzent.core.retry import apply_retry_checkpoint
-            from ag_ui.core import (
-                CustomEvent,
-                RunStartedEvent,
-                RunFinishedEvent,
-                TextMessageStartEvent,
-                TextMessageContentEvent,
-                TextMessageEndEvent,
-            )
-            from ag_ui.encoder import EventEncoder as _EditEnc
-
-            edited_message = message_content.split(" ", 1)[1].strip()
-
-            checkpoint_data = apply_retry_checkpoint(chat_id)
-            if checkpoint_data is None or not edited_message:
-                _enc = _EditEnc()
-                run_id = str(uuid.uuid4())
-                msg_id = str(uuid.uuid4())
-                err_msg = (
-                    "Nothing to edit — send a message first."
-                    if checkpoint_data is None
-                    else "Edited message is empty."
-                )
-                yield _enc.encode(RunStartedEvent(run_id=run_id, thread_id=chat_id))
-                yield _enc.encode(
-                    CustomEvent(name="stream_display_role", value={"role": "notice"})
-                )
-                yield _enc.encode(
-                    TextMessageStartEvent(message_id=msg_id, role="assistant")
-                )
-                yield _enc.encode(
-                    TextMessageContentEvent(message_id=msg_id, delta=err_msg)
-                )
-                yield _enc.encode(TextMessageEndEvent(message_id=msg_id))
-                yield _enc.encode(RunFinishedEvent(run_id=run_id, thread_id=chat_id))
-                yield "data: [DONE]\n\n"
-                return
-
-            # Replay with the edited message, but keep the original turn's files
-            # and config snapshot so attachments survive the edit.
-            edit_files = checkpoint_data["user_files"] or []
-            edit_config = checkpoint_data.get("config_snapshot") or {}
-            merged_config = {
-                **config,
-                **edit_config,
-                "_user_id": user_id,
-                "_chat_id": chat_id,
-            }
-            async for chunk in self.process_turn(
-                chat_id=chat_id,
-                user_id=user_id,
-                message_content=edited_message,
-                files=edit_files if edit_files else None,
-                config_override=merged_config,
-                is_social=is_social,
-            ):
+        # Handle /retry and /retry-edit before anything else so they can restore
+        # state and replay. Returns a replay generator, or None if not a retry cmd.
+        retry_stream = self._handle_retry_command(
+            chat_id=chat_id,
+            user_id=user_id,
+            message_content=message_content,
+            config=config,
+            is_social=is_social,
+            resume_approvals=resume_approvals,
+            is_heartbeat=is_heartbeat,
+        )
+        if retry_stream is not None:
+            async for chunk in retry_stream:
                 yield chunk
             return
 
@@ -713,32 +656,8 @@ class ChatProcessor:
                         f"Failed to persist slash command result for {chat_id}: {e}"
                     )
 
-                from ag_ui.core import (
-                    CustomEvent,
-                    RunStartedEvent,
-                    RunFinishedEvent,
-                    TextMessageStartEvent,
-                    TextMessageContentEvent,
-                    TextMessageEndEvent,
-                )
-                from ag_ui.encoder import EventEncoder as _Enc
-
-                _enc = _Enc()
-                run_id = str(uuid.uuid4())
-                msg_id = str(uuid.uuid4())
-                yield _enc.encode(RunStartedEvent(run_id=run_id, thread_id=chat_id))
-                yield _enc.encode(
-                    CustomEvent(name="stream_display_role", value={"role": "notice"})
-                )
-                yield _enc.encode(
-                    TextMessageStartEvent(message_id=msg_id, role="assistant")
-                )
-                yield _enc.encode(
-                    TextMessageContentEvent(message_id=msg_id, delta=cmd_result)
-                )
-                yield _enc.encode(TextMessageEndEvent(message_id=msg_id))
-                yield _enc.encode(RunFinishedEvent(run_id=run_id, thread_id=chat_id))
-                yield "data: [DONE]\n\n"
+                async for chunk in _emit_notice_stream(chat_id, cmd_result):
+                    yield chunk
                 return
 
         # --- System Reminder Injection (includes per-turn RAG hook when memory enabled) ---
@@ -1034,23 +953,10 @@ class ChatProcessor:
                 is_cancelled = (
                     getattr(deps, "cancel_event", None) and deps.cancel_event.is_set()
                 )
-                if (is_cancelled or stream_failed) and full_response.strip():
-                    from pydantic_ai.messages import ModelResponse, TextPart
-
-                    snapshot_messages = list(snapshot_messages or [])
-                    if not snapshot_messages or not isinstance(
-                        snapshot_messages[-1], ModelResponse
-                    ):
-                        logger.debug(
-                            "[ChatProcessor] Preserving partial assistant text "
-                            "for interrupted/failed stream: {} chars",
-                            len(full_response),
-                        )
-                        snapshot_messages.append(
-                            ModelResponse(
-                                parts=[TextPart(content=full_response.strip())]
-                            )
-                        )
+                if is_cancelled or stream_failed:
+                    snapshot_messages = _preserve_partial_response(
+                        snapshot_messages, full_response
+                    )
 
                 # Stateless chats never snapshot agent_state (see note above).
                 if not _stateless_chat:
@@ -1072,197 +978,25 @@ class ChatProcessor:
 
             postprocess_job_id = uuid.uuid4().hex
 
-            async def _run_post_processing() -> None:
-                db = get_database()
-                job_id = postprocess_job_id
-
-                try:
-                    job_data = db.create_postprocess_job(
-                        job_id=job_id,
-                        chat_id=chat_id,
-                        assigned_revision=snapshot_revision or 0,
-                        max_attempts=3,
-                    )
-                    if job_data:
-                        db.start_postprocess_job(job_id)
-                except Exception as e:
-                    logger.warning(f"Failed to create postprocess job {job_id}: {e}")
-
-                try:
-                    last_messages = snapshot_messages or []
-
-                    # If the stream was interrupted or failed, pydantic-ai may not emit
-                    # the final ModelResponse. Preserve generated text so the next turn
-                    # can continue from the visible partial assistant response.
-                    is_cancelled = (
-                        getattr(deps, "cancel_event", None)
-                        and deps.cancel_event.is_set()
-                    )
-                    if (
-                        (is_cancelled or stream_failed)
-                        and full_response.strip()
-                        and last_messages
-                    ):
-                        from pydantic_ai.messages import ModelResponse, TextPart
-
-                        if not isinstance(last_messages[-1], ModelResponse):
-                            logger.debug(
-                                f"[ChatProcessor] Stream was cancelled. Appending partial text to history: {len(full_response)} chars"
-                            )
-                            last_messages.append(
-                                ModelResponse(
-                                    parts=[TextPart(content=full_response.strip())]
-                                )
-                            )
-
-                    msg_count = len(last_messages) if last_messages else 0
-                    logger.debug(
-                        f"[ChatProcessor] Starting background post-processing for {chat_id}. "
-                        f"History length: {msg_count}"
-                    )
-
-                    # B1: Write JSONL transcript
-                    try:
-                        # System/forked turns (dream, sub-agents) don't get transcripts
-                        # written/indexed — keeps their chatter out of memory (NEW-7).
-                        if not self._is_system_chat(chat_id):
-                            await self._write_transcript(
-                                chat_id, message_content, full_response, last_messages
-                            )
-                        db.update_job_step_status(
-                            job_id, PostProcessStep.TRANSCRIPT, StepStatus.SUCCESS
-                        )
-                    except Exception as e:
-                        logger.error(f"Transcript writing failed: {e}")
-                        db.update_job_step_status(
-                            job_id,
-                            PostProcessStep.TRANSCRIPT,
-                            StepStatus.FAILED,
-                            error=str(e),
-                        )
-
-                    is_suspended = getattr(deps, "is_suspended", False)
-                    compressed_messages = last_messages
-
-                    if is_suspended:
-                        logger.debug(
-                            f"[ChatProcessor] Skipping memory extraction for suspended run {chat_id}."
-                        )
-                        try:
-                            db.update_job_step_status(
-                                job_id, PostProcessStep.MEMORY, StepStatus.SUCCESS
-                            )
-                            db.update_job_step_status(
-                                job_id, PostProcessStep.COMPRESS, StepStatus.SUCCESS
-                            )
-                        except Exception:
-                            pass
-                    else:
-                        # B2: Memory Extraction (independent; never blocks display/state persistence)
-                        async def _run_memory_extraction() -> None:
-                            memory_db = get_database()
-                            try:
-                                await self._extract_memories(
-                                    chat_id=chat_id,
-                                    user_id=user_id,
-                                    user_content=message_content,
-                                    agent_content=full_response,
-                                    messages=last_messages,
-                                )
-                                memory_db.update_job_step_status(
-                                    job_id, PostProcessStep.MEMORY, StepStatus.SUCCESS
-                                )
-                            except Exception as e:
-                                logger.warning(f"Memory extraction failed: {e}")
-                                memory_db.update_job_step_status(
-                                    job_id,
-                                    PostProcessStep.MEMORY,
-                                    StepStatus.FAILED,
-                                    error=str(e),
-                                )
-
-                        try:
-                            memory_coro = _run_memory_extraction()
-                            await register_background_task(
-                                memory_coro,
-                                task_id=f"memory_extract_{chat_id}_{job_id}",
-                                description=f"Memory extraction for chat {chat_id}",
-                            )
-                        except Exception as e:
-                            try:
-                                memory_coro.close()
-                            except Exception:
-                                pass
-                            logger.warning(
-                                f"Failed to schedule memory extraction for {chat_id}: {e}"
-                            )
-                            db.update_job_step_status(
-                                job_id,
-                                PostProcessStep.MEMORY,
-                                StepStatus.FAILED,
-                                error=str(e),
-                            )
-                        try:
-                            db.update_job_step_status(
-                                job_id, PostProcessStep.COMPRESS, StepStatus.SUCCESS
-                            )
-                        except Exception:
-                            pass
-
-                    # B4+B5: Display Rebuild + State Persistence (display is integrated in _persist_state)
-                    try:
-                        await self._persist_state(
-                            chat_id=chat_id,
-                            messages=compressed_messages,
-                            model_id=getattr(agent, "_model_id", None),
-                            tool_names=getattr(agent, "_tool_names", []),
-                            user_content=message_content,
-                            agent_content=full_response,
-                            skip_messages=is_heartbeat,
-                            expected_revision=snapshot_revision,
-                            postprocess_job_id=postprocess_job_id,
-                            inline_a2ui_surfaces=getattr(
-                                deps, "inline_a2ui_surfaces", None
-                            ),
-                        )
-                        db.update_job_step_status(
-                            job_id, PostProcessStep.PERSIST, StepStatus.SUCCESS
-                        )
-                        db.update_job_step_status(
-                            job_id, PostProcessStep.DISPLAY, StepStatus.SUCCESS
-                        )
-                    except Exception as e:
-                        logger.error(f"State persistence failed: {e}")
-                        db.update_job_step_status(
-                            job_id,
-                            PostProcessStep.PERSIST,
-                            StepStatus.FAILED,
-                            error=str(e),
-                        )
-                        db.update_job_step_status(
-                            job_id,
-                            PostProcessStep.DISPLAY,
-                            StepStatus.FAILED,
-                            error=str(e),
-                        )
-
-                    logger.info(
-                        f"[ChatProcessor] Background post-processing complete for {chat_id}"
-                    )
-                    db.finalize_postprocess_job(job_id, PostProcessOutcome.SUCCESS)
-                except Exception as e:
-                    logger.error(f"Post-processing background task failed: {e}")
-                    db.finalize_postprocess_job(
-                        job_id,
-                        PostProcessOutcome.FAILED,
-                        error_class=type(e).__name__,
-                        error_message=str(e),
-                    )
+            def _make_post_process_coro():
+                return self._post_process_turn(
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    message_content=message_content,
+                    full_response=full_response,
+                    stream_failed=stream_failed,
+                    snapshot_messages=snapshot_messages,
+                    snapshot_revision=snapshot_revision,
+                    is_heartbeat=is_heartbeat,
+                    deps=deps,
+                    agent=agent,
+                    postprocess_job_id=postprocess_job_id,
+                )
 
             task_id = f"post_process_{chat_id}_{postprocess_job_id}"
             try:
                 await register_background_task(
-                    _run_post_processing(),
+                    _make_post_process_coro(),
                     task_id=task_id,
                     description=f"Post-processing for chat {chat_id}",
                 )
@@ -1273,7 +1007,7 @@ class ChatProcessor:
                 )
                 try:
                     await register_background_task(
-                        _run_post_processing(),
+                        _make_post_process_coro(),
                         task_id=f"{task_id}_overflow",
                         description=f"Post-processing overflow for chat {chat_id}",
                         allow_overflow=True,
@@ -1285,7 +1019,7 @@ class ChatProcessor:
                     )
                     # Last-resort fallback. This path should be rare because overflow
                     # registration bypasses max_concurrent but still respects shutdown.
-                    asyncio.create_task(_run_post_processing())
+                    asyncio.create_task(_make_post_process_coro())
 
             # 10. Goal-mode continuation. After a normal turn, let the judge decide
             # whether to auto-continue toward a standing goal. Cheap no-op (one
@@ -1314,6 +1048,264 @@ class ChatProcessor:
                         )
                 except Exception as e:
                     logger.debug(f"[goal] continuation scheduling skipped: {e}")
+
+    async def _post_process_turn(
+        self,
+        chat_id: str,
+        user_id: str,
+        message_content: str,
+        full_response: str,
+        stream_failed: bool,
+        snapshot_messages: Optional[list],
+        snapshot_revision: Optional[int],
+        is_heartbeat: bool,
+        deps: Any,
+        agent: Any,
+        postprocess_job_id: str,
+    ) -> None:
+        """Background post-processing for a completed turn.
+
+        Runs the transcript write, memory extraction (scheduled independently),
+        and display rebuild + state persistence, tracking each step against the
+        post-process job. Designed to run as a background task so the SSE stream
+        can close immediately while this finishes.
+        """
+        from suzent.core.task_registry import register_background_task
+
+        db = get_database()
+        job_id = postprocess_job_id
+
+        try:
+            job_data = db.create_postprocess_job(
+                job_id=job_id,
+                chat_id=chat_id,
+                assigned_revision=snapshot_revision or 0,
+                max_attempts=3,
+            )
+            if job_data:
+                db.start_postprocess_job(job_id)
+        except Exception as e:
+            logger.warning(f"Failed to create postprocess job {job_id}: {e}")
+
+        try:
+            last_messages = snapshot_messages or []
+
+            # If the stream was interrupted or failed, pydantic-ai may not emit
+            # the final ModelResponse. Preserve generated text so the next turn
+            # can continue from the visible partial assistant response.
+            is_cancelled = (
+                getattr(deps, "cancel_event", None) and deps.cancel_event.is_set()
+            )
+            if is_cancelled or stream_failed:
+                last_messages = _preserve_partial_response(last_messages, full_response)
+
+            msg_count = len(last_messages) if last_messages else 0
+            logger.debug(
+                f"[ChatProcessor] Starting background post-processing for {chat_id}. "
+                f"History length: {msg_count}"
+            )
+
+            # B1: Write JSONL transcript
+            try:
+                # System/forked turns (dream, sub-agents) don't get transcripts
+                # written/indexed — keeps their chatter out of memory (NEW-7).
+                if not self._is_system_chat(chat_id):
+                    await self._write_transcript(
+                        chat_id, message_content, full_response, last_messages
+                    )
+                db.update_job_step_status(
+                    job_id, PostProcessStep.TRANSCRIPT, StepStatus.SUCCESS
+                )
+            except Exception as e:
+                logger.error(f"Transcript writing failed: {e}")
+                db.update_job_step_status(
+                    job_id,
+                    PostProcessStep.TRANSCRIPT,
+                    StepStatus.FAILED,
+                    error=str(e),
+                )
+
+            is_suspended = getattr(deps, "is_suspended", False)
+            compressed_messages = last_messages
+
+            if is_suspended:
+                logger.debug(
+                    f"[ChatProcessor] Skipping memory extraction for suspended run {chat_id}."
+                )
+                try:
+                    db.update_job_step_status(
+                        job_id, PostProcessStep.MEMORY, StepStatus.SUCCESS
+                    )
+                    db.update_job_step_status(
+                        job_id, PostProcessStep.COMPRESS, StepStatus.SUCCESS
+                    )
+                except Exception:
+                    pass
+            else:
+                # B2: Memory Extraction (independent; never blocks display/state persistence)
+                async def _run_memory_extraction() -> None:
+                    memory_db = get_database()
+                    try:
+                        await self._extract_memories(
+                            chat_id=chat_id,
+                            user_id=user_id,
+                            user_content=message_content,
+                            agent_content=full_response,
+                            messages=last_messages,
+                        )
+                        memory_db.update_job_step_status(
+                            job_id, PostProcessStep.MEMORY, StepStatus.SUCCESS
+                        )
+                    except Exception as e:
+                        logger.warning(f"Memory extraction failed: {e}")
+                        memory_db.update_job_step_status(
+                            job_id,
+                            PostProcessStep.MEMORY,
+                            StepStatus.FAILED,
+                            error=str(e),
+                        )
+
+                try:
+                    memory_coro = _run_memory_extraction()
+                    await register_background_task(
+                        memory_coro,
+                        task_id=f"memory_extract_{chat_id}_{job_id}",
+                        description=f"Memory extraction for chat {chat_id}",
+                    )
+                except Exception as e:
+                    try:
+                        memory_coro.close()
+                    except Exception:
+                        pass
+                    logger.warning(
+                        f"Failed to schedule memory extraction for {chat_id}: {e}"
+                    )
+                    db.update_job_step_status(
+                        job_id,
+                        PostProcessStep.MEMORY,
+                        StepStatus.FAILED,
+                        error=str(e),
+                    )
+                try:
+                    db.update_job_step_status(
+                        job_id, PostProcessStep.COMPRESS, StepStatus.SUCCESS
+                    )
+                except Exception:
+                    pass
+
+            # B4+B5: Display Rebuild + State Persistence (display is integrated in _persist_state)
+            try:
+                await self._persist_state(
+                    chat_id=chat_id,
+                    messages=compressed_messages,
+                    model_id=getattr(agent, "_model_id", None),
+                    tool_names=getattr(agent, "_tool_names", []),
+                    user_content=message_content,
+                    agent_content=full_response,
+                    skip_messages=is_heartbeat,
+                    expected_revision=snapshot_revision,
+                    postprocess_job_id=postprocess_job_id,
+                    inline_a2ui_surfaces=getattr(deps, "inline_a2ui_surfaces", None),
+                )
+                db.update_job_step_status(
+                    job_id, PostProcessStep.PERSIST, StepStatus.SUCCESS
+                )
+                db.update_job_step_status(
+                    job_id, PostProcessStep.DISPLAY, StepStatus.SUCCESS
+                )
+            except Exception as e:
+                logger.error(f"State persistence failed: {e}")
+                db.update_job_step_status(
+                    job_id,
+                    PostProcessStep.PERSIST,
+                    StepStatus.FAILED,
+                    error=str(e),
+                )
+                db.update_job_step_status(
+                    job_id,
+                    PostProcessStep.DISPLAY,
+                    StepStatus.FAILED,
+                    error=str(e),
+                )
+
+            logger.info(
+                f"[ChatProcessor] Background post-processing complete for {chat_id}"
+            )
+            db.finalize_postprocess_job(job_id, PostProcessOutcome.SUCCESS)
+        except Exception as e:
+            logger.error(f"Post-processing background task failed: {e}")
+            db.finalize_postprocess_job(
+                job_id,
+                PostProcessOutcome.FAILED,
+                error_class=type(e).__name__,
+                error_message=str(e),
+            )
+
+    def _handle_retry_command(
+        self,
+        chat_id: str,
+        user_id: str,
+        message_content: str,
+        config: Dict,
+        is_social: bool,
+        resume_approvals: Optional[List[Dict]],
+        is_heartbeat: bool,
+    ) -> Optional[AsyncGenerator[str, None]]:
+        """Detect /retry or /retry-edit and return a replay stream, else None.
+
+        /retry replays the original turn; /retry-edit replays with new user text
+        but keeps the original turn's files and config snapshot. Both restore the
+        pre-turn checkpoint, or emit a notice stream when there's nothing to replay.
+        """
+        if not message_content or resume_approvals or is_heartbeat:
+            return None
+
+        stripped = message_content.strip()
+        lowered = stripped.lower()
+        is_retry = lowered == "/retry"
+        is_retry_edit = lowered.startswith("/retry-edit ")
+        if not (is_retry or is_retry_edit):
+            return None
+
+        from suzent.core.retry import apply_retry_checkpoint
+
+        checkpoint_data = apply_retry_checkpoint(chat_id)
+
+        if is_retry_edit:
+            edited_message = message_content.split(" ", 1)[1].strip()
+            if checkpoint_data is None or not edited_message:
+                err_msg = (
+                    "Nothing to edit — send a message first."
+                    if checkpoint_data is None
+                    else "Edited message is empty."
+                )
+                return _emit_notice_stream(chat_id, err_msg)
+            replay_message = edited_message
+        else:
+            if checkpoint_data is None:
+                return _emit_notice_stream(
+                    chat_id, "No retry checkpoint found. Send a message first."
+                )
+            replay_message = checkpoint_data["user_message"]
+
+        # Both variants replay with the original turn's files and config snapshot
+        # so attachments survive the retry/edit.
+        replay_files = checkpoint_data["user_files"] or []
+        replay_config = checkpoint_data.get("config_snapshot") or {}
+        merged_config = {
+            **config,
+            **replay_config,
+            "_user_id": user_id,
+            "_chat_id": chat_id,
+        }
+        return self.process_turn(
+            chat_id=chat_id,
+            user_id=user_id,
+            message_content=replay_message,
+            files=replay_files if replay_files else None,
+            config_override=merged_config,
+            is_social=is_social,
+        )
 
     async def process_steer(
         self,
