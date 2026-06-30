@@ -907,6 +907,10 @@ export const en = {
     expand: 'Expand',
     code: 'Code',
     lines: '{count} lines',
+    source: 'Source',
+    preview: 'Preview',
+    viewSource: 'View source',
+    viewPreview: 'View preview',
   },
   logBlock: {
     systemLog: 'System log',

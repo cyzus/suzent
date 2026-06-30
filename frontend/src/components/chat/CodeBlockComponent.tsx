@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { useStatusStore } from '../../hooks/useStatusStore';
 import { useI18n } from '../../i18n';
+import { MermaidDiagram } from '../MermaidDiagram';
 
 interface CodeBlockComponentProps {
   lang?: string;
@@ -14,6 +16,19 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const lineCount = content.split('\n').length;
+
+  const normalizedLang = (lang || '').toLowerCase();
+  const isHtml = normalizedLang === 'html';
+  const isMermaid = normalizedLang === 'mermaid';
+  const isRenderable = isHtml || isMermaid;
+  // Only switch to the rendered preview once streaming has finished, so we don't
+  // sanitize/inject half-written markup or parse incomplete diagrams on every token.
+  const [showPreview, setShowPreview] = useState(true);
+  const renderPreview = isRenderable && showPreview && !isStreaming;
+  const sanitizedHtml = useMemo(
+    () => (renderPreview && isHtml ? DOMPurify.sanitize(content) : ''),
+    [renderPreview, isHtml, content],
+  );
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -38,6 +53,15 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
           </span>
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover/code:opacity-100 focus-within:opacity-100 transition-opacity">
+          {isRenderable && !isStreaming && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowPreview(v => !v); }}
+              className="h-6 px-1.5 flex items-center justify-center text-white dark:text-neutral-200 text-[10px] font-black uppercase border border-transparent hover:border-white dark:hover:border-zinc-400 hover:bg-white hover:text-brutal-black dark:hover:bg-zinc-700 transition-colors"
+              title={showPreview ? t('codeBlock.viewSource') : t('codeBlock.viewPreview')}
+            >
+              {showPreview ? t('codeBlock.source') : t('codeBlock.preview')}
+            </button>
+          )}
           <button
             onClick={handleCopy}
             className="w-6 h-6 flex items-center justify-center text-white dark:text-neutral-200 border border-transparent hover:border-white dark:hover:border-zinc-400 hover:bg-white hover:text-brutal-black dark:hover:bg-zinc-700 transition-colors"
@@ -66,12 +90,23 @@ export const CodeBlockComponent: React.FC<CodeBlockComponentProps> = ({ lang, co
 
       {/* Content Area */}
       <div className={`bg-white dark:bg-zinc-950 overflow-hidden ${expanded ? 'block' : 'hidden'}`}>
-        <pre className={`max-w-full text-[12px] text-brutal-black dark:text-neutral-100 px-3 py-2.5 leading-5 overflow-x-auto !bg-transparent whitespace-pre font-mono m-0`}>
-          <code className={`language-${safeLang}`}>
-            {content}
-            {isStreaming && <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1"></span>}
-          </code>
-        </pre>
+        {renderPreview && isMermaid ? (
+          <div className="px-3 py-2.5">
+            <MermaidDiagram code={content} />
+          </div>
+        ) : renderPreview && isHtml ? (
+          <div
+            className="max-w-full px-3 py-2.5 overflow-x-auto bg-white text-brutal-black"
+            dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+          />
+        ) : (
+          <pre className={`max-w-full text-[12px] text-brutal-black dark:text-neutral-100 px-3 py-2.5 leading-5 overflow-x-auto !bg-transparent whitespace-pre font-mono m-0`}>
+            <code className={`language-${safeLang}`}>
+              {content}
+              {isStreaming && <span className="animate-brutal-blink inline-block w-2.5 h-4 bg-brutal-black align-middle ml-1"></span>}
+            </code>
+          </pre>
+        )}
       </div>
     </div>
   );

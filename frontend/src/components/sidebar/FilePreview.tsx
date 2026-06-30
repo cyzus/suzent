@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { MarkdownRenderer, CodeBlock } from '../';
+import { MarkdownRenderer, CodeBlock, MermaidDiagram } from '../';
 import {
     isImageFile,
     isPdfFile,
@@ -78,11 +78,8 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ filename, content, cha
     // 5. Mermaid
     if (isMermaidFile(filename)) {
         return (
-            <div className="p-2">
-                <CodeBlock
-                    language="mermaid"
-                    code={content || ''}
-                />
+            <div className="p-2 overflow-auto h-full">
+                <MermaidDiagram code={content || ''} />
             </div>
         );
     }

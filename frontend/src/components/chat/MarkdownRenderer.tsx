@@ -18,7 +18,7 @@ const ALLOWED_LANGUAGES = new Set([
   'html', 'css', 'json', 'yaml', 'xml', 'bash', 'shell', 'powershell', 'php',
   'ruby', 'swift', 'kotlin', 'dart', 'r', 'matlab', 'scala', 'perl', 'lua',
   'haskell', 'clojure', 'elixir', 'erlang', 'fsharp', 'ocaml', 'pascal',
-  'fortran', 'cobol', 'assembly', 'asm', 'text', 'plain'
+  'fortran', 'cobol', 'assembly', 'asm', 'text', 'plain', 'mermaid'
 ]);
 
 export function sanitizeMarkdownCodeFenceLanguages(markdown: string): string {

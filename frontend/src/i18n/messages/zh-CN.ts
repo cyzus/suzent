@@ -833,6 +833,10 @@ export const zhCN = {
     expand: '展开',
     code: '代码',
     lines: '{count} 行',
+    source: '源码',
+    preview: '预览',
+    viewSource: '查看源码',
+    viewPreview: '查看预览',
   },
   logBlock: {
     systemLog: '系统日志',
