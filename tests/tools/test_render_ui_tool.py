@@ -33,6 +33,26 @@ async def test_render_ui_accepts_surface_id_aliases_and_text_alias():
 
 
 @pytest.mark.asyncio
+async def test_render_ui_accepts_html_component():
+    queue: asyncio.Queue = asyncio.Queue()
+    ctx = SimpleNamespace(deps=SimpleNamespace(a2ui_queue=queue))
+
+    result = await RenderUITool().forward(
+        ctx,
+        surface_id="chart",
+        component={"type": "html", "html": "<h1>Hi</h1>", "height": 300},
+    )
+
+    assert result.success
+    event = queue.get_nowait()
+    assert event["component"] == {
+        "type": "html",
+        "html": "<h1>Hi</h1>",
+        "height": 300,
+    }
+
+
+@pytest.mark.asyncio
 async def test_render_ui_returns_validation_error_for_invalid_component():
     queue: asyncio.Queue = asyncio.Queue()
     ctx = SimpleNamespace(deps=SimpleNamespace(a2ui_queue=queue))

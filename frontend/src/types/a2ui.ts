@@ -74,6 +74,16 @@ export interface A2UIDivider {
   type: 'divider';
 }
 
+export interface A2UIHtml {
+  type: 'html';
+  /** Self-contained HTML, rendered in a sandboxed iframe (scripts allowed,
+   *  isolated from the host app). Can post {type:'a2ui:action', action, context}
+   *  to window.parent to send feedback back to the agent. */
+  html: string;
+  /** Fixed height in px; when omitted the iframe auto-sizes to its content. */
+  height?: number;
+}
+
 // ── Container Components ─────────────────────────────────────────────
 
 export interface A2UICard {
@@ -105,6 +115,7 @@ export type A2UIComponent =
   | A2UIList
   | A2UIProgress
   | A2UIDivider
+  | A2UIHtml
   | A2UICard
   | A2UIColumns
   | A2UIStack;

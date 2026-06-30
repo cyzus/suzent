@@ -15,6 +15,7 @@ import { A2UIFormComponent }     from './components/A2UIFormComponent';
 import { A2UIListComponent }     from './components/A2UIListComponent';
 import { A2UIProgressComponent } from './components/A2UIProgressComponent';
 import { A2UIDividerComponent }  from './components/A2UIDividerComponent';
+import { A2UIHtmlComponent }     from './components/A2UIHtmlComponent';
 
 interface Props {
   component: A2UIComponent;
@@ -69,6 +70,9 @@ export const A2UIRenderer: React.FC<Props> = ({ component, onAction }) => {
 
     case 'divider':
       return <A2UIDividerComponent />;
+
+    case 'html':
+      return <A2UIHtmlComponent component={component} onAction={onAction} />;
 
     case 'card': {
       const cardChildren = component.children ?? [];

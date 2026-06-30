@@ -118,7 +118,11 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
         </div>
 
         <div className="flex flex-col min-h-0 flex-1">
-          {surfaceNav}
+          {/* surfaceNav carries flex-1 for the horizontal header; in this vertical
+              column it must not grow vertically, so pin it with shrink-0 + h-11. */}
+          <div className="shrink-0 h-11 flex border-b-2 border-brutal-black">
+            {surfaceNav}
+          </div>
           {content}
         </div>
       </FullscreenOverlay>

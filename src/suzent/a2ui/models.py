@@ -6,7 +6,7 @@ The frontend's A2UIRenderer maps each type to its React component.
 
 Component hierarchy:
   Leaf:       A2UIText, A2UIBadge, A2UIButton, A2UITable, A2UIForm,
-              A2UIList, A2UIProgress, A2UIDivider
+              A2UIList, A2UIProgress, A2UIDivider, A2UIHtml
   Container:  A2UICard, A2UIColumns, A2UIStack  (hold children[])
   Top-level:  A2UISurface  (id + root component)
 """
@@ -117,6 +117,29 @@ class A2UIDivider(BaseModel):
     type: Literal["divider"] = "divider"
 
 
+class A2UIHtml(BaseModel):
+    """Free-form HTML artifact rendered in a sandboxed iframe.
+
+    Use this for rich, self-contained UI that the typed components can't express:
+    charts, SVG diagrams, custom dashboards, interactive prototypes. The HTML runs
+    in a sandboxed iframe (scripts allowed, isolated from the host app — no access
+    to cookies, storage, or the parent DOM).
+
+    To send feedback back to the agent, the HTML can post a message to the host:
+        window.parent.postMessage(
+            {"type": "a2ui:action", "action": "my_action", "context": {...}},
+            "*",
+        )
+    This is delivered to the agent exactly like a button click or form submit.
+    """
+
+    type: Literal["html"] = "html"
+    html: str
+    # Optional fixed height in px. When omitted the iframe auto-sizes to its
+    # content (the host injects a small resize reporter).
+    height: Optional[int] = None
+
+
 # ── Container Components ───────────────────────────────────────────────
 # Forward references resolved via model_rebuild() after all classes are defined.
 
@@ -157,6 +180,7 @@ A2UIComponent = Annotated[
         A2UIList,
         A2UIProgress,
         A2UIDivider,
+        A2UIHtml,
         A2UICard,
         A2UIColumns,
         A2UIStack,

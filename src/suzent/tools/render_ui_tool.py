@@ -94,6 +94,15 @@ class RenderUITool(Tool):
         The A2UI schema is defined in suzent.a2ui.models. Use `content` for text
         components, `label` and `action` for buttons, and `columns` plus `rows`
         for tables. The `id` alias is accepted for compatibility with A2UISurface.
+
+        For rich UI the typed components can't express (charts, SVG, custom
+        dashboards, interactive prototypes), use the `html` component — a
+        self-contained HTML document rendered in a sandboxed iframe. Its scripts
+        run isolated from the host app. To send feedback back to the agent, the
+        HTML posts a message to the host:
+            window.parent.postMessage(
+                {type: 'a2ui:action', action: 'my_action', context: {...}}, '*')
+        which is delivered exactly like a button click or form submit.
         """
         try:
             surface = _SURFACE_ADAPTER.validate_python(

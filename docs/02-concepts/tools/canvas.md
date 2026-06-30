@@ -38,6 +38,7 @@ Components are plain dicts with a `"type"` field. They nest recursively via `"ch
 | `list` | Bullet or numbered list | `items` (list of strings), `ordered` |
 | `progress` | Progress bar | `value` (0–100), `label` |
 | `divider` | Horizontal rule | — |
+| `html` | Free-form HTML in a sandboxed iframe | `html` ⚠️, `height` (optional, px) |
 
 > ⚠️ **Common mistake:** Do not use `"text"` as a field name — it is not valid for any component. Use:
 > - `"content"` for `text` components
@@ -181,6 +182,75 @@ render_ui(
     }
 )
 ```
+
+## Free-form HTML (`html` component)
+
+When the typed components can't express what you need — charts, SVG diagrams, custom dashboards, interactive prototypes — use the `html` component. It renders a self-contained HTML document in a **sandboxed iframe**.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `html` | `str` | Self-contained HTML. May be a full document or a bare fragment. |
+| `height` | `int \| None` | Fixed height in px. When omitted, the iframe **auto-sizes** to its content. |
+
+### Sandbox model
+
+The HTML runs with `sandbox="allow-scripts"` (and **not** `allow-same-origin`):
+
+- **Scripts run** — so charting libraries, animations, and interactive controls work.
+- **Isolated from the host** — no access to the app's cookies, `localStorage`, or parent DOM. It cannot read or modify the rest of Suzent.
+
+This is the same trust level Suzent uses to preview agent-authored `.html` files.
+
+### Sending feedback back to the agent
+
+Because the iframe is isolated, interactive HTML talks back to the agent via `postMessage`. Post a message to `window.parent` with this shape:
+
+```js
+window.parent.postMessage(
+  { type: 'a2ui:action', action: 'my_action', context: { /* any JSON */ } },
+  '*'
+);
+```
+
+The host validates the message (shape + origin) and delivers it to the agent exactly like a button click or form submit:
+
+```
+[canvas: my_action] {"...": "..."}
+```
+
+So a button, chart click, or form inside your HTML can drive the conversation. Use distinct, descriptive `action` names just like with `button`/`form` components.
+
+> The host also injects a tiny script that reports content height for auto-sizing. You don't need to add it — just emit your HTML.
+
+### Example — HTML dashboard with a feedback button
+
+```python
+render_ui(
+    surface_id="london_food_plan",
+    title="London Food Plan",
+    component={
+        "type": "html",
+        "html": """
+            <div style="font-family: monospace; padding: 16px;">
+              <h2>London Food Plan</h2>
+              <p>Status: <strong>Ready to book</strong></p>
+              <button onclick="
+                window.parent.postMessage(
+                  {type:'a2ui:action', action:'start_booking_bot',
+                   context:{stage:'stage_2_reservations'}}, '*')
+              ">Start Auto-Booking</button>
+            </div>
+        """,
+    }
+)
+# When the button is clicked, the agent receives:
+# [canvas: start_booking_bot] {"stage": "stage_2_reservations"}
+```
+
+### When to use `html` vs typed components
+
+- Prefer **typed components** (`table`, `form`, `button`, …) for simple, structured UI that talks back — they're styled to match Suzent and validated by the schema.
+- Reach for **`html`** when you need rich visuals or layouts the vocabulary can't express. Both render in the same canvas and support the same `{action, context}` feedback loop, so you can mix them across surfaces.
 
 ## Ask Question Tool
 

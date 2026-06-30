@@ -467,8 +467,8 @@ const MessageList: React.FC<{
         // Canvas action message — lightweight dashed pill
         if (m.role === 'canvas_action') {
           return (
-            <div key={globalIdx} data-message-index={globalIdx} className="chat-msg-row w-full flex justify-start pl-2">
-              <div className="border-2 border-dashed border-brutal-black px-4 py-2 text-sm font-mono text-neutral-500 dark:text-neutral-400 italic bg-white dark:bg-zinc-800">
+            <div key={globalIdx} data-message-index={globalIdx} className="chat-msg-row w-full flex justify-start pl-2 pr-2 min-w-0">
+              <div className="max-w-full min-w-0 border-2 border-dashed border-brutal-black px-4 py-2 text-sm font-mono text-neutral-500 dark:text-neutral-400 italic bg-white dark:bg-zinc-800 whitespace-pre-wrap break-words break-all">
                 {m.content}
               </div>
             </div>
