@@ -14,6 +14,7 @@ Bus event shapes:
   {"event": "stream_started", "chat_id": "..."}
   {"event": "chunk",          "chat_id": "...", "data": "<raw SSE string>"}
   {"event": "stream_ended",   "chat_id": "..."}
+  {"event": "goal_tasks_changed", "project_id": "...", "chat_id": "..."}
   {"event": "snapshot",       "streams": ["chat-id-1", ...]}   # sent on connect
 """
 

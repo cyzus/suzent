@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
 import type { Goal, Task } from '../types/api';
 import { getApiBase } from '../lib/api';
+import { subscribeToBusPayloads } from './useEventBus';
 
 export interface KanbanData {
   goals: Goal[];
@@ -32,6 +33,8 @@ export const GoalTasksProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const currentProjectIdRef = useRef<string | null>(null);
   const currentChatIdRef = useRef<string | null>(null);
   const currentKanbanProjectIdRef = useRef<string | null>(null);
+  const refreshRef = useRef<GoalTasksContextValue['refresh'] | null>(null);
+  const refreshKanbanRef = useRef<GoalTasksContextValue['refreshKanban'] | null>(null);
 
   const refresh = useCallback(async (projectId?: string | null, chatId?: string | null) => {
     if (projectId !== undefined) currentProjectIdRef.current = projectId ?? null;
@@ -80,6 +83,31 @@ export const GoalTasksProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } catch (err) {
       console.warn('Failed to fetch project kanban:', err);
     }
+  }, []);
+
+  React.useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
+
+  React.useEffect(() => {
+    refreshKanbanRef.current = refreshKanban;
+  }, [refreshKanban]);
+
+  React.useEffect(() => {
+    return subscribeToBusPayloads((payload) => {
+      if (payload?.event !== 'goal_tasks_changed') return;
+
+      const projectId = typeof payload.project_id === 'string' ? payload.project_id : null;
+      const chatId = typeof payload.chat_id === 'string' ? payload.chat_id : null;
+      if (!projectId) return;
+
+      if (projectId === currentProjectIdRef.current && chatId === currentChatIdRef.current) {
+        refreshRef.current?.();
+      }
+      if (projectId === currentKanbanProjectIdRef.current) {
+        refreshKanbanRef.current?.();
+      }
+    });
   }, []);
 
   const updateTask = useCallback(async (

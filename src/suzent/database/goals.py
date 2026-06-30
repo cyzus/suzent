@@ -3,6 +3,8 @@ from typing import List, Optional
 
 from sqlmodel import select
 
+from suzent.core.goal_task_events import emit_goal_task_changed
+
 from .models import GoalModel
 
 
@@ -30,6 +32,13 @@ class GoalOperationsMixin:
             session.add(goal)
             session.commit()
             session.refresh(goal)
+            emit_goal_task_changed(
+                entity="goal",
+                action="created",
+                project_id=goal.project_id,
+                chat_id=goal.chat_id,
+                goal_id=goal.id,
+            )
             return goal
 
     def get_goal(
@@ -71,6 +80,13 @@ class GoalOperationsMixin:
             session.add(goal)
             session.commit()
             session.refresh(goal)
+            emit_goal_task_changed(
+                entity="goal",
+                action="updated",
+                project_id=goal.project_id,
+                chat_id=goal.chat_id,
+                goal_id=goal.id,
+            )
             return goal
 
     def clear_goal(self, project_id: str, chat_id: Optional[str] = None) -> None:
@@ -85,8 +101,18 @@ class GoalOperationsMixin:
                 stmt = stmt.where(GoalModel.chat_id == chat_id)
             goal = session.exec(stmt).first()
             if goal:
+                project_id_for_event = goal.project_id
+                chat_id_for_event = goal.chat_id
+                goal_id_for_event = goal.id
                 goal.status = "completed"
                 goal.completed_at = datetime.now(timezone.utc)
                 goal.updated_at = datetime.now(timezone.utc)
                 session.add(goal)
                 session.commit()
+                emit_goal_task_changed(
+                    entity="goal",
+                    action="cleared",
+                    project_id=project_id_for_event,
+                    chat_id=chat_id_for_event,
+                    goal_id=goal_id_for_event,
+                )

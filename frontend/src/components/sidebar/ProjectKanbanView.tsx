@@ -102,7 +102,6 @@ interface KanbanCardProps {
 }
 
 const KanbanCard: React.FC<KanbanCardProps> = ({ task, chatTitle, onStatusCycle, onDelete }) => {
-  const [hovered, setHovered] = useState(false);
   const isActive = task.status === 'in_progress';
   const isDone = task.status === 'completed';
   const isBlocked = task.status === 'blocked';
@@ -110,35 +109,31 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ task, chatTitle, onStatusCycle,
   return (
     <div
       className={[
-        'border-2 border-brutal-black bg-white dark:bg-zinc-800 p-2 relative',
+        'group border-2 border-brutal-black bg-white dark:bg-zinc-800 p-2 relative',
         isActive ? 'shadow-[3px_3px_0_0_#000]' : '',
         isBlocked ? 'bg-brutal-yellow/10 dark:bg-zinc-800' : '',
         isDone ? 'opacity-50' : '',
       ].join(' ')}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
     >
-      {hovered && (
-        <div className="absolute top-1.5 right-1.5 flex gap-1 z-10">
-          <button
-            onClick={onStatusCycle}
-            title={`Move to ${NEXT_STATUS[task.status]}`}
-            className="border border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[9px] font-black px-1.5 py-0.5 leading-none font-mono hover:bg-neutral-100 transition-colors"
-          >
-            {isDone ? '↺' : '→'}
-          </button>
-          <button
-            onClick={onDelete}
-            title="Delete"
-            className="border border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[9px] font-black px-1.5 py-0.5 leading-none font-mono hover:bg-neutral-100 transition-colors"
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      <div className="absolute top-1.5 right-1.5 flex gap-1 z-10 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto">
+        <button
+          onClick={onStatusCycle}
+          title={`Move to ${NEXT_STATUS[task.status]}`}
+          className="w-6 h-6 flex items-center justify-center border border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[9px] font-black leading-none font-mono hover:bg-neutral-100 transition-colors"
+        >
+          {isDone ? '↺' : '→'}
+        </button>
+        <button
+          onClick={onDelete}
+          title="Delete"
+          className="w-6 h-6 flex items-center justify-center border border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white text-[9px] font-black leading-none font-mono hover:bg-neutral-100 transition-colors"
+        >
+          ✕
+        </button>
+      </div>
 
       <div className="text-[7px] font-mono font-black opacity-25 mb-1">#{task.id}</div>
-      <div className={`text-xs font-black leading-snug text-brutal-black dark:text-white mb-2 ${hovered ? 'pr-10' : ''} ${isDone ? 'line-through' : ''}`}>
+      <div className={`text-xs font-black leading-snug text-brutal-black dark:text-white mb-2 pr-14 ${isDone ? 'line-through' : ''}`}>
         {isActive && task.activeForm ? task.activeForm : task.title}
       </div>
       <div className="flex items-center justify-between gap-1 flex-wrap">

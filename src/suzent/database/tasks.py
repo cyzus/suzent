@@ -3,6 +3,8 @@ from typing import List, Optional
 
 from sqlmodel import select
 
+from suzent.core.goal_task_events import emit_goal_task_changed
+
 from .models import TaskModel
 
 
@@ -14,6 +16,7 @@ class TaskOperationsMixin:
         description: str,
         chat_id: Optional[str] = None,
         active_form: Optional[str] = None,
+        status: str = "pending",
         assignee: Optional[str] = None,
         blocks: Optional[List[int]] = None,
         blocked_by: Optional[List[int]] = None,
@@ -26,6 +29,7 @@ class TaskOperationsMixin:
             title=title,
             description=description,
             active_form=active_form,
+            status=status,
             assignee=assignee,
             blocks=blocks or [],
             blocked_by=blocked_by or [],
@@ -36,6 +40,13 @@ class TaskOperationsMixin:
             session.add(task)
             session.commit()
             session.refresh(task)
+            emit_goal_task_changed(
+                entity="task",
+                action="created",
+                project_id=task.project_id,
+                chat_id=task.chat_id,
+                task_id=task.id,
+            )
             return task
 
     def get_task(self, task_id: int) -> Optional[TaskModel]:
@@ -81,6 +92,13 @@ class TaskOperationsMixin:
             session.add(task)
             session.commit()
             session.refresh(task)
+            emit_goal_task_changed(
+                entity="task",
+                action="updated",
+                project_id=task.project_id,
+                chat_id=task.chat_id,
+                task_id=task.id,
+            )
             return task
 
     def delete_task(self, task_id: int) -> bool:
@@ -89,6 +107,15 @@ class TaskOperationsMixin:
             task = session.get(TaskModel, task_id)
             if not task:
                 return False
+            project_id = task.project_id
+            chat_id = task.chat_id
             session.delete(task)
             session.commit()
+            emit_goal_task_changed(
+                entity="task",
+                action="deleted",
+                project_id=project_id,
+                chat_id=chat_id,
+                task_id=task_id,
+            )
             return True
