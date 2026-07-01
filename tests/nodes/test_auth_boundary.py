@@ -166,6 +166,27 @@ class TestMiddleware:
         assert sent and sent[0]["status"] == 403
 
     @pytest.mark.asyncio
+    async def test_paused_grant_denied(self, tmp_path):
+        # A paused grant fails closed (401) even with a valid scope/route.
+        store = DeviceTokenStore(path=tmp_path / "d.json")
+        device_id, token = store.mint("Peer", "linux", scope="agent")
+        store.set_status(device_id, "paused")
+        scope = _scope(
+            "http",
+            "100.64.0.5",
+            headers=[(b"authorization", f"Bearer {token}".encode())],
+            path="/chat",
+            store=store,
+        )
+        called, sent = await _run(scope)
+        assert not called
+        assert sent and sent[0]["status"] == 401
+        # Resuming restores access.
+        store.set_status(device_id, "active")
+        called2, _ = await _run(scope)
+        assert called2
+
+    @pytest.mark.asyncio
     async def test_remote_ws_node_exempt(self):
         called, _ = await _run(_scope("websocket", "100.64.0.5", path="/ws/node"))
         assert called

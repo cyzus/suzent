@@ -88,6 +88,7 @@ class DeviceTokenStore:
                 "display_name": display_name,
                 "platform": platform,
                 "scope": scope,
+                "status": "active",
                 "callback_url": callback_url,
                 "approved_at": _now_iso(),
             }
@@ -121,10 +122,29 @@ class DeviceTokenStore:
                     "display_name": rec.get("display_name", ""),
                     "platform": rec.get("platform", "unknown"),
                     "scope": rec.get("scope", "node"),
+                    "status": rec.get("status", "active"),
                     "approved_at": rec.get("approved_at", ""),
                 }
                 for rec in self._devices.values()
             ]
+
+    def set_status(self, device_id: str, status: str) -> bool:
+        """Set a device's grant status (``active`` | ``paused``).
+
+        A ``paused`` grant keeps the durable token but is denied at the auth
+        boundary, so the holder can be suspended without forcing a re-pair.
+        Returns True if a device was updated.
+        """
+        if status not in ("active", "paused"):
+            return False
+        with self._lock:
+            for rec in self._devices.values():
+                if rec.get("device_id") == device_id:
+                    rec["status"] = status
+                    self._save()
+                    logger.info(f"Device store: device {device_id} → {status}")
+                    return True
+        return False
 
     def revoke(self, device_id: str) -> bool:
         """Remove a device by its device_id. Returns True if one was removed."""

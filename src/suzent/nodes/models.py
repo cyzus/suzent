@@ -131,8 +131,7 @@ class InvokeRequest(BaseModel):
     command: str
     params: dict[str, Any] = Field(default_factory=dict)
     # Optional override for how long the server waits on the node's response.
-    # Needed for long-running commands like agent.run; falls back to the node
-    # default when omitted.
+    # Useful for slower capabilities; falls back to the node default when omitted.
     timeout: float | None = None
 
 

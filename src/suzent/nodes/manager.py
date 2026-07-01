@@ -150,7 +150,7 @@ class NodeManager:
             command: The command to invoke.
             params: Optional parameters for the command.
             timeout: Optional override for how long to wait on the response
-                (seconds). Long-running commands like ``agent.run`` need this.
+                (seconds). Slower capabilities may need a larger value.
 
         Returns:
             The result dict from the node.

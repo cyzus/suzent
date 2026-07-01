@@ -29,28 +29,6 @@ DEFAULT_DISPLAY_NAME = "Local PC"
 DEFAULT_PLATFORM = sys.platform
 RECONNECT_DELAY = 5  # seconds between reconnect attempts
 
-# HTTP base URL of the local Suzent server (reserved for future local-server
-# capabilities). Set by NodeHost on construction.
-_SERVER_BASE_URL: str = f"http://{DEFAULT_HOST}:{DEFAULT_PORT}"
-
-
-def _derive_server_base(gateway_url: str) -> str:
-    """Turn a node gateway WS URL into the server's HTTP base URL.
-
-    ``ws://host:port/ws/node`` → ``http://host:port`` (and wss → https).
-    """
-    base = gateway_url
-    if base.startswith("wss://"):
-        base = "https://" + base[len("wss://") :]
-    elif base.startswith("ws://"):
-        base = "http://" + base[len("ws://") :]
-    # Strip the trailing /ws/node path.
-    for suffix in ("/ws/node", "/ws/node/"):
-        if base.endswith(suffix):
-            base = base[: -len(suffix)]
-            break
-    return base.rstrip("/")
-
 
 class NodeAuthError(Exception):
     """Raised when the server rejects the node's connection (do not retry)."""
@@ -212,8 +190,6 @@ class NodeHost:
         platform: Platform identifier (e.g., "win32", "darwin", "linux").
         capabilities: List of capability names to advertise. If None, all
             registered handlers are advertised.
-        server_url: Override HTTP base URL for the local agent (agent.run).
-            Defaults to one derived from gateway_url.
     """
 
     def __init__(
@@ -222,9 +198,7 @@ class NodeHost:
         display_name: str = DEFAULT_DISPLAY_NAME,
         platform: str = DEFAULT_PLATFORM,
         capabilities: list[str] | None = None,
-        server_url: str | None = None,
     ):
-        global _SERVER_BASE_URL
         self.gateway_url = gateway_url
         self.display_name = display_name
         self.platform = platform
@@ -237,9 +211,6 @@ class NodeHost:
         self.status: str = "idle"
         self.pairing_code: str | None = None
         self.last_error: str | None = None
-
-        # Point agent.run at the local server (override or derived from gateway).
-        _SERVER_BASE_URL = server_url or _derive_server_base(gateway_url)
 
         # Filter handlers to requested capabilities
         if capabilities:
@@ -449,12 +420,6 @@ def main():
         default=None,
         help="Comma-separated capability filter (default: all)",
     )
-    parser.add_argument(
-        "--server-url",
-        default=None,
-        help="HTTP base URL of the local agent for agent.run "
-        "(default: derived from --url)",
-    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -468,7 +433,6 @@ def main():
         gateway_url=args.url,
         display_name=args.name,
         capabilities=caps,
-        server_url=args.server_url,
     )
 
     # Graceful shutdown on Ctrl+C

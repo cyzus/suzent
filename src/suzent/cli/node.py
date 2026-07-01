@@ -59,18 +59,20 @@ def node_list():
             typer.echo(f"     node · {caps}")
         for p in peers:
             dot = "🟢" if p.get("online") else "⚪"
-            direction = {
-                "one_way": "you drive it",
-                "mutual": "mutual",
-                "paused": "paused",
-            }.get(p.get("mode", "one_way"), p.get("mode"))
+            outbound = {
+                "trigger": "trigger them",
+                "paused": "outbound paused",
+                "off": "outbound off",
+            }.get(p.get("mode", "trigger"), p.get("mode"))
+            inbound_note = " · inbound granted" if p.get("reverse_enabled") else ""
             typer.echo(f"  {dot} {p['name']}")
-            typer.echo(f"     peer · {direction} · {p['base_url']}")
+            typer.echo(f"     peer · {outbound}{inbound_note} · {p['base_url']}")
         for d in inbound:
             dot = "🟢" if d.get("connected") else "⚪"
             scope = d.get("scope", "agent")
+            paused = " · paused" if d.get("status") == "paused" else ""
             typer.echo(f"  {dot} {d['display_name']} ({d.get('platform', 'unknown')})")
-            typer.echo(f"     device · can control this device ({scope})")
+            typer.echo(f"     device · can control this device ({scope}){paused}")
         typer.echo("")
 
     asyncio.run(_run())
@@ -206,7 +208,7 @@ def node_invoke(
         None,
         "--timeout",
         "-t",
-        help="Seconds to wait on the node's response (e.g. agent.run is slow)",
+        help="Seconds to wait on the node's response",
     ),
     extra_args: list[str] = typer.Argument(
         None, help="Key=value params (e.g. text=hello)"
@@ -290,7 +292,8 @@ def node_invoke(
                 typer.echo(
                     f"❌ No node or peer matching '{node}' on this device.\n"
                     f"   Run `suzent nodes list` and invoke by NAME — peer ids "
-                    f"differ per device. To invoke back, the link must be Mutual."
+                    f"differ per device. To invoke back, enable the inbound "
+                    f"direction on the other device."
                 )
                 raise typer.Exit(code=1)
             typer.echo(f"❌ {e}")
@@ -315,14 +318,8 @@ def node_host(
         "-c",
         help="Comma-separated capability filter (default: all)",
     ),
-    server_url: Optional[str] = typer.Option(
-        None,
-        "--server-url",
-        help="HTTP base URL of the local agent for agent.run "
-        "(default: derived from --url)",
-    ),
 ):
-    """Start a local node host (speaker, camera, agent.run) in the foreground."""
+    """Start a local node host (speaker, camera) in the foreground."""
     from suzent.nodes.node_host import NodeHost, DEFAULT_GATEWAY_URL
 
     gateway_url = url or DEFAULT_GATEWAY_URL
@@ -331,7 +328,6 @@ def node_host(
         gateway_url=gateway_url,
         display_name=name,
         capabilities=caps,
-        server_url=server_url,
     )
 
     typer.echo(f"🖥️  Starting node host '{name}'...")
@@ -501,18 +497,13 @@ def node_discover(
 def node_connect(
     gateway_url: str = typer.Argument(help="ws://host:port/ws/node of the remote"),
     name: Optional[str] = typer.Option(None, "--name", "-n", help="This node's name"),
-    token: Optional[str] = typer.Option(
-        None, "--token", help="Shared secret (token mode)"
-    ),
 ):
     """Join a remote Suzent as a node (outbound). Approve on the remote if needed."""
 
     async def _run():
         try:
             client = get_client()
-            result = await client.nodes.connect(
-                gateway_url, name=name or "", token=token or ""
-            )
+            result = await client.nodes.connect(gateway_url, name=name or "")
             typer.echo(
                 f"🔗 Connecting to {gateway_url} as '{result.get('display_name')}' "
                 f"(status: {result.get('status')})."

@@ -376,6 +376,43 @@ async def revoke_device(request: Request) -> JSONResponse:
     return JSONResponse({"success": True, "message": "Revoked"})
 
 
+async def set_device_status(request: Request) -> JSONResponse:
+    """POST /nodes/devices/{device_id}/status — pause/resume an issued grant.
+
+    Body: {"status": "active" | "paused"}. Pausing keeps the durable token but
+    denies the holder at the auth boundary; best-effort notifies the holder so
+    its UI can re-verify (it self-verifies, so the hint needn't be authed).
+    """
+    node_manager = _get_node_manager(request)
+    device_id = request.path_params.get("device_id", "")
+    if not node_manager:
+        return JSONResponse({"error": "Node system not initialized"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    status = str(body.get("status") or "").strip()
+    if status not in ("active", "paused"):
+        return JSONResponse(
+            {"error": "status must be active | paused"}, status_code=400
+        )
+    rec = node_manager.device_store.get_by_device_id(device_id)
+    if not node_manager.device_store.set_status(device_id, status):
+        return JSONResponse(
+            {"success": False, "message": "Unknown device"}, status_code=404
+        )
+    callback = (rec or {}).get("callback_url")
+    if callback:
+        import httpx
+
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                await client.post(f"{callback}/channels/suzent/grant-changed", json={})
+        except httpx.HTTPError:
+            pass  # best-effort; the holder also discovers it on next call
+    return JSONResponse({"success": True, "status": status})
+
+
 # ─── Node auth configuration ─────────────────────────────────────────
 
 
@@ -960,10 +997,37 @@ async def peer_offer(request: Request) -> JSONResponse:
 
 
 async def set_peer_mode(request: Request) -> JSONResponse:
-    """POST /nodes/peers/{peer_id}/mode — one_way | mutual | paused.
+    """POST /nodes/peers/{peer_id}/mode — off | trigger | paused.
 
-    'mutual' mints a reverse token and offers it to the peer so it can drive us;
-    leaving 'mutual' revokes that reverse token.
+    Controls the OUTBOUND direction (whether we may trigger this peer). The
+    INBOUND direction (letting the peer drive us) is a separate reverse grant —
+    see set_peer_reverse.
+    """
+    store = _get_peer_store(request)
+    peer_id = request.path_params.get("peer_id", "")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    mode = str(body.get("mode") or "").strip()
+    if mode not in ("off", "trigger", "paused"):
+        return JSONResponse(
+            {"error": "mode must be off | trigger | paused"}, status_code=400
+        )
+    if not store or not store.get(peer_id):
+        return JSONResponse({"error": "Unknown peer"}, status_code=404)
+
+    store.set_mode(peer_id, mode)
+    return JSONResponse({"success": True, "mode": mode})
+
+
+async def set_peer_reverse(request: Request) -> JSONResponse:
+    """POST /nodes/peers/{peer_id}/reverse — let this peer drive us (inbound).
+
+    Body: {"enabled": bool}. Enabling mints an agent-scope reverse token and
+    offers it to the peer via /nodes/peer-offer so it can trigger our agent;
+    disabling revokes that reverse token. This is the inbound half of a link
+    (the old 'mutual' side-effect, now independently controllable).
     """
     import socket
 
@@ -976,18 +1040,14 @@ async def set_peer_mode(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:
         body = {}
-    mode = str(body.get("mode") or "").strip()
-    if mode not in ("one_way", "mutual", "paused"):
-        return JSONResponse(
-            {"error": "mode must be one_way | mutual | paused"}, status_code=400
-        )
+    enabled = bool(body.get("enabled"))
     peer = store.get(peer_id) if store else None
     if not peer:
         return JSONResponse({"error": "Unknown peer"}, status_code=404)
+    if not node_manager:
+        return JSONResponse({"error": "Node system not initialized"}, status_code=503)
 
-    store.set_mode(peer_id, mode)
-
-    if mode == "mutual" and not peer.get("reverse_device_id") and node_manager:
+    if enabled and not peer.get("reverse_device_id"):
         device_id, token = node_manager.device_store.mint(
             peer.get("name") or "peer", "peer", scope="agent"
         )
@@ -1012,11 +1072,11 @@ async def set_peer_mode(request: Request) -> JSONResponse:
                 {"error": f"Couldn't offer reverse grant to peer: {e}"},
                 status_code=502,
             )
-    elif mode != "mutual" and peer.get("reverse_device_id") and node_manager:
+    elif not enabled and peer.get("reverse_device_id"):
         node_manager.device_store.revoke(peer["reverse_device_id"])
         store.set_reverse_device_id(peer_id, None)
 
-    return JSONResponse({"success": True, "mode": mode})
+    return JSONResponse({"success": True, "enabled": enabled})
 
 
 async def remove_peer(request: Request) -> JSONResponse:
@@ -1042,8 +1102,10 @@ async def trigger_peer(request: Request):
     peer = store.get(peer_id) if store else None
     if not peer:
         return JSONResponse({"error": "Unknown peer"}, status_code=404)
-    if peer.get("mode") == "paused":
-        return JSONResponse({"error": "Peer is paused"}, status_code=409)
+    if peer.get("mode", "trigger") != "trigger":
+        return JSONResponse(
+            {"error": f"Peer triggering is {peer.get('mode')}"}, status_code=409
+        )
     try:
         body = await request.json()
     except Exception:

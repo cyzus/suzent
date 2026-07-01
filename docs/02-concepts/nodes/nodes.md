@@ -239,10 +239,16 @@ a **control-grant** over HTTP — simpler and more robust than the WebSocket mes
   grant).
 - **Trigger.** The controller calls the peer's `/chat` with that token and
   streams the agent's SSE events back. Gated by the [auth boundary](#auth-boundary).
-- **Direction dropdown** per controlled peer:
-  - **Trigger them** — one-way (you drive them).
-  - **Mutual** — also mint and offer them a reverse grant so they can drive you.
-  - **Paused** — keep the grant but stop driving (and revoke the reverse grant).
+- **Two independent directions** per linked device (see
+  [devices-two-direction-ux-plan.md](./devices-two-direction-ux-plan.md)):
+  - **Outbound — I control them** (`off | trigger | paused`): whether we may
+    trigger the peer's agent.
+  - **Inbound — they control me** (`off | granted`, or `granted | paused` for a
+    grant we issued): whether the peer may trigger us. Enabling mints and offers
+    a reverse grant; a grant we issued can be paused (denied at the auth boundary
+    without dropping the durable token) or revoked.
+
+  "Mutual" is no longer a stored mode — it is simply both directions on.
 
 The bootstrap endpoints (`POST /nodes/grant-request`, `GET
 /nodes/grant-status/{id}`) are the only unauthenticated surface: they issue no

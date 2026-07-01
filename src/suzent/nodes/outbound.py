@@ -6,16 +6,11 @@ When this device wants to become a *node* of a remote server, it runs a
 NodeHost instances (one per remote gateway) and their background tasks, and
 surfaces their live state (connecting / pending / connected / error) so the UI
 can show pairing codes and connection status.
-
-agent.run on an outbound node must target THIS device's own local server (not
-the remote gateway), so the manager pins each NodeHost's server_url to the
-local agent.
 """
 
 import asyncio
 import socket
 
-from suzent.config import DEFAULT_PORT
 from suzent.logger import get_logger
 from suzent.nodes.node_host import NodeHost
 
@@ -25,9 +20,7 @@ logger = get_logger(__name__)
 class OutboundConnectionManager:
     """Tracks outbound NodeHost connections keyed by remote gateway URL."""
 
-    def __init__(self, local_server_url: str | None = None):
-        # Where agent.run should run for these outbound nodes: our own server.
-        self._local_server_url = local_server_url or f"http://localhost:{DEFAULT_PORT}"
+    def __init__(self):
         self._conns: dict[str, dict] = {}
 
     def start(self, gateway_url: str, display_name: str = "") -> NodeHost:
@@ -39,7 +32,6 @@ class OutboundConnectionManager:
         host = NodeHost(
             gateway_url=gateway_url,
             display_name=display_name or socket.gethostname(),
-            server_url=self._local_server_url,
         )
         task = asyncio.create_task(host.run())
         self._conns[gateway_url] = {"host": host, "task": task}

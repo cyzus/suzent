@@ -46,10 +46,10 @@ class NodesAPI:
             path += f"?timeout={timeout}"
         return await self.client.get(path)
 
-    async def connect(self, gateway_url: str, name: str = "", token: str = "") -> dict:
+    async def connect(self, gateway_url: str, name: str = "") -> dict:
         return await self.client.post(
             "/nodes/connect",
-            json={"gateway_url": gateway_url, "name": name, "token": token},
+            json={"gateway_url": gateway_url, "name": name},
         )
 
     async def connections(self) -> dict:

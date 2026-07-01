@@ -73,7 +73,11 @@ AGENT_ALLOWED_PATHS = {
 
 
 def token_scope(token: str, device_store) -> str | None:
-    """Return the scope of a token (node | agent | full), or None if invalid."""
+    """Return the scope of a token (node | agent | full), or None if invalid.
+
+    A grant whose status is ``paused`` is treated as invalid (returns None), so
+    the holder is denied without the durable token being revoked.
+    """
     if not token or device_store is None:
         return None
     try:
@@ -81,6 +85,8 @@ def token_scope(token: str, device_store) -> str | None:
     except Exception:
         rec = None
     if not rec:
+        return None
+    if rec.get("status", "active") != "active":
         return None
     return rec.get("scope", "node")
 

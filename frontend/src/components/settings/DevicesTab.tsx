@@ -9,6 +9,7 @@ import {
   approvePendingNode,
   denyPendingNode,
   revokeDevice,
+  setDeviceStatus,
   discoverNodes,
   fetchConnections,
   fetchGrants,
@@ -16,6 +17,7 @@ import {
   denyGrant,
   fetchPeers,
   setPeerMode,
+  setPeerReverse,
   removePeer,
   requestControl,
   controlStatus,
@@ -198,6 +200,7 @@ export function DevicesTab(): React.ReactElement {
     capabilities?: string;
     deviceId?: string; // grant I issued (they drive me)
     scope?: string;
+    status?: 'active' | 'paused'; // inbound grant status
     approvedAt?: string;
     peer?: ControlledPeer; // I drive them
   };
@@ -220,6 +223,7 @@ export function DevicesTab(): React.ReactElement {
       if (ex) {
         ex.deviceId = d.device_id;
         ex.scope = d.scope;
+        ex.status = d.status;
         ex.approvedAt = d.approved_at;
         ex.online = ex.online || d.connected;
       } else {
@@ -231,6 +235,7 @@ export function DevicesTab(): React.ReactElement {
           isAgent: false,
           deviceId: d.device_id,
           scope: d.scope,
+          status: d.status,
           approvedAt: d.approved_at,
         });
       }
@@ -521,56 +526,95 @@ export function DevicesTab(): React.ReactElement {
             </p>
           )}
 
-          {/* Established links — one row per device, both directions. */}
+          {/* Established links — one row per device, two independent directions:
+              Outbound (I control them, via peer record) and Inbound (they
+              control me, via a grant I issued). */}
           {deviceRows.map((d) => {
-            const drivesThem = !!d.peer; // I can drive them
-            const drivenByMe = !!d.deviceId && !d.peer; // they drive me (one-way inbound)
-            const dirLabel = drivenByMe
-              ? 'can control this device'
-              : d.online
-                ? (d.capabilities || 'online')
-                : 'offline';
+            const hasOutbound = !!d.peer; // I can drive them
+            const hasInbound = !!d.deviceId; // they can drive me (grant I issued)
             return (
               <SettingsListItem key={d.key}>
-                <div className="flex items-center justify-between gap-3 w-full">
-                  <div className="min-w-0">
-                    <div className="font-bold truncate flex items-center gap-2">
-                      <span className={d.online ? 'text-brutal-green' : 'text-neutral-400'}>●</span>
-                      {d.name}
-                      {d.platform && <span className="text-neutral-400 font-normal">({d.platform})</span>}
-                      {d.isAgent && (
-                        <span className="px-1.5 py-0.5 text-[10px] font-black uppercase border border-brutal-blue text-brutal-blue rounded-sm">Agent</span>
-                      )}
-                      {d.scope === 'full' && (
-                        <span className="px-1.5 py-0.5 text-[10px] font-black uppercase border border-brutal-red text-brutal-red rounded-sm">Host</span>
-                      )}
+                <div className="flex flex-col gap-2 w-full">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-bold truncate flex items-center gap-2">
+                        <span className={d.online ? 'text-brutal-green' : 'text-neutral-400'}>●</span>
+                        {d.name}
+                        {d.platform && <span className="text-neutral-400 font-normal">({d.platform})</span>}
+                        {d.isAgent && (
+                          <span className="px-1.5 py-0.5 text-[10px] font-black uppercase border border-brutal-blue text-brutal-blue rounded-sm">Agent</span>
+                        )}
+                        {d.scope === 'full' && (
+                          <span className="px-1.5 py-0.5 text-[10px] font-black uppercase border border-brutal-red text-brutal-red rounded-sm">Host</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
+                        {d.online ? (d.capabilities || 'online') : 'offline'}
+                        {d.peer?.base_url ? ` · ${d.peer.base_url}` : ''}
+                      </div>
                     </div>
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
-                      {dirLabel}
-                      {d.peer?.base_url ? ` · ${d.peer.base_url}` : ''}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {drivesThem && d.peer && (
-                      <BrutalSelect
-                        value={d.peer.mode}
-                        onChange={(m) => act(d.peer!.peer_id, () => setPeerMode(d.peer!.peer_id, m))}
-                        options={[
-                          { value: 'one_way', label: 'Trigger them' },
-                          { value: 'mutual', label: 'Mutual' },
-                          { value: 'paused', label: 'Paused' },
-                        ]}
-                      />
-                    )}
-                    {drivesThem && d.peer && (
+                    {hasOutbound && d.peer && (
                       <SettingsListAction tone="red" disabled={busy === d.peer.peer_id} onClick={() => act(d.peer!.peer_id, () => removePeer(d.peer!.peer_id))}>
                         Remove
                       </SettingsListAction>
                     )}
-                    {drivenByMe && d.deviceId && (
-                      <SettingsListAction tone="red" disabled={busy === d.deviceId} onClick={() => act(d.deviceId!, () => revokeDevice(d.deviceId!))}>
-                        Revoke
-                      </SettingsListAction>
+                  </div>
+
+                  {/* Direction controls */}
+                  <div className="flex flex-col gap-1.5 pl-4 border-l-2 border-brutal-black/10 dark:border-white/10">
+                    {/* Outbound: I control them */}
+                    {hasOutbound && d.peer && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400">
+                          Outbound · I control them
+                        </span>
+                        <BrutalSelect
+                          value={d.peer.mode}
+                          onChange={(m) => act(d.peer!.peer_id, () => setPeerMode(d.peer!.peer_id, m))}
+                          options={[
+                            { value: 'trigger', label: 'Trigger' },
+                            { value: 'paused', label: 'Paused' },
+                            { value: 'off', label: 'Off' },
+                          ]}
+                        />
+                      </div>
+                    )}
+                    {/* Inbound (peer side): let them control me back — reverse grant */}
+                    {hasOutbound && d.peer && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400">
+                          Inbound · they control me
+                        </span>
+                        <BrutalSelect
+                          value={d.peer.reverse_enabled ? 'granted' : 'off'}
+                          onChange={(v) => act(`rev:${d.peer!.peer_id}`, () => setPeerReverse(d.peer!.peer_id, v === 'granted'))}
+                          options={[
+                            { value: 'off', label: 'Off' },
+                            { value: 'granted', label: 'Granted' },
+                          ]}
+                        />
+                      </div>
+                    )}
+                    {/* Inbound (grant I issued to a device that isn't a peer, e.g. a phone). */}
+                    {hasInbound && !hasOutbound && d.deviceId && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400">
+                          Inbound · they control me
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <BrutalSelect
+                            value={d.status === 'paused' ? 'paused' : 'granted'}
+                            onChange={(v) => act(d.deviceId!, () => setDeviceStatus(d.deviceId!, v === 'paused' ? 'paused' : 'active'))}
+                            options={[
+                              { value: 'granted', label: 'Granted' },
+                              { value: 'paused', label: 'Paused' },
+                            ]}
+                          />
+                          <SettingsListAction tone="red" disabled={busy === d.deviceId} onClick={() => act(d.deviceId!, () => revokeDevice(d.deviceId!))}>
+                            Revoke
+                          </SettingsListAction>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>

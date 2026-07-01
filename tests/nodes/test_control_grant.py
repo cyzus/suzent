@@ -62,18 +62,52 @@ class TestPeerStore:
         pid = store.add("Mac", "http://100.0.0.2:25314", "tok123")
         rec = store.get(pid)
         assert rec["token"] == "tok123"
-        assert rec["mode"] == "one_way"
+        assert rec["mode"] == "trigger"
 
         listed = store.list_peers()
         assert len(listed) == 1
         assert "token" not in listed[0]  # token never exposed in listings
 
-        assert store.set_mode(pid, "mutual") is True
-        assert store.get(pid)["mode"] == "mutual"
+        assert store.set_mode(pid, "paused") is True
+        assert store.get(pid)["mode"] == "paused"
 
         assert store.remove(pid) is True
         assert store.get(pid) is None
         assert store.remove(pid) is False
+
+    def test_legacy_modes_migrated(self, tmp_path):
+        import json
+
+        path = tmp_path / "peers.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "peers": {
+                        "a": {
+                            "name": "A",
+                            "base_url": "http://h:1",
+                            "token": "t",
+                            "mode": "one_way",
+                        },
+                        "b": {
+                            "name": "B",
+                            "base_url": "http://h:2",
+                            "token": "t",
+                            "mode": "mutual",
+                            "reverse_device_id": "rev1",
+                        },
+                    }
+                }
+            )
+        )
+        store = PeerGrantStore(path=path)
+        assert store.get("a")["mode"] == "trigger"
+        assert store.get("b")["mode"] == "trigger"
+        # mutual's inbound half survives as the reverse grant.
+        assert store.get("b")["reverse_device_id"] == "rev1"
+        listed = {p["peer_id"]: p for p in store.list_peers()}
+        assert listed["b"]["reverse_enabled"] is True
+        assert listed["a"]["reverse_enabled"] is False
 
     def test_add_dedupes_by_base_url(self, tmp_path):
         store = PeerGrantStore(path=tmp_path / "peers.json")

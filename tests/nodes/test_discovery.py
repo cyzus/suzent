@@ -100,7 +100,7 @@ class TestOutboundManager:
         started = {}
 
         class FakeHost:
-            def __init__(self, gateway_url, display_name, server_url):
+            def __init__(self, gateway_url, display_name):
                 self.gateway_url = gateway_url
                 self.display_name = display_name
                 self.status = "connecting"
@@ -119,7 +119,7 @@ class TestOutboundManager:
                 self.status = "stopped"
 
         monkeypatch.setattr(outbound, "NodeHost", FakeHost)
-        mgr = OutboundConnectionManager(local_server_url="http://localhost:25314")
+        mgr = OutboundConnectionManager()
 
         host = mgr.start("ws://peer:25314/ws/node", display_name="Me")
         assert host.display_name == "Me"

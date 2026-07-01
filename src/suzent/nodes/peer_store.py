@@ -32,8 +32,11 @@ class PeerGrantStore:
 
         {"peers": {"<peer_id>": {
             "name": "...", "base_url": "http://host:port",
-            "token": "...", "mode": "one_way|mutual|paused",
-            "added_at": "<iso>"}}}
+            "token": "...", "mode": "off|trigger|paused",
+            "reverse_device_id"?: "...", "added_at": "<iso>"}}}
+
+    ``mode`` is the OUTBOUND direction (may we trigger them). The inbound
+    direction (may they trigger us) is tracked by ``reverse_device_id``.
     """
 
     def __init__(self, path=_STORE_PATH):
@@ -50,6 +53,21 @@ class PeerGrantStore:
         except Exception as e:
             logger.warning(f"Peer store: could not load {self._path}: {e}")
             self._peers = {}
+        self._migrate_modes()
+
+    def _migrate_modes(self) -> None:
+        """Map legacy modes to the outbound vocabulary (off|trigger|paused).
+
+        ``one_way`` and ``mutual`` both meant "I can trigger them" → ``trigger``
+        (a mutual link's inbound half is already recorded as reverse_device_id).
+        """
+        changed = False
+        for rec in self._peers.values():
+            if rec.get("mode") in ("one_way", "mutual"):
+                rec["mode"] = "trigger"
+                changed = True
+        if changed:
+            self._save()
 
     def _save(self) -> None:
         try:
@@ -59,7 +77,7 @@ class PeerGrantStore:
         except Exception as e:
             logger.warning(f"Peer store: could not persist {self._path}: {e}")
 
-    def add(self, name: str, base_url: str, token: str, mode: str = "one_way") -> str:
+    def add(self, name: str, base_url: str, token: str, mode: str = "trigger") -> str:
         """Add (or update by base_url) a controllable peer. Returns peer_id."""
         with self._lock:
             peer_id = next(
@@ -111,7 +129,8 @@ class PeerGrantStore:
                     "peer_id": pid,
                     "name": r.get("name", ""),
                     "base_url": r.get("base_url", ""),
-                    "mode": r.get("mode", "one_way"),
+                    "mode": r.get("mode", "trigger"),
+                    "reverse_enabled": bool(r.get("reverse_device_id")),
                     "added_at": r.get("added_at", ""),
                 }
                 for pid, r in self._peers.items()

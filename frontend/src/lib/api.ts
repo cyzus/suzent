@@ -335,6 +335,7 @@ export interface ApprovedDevice {
   display_name: string;
   platform: string;
   scope?: 'node' | 'agent' | 'full';
+  status?: 'active' | 'paused';
   approved_at: string;
   connected: boolean;
 }
@@ -388,6 +389,16 @@ export async function denyPendingNode(pairingCode: string): Promise<void> {
 export async function revokeDevice(deviceId: string): Promise<void> {
   const res = await fetch(`${getApiBase()}/nodes/devices/${deviceId}/revoke`, { method: 'POST' });
   if (!res.ok) throw new Error((await res.text()) || 'Failed to revoke');
+}
+
+/** Pause or resume an inbound grant (a device that can drive us). */
+export async function setDeviceStatus(deviceId: string, status: 'active' | 'paused'): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/devices/${deviceId}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to update device status');
 }
 
 /** Mint a full-access ("host") token to use this server remotely. Shown once. */
@@ -464,7 +475,8 @@ export interface ControlledPeer {
   peer_id: string;
   name: string;
   base_url: string;
-  mode: 'one_way' | 'mutual' | 'paused';
+  mode: 'off' | 'trigger' | 'paused';
+  reverse_enabled?: boolean;
   added_at: string;
   online?: boolean;
 }
@@ -498,6 +510,16 @@ export async function setPeerMode(peerId: string, mode: string): Promise<void> {
     body: JSON.stringify({ mode }),
   });
   if (!res.ok) throw new Error((await res.text()) || 'Failed to set mode');
+}
+
+/** Enable/disable the inbound direction: let this peer trigger our agent. */
+export async function setPeerReverse(peerId: string, enabled: boolean): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/peers/${peerId}/reverse`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to update inbound access');
 }
 
 export async function removePeer(peerId: string): Promise<void> {

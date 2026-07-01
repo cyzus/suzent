@@ -76,7 +76,8 @@ class TestNodesSubcommand:
                         "peer_id": "p1",
                         "name": "Jessair",
                         "base_url": "http://100.64.50.42:25314",
-                        "mode": "mutual",
+                        "mode": "trigger",
+                        "reverse_enabled": True,
                         "online": True,
                     }
                 ],
@@ -91,7 +92,8 @@ class TestNodesSubcommand:
         # WS node
         assert "MyPhone" in result.output and "camera.snap" in result.output
         # control-grant peer, with direction
-        assert "Jessair" in result.output and "mutual" in result.output
+        assert "Jessair" in result.output and "trigger them" in result.output
+        assert "inbound granted" in result.output
 
     @patch("suzent.cli.node.get_client")
     def test_nodes_invoke_routes_to_peer(self, mock_get_client):

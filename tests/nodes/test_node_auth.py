@@ -60,10 +60,22 @@ class TestDeviceTokenStore:
         listed = store.list_devices()
         assert len(listed) == 1
         assert listed[0]["device_id"] == device_id
+        assert listed[0]["status"] == "active"  # minted active by default
         assert "token" not in listed[0]  # raw token never exposed
         assert store.revoke(device_id) is True
         assert store.verify(token) is None
         assert store.revoke("nonexistent") is False
+
+    def test_set_status_pause_resume(self, tmp_path):
+        store = make_store(tmp_path)
+        device_id, token = store.mint("Phone", "ios", scope="agent")
+        assert store.set_status(device_id, "paused") is True
+        # verify() still returns the raw record (used for callback lookup)…
+        assert store.verify(token)["status"] == "paused"
+        assert store.set_status(device_id, "active") is True
+        assert store.verify(token)["status"] == "active"
+        assert store.set_status(device_id, "bogus") is False  # invalid status
+        assert store.set_status("nonexistent", "paused") is False
 
 
 # ─── Manager pairing / approval ──────────────────────────────────────
