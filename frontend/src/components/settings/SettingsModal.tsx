@@ -14,6 +14,7 @@ import { UsageTab } from './UsageTab';
 import { SecurityTab } from './SecurityTab';
 import { useI18n, type Locale } from '../../i18n';
 import { BrutalSelect } from '../BrutalSelect';
+import { FullscreenOverlay } from '../FullscreenOverlay';
 
 type MCPUrlServer = {
   type: 'url';
@@ -461,10 +462,13 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
   ];
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center animate-view-fade">
-      <div className="absolute inset-0 bg-brutal-black/80 backdrop-blur-sm" onClick={handleClose} />
-
-      <div className="relative w-full h-[95vh] md:w-[95vw] lg:w-[85vw] xl:w-[75vw] bg-neutral-100 dark:bg-zinc-900 border-4 border-brutal-black shadow-brutal-xl flex overflow-hidden">
+    <FullscreenOverlay
+      open={isOpen}
+      onClose={handleClose}
+      zIndexClassName="z-[100]"
+      backdropClassName="bg-brutal-black/80 backdrop-blur-sm animate-view-fade"
+      containerClassName="relative w-full h-[95vh] md:w-[95vw] lg:w-[90vw] xl:w-[82vw] 2xl:max-w-[1600px] bg-neutral-100 dark:bg-zinc-900 border-4 border-brutal-black shadow-brutal-xl flex overflow-hidden"
+    >
         {/* Sidebar */}
         <div className="w-64 bg-white dark:bg-zinc-800 border-r-4 border-brutal-black flex flex-col flex-shrink-0">
           <div className="p-6 border-b-4 border-brutal-black bg-brutal-yellow dark:bg-brutal-yellow">
@@ -515,7 +519,7 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
         {/* Content Area */}
         <div className="flex-1 overflow-hidden bg-dot-pattern flex flex-col">
           <div className="flex-1 overflow-y-auto p-8 scrollbar-thin">
-            <div className="max-w-4xl mx-auto">
+            <div className={`${activeCategory === 'usage' ? 'max-w-6xl' : 'max-w-4xl'} mx-auto`}>
               {loading ? (
                 <div className="flex justify-center items-center h-full">
                   <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-brutal-black"></div>
@@ -631,7 +635,6 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
             </div>
           </div>
         </div>
-      </div>
-    </div>
+    </FullscreenOverlay>
   );
 }
