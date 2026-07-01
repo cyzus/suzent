@@ -480,6 +480,7 @@ export interface ControlledPeer {
   reverse_enabled?: boolean;
   added_at: string;
   online?: boolean;
+  outbound_status?: 'ready' | 'revoked' | 'offline';
 }
 
 export async function fetchGrants(): Promise<ControlRequest[]> {

@@ -67,13 +67,17 @@ function CopyButton({ value, tone = 'neutral', label = 'Copy' }: { value: string
 }
 
 /** Read-only status pill (used for the outbound direction and empty states). */
-function StatusPill({ tone, label }: { tone: 'green' | 'neutral'; label: string }): React.ReactElement {
+function StatusPill({ tone, label }: { tone: 'green' | 'neutral' | 'red'; label: string }): React.ReactElement {
   if (tone === 'neutral') {
     return <span className="text-sm text-neutral-300 dark:text-neutral-600 font-mono">{label}</span>;
   }
+  const cls = tone === 'red'
+    ? 'text-brutal-red'
+    : 'text-green-700 dark:text-brutal-green';
+  const dot = tone === 'red' ? 'bg-brutal-red' : 'bg-brutal-green';
   return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-green-700 dark:text-brutal-green">
-      <span className="w-1.5 h-1.5 rounded-full bg-brutal-green" />
+    <span className={`inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide ${cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
       {label}
     </span>
   );
@@ -571,10 +575,15 @@ export function DevicesTab(): React.ReactElement {
           {deviceRows.map((d) => {
             const isHostToken = d.scope === 'full' && !d.peer;
             const hasOutbound = !!d.peer; // I can drive them
-            const hasInbound = !!d.deviceId; // they can drive me (grant I issued)
-            const inboundGranted = hasOutbound
-              ? !!d.peer!.reverse_enabled
-              : d.status !== 'paused';
+            // "They control me" is authorized by a grant I issued. An explicit
+            // device grant (d.deviceId) is the source of truth; only fall back to
+            // the peer's reverse_enabled flag when no device record exists yet.
+            const hasInbound = !!d.deviceId; // I issued them a grant
+            const inboundGranted = hasInbound
+              ? d.status !== 'paused'
+              : hasOutbound
+                ? !!d.peer!.reverse_enabled
+                : false;
             return (
               <SettingsListItem key={d.key}>
                 <div className="flex flex-col gap-3 w-full">
@@ -626,11 +635,31 @@ export function DevicesTab(): React.ReactElement {
                       <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-black">
                         I control them
                       </span>
-                      {hasOutbound ? (
-                        <StatusPill
-                          tone={d.online ? 'green' : 'neutral'}
-                          label={d.online ? 'Ready' : 'Offline'}
-                        />
+                      {hasOutbound && d.peer ? (
+                        (() => {
+                          const st = d.peer.outbound_status
+                            ?? (d.online ? 'ready' : 'offline');
+                          if (st === 'revoked') {
+                            return (
+                              <span className="flex items-center gap-2">
+                                <StatusPill tone="red" label="Revoked" />
+                                <button
+                                  className="text-[10px] text-brutal-blue font-black uppercase hover:underline disabled:opacity-40"
+                                  disabled={busy === `req:${d.peer.peer_id}`}
+                                  onClick={() => act(`req:${d.peer!.peer_id}`, async () => { await requestControl(d.peer!.base_url); })}
+                                >
+                                  Re-request
+                                </button>
+                              </span>
+                            );
+                          }
+                          return (
+                            <StatusPill
+                              tone={st === 'ready' ? 'green' : 'neutral'}
+                              label={st === 'ready' ? 'Ready' : 'Offline'}
+                            />
+                          );
+                        })()
                       ) : (
                         <StatusPill tone="neutral" label="—" />
                       )}
@@ -641,15 +670,9 @@ export function DevicesTab(): React.ReactElement {
                       <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-black">
                         They control me
                       </span>
-                      {hasOutbound && d.peer ? (
-                        // Reverse grant to a peer we drive.
-                        <DirectionToggle
-                          on={inboundGranted}
-                          busy={busy === `rev:${d.peer.peer_id}`}
-                          onToggle={() => act(`rev:${d.peer!.peer_id}`, () => setPeerReverse(d.peer!.peer_id, !inboundGranted))}
-                        />
-                      ) : hasInbound && d.deviceId ? (
-                        // A grant we issued to a device (e.g. a phone) — pause/revoke.
+                      {hasInbound && d.deviceId ? (
+                        // A grant I issued (the real inbound authorization) —
+                        // pause/resume without dropping the token, or revoke.
                         <div className="flex items-center gap-2">
                           <DirectionToggle
                             on={inboundGranted}
@@ -664,6 +687,14 @@ export function DevicesTab(): React.ReactElement {
                             Revoke
                           </button>
                         </div>
+                      ) : hasOutbound && d.peer ? (
+                        // No issued grant yet — offer to mint a reverse grant so
+                        // this peer we drive can drive us back.
+                        <DirectionToggle
+                          on={inboundGranted}
+                          busy={busy === `rev:${d.peer.peer_id}`}
+                          onToggle={() => act(`rev:${d.peer!.peer_id}`, () => setPeerReverse(d.peer!.peer_id, !inboundGranted))}
+                        />
                       ) : (
                         <StatusPill tone="neutral" label="—" />
                       )}

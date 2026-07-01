@@ -182,3 +182,60 @@ def test_grant_changed_drops_revoked_peer(tmp_path, monkeypatch):
     assert r.status_code == 200
     assert r.json()["removed"] == 1
     assert store.get(pid) is None  # revoked peer dropped after self-verify
+
+
+def test_list_peers_outbound_status(tmp_path, monkeypatch):
+    """Outbound status = ready | revoked | offline based on reachability + token."""
+    import httpx
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    from suzent.nodes import discovery
+    from suzent.nodes.peer_store import PeerGrantStore
+    from suzent.routes.node_routes import list_peers
+
+    store = PeerGrantStore(path=tmp_path / "peers.json")
+    ready = store.add("Ready", "http://ready:25314", "goodtok")
+    revoked = store.add("Revoked", "http://revoked:25314", "badtok")
+    offline = store.add("Offline", "http://offline:25314", "tok")
+
+    async def fake_reachable(host, port, timeout=1.5):
+        return host != "offline"
+
+    monkeypatch.setattr(discovery, "probe_reachable", fake_reachable)
+
+    class FakeResp:
+        def __init__(self, code, body):
+            self.status_code = code
+            self._body = body
+
+        def json(self):
+            return self._body
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *e):
+            return False
+
+        async def get(self, url, headers=None, **k):
+            tok = (headers or {}).get("Authorization", "")
+            if "goodtok" in tok:
+                return FakeResp(200, {"ok": True, "peer_id": "p123"})
+            return FakeResp(401, {"error": "unauthorized"})
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+
+    app = Starlette(routes=[Route("/nodes/peers", list_peers, methods=["GET"])])
+    app.state.peer_store = store
+    client = TestClient(app)
+
+    peers = {p["peer_id"]: p for p in client.get("/nodes/peers").json()["peers"]}
+    assert peers[ready]["outbound_status"] == "ready"
+    assert peers[revoked]["outbound_status"] == "revoked"
+    assert peers[offline]["outbound_status"] == "offline"

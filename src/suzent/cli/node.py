@@ -58,14 +58,20 @@ def node_list():
             typer.echo(f"  {dot} {n['display_name']} ({n['platform']})")
             typer.echo(f"     node · {caps}")
         for p in peers:
-            dot = "🟢" if p.get("online") else "⚪"
+            status = p.get("outbound_status") or (
+                "ready" if p.get("online") else "offline"
+            )
+            dot = {"ready": "🟢", "revoked": "🟠", "offline": "⚪"}.get(status, "⚪")
             outbound = {
                 "trigger": "trigger them",
                 "paused": "outbound paused",
                 "off": "outbound off",
             }.get(p.get("mode", "trigger"), p.get("mode"))
+            status_note = (
+                " · REVOKED (re-request needed)" if status == "revoked" else ""
+            )
             inbound_note = " · inbound granted" if p.get("reverse_enabled") else ""
-            typer.echo(f"  {dot} {p['name']}")
+            typer.echo(f"  {dot} {p['name']}{status_note}")
             typer.echo(f"     peer · {outbound}{inbound_note} · {p['base_url']}")
         for d in inbound:
             dot = "🟢" if d.get("connected") else "⚪"
@@ -239,6 +245,8 @@ def node_describe(
                     host = f" [{cap['node']}]" if cap.get("node") else ""
                     desc = f" — {cap['description']}" if cap.get("description") else ""
                     typer.echo(f"     • {cap['name']}{host}{desc}")
+                    for param, ptype in (cap.get("params_schema") or {}).items():
+                        typer.echo(f"       {param}: {ptype}")
             else:
                 typer.echo("\n   Capabilities: none advertised.")
         except ClientError:
@@ -293,6 +301,16 @@ def node_invoke(
         if extra_args:
             for arg in extra_args:
                 if "=" not in arg:
+                    # A bare token is treated as a boolean flag (arg=True). This
+                    # is easy to hit by mistake — `speaker.speak "hi"` becomes
+                    # {"hi": True}, not {"text": "hi"} — so warn loudly rather
+                    # than silently swallow it (which once surfaced only as a
+                    # confusing "No text provided" from the handler).
+                    typer.echo(
+                        f"⚠️  '{arg}' has no '=', treating it as {arg}=true. "
+                        f'For a value, use key=value (e.g. text="{arg}"); see '
+                        f'`suzent nodes describe "{node}"` for param names.'
+                    )
                     parsed_params[arg] = True
                     continue
 

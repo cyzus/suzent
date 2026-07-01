@@ -885,11 +885,38 @@ async def list_peers(request: Request) -> JSONResponse:
     peers = store.list_peers() if store else []
 
     async def _probe(p):
-        host = _host_of(p["base_url"])
+        import httpx
         from urllib.parse import urlparse
 
+        host = _host_of(p["base_url"])
         port = urlparse(p["base_url"]).port or DEFAULT_PORT
-        p["online"] = await discovery.probe_reachable(host, port, timeout=1.5)
+        online = await discovery.probe_reachable(host, port, timeout=1.5)
+        p["online"] = online
+        # Outbound status: is our grant token still accepted by the peer?
+        #   offline → unreachable; revoked → reachable but token rejected;
+        #   ready   → reachable and token valid.
+        if not online:
+            p["outbound_status"] = "offline"
+            return
+        rec = store.get(p["peer_id"]) if store else None
+        token = (rec or {}).get("token")
+        if not token:
+            p["outbound_status"] = "revoked"
+            return
+        try:
+            async with httpx.AsyncClient(timeout=4) as client:
+                r = await client.get(
+                    f"{p['base_url']}/channels/suzent/whoami",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+            # whoami returns peer_id when the token maps to a live grant; a
+            # revoked/paused token yields null (or 401/403).
+            ok = r.status_code == 200 and bool((r.json() or {}).get("peer_id"))
+            p["outbound_status"] = "ready" if ok else "revoked"
+        except httpx.HTTPError:
+            # Reachable a moment ago but the whoami failed — treat as offline
+            # rather than falsely claiming revoked.
+            p["outbound_status"] = "offline"
 
     await asyncio.gather(*(_probe(p) for p in peers), return_exceptions=True)
     return JSONResponse({"peers": peers, "count": len(peers)})

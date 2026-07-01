@@ -119,6 +119,27 @@ class TestNodesSubcommand:
         client.nodes.invoke_peer.assert_awaited_once()
 
     @patch("suzent.cli.node.get_client")
+    def test_nodes_invoke_bare_arg_warns(self, mock_get_client):
+        # A bare value (no '=') still works as a boolean flag, but must warn so a
+        # forgotten key (`speaker.speak "hi"` → {"hi":True}) is visible.
+        captured = {}
+
+        async def fake_invoke(node, command, params, timeout=None):
+            captured["params"] = params
+            return {"success": True, "result": "ok"}
+
+        client = MagicMock()
+        client.nodes.invoke = fake_invoke
+        mock_get_client.return_value = client
+
+        result = runner.invoke(
+            app, ["nodes", "invoke", "my-node", "speaker.speak", "hi"]
+        )
+        assert result.exit_code == 0
+        assert "no '='" in result.output and 'text="hi"' in result.output
+        assert captured["params"] == {"hi": True}
+
+    @patch("suzent.cli.node.get_client")
     def test_nodes_describe_falls_back_to_peer(self, mock_get_client):
         from suzent.client.base import ClientError
 
@@ -145,7 +166,12 @@ class TestNodesSubcommand:
         client.nodes.peer_capabilities = AsyncMock(
             return_value={
                 "capabilities": [
-                    {"name": "speaker.speak", "description": "Speak", "node": "Mac"},
+                    {
+                        "name": "speaker.speak",
+                        "description": "Speak",
+                        "node": "Mac",
+                        "params_schema": {"text": "(required) The text to speak"},
+                    },
                     {"name": "camera.snap", "description": "Snap", "node": "Mac"},
                 ],
                 "count": 2,
@@ -158,9 +184,10 @@ class TestNodesSubcommand:
         assert "Peer: MacBook Pro" in result.output
         assert "trigger them" in result.output
         assert "granted" in result.output
-        # Live-fetched capabilities are listed.
+        # Live-fetched capabilities are listed, with their param keys.
         assert "speaker.speak" in result.output
         assert "camera.snap" in result.output
+        assert "text: (required) The text to speak" in result.output
 
     @patch("suzent.cli.node.get_client")
     def test_nodes_describe_peer_caps_unreachable(self, mock_get_client):
