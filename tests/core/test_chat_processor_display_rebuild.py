@@ -374,6 +374,48 @@ def test_merge_rebuilt_after_compaction_falls_back_without_stored():
     assert _merge_rebuilt_after_compaction([], rebuilt) == rebuilt
 
 
+def test_merge_rebuilt_after_compaction_is_idempotent():
+    # Post-process can run twice for a turn (retry, snapshot+finalize). The second
+    # pass sees the assistant reply the first pass already appended. It must NOT
+    # append it again (this is the "two identical responses after compact" bug).
+    stored = [
+        {"role": "user", "content": "old q"},
+        {"role": "assistant", "content": "old a"},
+        {"role": "user", "content": "new q"},
+    ]
+    rebuilt = [
+        {"role": "user", "content": "new q"},
+        {"role": "assistant", "content": "new a"},
+    ]
+
+    first = _merge_rebuilt_after_compaction(stored, rebuilt)
+    assert [m["content"] for m in first] == ["old q", "old a", "new q", "new a"]
+
+    # Feeding the result back in (as a later persist pass would) is stable.
+    second = _merge_rebuilt_after_compaction(first, rebuilt)
+    assert [m["content"] for m in second] == ["old q", "old a", "new q", "new a"]
+
+
+def test_merge_rebuilt_after_compaction_no_duplicate_when_reply_already_stored():
+    # Exact repro: the turn's user prompt is pre-written and a prior pass already
+    # appended the assistant reply. Re-merging must not produce two replies.
+    stored = [
+        {"role": "assistant", "content": "prev turn"},
+        {"role": "user", "content": "我们都聊了些啥"},
+        {"role": "assistant", "content": "recap (optimistic, no thinking)"},
+    ]
+    rebuilt = [
+        {"role": "user", "content": "我们都聊了些啥"},
+        {"role": "assistant", "content": "recap (rebuilt, with thinking)"},
+    ]
+
+    merged = _merge_rebuilt_after_compaction(stored, rebuilt)
+
+    assert [m["role"] for m in merged] == ["assistant", "user", "assistant"]
+    # The rebuilt (authoritative) reply wins; there is exactly one assistant reply.
+    assert merged[-1]["content"] == "recap (rebuilt, with thinking)"
+
+
 def test_append_command_messages_adds_user_and_notice_entries():
     existing = [{"role": "assistant", "content": "old"}]
     updated = _append_command_messages(existing, "/compact", "Compaction done")
