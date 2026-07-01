@@ -379,7 +379,7 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
         p.id === provider.id ? { ...p, models: result.models } : p
       ));
     } else {
-      alert(t('settings.verifyFailed'));
+      alert(result.message || result.error || t('settings.verifyFailed'));
     }
 
     setVerifying(prev => ({ ...prev, [provider.id]: false }));

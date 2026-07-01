@@ -160,6 +160,8 @@ interface McpServersResponse {
 interface VerifyProviderResponse {
   success: boolean;
   models: Model[];
+  message?: string;
+  error?: string;
 }
 
 // -----------------------------------------------------------------------------
@@ -398,11 +400,10 @@ export async function verifyProvider(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ config })
     });
-    if (!res.ok) throw new Error('Failed to verify provider');
     return await res.json();
   } catch (e) {
     console.error(e);
-    return { success: false, models: [] };
+    return { success: false, models: [], error: String(e) };
   }
 }
 

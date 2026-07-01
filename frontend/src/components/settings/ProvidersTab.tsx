@@ -330,7 +330,25 @@ function ChatGPTProviderCard({
 
     const statusKey = status?.status ?? 'not_logged_in';
     const connected = status?.connected === true;
-    const allModels = provider.default_models || [];
+    const allModels = [...(provider.default_models || [])];
+
+    for (const model of provider.models || []) {
+        if (!allModels.find(x => x.id === model.id)) {
+            allModels.push(model);
+        }
+    }
+
+    for (const modelId of config.custom_models) {
+        if (!allModels.find(x => x.id === modelId)) {
+            allModels.push({ id: modelId, name: modelId });
+        }
+    }
+
+    for (const modelId of config.enabled_models) {
+        if (!allModels.find(x => x.id === modelId)) {
+            allModels.push({ id: modelId, name: modelId });
+        }
+    }
     const statusLabel = t(`settings.providers.chatgpt.status.${statusKey}` as any);
     const statusActionLabel = connected ? t('settings.providers.chatgpt.disconnect') : t('settings.providers.chatgpt.signIn');
 
