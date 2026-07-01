@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { getApiBase } from '../lib/api';
+import type { ContextUsage } from './useContextUsageStore';
 
 export type CompactionStage = 'idle' | 'loading' | 'analyzing' | 'summarizing' | 'saving' | 'complete' | 'error';
 
@@ -15,6 +16,7 @@ export type CompactionResult = {
   tokensAfter?: number;
   messagesBefore?: number;
   messagesAfter?: number;
+  usage?: ContextUsage;
   error?: string;
 };
 
@@ -64,6 +66,7 @@ export function useCompact() {
                 tokensAfter: data.tokens_after,
                 messagesBefore: data.messages_before,
                 messagesAfter: data.messages_after,
+                usage: data.usage,
               };
               setProgress({ stage: 'complete' });
             } else if (data.type === 'compaction_error') {

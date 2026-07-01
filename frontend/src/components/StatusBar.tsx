@@ -415,7 +415,7 @@ function ContextWidget() {
 }
 
 function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: number; }) {
-  const { compactNotice, setCompactNotice, clearCompactNotice } = useContextUsageStore();
+  const { compactNotice, setCompactNotice, clearCompactNotice, setUsageForChat } = useContextUsageStore();
   const { currentChatId, isStreaming } = useChatStore();
   const { setStatus } = useStatusStore();
   const { compact, progress } = useCompact();
@@ -474,6 +474,12 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
     if (result.skipped) {
       setStatus(result.reason || 'Compaction skipped', 'warning', 5000);
       return;
+    }
+
+    // Provider-reported usage isn't touched by /compact, so the panel stays stale
+    // until the next turn. Apply the freshly recomputed post-compaction totals now.
+    if (result.usage && currentChatId) {
+      setUsageForChat(currentChatId, result.usage);
     }
 
     setStatus('Context compacted', 'success', 5000);

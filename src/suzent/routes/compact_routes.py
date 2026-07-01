@@ -48,6 +48,43 @@ async def compact_chat(request: Request) -> StreamingResponse:
     )
 
 
+def _post_compaction_tokens(chat_id: str) -> dict:
+    """Recompute the context-window totals from the (now compacted) agent_state.
+
+    The frontend usage panel is fed by provider-reported usage from the last model
+    request, which /compact never touches — so it stays stale after a manual compact
+    until the next turn. We return the fresh estimate here so the client can update
+    the panel immediately. Cache/cumulative fields are reset (unknown until the next
+    real request repopulates them)."""
+    try:
+        from suzent.config import CONFIG
+        from suzent.database import get_database
+        from suzent.core.agent_serializer import deserialize_state
+        from suzent.core.context_compressor import estimate_tokens
+
+        chat = get_database().get_chat(chat_id)
+        if not chat or not chat.agent_state:
+            return {}
+        state = deserialize_state(chat.agent_state)
+        messages = (state or {}).get("message_history") or []
+        tokens = estimate_tokens(messages, CONFIG.max_context_tokens).estimated_tokens
+        return {
+            "usage": {
+                "input_tokens": tokens,
+                "output_tokens": 0,
+                "total_tokens": tokens,
+                "context_tokens": tokens,
+                "cache_write_tokens": 0,
+                "cache_read_tokens": 0,
+                "requests": 0,
+                "details": {},
+            }
+        }
+    except Exception as e:
+        logger.debug(f"Failed to recompute post-compaction tokens for {chat_id}: {e}")
+        return {}
+
+
 async def _compact_stream(chat_id: str, focus: str | None):
     from suzent.config import CONFIG
     from suzent.core.commands.base import CommandContext, dispatch
@@ -66,7 +103,14 @@ async def _compact_stream(chat_id: str, focus: str | None):
                 {"message": "Command dispatch failed or returned no result."},
             )
         else:
-            yield _sse("compaction_complete", {"skipped": False, "message": result})
+            yield _sse(
+                "compaction_complete",
+                {
+                    "skipped": False,
+                    "message": result,
+                    **_post_compaction_tokens(chat_id),
+                },
+            )
     except Exception as e:
         logger.error(f"Compact route failed for {chat_id}: {e}")
         yield _sse("compaction_error", {"message": str(e)})

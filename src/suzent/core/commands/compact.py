@@ -33,6 +33,24 @@ def handle_compact(
         focus_text = " ".join(focus).strip() if focus else None
         event_source = "manual" if cmd_ctx.surface == "manual" else "slash"
 
+        # Wait for any in-flight post-processing from the previous turn to finish
+        # before reading state. Otherwise a stale post-process job (which holds the
+        # current state_revision as its expected_revision) can finalize AFTER we
+        # write the compacted state and overwrite it with the full history, because
+        # a plain update_chat doesn't bump the revision. We both wait here and
+        # persist via commit_snapshot_state below (which bumps the revision) so any
+        # late finalize no longer matches.
+        try:
+            from suzent.core.task_registry import wait_for_background_task_prefix
+
+            await wait_for_background_task_prefix(
+                f"post_process_{cmd_ctx.chat_id}_", timeout=10.0
+            )
+        except Exception as e:
+            logger.warning(
+                f"[/compact] error waiting for previous post-processing: {e}"
+            )
+
         db = get_database()
         chat = db.get_chat(cmd_ctx.chat_id)
         if not chat or not chat.agent_state:
@@ -92,7 +110,13 @@ def handle_compact(
         agent_state_bytes = serialize_state(
             compressed, model_id=model_id, tool_names=tool_names
         )
-        db.update_chat(cmd_ctx.chat_id, agent_state=agent_state_bytes)
+        # Persist via commit_snapshot_state so the state_revision is bumped. A late
+        # post-process finalize from a prior turn checks expected_revision and will
+        # now be rejected as stale instead of clobbering the compacted state. Falls
+        # back to a plain write only if the chat row is missing a revision counter.
+        revision = db.commit_snapshot_state(cmd_ctx.chat_id, agent_state_bytes)
+        if revision is None:
+            db.update_chat(cmd_ctx.chat_id, agent_state=agent_state_bytes)
 
         tokens_after = estimate_tokens(
             compressed, CONFIG.max_context_tokens
