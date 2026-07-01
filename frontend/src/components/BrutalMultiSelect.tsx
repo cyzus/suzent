@@ -152,15 +152,15 @@ export const BrutalMultiSelect: React.FC<BrutalMultiSelectProps> = ({
                                 key={option.value}
                                 type="button"
                                 onClick={() => handleToggle(option.value)}
-                                className={`flex items-center gap-3 px-3 py-2 border-2 text-xs font-bold uppercase transition-all duration-100 w-full text-left group ${active
+                                className={`flex items-center gap-3 px-3 py-2 border-2 text-xs font-bold uppercase transition-all duration-100 w-full min-w-0 text-left group ${active
                                     ? 'bg-brutal-green text-brutal-black border-brutal-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[-1px] translate-y-[-1px]'
                                     : 'border-brutal-black text-brutal-black dark:text-white bg-white dark:bg-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-700 brutal-btn shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
                                     }`}
                             >
-                                <div className={`w-4 h-4 border-2 border-brutal-black flex items-center justify-center transition-colors ${active ? 'bg-brutal-black' : 'bg-white dark:bg-zinc-900'}`}>
+                                <div className={`w-4 h-4 shrink-0 border-2 border-brutal-black flex items-center justify-center transition-colors ${active ? 'bg-brutal-black' : 'bg-white dark:bg-zinc-900'}`}>
                                     {active && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
                                 </div>
-                                <span className="truncate" title={option.value}>{option.label}</span>
+                                <span className="min-w-0 flex-1 truncate" title={option.value}>{option.label}</span>
                             </button>
                         );
                     })}

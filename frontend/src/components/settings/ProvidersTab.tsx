@@ -18,6 +18,13 @@ const FIELD_ACTION_PRIMARY = 'bg-brutal-black text-white hover:bg-zinc-800 disab
 
 type ProviderTab = 'credentials' | 'models';
 
+function getProviderTitleClass(label: string): string {
+    if (label.length > 18) return 'text-sm';
+    if (label.length > 12) return 'text-base';
+    if (label.length > 9) return 'text-lg';
+    return 'text-xl';
+}
+
 interface ProvidersTabProps {
     providers: ApiProvider[];
     apiKeys: Record<string, string>;
@@ -324,23 +331,42 @@ function ChatGPTProviderCard({
     const statusKey = status?.status ?? 'not_logged_in';
     const connected = status?.connected === true;
     const allModels = provider.default_models || [];
+    const statusLabel = t(`settings.providers.chatgpt.status.${statusKey}` as any);
+    const statusActionLabel = connected ? t('settings.providers.chatgpt.disconnect') : t('settings.providers.chatgpt.signIn');
 
     return (
         <div className="bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black shadow-brutal-xl flex flex-col h-full">
-            <div className="p-4 bg-neutral-50 dark:bg-zinc-900 flex justify-between items-center border-b-3 border-brutal-black gap-3">
-                <div className="flex items-center gap-3 min-w-0">
+            <div className="relative p-4 pr-12 bg-neutral-50 dark:bg-zinc-900 flex justify-between items-center border-b-3 border-brutal-black gap-3 overflow-hidden">
+                <div className="relative z-0 flex flex-1 items-center gap-3 min-w-0">
                     <ProviderIcon provider={provider} />
                     <div className="flex flex-col min-w-0">
-                        <span className={`font-black uppercase tracking-wide leading-tight dark:text-white ${provider.label.length > 14 ? 'text-sm' : provider.label.length > 10 ? 'text-base' : 'text-xl'}`}>{provider.label}</span>
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">{t('settings.providers.chatgpt.subtitle')}</span>
+                        <span className={`font-black uppercase tracking-wide leading-tight dark:text-white whitespace-normal break-normal [overflow-wrap:normal] ${getProviderTitleClass(provider.label)}`}>
+                            {provider.label}
+                        </span>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 leading-tight">
+                            {t('settings.providers.chatgpt.subtitle')}
+                        </span>
                     </div>
                 </div>
-                <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 border-2 border-brutal-black ${connected ? 'bg-brutal-green text-brutal-black' : 'bg-white dark:bg-zinc-800 dark:text-white'}`}>
-                    {t(`settings.providers.chatgpt.status.${statusKey}` as any)}
-                </span>
+                <button
+                    type="button"
+                    onClick={connected ? handleDisconnect : handleSignIn}
+                    disabled={loading || !!pendingLogin}
+                    title={pendingLogin ? statusLabel : statusActionLabel}
+                    aria-label={pendingLogin ? statusLabel : statusActionLabel}
+                    className={`group absolute inset-0 z-10 flex items-center justify-center overflow-hidden whitespace-nowrap text-sm leading-none font-black uppercase tracking-wide text-transparent transition-colors focus-visible:outline-none disabled:pointer-events-none ${connected ? 'hover:bg-white hover:text-red-600 focus-visible:bg-white focus-visible:text-red-600' : 'hover:bg-brutal-black hover:text-white focus-visible:bg-brutal-black focus-visible:text-white'}`}
+                >
+                    <span className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                        {statusActionLabel}
+                    </span>
+                    <span
+                        className={`absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-brutal-black transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0 ${connected ? 'bg-brutal-green' : 'bg-transparent dark:bg-zinc-800'}`}
+                        aria-hidden="true"
+                    />
+                </button>
             </div>
 
-            <div className="p-6 flex flex-col gap-4 flex-1">
+            <div className="p-5 flex flex-col gap-4 flex-1">
                 {pendingLogin && (
                     <div className="space-y-3 p-3 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900">
                         <p className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
@@ -365,59 +391,46 @@ function ChatGPTProviderCard({
                     </div>
                 )}
 
-                <div className="space-y-2">
-                    {error && (
+                {error && (
+                    <div className="border-2 border-red-600 bg-red-50 dark:bg-red-950/30 px-3 py-2">
                         <p className="text-[11px] font-bold text-red-600">{error}</p>
-                    )}
-                </div>
+                    </div>
+                )}
 
-                <div className="flex flex-wrap gap-2">
-                    {!connected && !pendingLogin && (
-                        <button
-                            onClick={handleSignIn}
-                            disabled={loading}
-                            className="px-3 py-2 text-xs font-black uppercase bg-brutal-black text-white border-2 border-brutal-black hover:bg-zinc-800 disabled:opacity-50"
-                        >
-                            {t('settings.providers.chatgpt.signIn')}
-                        </button>
-                    )}
-                    {pendingLogin && (
-                        <button
-                            onClick={() => setPendingLogin(null)}
-                            disabled={loading}
-                            className="px-3 py-2 text-xs font-black uppercase border-2 border-brutal-black text-neutral-500 hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-50"
-                        >
-                            Cancel
-                        </button>
-                    )}
-                    {connected && (
-                        <button
-                            onClick={handleDisconnect}
-                            disabled={loading}
-                            className="px-3 py-2 text-xs font-black uppercase border-2 border-brutal-black text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50"
-                        >
-                            {t('settings.providers.chatgpt.disconnect')}
-                        </button>
-                    )}
-                    <button
-                        onClick={refresh}
-                        disabled={loading}
-                        className="px-3 py-2 text-xs font-black uppercase border-2 border-brutal-black text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-50"
-                    >
-                        {loading ? t('common.loading') : t('common.refresh')}
-                    </button>
-                </div>
+                {(pendingLogin || loading) && (
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 border-b-2 border-neutral-200 dark:border-zinc-700 pb-3">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 sm:mr-auto">
+                            {loading ? t('settings.providers.chatgpt.loadingStatus') : t('settings.providers.chatgpt.subtitle')}
+                        </span>
+                        <div className="flex gap-2 sm:justify-end">
+                            {pendingLogin && (
+                                <button
+                                    onClick={() => setPendingLogin(null)}
+                                    disabled={loading}
+                                    className="px-3 py-1.5 text-[10px] font-black uppercase border-2 border-brutal-black text-neutral-500 bg-white dark:bg-zinc-900 hover:bg-neutral-100 dark:hover:bg-zinc-700 disabled:opacity-50"
+                                >
+                                    Cancel
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
 
-                <div className="pt-2 border-t-2 border-neutral-200 dark:border-zinc-700 space-y-2">
-                    <div className="flex items-center justify-between">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-                            {t('settings.providers.modelsTab')}
-                        </p>
+                <div className="space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div className="min-w-0">
+                            <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+                                {t('settings.providers.modelsTab')}
+                            </p>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                                {t('settings.providers.modelsAvailable', { count: String(allModels.length) })}
+                            </p>
+                        </div>
                         <BrutalButton
                             variant="primary"
                             onClick={() => onVerify(provider)}
                             disabled={verifying || !connected}
-                            className="text-xs px-3 py-1 font-black uppercase"
+                            className="text-xs px-4 py-2 font-black uppercase shrink-0"
                         >
                             {verifying ? t('settings.providers.fetching') : t('settings.providers.fetch')}
                         </BrutalButton>
@@ -428,9 +441,10 @@ function ChatGPTProviderCard({
                         onChange={(newVal) => onConfigChange(provider.id, { ...config, enabled_models: newVal })}
                         options={allModels.map(m => ({ value: m.id, label: m.name || m.id }))}
                         emptyMessage={t('settings.providers.noModelsFound')}
-                        dropdownClassName="max-h-48"
+                        dropdownClassName="max-h-56"
                     />
                 </div>
+
             </div>
         </div>
     );
@@ -588,10 +602,15 @@ export function ProvidersTab({
                         <div key={provider.id} className="bg-white dark:bg-zinc-800 dark:text-white border-3 border-brutal-black shadow-brutal-xl flex flex-col h-full">
                             {/* Provider Header */}
                             <div className="p-4 bg-neutral-50 dark:bg-zinc-900 flex justify-between items-center border-b-3 border-brutal-black gap-3">
-                                <div className="flex items-center gap-3 min-w-0">
+                                <div className="flex flex-1 items-center gap-3 min-w-0">
                                     <ProviderIcon provider={provider} />
                                     <div className="flex flex-col min-w-0">
-                                        <span className={`font-black uppercase tracking-wide leading-tight dark:text-white ${provider.label.length > 14 ? 'text-sm' : provider.label.length > 10 ? 'text-base' : 'text-xl'}`}>{provider.label}</span>
+                                        <span
+                                            className={`block max-w-full whitespace-normal break-normal [overflow-wrap:normal] font-black uppercase tracking-wide leading-tight dark:text-white ${getProviderTitleClass(provider.label)}`}
+                                            title={provider.label}
+                                        >
+                                            {provider.label}
+                                        </span>
                                         {provider.user_defined && (
                                             <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400">custom</span>
                                         )}
@@ -726,12 +745,12 @@ export function ProvidersTab({
                                 {activeTab === 'models' && (
                                     <div className="flex flex-col h-full pt-2">
                                         {/* Input Row with Fetch Button */}
-                                        <div className="flex gap-2 mb-4">
-                                            <div className="flex flex-1 gap-0">
+                                        <div className="flex flex-col sm:flex-row gap-2 mb-4 min-w-0">
+                                            <div className="flex flex-1 min-w-0 gap-0">
                                                 <input
                                                     type="text"
                                                     placeholder={t('settings.providers.addModelIdPlaceholder')}
-                                                    className="flex-1 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
+                                                    className="flex-1 min-w-0 bg-white dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none focus:bg-neutral-50 dark:focus:bg-zinc-800 dark:text-white dark:placeholder-neutral-500"
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Enter') {
                                                             onAddCustomModel(provider.id, e.currentTarget.value);
