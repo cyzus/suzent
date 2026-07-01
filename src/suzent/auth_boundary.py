@@ -65,6 +65,7 @@ def extract_token(headers: list[tuple[bytes, bytes]]) -> str:
 AGENT_ALLOWED_PATHS = {
     "/chat",
     "/chat/stop",
+    "/nodes",  # read-only: a controller may list our nodes' capabilities
     "/nodes/peer-offer",
     "/nodes/peer-invoke",  # run a local capability on behalf of a controller
     "/channels/suzent/inbound",  # peer agent-to-agent messages

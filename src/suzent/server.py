@@ -199,6 +199,7 @@ from suzent.routes.node_routes import (
     peer_offer,
     peer_invoke,
     invoke_peer,
+    peer_capabilities,
 )
 from suzent.routes.cron_routes import (
     list_cron_jobs,
@@ -992,6 +993,11 @@ app = Starlette(
         ),
         Route("/nodes/peers", list_peers, methods=["GET"]),
         Route("/nodes/peers/{peer_id}/invoke", invoke_peer, methods=["POST"]),
+        Route(
+            "/nodes/peers/{peer_id}/capabilities",
+            peer_capabilities,
+            methods=["GET"],
+        ),
         Route("/nodes/peers/{peer_id}/mode", set_peer_mode, methods=["POST"]),
         Route("/nodes/peers/{peer_id}/reverse", set_peer_reverse, methods=["POST"]),
         Route("/nodes/peers/{peer_id}/remove", remove_peer, methods=["POST"]),

@@ -162,17 +162,14 @@ def node_status():
 def node_describe(
     node: str = typer.Argument(help="Node ID or display name"),
 ):
-    """Show detailed info about a specific node."""
+    """Show detailed info about a node (WS mesh) or a linked peer."""
 
     async def _run():
+        client = get_client()
+
+        # 1) Try a WS mesh node (has live capabilities).
         try:
-            client = get_client()
             data = await client.nodes.describe(node)
-
-            if "error" in data:
-                typer.echo(f"❌ {data['error']}")
-                raise typer.Exit(code=1)
-
             typer.echo(f"📡 Node: {data['display_name']}")
             typer.echo(f"   ID: {data['node_id']}")
             typer.echo(f"   Platform: {data['platform']}")
@@ -190,9 +187,67 @@ def node_describe(
                             typer.echo(f"       {param}: {ptype}")
             else:
                 typer.echo("\n   No capabilities advertised.")
+            return
+        except ClientError as e:
+            # Fall through to peers only on "not found"; surface other errors.
+            if "404" not in str(e) and "not found" not in str(e).lower():
+                typer.echo(f"❌ {e}")
+                raise typer.Exit(code=1)
+
+        # 2) Fall back to a linked peer (another Suzent we drive / that drives us).
+        try:
+            peers = (await client.nodes.peers()).get("peers", [])
         except ClientError as e:
             typer.echo(f"❌ {e}")
             raise typer.Exit(code=1)
+        match = next(
+            (
+                p
+                for p in peers
+                if p["peer_id"] == node or p.get("name", "").lower() == node.lower()
+            ),
+            None,
+        )
+        if not match:
+            typer.echo(
+                f"❌ No node or peer matching '{node}'. See `suzent nodes list`."
+            )
+            raise typer.Exit(code=1)
+
+        outbound = {
+            "trigger": "trigger them",
+            "paused": "outbound paused",
+            "off": "outbound off",
+        }.get(match.get("mode", "trigger"), match.get("mode"))
+        typer.echo(f"🔗 Peer: {match['name']}")
+        typer.echo(f"   ID: {match['peer_id']}")
+        typer.echo(f"   Address: {match.get('base_url', 'unknown')}")
+        typer.echo(f"   Online: {'yes' if match.get('online') else 'no'}")
+        typer.echo(f"   Outbound: {outbound}")
+        typer.echo(
+            f"   Inbound: {'granted' if match.get('reverse_enabled') else 'off'}"
+        )
+
+        # Best-effort live fetch of the peer's hardware capabilities.
+        try:
+            caps = (await client.nodes.peer_capabilities(match["peer_id"])).get(
+                "capabilities", []
+            )
+            if caps:
+                typer.echo(f"\n   Capabilities ({len(caps)}):")
+                for cap in caps:
+                    host = f" [{cap['node']}]" if cap.get("node") else ""
+                    desc = f" — {cap['description']}" if cap.get("description") else ""
+                    typer.echo(f"     • {cap['name']}{host}{desc}")
+            else:
+                typer.echo("\n   Capabilities: none advertised.")
+        except ClientError:
+            typer.echo("\n   Capabilities: unavailable (peer offline or unreachable).")
+
+        typer.echo(
+            "\n   Trigger the peer's agent with: "
+            f'suzent nodes trigger "{match["name"]}" "<prompt>"'
+        )
 
     asyncio.run(_run())
 

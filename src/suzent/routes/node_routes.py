@@ -972,6 +972,41 @@ async def invoke_peer(request: Request) -> JSONResponse:
         return JSONResponse({"error": f"Couldn't reach peer: {e}"}, status_code=502)
 
 
+async def peer_capabilities(request: Request) -> JSONResponse:
+    """GET /nodes/peers/{peer_id}/capabilities — list a peer's hardware caps.
+
+    Best-effort live fetch of the peer's own `GET /nodes` (its WS nodes and their
+    capabilities) using our grant token. Returns {"capabilities": [...]} or an
+    error the caller can render (e.g. peer offline). Read-only.
+    """
+    import httpx
+
+    store = _get_peer_store(request)
+    peer_id = request.path_params.get("peer_id", "")
+    peer = store.get(peer_id) if store else None
+    if not peer:
+        return JSONResponse({"error": "Unknown peer"}, status_code=404)
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get(
+                f"{peer['base_url']}/nodes",
+                headers={"Authorization": f"Bearer {peer['token']}"},
+            )
+        if r.status_code != 200:
+            return JSONResponse(
+                {"error": f"Peer returned {r.status_code}"}, status_code=502
+            )
+        nodes = r.json().get("nodes", [])
+    except httpx.HTTPError as e:
+        return JSONResponse({"error": f"Couldn't reach peer: {e}"}, status_code=502)
+    # Flatten capabilities across the peer's local nodes.
+    caps: list[dict] = []
+    for n in nodes:
+        for c in n.get("capabilities", []):
+            caps.append({**c, "node": n.get("display_name", "")})
+    return JSONResponse({"capabilities": caps, "count": len(caps)})
+
+
 async def peer_offer(request: Request) -> JSONResponse:
     """POST /nodes/peer-offer — a controller we drive offers US a reverse grant.
 

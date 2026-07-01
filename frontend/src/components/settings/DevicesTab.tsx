@@ -16,7 +16,6 @@ import {
   approveGrant,
   denyGrant,
   fetchPeers,
-  setPeerMode,
   setPeerReverse,
   removePeer,
   requestControl,
@@ -64,6 +63,39 @@ function CopyButton({ value, tone = 'neutral', label = 'Copy' }: { value: string
     >
       {copied ? 'Copied' : label}
     </SettingsListAction>
+  );
+}
+
+/** Read-only status pill (used for the outbound direction and empty states). */
+function StatusPill({ tone, label }: { tone: 'green' | 'neutral'; label: string }): React.ReactElement {
+  if (tone === 'neutral') {
+    return <span className="text-sm text-neutral-300 dark:text-neutral-600 font-mono">{label}</span>;
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-green-700 dark:text-brutal-green">
+      <span className="w-1.5 h-1.5 rounded-full bg-brutal-green" />
+      {label}
+    </span>
+  );
+}
+
+/** A compact on/off toggle for a direction the user owns (inbound grants). */
+function DirectionToggle({ on, busy, onToggle }: { on: boolean; busy: boolean; onToggle: () => void }): React.ReactElement {
+  return (
+    <button
+      role="switch"
+      aria-checked={on}
+      disabled={busy}
+      onClick={onToggle}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 border-2 rounded-sm text-[11px] font-black uppercase tracking-wide transition-colors disabled:opacity-40 ${
+        on
+          ? 'border-brutal-green bg-brutal-green/20 text-green-800 dark:text-brutal-green hover:bg-brutal-green/30'
+          : 'border-neutral-300 dark:border-white/20 text-neutral-500 hover:border-neutral-400'
+      }`}
+    >
+      <span className={`w-2 h-2 rounded-full ${on ? 'bg-brutal-green' : 'bg-neutral-300'}`} />
+      {on ? 'Granted' : 'Off'}
+    </button>
   );
 }
 
@@ -467,7 +499,7 @@ export function DevicesTab(): React.ReactElement {
       <SettingsCard>
         <SectionCardHeader
           title={`Devices (${deviceRows.length})`}
-          description="Every device this one is linked to. Requests to approve appear at the top; each linked device shows its direction and controls."
+          description="Every device this one is linked to. Approvals appear at the top. Each link shows two directions: whether you can trigger them, and whether they may trigger you."
         />
         <div className="space-y-2 mt-3">
           {/* Incoming requests — another device wants to control this one. */}
@@ -527,31 +559,29 @@ export function DevicesTab(): React.ReactElement {
           )}
 
           {/* Established links — one row per device, two independent directions:
-              Outbound (I control them, via peer record) and Inbound (they
-              control me, via a grant I issued). */}
+              Outbound (I control them — a status) and Inbound (they control me —
+              a grant I own and can toggle). */}
           {deviceRows.map((d) => {
             const hasOutbound = !!d.peer; // I can drive them
             const hasInbound = !!d.deviceId; // they can drive me (grant I issued)
+            const inboundGranted = hasOutbound
+              ? !!d.peer!.reverse_enabled
+              : d.status !== 'paused';
             return (
               <SettingsListItem key={d.key}>
-                <div className="flex flex-col gap-2 w-full">
+                <div className="flex flex-col gap-3 w-full">
+                  {/* Header: identity + badges + remove */}
                   <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="font-bold truncate flex items-center gap-2">
-                        <span className={d.online ? 'text-brutal-green' : 'text-neutral-400'}>●</span>
-                        {d.name}
-                        {d.platform && <span className="text-neutral-400 font-normal">({d.platform})</span>}
-                        {d.isAgent && (
-                          <span className="px-1.5 py-0.5 text-[10px] font-black uppercase border border-brutal-blue text-brutal-blue rounded-sm">Agent</span>
-                        )}
-                        {d.scope === 'full' && (
-                          <span className="px-1.5 py-0.5 text-[10px] font-black uppercase border border-brutal-red text-brutal-red rounded-sm">Host</span>
-                        )}
-                      </div>
-                      <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
-                        {d.online ? (d.capabilities || 'online') : 'offline'}
-                        {d.peer?.base_url ? ` · ${d.peer.base_url}` : ''}
-                      </div>
+                    <div className="min-w-0 flex items-center gap-2">
+                      <span className={`text-[10px] ${d.online ? 'text-brutal-green' : 'text-neutral-300 dark:text-neutral-600'}`}>●</span>
+                      <span className="font-bold truncate">{d.name}</span>
+                      {d.platform && <span className="text-neutral-400 font-normal text-sm">{d.platform}</span>}
+                      {d.isAgent && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-black uppercase bg-brutal-blue text-white rounded-sm">Agent</span>
+                      )}
+                      {d.scope === 'full' && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-black uppercase bg-brutal-red text-white rounded-sm">Host</span>
+                      )}
                     </div>
                     {hasOutbound && d.peer && (
                       <SettingsListAction tone="red" disabled={busy === d.peer.peer_id} onClick={() => act(d.peer!.peer_id, () => removePeer(d.peer!.peer_id))}>
@@ -560,62 +590,59 @@ export function DevicesTab(): React.ReactElement {
                     )}
                   </div>
 
-                  {/* Direction controls */}
-                  <div className="flex flex-col gap-1.5 pl-4 border-l-2 border-brutal-black/10 dark:border-white/10">
-                    {/* Outbound: I control them */}
-                    {hasOutbound && d.peer && (
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400">
-                          Outbound · I control them
-                        </span>
-                        <BrutalSelect
-                          value={d.peer.mode}
-                          onChange={(m) => act(d.peer!.peer_id, () => setPeerMode(d.peer!.peer_id, m))}
-                          options={[
-                            { value: 'trigger', label: 'Trigger' },
-                            { value: 'paused', label: 'Paused' },
-                            { value: 'off', label: 'Off' },
-                          ]}
+                  {d.peer?.base_url && (
+                    <div className="text-[11px] text-neutral-400 font-mono truncate -mt-1.5">{d.peer.base_url}</div>
+                  )}
+
+                  {/* Two-direction grid */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Outbound — I control them (status only) */}
+                    <div className="bg-neutral-100/70 dark:bg-white/5 rounded px-3 py-2 flex items-center justify-between gap-2">
+                      <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-black">
+                        I control them
+                      </span>
+                      {hasOutbound ? (
+                        <StatusPill
+                          tone={d.online ? 'green' : 'neutral'}
+                          label={d.online ? 'Ready' : 'Offline'}
                         />
-                      </div>
-                    )}
-                    {/* Inbound (peer side): let them control me back — reverse grant */}
-                    {hasOutbound && d.peer && (
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400">
-                          Inbound · they control me
-                        </span>
-                        <BrutalSelect
-                          value={d.peer.reverse_enabled ? 'granted' : 'off'}
-                          onChange={(v) => act(`rev:${d.peer!.peer_id}`, () => setPeerReverse(d.peer!.peer_id, v === 'granted'))}
-                          options={[
-                            { value: 'off', label: 'Off' },
-                            { value: 'granted', label: 'Granted' },
-                          ]}
+                      ) : (
+                        <StatusPill tone="neutral" label="—" />
+                      )}
+                    </div>
+
+                    {/* Inbound — they control me (toggle I own) */}
+                    <div className="bg-neutral-100/70 dark:bg-white/5 rounded px-3 py-2 flex items-center justify-between gap-2">
+                      <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-black">
+                        They control me
+                      </span>
+                      {hasOutbound && d.peer ? (
+                        // Reverse grant to a peer we drive.
+                        <DirectionToggle
+                          on={inboundGranted}
+                          busy={busy === `rev:${d.peer.peer_id}`}
+                          onToggle={() => act(`rev:${d.peer!.peer_id}`, () => setPeerReverse(d.peer!.peer_id, !inboundGranted))}
                         />
-                      </div>
-                    )}
-                    {/* Inbound (grant I issued to a device that isn't a peer, e.g. a phone). */}
-                    {hasInbound && !hasOutbound && d.deviceId && (
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400">
-                          Inbound · they control me
-                        </span>
+                      ) : hasInbound && d.deviceId ? (
+                        // A grant we issued to a device (e.g. a phone) — pause/revoke.
                         <div className="flex items-center gap-2">
-                          <BrutalSelect
-                            value={d.status === 'paused' ? 'paused' : 'granted'}
-                            onChange={(v) => act(d.deviceId!, () => setDeviceStatus(d.deviceId!, v === 'paused' ? 'paused' : 'active'))}
-                            options={[
-                              { value: 'granted', label: 'Granted' },
-                              { value: 'paused', label: 'Paused' },
-                            ]}
+                          <DirectionToggle
+                            on={inboundGranted}
+                            busy={busy === d.deviceId}
+                            onToggle={() => act(d.deviceId!, () => setDeviceStatus(d.deviceId!, inboundGranted ? 'paused' : 'active'))}
                           />
-                          <SettingsListAction tone="red" disabled={busy === d.deviceId} onClick={() => act(d.deviceId!, () => revokeDevice(d.deviceId!))}>
+                          <button
+                            className="text-[10px] text-brutal-red font-black uppercase hover:underline disabled:opacity-40"
+                            disabled={busy === d.deviceId}
+                            onClick={() => act(d.deviceId!, () => revokeDevice(d.deviceId!))}
+                          >
                             Revoke
-                          </SettingsListAction>
+                          </button>
                         </div>
-                      </div>
-                    )}
+                      ) : (
+                        <StatusPill tone="neutral" label="—" />
+                      )}
+                    </div>
                   </div>
                 </div>
               </SettingsListItem>

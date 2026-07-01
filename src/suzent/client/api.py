@@ -64,6 +64,9 @@ class NodesAPI:
     async def peers(self) -> dict:
         return await self.client.get("/nodes/peers")
 
+    async def peer_capabilities(self, peer_id: str) -> dict:
+        return await self.client.get(f"/nodes/peers/{peer_id}/capabilities")
+
     async def grants(self) -> dict:
         return await self.client.get("/nodes/grants")
 
