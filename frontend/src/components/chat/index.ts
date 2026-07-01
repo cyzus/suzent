@@ -10,3 +10,5 @@ export { AssistantMessage } from './AssistantMessage';
 export { RightSidebar } from './RightSidebar';
 export { PermissionApprovalDock } from './PermissionApprovalDock';
 export { ChatMinimap } from './ChatMinimap';
+export { CompactionCube } from './CompactionCube';
+export { DragOverlay, LoadingIndicator, SystemTriggeredMessage, NoticeMessage } from './StatusMessages';

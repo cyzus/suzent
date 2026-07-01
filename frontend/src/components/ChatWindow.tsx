@@ -27,9 +27,12 @@ import {
   UserMessage,
   AssistantMessage,
   RightSidebar,
-  MarkdownRenderer,
   PermissionApprovalDock,
   ChatMinimap,
+  DragOverlay,
+  LoadingIndicator,
+  SystemTriggeredMessage,
+  NoticeMessage,
 } from './chat';
 import { useI18n } from '../i18n';
 import { useHeartbeatRunning } from '../hooks/useHeartbeatRunning';
@@ -282,89 +285,6 @@ function _loadStreamSeed(chatId: string): StreamSeed | null {
 function _clearStreamSeed(): void {
   try { sessionStorage.removeItem(STREAM_SEED_KEY); } catch { /* ignore */ }
 }
-
-// Drag overlay component
-const DragOverlay: React.FC = () => {
-  const { t } = useI18n();
-  return (
-    <div className="absolute inset-0 z-50 bg-brutal-blue/20 border-4 border-dashed border-brutal-black flex items-center justify-center pointer-events-none">
-      <div className="bg-brutal-yellow border-4 border-brutal-black shadow-brutal-xl px-8 py-6 flex flex-col items-center gap-3">
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-brutal-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-        </svg>
-        <span className="text-lg font-bold text-brutal-black uppercase">{t('chatWindow.dragDropTitle')}</span>
-        <span className="text-sm text-brutal-black">{t('chatWindow.dragDropDesc')}</span>
-      </div>
-    </div>
-  );
-};
-
-// Loading indicator
-const LoadingIndicator: React.FC = () => {
-  const { t } = useI18n();
-  return (
-    <div className="flex items-center justify-center p-4">
-      <div className="bg-brutal-yellow border-2 border-brutal-black px-4 py-2 text-xs font-bold uppercase animate-pulse shadow-brutal-sm">
-        {t('chatWindow.connecting')}
-      </div>
-    </div>
-  );
-};
-
-const SystemTriggeredMessage: React.FC<{ message: Message }> = ({ message }) => {
-  const raw = (message.content || '').trim();
-  if (!raw) return null;
-
-  // Pull out the leading title: prefer a **bold** first line, else first line.
-  const lines = raw.split('\n');
-  const firstLine = lines[0].trim();
-  const boldMatch = firstLine.match(/^\*\*(.+?)\*\*$/);
-  const title = (boldMatch ? boldMatch[1] : firstLine).trim();
-  const body = lines.slice(1).join('\n').trim();
-
-  return (
-    <div className="w-full max-w-3xl my-1 pl-2 md:pl-4">
-      <div className="border-l-[3px] border-brutal-black/20 dark:border-neutral-700 px-4 py-2 opacity-50 hover:opacity-100 transition-opacity duration-300">
-        {/* Title */}
-        <div className="flex items-center gap-2 mb-1.5">
-          <span className="text-brutal-black/60 dark:text-neutral-400 text-[10px] leading-none" aria-hidden="true">⏱</span>
-          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-brutal-black/60 dark:text-neutral-400 truncate">
-            {title}
-          </span>
-        </div>
-        
-        {/* Body */}
-        {body && (
-          <div className="text-[12px] leading-relaxed text-brutal-black/80 dark:text-neutral-300">
-            <MarkdownRenderer content={body} />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const NoticeMessage: React.FC<{ message: Message }> = ({ message }) => {
-  if (!message.content?.trim()) {
-    return null;
-  }
-
-  return (
-    <div className="w-full max-w-3xl pl-2 md:pl-6">
-      <div className="border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_rgba(255,255,255,0.18)]">
-        <div className="flex items-stretch gap-2.5">
-          <div className="w-1.5 self-stretch bg-brutal-black dark:bg-neutral-500" aria-hidden="true" />
-          <div className="min-w-0 py-1.5 pr-3">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Notice</div>
-            <div className="text-sm leading-snug text-brutal-black dark:text-neutral-100">
-              <MarkdownRenderer content={message.content} />
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 // Message list component (renders historical / store messages only)
 const MessageList: React.FC<{
