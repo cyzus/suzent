@@ -37,11 +37,6 @@ from suzent.permissions.audit import record_permission_audit
 
 from suzent.core.context_injection import build_agent_deps
 from suzent.core.agent_serializer import serialize_state, deserialize_state
-from suzent.core.context_compressor import (
-    ContextCompressor,
-    emit_compaction_event,
-    estimate_tokens,
-)
 from suzent.memory.lifecycle import get_memory_manager
 from suzent.streaming import remove_pending_approvals, stream_agent_responses
 from suzent.memory import ConversationTurn, Message, AgentAction
@@ -587,43 +582,12 @@ class ChatProcessor:
         if message_history is None:
             message_history = []
 
-        should_precompress = (
-            bool(message_content and message_content.strip())
-            and not resume_approvals
-            and not is_heartbeat
-            and not message_content.strip().startswith("/")
-        )
-        if should_precompress and message_history:
-            compressor = ContextCompressor(chat_id=chat_id, user_id=user_id)
-            plan = compressor.get_auto_compaction_plan(message_history)
-            if plan.get("can_attempt"):
-                yield _encode_custom_event(
-                    "processing_status",
-                    {
-                        "phase": "compressing_context",
-                        "chat_id": chat_id,
-                        "messages_before": int(plan["messages_before"]),
-                        "tokens_before": int(plan["tokens_before"]),
-                    },
-                )
-                compressed_history = await self._compress_with_events(
-                    chat_id=chat_id,
-                    user_id=user_id,
-                    messages=message_history,
-                )
-                if len(compressed_history) < len(message_history):
-                    message_history = compressed_history
-                    deps.last_messages = message_history
-                    await self._persist_agent_state_snapshot(
-                        chat_id=chat_id,
-                        messages=message_history,
-                        model_id=getattr(agent, "_model_id", None),
-                        tool_names=getattr(agent, "_tool_names", []),
-                    )
-                yield _encode_custom_event(
-                    "processing_status",
-                    {"phase": "running", "chat_id": chat_id},
-                )
+        # Note: automatic context compaction now runs as a pydantic-ai history
+        # processor (see make_compaction_history_processor), which fires before every
+        # model request within the run — covering both turn-start and mid-run growth.
+        # The processed (compacted) history flows back through result.all_messages(),
+        # so turn-end persistence snapshots it. The old pre-turn compaction block was
+        # removed as redundant.
 
         # Universal slash command dispatch (before history is modified or agent runs)
         if message_content and not resume_approvals and not files and not is_heartbeat:
@@ -1628,65 +1592,6 @@ class ChatProcessor:
             )
         except Exception as e:
             logger.error(f"Memory extraction failed for {chat_id}: {e}")
-
-    async def _compress_with_events(
-        self, chat_id: str, user_id: str, messages: list, source: str = "auto"
-    ) -> list:
-        """Compress context and emit normalized auto-compaction lifecycle events."""
-        compressor = ContextCompressor(chat_id=chat_id, user_id=user_id)
-        compaction_plan = compressor.get_auto_compaction_plan(messages)
-        can_attempt = bool(compaction_plan.get("can_attempt"))
-
-        if can_attempt:
-            emit_compaction_event(
-                chat_id=chat_id,
-                stage="start",
-                source=source,
-                messages_before=int(compaction_plan["messages_before"]),
-                tokens_before=int(compaction_plan["tokens_before"]),
-            )
-
-        try:
-            compressed_messages = await compressor.compress_messages(messages)
-        except Exception as e:
-            if can_attempt:
-                emit_compaction_event(
-                    chat_id=chat_id,
-                    stage="error",
-                    source=source,
-                    messages_before=len(messages),
-                    tokens_before=int(compaction_plan["tokens_before"]),
-                    message=str(e),
-                    persist_result=source == "auto",
-                )
-            raise
-
-        if len(compressed_messages) < len(messages):
-            after_tokens = estimate_tokens(
-                compressed_messages, CONFIG.max_context_tokens
-            ).estimated_tokens
-            emit_compaction_event(
-                chat_id=chat_id,
-                stage="complete",
-                source=source,
-                messages_before=len(messages),
-                messages_after=len(compressed_messages),
-                tokens_before=int(compaction_plan["tokens_before"]),
-                tokens_after=after_tokens,
-                persist_result=source == "auto",
-            )
-        elif can_attempt:
-            emit_compaction_event(
-                chat_id=chat_id,
-                stage="skipped",
-                source=source,
-                messages_before=len(messages),
-                messages_after=len(compressed_messages),
-                tokens_before=int(compaction_plan["tokens_before"]),
-                persist_result=source == "auto",
-            )
-
-        return compressed_messages
 
     async def _write_transcript(
         self, chat_id: str, user_content: str, agent_content: str, messages: list

@@ -860,15 +860,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         }
         return;
       }
-      if (name === 'processing_status') {
-        const phase = (value as { phase?: string } | null)?.phase;
-        if (phase === 'compressing_context') {
-          upsertCompactNotice('Compaction running...');
-        } else if (phase === 'running' || phase === 'complete') {
-          upsertCompactNotice('Compaction complete');
-        }
-        return;
-      }
       if (name === 'chat_title_updated') {
         const { chat_id: titleChatId, title } = value as { chat_id: string; title: string };
         if (titleChatId && title) updateChatTitleLocally(titleChatId, title);

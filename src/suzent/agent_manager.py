@@ -319,6 +319,12 @@ def create_agent(
     static_instructions = config.get("static_instructions", STATIC_INSTRUCTIONS)
 
     # --- Create pydantic-ai Agent ---
+    # Mid-run context compaction: the history processor runs before every model
+    # request within a run, so a tool-heavy turn that grows past the trigger
+    # threshold is compacted in-flight (not only at turn boundaries). It self-guards
+    # on deps.stateless, so it's safe to register for every agent.
+    from suzent.core.context_compressor import make_compaction_history_processor
+
     agent = Agent(
         model,
         deps_type=AgentDeps,
@@ -327,6 +333,7 @@ def create_agent(
         instructions=static_instructions,
         output_type=[str, DeferredToolRequests],
         output_retries=3,
+        history_processors=[make_compaction_history_processor()],
     )
 
     register_dynamic_instructions(

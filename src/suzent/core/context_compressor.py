@@ -18,6 +18,9 @@ from pydantic_ai.messages import (
     ToolReturnPart,
     TextPart,
 )
+from pydantic_ai.tools import RunContext
+
+from suzent.core.agent_deps import AgentDeps
 
 from suzent.config import CONFIG
 from suzent.logger import get_logger
@@ -456,7 +459,10 @@ class ContextCompressor:
         )
 
     async def _perform_compression(
-        self, messages: list, focus: Optional[str] = None
+        self,
+        messages: list,
+        focus: Optional[str] = None,
+        background_flush: bool = False,
     ) -> list:
         """
         Compress messages by summarizing older ones.
@@ -466,6 +472,10 @@ class ContextCompressor:
         2. Pre-compaction flush: extract facts from messages about to be removed.
         3. Summarize the compressible middle block (chunked if large).
         4. Keep the most recent N messages intact.
+
+        When ``background_flush`` is True the memory flush is scheduled as a
+        fire-and-forget background task instead of awaited — used by the mid-run
+        history processor so extraction never stalls an in-flight model request.
         """
         keep_recent = CONFIG.compaction_keep_recent_turns * 2
 
@@ -481,7 +491,10 @@ class ContextCompressor:
         messages_to_compress = messages[start_index:end_index]
 
         # Pre-compaction memory flush
-        await self._pre_compaction_flush(messages_to_compress)
+        if background_flush:
+            self._schedule_pre_compaction_flush(messages_to_compress)
+        else:
+            await self._pre_compaction_flush(messages_to_compress)
 
         # Adaptive chunk size
         budget = estimate_tokens(messages, CONFIG.max_context_tokens)
@@ -615,6 +628,32 @@ class ContextCompressor:
         )
         return merged or combined
 
+    def _schedule_pre_compaction_flush(self, messages_to_compress: list) -> None:
+        """Run the pre-compaction memory flush as a fire-and-forget background task.
+
+        Used from the mid-run history processor so heavy memory extraction never
+        blocks the model request that triggered compaction. Snapshot the slice so a
+        later mutation of the caller's list can't affect the deferred work.
+        """
+        snapshot = list(messages_to_compress)
+
+        async def _flush() -> None:
+            await self._pre_compaction_flush(snapshot)
+
+        try:
+            from suzent.core.task_registry import register_background_task
+            import uuid as _uuid
+
+            asyncio.ensure_future(
+                register_background_task(
+                    _flush(),
+                    task_id=f"precompact_flush_{self.chat_id or 'nochat'}_{_uuid.uuid4().hex}",
+                    description=f"Pre-compaction memory flush for chat {self.chat_id}",
+                )
+            )
+        except Exception as e:
+            logger.debug(f"Failed to schedule pre-compaction flush: {e}")
+
     async def _pre_compaction_flush(self, messages_to_compress: list) -> None:
         """Extract memories from messages about to be compressed away."""
         if not CONFIG.memory_enabled:
@@ -716,3 +755,153 @@ class ContextCompressor:
                         args_str = str(part.args)[:200] if part.args else ""
                         text.append(f"Action: {part.tool_name}({args_str})")
         return "\n".join(text)
+
+
+# ---------------------------------------------------------------------------
+# Mid-run compaction — pydantic-ai history processor
+# ---------------------------------------------------------------------------
+
+
+def _message_has_compaction_marker(msg: Any) -> bool:
+    """True if a pydantic-ai message is one of the synthetic summary messages."""
+    for part in getattr(msg, "parts", []) or []:
+        if is_compaction_summary_text(getattr(part, "content", None)):
+            return True
+    return False
+
+
+def context_input_tokens(ctx: Any, messages: list) -> int:
+    """Best-effort current context size for a run.
+
+    Prefers the provider-reported prompt size from the previous request in this
+    run (``ctx.usage.input_tokens``) — the ground truth for what the next request
+    will cost — and falls back to the char-based estimate on the first request
+    (before any usage is available).
+    """
+    try:
+        usage = getattr(ctx, "usage", None)
+        input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+        if input_tokens > 0:
+            return input_tokens
+    except Exception:
+        pass
+    return estimate_tokens(messages, CONFIG.max_context_tokens).estimated_tokens
+
+
+def make_compaction_history_processor(source: str = "auto_midrun"):
+    """Build a pydantic-ai history processor that compacts context mid-run.
+
+    Registered via ``Agent(history_processors=[...])``, it runs before EVERY model
+    request within a run — so a tool-heavy turn that grows past the trigger
+    threshold gets compacted in-flight instead of only at turn boundaries.
+
+    The processor only rewrites what is SENT to the model (first message + a
+    synthetic summary pair + the recent tail, using the existing
+    ``COMPACTION_SUMMARY_*`` markers). Turn-end persistence reads the agent's
+    resulting ``last_messages``, so the compacted history is what gets snapshotted.
+    """
+
+    async def _processor(ctx: RunContext[AgentDeps], messages: list) -> list:
+        if not messages:
+            return messages
+
+        deps = getattr(ctx, "deps", None)
+        # Stateless/system chats (dream, sub-agents) run a fixed self-contained
+        # prompt and must never be compacted.
+        if getattr(deps, "stateless", False):
+            return messages
+
+        limit = CONFIG.max_context_tokens
+        trigger = limit * CONFIG.context_compaction_trigger
+        current_tokens = context_input_tokens(ctx, messages)
+        if current_tokens < trigger:
+            return messages
+
+        # Idempotency: if the tail is already summary-framed and we're only just
+        # over the line because of the recent turns, another pass can't help.
+        keep_recent = CONFIG.compaction_keep_recent_turns * 2
+        if len(messages) <= keep_recent + 1:
+            return messages
+        already_compacted = any(_message_has_compaction_marker(m) for m in messages)
+
+        chat_id = getattr(deps, "chat_id", "") or ""
+        user_id = getattr(deps, "user_id", None)
+
+        messages_before = len(messages)
+        tokens_before = current_tokens
+        emit_compaction_event(
+            chat_id=chat_id,
+            stage="start",
+            source=source,
+            messages_before=messages_before,
+            tokens_before=tokens_before,
+        )
+
+        compressor = ContextCompressor(chat_id=chat_id, user_id=user_id)
+        try:
+            compressed = await asyncio.wait_for(
+                compressor._perform_compression(messages, background_flush=True),
+                timeout=CONFIG.compaction_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Mid-run compaction timed out, falling back to hard trim")
+            compressed = messages[:1] + messages[-keep_recent:]
+        except Exception as e:
+            logger.error(f"Mid-run compaction failed: {e}")
+            emit_compaction_event(
+                chat_id=chat_id,
+                stage="error",
+                source=source,
+                messages_before=messages_before,
+                tokens_before=tokens_before,
+                message=str(e),
+            )
+            return messages
+
+        # pydantic-ai requires the processed history to be non-empty and to end
+        # with a ModelRequest. If compaction would violate that (edge cases in the
+        # tail slice), skip rather than crash the run.
+        if not compressed or not isinstance(compressed[-1], ModelRequest):
+            logger.debug(
+                "Mid-run compaction produced an invalid tail; skipping this pass"
+            )
+            emit_compaction_event(
+                chat_id=chat_id,
+                stage="skipped",
+                source=source,
+                messages_before=messages_before,
+                messages_after=len(messages),
+                tokens_before=tokens_before,
+            )
+            return messages
+
+        if len(compressed) >= len(messages):
+            # No reduction (e.g. already compacted and nothing else to drop).
+            if not already_compacted:
+                emit_compaction_event(
+                    chat_id=chat_id,
+                    stage="skipped",
+                    source=source,
+                    messages_before=messages_before,
+                    messages_after=len(compressed),
+                    tokens_before=tokens_before,
+                )
+            return compressed
+
+        tokens_after = estimate_tokens(compressed, limit).estimated_tokens
+        emit_compaction_event(
+            chat_id=chat_id,
+            stage="complete",
+            source=source,
+            messages_before=messages_before,
+            messages_after=len(compressed),
+            tokens_before=tokens_before,
+            tokens_after=tokens_after,
+        )
+        logger.info(
+            f"Mid-run compaction: {messages_before} -> {len(compressed)} messages "
+            f"(~{tokens_before} -> ~{tokens_after} tokens)"
+        )
+        return compressed
+
+    return _processor
