@@ -469,7 +469,7 @@ class MemoryManager:
         log (the source of truth) and indexed into LanceDB. There is NO write-time
         deduplication — duplicate/contradictory facts are resolved later by the dream
         consolidation pass, which has full context. See
-        docs/03-developing/memory-consolidation-plan.md.
+        docs/02-concepts/memory/consolidation.md.
         """
         result = MemoryExtractionResult.empty()
 
