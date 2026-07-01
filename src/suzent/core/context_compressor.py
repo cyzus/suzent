@@ -29,34 +29,90 @@ from suzent.core.providers import get_effective_memory_config
 
 logger = get_logger(__name__)
 
-SUMMARY_PROMPT_TEMPLATE = """
-You are summarizing conversation history to free up context window space.
+SUMMARY_PROMPT_TEMPLATE = """\
+Your task is to create a detailed summary of the conversation below, paying close
+attention to the user's explicit requests and the actions taken. This summary must
+be thorough enough that development work can continue without losing context.
 
 {steps_text}
 
-Provide a concise but complete summary using EXACTLY these sections:
+Before writing the summary, wrap your reasoning in <analysis> tags: go through the
+conversation chronologically and, for each part, identify the user's requests, the
+approach taken, key decisions and code patterns, specific details (file names, full
+code snippets, function signatures, edits), errors and how they were fixed, and any
+explicit user feedback. Then double-check for technical accuracy and completeness.
 
-## Key Decisions
-List decisions made and their rationale.
+After the analysis, write the summary inside <summary> tags using EXACTLY these
+numbered sections (keep the headers verbatim):
 
-## Open Tasks
-List in-progress, blocked, or pending tasks with their current state.
+## 1. Primary Request and Intent
+All of the user's explicit requests and intents, in detail.
 
-## Important Facts
-Key facts, outputs, and results learned during the conversation.
+## 2. Key Technical Concepts
+Important technical concepts, technologies, and frameworks discussed.
 
-## Exact Identifiers
+## 3. Files and Code Sections
+Specific files and code sections examined, modified, or created. Include full code
+snippets where applicable and a note on why each file/edit matters. Favor the most
+recent messages.
+
+## 4. Errors and Fixes
+Errors encountered and how they were fixed, including any user feedback about them.
+
+## 5. Problem Solving
+Problems solved and any ongoing troubleshooting.
+
+## 6. All User Messages
+List ALL user messages that are not tool results, verbatim where short. These are
+critical for tracking the user's evolving intent and feedback.
+
+## 7. Pending Tasks
+Pending tasks explicitly requested.
+
+## 8. Current Work
+Precisely what was being worked on immediately before this summary, with file names
+and code snippets where applicable.
+
+## 9. Next Step
+The next step, only if directly in line with the user's most recent explicit request
+and the work in progress. Include a direct verbatim quote from the most recent
+messages showing where work left off. If the last task concluded, say so.
+
+## 10. Exact Identifiers
 Copy ALL of the following verbatim — never paraphrase or shorten:
 UUIDs, file paths, URLs, API keys, IDs, hashes, hostnames, error codes.
 
-Write in past tense. Discard verbose logs and resolved intermediate errors.
+Write in past tense. Discard verbose logs and resolved intermediate errors, but keep
+code snippets and identifiers intact.
+
+Structure your output as:
+<analysis>
+[your chronological analysis]
+</analysis>
+<summary>
+[the numbered sections above]
+</summary>
 """
 
+# Per-part caps for rendering messages into summarizer input. Generous so code
+# snippets / signatures / identifiers survive; only pathological outputs get clipped.
+MSG_TEXT_TOOL_RESULT_LIMIT = 8000
+MSG_TEXT_ASSISTANT_LIMIT = 8000
+MSG_TEXT_TOOL_ARGS_LIMIT = 2000
+
+# Header lines that must appear in the (post-strip) summary body. The retry loop and
+# the chunk-merge validate against these.
 REQUIRED_SECTIONS = [
-    "## Key Decisions",
-    "## Open Tasks",
-    "## Important Facts",
-    "## Exact Identifiers",
+    "## 1. Primary Request and Intent",
+    "## 2. Key Technical Concepts",
+    "## 3. Files and Code Sections",
+    "## 4. Errors and Fixes",
+    "## 5. Problem Solving",
+    "## 6. All User Messages",
+    "## 7. Pending Tasks",
+    "## 8. Current Work",
+    "## 9. Next Step",
+    "## 10. Exact Identifiers",
 ]
 
 # Stable markers identifying the synthetic summary messages injected into the
@@ -78,6 +134,26 @@ def is_compaction_summary_text(text: Any) -> bool:
 
 def _fmt_tokens(tokens: int) -> str:
     return f"{tokens / 1000:.1f}k" if tokens >= 1000 else str(tokens)
+
+
+def extract_summary_body(raw: str) -> str:
+    """Return the compaction summary with the <analysis> scratchpad removed.
+
+    The prompt asks the model to draft in an <analysis> block (which improves the
+    summary but carries no lasting value) and then write the real summary in a
+    <summary> block. This strips the analysis and unwraps <summary>, tolerating a
+    model that omits the tags (returns the cleaned text as-is).
+    """
+    if not raw:
+        return ""
+    import re
+
+    text = re.sub(r"<analysis>[\s\S]*?</analysis>", "", raw, count=1)
+    m = re.search(r"<summary>([\s\S]*?)</summary>", text)
+    if m:
+        return m.group(1).strip()
+    # No <summary> tags — drop any stray tags and return the remainder.
+    return re.sub(r"</?summary>", "", text).strip()
 
 
 def build_post_compaction_usage(context_tokens: int) -> dict[str, Any]:
@@ -563,22 +639,24 @@ class ContextCompressor:
             prompt += f"\n\nAdditional focus: {focus}"
 
         missing_note = ""
+        body = ""
         for attempt in range(3):
             full_prompt = prompt
             if missing_note:
-                full_prompt += f"\n\nIMPORTANT: Your previous response was missing these sections: {missing_note}. Include ALL four required sections."
+                full_prompt += f"\n\nIMPORTANT: Your previous response was missing these sections: {missing_note}. Include ALL required sections inside the <summary> block."
 
-            summary = await self.llm_client.complete(
+            raw = await self.llm_client.complete(
                 prompt=full_prompt,
                 system="You are an expert technical summarizer.",
                 temperature=0.3,
             )
+            body = extract_summary_body(raw)
 
-            if summary and all(s in summary for s in REQUIRED_SECTIONS):
-                return summary
+            if body and all(s in body for s in REQUIRED_SECTIONS):
+                return body
 
-            if summary:
-                missing = [s for s in REQUIRED_SECTIONS if s not in summary]
+            if body:
+                missing = [s for s in REQUIRED_SECTIONS if s not in body]
                 missing_note = ", ".join(missing)
                 logger.warning(
                     f"Summary attempt {attempt + 1} missing sections: {missing_note}"
@@ -586,8 +664,8 @@ class ContextCompressor:
             else:
                 logger.warning(f"Summary attempt {attempt + 1} returned empty result")
 
-        # Fall back to last non-empty result or empty string
-        return summary or ""
+        # Fall back to last non-empty body or empty string
+        return body or ""
 
     async def _chunked_summarize(
         self, messages: list, chunk_size: int, focus: Optional[str] = None
@@ -607,7 +685,7 @@ class ContextCompressor:
                 system="You are an expert technical summarizer.",
                 temperature=0.3,
             )
-            return result or ""
+            return extract_summary_body(result)
 
         partial_summaries = await asyncio.gather(*[summarize_chunk(c) for c in chunks])
         combined = "\n\n---\n\n".join(s for s in partial_summaries if s)
@@ -615,10 +693,12 @@ class ContextCompressor:
         if not combined:
             return ""
 
+        required_headers = "\n".join(REQUIRED_SECTIONS)
         merge_prompt = (
             "Merge these partial conversation summaries into a single coherent summary, "
-            "preserving ALL four required sections:\n\n"
-            "## Key Decisions\n## Open Tasks\n## Important Facts\n## Exact Identifiers\n\n"
+            "preserving ALL of these sections (keep the headers verbatim):\n\n"
+            f"{required_headers}\n\n"
+            "Return only the merged summary — no <analysis> or <summary> tags.\n\n"
             f"{combined}"
         )
         merged = await self.llm_client.complete(
@@ -626,7 +706,7 @@ class ContextCompressor:
             system="You are an expert technical summarizer.",
             temperature=0.3,
         )
-        return merged or combined
+        return extract_summary_body(merged) or combined
 
     def _schedule_pre_compaction_flush(self, messages_to_compress: list) -> None:
         """Run the pre-compaction memory flush as a fire-and-forget background task.
@@ -737,22 +817,48 @@ class ContextCompressor:
             logger.warning(f"Pre-compaction memory flush failed: {e}")
 
     def _messages_to_text(self, messages: list) -> str:
-        """Convert pydantic-ai messages to text for summarization."""
+        """Convert pydantic-ai messages to text for summarization.
+
+        Content is rendered close to verbatim so the summarizer can retain code
+        snippets, function signatures, and identifiers (the old 500-char cap threw
+        those away before the model ever saw them). Only very large parts are
+        truncated, and generously, to bound pathological tool outputs.
+        """
+
+        def _clip(value: Any, limit: int, *, label: str = "") -> str:
+            s = str(value or "")
+            if len(s) <= limit:
+                return s
+            dropped = len(s) - limit
+            note = f" [{dropped} chars truncated{f' from {label}' if label else ''}]"
+            return s[:limit] + f"\n...{note}...\n"
+
         text = []
         for msg in messages:
             if isinstance(msg, ModelRequest):
                 for part in msg.parts:
                     if hasattr(part, "content") and isinstance(part.content, str):
-                        text.append(f"User: {part.content[:500]}")
+                        # User messages are short and critical to intent — keep whole.
+                        text.append(f"User: {part.content}")
                     if isinstance(part, ToolReturnPart):
-                        output = str(part.content)[:500]
+                        output = _clip(
+                            part.content,
+                            MSG_TEXT_TOOL_RESULT_LIMIT,
+                            label="tool result",
+                        )
                         text.append(f"Tool Result ({part.tool_name}): {output}")
             elif isinstance(msg, ModelResponse):
                 for part in msg.parts:
                     if isinstance(part, TextPart):
-                        text.append(f"Assistant: {part.content[:500]}")
+                        text.append(
+                            f"Assistant: {_clip(part.content, MSG_TEXT_ASSISTANT_LIMIT)}"
+                        )
                     elif isinstance(part, ToolCallPart):
-                        args_str = str(part.args)[:200] if part.args else ""
+                        args_str = (
+                            _clip(part.args, MSG_TEXT_TOOL_ARGS_LIMIT)
+                            if part.args
+                            else ""
+                        )
                         text.append(f"Action: {part.tool_name}({args_str})")
         return "\n".join(text)
 

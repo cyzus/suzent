@@ -1,4 +1,4 @@
-from suzent.core.context_compressor import ContextCompressor
+from suzent.core.context_compressor import ContextCompressor, extract_summary_body
 
 
 class _Part:
@@ -9,6 +9,23 @@ class _Part:
 class _Msg:
     def __init__(self, content: str):
         self.parts = [_Part(content)]
+
+
+def test_extract_summary_body_strips_analysis_and_unwraps_summary() -> None:
+    raw = "<analysis>secret reasoning</analysis>\n<summary>## 1. X\nbody</summary>"
+    body = extract_summary_body(raw)
+    assert "secret reasoning" not in body
+    assert "<summary>" not in body and "</summary>" not in body
+    assert body == "## 1. X\nbody"
+
+
+def test_extract_summary_body_passthrough_without_tags() -> None:
+    assert extract_summary_body("## 1. X\nbody") == "## 1. X\nbody"
+
+
+def test_extract_summary_body_handles_empty_and_stray_tags() -> None:
+    assert extract_summary_body("") == ""
+    assert extract_summary_body("hello </summary>") == "hello"
 
 
 def test_auto_compaction_plan_contains_required_fields() -> None:
