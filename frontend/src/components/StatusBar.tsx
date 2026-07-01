@@ -415,7 +415,7 @@ function ContextWidget() {
 }
 
 function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: number; }) {
-  const { compactNotice, setCompactNotice, clearCompactNotice, setUsageForChat } = useContextUsageStore();
+  const { compactNotice, setCompactNotice, clearCompactNotice } = useContextUsageStore();
   const { currentChatId, isStreaming } = useChatStore();
   const { setStatus } = useStatusStore();
   const { compact, progress } = useCompact();
@@ -476,12 +476,8 @@ function ContextWidgetBody({ usage, limit }: { usage: ContextUsage; limit: numbe
       return;
     }
 
-    // Provider-reported usage isn't touched by /compact, so the panel stays stale
-    // until the next turn. Apply the freshly recomputed post-compaction totals now.
-    if (result.usage && currentChatId) {
-      setUsageForChat(currentChatId, result.usage);
-    }
-
+    // The context-window panel is refreshed centrally via the auto_compaction bus
+    // payload (stage="complete" carries fresh usage) — see ChatWindow's bus handler.
     setStatus('Context compacted', 'success', 5000);
   };
 

@@ -77,6 +77,27 @@ def _fmt_tokens(tokens: int) -> str:
     return f"{tokens / 1000:.1f}k" if tokens >= 1000 else str(tokens)
 
 
+def build_post_compaction_usage(context_tokens: int) -> dict[str, Any]:
+    """Build a context-window usage payload reflecting the post-compaction total.
+
+    The frontend usage panel is normally fed by provider-reported usage from the
+    last model request, which compaction never touches — so it stays stale until
+    the next turn. Every compaction path emits this via ``emit_compaction_event``
+    (stage="complete") so all surfaces update the same way. Cumulative/cache fields
+    are reset; the next real request repopulates them.
+    """
+    return {
+        "input_tokens": context_tokens,
+        "output_tokens": 0,
+        "total_tokens": context_tokens,
+        "context_tokens": context_tokens,
+        "cache_write_tokens": 0,
+        "cache_read_tokens": 0,
+        "requests": 0,
+        "details": {},
+    }
+
+
 def format_compaction_notice(
     *,
     stage: str,
@@ -209,6 +230,23 @@ def emit_compaction_event(
         tokens_after=tokens_after,
         message=message,
     )
+
+    # On completion, attach the recomputed context-window usage so every surface
+    # (manual button, /compact slash, auto) refreshes the panel identically, and
+    # persist it so a reload reflects the reduced context too.
+    if stage == "complete" and tokens_after is not None:
+        usage_data = build_post_compaction_usage(tokens_after)
+        payload["usage"] = usage_data
+        if chat_id:
+            try:
+                from suzent.database import get_database
+
+                get_database().update_chat(chat_id, context_usage=usage_data)
+            except Exception as e:
+                logger.debug(
+                    f"Failed to persist post-compaction usage for {chat_id}: {e}"
+                )
+
     try:
         from suzent.core.stream_registry import emit_bus_event
 

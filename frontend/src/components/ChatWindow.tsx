@@ -694,9 +694,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (!payload || payload.event !== 'auto_compaction') return;
       if (payload.chat_id !== currentChatId) return;
       upsertCompactNotice(formatCompactLifecycleNotice(payload));
+      // Every compaction path (manual button, /compact slash, auto) emits fresh
+      // context-window usage on completion. Apply it so the panel updates the same
+      // way regardless of how compaction was triggered.
+      if (payload.stage === 'complete' && payload.usage) {
+        setUsageForChat(currentChatId, payload.usage);
+      }
     });
     return unsub;
-  }, [currentChatId, upsertCompactNotice]);
+  }, [currentChatId, upsertCompactNotice, setUsageForChat]);
 
   // Ref to lock the chat ID for the current stream so switching chats doesn't misroute messages
   const streamingChatIdRef = useRef<string | null>(null);
