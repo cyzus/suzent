@@ -89,6 +89,9 @@ class DeviceTokenStore:
                 "platform": platform,
                 "scope": scope,
                 "status": "active",
+                # A non-secret fingerprint (head…tail) so the UI can identify a
+                # token after creation — the raw token is shown only once.
+                "token_hint": f"{token[:6]}…{token[-4:]}",
                 "callback_url": callback_url,
                 "approved_at": _now_iso(),
             }
@@ -123,6 +126,7 @@ class DeviceTokenStore:
                     "platform": rec.get("platform", "unknown"),
                     "scope": rec.get("scope", "node"),
                     "status": rec.get("status", "active"),
+                    "token_hint": rec.get("token_hint", ""),
                     "approved_at": rec.get("approved_at", ""),
                 }
                 for rec in self._devices.values()

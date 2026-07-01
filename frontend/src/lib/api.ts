@@ -336,6 +336,7 @@ export interface ApprovedDevice {
   platform: string;
   scope?: 'node' | 'agent' | 'full';
   status?: 'active' | 'paused';
+  token_hint?: string;
   approved_at: string;
   connected: boolean;
 }

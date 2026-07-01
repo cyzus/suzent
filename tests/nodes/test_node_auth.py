@@ -47,6 +47,16 @@ class TestDeviceTokenStore:
         assert store.verify("bad-token") is None
         assert store.verify("") is None
 
+    def test_token_hint_is_head_tail_not_secret(self, tmp_path):
+        store = make_store(tmp_path)
+        _id, token = store.mint("Host", "host", scope="full")
+        listed = store.list_devices()[0]
+        hint = listed["token_hint"]
+        # A non-secret fingerprint: head…tail, and never the full token.
+        assert hint == f"{token[:6]}…{token[-4:]}"
+        assert token not in hint
+        assert len(hint) < len(token)
+
     def test_persistence_across_reload(self, tmp_path):
         path = tmp_path / "devices.json"
         store = DeviceTokenStore(path=path)

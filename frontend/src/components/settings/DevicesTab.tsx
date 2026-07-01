@@ -233,6 +233,7 @@ export function DevicesTab(): React.ReactElement {
     deviceId?: string; // grant I issued (they drive me)
     scope?: string;
     status?: 'active' | 'paused'; // inbound grant status
+    tokenHint?: string; // non-secret token fingerprint (head…tail)
     approvedAt?: string;
     peer?: ControlledPeer; // I drive them
   };
@@ -250,12 +251,17 @@ export function DevicesTab(): React.ReactElement {
       });
     }
     for (const d of devices) {
-      const k = keyFor(d.display_name);
-      const ex = byKey.get(k);
+      // Host tokens are standalone credentials (not a device that also shows up
+      // as a node/peer), so key them by device_id — otherwise several tokens
+      // sharing a name collapse into one row and Revoke orphans the rest.
+      const isHostToken = d.scope === 'full';
+      const k = isHostToken ? `hosttoken:${d.device_id}` : keyFor(d.display_name);
+      const ex = isHostToken ? undefined : byKey.get(k);
       if (ex) {
         ex.deviceId = d.device_id;
         ex.scope = d.scope;
         ex.status = d.status;
+        ex.tokenHint = d.token_hint;
         ex.approvedAt = d.approved_at;
         ex.online = ex.online || d.connected;
       } else {
@@ -268,6 +274,7 @@ export function DevicesTab(): React.ReactElement {
           deviceId: d.device_id,
           scope: d.scope,
           status: d.status,
+          tokenHint: d.token_hint,
           approvedAt: d.approved_at,
         });
       }
@@ -562,6 +569,7 @@ export function DevicesTab(): React.ReactElement {
               Outbound (I control them — a status) and Inbound (they control me —
               a grant I own and can toggle). */}
           {deviceRows.map((d) => {
+            const isHostToken = d.scope === 'full' && !d.peer;
             const hasOutbound = !!d.peer; // I can drive them
             const hasInbound = !!d.deviceId; // they can drive me (grant I issued)
             const inboundGranted = hasOutbound
@@ -573,9 +581,11 @@ export function DevicesTab(): React.ReactElement {
                   {/* Header: identity + badges + remove */}
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0 flex items-center gap-2">
-                      <span className={`text-[10px] ${d.online ? 'text-brutal-green' : 'text-neutral-300 dark:text-neutral-600'}`}>●</span>
+                      {!isHostToken && (
+                        <span className={`text-[10px] ${d.online ? 'text-brutal-green' : 'text-neutral-300 dark:text-neutral-600'}`}>●</span>
+                      )}
                       <span className="font-bold truncate">{d.name}</span>
-                      {d.platform && <span className="text-neutral-400 font-normal text-sm">{d.platform}</span>}
+                      {d.platform && !isHostToken && <span className="text-neutral-400 font-normal text-sm">{d.platform}</span>}
                       {d.isAgent && (
                         <span className="px-1.5 py-0.5 text-[10px] font-black uppercase bg-brutal-blue text-white rounded-sm">Agent</span>
                       )}
@@ -588,13 +598,28 @@ export function DevicesTab(): React.ReactElement {
                         Remove
                       </SettingsListAction>
                     )}
+                    {isHostToken && d.deviceId && (
+                      <SettingsListAction tone="red" disabled={busy === d.deviceId} onClick={() => act(d.deviceId!, () => revokeDevice(d.deviceId!))}>
+                        Revoke
+                      </SettingsListAction>
+                    )}
                   </div>
 
                   {d.peer?.base_url && (
                     <div className="text-[11px] text-neutral-400 font-mono truncate -mt-1.5">{d.peer.base_url}</div>
                   )}
 
+                  {/* Host token: full-access credential — no direction grid. */}
+                  {isHostToken && (
+                    <div className="text-[11px] text-neutral-400 font-mono -mt-1.5">
+                      Full-access credential
+                      {d.tokenHint ? ` · ${d.tokenHint}` : ''}
+                      {d.approvedAt ? ` · created ${d.approvedAt.slice(0, 10)}` : ''}
+                    </div>
+                  )}
+
                   {/* Two-direction grid */}
+                  {!isHostToken && (
                   <div className="grid grid-cols-2 gap-2">
                     {/* Outbound — I control them (status only) */}
                     <div className="bg-neutral-100/70 dark:bg-white/5 rounded px-3 py-2 flex items-center justify-between gap-2">
@@ -644,6 +669,7 @@ export function DevicesTab(): React.ReactElement {
                       )}
                     </div>
                   </div>
+                  )}
                 </div>
               </SettingsListItem>
             );
