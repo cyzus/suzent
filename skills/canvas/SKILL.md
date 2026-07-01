@@ -40,6 +40,7 @@ render_ui(surface_id, component, title="", target="canvas")
 | `list` | `items [str]`, `ordered` | items support markdown |
 | `progress` | `value` (0-100), `label` | |
 | `divider` | — | |
+| `html` | `html`, `height` | free-form HTML in a sandboxed iframe — for charts, SVG, custom dashboards the other types can't express |
 
 **Critical:** use `label` for buttons/badges, `content` for text. Never use `"text"` as a field name.
 
@@ -146,6 +147,45 @@ render_ui(
 )
 ```
 
+## Free-form HTML (`html` component)
+
+When the typed components can't express what you need — charts, SVG diagrams, custom dashboards, interactive prototypes — use the `html` component. It renders self-contained HTML in a **sandboxed iframe** (scripts run, but isolated from the app: no cookies, storage, or parent-DOM access). Omit `height` to auto-size, or set it (px) for a fixed height.
+
+```python
+render_ui(
+    surface_id="chart",
+    title="Weekly Traffic",
+    component={
+        "type": "html",
+        "html": """
+            <div style="font-family: monospace; padding: 16px;">
+              <h2>Weekly Traffic</h2>
+              <svg width="300" height="100">
+                <rect x="0"   y="40" width="40" height="60" fill="black"/>
+                <rect x="60"  y="20" width="40" height="80" fill="black"/>
+                <rect x="120" y="55" width="40" height="45" fill="black"/>
+              </svg>
+              <button onclick="
+                window.parent.postMessage(
+                  {type:'a2ui:action', action:'refresh_chart', context:{range:'30d'}}, '*')
+              ">Load 30 days</button>
+            </div>
+        """,
+    }
+)
+```
+
+**Feedback from HTML → you.** Because the iframe is isolated, interactive HTML sends actions back via `postMessage`. Have your HTML post to `window.parent`:
+
+```js
+window.parent.postMessage(
+  {type: 'a2ui:action', action: 'my_action', context: {/* any JSON */}}, '*');
+```
+
+You receive it exactly like a button click: `[canvas: my_action] {...}`. So buttons, chart clicks, or forms inside your HTML can drive the conversation — use distinct `action` names just like with `button`/`form`.
+
+**Prefer typed components** (`table`, `form`, `button`, …) for simple structured UI that talks back — they match the app's style and are schema-validated. Reach for `html` only when you need visuals or layouts the vocabulary can't express.
+
 ## Asking for Clarification — Option Selection
 
 **Prefer `render_ui` over plain text when asking the user to choose.** Render an inline surface with one button per option; the user clicks instead of typing, and you get a structured callback.
@@ -182,4 +222,5 @@ For longer option lists, use `direction: "horizontal"` on the stack to render bu
 - Multi-step workflows where you want persistent controls visible alongside chat
 - Forms that collect user input before proceeding
 - Status dashboards that update as work progresses (upsert the same surface_id)
+- **Rich visuals** (charts, SVG diagrams, custom layouts) the typed components can't express — use the `html` component
 - **Clarifications**: whenever you'd ask the user to pick from a known set of options — use inline buttons instead of free-text questions
