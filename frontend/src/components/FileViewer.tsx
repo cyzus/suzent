@@ -25,7 +25,8 @@ export const FileViewer: React.FC<FileViewerProps> = ({ filePath, fileName, chat
         if (filePath) {
             fetchFileContent();
         }
-    }, [filePath, onClose]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filePath, chatId, fileName]);
 
     const fetchFileContent = async () => {
         if (!filePath || !chatId) return;
