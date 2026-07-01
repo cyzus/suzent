@@ -315,12 +315,6 @@ def node_host(
         "-c",
         help="Comma-separated capability filter (default: all)",
     ),
-    token: Optional[str] = typer.Option(
-        None,
-        "--token",
-        help="Shared secret for the server's 'token' auth mode "
-        "(or set SUZENT_NODE_TOKEN)",
-    ),
     server_url: Optional[str] = typer.Option(
         None,
         "--server-url",
@@ -329,18 +323,14 @@ def node_host(
     ),
 ):
     """Start a local node host (speaker, camera, agent.run) in the foreground."""
-    import os
-
     from suzent.nodes.node_host import NodeHost, DEFAULT_GATEWAY_URL
 
     gateway_url = url or DEFAULT_GATEWAY_URL
     caps = capabilities.split(",") if capabilities else None
-    auth_token = token if token is not None else os.environ.get("SUZENT_NODE_TOKEN", "")
     host = NodeHost(
         gateway_url=gateway_url,
         display_name=name,
         capabilities=caps,
-        auth_token=auth_token,
         server_url=server_url,
     )
 
@@ -357,7 +347,7 @@ def node_host(
 
 @node_app.command("pending")
 def node_pending():
-    """List node connections awaiting operator approval (approve mode)."""
+    """List node connections awaiting operator approval."""
 
     async def _run():
         try:

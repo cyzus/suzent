@@ -380,11 +380,6 @@ class ConfigModel(BaseModel):
     permission_rules: List[Dict[str, Any]] = []
 
     nodes_enabled: bool = True
-    # Node connection auth: "open" (any device), "token" (shared secret), or
-    # "approve" (operator-gated pairing with durable per-device tokens).
-    node_auth_mode: str = "open"
-    # Shared secret required from nodes when node_auth_mode == "token".
-    node_auth_token: str = ""
     # Advertise this server over mDNS and allow LAN/Tailscale peer discovery.
     node_discovery_enabled: bool = True
     # Bind the server to all interfaces (0.0.0.0) so peer devices can reach it,

@@ -97,10 +97,7 @@ async def _run(scope):
 
 class TestMiddleware:
     @pytest.mark.asyncio
-    async def test_loopback_passes(self, monkeypatch):
-        monkeypatch.setattr(
-            "suzent.config.CONFIG.node_auth_mode", "open", raising=False
-        )
+    async def test_loopback_passes(self):
         called, _ = await _run(_scope("http", "127.0.0.1"))
         assert called
 

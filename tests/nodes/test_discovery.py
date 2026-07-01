@@ -100,7 +100,7 @@ class TestOutboundManager:
         started = {}
 
         class FakeHost:
-            def __init__(self, gateway_url, display_name, auth_token, server_url):
+            def __init__(self, gateway_url, display_name, server_url):
                 self.gateway_url = gateway_url
                 self.display_name = display_name
                 self.status = "connecting"

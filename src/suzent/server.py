@@ -599,7 +599,6 @@ async def startup():
             node_advertiser = SuzentAdvertiser(
                 port=DEFAULT_PORT,
                 display_name=_socket.gethostname(),
-                auth_mode=CONFIG.node_auth_mode or "open",
             )
             node_advertiser.start()
             app.state.node_advertiser = node_advertiser

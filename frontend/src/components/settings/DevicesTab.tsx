@@ -71,7 +71,6 @@ export function DevicesTab(): React.ReactElement {
   const [devices, setDevices] = useState<ApprovedDevice[]>([]);
   const [config, setConfig] = useState<NodeAuthConfig | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [showToken, setShowToken] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [restartHint, setRestartHint] = useState(false);
   const [hostToken, setHostToken] = useState<string | null>(null);
@@ -148,7 +147,7 @@ export function DevicesTab(): React.ReactElement {
   }, [refresh]);
 
   const updateConfig = useCallback(
-    async (updates: { node_auth_mode?: string; node_auth_token?: string; regenerate?: boolean; node_lan_bind?: boolean }) => {
+    async (updates: { node_lan_bind?: boolean }) => {
       setError(null);
       try {
         const next = await saveNodeConfig(updates);
@@ -175,7 +174,6 @@ export function DevicesTab(): React.ReactElement {
     }
   };
 
-  const mode = config?.node_auth_mode ?? 'open';
   const addresses = config?.addresses ?? [];
   // Pick the selected pairing address (default: first / LAN).
   const selectedAddr =
@@ -185,9 +183,7 @@ export function DevicesTab(): React.ReactElement {
   const hasTailscale = addresses.some((a) => a.label.startsWith('Tailscale'));
 
   // The exact command to run on the joining device.
-  const hostCommand =
-    `suzent node host --name "My Device" --url ${gatewayUrl}` +
-    (mode === 'token' ? ` --token ${config?.node_auth_token || '<shared-secret>'}` : '');
+  const hostCommand = `suzent node host --name "My Device" --url ${gatewayUrl}`;
 
   // One unified row per device, keyed by name, carrying every relationship:
   //   peer      → I can drive them (mode dropdown)
@@ -290,47 +286,14 @@ export function DevicesTab(): React.ReactElement {
           description="How companion devices are allowed to connect to this server."
         />
         <div className="space-y-4 mt-3">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="font-bold uppercase text-sm">Auth mode</div>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono max-w-md">
-                {mode === 'open' && 'Any device that can reach this server may connect. Use only on a trusted network.'}
-                {mode === 'token' && 'Devices must present the shared secret below.'}
-                {mode === 'approve' && 'New devices must be approved here; approved devices reconnect silently.'}
-              </p>
-            </div>
-            <BrutalSelect
-              value={mode}
-              onChange={(v) => updateConfig({ node_auth_mode: v })}
-              options={[
-                { value: 'open', label: 'Open' },
-                { value: 'token', label: 'Token' },
-                { value: 'approve', label: 'Approve' },
-              ]}
-            />
+          <div>
+            <div className="font-bold uppercase text-sm">Auth mode</div>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono max-w-md">
+              New devices must be approved here before they can connect; once
+              approved they reconnect silently. Approve from the desktop app or
+              with <code>suzent node approve &lt;code&gt;</code> on the CLI.
+            </p>
           </div>
-
-          {mode === 'token' && (
-            <div className="space-y-2">
-              <div className="font-bold uppercase text-sm">Shared secret</div>
-              <div className="flex items-center gap-2">
-                <input
-                  type={showToken ? 'text' : 'password'}
-                  value={config?.node_auth_token ?? ''}
-                  readOnly
-                  placeholder="No token set — generate one"
-                  className="flex-1 border-2 border-brutal-black dark:border-white bg-transparent px-3 py-2 font-mono text-xs"
-                />
-                <SettingsListAction onClick={() => setShowToken((s) => !s)}>
-                  {showToken ? 'Hide' : 'Show'}
-                </SettingsListAction>
-                <CopyButton value={config?.node_auth_token ?? ''} tone="blue" />
-                <BrutalButton onClick={() => updateConfig({ regenerate: true })}>
-                  Regenerate
-                </BrutalButton>
-              </div>
-            </div>
-          )}
 
           <div className="flex items-center justify-between gap-4 border-t border-brutal-black/10 dark:border-white/10 pt-3">
             <div>
@@ -390,7 +353,7 @@ export function DevicesTab(): React.ReactElement {
           )}
 
           <p className="text-[11px] text-neutral-500 dark:text-neutral-400 font-mono">
-            ⚠ ws:// traffic is plaintext, and "reachable by other devices" exposes the HTTP API on your network — keep it to a trusted LAN or tailnet, and use Token/Approve auth.
+            ⚠ ws:// traffic is plaintext, and "reachable by other devices" exposes the HTTP API on your network — keep it to a trusted LAN or tailnet.
           </p>
         </div>
       </SettingsCard>
@@ -409,7 +372,7 @@ export function DevicesTab(): React.ReactElement {
         <div className="space-y-4 mt-3">
           {!discovered && (
             <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
-              Scan the LAN (mDNS) and your tailnet for Suzent peers. Discovery only finds the address — the remote still gates the connection by its auth mode.
+              Scan the LAN (mDNS) and your tailnet for Suzent peers. Discovery only finds the address — the remote still approves the connection.
             </p>
           )}
           {discovered && (

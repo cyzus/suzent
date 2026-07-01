@@ -9,8 +9,8 @@ Two independent mechanisms — they do NOT overlap:
 * **Tailscale** — enumerate online tailnet peers via the local ``tailscale``
   CLI. Works across networks; needs Tailscale installed and up.
 
-Discovery only *locates* candidate gateways — it never bypasses
-``node_auth_mode``. Approval/token still gate the actual connection.
+Discovery only *locates* candidate gateways — it never bypasses auth.
+Operator approval still gates the actual connection.
 """
 
 from __future__ import annotations
@@ -52,10 +52,9 @@ class SuzentAdvertiser:
     fails, it logs and stays silent rather than breaking server startup.
     """
 
-    def __init__(self, port: int, display_name: str, auth_mode: str = "open"):
+    def __init__(self, port: int, display_name: str):
         self.port = port
         self.display_name = display_name
-        self.auth_mode = auth_mode
         self._zc = None
         self._info = None
 
@@ -72,7 +71,7 @@ class SuzentAdvertiser:
                 port=self.port,
                 properties={
                     "display_name": self.display_name,
-                    "auth_mode": self.auth_mode,
+                    "auth_mode": "approve",
                     "path": "/ws/node",
                 },
                 server=f"{socket.gethostname()}.local.",

@@ -347,8 +347,6 @@ export interface PairingAddress {
 
 export interface NodeAuthConfig {
   nodes_enabled: boolean;
-  node_auth_mode: 'open' | 'token' | 'approve';
-  node_auth_token: string;
   node_lan_bind?: boolean;
   lan_host?: string;
   port?: number;
@@ -428,11 +426,11 @@ export async function discoverNodes(timeout = 2.0): Promise<{ lan: DiscoveredPee
   return await res.json();
 }
 
-export async function connectNode(gateway_url: string, name = '', token = ''): Promise<void> {
+export async function connectNode(gateway_url: string, name = ''): Promise<void> {
   const res = await fetch(`${getApiBase()}/nodes/connect`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ gateway_url, name, token }),
+    body: JSON.stringify({ gateway_url, name }),
   });
   if (!res.ok) throw new Error((await res.text()) || 'Failed to connect');
 }
@@ -532,7 +530,7 @@ export async function fetchNodeConfig(): Promise<NodeAuthConfig> {
 }
 
 export async function saveNodeConfig(
-  updates: { node_auth_mode?: string; node_auth_token?: string; regenerate?: boolean; node_lan_bind?: boolean }
+  updates: { node_lan_bind?: boolean }
 ): Promise<NodeAuthConfig & { restart_required?: boolean }> {
   const res = await fetch(`${getApiBase()}/nodes/config`, {
     method: 'POST',

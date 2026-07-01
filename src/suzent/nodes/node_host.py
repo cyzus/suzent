@@ -10,7 +10,6 @@ Usage:
 import asyncio
 import json
 import logging
-import os
 import signal
 import sys
 import tempfile
@@ -213,7 +212,6 @@ class NodeHost:
         platform: Platform identifier (e.g., "win32", "darwin", "linux").
         capabilities: List of capability names to advertise. If None, all
             registered handlers are advertised.
-        auth_token: Shared secret for the server's "token" auth mode.
         server_url: Override HTTP base URL for the local agent (agent.run).
             Defaults to one derived from gateway_url.
     """
@@ -224,14 +222,12 @@ class NodeHost:
         display_name: str = DEFAULT_DISPLAY_NAME,
         platform: str = DEFAULT_PLATFORM,
         capabilities: list[str] | None = None,
-        auth_token: str = "",
         server_url: str | None = None,
     ):
         global _SERVER_BASE_URL
         self.gateway_url = gateway_url
         self.display_name = display_name
         self.platform = platform
-        self.auth_token = auth_token
         # Durable per-device token from a prior approval, presented on connect.
         self.device_token = _load_device_token(gateway_url)
         self._stop = False
@@ -273,7 +269,6 @@ class NodeHost:
             "display_name": self.display_name,
             "platform": self.platform,
             "capabilities": caps,
-            "auth_token": self.auth_token,
             "device_token": self.device_token,
         }
 
@@ -397,7 +392,7 @@ class NodeHost:
                 self.pairing_code = None
                 logger.error(
                     f"⛔ Connection rejected by server: {e}. Not retrying. "
-                    f"Check node_auth_mode / token, or wait for operator approval."
+                    f"Wait for the operator to approve this device."
                 )
                 break
             except (ConnectionError, OSError) as e:
@@ -455,12 +450,6 @@ def main():
         help="Comma-separated capability filter (default: all)",
     )
     parser.add_argument(
-        "--token",
-        default=os.environ.get("SUZENT_NODE_TOKEN", ""),
-        help="Shared secret for the server's 'token' auth mode "
-        "(or set SUZENT_NODE_TOKEN)",
-    )
-    parser.add_argument(
         "--server-url",
         default=None,
         help="HTTP base URL of the local agent for agent.run "
@@ -479,7 +468,6 @@ def main():
         gateway_url=args.url,
         display_name=args.name,
         capabilities=caps,
-        auth_token=args.token,
         server_url=args.server_url,
     )
 

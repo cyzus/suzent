@@ -7,8 +7,8 @@ whole HTTP API would otherwise be reachable unauthenticated. This middleware
 closes that hole:
 
 - Requests from loopback are trusted (the local app) and pass through.
-- Requests from any other address must present a valid node token
-  (a durable per-device token, or the shared secret when node_auth_mode=token).
+- Requests from any other address must present a valid durable per-device
+  token (minted when an operator approves the device).
 - The node WebSocket handshake (/ws/node) is exempt: it authenticates itself in
   the connect message.
 

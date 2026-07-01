@@ -1,5 +1,5 @@
 """
-Tests for node auth (open/token/approve), durable device tokens, and
+Tests for node auth (operator-gated approval), durable device tokens, and
 per-invoke timeout.
 """
 
@@ -7,7 +7,6 @@ import asyncio
 
 import pytest
 
-from suzent.config import CONFIG
 from suzent.nodes.base import NodeCapability
 from suzent.nodes.device_store import DeviceTokenStore
 from suzent.nodes.manager import NodeManager
@@ -115,48 +114,8 @@ from suzent.routes.node_routes import _authorize_node  # noqa: E402
 
 class TestAuthorize:
     @pytest.mark.asyncio
-    async def test_open_allows_all(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(CONFIG, "node_auth_mode", "open")
-        mgr = NodeManager(device_store=make_store(tmp_path))
-        ok, token = await _authorize_node(
-            FakeWS(), mgr, ConnectMessage(display_name="X"), []
-        )
-        assert ok and token == ""
-
-    @pytest.mark.asyncio
-    async def test_token_accept_and_reject(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(CONFIG, "node_auth_mode", "token")
-        monkeypatch.setattr(CONFIG, "node_auth_token", "s3cret")
-        mgr = NodeManager(device_store=make_store(tmp_path))
-
-        ok, _ = await _authorize_node(
-            FakeWS(), mgr, ConnectMessage(display_name="X", auth_token="s3cret"), []
-        )
-        assert ok
-
-        ws = FakeWS()
-        ok2, _ = await _authorize_node(
-            ws, mgr, ConnectMessage(display_name="X", auth_token="wrong"), []
-        )
-        assert ok2 is False
-        assert ws.closed and ws.close_code == 1008
-
-    @pytest.mark.asyncio
-    async def test_token_mode_empty_server_secret_fails_closed(
-        self, tmp_path, monkeypatch
-    ):
-        monkeypatch.setattr(CONFIG, "node_auth_mode", "token")
-        monkeypatch.setattr(CONFIG, "node_auth_token", "")
-        mgr = NodeManager(device_store=make_store(tmp_path))
-        ok, _ = await _authorize_node(
-            FakeWS(), mgr, ConnectMessage(display_name="X", auth_token=""), []
-        )
-        assert ok is False
-
-    @pytest.mark.asyncio
-    async def test_device_token_fast_path(self, tmp_path, monkeypatch):
-        # Even in approve mode, a known device token connects silently.
-        monkeypatch.setattr(CONFIG, "node_auth_mode", "approve")
+    async def test_device_token_fast_path(self, tmp_path):
+        # A known device token connects silently, skipping approval.
         store = make_store(tmp_path)
         _id, token = store.mint("Phone", "ios")
         mgr = NodeManager(device_store=store)
@@ -169,8 +128,7 @@ class TestAuthorize:
         assert ok and t == ""  # no new token minted
 
     @pytest.mark.asyncio
-    async def test_approve_flow_grants_token(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(CONFIG, "node_auth_mode", "approve")
+    async def test_approve_flow_grants_token(self, tmp_path):
         mgr = NodeManager(device_store=make_store(tmp_path))
         ws = FakeWS()
         msg = ConnectMessage(display_name="Phone", platform="ios")
@@ -191,8 +149,7 @@ class TestAuthorize:
         assert ok and token == minted
 
     @pytest.mark.asyncio
-    async def test_approve_flow_denied(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(CONFIG, "node_auth_mode", "approve")
+    async def test_approve_flow_denied(self, tmp_path):
         mgr = NodeManager(device_store=make_store(tmp_path))
         ws = FakeWS()
         task = asyncio.create_task(

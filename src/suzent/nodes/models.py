@@ -29,11 +29,8 @@ class ConnectMessage(BaseModel):
     display_name: str
     platform: str = "unknown"
     capabilities: list[CapabilitySchema] = Field(default_factory=list)
-    # Shared secret presented by the node. Only checked when the server's
-    # node_auth_mode is "token". Ignored in "open" mode.
-    auth_token: str = ""
-    # Durable per-device token previously minted by this server (approve mode).
-    # When present and valid, the node skips the pairing/approval step.
+    # Durable per-device token previously minted by this server. When present
+    # and valid, the node reconnects silently, skipping operator approval.
     device_token: str = ""
 
 
@@ -42,15 +39,15 @@ class ConnectedResponse(BaseModel):
 
     type: str = "connected"
     node_id: str
-    # In approve mode, a freshly approved node receives a durable per-device
-    # token here. The node should persist it and present it on reconnect.
+    # A freshly approved node receives a durable per-device token here. The node
+    # should persist it and present it on reconnect.
     device_token: str = ""
 
 
 class PendingResponse(BaseModel):
     """Server → Node: connection accepted but awaiting operator approval.
 
-    Sent in "approve" mode for a node the server has not seen before. The node
+    Sent for a node the server has not seen before. The node
     keeps the socket open and waits for a subsequent ConnectedResponse
     (approved) or ErrorResponse (denied/timeout). ``pairing_code`` is the
     single-use, short-lived handle an operator uses to approve this connection.

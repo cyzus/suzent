@@ -12,7 +12,6 @@ import uvicorn
 from starlette.applications import Starlette
 from starlette.routing import Route, WebSocketRoute
 
-from suzent.config import CONFIG
 from suzent.nodes.device_store import DeviceTokenStore
 from suzent.nodes.manager import NodeManager
 from suzent.routes.node_routes import (
@@ -36,8 +35,6 @@ def _build_app(tmp_path):
 
 @pytest.mark.asyncio
 async def test_outbound_node_appears_pending(tmp_path, monkeypatch):
-    monkeypatch.setattr(CONFIG, "node_auth_mode", "approve")
-
     # Don't touch the real user config dir for the node's saved token.
     from suzent.nodes import node_host
 

@@ -7,7 +7,6 @@ Provides:
 """
 
 import asyncio
-import hmac
 import uuid
 
 from pydantic import ValidationError
@@ -40,52 +39,36 @@ async def _authorize_node(
     connect_msg: ConnectMessage,
     capabilities: list[NodeCapability],
 ) -> tuple[bool, str]:
-    """Apply node_auth_mode to an incoming connection.
+    """Authorize an incoming node connection (operator-gated pairing).
 
     Returns (authorized, device_token). On rejection, sends an ErrorResponse,
     closes the socket, and returns (False, ""). The device_token is non-empty
-    only when approve mode freshly mints one (to hand back to the node).
-    """
-    mode = (CONFIG.node_auth_mode or "open").lower()
+    only when a fresh approval mints one (to hand back to the node).
 
-    # A previously-approved device presents its durable token and skips
-    # straight through, regardless of open/token/approve.
+    A previously-approved device presents its durable token and reconnects
+    silently. A new device blocks here until an operator approves or denies it
+    (or the request times out).
+    """
     if connect_msg.device_token and node_manager.device_store.verify(
         connect_msg.device_token
     ):
         return True, ""
 
-    if mode == "open":
-        return True, ""
-
-    if mode == "token":
-        expected = CONFIG.node_auth_token or ""
-        # Fail closed: an empty server token never authorizes anyone.
-        if expected and hmac.compare_digest(connect_msg.auth_token or "", expected):
-            return True, ""
-        await _reject(websocket, "Invalid or missing node auth token")
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future = loop.create_future()
+    code = node_manager.add_pending(
+        connect_msg.display_name, connect_msg.platform, capabilities, future
+    )
+    await websocket.send_json(PendingResponse(pairing_code=code).model_dump())
+    try:
+        outcome = await asyncio.wait_for(future, timeout=PENDING_TTL_SECONDS)
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        node_manager.cancel_pending(code)
+        await _reject(websocket, "Approval timed out")
         return False, ""
-
-    if mode == "approve":
-        loop = asyncio.get_running_loop()
-        future: asyncio.Future = loop.create_future()
-        code = node_manager.add_pending(
-            connect_msg.display_name, connect_msg.platform, capabilities, future
-        )
-        await websocket.send_json(PendingResponse(pairing_code=code).model_dump())
-        try:
-            outcome = await asyncio.wait_for(future, timeout=PENDING_TTL_SECONDS)
-        except (asyncio.TimeoutError, asyncio.CancelledError):
-            node_manager.cancel_pending(code)
-            await _reject(websocket, "Approval timed out")
-            return False, ""
-        if outcome:  # truthy = device_token string
-            return True, str(outcome)
-        await _reject(websocket, "Connection denied by operator")
-        return False, ""
-
-    # Unknown mode → fail closed.
-    await _reject(websocket, f"Unsupported node_auth_mode: {mode}")
+    if outcome:  # truthy = device_token string
+        return True, str(outcome)
+    await _reject(websocket, "Connection denied by operator")
     return False, ""
 
 
@@ -181,8 +164,9 @@ async def node_websocket_endpoint(websocket: WebSocket):
             for cap in connect_msg.capabilities
         ]
 
-        # Enforce node_auth_mode before registering. Approve mode blocks here
-        # until an operator approves/denies (or the request times out).
+        # Gate the connection before registering. A new device blocks here
+        # until an operator approves/denies (or the request times out); an
+        # already-approved device reconnects on its durable token.
         authorized, device_token = await _authorize_node(
             websocket, node_manager, connect_msg, capabilities
         )
@@ -394,8 +378,6 @@ async def revoke_device(request: Request) -> JSONResponse:
 
 # ─── Node auth configuration ─────────────────────────────────────────
 
-_VALID_AUTH_MODES = ("open", "token", "approve")
-
 
 def _best_effort_lan_host() -> str:
     """Best-effort LAN IP another device can use to reach this server.
@@ -488,23 +470,14 @@ def _pairing_addresses() -> list[dict]:
 
 
 async def get_node_config(request: Request) -> JSONResponse:
-    """GET /nodes/config — Current node auth configuration + pairing addresses."""
+    """GET /nodes/config — Current node configuration + pairing addresses."""
     from suzent.config import DEFAULT_PORT
-    from suzent.auth_boundary import is_loopback
 
     addresses = _pairing_addresses()
     primary = addresses[0] if addresses else None
-    # Only reveal the shared secret to the local app (loopback). A remote caller
-    # must never be able to read it back, even with a valid token.
-    client_host = request.client.host if request.client else ""
-    token_visible = CONFIG.node_auth_token or "" if is_loopback(client_host) else ""
     return JSONResponse(
         {
             "nodes_enabled": bool(CONFIG.nodes_enabled),
-            "node_auth_mode": (CONFIG.node_auth_mode or "open"),
-            # Surfaced to the local operator only (see token_visible above).
-            "node_auth_token": token_visible,
-            "node_auth_token_set": bool(CONFIG.node_auth_token),
             "node_lan_bind": bool(getattr(CONFIG, "node_lan_bind", False)),
             "port": DEFAULT_PORT,
             # All reachable addresses (LAN + Tailscale if present) so the UI can
@@ -518,13 +491,11 @@ async def get_node_config(request: Request) -> JSONResponse:
 
 
 async def save_node_config(request: Request) -> JSONResponse:
-    """POST /nodes/config — Update node auth mode/token (persisted locally).
+    """POST /nodes/config — Update node LAN exposure (persisted locally).
 
-    Secrets and machine-specific auth live in local.yaml (never synced), the
-    same place sandbox volumes are kept.
+    Machine-specific settings live in local.yaml (never synced), the same
+    place sandbox volumes are kept.
     """
-    import secrets
-
     from suzent.routes.config_routes import (
         _load_local_config_file,
         _save_local_config_file,
@@ -536,26 +507,6 @@ async def save_node_config(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
 
     cfg = _load_local_config_file()
-
-    mode = payload.get("node_auth_mode")
-    if mode is not None:
-        if mode not in _VALID_AUTH_MODES:
-            return JSONResponse(
-                {"error": f"node_auth_mode must be one of {_VALID_AUTH_MODES}"},
-                status_code=400,
-            )
-        cfg["node_auth_mode"] = mode
-        CONFIG.node_auth_mode = mode
-
-    # Either set an explicit token or ask the server to generate a strong one.
-    if payload.get("regenerate"):
-        token = secrets.token_urlsafe(24)
-        cfg["node_auth_token"] = token
-        CONFIG.node_auth_token = token
-    elif payload.get("node_auth_token") is not None:
-        token = str(payload["node_auth_token"])
-        cfg["node_auth_token"] = token
-        CONFIG.node_auth_token = token
 
     # LAN/Tailscale exposure. Takes effect on next server restart (the bind host
     # is fixed once uvicorn is listening).
@@ -571,8 +522,6 @@ async def save_node_config(request: Request) -> JSONResponse:
     return JSONResponse(
         {
             "success": True,
-            "node_auth_mode": CONFIG.node_auth_mode or "open",
-            "node_auth_token": CONFIG.node_auth_token or "",
             "node_lan_bind": bool(getattr(CONFIG, "node_lan_bind", False)),
             "restart_required": restart_required,
         }
@@ -602,7 +551,10 @@ async def discover_nodes(request: Request) -> JSONResponse:
 async def connect_node(request: Request) -> JSONResponse:
     """POST /nodes/connect — Join a remote Suzent as a node (outbound).
 
-    Body: {"gateway_url": "ws://host:port/ws/node", "name"?: str, "token"?: str}
+    Body: {"gateway_url": "ws://host:port/ws/node", "name"?: str}
+
+    The remote operator approves this device on first connect; no shared secret
+    is required.
     """
     mgr = _get_outbound_manager(request)
     if not mgr:
@@ -642,7 +594,6 @@ async def connect_node(request: Request) -> JSONResponse:
     host = mgr.start(
         gateway_url,
         display_name=(body.get("name") or "").strip(),
-        token=(body.get("token") or "").strip(),
     )
     return JSONResponse(
         {

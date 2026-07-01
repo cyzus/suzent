@@ -30,9 +30,7 @@ class OutboundConnectionManager:
         self._local_server_url = local_server_url or f"http://localhost:{DEFAULT_PORT}"
         self._conns: dict[str, dict] = {}
 
-    def start(
-        self, gateway_url: str, display_name: str = "", token: str = ""
-    ) -> NodeHost:
+    def start(self, gateway_url: str, display_name: str = "") -> NodeHost:
         """Start (or return the existing) outbound connection to a gateway."""
         existing = self._conns.get(gateway_url)
         if existing and not existing["task"].done():
@@ -41,7 +39,6 @@ class OutboundConnectionManager:
         host = NodeHost(
             gateway_url=gateway_url,
             display_name=display_name or socket.gethostname(),
-            auth_token=token,
             server_url=self._local_server_url,
         )
         task = asyncio.create_task(host.run())
