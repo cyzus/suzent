@@ -33,5 +33,5 @@
 - [Development Guide](03-developing/development-guide.md): Setup, workflow, production builds, and architecture
 - [Docker Services](03-developing/docker-services.md): Redis, SearXNG, and sandbox configuration
 - [Release Guide](03-developing/releasing.md): Version bumping and release process
-- [Memory Internals](03-developing/memory-internals.md): Memory system architecture for contributors
+- [Memory Internals](02-concepts/memory/internals.md): Memory system architecture for contributors
 - [Logo Standard](03-developing/logo.md): Canonical logo geometry, component usage, and sizing guidelines

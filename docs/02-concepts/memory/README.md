@@ -21,6 +21,11 @@ Suzent remembers things across conversations — facts you've shared, preference
   state/                 # Agent state snapshots
 ```
 
+## Deep dives
+
+- [Memory Consolidation](./consolidation.md): How daily logs become consolidated notebook memory.
+- [Memory Internals](./internals.md): Implementation-level architecture and data flow.
+
 ## Configuration
 
 Key settings in `config/default.yaml`:
