@@ -50,7 +50,10 @@ class WebSocketNode(NodeBase):
         self._pending: dict[str, asyncio.Future] = {}
 
     async def invoke(
-        self, command: str, params: dict[str, Any] | None = None
+        self,
+        command: str,
+        params: dict[str, Any] | None = None,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
         """
         Send a command to the node and wait for the response.
@@ -58,6 +61,8 @@ class WebSocketNode(NodeBase):
         Args:
             command: The command name to invoke.
             params: Optional parameters.
+            timeout: Optional override (seconds) for how long to wait on the
+                node's response. Defaults to DEFAULT_INVOKE_TIMEOUT.
 
         Returns:
             Dict with {"success": bool, "result": Any}.
@@ -66,6 +71,7 @@ class WebSocketNode(NodeBase):
             TimeoutError: If the node doesn't respond within the timeout.
             ConnectionError: If the WebSocket is disconnected.
         """
+        wait_timeout = timeout if timeout and timeout > 0 else DEFAULT_INVOKE_TIMEOUT
         request_id = str(uuid.uuid4())
         future: asyncio.Future = asyncio.get_running_loop().create_future()
         self._pending[request_id] = future
@@ -78,14 +84,14 @@ class WebSocketNode(NodeBase):
             )
             await self._ws.send_json(msg.model_dump())
 
-            result = await asyncio.wait_for(future, timeout=DEFAULT_INVOKE_TIMEOUT)
+            result = await asyncio.wait_for(future, timeout=wait_timeout)
             return result
 
         except asyncio.TimeoutError:
             logger.error(f"Timeout invoking '{command}' on node '{self.display_name}'")
             raise TimeoutError(
                 f"Node '{self.display_name}' did not respond to '{command}' "
-                f"within {DEFAULT_INVOKE_TIMEOUT}s"
+                f"within {wait_timeout}s"
             ) from None
         except WebSocketDisconnect:
             self.status = "disconnected"

@@ -24,6 +24,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 
+from suzent.auth_boundary import AuthBoundaryMiddleware
 from suzent.logger import get_logger, setup_logging
 from suzent.routes.chat_routes import (
     approve_tool,
@@ -170,6 +171,35 @@ from suzent.routes.node_routes import (
     list_nodes,
     describe_node,
     invoke_node_command,
+    list_pending_nodes,
+    approve_pending_node,
+    deny_pending_node,
+    list_approved_devices,
+    revoke_device,
+    set_device_status,
+    create_host_token,
+    get_node_config,
+    save_node_config,
+    discover_nodes,
+    connect_node,
+    list_connections,
+    disconnect_node,
+    grant_request,
+    grant_status,
+    list_grants,
+    approve_grant,
+    deny_grant,
+    request_control,
+    control_status,
+    list_peers,
+    set_peer_mode,
+    set_peer_reverse,
+    remove_peer,
+    trigger_peer,
+    peer_offer,
+    peer_invoke,
+    invoke_peer,
+    peer_capabilities,
 )
 from suzent.routes.cron_routes import (
     list_cron_jobs,
@@ -203,6 +233,11 @@ from suzent.routes.subagent_routes import (
     stream_subagents,
 )
 from suzent.routes.event_bus_routes import event_bus_stream
+from suzent.routes.suzent_channel_routes import (
+    suzent_channel_inbound,
+    suzent_channel_whoami,
+    suzent_channel_grant_changed,
+)
 from suzent.channels.manager import ChannelManager
 from suzent.nodes.manager import NodeManager
 
@@ -237,6 +272,8 @@ logger = get_logger(__name__)
 social_brain: SocialBrain = None
 channel_manager: ChannelManager = None
 node_manager: NodeManager = None
+node_advertiser = None
+outbound_manager = None
 scheduler_brain: SchedulerBrain = None
 heartbeat_runner: HeartbeatRunner = None
 sync_automation_runner: SyncAutomationRunner = None
@@ -536,6 +573,41 @@ async def startup():
     except Exception as e:
         logger.warning(f"Failed to register local node: {e}")
 
+    # Manager for outbound (click-to-pair) connections this device initiates.
+    global outbound_manager, node_advertiser
+    try:
+        from suzent.nodes.outbound import OutboundConnectionManager
+
+        outbound_manager = OutboundConnectionManager()
+        app.state.outbound_manager = outbound_manager
+    except Exception as e:
+        logger.warning(f"Failed to init outbound manager: {e}")
+
+    # Controller-side store of peers this device may drive (control-grant).
+    try:
+        from suzent.nodes.peer_store import PeerGrantStore
+
+        app.state.peer_store = PeerGrantStore()
+    except Exception as e:
+        logger.warning(f"Failed to init peer store: {e}")
+
+    # Advertise this server over mDNS so LAN peers can discover it.
+    if getattr(CONFIG, "node_discovery_enabled", True):
+        try:
+            import socket as _socket
+
+            from suzent.config import DEFAULT_PORT
+            from suzent.nodes.discovery import SuzentAdvertiser
+
+            node_advertiser = SuzentAdvertiser(
+                port=DEFAULT_PORT,
+                display_name=_socket.gethostname(),
+            )
+            node_advertiser.start()
+            app.state.node_advertiser = node_advertiser
+        except Exception as e:
+            logger.warning(f"Failed to start mDNS advertiser: {e}")
+
     logger.info("Node system initialized")
 
     global social_brain, channel_manager
@@ -638,12 +710,23 @@ async def shutdown():
         social_brain, \
         channel_manager, \
         node_manager, \
+        node_advertiser, \
+        outbound_manager, \
         scheduler_brain, \
         heartbeat_runner, \
         sync_automation_runner
 
     # Cancel any pending ask_question futures so their tasks can exit cleanly
     pending_questions.cancel_all()
+
+    if node_advertiser:
+        try:
+            node_advertiser.stop()
+        except Exception:
+            pass
+
+    if outbound_manager:
+        await _stop(outbound_manager.stop_all(), "OutboundConnectionManager")
 
     if heartbeat_runner:
         await _stop(heartbeat_runner.stop(), "HeartbeatRunner")
@@ -882,6 +965,56 @@ app = Starlette(
         WebSocketRoute("/ws/browser", browser_websocket_endpoint),
         WebSocketRoute("/ws/node", node_websocket_endpoint),
         Route("/nodes", list_nodes, methods=["GET"]),
+        # Specific paths must precede /nodes/{node_id} so they aren't captured
+        # as a node_id by the parametrized describe route.
+        Route("/nodes/config", get_node_config, methods=["GET"]),
+        Route("/nodes/config", save_node_config, methods=["POST"]),
+        Route("/nodes/discover", discover_nodes, methods=["GET"]),
+        Route("/nodes/connect", connect_node, methods=["POST"]),
+        Route("/nodes/connect/stop", disconnect_node, methods=["POST"]),
+        Route("/nodes/connections", list_connections, methods=["GET"]),
+        # Control-grant: target-side bootstrap (auth-exempt) + operator approval
+        Route("/nodes/grant-request", grant_request, methods=["POST"]),
+        Route("/nodes/grant-status/{request_id}", grant_status, methods=["GET"]),
+        Route("/nodes/grants", list_grants, methods=["GET"]),
+        Route("/nodes/grants/{request_id}/approve", approve_grant, methods=["POST"]),
+        Route("/nodes/grants/{request_id}/deny", deny_grant, methods=["POST"]),
+        # Control-grant: controller side
+        Route("/nodes/control", request_control, methods=["POST"]),
+        Route("/nodes/control-status", control_status, methods=["GET"]),
+        Route("/nodes/peer-offer", peer_offer, methods=["POST"]),
+        Route("/nodes/peer-invoke", peer_invoke, methods=["POST"]),
+        Route("/channels/suzent/inbound", suzent_channel_inbound, methods=["POST"]),
+        Route("/channels/suzent/whoami", suzent_channel_whoami, methods=["GET"]),
+        Route(
+            "/channels/suzent/grant-changed",
+            suzent_channel_grant_changed,
+            methods=["POST"],
+        ),
+        Route("/nodes/peers", list_peers, methods=["GET"]),
+        Route("/nodes/peers/{peer_id}/invoke", invoke_peer, methods=["POST"]),
+        Route(
+            "/nodes/peers/{peer_id}/capabilities",
+            peer_capabilities,
+            methods=["GET"],
+        ),
+        Route("/nodes/peers/{peer_id}/mode", set_peer_mode, methods=["POST"]),
+        Route("/nodes/peers/{peer_id}/reverse", set_peer_reverse, methods=["POST"]),
+        Route("/nodes/peers/{peer_id}/remove", remove_peer, methods=["POST"]),
+        Route("/nodes/peers/{peer_id}/trigger", trigger_peer, methods=["POST"]),
+        Route("/nodes/pending", list_pending_nodes, methods=["GET"]),
+        Route(
+            "/nodes/pending/{pairing_code}/approve",
+            approve_pending_node,
+            methods=["POST"],
+        ),
+        Route(
+            "/nodes/pending/{pairing_code}/deny", deny_pending_node, methods=["POST"]
+        ),
+        Route("/nodes/devices", list_approved_devices, methods=["GET"]),
+        Route("/nodes/host-token", create_host_token, methods=["POST"]),
+        Route("/nodes/devices/{device_id}/revoke", revoke_device, methods=["POST"]),
+        Route("/nodes/devices/{device_id}/status", set_device_status, methods=["POST"]),
         Route("/nodes/{node_id}", describe_node, methods=["GET"]),
         Route("/nodes/{node_id}/invoke", invoke_node_command, methods=["POST"]),
         Route("/cron/jobs", list_cron_jobs, methods=["GET"]),
@@ -918,7 +1051,10 @@ app = Starlette(
             allow_origins=["*"],
             allow_methods=["*"],
             allow_headers=["*"],
-        )
+        ),
+        # Loopback is trusted (local app); remote callers need a valid node
+        # token. Keeps the API safe when node_lan_bind exposes it on the network.
+        Middleware(AuthBoundaryMiddleware),
     ],
 )
 
@@ -950,6 +1086,20 @@ if __name__ == "__main__":
     _port_str = os.getenv("SUZENT_PORT", "").strip()
     port = int(_port_str) if _port_str else DEFAULT_PORT
     host = os.getenv("SUZENT_HOST", "0.0.0.0")
+    # The desktop app pins SUZENT_HOST=127.0.0.1 (loopback only). When the user
+    # opts into the node mesh, bind all interfaces so peer devices can reach the
+    # node WebSocket (still reachable on loopback for the local app).
+    try:
+        from suzent.config import CONFIG as _CFG
+
+        if getattr(_CFG, "node_lan_bind", False) and host not in ("0.0.0.0", "::"):
+            logger.info(
+                f"node_lan_bind enabled: binding 0.0.0.0 instead of {host} "
+                f"so peer devices can reach this server"
+            )
+            host = "0.0.0.0"
+    except Exception:
+        pass
 
     def write_port_file(effective_port: int) -> None:
         """Write the effective port to a file for CLI discovery."""

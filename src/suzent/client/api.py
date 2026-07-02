@@ -14,12 +14,91 @@ class NodesAPI:
         return await self.client.get(f"/nodes/{node_id}")
 
     async def invoke(
-        self, node_id: str, command: str, params: dict | None = None
+        self,
+        node_id: str,
+        command: str,
+        params: dict | None = None,
+        timeout: float | None = None,
     ) -> dict:
+        body: dict = {"command": command, "params": params or {}}
+        if timeout is not None:
+            body["timeout"] = timeout
+        return await self.client.post(f"/nodes/{node_id}/invoke", json=body)
+
+    async def pending(self) -> dict:
+        return await self.client.get("/nodes/pending")
+
+    async def approve(self, pairing_code: str) -> dict:
+        return await self.client.post(f"/nodes/pending/{pairing_code}/approve")
+
+    async def deny(self, pairing_code: str) -> dict:
+        return await self.client.post(f"/nodes/pending/{pairing_code}/deny")
+
+    async def devices(self) -> dict:
+        return await self.client.get("/nodes/devices")
+
+    async def revoke(self, device_id: str) -> dict:
+        return await self.client.post(f"/nodes/devices/{device_id}/revoke")
+
+    async def discover(self, timeout: float | None = None) -> dict:
+        path = "/nodes/discover"
+        if timeout is not None:
+            path += f"?timeout={timeout}"
+        return await self.client.get(path)
+
+    async def connect(self, gateway_url: str, name: str = "") -> dict:
         return await self.client.post(
-            f"/nodes/{node_id}/invoke",
-            json={"command": command, "params": params or {}},
+            "/nodes/connect",
+            json={"gateway_url": gateway_url, "name": name},
         )
+
+    async def connections(self) -> dict:
+        return await self.client.get("/nodes/connections")
+
+    async def disconnect(self, gateway_url: str) -> dict:
+        return await self.client.post(
+            "/nodes/connect/stop", json={"gateway_url": gateway_url}
+        )
+
+    # Control-grant peers (devices this one can drive over HTTP)
+    async def peers(self) -> dict:
+        return await self.client.get("/nodes/peers")
+
+    async def peer_capabilities(self, peer_id: str) -> dict:
+        return await self.client.get(f"/nodes/peers/{peer_id}/capabilities")
+
+    async def grants(self) -> dict:
+        return await self.client.get("/nodes/grants")
+
+    async def remove_peer(self, peer_id: str) -> dict:
+        return await self.client.post(f"/nodes/peers/{peer_id}/remove")
+
+    async def set_peer_mode(self, peer_id: str, mode: str) -> dict:
+        return await self.client.post(
+            f"/nodes/peers/{peer_id}/mode", json={"mode": mode}
+        )
+
+    async def invoke_peer(
+        self,
+        peer_id: str,
+        command: str,
+        params: dict | None = None,
+        timeout: float | None = None,
+    ) -> dict:
+        body: dict = {"command": command, "params": params or {}}
+        if timeout is not None:
+            body["timeout"] = timeout
+        return await self.client.post(f"/nodes/peers/{peer_id}/invoke", json=body)
+
+    async def trigger(self, peer_id: str, prompt: str, chat_id: str | None = None):
+        """Stream a peer agent run; yields raw SSE chunks (bytes)."""
+        payload: dict = {"prompt": prompt}
+        if chat_id:
+            payload["chat_id"] = chat_id
+        async for chunk in self.client.stream_post(
+            f"/nodes/peers/{peer_id}/trigger", json=payload, timeout=None
+        ):
+            yield chunk
 
 
 class CronAPI:

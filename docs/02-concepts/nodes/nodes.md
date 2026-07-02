@@ -126,17 +126,27 @@ Nodes connect to the server at `ws://<host>:<port>/ws/node` and follow a JSON-RP
       "description": "Take a photo with the device camera",
       "params_schema": {"format": "str", "quality": "float"}
     }
-  ]
+  ],
+  "device_token": ""
 }
 ```
+
+`device_token` is a durable token from a prior operator approval; when valid it
+connects silently, skipping the pending/approval step.
 
 **Server → Node** (acknowledgment):
 ```json
 {
   "type": "connected",
-  "node_id": "a1b2c3d4-..."
+  "node_id": "a1b2c3d4-...",
+  "device_token": ""
 }
 ```
+
+In `approve` mode, a node the server has not seen first receives a
+`{"type": "pending", "pairing_code": "ABC123"}` message and waits; on approval
+it gets the `connected` message above with a freshly-minted `device_token` to
+persist. On rejection/timeout it receives `{"type": "error", "message": "..."}`.
 
 ### 2. Command Invocation
 
@@ -215,6 +225,169 @@ async def run_node():
 asyncio.run(run_node())
 ```
 
+## Peer control (control-grant)
+
+For two devices that each run a full Suzent server, "drive the other's agent" is
+a **control-grant** over HTTP — simpler and more robust than the WebSocket mesh
+(which is for non-server companions like phones), and it streams like A2A.
+
+- **Connect = "I want to control them."** In **Settings → Devices → Discover**,
+  clicking **Control** on a peer sends it a grant request.
+- **Approve = consent to be driven.** The peer's operator sees it under
+  **Control requests** and approves; the peer mints a durable token and the
+  controller stores it (the controller doesn't gain anything the peer didn't
+  grant).
+- **Trigger.** The controller calls the peer's `/chat` with that token and
+  streams the agent's SSE events back. Gated by the [auth boundary](#auth-boundary).
+- **Two independent directions** per linked device (see
+  [devices-two-direction-ux-plan.md](./devices-two-direction-ux-plan.md)):
+  - **Outbound — I control them** (`off | trigger | paused`): whether we may
+    trigger the peer's agent.
+  - **Inbound — they control me** (`off | granted`, or `granted | paused` for a
+    grant we issued): whether the peer may trigger us. Enabling mints and offers
+    a reverse grant; a grant we issued can be paused (denied at the auth boundary
+    without dropping the durable token) or revoked.
+
+  "Mutual" is no longer a stored mode — it is simply both directions on.
+
+The bootstrap endpoints (`POST /nodes/grant-request`, `GET
+/nodes/grant-status/{id}`) are the only unauthenticated surface: they issue no
+secret, only queue an operator-gated request, are rate-capped + TTL'd, and the
+token is served once against an unguessable `request_id`.
+
+## Peer agents (Suzent channel)
+
+Triggering another linked device's agent goes through the **Suzent channel**
+(`POST /channels/suzent/inbound`), not a node capability. A peer you control
+sends the prompt; the target runs *its own* agent (its files, memory, tools) for
+your session (`suzent:<peer_id>`) and streams the reply back. See the
+[migration plan](./agent-channel-migration-plan.md).
+
+```bash
+# From device A, drive device B's agent (B must have granted A control):
+suzent nodes trigger "Device B" "summarize ~/notes"
+```
+
+> `agent.run` (the old node capability) was removed — node capabilities are now
+> only device hardware (`speaker.speak`, `camera.snap`). Agent-to-agent runs use
+> the channel, which streams and reuses the `/chat` machinery.
+
+## Making the server reachable
+
+The desktop app binds the server to **localhost only** by default
+(`SUZENT_HOST=127.0.0.1`), so peer devices can't reach it out of the box. To
+use cross-device nodes, enable **Settings → Devices → "Reachable by other
+devices"** (config `node_lan_bind`, default `false`) and **restart** the app —
+the server then binds `0.0.0.0` and is reachable on its LAN/Tailscale address.
+
+### Auth boundary (scoped tokens)
+
+Exposing the server does **not** open the API to the network. A middleware
+enforces a loopback-trusted, **scope-gated** model:
+
+- **Loopback (the local app) is trusted** — full access, no token.
+- **Remote callers** present a token (`Authorization: Bearer <token>` or
+  `X-Suzent-Token`); what they can reach depends on the token's **scope**:
+
+  | Scope | Issued by | Remote access |
+  |-------|-----------|---------------|
+  | `node` | WS pairing (operator approval) | WS handshake only — **no HTTP routes** |
+  | `agent` | a control grant | **only** `/chat` + `/chat/stop` (trigger the agent) |
+  | `full` | an explicit **host token** | the entire API (operate the device remotely) |
+
+  A valid token outside its scope gets **403**; no/invalid token gets **401**.
+
+- The **`/ws/node` handshake** and the **grant bootstrap** endpoints are exempt;
+  they self-authenticate (the handshake by device token/approval, the bootstrap
+  by an operator-approved, unguessable request id).
+
+> Identity model and the plan to harden it (bearer tokens today, TLS/key options
+> for untrusted networks) live in [security-plan.md](./security-plan.md).
+
+So a granted peer can drive your agent and **nothing else** — it can't read your
+config or files. To use a device fully from afar, mint a **host token**
+(Settings → Devices → *Remote host access → Create host token*); it carries
+`full` scope, is shown once, and is revocable like any device. This is the
+deliberate, stronger credential — distinct from the scoped grant tokens.
+
+`node_lan_bind` is therefore safe on a trusted LAN/tailnet. The bind host is
+fixed once the server is listening, hence the restart.
+
+## Discovery (LAN + Tailscale)
+
+Suzent can find peers automatically and let you join them without typing a URL.
+The two networks use **different, non-overlapping** mechanisms:
+
+| Network | Mechanism | Notes |
+|---------|-----------|-------|
+| **LAN** | mDNS/Bonjour — the server advertises `_suzent-node._tcp`; peers browse for it | Same-subnet only. **Does not** traverse Tailscale (multicast isn't forwarded). |
+| **Tailscale** | Enumerates online tailnet peers via the local `tailscale` CLI (`status --json`) | Works across networks; needs Tailscale installed and up. |
+
+```bash
+suzent node discover               # list LAN (mDNS) + tailnet peers
+suzent node connect ws://<peer>:25314/ws/node   # join one as a node (outbound)
+suzent node connections            # status + pairing code of your outbound joins
+suzent node disconnect ws://<peer>:25314/ws/node
+```
+
+In the desktop app, **Settings → Devices → Discover** scans both and offers a
+**Connect** button per peer. Connecting starts an outbound node host from this
+device; the pairing code shows under **Joining**, and the remote operator
+approves it under **Pending**.
+
+Discovery only *locates* a gateway — it never bypasses approval. Toggle
+advertising with `node_discovery_enabled` (default `true`).
+
+> mDNS finds LAN peers; Tailscale enumeration finds tailnet peers. A device
+> reachable only over Tailscale will **not** appear in the LAN list, and vice
+> versa — this is expected.
+
+## Authentication
+
+Every new device must be **approved by an operator** before it can connect. A
+device that has been approved once receives a **durable per-device token** and
+reconnects silently thereafter. A new device is parked as **pending** until the
+operator approves it (from the desktop app or the CLI); on approval the server
+mints the durable token the node persists and reuses. Revoke a device to force
+re-pairing.
+
+This one model works for both the desktop app (approve with a click) and
+headless/CLI nodes (approve with `suzent node approve <code>`), so there is no
+shared secret to distribute or leak.
+
+> ⚠️ **Plaintext transport.** `ws://` traffic is unencrypted — the durable token
+> only protects you on a trusted network or over `wss://`/a tunnel. Driving a
+> peer's agent is effectively authenticated remote code execution, so never
+> expose the server (or a token) on an untrusted network.
+
+### Pairing (approval + durable tokens)
+
+```bash
+# Companion device connects and prints a pairing code, then waits:
+suzent node host --name "My Laptop"
+
+# On the server, approve it (mints a durable per-device token):
+suzent node pending                # list codes awaiting approval
+suzent node approve <pairing_code>
+
+# Manage durable devices:
+suzent node devices                # list approved devices
+suzent node revoke <device_id>     # revoke; device must re-pair
+```
+
+The node persists its minted token under the user config dir
+(`node_host_devices.json`, keyed by gateway URL) and presents it on reconnect,
+so approval is a one-time step. The server stores the durable tokens in
+`node_devices.json`.
+
+### REST / Devices tab
+
+The same actions are available via REST (`GET /nodes/pending`,
+`POST /nodes/pending/{code}/approve|deny`, `GET /nodes/devices`,
+`POST /nodes/devices/{device_id}/revoke`, and `GET|POST /nodes/config`) and via
+**Settings → Devices**, a single unified list (connected nodes, peers you drive
+with a direction dropdown, devices that can drive you) plus pending approvals.
+
 ## Configuration
 
 Node system settings in Suzent configuration:
@@ -222,7 +395,8 @@ Node system settings in Suzent configuration:
 | Field | Default | Description |
 |-------|---------|-------------|
 | `nodes_enabled` | `true` | Enable/disable node WebSocket connections |
-| `node_auth_mode` | `"open"` | Authentication mode: `open`, `approve`, or `token` |
+| `node_discovery_enabled` | `true` | Advertise over mDNS and allow LAN/Tailscale discovery |
+| `node_lan_bind` | `false` | Bind `0.0.0.0` so peers can reach the server (needs restart) |
 
 Modify via CLI:
 ```bash

@@ -285,6 +285,7 @@ export const zhCN = {
       memory: '记忆系统',
       security: '安全',
       social: '社交频道',
+      devices: '设备',
       mcp: 'MCP 服务器',
       automation: '自动化',
       data: '数据',

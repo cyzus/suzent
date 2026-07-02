@@ -30,6 +30,10 @@ DEFAULT_PLATFORM = sys.platform
 RECONNECT_DELAY = 5  # seconds between reconnect attempts
 
 
+class NodeAuthError(Exception):
+    """Raised when the server rejects the node's connection (do not retry)."""
+
+
 # ─── Capability handlers ─────────────────────────────────────────────
 
 _HANDLERS: dict[str, Callable[..., Coroutine[Any, Any, dict[str, Any]]]] = {}
@@ -129,6 +133,51 @@ async def handle_camera_snap(params: dict[str, Any]) -> dict[str, Any]:
     return {"file": path, "format": fmt}
 
 
+# NOTE: agent.run was removed. Triggering a device's agent now goes through the
+# Suzent channel (POST /channels/suzent/inbound), not a node capability. Node
+# capabilities are for device hardware (speaker, camera). See
+# docs/02-concepts/nodes/agent-channel-migration-plan.md.
+
+
+# ─── Durable device-token persistence (node side) ────────────────────
+
+
+def _device_token_path():
+    from suzent.config import USER_CONFIG_DIR
+
+    return USER_CONFIG_DIR / "node_host_devices.json"
+
+
+def _load_device_token(gateway_url: str) -> str:
+    """Load this node's saved per-device token for a given gateway, if any."""
+    try:
+        path = _device_token_path()
+        if not path.exists():
+            return ""
+        with open(path) as f:
+            data = json.load(f)
+        return (data.get("tokens", {}) or {}).get(gateway_url, "")
+    except Exception as e:
+        logger.warning(f"Could not load device token: {e}")
+        return ""
+
+
+def _save_device_token(gateway_url: str, token: str) -> None:
+    """Persist a per-device token keyed by gateway URL."""
+    try:
+        path = _device_token_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {}
+        if path.exists():
+            with open(path) as f:
+                data = json.load(f)
+        data.setdefault("tokens", {})[gateway_url] = token
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        logger.warning(f"Could not persist device token: {e}")
+
+
 # ─── Node host core ──────────────────────────────────────────────────
 
 
@@ -153,8 +202,15 @@ class NodeHost:
         self.gateway_url = gateway_url
         self.display_name = display_name
         self.platform = platform
+        # Durable per-device token from a prior approval, presented on connect.
+        self.device_token = _load_device_token(gateway_url)
         self._stop = False
         self._node_id: str | None = None
+        # Observable state for the outbound-connection UI:
+        # idle | connecting | pending | connected | reconnecting | error | stopped
+        self.status: str = "idle"
+        self.pairing_code: str | None = None
+        self.last_error: str | None = None
 
         # Filter handlers to requested capabilities
         if capabilities:
@@ -184,6 +240,7 @@ class NodeHost:
             "display_name": self.display_name,
             "platform": self.platform,
             "capabilities": caps,
+            "device_token": self.device_token,
         }
 
     async def _handle_invoke(self, ws, data: dict[str, Any]) -> None:
@@ -235,16 +292,45 @@ class NodeHost:
     async def run_once(self) -> None:
         """Connect, handshake, and run the message loop until disconnect."""
         logger.info(f"🔌 Connecting to {self.gateway_url} ...")
+        self.status = "connecting"
 
         async with websockets.connect(self.gateway_url) as ws:
-            # Handshake
+            # Handshake — may receive a "pending" while awaiting operator
+            # approval (approve mode) before "connected" or "error".
             await ws.send(json.dumps(self._build_connect_message()))
-            resp = json.loads(await ws.recv())
 
-            if resp.get("type") == "error":
-                raise ConnectionError(f"Handshake rejected: {resp.get('error')}")
+            while True:
+                resp = json.loads(await ws.recv())
+                rtype = resp.get("type")
 
-            self._node_id = resp.get("node_id")
+                if rtype == "pending":
+                    code = resp.get("pairing_code", "")
+                    self.status = "pending"
+                    self.pairing_code = code
+                    logger.info(
+                        f"⏳ Awaiting approval. Share this code with the operator: "
+                        f"{code}  (approve with: suzent node approve {code})"
+                    )
+                    continue  # keep waiting for connected/error
+
+                if rtype == "error":
+                    # Auth rejections are fatal — reconnecting would just spam.
+                    raise NodeAuthError(resp.get("message") or "Handshake rejected")
+
+                if rtype == "connected":
+                    self._node_id = resp.get("node_id")
+                    self.status = "connected"
+                    self.pairing_code = None
+                    self.last_error = None
+                    new_token = resp.get("device_token") or ""
+                    if new_token and new_token != self.device_token:
+                        self.device_token = new_token
+                        _save_device_token(self.gateway_url, new_token)
+                        logger.info("🔐 Device approved; saved durable token.")
+                    break
+
+                raise ConnectionError(f"Unexpected handshake message: {rtype}")
+
             cap_names = ", ".join(self._handlers.keys())
             logger.info(
                 f"✅ Connected as '{self.display_name}' "
@@ -271,9 +357,20 @@ class NodeHost:
         while not self._stop:
             try:
                 await self.run_once()
+            except NodeAuthError as e:
+                self.status = "error"
+                self.last_error = str(e)
+                self.pairing_code = None
+                logger.error(
+                    f"⛔ Connection rejected by server: {e}. Not retrying. "
+                    f"Wait for the operator to approve this device."
+                )
+                break
             except (ConnectionError, OSError) as e:
                 if self._stop:
                     break
+                self.status = "reconnecting"
+                self.last_error = str(e)
                 logger.warning(
                     f"⚠️  Disconnected: {e}. Reconnecting in {RECONNECT_DELAY}s..."
                 )
@@ -281,11 +378,26 @@ class NodeHost:
             except websockets.exceptions.ConnectionClosed as e:
                 if self._stop:
                     break
+                self.status = "reconnecting"
+                self.last_error = str(e)
                 logger.warning(
                     f"⚠️  Connection closed: {e}. Reconnecting in {RECONNECT_DELAY}s..."
                 )
                 await asyncio.sleep(RECONNECT_DELAY)
+            except Exception as e:
+                # Anything else (bad URL, DNS failure, handshake error): surface
+                # it instead of crashing the task silently, then retry.
+                if self._stop:
+                    break
+                self.status = "reconnecting"
+                self.last_error = f"{type(e).__name__}: {e}"
+                logger.warning(
+                    f"⚠️  Connection error: {e}. Reconnecting in {RECONNECT_DELAY}s..."
+                )
+                await asyncio.sleep(RECONNECT_DELAY)
 
+        if self._stop:
+            self.status = "stopped"
         logger.info("🛑 Node host stopped.")
 
     def stop(self) -> None:

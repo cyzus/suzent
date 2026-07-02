@@ -285,6 +285,7 @@ export const en = {
       memory: 'Memory System',
       security: 'Security',
       social: 'Social Channels',
+      devices: 'Devices',
       mcp: 'MCP Servers',
       automation: 'Automation',
       data: 'Data',

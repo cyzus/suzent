@@ -305,6 +305,270 @@ export async function fetchBackendConfig(): Promise<ConfigOptions | null> {
   }
 }
 
+// ─── Nodes / Devices ─────────────────────────────────────────────────
+
+export interface NodeCapabilityInfo {
+  name: string;
+  description?: string;
+  params_schema?: Record<string, string>;
+}
+
+export interface ConnectedNode {
+  node_id: string;
+  display_name: string;
+  platform: string;
+  status: string;
+  connected_at?: string;
+  capabilities: NodeCapabilityInfo[];
+}
+
+export interface PendingNode {
+  pairing_code: string;
+  display_name: string;
+  platform: string;
+  capabilities: NodeCapabilityInfo[];
+  requested_at: string;
+}
+
+export interface ApprovedDevice {
+  device_id: string;
+  display_name: string;
+  platform: string;
+  scope?: 'node' | 'agent' | 'full';
+  status?: 'active' | 'paused';
+  token_hint?: string;
+  callback_url?: string;
+  node_identity?: string;
+  approved_at: string;
+  connected: boolean;
+}
+
+export interface PairingAddress {
+  label: string;
+  host: string;
+  gateway_url: string;
+}
+
+export interface NodeAuthConfig {
+  nodes_enabled: boolean;
+  node_lan_bind?: boolean;
+  lan_host?: string;
+  port?: number;
+  gateway_url?: string;
+  addresses?: PairingAddress[];
+}
+
+export async function fetchNodes(): Promise<ConnectedNode[]> {
+  const res = await fetch(`${getApiBase()}/nodes`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.nodes || [];
+}
+
+export async function fetchPendingNodes(): Promise<PendingNode[]> {
+  const res = await fetch(`${getApiBase()}/nodes/pending`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.pending || [];
+}
+
+export async function fetchApprovedDevices(): Promise<ApprovedDevice[]> {
+  const res = await fetch(`${getApiBase()}/nodes/devices`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.devices || [];
+}
+
+export async function approvePendingNode(pairingCode: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/pending/${pairingCode}/approve`, { method: 'POST' });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to approve');
+}
+
+export async function denyPendingNode(pairingCode: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/pending/${pairingCode}/deny`, { method: 'POST' });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to deny');
+}
+
+export async function revokeDevice(deviceId: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/devices/${deviceId}/revoke`, { method: 'POST' });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to revoke');
+}
+
+/** Pause or resume an inbound grant (a device that can drive us). */
+export async function setDeviceStatus(deviceId: string, status: 'active' | 'paused'): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/devices/${deviceId}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to update device status');
+}
+
+/** Mint a full-access ("host") token to use this server remotely. Shown once. */
+export async function createHostToken(name = ''): Promise<{ token: string; device_id: string }> {
+  const res = await fetch(`${getApiBase()}/nodes/host-token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to create host token');
+  return await res.json();
+}
+
+export interface DiscoveredPeer {
+  name: string;
+  host: string;
+  port: number;
+  gateway_url: string;
+  source: 'lan' | 'tailscale';
+  auth_mode?: string;
+  reachable?: boolean;
+}
+
+export interface OutboundConnection {
+  gateway_url: string;
+  display_name: string;
+  status: string;
+  pairing_code: string | null;
+  node_id: string | null;
+  error: string | null;
+}
+
+export async function discoverNodes(timeout = 2.0): Promise<{ lan: DiscoveredPeer[]; tailscale: DiscoveredPeer[] }> {
+  const res = await fetch(`${getApiBase()}/nodes/discover?timeout=${timeout}`);
+  if (!res.ok) return { lan: [], tailscale: [] };
+  return await res.json();
+}
+
+export async function connectNode(gateway_url: string, name = ''): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/connect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ gateway_url, name }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to connect');
+}
+
+export async function fetchConnections(): Promise<OutboundConnection[]> {
+  const res = await fetch(`${getApiBase()}/nodes/connections`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.connections || [];
+}
+
+export async function disconnectNode(gateway_url: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/connect/stop`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ gateway_url }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to disconnect');
+}
+
+// ─── Control-grant (peer agent control) ──────────────────────────────
+
+export interface ControlRequest {
+  request_id: string;
+  controller_name: string;
+  controller_host: string;
+  controller_addr?: string;
+  controller_identity?: string;
+  requested_at: string;
+}
+
+export interface ControlledPeer {
+  peer_id: string;
+  name: string;
+  base_url: string;
+  mode: 'off' | 'trigger' | 'paused';
+  reverse_enabled?: boolean;
+  added_at: string;
+  online?: boolean;
+  outbound_status?: 'ready' | 'revoked' | 'offline';
+}
+
+export async function fetchGrants(): Promise<ControlRequest[]> {
+  const res = await fetch(`${getApiBase()}/nodes/grants`);
+  if (!res.ok) return [];
+  return (await res.json()).grants || [];
+}
+
+export async function approveGrant(requestId: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/grants/${requestId}/approve`, { method: 'POST' });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to approve');
+}
+
+export async function denyGrant(requestId: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/grants/${requestId}/deny`, { method: 'POST' });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to deny');
+}
+
+export async function fetchPeers(): Promise<ControlledPeer[]> {
+  const res = await fetch(`${getApiBase()}/nodes/peers`);
+  if (!res.ok) return [];
+  return (await res.json()).peers || [];
+}
+
+export async function setPeerMode(peerId: string, mode: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/peers/${peerId}/mode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to set mode');
+}
+
+/** Enable/disable the inbound direction: let this peer trigger our agent. */
+export async function setPeerReverse(peerId: string, enabled: boolean): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/peers/${peerId}/reverse`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to update inbound access');
+}
+
+export async function removePeer(peerId: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/nodes/peers/${peerId}/remove`, { method: 'POST' });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to remove peer');
+}
+
+/** Start controlling a peer: request a grant, then poll until approved. */
+export async function requestControl(baseUrl: string): Promise<{ request_id: string; base_url: string }> {
+  const res = await fetch(`${getApiBase()}/nodes/control`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ base_url: baseUrl }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to request control');
+  return await res.json();
+}
+
+export async function controlStatus(baseUrl: string, requestId: string, name = ''): Promise<{ status: string; peer_id?: string }> {
+  const url = `${getApiBase()}/nodes/control-status?base_url=${encodeURIComponent(baseUrl)}&request_id=${encodeURIComponent(requestId)}&name=${encodeURIComponent(name)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to poll control status');
+  return await res.json();
+}
+
+export async function fetchNodeConfig(): Promise<NodeAuthConfig> {
+  const res = await fetch(`${getApiBase()}/nodes/config`);
+  if (!res.ok) throw new Error('Failed to load node config');
+  return await res.json();
+}
+
+export async function saveNodeConfig(
+  updates: { node_lan_bind?: boolean }
+): Promise<NodeAuthConfig & { restart_required?: boolean }> {
+  const res = await fetch(`${getApiBase()}/nodes/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to save node config');
+  return await res.json();
+}
+
 export async function saveGlobalSandboxConfig(sandbox_volumes: string[]): Promise<string[]> {
   const res = await fetch(`${getApiBase()}/config/sandbox-global`, {
     method: 'POST',
