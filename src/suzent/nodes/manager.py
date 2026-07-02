@@ -72,6 +72,30 @@ class NodeManager:
         # Control-grant requests (HTTP), keyed by unguessable request_id.
         self._grant_requests: dict[str, GrantRequest] = {}
         self.device_store = device_store or DeviceTokenStore()
+        # Recent rejected inbound trigger attempts (unauthenticated / bad token),
+        # a small ring for the operator to spot probing. In-memory only.
+        self._unauthorized_triggers: list[dict[str, Any]] = []
+
+    def record_unauthorized_trigger(self, client_host: str, claimed_id: str) -> None:
+        """Log a rejected inbound trigger (no valid token) for operator review."""
+        self._unauthorized_triggers.append(
+            {
+                "at": _iso(time.time()),
+                "client_host": client_host or "unknown",
+                "claimed_id": claimed_id or "",
+            }
+        )
+        # Keep only the most recent entries.
+        if len(self._unauthorized_triggers) > 50:
+            self._unauthorized_triggers = self._unauthorized_triggers[-50:]
+        logger.warning(
+            f"Rejected unauthenticated Suzent trigger from {client_host or 'unknown'}"
+            f" (claimed id: {claimed_id or 'none'})"
+        )
+
+    def list_unauthorized_triggers(self) -> list[dict[str, Any]]:
+        """Recent rejected inbound trigger attempts (newest last)."""
+        return list(self._unauthorized_triggers)
 
     def register_node(self, node: NodeBase) -> None:
         """

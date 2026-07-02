@@ -136,6 +136,8 @@ class DeviceTokenStore:
                     "callback_url": rec.get("callback_url", ""),
                     "node_identity": rec.get("node_identity", ""),
                     "approved_at": rec.get("approved_at", ""),
+                    "trigger_count": int(rec.get("trigger_count", 0)),
+                    "last_triggered_at": rec.get("last_triggered_at", ""),
                 }
                 for rec in self._devices.values()
             ]
@@ -155,6 +157,22 @@ class DeviceTokenStore:
                     rec["status"] = status
                     self._save()
                     logger.info(f"Device store: device {device_id} → {status}")
+                    return True
+        return False
+
+    def record_trigger(self, device_id: str) -> bool:
+        """Record an inbound trigger from this device: bump count + last-used.
+
+        Lets the Devices tab show usage stats ("last active", how many times a
+        grant has driven us) so stale/over-active grants are easy to spot.
+        Returns True if a device was updated.
+        """
+        with self._lock:
+            for rec in self._devices.values():
+                if rec.get("device_id") == device_id:
+                    rec["trigger_count"] = int(rec.get("trigger_count", 0)) + 1
+                    rec["last_triggered_at"] = _now_iso()
+                    self._save()
                     return True
         return False
 

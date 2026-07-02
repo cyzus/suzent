@@ -50,10 +50,24 @@ async def suzent_channel_inbound(request: Request):
     peer_id = rec.get("device_id") if rec else None
     chat_id = body.get("chat_id") or (f"suzent:{peer_id}" if peer_id else None)
     if not chat_id:
+        # Record the rejected attempt so the operator can spot probing/abuse.
+        nm = getattr(getattr(request, "app", None).state, "node_manager", None)
+        if nm is not None:
+            client_host = request.client.host if request.client else ""
+            nm.record_unauthorized_trigger(client_host, str(body.get("from_id") or ""))
         return JSONResponse(
             {"error": "Unauthorized: a valid peer token (or chat_id) is required"},
             status_code=401,
         )
+
+    # Stamp usage on the grant so the Devices tab can show last-active + count.
+    if peer_id:
+        nm = getattr(getattr(request, "app", None).state, "node_manager", None)
+        if nm is not None:
+            try:
+                nm.device_store.record_trigger(peer_id)
+            except Exception:
+                pass
     name = (rec or {}).get("display_name") if rec else None
     trigger_label = name or peer_id or "an unknown device"
 

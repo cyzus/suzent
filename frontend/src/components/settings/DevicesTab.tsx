@@ -10,6 +10,7 @@ import {
   fetchNodes,
   fetchPendingNodes,
   fetchApprovedDevices,
+  fetchUnauthorizedTriggers,
   fetchNodeConfig,
   saveNodeConfig,
   approvePendingNode,
@@ -35,6 +36,7 @@ import {
   type OutboundConnection,
   type ControlRequest,
   type ControlledPeer,
+  type UnauthorizedTrigger,
 } from '../../lib/api';
 import { BrutalSelect } from '../BrutalSelect';
 import { BrutalButton } from '../BrutalButton';
@@ -47,6 +49,18 @@ const AGENT_CAPABILITY = 'agent.run';
 
 function capNames(caps: { name: string }[]): string {
   return caps.length ? caps.map((c) => c.name).join(', ') : 'none';
+}
+
+/** Compact "2h ago" style relative time; '' for empty/invalid input. */
+function timeAgo(iso?: string): string {
+  if (!iso) return '';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return '';
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
 }
 
 function isAgent(node: { capabilities: { name: string }[] }): boolean {
@@ -127,6 +141,7 @@ export function DevicesTab(): React.ReactElement {
   const [peers, setPeers] = useState<ControlledPeer[]>([]);
   const [discovered, setDiscovered] = useState<{ lan: DiscoveredPeer[]; tailscale: DiscoveredPeer[] } | null>(null);
   const [discovering, setDiscovering] = useState(false);
+  const [unauthorized, setUnauthorized] = useState<UnauthorizedTrigger[]>([]);
   // Outstanding control requests awaiting the remote operator's approval,
   // keyed by base_url → { request_id, name }. The regular refresh() reconciles
   // these so a late approval still finalizes (the requester's poll gives up
@@ -150,13 +165,14 @@ export function DevicesTab(): React.ReactElement {
         })
       );
     }
-    const [n, p, d, c, g, pe] = await Promise.all([
+    const [n, p, d, c, g, pe, ua] = await Promise.all([
       fetchNodes(),
       fetchPendingNodes(),
       fetchApprovedDevices(),
       fetchConnections(),
       fetchGrants(),
       fetchPeers(),
+      fetchUnauthorizedTriggers(),
     ]);
     setNodes(n);
     setPending(p);
@@ -164,6 +180,7 @@ export function DevicesTab(): React.ReactElement {
     setConnections(c);
     setGrants(g);
     setPeers(pe);
+    setUnauthorized(ua);
     setLoaded(true);
   }, []);
 
@@ -270,6 +287,8 @@ export function DevicesTab(): React.ReactElement {
     status?: 'active' | 'paused'; // inbound grant status
     tokenHint?: string; // non-secret token fingerprint (head…tail)
     approvedAt?: string;
+    triggerCount?: number; // inbound triggers received from this grant
+    lastTriggeredAt?: string;
     peer?: ControlledPeer; // I drive them
     pendingGrant?: ControlRequest; // this device is requesting inbound control
   };
@@ -355,6 +374,8 @@ export function DevicesTab(): React.ReactElement {
         existing.status = d.status;
         existing.tokenHint = d.token_hint;
         existing.approvedAt = d.approved_at;
+        existing.triggerCount = d.trigger_count;
+        existing.lastTriggeredAt = d.last_triggered_at;
         existing.online = existing.online || d.connected;
         if (idKey) byKey.set(idKey, existing);
       } else {
@@ -369,6 +390,8 @@ export function DevicesTab(): React.ReactElement {
           status: d.status,
           tokenHint: d.token_hint,
           approvedAt: d.approved_at,
+          triggerCount: d.trigger_count,
+          lastTriggeredAt: d.last_triggered_at,
         };
         byKey.set(nameKey, row);
         if (idKey) byKey.set(idKey, row);
@@ -411,14 +434,11 @@ export function DevicesTab(): React.ReactElement {
         title="Devices"
         subtitle="Companion devices and peer agents connected to this Suzent."
         actions={
-          <div className="flex items-center gap-2">
-            {loaded && (
-              <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-mono">
-                auto-refresh
-              </span>
-            )}
-            <SettingsListAction onClick={() => refresh()}>Refresh</SettingsListAction>
-          </div>
+          loaded ? (
+            <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-mono">
+              auto-refresh
+            </span>
+          ) : undefined
         }
       />
 
@@ -625,6 +645,23 @@ export function DevicesTab(): React.ReactElement {
           description="Every device this one is linked to. Approvals appear at the top. Each link shows two directions: whether you can trigger them, and whether they may trigger you."
         />
         <div className="space-y-3">
+          {/* Rejected inbound trigger attempts — quiet by default; expandable
+              for the operator who wants the details. */}
+          {unauthorized.length > 0 && (
+            <details className="text-[11px] font-mono text-neutral-400">
+              <summary className="cursor-pointer hover:text-neutral-500 dark:hover:text-neutral-300 select-none">
+                {unauthorized.length} blocked trigger attempt{unauthorized.length > 1 ? 's' : ''}
+              </summary>
+              <div className="mt-1 pl-3 space-y-0.5 text-neutral-400">
+                {unauthorized.slice(-5).reverse().map((u, i) => (
+                  <div key={i} className="truncate">
+                    {timeAgo(u.at)} · from {u.client_host}
+                    {u.claimed_id ? ` (claimed "${u.claimed_id}")` : ''}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
           {/* Incoming requests — another device wants to control this one. */}
           {unmatchedGrants.map((g) => (
             <SettingsListItem key={`grant:${g.request_id}`} className="p-4 border-brutal-blue">
@@ -735,6 +772,14 @@ export function DevicesTab(): React.ReactElement {
                   <div className="space-y-3 px-4 py-3">
                     {d.peer?.base_url && (
                       <div className="border-l-4 border-brutal-blue bg-white/80 px-2 py-1 text-[11px] text-neutral-500 font-mono truncate dark:bg-zinc-950/50 dark:text-neutral-400">{d.peer.base_url}</div>
+                    )}
+
+                    {/* Inbound usage: how often / when this grant last drove us. */}
+                    {hasInbound && (d.triggerCount ?? 0) > 0 && (
+                      <div className="text-[11px] text-neutral-400 font-mono">
+                        Triggered you {d.triggerCount}×
+                        {d.lastTriggeredAt ? ` · last ${timeAgo(d.lastTriggeredAt)}` : ''}
+                      </div>
                     )}
 
                     {/* Host token: full-access credential — no direction grid. */}

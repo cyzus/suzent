@@ -327,6 +327,15 @@ async def list_approved_devices(request: Request) -> JSONResponse:
     return JSONResponse({"devices": devices, "count": len(devices)})
 
 
+async def list_unauthorized_triggers(request: Request) -> JSONResponse:
+    """GET /nodes/unauthorized — recent rejected inbound trigger attempts."""
+    node_manager = _get_node_manager(request)
+    if not node_manager:
+        return JSONResponse({"attempts": [], "count": 0})
+    attempts = node_manager.list_unauthorized_triggers()
+    return JSONResponse({"attempts": attempts, "count": len(attempts)})
+
+
 async def create_host_token(request: Request) -> JSONResponse:
     """POST /nodes/host-token — mint a full-access token for remote host control.
 

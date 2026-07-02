@@ -341,6 +341,8 @@ export interface ApprovedDevice {
   node_identity?: string;
   approved_at: string;
   connected: boolean;
+  trigger_count?: number;
+  last_triggered_at?: string;
 }
 
 export interface PairingAddress {
@@ -377,6 +379,19 @@ export async function fetchApprovedDevices(): Promise<ApprovedDevice[]> {
   if (!res.ok) return [];
   const data = await res.json();
   return data.devices || [];
+}
+
+export interface UnauthorizedTrigger {
+  at: string;
+  client_host: string;
+  claimed_id: string;
+}
+
+export async function fetchUnauthorizedTriggers(): Promise<UnauthorizedTrigger[]> {
+  const res = await fetch(`${getApiBase()}/nodes/unauthorized`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.attempts || [];
 }
 
 export async function approvePendingNode(pairingCode: string): Promise<void> {
