@@ -1151,11 +1151,22 @@ async def set_peer_reverse(request: Request) -> JSONResponse:
 
 
 async def remove_peer(request: Request) -> JSONResponse:
-    """POST /nodes/peers/{peer_id}/remove — forget a controllable peer."""
+    """POST /nodes/peers/{peer_id}/remove — fully unlink a peer (both directions).
+
+    Drops our outbound token AND revokes any reverse grant we issued so the peer
+    can no longer drive us either. Removing a link severs it completely.
+    """
     store = _get_peer_store(request)
+    node_manager = _get_node_manager(request)
     peer_id = request.path_params.get("peer_id", "")
-    if not store or not store.remove(peer_id):
+    peer = store.get(peer_id) if store else None
+    if not peer:
         return JSONResponse({"error": "Unknown peer"}, status_code=404)
+    # Revoke the inbound (reverse) grant first, if any.
+    reverse_id = peer.get("reverse_device_id")
+    if reverse_id and node_manager:
+        node_manager.device_store.revoke(reverse_id)
+    store.remove(peer_id)
     return JSONResponse({"success": True})
 
 

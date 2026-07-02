@@ -226,6 +226,15 @@ export function DevicesTab(): React.ReactElement {
     }
   };
 
+  // Fully sever a linked device, whichever directions exist. removePeer drops
+  // the peer we drive AND revokes the reverse grant it issued; for an
+  // inbound-only device (no peer) we revoke the grant directly. One "Remove"
+  // covers every row.
+  const unlinkDevice = async (peerId?: string, deviceId?: string) => {
+    if (peerId) await removePeer(peerId);
+    else if (deviceId) await revokeDevice(deviceId);
+  };
+
   const addresses = config?.addresses ?? [];
   // Pick the selected pairing address (default: first / LAN).
   const selectedAddr =
@@ -686,16 +695,19 @@ export function DevicesTab(): React.ReactElement {
                         <span className="px-1.5 py-0.5 text-[10px] font-black uppercase bg-brutal-red text-white rounded-sm">Host</span>
                       )}
                     </div>
-                    {hasOutbound && d.peer && (
-                      <SettingsListAction tone="red" disabled={busy === d.peer.peer_id} onClick={() => act(d.peer!.peer_id, () => removePeer(d.peer!.peer_id))}>
-                        Remove
-                      </SettingsListAction>
-                    )}
-                    {isHostToken && d.deviceId && (
+                    {isHostToken && d.deviceId ? (
                       <SettingsListAction tone="red" disabled={busy === d.deviceId} onClick={() => act(d.deviceId!, () => revokeDevice(d.deviceId!))}>
                         Revoke
                       </SettingsListAction>
-                    )}
+                    ) : (hasOutbound || hasInbound) ? (
+                      <SettingsListAction
+                        tone="red"
+                        disabled={busy === (d.peer?.peer_id ?? d.deviceId)}
+                        onClick={() => act(d.peer?.peer_id ?? d.deviceId!, () => unlinkDevice(d.peer?.peer_id, d.deviceId))}
+                      >
+                        Remove
+                      </SettingsListAction>
+                    ) : null}
                   </div>
 
                   {d.peer?.base_url && (
@@ -776,21 +788,13 @@ export function DevicesTab(): React.ReactElement {
                         </div>
                       ) : hasInbound && d.deviceId ? (
                         // A grant I issued (the real inbound authorization) —
-                        // pause/resume without dropping the token, or revoke.
-                        <div className="flex items-center gap-2">
-                          <DirectionToggle
-                            on={inboundGranted}
-                            busy={busy === d.deviceId}
-                            onToggle={() => act(d.deviceId!, () => setDeviceStatus(d.deviceId!, inboundGranted ? 'paused' : 'active'))}
-                          />
-                          <button
-                            className="text-[10px] text-brutal-red font-black uppercase hover:underline disabled:opacity-40"
-                            disabled={busy === d.deviceId}
-                            onClick={() => act(d.deviceId!, () => revokeDevice(d.deviceId!))}
-                          >
-                            Revoke
-                          </button>
-                        </div>
+                        // pause/resume without dropping the token. Fully severing
+                        // is the row's single "Remove" button (header).
+                        <DirectionToggle
+                          on={inboundGranted}
+                          busy={busy === d.deviceId}
+                          onToggle={() => act(d.deviceId!, () => setDeviceStatus(d.deviceId!, inboundGranted ? 'paused' : 'active'))}
+                        />
                       ) : hasOutbound && d.peer ? (
                         // No issued grant yet — offer to mint a reverse grant so
                         // this peer we drive can drive us back.

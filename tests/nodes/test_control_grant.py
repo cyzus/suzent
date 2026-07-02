@@ -300,3 +300,38 @@ def test_list_peers_outbound_status(tmp_path, monkeypatch):
     assert peers[ready]["outbound_status"] == "ready"
     assert peers[revoked]["outbound_status"] == "revoked"
     assert peers[offline]["outbound_status"] == "offline"
+
+
+def test_remove_peer_also_revokes_reverse_grant(tmp_path):
+    """Removing a peer fully unlinks: drops our token AND revokes the reverse
+    grant so the peer can no longer drive us either."""
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    from suzent.nodes.device_store import DeviceTokenStore
+    from suzent.nodes.manager import NodeManager
+    from suzent.nodes.peer_store import PeerGrantStore
+    from suzent.routes.node_routes import remove_peer
+
+    ds = DeviceTokenStore(path=tmp_path / "d.json")
+    mgr = NodeManager(device_store=ds)
+    ps = PeerGrantStore(path=tmp_path / "peers.json")
+
+    # A peer we drive, plus a reverse grant we issued so they can drive us.
+    pid = ps.add("Peer", "http://peer.example:25314", "theirtok")
+    rev_id, _tok = ds.mint("Peer", "peer", scope="agent")
+    ps.set_reverse_device_id(pid, rev_id)
+    assert ds.get_by_device_id(rev_id) is not None
+
+    app = Starlette(
+        routes=[Route("/nodes/peers/{peer_id}/remove", remove_peer, methods=["POST"])]
+    )
+    app.state.peer_store = ps
+    app.state.node_manager = mgr
+    client = TestClient(app)
+
+    r = client.post(f"/nodes/peers/{pid}/remove")
+    assert r.status_code == 200 and r.json()["success"] is True
+    assert ps.get(pid) is None  # outbound gone
+    assert ds.get_by_device_id(rev_id) is None  # inbound reverse grant revoked
