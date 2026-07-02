@@ -69,9 +69,10 @@ def test_inbound_streams_agent_reply(monkeypatch):
     assert r.status_code == 200
     assert "hi" in r.text
     assert captured["chat_id"] == "suzent:p1"
-    # Content is framed with remote attribution, but carries the original text.
-    assert "hello" in captured["message_content"]
-    assert "Triggered remotely" in captured["message_content"]
+    # The visible message is the raw content; attribution is a hidden reminder.
+    assert captured["message_content"] == "hello"
+    reminders = captured.get("system_reminders") or []
+    assert any("triggered remotely" in r.lower() for r in reminders)
     # Headless + auto so a remote peer's run doesn't block on approvals.
     assert captured["config_override"]["interaction_profile"] == "headless"
     assert captured["config_override"]["permission_mode"] == "auto"

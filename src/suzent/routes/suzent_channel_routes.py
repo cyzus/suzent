@@ -81,16 +81,22 @@ async def suzent_channel_inbound(request: Request):
     config_override["interaction_profile"] = "headless"
     config_override["permission_mode"] = "auto"
 
-    # Attribution: tell the agent who is driving it, so it can reason/respond with
-    # that context (it's a remote peer, not the local user).
-    framed_content = f"[Triggered remotely by device: {trigger_label}]\n\n{content}"
+    # Attribution: inject who is driving this turn as a hidden system-reminder
+    # (out-of-band context, not part of the visible message) so the agent knows
+    # it's a remote peer, not the local user.
+    attribution = (
+        f"This turn was triggered remotely by peer device '{trigger_label}' over "
+        f"the Suzent agent-to-agent channel — not by the local user. Respond as if "
+        f"assisting that peer."
+    )
 
     logger.info(f"Suzent channel: inbound turn for {chat_id} (from {trigger_label})")
     generator = processor.process_turn(
         chat_id=chat_id,
         user_id=CONFIG.user_id,
-        message_content=framed_content,
+        message_content=content,
         config_override=config_override,
+        system_reminders=[attribution],
     )
 
     # Tee the turn: stream it back to the calling peer (HTTP response) AND mirror
