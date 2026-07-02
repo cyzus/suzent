@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   fetchNodes,
@@ -119,8 +119,29 @@ export function DevicesTab(): React.ReactElement {
   const [peers, setPeers] = useState<ControlledPeer[]>([]);
   const [discovered, setDiscovered] = useState<{ lan: DiscoveredPeer[]; tailscale: DiscoveredPeer[] } | null>(null);
   const [discovering, setDiscovering] = useState(false);
+  // Outstanding control requests awaiting the remote operator's approval,
+  // keyed by base_url → { request_id, name }. The regular refresh() reconciles
+  // these so a late approval still finalizes (the requester's poll gives up
+  // after a few minutes, but the grant lives longer on the target).
+  const outstanding = useRef<Map<string, { requestId: string; name: string }>>(new Map());
 
   const refresh = useCallback(async () => {
+    // Finalize any outstanding control requests whose approval has landed.
+    if (outstanding.current.size) {
+      await Promise.all(
+        [...outstanding.current.entries()].map(async ([baseUrl, { requestId, name }]) => {
+          try {
+            const s = await controlStatus(baseUrl, requestId, name);
+            if (s.status === 'approved' || s.status === 'denied' || s.status === 'expired') {
+              outstanding.current.delete(baseUrl);
+              if (s.status !== 'approved') setError(`Control request ${s.status}.`);
+            }
+          } catch {
+            // Peer unreachable this tick — keep trying on later refreshes.
+          }
+        })
+      );
+    }
     const [n, p, d, c, g, pe] = await Promise.all([
       fetchNodes(),
       fetchPendingNodes(),
@@ -138,23 +159,16 @@ export function DevicesTab(): React.ReactElement {
     setLoaded(true);
   }, []);
 
-  // Connect = "I want to control this device": request a grant, poll until the
-  // peer's operator approves, then it appears under "Controlling".
+  // Connect = "I want to control this device": request a grant, then let the
+  // regular refresh loop finalize it whenever the operator approves (works for
+  // the whole grant window, not just a short foreground poll).
   const handleControl = useCallback(
     async (baseUrl: string, name = '') => {
       setBusy(baseUrl);
       setError(null);
       try {
         const { request_id, base_url } = await requestControl(baseUrl);
-        for (let i = 0; i < 90; i++) {
-          const s = await controlStatus(base_url, request_id, name);
-          if (s.status === 'approved') break;
-          if (s.status === 'denied' || s.status === 'expired') {
-            setError(`Control request ${s.status}.`);
-            break;
-          }
-          await new Promise((r) => setTimeout(r, 2000));
-        }
+        outstanding.current.set(base_url, { requestId: request_id, name });
         await refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));

@@ -44,6 +44,21 @@ class TestGrantRequests:
         listed = mgr.list_grant_requests()[0]
         assert listed["controller_addr"] == addr
 
+    def test_reapprove_supersedes_prior_grant(self, tmp_path):
+        # Re-requesting from the same machine replaces its grant instead of
+        # accumulating a new token each time (matched by controller_addr).
+        mgr = _mgr(tmp_path)
+        addr = "http://peer.example:25314"
+        r1 = mgr.add_grant_request("peer.local", "10.0.0.5", controller_addr=addr)
+        assert mgr.approve_grant(r1) is True
+        r2 = mgr.add_grant_request("peer.local", "10.0.0.5", controller_addr=addr)
+        assert mgr.approve_grant(r2) is True
+        # Only one live grant for that address.
+        grants = [
+            d for d in mgr.device_store.list_devices() if d["callback_url"] == addr
+        ]
+        assert len(grants) == 1
+
     def test_deny(self, tmp_path):
         mgr = _mgr(tmp_path)
         rid = mgr.add_grant_request("A", "")

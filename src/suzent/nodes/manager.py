@@ -303,6 +303,10 @@ class NodeManager:
         g = self._grant_requests.get(request_id)
         if not g or g.status != "pending":
             return False
+        # Supersede any prior grant to the same machine so re-requests replace
+        # rather than accumulate (matched by the requester's address).
+        if g.controller_addr:
+            self.device_store.revoke_by_callback_url(g.controller_addr)
         _device_id, token = self.device_store.mint(
             g.controller_name, "peer", scope="agent", callback_url=g.controller_addr
         )

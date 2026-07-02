@@ -171,3 +171,29 @@ class DeviceTokenStore:
             self._save()
         logger.info(f"Device store: revoked device {device_id}")
         return True
+
+    def revoke_by_callback_url(self, callback_url: str) -> int:
+        """Revoke all grants issued to the same holder address. Returns count.
+
+        A machine that re-requests control would otherwise accumulate a new token
+        per approval; superseding prior grants for that address keeps one live
+        grant per peer.
+        """
+        if not callback_url:
+            return 0
+        with self._lock:
+            stale = [
+                t
+                for t, r in self._devices.items()
+                if r.get("callback_url") == callback_url
+            ]
+            for t in stale:
+                del self._devices[t]
+            if stale:
+                self._save()
+        if stale:
+            logger.info(
+                f"Device store: superseded {len(stale)} prior grant(s) for "
+                f"{callback_url}"
+            )
+        return len(stale)
