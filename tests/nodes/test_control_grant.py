@@ -302,6 +302,43 @@ def test_list_peers_outbound_status(tmp_path, monkeypatch):
     assert peers[offline]["outbound_status"] == "offline"
 
 
+def test_list_peers_status_is_cached(tmp_path, monkeypatch):
+    """A second poll within the TTL serves cached status without re-probing."""
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    from suzent.nodes import discovery
+    from suzent.nodes.peer_store import PeerGrantStore
+    from suzent.routes import node_routes
+
+    node_routes._peer_status_cache.clear()
+    store = PeerGrantStore(path=tmp_path / "peers.json")
+    store.add("Cached", "http://cached:25314", "tok")
+
+    probes = {"n": 0}
+
+    async def counting_reachable(host, port, timeout=1.5):
+        probes["n"] += 1
+        return False  # offline → no whoami; status computed from probe alone
+
+    monkeypatch.setattr(discovery, "probe_reachable", counting_reachable)
+
+    app = Starlette(
+        routes=[Route("/nodes/peers", node_routes.list_peers, methods=["GET"])]
+    )
+    app.state.peer_store = store
+    client = TestClient(app)
+
+    client.get("/nodes/peers")  # cold → probes
+    client.get("/nodes/peers")  # warm → served from cache
+    assert probes["n"] == 1  # probed once, not twice
+
+    # ?refresh=1 forces a re-probe.
+    client.get("/nodes/peers?refresh=1")
+    assert probes["n"] == 2
+
+
 def test_remove_peer_also_revokes_reverse_grant(tmp_path):
     """Removing a peer fully unlinks: drops our token AND revokes the reverse
     grant so the peer can no longer drive us either."""

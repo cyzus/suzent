@@ -7,6 +7,7 @@ Provides:
 """
 
 import asyncio
+import time
 import uuid
 
 from pydantic import ValidationError
@@ -31,6 +32,20 @@ from suzent.nodes.models import (
 from suzent.nodes.ws_node import WebSocketNode
 
 logger = get_logger(__name__)
+
+# Cache of per-peer reachability + outbound status, keyed by peer_id. The Devices
+# tab polls GET /nodes/peers every few seconds; without this, each poll would fan
+# out a TCP probe + a whoami round-trip PER peer. A short TTL keeps the pills
+# fresh-enough while collapsing repeated polls into cheap cache reads.
+_PEER_STATUS_TTL_SECONDS = 15.0
+# peer_id -> {"online": bool, "outbound_status": str, "at": float}
+_peer_status_cache: dict[str, dict] = {}
+
+
+def _invalidate_peer_status(peer_id: str) -> None:
+    """Drop a peer's cached status so the next poll re-probes it (call after any
+    mutation to its link, so an action the user just took reflects immediately)."""
+    _peer_status_cache.pop(peer_id, None)
 
 
 async def _authorize_node(
@@ -895,12 +910,20 @@ async def control_status(request: Request) -> JSONResponse:
 
 
 async def list_peers(request: Request) -> JSONResponse:
-    """GET /nodes/peers — peers this device can control, with live reachability."""
+    """GET /nodes/peers — peers this device can control, with live reachability.
+
+    Reachability + outbound status are cached per peer (``_PEER_STATUS_TTL_SECONDS``)
+    so a polling Devices tab doesn't re-probe/whoami every peer on every request;
+    only stale/uncached peers are probed, in parallel. Pass ``?refresh=1`` to
+    force a fresh probe.
+    """
     from suzent.config import DEFAULT_PORT
     from suzent.nodes import discovery
 
     store = _get_peer_store(request)
     peers = store.list_peers() if store else []
+    force = request.query_params.get("refresh") in ("1", "true")
+    now = time.monotonic()
 
     async def _probe(p):
         import httpx
@@ -909,34 +932,50 @@ async def list_peers(request: Request) -> JSONResponse:
         host = _host_of(p["base_url"])
         port = urlparse(p["base_url"]).port or DEFAULT_PORT
         online = await discovery.probe_reachable(host, port, timeout=1.5)
-        p["online"] = online
         # Outbound status: is our grant token still accepted by the peer?
         #   offline → unreachable; revoked → reachable but token rejected;
         #   ready   → reachable and token valid.
         if not online:
-            p["outbound_status"] = "offline"
-            return
-        rec = store.get(p["peer_id"]) if store else None
-        token = (rec or {}).get("token")
-        if not token:
-            p["outbound_status"] = "revoked"
-            return
-        try:
-            async with httpx.AsyncClient(timeout=4) as client:
-                r = await client.get(
-                    f"{p['base_url']}/channels/suzent/whoami",
-                    headers={"Authorization": f"Bearer {token}"},
-                )
-            # whoami returns peer_id when the token maps to a live grant; a
-            # revoked/paused token yields null (or 401/403).
-            ok = r.status_code == 200 and bool((r.json() or {}).get("peer_id"))
-            p["outbound_status"] = "ready" if ok else "revoked"
-        except httpx.HTTPError:
-            # Reachable a moment ago but the whoami failed — treat as offline
-            # rather than falsely claiming revoked.
-            p["outbound_status"] = "offline"
+            status = "offline"
+        else:
+            rec = store.get(p["peer_id"]) if store else None
+            token = (rec or {}).get("token")
+            if not token:
+                status = "revoked"
+            else:
+                try:
+                    async with httpx.AsyncClient(timeout=4) as client:
+                        r = await client.get(
+                            f"{p['base_url']}/channels/suzent/whoami",
+                            headers={"Authorization": f"Bearer {token}"},
+                        )
+                    # whoami returns peer_id when the token maps to a live grant;
+                    # a revoked/paused token yields null (or 401/403).
+                    ok = r.status_code == 200 and bool((r.json() or {}).get("peer_id"))
+                    status = "ready" if ok else "revoked"
+                except httpx.HTTPError:
+                    # Reachable a moment ago but whoami failed — call it offline
+                    # rather than falsely claiming revoked.
+                    online, status = False, "offline"
+        _peer_status_cache[p["peer_id"]] = {
+            "online": online,
+            "outbound_status": status,
+            "at": now,
+        }
+        p["online"] = online
+        p["outbound_status"] = status
 
-    await asyncio.gather(*(_probe(p) for p in peers), return_exceptions=True)
+    stale = []
+    for p in peers:
+        cached = _peer_status_cache.get(p["peer_id"])
+        if not force and cached and now - cached["at"] < _PEER_STATUS_TTL_SECONDS:
+            p["online"] = cached["online"]
+            p["outbound_status"] = cached["outbound_status"]
+        else:
+            stale.append(p)
+
+    if stale:
+        await asyncio.gather(*(_probe(p) for p in stale), return_exceptions=True)
     return JSONResponse({"peers": peers, "count": len(peers)})
 
 
@@ -1181,6 +1220,7 @@ async def remove_peer(request: Request) -> JSONResponse:
             node_manager.device_store.revoke(reverse_id)
         node_manager.device_store.revoke_matching(callback_url=peer.get("base_url", ""))
     store.remove(peer_id)
+    _invalidate_peer_status(peer_id)
     return JSONResponse({"success": True})
 
 
