@@ -243,33 +243,82 @@ export function DevicesTab(): React.ReactElement {
   };
   const deviceRows: DeviceRow[] = (() => {
     const byKey = new Map<string, DeviceRow>();
-    const keyFor = (s: string) => s.trim().toLowerCase();
+    const keyForName = (s: string) => `name:${s.trim().toLowerCase()}`;
+    // Normalize a base_url to host:port so peer.base_url and a grant's
+    // callback_url for the same machine collapse (names differ across sides).
+    const keyForUrl = (u?: string): string | null => {
+      if (!u) return null;
+      try {
+        const p = new URL(u.includes('://') ? u : `http://${u}`);
+        return `addr:${p.hostname}:${p.port || '25314'}`;
+      } catch {
+        return null;
+      }
+    };
     for (const n of nodes) {
-      byKey.set(keyFor(n.display_name), {
+      const row: DeviceRow = {
         key: `node:${n.node_id}`,
         name: n.display_name,
         platform: n.platform,
         online: true,
         isAgent: isAgent(n),
         capabilities: capNames(n.capabilities),
-      });
+      };
+      byKey.set(keyForName(n.display_name), row);
+    }
+    // Peers first — they carry base_url, the stable identity we merge on.
+    for (const p of peers) {
+      const addrKey = keyForUrl(p.base_url);
+      const nameKey = keyForName(p.name);
+      const existing = (addrKey && byKey.get(addrKey)) || byKey.get(nameKey);
+      if (existing) {
+        existing.peer = p;
+        existing.online = existing.online || !!p.online;
+        if (addrKey) byKey.set(addrKey, existing);
+      } else {
+        const row: DeviceRow = {
+          key: `peer:${p.peer_id}`,
+          name: p.name,
+          online: !!p.online,
+          isAgent: false,
+          peer: p,
+        };
+        byKey.set(nameKey, row);
+        if (addrKey) byKey.set(addrKey, row);
+      }
     }
     for (const d of devices) {
-      // Host tokens are standalone credentials (not a device that also shows up
-      // as a node/peer), so key them by device_id — otherwise several tokens
-      // sharing a name collapse into one row and Revoke orphans the rest.
-      const isHostToken = d.scope === 'full';
-      const k = isHostToken ? `hosttoken:${d.device_id}` : keyFor(d.display_name);
-      const ex = isHostToken ? undefined : byKey.get(k);
-      if (ex) {
-        ex.deviceId = d.device_id;
-        ex.scope = d.scope;
-        ex.status = d.status;
-        ex.tokenHint = d.token_hint;
-        ex.approvedAt = d.approved_at;
-        ex.online = ex.online || d.connected;
+      // Host tokens are standalone credentials — never merged (key by device_id).
+      if (d.scope === 'full') {
+        byKey.set(`hosttoken:${d.device_id}`, {
+          key: `dev:${d.device_id}`,
+          name: d.display_name,
+          platform: d.platform,
+          online: d.connected,
+          isAgent: false,
+          deviceId: d.device_id,
+          scope: d.scope,
+          status: d.status,
+          tokenHint: d.token_hint,
+          approvedAt: d.approved_at,
+        });
+        continue;
+      }
+      // Merge a grant into the peer/node for the SAME machine: by callback_url
+      // (address) first, then by name. This collapses the "MacBook Pro" peer and
+      // the "MacBook Pro.local" grant that name-matching would split.
+      const addrKey = keyForUrl(d.callback_url);
+      const nameKey = keyForName(d.display_name);
+      const existing = (addrKey && byKey.get(addrKey)) || byKey.get(nameKey);
+      if (existing) {
+        existing.deviceId = d.device_id;
+        existing.scope = d.scope;
+        existing.status = d.status;
+        existing.tokenHint = d.token_hint;
+        existing.approvedAt = d.approved_at;
+        existing.online = existing.online || d.connected;
       } else {
-        byKey.set(k, {
+        byKey.set(nameKey, {
           key: `dev:${d.device_id}`,
           name: d.display_name,
           platform: d.platform,
@@ -283,23 +332,15 @@ export function DevicesTab(): React.ReactElement {
         });
       }
     }
-    for (const p of peers) {
-      const k = keyFor(p.name);
-      const ex = byKey.get(k);
-      if (ex) {
-        ex.peer = p;
-        ex.online = ex.online || !!p.online;
-      } else {
-        byKey.set(k, {
-          key: `peer:${p.peer_id}`,
-          name: p.name,
-          online: !!p.online,
-          isAgent: false,
-          peer: p,
-        });
-      }
+    // De-dup rows that were registered under multiple keys (addr + name).
+    const seen = new Set<string>();
+    const rows: DeviceRow[] = [];
+    for (const row of byKey.values()) {
+      if (seen.has(row.key)) continue;
+      seen.add(row.key);
+      rows.push(row);
     }
-    return [...byKey.values()].sort(
+    return rows.sort(
       (a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name)
     );
   })();

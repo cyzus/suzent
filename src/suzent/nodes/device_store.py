@@ -127,6 +127,10 @@ class DeviceTokenStore:
                     "scope": rec.get("scope", "node"),
                     "status": rec.get("status", "active"),
                     "token_hint": rec.get("token_hint", ""),
+                    # The holder's address — a stable join key so the UI can merge
+                    # a grant with the peer record for the same machine (names
+                    # differ: peer uses a display name, the grant the hostname).
+                    "callback_url": rec.get("callback_url", ""),
                     "approved_at": rec.get("approved_at", ""),
                 }
                 for rec in self._devices.values()
