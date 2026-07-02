@@ -59,6 +59,9 @@ async def suzent_channel_inbound(request: Request):
     db = get_database()
     if db.get_chat(chat_id) is None:
         name = (rec or {}).get("display_name") if rec else None
+        # Place it in the Social project, like other channel chats (SocialBrain
+        # does the same for Telegram/Discord); fall back to default if absent.
+        social_project = db.get_project_by_slug(db.SOCIAL_PROJECT_SLUG)
         db.create_chat(
             title=f"⇄ {name or peer_id}",
             # Tag as a social platform so peer-agent sessions classify like other
@@ -70,6 +73,7 @@ async def suzent_channel_inbound(request: Request):
                 "sender_name": name or peer_id,
             },
             chat_id=chat_id,
+            project_id=social_project.id if social_project else None,
         )
 
     processor = ChatProcessor()
