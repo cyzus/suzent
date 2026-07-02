@@ -433,13 +433,6 @@ export function DevicesTab(): React.ReactElement {
       <SettingsHeader
         title="Devices"
         subtitle="Companion devices and peer agents connected to this Suzent."
-        actions={
-          loaded ? (
-            <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-mono">
-              auto-refresh
-            </span>
-          ) : undefined
-        }
       />
 
       {error && (
