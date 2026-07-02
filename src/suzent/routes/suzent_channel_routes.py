@@ -61,7 +61,14 @@ async def suzent_channel_inbound(request: Request):
         name = (rec or {}).get("display_name") if rec else None
         db.create_chat(
             title=f"⇄ {name or peer_id}",
-            config={},
+            # Tag as a social platform so peer-agent sessions classify like other
+            # channels (Telegram/Discord), not as personal chats. sender_* mirror
+            # the SocialBrain convention so the UI can show who it's from.
+            config={
+                "platform": "suzent",
+                "sender_id": peer_id,
+                "sender_name": name or peer_id,
+            },
             chat_id=chat_id,
         )
 
