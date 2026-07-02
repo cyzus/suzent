@@ -64,13 +64,36 @@ class SpeechOutput:
             import litellm
 
             text = f"<TRANSCRIPT> {text} </TRANSCRIPT>"
-            response = await litellm.aspeech(
-                model=self._tts_model,
-                input=text,
-                voice=self._tts_voice,
-                prompt=prompt
-                or "Speak the following text in a playful and engaging manner.",
+            speak_prompt = (
+                prompt or "Speak the following text in a playful and engaging manner."
             )
+
+            # Some TTS providers (e.g. Gemini's speech-to-completion bridge)
+            # intermittently return an empty completion, which surfaces inside
+            # litellm as `IndexError: list index out of range` on choices[0].
+            # It's transient, so retry once before giving up rather than bubbling
+            # a raw traceback back to the caller.
+            response = None
+            last_err: Exception | None = None
+            for attempt in range(2):
+                try:
+                    response = await litellm.aspeech(
+                        model=self._tts_model,
+                        input=text,
+                        voice=self._tts_voice,
+                        prompt=speak_prompt,
+                    )
+                    break
+                except IndexError as e:
+                    last_err = e
+                    logger.warning(
+                        f"TTS returned an empty response (attempt {attempt + 1}/2)"
+                    )
+            if response is None:
+                raise RuntimeError(
+                    f"TTS provider '{self._tts_model}' returned no audio "
+                    f"(empty completion)"
+                ) from last_err
 
             audio_bytes = self._extract_audio_bytes(response)
             if not audio_bytes:
