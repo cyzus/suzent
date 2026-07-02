@@ -520,7 +520,44 @@ class GitHubSyncService:
             return {}
         data = json.loads(self.profiles_path.read_text(encoding="utf-8"))
         profiles = data.get("profiles", [])
-        return {item["id"]: SyncProfile.model_validate(item) for item in profiles}
+        loaded = {item["id"]: SyncProfile.model_validate(item) for item in profiles}
+        if self._heal_repo_paths(loaded):
+            self._save_profiles(loaded)
+        return loaded
+
+    def _heal_repo_paths(self, profiles: dict[str, SyncProfile]) -> bool:
+        """Self-heal profiles whose repo_path no longer points at a git repo.
+
+        A stray path (e.g. a pytest temp dir that leaked into a real profile, or
+        a repo moved/deleted) breaks every sync op with "not a Git repository".
+        If the canonical <data_dir>/github-sync is a valid repo, redirect there
+        and persist. Returns True if any profile was changed.
+        """
+        from suzent.config import get_data_dir
+
+        canonical = get_data_dir() / "github-sync"
+        canonical_ok = (canonical / ".git").is_dir()
+        changed = False
+        for prof in profiles.values():
+            if (Path(prof.repo_path) / ".git").is_dir():
+                continue  # healthy
+            if canonical_ok and Path(prof.repo_path) != canonical:
+                logger.warning(
+                    "Sync profile %s had a stale repo_path (%s); redirecting to %s",
+                    prof.id,
+                    prof.repo_path,
+                    canonical,
+                )
+                prof.repo_path = str(canonical)
+                changed = True
+            else:
+                logger.warning(
+                    "Sync profile %s points at a missing repo (%s) and no "
+                    "canonical repo exists — sync will fail until reconfigured.",
+                    prof.id,
+                    prof.repo_path,
+                )
+        return changed
 
     def _save_profiles(self, profiles: dict[str, SyncProfile]) -> None:
         self.profiles_path.parent.mkdir(parents=True, exist_ok=True)
