@@ -187,6 +187,34 @@ class ChatOperationsMixin:
         with self._session() as session:
             return session.get(ChatModel, chat_id)
 
+    def ensure_channel_chat(
+        self,
+        chat_id: str,
+        title: str,
+        platform: str,
+        config_extra: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Create the chat row for an inbound channel session if missing.
+
+        Channel chats (Telegram/Discord/Suzent peers) share the same shape: a
+        ``platform`` tag so they classify as social, and placement in the Social
+        project. Callers pass their own title and any extra config (sender ids).
+        Returns True if a row was created, False if it already existed.
+        """
+        if self.get_chat(chat_id) is not None:
+            return False
+        social_project = self.get_project_by_slug(self.SOCIAL_PROJECT_SLUG)
+        config: Dict[str, Any] = {"platform": platform}
+        if config_extra:
+            config.update(config_extra)
+        self.create_chat(
+            title=title,
+            config=config,
+            chat_id=chat_id,
+            project_id=social_project.id if social_project else None,
+        )
+        return True
+
     def update_chat(
         self,
         chat_id: str,

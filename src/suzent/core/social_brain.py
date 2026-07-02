@@ -1023,22 +1023,19 @@ class SocialBrain(BaseBrain):
     ):
         """Ensure a record exists in the DB for this chat."""
         db = get_database()
-        chat = db.get_chat(chat_id)
-        if not chat:
-            is_group = target_id != message.sender_id
-            if is_group:
-                title = f"Group {target_id} ({message.platform})"
-            else:
-                title = f"Chat with {message.sender_name} ({message.platform})"
+        is_group = target_id != message.sender_id
+        if is_group:
+            title = f"Group {target_id} ({message.platform})"
+        else:
+            title = f"Chat with {message.sender_name} ({message.platform})"
+        created = db.ensure_channel_chat(
+            chat_id,
+            title=title,
+            platform=message.platform,
+            config_extra={
+                "sender_id": message.sender_id,
+                "target_id": target_id,
+            },
+        )
+        if created:
             logger.info(f"Creating new social chat: {title} ({chat_id})")
-            social_project = db.get_project_by_slug(db.SOCIAL_PROJECT_SLUG)
-            db.create_chat(
-                title=title,
-                config={
-                    "platform": message.platform,
-                    "sender_id": message.sender_id,
-                    "target_id": target_id,
-                },
-                chat_id=chat_id,
-                project_id=social_project.id if social_project else None,
-            )

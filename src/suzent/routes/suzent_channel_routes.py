@@ -54,27 +54,17 @@ async def suzent_channel_inbound(request: Request):
 
     # process_turn only *updates* an existing chat row — a brand-new peer session
     # would otherwise persist nothing (invisible in the UI) and carry no memory.
-    # Ensure the row exists so the session shows in the chat list and subsequent
-    # triggers to the same chat_id resume its history.
+    # Shared with SocialBrain: tag platform, place in the Social project, so the
+    # session shows in the chat list and later triggers to this chat_id resume
+    # its history.
     db = get_database()
-    if db.get_chat(chat_id) is None:
-        name = (rec or {}).get("display_name") if rec else None
-        # Place it in the Social project, like other channel chats (SocialBrain
-        # does the same for Telegram/Discord); fall back to default if absent.
-        social_project = db.get_project_by_slug(db.SOCIAL_PROJECT_SLUG)
-        db.create_chat(
-            title=f"⇄ {name or peer_id}",
-            # Tag as a social platform so peer-agent sessions classify like other
-            # channels (Telegram/Discord), not as personal chats. sender_* mirror
-            # the SocialBrain convention so the UI can show who it's from.
-            config={
-                "platform": "suzent",
-                "sender_id": peer_id,
-                "sender_name": name or peer_id,
-            },
-            chat_id=chat_id,
-            project_id=social_project.id if social_project else None,
-        )
+    name = (rec or {}).get("display_name") if rec else None
+    db.ensure_channel_chat(
+        chat_id,
+        title=f"⇄ {name or peer_id}",
+        platform="suzent",
+        config_extra={"sender_id": peer_id, "sender_name": name or peer_id},
+    )
 
     processor = ChatProcessor()
     config_override = build_agent_config({}, require_social_tool=False)
