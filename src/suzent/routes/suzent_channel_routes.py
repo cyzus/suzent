@@ -35,6 +35,7 @@ async def suzent_channel_inbound(request: Request):
     # decision §10.1: session keyed by peer id, not a spoofable body field. The
     # scoped device token *is* the per-peer authorization (no separate allowlist).
     peer_id = (body.get("from_id") or "peer").strip()
+    rec = None
     try:
         from suzent.auth_boundary import extract_token
 
@@ -49,6 +50,20 @@ async def suzent_channel_inbound(request: Request):
 
     from suzent.agent_manager import build_agent_config
     from suzent.core.chat_processor import ChatProcessor
+    from suzent.database import get_database
+
+    # process_turn only *updates* an existing chat row — a brand-new peer session
+    # would otherwise persist nothing (invisible in the UI) and carry no memory.
+    # Ensure the row exists so the session shows in the chat list and subsequent
+    # triggers to the same chat_id resume its history.
+    db = get_database()
+    if db.get_chat(chat_id) is None:
+        name = (rec or {}).get("display_name") if rec else None
+        db.create_chat(
+            title=f"⇄ {name or peer_id}",
+            config={},
+            chat_id=chat_id,
+        )
 
     processor = ChatProcessor()
     config_override = build_agent_config({}, require_social_tool=False)
@@ -64,7 +79,38 @@ async def suzent_channel_inbound(request: Request):
         message_content=content,
         config_override=config_override,
     )
-    return StreamingResponse(generator, media_type="text/event-stream")
+
+    # Tee the turn: stream it back to the calling peer (HTTP response) AND mirror
+    # each event onto this device's background bus so *our* UI surfaces the
+    # session live (new chat + streaming reply), like a local /chat/send turn.
+    from suzent.core.stream_registry import (
+        register_background_stream,
+        is_background_streaming,
+    )
+
+    bus_queue = (
+        None
+        if is_background_streaming(chat_id)
+        else register_background_stream(chat_id)
+    )
+
+    async def _teed():
+        try:
+            async for chunk in generator:
+                if bus_queue is not None:
+                    try:
+                        await bus_queue.put(chunk)
+                    except Exception:
+                        pass
+                yield chunk
+        finally:
+            if bus_queue is not None:
+                try:
+                    await bus_queue.put(None)
+                except Exception:
+                    pass
+
+    return StreamingResponse(_teed(), media_type="text/event-stream")
 
 
 async def suzent_channel_whoami(request: Request) -> JSONResponse:
