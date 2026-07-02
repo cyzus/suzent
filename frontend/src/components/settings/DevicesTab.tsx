@@ -697,7 +697,7 @@ export function DevicesTab(): React.ReactElement {
                 ? !!d.peer!.reverse_enabled
                 : false;
             return (
-              <SettingsListItem key={d.key} className="transition-transform hover:-translate-y-0.5 hover:shadow-[6px_6px_0_0_#000] dark:hover:shadow-[6px_6px_0_0_#fff]">
+              <SettingsListItem key={d.key}>
                 <div className="flex w-full flex-col">
                   {/* Header: identity + badges + remove */}
                   <div className="flex items-center justify-between gap-3 border-b-2 border-brutal-black bg-white px-4 py-3 dark:bg-zinc-800">
