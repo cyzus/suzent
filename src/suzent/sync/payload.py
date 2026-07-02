@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 from uuid import uuid4
 
-from suzent.config import CONFIG, DATA_DIR, USER_CONFIG_DIR, USER_SKILLS_DIR
+from suzent.config import CONFIG, get_data_dir
 from suzent.sync.models import DevicePresence, SyncManifest, SyncProfile
 
 PAYLOAD_DIR_NAME = "suzent-sync"
@@ -35,14 +35,17 @@ class SyncPayloadBuilder:
     def __init__(
         self,
         *,
-        data_dir: Path = DATA_DIR,
-        user_config_dir: Path = USER_CONFIG_DIR,
-        user_skills_dir: Path = USER_SKILLS_DIR,
+        data_dir: Path | None = None,
+        user_config_dir: Path | None = None,
+        user_skills_dir: Path | None = None,
         sandbox_data_path: Path | None = None,
     ) -> None:
-        self.data_dir = data_dir
-        self.user_config_dir = user_config_dir
-        self.user_skills_dir = user_skills_dir
+        # Resolve dirs at construction (honors SUZENT_DATA_DIR) rather than from
+        # module-frozen constants, so test isolation actually takes effect.
+        base = get_data_dir()
+        self.data_dir = data_dir or base
+        self.user_config_dir = user_config_dir or base / "config"
+        self.user_skills_dir = user_skills_dir or base / "skills" / "user"
         self.sandbox_data_path = sandbox_data_path or Path(CONFIG.sandbox_data_path)
 
     def build(self, repo_path: Path, profile: SyncProfile) -> SyncManifest:

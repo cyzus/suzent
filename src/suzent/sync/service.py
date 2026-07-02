@@ -6,7 +6,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from suzent.config import USER_CONFIG_DIR
+from suzent.config import get_data_dir
 from suzent.logger import get_logger
 from suzent.sync.conflicts import SyncConflictResolver
 from suzent.sync.models import SecretBundlesFile, SyncManifest, SyncProfile
@@ -29,7 +29,13 @@ class GitHubSyncService:
         profiles_path: Path | None = None,
         payload_builder: SyncPayloadBuilder | None = None,
     ) -> None:
-        self.profiles_path = profiles_path or USER_CONFIG_DIR / "sync_profiles.json"
+        # Resolve the config dir at construction time (honors SUZENT_DATA_DIR),
+        # not from the module-frozen USER_CONFIG_DIR constant — otherwise a test
+        # that sets SUZENT_DATA_DIR after import would still write sync_profiles
+        # into the real ~/.suzent/config (this actually happened).
+        self.profiles_path = (
+            profiles_path or get_data_dir() / "config" / "sync_profiles.json"
+        )
         self.payload_builder = payload_builder or SyncPayloadBuilder()
         self.conflict_resolver = SyncConflictResolver()
         self._locks: dict[str, asyncio.Lock] = {}
