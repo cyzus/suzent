@@ -10,6 +10,22 @@ from cryptography.fernet import Fernet
 from suzent.database import ChatDatabase
 
 
+@pytest.fixture(autouse=True)
+def _isolate_data_dir(tmp_path_factory, monkeypatch):
+    """Default every test's SUZENT_DATA_DIR to a temp dir so nothing can write
+    into the real ~/.suzent (sync profiles, secrets, config). Tests that need a
+    specific data dir still set SUZENT_DATA_DIR themselves, overriding this.
+
+    Only applies when the test hasn't already set it (some fixtures set it in
+    their own body, which runs after autouse — so we skip if already present).
+    """
+    if "SUZENT_DATA_DIR" not in os.environ:
+        monkeypatch.setenv(
+            "SUZENT_DATA_DIR", str(tmp_path_factory.mktemp("suzent_data"))
+        )
+    yield
+
+
 @pytest.fixture
 def temp_db(tmp_path, monkeypatch):
     """Create a temporary database for testing."""

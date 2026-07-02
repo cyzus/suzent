@@ -130,6 +130,9 @@ def test_quickstart_uses_custom_remote_name(
 def test_quickstart_clones_existing_remote_repo(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
+    # Isolate the data dir so save_profile writes under tmp_path, not the real
+    # ~/.suzent/config (this test previously leaked a dead profile there).
+    monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path))
     source = tmp_path / "source"
     remote = tmp_path / "remote.git"
     target = tmp_path / "fresh-sync"
