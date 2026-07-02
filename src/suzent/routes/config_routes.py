@@ -382,8 +382,13 @@ async def save_api_keys(request: Request) -> JSONResponse:
             if not isinstance(key, str) or not isinstance(value, str):
                 continue
 
-            # Skip masked values that weren't changed
-            if "..." in value and "(env)" in value:
+            # Skip unchanged masked values echoed back by the UI. The status
+            # endpoint masks secrets as "{first4}...{last4}" (optionally with a
+            # " (env)" suffix); persisting that placeholder would clobber the
+            # real key. Match the mask shape, not just "(env)" — a backend-stored
+            # key is masked WITHOUT the "(env)" suffix, so the old
+            # `"..." and "(env)"` check let it through and overwrote the key.
+            if "..." in value and (" (env)" in value or len(value) <= 12):
                 continue
 
             if key == "_PROVIDER_CONFIG_":
