@@ -134,7 +134,6 @@ export function DevicesTab(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [restartHint, setRestartHint] = useState(false);
   const [hostToken, setHostToken] = useState<string | null>(null);
-  const [loaded, setLoaded] = useState(false);
   const [addrHost, setAddrHost] = useState<string | null>(null);
   const [connections, setConnections] = useState<OutboundConnection[]>([]);
   const [grants, setGrants] = useState<ControlRequest[]>([]);
@@ -181,7 +180,6 @@ export function DevicesTab(): React.ReactElement {
     setGrants(g);
     setPeers(pe);
     setUnauthorized(ua);
-    setLoaded(true);
   }, []);
 
   // Connect = "I want to control this device": request a grant, then let the
