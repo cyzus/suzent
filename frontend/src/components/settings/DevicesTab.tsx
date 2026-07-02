@@ -703,8 +703,8 @@ export function DevicesTab(): React.ReactElement {
                                 <StatusPill tone="red" label="Revoked" />
                                 <button
                                   className="text-[10px] text-brutal-blue font-black uppercase hover:underline disabled:opacity-40"
-                                  disabled={busy === `req:${d.peer.peer_id}`}
-                                  onClick={() => act(`req:${d.peer!.peer_id}`, async () => { await requestControl(d.peer!.base_url); })}
+                                  disabled={busy === d.peer.base_url}
+                                  onClick={() => handleControl(d.peer!.base_url, d.peer!.name)}
                                 >
                                   Re-request
                                 </button>
