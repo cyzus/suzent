@@ -124,6 +124,10 @@ class TestModelRegistryCustomJSON:
         with (
             patch("suzent.core.model_registry._CAPABILITIES_PATH", missing),
             patch("suzent.core.model_registry._CAPABILITIES_DIR", empty_dir),
+            patch(
+                "suzent.core.model_registry._local_capabilities_dir",
+                return_value=empty_dir,
+            ),
         ):
             registry = ModelRegistry()
 
@@ -137,6 +141,10 @@ class TestModelRegistryCustomJSON:
         with (
             patch("suzent.core.model_registry._CAPABILITIES_PATH", bad_file),
             patch("suzent.core.model_registry._CAPABILITIES_DIR", empty_dir),
+            patch(
+                "suzent.core.model_registry._local_capabilities_dir",
+                return_value=empty_dir,
+            ),
         ):
             registry = ModelRegistry()
 
@@ -154,6 +162,10 @@ class TestModelRegistryCustomJSON:
         with (
             patch("suzent.core.model_registry._CAPABILITIES_PATH", caps_file),
             patch("suzent.core.model_registry._CAPABILITIES_DIR", empty_dir),
+            patch(
+                "suzent.core.model_registry._local_capabilities_dir",
+                return_value=empty_dir,
+            ),
         ):
             registry = ModelRegistry()
             assert len(registry.list_models()) == 1
