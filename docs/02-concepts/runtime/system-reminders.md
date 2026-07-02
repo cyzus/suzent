@@ -89,4 +89,4 @@ The parser also accepts an ASCII form (`[[cite:t0_src_1]]`) and an object-replac
 
 - [Chat Post-Processing](./postprocess.md) — where display messages are rebuilt (and reminders stripped) after a turn.
 - [Skills](../skills/skills.md) — active-skill signals are injected as global system-reminder hooks.
-- [Memory](../memory/README.md) — dynamic memory is injected via per-turn reminder hooks.
+- [Memory](../memory/) — dynamic memory is injected via per-turn reminder hooks.

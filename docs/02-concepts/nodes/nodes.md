@@ -239,7 +239,7 @@ a **control-grant** over HTTP — simpler and more robust than the WebSocket mes
   grant).
 - **Trigger.** The controller sends through the peer's Suzent channel
   (below) with that token; the peer streams its agent's SSE events back. Gated by
-  the [auth boundary](#auth-boundary).
+  the [auth boundary](#auth-boundary-scoped-tokens).
 
 ### Two independent directions
 
