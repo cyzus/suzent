@@ -32,9 +32,8 @@ async def suzent_channel_inbound(request: Request):
         return JSONResponse({"error": "content is required"}, status_code=400)
 
     # Identify the peer from its authenticated token (the contact/device id) —
-    # decision §10.1: session keyed by peer id, not a spoofable body field. The
-    # scoped device token *is* the per-peer authorization (no separate allowlist).
-    peer_id = (body.get("from_id") or "peer").strip()
+    # decision §10.1: session keyed by the *authenticated* identity, never a
+    # spoofable body field. The scoped device token is the per-peer authorization.
     rec = None
     try:
         from suzent.auth_boundary import extract_token
@@ -42,11 +41,21 @@ async def suzent_channel_inbound(request: Request):
         nm = getattr(getattr(request, "app", None).state, "node_manager", None)
         token = extract_token(request.headers.raw)
         rec = nm.device_store.verify(token) if (nm and token) else None
-        if rec:
-            peer_id = rec.get("device_id", peer_id)
     except Exception:
         pass
-    chat_id = body.get("chat_id") or f"suzent:{peer_id}"
+
+    # Require an identified peer (valid token) — otherwise we'd key the session by
+    # a spoofable body field and create empty/orphan chats for unauthenticated
+    # callers. A loopback caller (local app/tests) may pass an explicit chat_id.
+    peer_id = rec.get("device_id") if rec else None
+    chat_id = body.get("chat_id") or (f"suzent:{peer_id}" if peer_id else None)
+    if not chat_id:
+        return JSONResponse(
+            {"error": "Unauthorized: a valid peer token (or chat_id) is required"},
+            status_code=401,
+        )
+    name = (rec or {}).get("display_name") if rec else None
+    trigger_label = name or peer_id or "an unknown device"
 
     from suzent.agent_manager import build_agent_config
     from suzent.core.chat_processor import ChatProcessor
@@ -58,12 +67,11 @@ async def suzent_channel_inbound(request: Request):
     # session shows in the chat list and later triggers to this chat_id resume
     # its history.
     db = get_database()
-    name = (rec or {}).get("display_name") if rec else None
-    db.ensure_channel_chat(
+    created_now = db.ensure_channel_chat(
         chat_id,
-        title=f"⇄ {name or peer_id}",
+        title=f"⇄ {trigger_label}",
         platform="suzent",
-        config_extra={"sender_id": peer_id, "sender_name": name or peer_id},
+        config_extra={"sender_id": peer_id or "", "sender_name": trigger_label},
     )
 
     processor = ChatProcessor()
@@ -73,11 +81,15 @@ async def suzent_channel_inbound(request: Request):
     config_override["interaction_profile"] = "headless"
     config_override["permission_mode"] = "auto"
 
-    logger.info(f"Suzent channel: inbound turn for {chat_id}")
+    # Attribution: tell the agent who is driving it, so it can reason/respond with
+    # that context (it's a remote peer, not the local user).
+    framed_content = f"[Triggered remotely by device: {trigger_label}]\n\n{content}"
+
+    logger.info(f"Suzent channel: inbound turn for {chat_id} (from {trigger_label})")
     generator = processor.process_turn(
         chat_id=chat_id,
         user_id=CONFIG.user_id,
-        message_content=content,
+        message_content=framed_content,
         config_override=config_override,
     )
 
@@ -108,6 +120,20 @@ async def suzent_channel_inbound(request: Request):
             if bus_queue is not None:
                 try:
                     await bus_queue.put(None)
+                except Exception:
+                    pass
+            # If we created the chat for this call but the turn persisted nothing
+            # (errored / produced no output), drop the orphan empty row.
+            if created_now:
+                try:
+                    chat = db.get_chat(chat_id)
+                    if (
+                        chat is not None
+                        and not (chat.messages or [])
+                        and not chat.agent_state
+                    ):
+                        db.delete_chat(chat_id)
+                        logger.info(f"Suzent channel: removed empty chat {chat_id}")
                 except Exception:
                     pass
 
