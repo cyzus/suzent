@@ -82,7 +82,51 @@ suzent nodes status
 suzent nodes describe <node_id_or_name>
 suzent nodes invoke <node_id_or_name> <command> key=value [key2=value2 ...]
 suzent nodes invoke <node_id_or_name> <command> --params '{"key": "value"}'
+suzent nodes invoke <node_id_or_name> <command> --timeout 300   # long-running cmds
+
+# Approve-mode pairing & durable devices
+suzent nodes pending
+suzent nodes approve <pairing_code>
+suzent nodes deny <pairing_code>
+suzent nodes devices
+suzent nodes revoke <device_id>
+
+# Discovery & joining another Suzent (outbound)
+suzent nodes discover                              # LAN (mDNS) + tailnet peers
+suzent nodes connect ws://<peer>:25314/ws/node     # join as a node
+suzent nodes connections                           # outbound status + pairing codes
+suzent nodes disconnect ws://<peer>:25314/ws/node
 ```
+
+`suzent nodes list` is unified — it shows WS-mesh nodes, control-grant **peers**
+this device can drive, and **devices** that can drive it (each row tagged by
+kind/direction). Drive a peer's agent from the terminal:
+
+```bash
+suzent nodes trigger <peer-name-or-id> "summarize ~/notes"
+```
+
+## Peer agents (Suzent channel)
+
+Drive another linked device's agent through the **Suzent channel** — the target
+runs *its own* agent for your session and streams the reply back:
+
+```bash
+suzent nodes trigger <peer-name-or-id> "summarize ~/notes"
+```
+
+Programmatically, a controller POSTs to the peer's `/channels/suzent/inbound`
+with its grant token (`Authorization: Bearer <token>`) and reads the SSE reply.
+The old `agent.run` node capability was removed (node capabilities are now just
+device hardware like `speaker.speak`/`camera.snap`).
+
+On the target, the peer session is a real persisted chat (keyed
+`suzent:<peer_id>`, tagged `platform:"suzent"`, in the Social project): it shows
+in the chat list, **remembers prior turns** (re-triggering the same peer
+continues the conversation), streams live in the UI, and the agent is told which
+device triggered it via a hidden system-reminder. Identity comes from the
+authenticated token — an inbound call with no valid token (and no explicit
+`chat_id`) is rejected 401 and creates no chat.
 
 ## Examples
 

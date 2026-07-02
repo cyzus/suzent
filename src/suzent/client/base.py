@@ -104,9 +104,10 @@ class AsyncBaseClient:
 
     async def stream_post(self, path: str, json: dict | None = None, **kwargs):
         """Yields chunks of the stream response."""
+        timeout = kwargs.pop("timeout", 60.0)
         try:
             async with self._client.stream(
-                "POST", path, json=json or {}, timeout=60.0, **kwargs
+                "POST", path, json=json or {}, timeout=timeout, **kwargs
             ) as resp:
                 resp.raise_for_status()
                 async for chunk in resp.aiter_bytes():

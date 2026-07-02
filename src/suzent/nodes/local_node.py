@@ -54,9 +54,16 @@ class LocalNode(NodeBase):
         self._handlers = handlers
 
     async def invoke(
-        self, command: str, params: dict[str, Any] | None = None
+        self,
+        command: str,
+        params: dict[str, Any] | None = None,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
-        """Dispatch to local handler — same handlers as the standalone node host."""
+        """Dispatch to local handler — same handlers as the standalone node host.
+
+        ``timeout`` is accepted for interface parity but unused: in-process
+        handlers run directly without a wait loop.
+        """
         handler = self._handlers.get(command)
         if not handler:
             return {"success": False, "error": f"Unknown command: {command}"}

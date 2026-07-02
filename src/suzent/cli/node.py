@@ -23,30 +23,117 @@ node_app = typer.Typer(help="Manage connected nodes (companion devices)")
 
 @node_app.command("list")
 def node_list():
-    """List all connected nodes."""
+    """List everything this device is linked to: WS nodes, peers it drives, and
+    devices that can drive it."""
 
     async def _run():
         try:
             client = get_client()
-            data = await client.nodes.list()
-            nodes = data.get("nodes", [])
-
-            if not nodes:
-                typer.echo("No nodes connected.")
-                return
-
-            typer.echo(f"📡 Connected nodes ({len(nodes)}):\n")
-            for node in nodes:
-                status_icon = "🟢" if node.get("status") == "connected" else "🔴"
-                caps = node.get("capabilities", [])
-                cap_names = ", ".join(c["name"] for c in caps) if caps else "none"
-                typer.echo(
-                    f"  {status_icon} {node['display_name']} ({node['platform']})\n"
-                    f"     ID: {node['node_id']}\n"
-                    f"     Capabilities: {cap_names}\n"
-                )
+            nodes_data, peers_data, devices_data = await asyncio.gather(
+                client.nodes.list(),
+                client.nodes.peers(),
+                client.nodes.devices(),
+            )
         except ClientError as e:
             typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+        nodes = nodes_data.get("nodes", [])
+        peers = peers_data.get("peers", [])
+        devices = devices_data.get("devices", [])
+        # Devices that can drive us but aren't also peers we drive (dedupe by name).
+        peer_names = {p.get("name", "").lower() for p in peers}
+        inbound = [
+            d for d in devices if d.get("display_name", "").lower() not in peer_names
+        ]
+
+        if not (nodes or peers or inbound):
+            typer.echo("No nodes or linked devices.")
+            return
+
+        typer.echo("📡 Nodes & devices\n")
+        for n in nodes:
+            dot = "🟢" if n.get("status") == "connected" else "⚪"
+            caps = ", ".join(c["name"] for c in n.get("capabilities", [])) or "none"
+            typer.echo(f"  {dot} {n['display_name']} ({n['platform']})")
+            typer.echo(f"     node · {caps}")
+        for p in peers:
+            status = p.get("outbound_status") or (
+                "ready" if p.get("online") else "offline"
+            )
+            dot = {"ready": "🟢", "revoked": "🟠", "offline": "⚪"}.get(status, "⚪")
+            outbound = {
+                "trigger": "trigger them",
+                "paused": "outbound paused",
+                "off": "outbound off",
+            }.get(p.get("mode", "trigger"), p.get("mode"))
+            status_note = (
+                " · REVOKED (re-request needed)" if status == "revoked" else ""
+            )
+            inbound_note = " · inbound granted" if p.get("reverse_enabled") else ""
+            typer.echo(f"  {dot} {p['name']}{status_note}")
+            typer.echo(f"     peer · {outbound}{inbound_note} · {p['base_url']}")
+        for d in inbound:
+            dot = "🟢" if d.get("connected") else "⚪"
+            scope = d.get("scope", "agent")
+            paused = " · paused" if d.get("status") == "paused" else ""
+            typer.echo(f"  {dot} {d['display_name']} ({d.get('platform', 'unknown')})")
+            typer.echo(f"     device · can control this device ({scope}){paused}")
+        typer.echo("")
+
+    asyncio.run(_run())
+
+
+@node_app.command("trigger")
+def node_trigger(
+    peer: str = typer.Argument(help="Peer id or name from `suzent node list`"),
+    prompt: str = typer.Argument(help="Prompt to run on the peer's agent"),
+    chat_id: Optional[str] = typer.Option(None, "--chat-id", help="Reuse a chat"),
+):
+    """Run a prompt on a peer device's agent and stream the reply."""
+    import json as _json
+
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.nodes.peers()
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+        peers = data.get("peers", [])
+        match = next(
+            (
+                p
+                for p in peers
+                if p["peer_id"] == peer or p.get("name", "").lower() == peer.lower()
+            ),
+            None,
+        )
+        if not match:
+            typer.echo(f"❌ No peer '{peer}'. See `suzent node list`.")
+            raise typer.Exit(code=1)
+
+        typer.echo(f"⚡ {match['name']}: ")
+        try:
+            async for chunk in client.nodes.trigger(match["peer_id"], prompt, chat_id):
+                for line in chunk.decode("utf-8", "replace").splitlines():
+                    if not line.startswith("data: "):
+                        continue
+                    body = line[6:].strip()
+                    if body == "[DONE]":
+                        continue
+                    try:
+                        event = _json.loads(body)
+                    except _json.JSONDecodeError:
+                        continue
+                    if event.get("type") == "TEXT_MESSAGE_CONTENT":
+                        typer.echo(event.get("delta", ""), nl=False)
+                    elif event.get("type") in ("error", "RUN_ERROR"):
+                        typer.echo(f"\n❌ {event.get('data') or event.get('message')}")
+            typer.echo("")
+        except ClientError as e:
+            typer.echo(f"\n❌ {e}")
             raise typer.Exit(code=1)
 
     asyncio.run(_run())
@@ -81,17 +168,14 @@ def node_status():
 def node_describe(
     node: str = typer.Argument(help="Node ID or display name"),
 ):
-    """Show detailed info about a specific node."""
+    """Show detailed info about a node (WS mesh) or a linked peer."""
 
     async def _run():
+        client = get_client()
+
+        # 1) Try a WS mesh node (has live capabilities).
         try:
-            client = get_client()
             data = await client.nodes.describe(node)
-
-            if "error" in data:
-                typer.echo(f"❌ {data['error']}")
-                raise typer.Exit(code=1)
-
             typer.echo(f"📡 Node: {data['display_name']}")
             typer.echo(f"   ID: {data['node_id']}")
             typer.echo(f"   Platform: {data['platform']}")
@@ -109,9 +193,69 @@ def node_describe(
                             typer.echo(f"       {param}: {ptype}")
             else:
                 typer.echo("\n   No capabilities advertised.")
+            return
+        except ClientError as e:
+            # Fall through to peers only on "not found"; surface other errors.
+            if "404" not in str(e) and "not found" not in str(e).lower():
+                typer.echo(f"❌ {e}")
+                raise typer.Exit(code=1)
+
+        # 2) Fall back to a linked peer (another Suzent we drive / that drives us).
+        try:
+            peers = (await client.nodes.peers()).get("peers", [])
         except ClientError as e:
             typer.echo(f"❌ {e}")
             raise typer.Exit(code=1)
+        match = next(
+            (
+                p
+                for p in peers
+                if p["peer_id"] == node or p.get("name", "").lower() == node.lower()
+            ),
+            None,
+        )
+        if not match:
+            typer.echo(
+                f"❌ No node or peer matching '{node}'. See `suzent nodes list`."
+            )
+            raise typer.Exit(code=1)
+
+        outbound = {
+            "trigger": "trigger them",
+            "paused": "outbound paused",
+            "off": "outbound off",
+        }.get(match.get("mode", "trigger"), match.get("mode"))
+        typer.echo(f"🔗 Peer: {match['name']}")
+        typer.echo(f"   ID: {match['peer_id']}")
+        typer.echo(f"   Address: {match.get('base_url', 'unknown')}")
+        typer.echo(f"   Online: {'yes' if match.get('online') else 'no'}")
+        typer.echo(f"   Outbound: {outbound}")
+        typer.echo(
+            f"   Inbound: {'granted' if match.get('reverse_enabled') else 'off'}"
+        )
+
+        # Best-effort live fetch of the peer's hardware capabilities.
+        try:
+            caps = (await client.nodes.peer_capabilities(match["peer_id"])).get(
+                "capabilities", []
+            )
+            if caps:
+                typer.echo(f"\n   Capabilities ({len(caps)}):")
+                for cap in caps:
+                    host = f" [{cap['node']}]" if cap.get("node") else ""
+                    desc = f" — {cap['description']}" if cap.get("description") else ""
+                    typer.echo(f"     • {cap['name']}{host}{desc}")
+                    for param, ptype in (cap.get("params_schema") or {}).items():
+                        typer.echo(f"       {param}: {ptype}")
+            else:
+                typer.echo("\n   Capabilities: none advertised.")
+        except ClientError:
+            typer.echo("\n   Capabilities: unavailable (peer offline or unreachable).")
+
+        typer.echo(
+            "\n   Trigger the peer's agent with: "
+            f'suzent nodes trigger "{match["name"]}" "<prompt>"'
+        )
 
     asyncio.run(_run())
 
@@ -122,6 +266,12 @@ def node_invoke(
     command: str = typer.Argument(help="Command to invoke (e.g., camera.snap)"),
     params: Optional[str] = typer.Option(
         None, "--params", "-p", help='JSON params (e.g., \'{"format":"png"}\')'
+    ),
+    timeout: Optional[float] = typer.Option(
+        None,
+        "--timeout",
+        "-t",
+        help="Seconds to wait on the node's response",
     ),
     extra_args: list[str] = typer.Argument(
         None, help="Key=value params (e.g. text=hello)"
@@ -151,6 +301,16 @@ def node_invoke(
         if extra_args:
             for arg in extra_args:
                 if "=" not in arg:
+                    # A bare token is treated as a boolean flag (arg=True). This
+                    # is easy to hit by mistake — `speaker.speak "hi"` becomes
+                    # {"hi": True}, not {"text": "hi"} — so warn loudly rather
+                    # than silently swallow it (which once surfaced only as a
+                    # confusing "No text provided" from the handler).
+                    typer.echo(
+                        f"⚠️  '{arg}' has no '=', treating it as {arg}=true. "
+                        f'For a value, use key=value (e.g. text="{arg}"); see '
+                        f'`suzent nodes describe "{node}"` for param names.'
+                    )
                     parsed_params[arg] = True
                     continue
 
@@ -158,9 +318,11 @@ def node_invoke(
                 parsed_params[key] = infer_type(value_str)
 
         typer.echo(f"⚡ Invoking '{command}' on node '{node}'...")
+        client = get_client()
         try:
-            client = get_client()
-            result = await client.nodes.invoke(node, command, parsed_params)
+            result = await client.nodes.invoke(
+                node, command, parsed_params, timeout=timeout
+            )
 
             if result.get("success"):
                 typer.echo(f"✅ Result: {json.dumps(result.get('result'), indent=2)}")
@@ -169,6 +331,44 @@ def node_invoke(
                 typer.echo(f"❌ Failed: {error}")
                 raise typer.Exit(code=1)
         except ClientError as e:
+            # `invoke` targets WS nodes. If the target is a control-grant peer,
+            # transparently proxy the capability to that peer.
+            if "not found" in str(e).lower():
+                try:
+                    peers = (await client.nodes.peers()).get("peers", [])
+                except ClientError:
+                    peers = []
+                match = next(
+                    (
+                        p
+                        for p in peers
+                        if p["peer_id"] == node
+                        or p.get("name", "").lower() == node.lower()
+                    ),
+                    None,
+                )
+                if match:
+                    try:
+                        result = await client.nodes.invoke_peer(
+                            match["peer_id"], command, parsed_params, timeout=timeout
+                        )
+                    except ClientError as pe:
+                        typer.echo(f"❌ Couldn't reach peer '{match['name']}': {pe}")
+                        raise typer.Exit(code=1)
+                    if result.get("error"):
+                        typer.echo(f"❌ Failed on peer: {result['error']}")
+                        raise typer.Exit(code=1)
+                    payload = result.get("result", result)
+                    typer.echo(f"✅ Result: {json.dumps(payload, indent=2)}")
+                    return
+                # Neither a node nor a known peer on this device.
+                typer.echo(
+                    f"❌ No node or peer matching '{node}' on this device.\n"
+                    f"   Run `suzent nodes list` and invoke by NAME — peer ids "
+                    f"differ per device. To invoke back, enable the inbound "
+                    f"direction on the other device."
+                )
+                raise typer.Exit(code=1)
             typer.echo(f"❌ {e}")
             raise typer.Exit(code=1)
 
@@ -197,10 +397,14 @@ def node_host(
 
     gateway_url = url or DEFAULT_GATEWAY_URL
     caps = capabilities.split(",") if capabilities else None
-    host = NodeHost(gateway_url=gateway_url, display_name=name, capabilities=caps)
+    host = NodeHost(
+        gateway_url=gateway_url,
+        display_name=name,
+        capabilities=caps,
+    )
 
     typer.echo(f"🖥️  Starting node host '{name}'...")
-    typer.echo(f"   Gateway: {url}")
+    typer.echo(f"   Gateway: {gateway_url}")
     typer.echo(f"   Capabilities: {capabilities or 'all'}")
     typer.echo("   Press Ctrl+C to stop.\n")
 
@@ -208,3 +412,227 @@ def node_host(
         asyncio.run(host.run())
     except KeyboardInterrupt:
         typer.echo("\n🛑 Node host stopped.")
+
+
+@node_app.command("pending")
+def node_pending():
+    """List node connections awaiting operator approval."""
+
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.nodes.pending()
+            pending = data.get("pending", [])
+            if not pending:
+                typer.echo("No nodes awaiting approval.")
+                return
+            typer.echo(f"⏳ Pending approval ({len(pending)}):\n")
+            for p in pending:
+                caps = ", ".join(c["name"] for c in p.get("capabilities", [])) or "none"
+                typer.echo(
+                    f"  • {p['display_name']} ({p['platform']})\n"
+                    f"     Code: {p['pairing_code']}\n"
+                    f"     Capabilities: {caps}\n"
+                    f"     Requested: {p.get('requested_at', 'unknown')}\n"
+                )
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
+
+
+@node_app.command("approve")
+def node_approve(
+    code: str = typer.Argument(help="Pairing code from `suzent node pending`"),
+):
+    """Approve a pending node connection (mints a durable device token)."""
+
+    async def _run():
+        try:
+            client = get_client()
+            result = await client.nodes.approve(code)
+            if result.get("success"):
+                typer.echo(f"✅ Approved {code}.")
+            else:
+                typer.echo(f"❌ {result.get('message', 'Approval failed')}")
+                raise typer.Exit(code=1)
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
+
+
+@node_app.command("deny")
+def node_deny(
+    code: str = typer.Argument(help="Pairing code from `suzent node pending`"),
+):
+    """Deny a pending node connection."""
+
+    async def _run():
+        try:
+            client = get_client()
+            result = await client.nodes.deny(code)
+            if result.get("success"):
+                typer.echo(f"🚫 Denied {code}.")
+            else:
+                typer.echo(f"❌ {result.get('message', 'Deny failed')}")
+                raise typer.Exit(code=1)
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
+
+
+@node_app.command("devices")
+def node_devices():
+    """List durably-approved devices (per-device tokens)."""
+
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.nodes.devices()
+            devices = data.get("devices", [])
+            if not devices:
+                typer.echo("No approved devices.")
+                return
+            typer.echo(f"🔐 Approved devices ({len(devices)}):\n")
+            for d in devices:
+                dot = "🟢" if d.get("connected") else "⚪"
+                typer.echo(
+                    f"  {dot} {d['display_name']} ({d['platform']})\n"
+                    f"     Device ID: {d['device_id']}\n"
+                    f"     Approved: {d.get('approved_at', 'unknown')}\n"
+                )
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
+
+
+@node_app.command("revoke")
+def node_revoke(
+    device_id: str = typer.Argument(help="Device ID from `suzent node devices`"),
+):
+    """Revoke a device's durable token (it must re-pair to reconnect)."""
+
+    async def _run():
+        try:
+            client = get_client()
+            result = await client.nodes.revoke(device_id)
+            if result.get("success"):
+                typer.echo(f"🗑️  Revoked device {device_id}.")
+            else:
+                typer.echo(f"❌ {result.get('message', 'Revoke failed')}")
+                raise typer.Exit(code=1)
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
+
+
+@node_app.command("discover")
+def node_discover(
+    timeout: float = typer.Option(2.0, "--timeout", "-t", help="LAN browse seconds"),
+):
+    """Discover Suzent peers on the local network (mDNS) and tailnet."""
+
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.nodes.discover(timeout=timeout)
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+        def _show(group, items):
+            typer.echo(f"\n{group} ({len(items)}):")
+            if not items:
+                typer.echo("  (none)")
+                return
+            for it in items:
+                reach = it.get("reachable")
+                dot = "🟢" if reach else ("⚪" if reach is False else "  ")
+                typer.echo(f"  {dot} {it['name']} — {it['gateway_url']}")
+
+        _show("📡 LAN (mDNS)", data.get("lan", []))
+        _show("🔒 Tailscale", data.get("tailscale", []))
+        typer.echo("\nConnect with: suzent node connect <gateway_url>")
+
+    asyncio.run(_run())
+
+
+@node_app.command("connect")
+def node_connect(
+    gateway_url: str = typer.Argument(help="ws://host:port/ws/node of the remote"),
+    name: Optional[str] = typer.Option(None, "--name", "-n", help="This node's name"),
+):
+    """Join a remote Suzent as a node (outbound). Approve on the remote if needed."""
+
+    async def _run():
+        try:
+            client = get_client()
+            result = await client.nodes.connect(gateway_url, name=name or "")
+            typer.echo(
+                f"🔗 Connecting to {gateway_url} as '{result.get('display_name')}' "
+                f"(status: {result.get('status')})."
+            )
+            typer.echo("Check `suzent node connections` for the pairing code/status.")
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
+
+
+@node_app.command("connections")
+def node_connections():
+    """List outbound connections this device has initiated."""
+
+    async def _run():
+        try:
+            client = get_client()
+            data = await client.nodes.connections()
+            conns = data.get("connections", [])
+            if not conns:
+                typer.echo("No outbound connections.")
+                return
+            typer.echo(f"🔗 Outbound connections ({len(conns)}):\n")
+            for c in conns:
+                line = f"  • {c['gateway_url']} — {c['status']}"
+                if c.get("pairing_code"):
+                    line += f" (approve code {c['pairing_code']} on the remote)"
+                if c.get("error"):
+                    line += f" — {c['error']}"
+                typer.echo(line)
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())
+
+
+@node_app.command("disconnect")
+def node_disconnect(
+    gateway_url: str = typer.Argument(help="ws://host:port/ws/node to disconnect"),
+):
+    """Stop an outbound connection."""
+
+    async def _run():
+        try:
+            client = get_client()
+            result = await client.nodes.disconnect(gateway_url)
+            if result.get("success"):
+                typer.echo(f"🔌 Disconnected from {gateway_url}.")
+            else:
+                typer.echo(f"❌ {result.get('message', 'Disconnect failed')}")
+                raise typer.Exit(code=1)
+        except ClientError as e:
+            typer.echo(f"❌ {e}")
+            raise typer.Exit(code=1)
+
+    asyncio.run(_run())

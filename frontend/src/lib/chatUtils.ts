@@ -401,3 +401,24 @@ export function mergeToolCallPairs(blocks: ContentBlock[]): ContentBlock[] {
 
   return mergedBlocks;
 }
+
+/**
+ * Format an ISO timestamp as a compact relative time ("just now", "5m ago",
+ * "3h ago", "2d ago"). Returns '' for empty/invalid/future input. Shared by the
+ * status bar, GitHub sync, and devices views (previously three near-identical
+ * private copies).
+ */
+export function relativeTime(iso?: string | null): string {
+  if (!iso) return '';
+  const ts = new Date(iso).getTime();
+  if (Number.isNaN(ts)) return '';
+  const sec = Math.floor((Date.now() - ts) / 1000);
+  if (sec < 0) return '';
+  if (sec < 10) return 'just now';
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hours = Math.floor(min / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}

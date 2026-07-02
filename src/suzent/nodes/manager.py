@@ -1,14 +1,63 @@
 """
 Manager for connected nodes.
-Responsible for node registry, lookup, and command dispatch.
+Responsible for node registry, lookup, command dispatch, and — for approve-mode
+auth — a registry of pending connections awaiting operator approval.
 """
 
+import asyncio
+import secrets
+import string
+import time
+from collections import deque
+from dataclasses import dataclass, field
 from typing import Any
 
 from suzent.logger import get_logger
 from suzent.nodes.base import NodeBase
+from suzent.nodes.device_store import DeviceTokenStore
 
 logger = get_logger(__name__)
+
+# Pairing codes are short, single-use, and short-lived (operator approval window).
+_PAIRING_CODE_CHARS = string.ascii_uppercase + string.digits
+_PAIRING_CODE_LEN = 6
+PENDING_TTL_SECONDS = 600  # 10 minutes, matching the social pairing window
+
+
+GRANT_TTL_SECONDS = 600  # control-grant request approval window
+MAX_PENDING_GRANTS = 50  # cap on queued control requests (anti-spam)
+
+
+@dataclass
+class PendingConnection:
+    """A node connection parked in approve mode, awaiting operator action."""
+
+    pairing_code: str
+    display_name: str
+    platform: str
+    capabilities: list[Any]
+    requested_at: float = field(default_factory=time.time)
+    # Resolved True (approved) or False (denied) by the operator action; the
+    # waiting WebSocket handler awaits this.
+    future: asyncio.Future = field(default=None)  # type: ignore[assignment]
+
+
+@dataclass
+class GrantRequest:
+    """A remote peer asking (over HTTP) for a grant to control this device."""
+
+    request_id: str
+    controller_name: str
+    controller_host: str
+    # The requester's own reachable base URL, so we can notify it on revoke.
+    controller_addr: str = ""
+    # The requester's stable self-assigned identity (a label, not a secret) —
+    # used to match/supersede grants for the same machine across networks.
+    controller_identity: str = ""
+    requested_at: float = field(default_factory=time.time)
+    status: str = "pending"  # pending | approved | denied
+    # Minted on approval, handed to the requester exactly once, then cleared.
+    token: str = ""
 
 
 class NodeManager:
@@ -17,8 +66,34 @@ class NodeManager:
     Mirrors ChannelManager pattern.
     """
 
-    def __init__(self):
+    def __init__(self, device_store: DeviceTokenStore | None = None):
         self.nodes: dict[str, NodeBase] = {}
+        # Approve-mode pairing state, keyed by single-use pairing code.
+        self._pending: dict[str, PendingConnection] = {}
+        # Control-grant requests (HTTP), keyed by unguessable request_id.
+        self._grant_requests: dict[str, GrantRequest] = {}
+        self.device_store = device_store or DeviceTokenStore()
+        # Recent rejected inbound trigger attempts (unauthenticated / bad token),
+        # a bounded ring for the operator to spot probing. In-memory only.
+        self._unauthorized_triggers: deque[dict[str, Any]] = deque(maxlen=50)
+
+    def record_unauthorized_trigger(self, client_host: str, claimed_id: str) -> None:
+        """Log a rejected inbound trigger (no valid token) for operator review."""
+        self._unauthorized_triggers.append(
+            {
+                "at": _iso(time.time()),
+                "client_host": client_host or "unknown",
+                "claimed_id": claimed_id or "",
+            }
+        )
+        logger.warning(
+            f"Rejected unauthenticated Suzent trigger from {client_host or 'unknown'}"
+            f" (claimed id: {claimed_id or 'none'})"
+        )
+
+    def list_unauthorized_triggers(self) -> list[dict[str, Any]]:
+        """Recent rejected inbound trigger attempts (newest last)."""
+        return list(self._unauthorized_triggers)
 
     def register_node(self, node: NodeBase) -> None:
         """
@@ -90,6 +165,7 @@ class NodeManager:
         node_id_or_name: str,
         command: str,
         params: dict[str, Any] | None = None,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
         """
         Dispatch a command to a specific node.
@@ -98,6 +174,8 @@ class NodeManager:
             node_id_or_name: Node ID or display name.
             command: The command to invoke.
             params: Optional parameters for the command.
+            timeout: Optional override for how long to wait on the response
+                (seconds). Slower capabilities may need a larger value.
 
         Returns:
             The result dict from the node.
@@ -124,7 +202,7 @@ class NodeManager:
         logger.info(
             f"Invoking '{command}' on node '{node.display_name}' ({node.node_id})"
         )
-        return await node.invoke(command, params)
+        return await node.invoke(command, params, timeout=timeout)
 
     def describe_node(self, node_id_or_name: str) -> dict[str, Any] | None:
         """
@@ -145,3 +223,221 @@ class NodeManager:
     def connected_count(self) -> int:
         """Number of currently connected nodes."""
         return sum(1 for n in self.nodes.values() if n.status == "connected")
+
+    # ── Approve-mode pairing ─────────────────────────────────────────
+
+    def _generate_pairing_code(self) -> str:
+        while True:
+            code = "".join(
+                secrets.choice(_PAIRING_CODE_CHARS) for _ in range(_PAIRING_CODE_LEN)
+            )
+            if code not in self._pending:
+                return code
+
+    def _expire_pending(self) -> None:
+        """Drop pending entries past their TTL (rejecting their waiters)."""
+        now = time.time()
+        for code in [
+            c
+            for c, p in self._pending.items()
+            if now - p.requested_at > PENDING_TTL_SECONDS
+        ]:
+            entry = self._pending.pop(code, None)
+            if entry and entry.future and not entry.future.done():
+                entry.future.set_result(False)
+
+    def add_pending(
+        self,
+        display_name: str,
+        platform: str,
+        capabilities: list[Any],
+        future: asyncio.Future,
+    ) -> str:
+        """Register a connection awaiting approval. Returns its pairing code."""
+        self._expire_pending()
+        code = self._generate_pairing_code()
+        self._pending[code] = PendingConnection(
+            pairing_code=code,
+            display_name=display_name,
+            platform=platform,
+            capabilities=capabilities,
+            future=future,
+        )
+        logger.info(
+            f"Node '{display_name}' pending approval (code={code}, platform={platform})"
+        )
+        return code
+
+    def cancel_pending(self, pairing_code: str) -> None:
+        """Remove a pending entry (e.g. node disconnected before approval)."""
+        self._pending.pop(pairing_code, None)
+
+    # ── Control-grant requests (HTTP peer control) ───────────────────
+
+    def _expire_grants(self) -> None:
+        now = time.time()
+        for rid in [
+            r
+            for r, g in self._grant_requests.items()
+            if now - g.requested_at > GRANT_TTL_SECONDS
+        ]:
+            self._grant_requests.pop(rid, None)
+
+    def add_grant_request(
+        self,
+        controller_name: str,
+        controller_host: str,
+        controller_addr: str = "",
+        controller_identity: str = "",
+    ) -> str:
+        """Queue a remote peer's request to control this device. Returns its id.
+
+        Issues no token — only an operator approval mints one. Capped + TTL'd.
+        ``controller_addr`` is the requester's reachable base URL (for revoke
+        notifications); ``controller_identity`` is its stable self-id (for
+        matching grants across networks).
+        """
+        self._expire_grants()
+        if len(self._grant_requests) >= MAX_PENDING_GRANTS:
+            raise ValueError("Too many pending control requests; try again later")
+        rid = secrets.token_urlsafe(16)
+        self._grant_requests[rid] = GrantRequest(
+            request_id=rid,
+            controller_name=controller_name or "unknown",
+            controller_host=controller_host or "",
+            controller_addr=controller_addr or "",
+            controller_identity=controller_identity or "",
+        )
+        logger.info(
+            f"Control request from '{controller_name}' ({controller_host}) [{rid[:6]}…]"
+        )
+        return rid
+
+    def list_grant_requests(self) -> list[dict[str, Any]]:
+        """Pending control requests, for the operator UI."""
+        self._expire_grants()
+        return [
+            {
+                "request_id": g.request_id,
+                "controller_name": g.controller_name,
+                "controller_host": g.controller_host,
+                "controller_addr": g.controller_addr,
+                "controller_identity": g.controller_identity,
+                "requested_at": _iso(g.requested_at),
+            }
+            for g in self._grant_requests.values()
+            if g.status == "pending"
+        ]
+
+    def approve_grant(self, request_id: str) -> bool:
+        """Approve a control request: mint a durable token for the requester."""
+        self._expire_grants()
+        g = self._grant_requests.get(request_id)
+        if not g or g.status != "pending":
+            return False
+        # Supersede any prior grant to the same machine so re-requests replace
+        # rather than accumulate (by stable identity, else by address).
+        if g.controller_identity or g.controller_addr:
+            self.device_store.revoke_matching(
+                node_identity=g.controller_identity,
+                callback_url=g.controller_addr,
+            )
+        _device_id, token = self.device_store.mint(
+            g.controller_name,
+            "peer",
+            scope="agent",
+            callback_url=g.controller_addr,
+            node_identity=g.controller_identity,
+        )
+        g.status = "approved"
+        g.token = token
+        return True
+
+    def deny_grant(self, request_id: str) -> bool:
+        g = self._grant_requests.get(request_id)
+        if not g or g.status != "pending":
+            return False
+        g.status = "denied"
+        g.token = ""
+        return True
+
+    def take_grant_result(self, request_id: str) -> dict[str, Any] | None:
+        """Requester poll: return {status, token?}. Token is served once."""
+        self._expire_grants()
+        g = self._grant_requests.get(request_id)
+        if not g:
+            return None
+        out: dict[str, Any] = {"status": g.status}
+        if g.status == "approved" and g.token:
+            out["token"] = g.token
+            g.token = ""  # one-time pickup
+        return out
+
+    def list_pending(self) -> list[dict[str, Any]]:
+        """List connections awaiting operator approval."""
+        self._expire_pending()
+        return [
+            {
+                "pairing_code": p.pairing_code,
+                "display_name": p.display_name,
+                "platform": p.platform,
+                "capabilities": [
+                    {
+                        "name": c.name,
+                        "description": c.description,
+                        "params_schema": c.params_schema,
+                    }
+                    for c in p.capabilities
+                ],
+                "requested_at": _iso(p.requested_at),
+            }
+            for p in self._pending.values()
+        ]
+
+    def approve_pending(self, pairing_code: str) -> tuple[bool, str]:
+        """Approve a pending connection and mint a durable device token.
+
+        Returns (success, device_token). The waiting WebSocket handler resolves
+        and completes registration; the token is handed to the node to persist.
+        """
+        self._expire_pending()
+        entry = self._pending.pop(pairing_code, None)
+        if not entry:
+            return False, ""
+        _device_id, token = self.device_store.mint(
+            entry.display_name, entry.platform, scope="node"
+        )
+        if entry.future and not entry.future.done():
+            entry.future.set_result(token)
+        return True, token
+
+    def deny_pending(self, pairing_code: str) -> bool:
+        """Deny a pending connection (rejecting its waiter)."""
+        entry = self._pending.pop(pairing_code, None)
+        if not entry:
+            return False
+        if entry.future and not entry.future.done():
+            entry.future.set_result(False)
+        return True
+
+    # ── Durable approved devices ─────────────────────────────────────
+
+    def list_devices(self) -> list[dict[str, Any]]:
+        """List durably-approved devices, flagging which are connected now."""
+        connected_names = {
+            n.display_name for n in self.nodes.values() if n.status == "connected"
+        }
+        out = []
+        for dev in self.device_store.list_devices():
+            out.append({**dev, "connected": dev["display_name"] in connected_names})
+        return out
+
+    def revoke_device(self, device_id: str) -> bool:
+        """Revoke a durable device token by device_id."""
+        return self.device_store.revoke(device_id)
+
+
+def _iso(ts: float) -> str:
+    from datetime import datetime, timezone
+
+    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()

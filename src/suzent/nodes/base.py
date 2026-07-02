@@ -53,7 +53,10 @@ class NodeBase(ABC):
 
     @abstractmethod
     async def invoke(
-        self, command: str, params: dict[str, Any] | None = None
+        self,
+        command: str,
+        params: dict[str, Any] | None = None,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
         """
         Invoke a command on this node.
@@ -61,6 +64,8 @@ class NodeBase(ABC):
         Args:
             command: The capability command name (e.g., "camera.snap").
             params: Optional parameters for the command.
+            timeout: Optional override (seconds) for how long to wait on the
+                response; implementations may ignore it when not applicable.
 
         Returns:
             Dict with at least {"success": bool, "result": Any}.
