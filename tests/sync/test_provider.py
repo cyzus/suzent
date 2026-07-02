@@ -56,3 +56,33 @@ def test_provider_refuses_unrelated_staged_changes(tmp_path: Path):
 
     with pytest.raises(ValueError, match="staged changes outside the sync payload"):
         GitHubSyncProvider(repo, branch="master").commit_and_push_payload("rev1")
+
+
+def test_pull_clears_untracked_payload_files(tmp_path: Path):
+    """An untracked local payload file must not block a ff-only pull once the
+    remote starts tracking that same path (the "untracked working tree files
+    would be overwritten by merge" abort)."""
+    repo = make_repo(tmp_path)
+
+    # A second clone that pushes a tracked payload file to the remote.
+    other = tmp_path / "other"
+    git(tmp_path, "clone", str(tmp_path / "remote.git"), str(other))
+    git(other, "config", "user.email", "test@example.com")
+    git(other, "config", "user.name", "Test User")
+    git(other, "checkout", "master")
+    other_payload = other / PAYLOAD_DIR_NAME
+    other_payload.mkdir()
+    (other_payload / "node_devices.json").write_text("[]", encoding="utf-8")
+    git(other, "add", PAYLOAD_DIR_NAME)
+    git(other, "commit", "-m", "add payload")
+    git(other, "push", "origin", "master")
+
+    # Locally the same path exists only as an untracked file.
+    payload = repo / PAYLOAD_DIR_NAME
+    payload.mkdir()
+    (payload / "node_devices.json").write_text("stale local", encoding="utf-8")
+
+    # Without cleaning untracked files this aborts; the fix must let it through.
+    GitHubSyncProvider(repo, branch="master").pull_ff_only()
+
+    assert (payload / "node_devices.json").read_text(encoding="utf-8") == "[]"

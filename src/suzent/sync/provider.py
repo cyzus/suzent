@@ -88,12 +88,20 @@ class GitHubSyncProvider:
     def _discard_payload_changes(self) -> None:
         """Discard any uncommitted changes inside the payload directory before pulling.
 
-        The payload is always regenerated on push, so local dirty state is safe to drop.
+        The payload is always regenerated on push, so local dirty state is safe to
+        drop. This covers both tracked edits (``checkout``) and *untracked* files
+        (``clean``): once the remote starts tracking a payload path that only
+        exists locally as an untracked file, a ff-only pull aborts with "untracked
+        working tree files would be overwritten by merge" unless we clear it first.
         """
         try:
             self._git("checkout", "--", PAYLOAD_DIR_NAME)
         except RuntimeError:
             pass  # no changes or directory doesn't exist yet — fine either way
+        try:
+            self._git("clean", "-fd", "--", PAYLOAD_DIR_NAME)
+        except RuntimeError:
+            pass  # nothing untracked to clean — fine either way
 
     def commit_and_push_payload(self, revision_id: str) -> str:
         self.validate(require_clean=False)
