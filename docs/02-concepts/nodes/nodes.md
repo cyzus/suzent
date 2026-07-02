@@ -333,7 +333,7 @@ enforces a loopback-trusted, **scope-gated** model:
   by an operator-approved, unguessable request id).
 
 > Identity model and the plan to harden it (bearer tokens today, TLS/key options
-> for untrusted networks) live in [security-plan.md](./security-plan.md).
+> for untrusted networks) live in [security.md](./security.md).
 
 So a granted peer can drive your agent and **nothing else** — it can't read your
 config or files. To use a device fully from afar, mint a **host token**

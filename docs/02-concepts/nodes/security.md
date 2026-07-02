@@ -1,7 +1,7 @@
-# Node Mesh — Security & Identity Plan
+# Node Mesh — Security & Identity
 
-Status: living doc. Captures how device identity/auth works today and the
-hardening roadmap. See [nodes.md](./nodes.md) for the user-facing feature docs.
+Living reference for how device identity/auth works today, the threat model, and
+the hardening roadmap. See [nodes.md](./nodes.md) for the user-facing feature docs.
 
 ## 1. How a device is bound today
 
@@ -19,7 +19,11 @@ to an IP address.
 Stores:
 - **`device_store` (`node_devices.json`)** — tokens *we issued* to others
   (devices/peers that can drive us). Record:
-  `{ device_id, display_name, platform, scope, approved_at }`. No key, no IP.
+  `{ device_id, display_name, platform, scope, status, token_hint, callback_url,
+  node_identity, approved_at, trigger_count?, last_triggered_at? }`. No key, no
+  IP. `status` is `active`|`paused` (a paused grant keeps the token but is denied
+  at the auth boundary); `callback_url`/`node_identity` identify the holder for
+  revocation and cross-network matching.
 - **`peer_store` (`node_peers.json`)** — peers *we can drive*. Record:
   `{ name, base_url, token, mode, reverse_device_id? }`. `base_url` is just the
   address to reach them; `token` is the bearer credential they issued us.
@@ -28,12 +32,21 @@ Auth boundary (`auth_boundary.py`):
 - Loopback (`127.0.0.1`/`::1`/in-process) → full trust, no token.
 - Remote → must present a valid token; **scope** decides which routes:
   - `node` — WS handshake only, no HTTP routes
-  - `agent` — `/chat`, `/chat/stop`, `/nodes/peer-offer`, `/nodes/peer-invoke`
+  - `agent` — `/chat`, `/chat/stop`, `/nodes` (read-only capability list),
+    `/nodes/peer-offer`, `/nodes/peer-invoke`, `/channels/suzent/inbound`,
+    `/channels/suzent/whoami`
   - `full` — entire API ("use as host")
+- A `paused` grant resolves to no scope (treated as invalid → denied) without
+  destroying the token.
 - Client IP is read **only** for the loopback decision; tokens are **not**
-  IP-bound. Bootstrap endpoints (`/nodes/grant-request`, `/nodes/grant-status`)
-  and the `/ws/node` handshake are exempt (they self-authenticate / issue no
-  secret).
+  IP-bound. Bootstrap endpoints (`/nodes/grant-request`, `/nodes/grant-status`,
+  `/channels/suzent/grant-changed`) and the `/ws/node` handshake are exempt
+  (they self-authenticate / issue no secret).
+
+Pairing is **approve-only**: the legacy `open` (no auth) and `token` (shared
+secret) connect modes were removed — every new device must be operator-approved,
+which mints the durable per-device token above. Rejected unauthenticated inbound
+triggers are logged (in-memory ring) for the operator to review.
 
 ## 2. Trade-offs / threat model
 
@@ -93,7 +106,14 @@ key.
 - [ ] Decide target exposure (tailnet-only vs untrusted networks) — drives B/C.
 - [ ] If B: add `wss://` support + fingerprint capture at pairing + pin on
       connect; surface the fingerprint in the Devices tab for out-of-band verify.
-- [ ] Consider splitting `agent` scope into `agent` (chat only) vs `device`
-      (capabilities like `speaker.speak`/`camera.snap`) if "run the agent" and
-      "drive the hardware" should be separately consentable.
+- [ ] Consider splitting `agent` scope (which now also covers hardware
+      `peer-invoke` and the Suzent channel) into finer grants — e.g. `chat` (run
+      the agent) vs `device` (drive `speaker.speak`/`camera.snap`) — if those
+      should be separately consentable.
 - [ ] Token rotation / expiry for `full` (host) tokens.
+- [ ] Unspoofable device identity (Option C): today `node_identity` is a
+      plaintext label used only for matching — a signed-challenge/keypair would
+      make it an authenticator, not just an identifier.
+- [ ] `list_peers` recomputes each peer's outbound status via a live `whoami`
+      round-trip on every poll (~4s); cache/debounce so an open Devices tab
+      doesn't fan out N requests per tick (also a mild self-DoS surface).

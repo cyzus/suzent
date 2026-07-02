@@ -10,7 +10,7 @@ Tailscale).
 **This is an identifier, not an authenticator.** It is a plaintext label: a peer
 could copy it to *claim* to be another device, but that grants no access —
 authorization rides entirely on the per-grant bearer token, and pairing still
-requires an operator's approval. See docs/02-concepts/nodes/security-plan.md for
+requires an operator's approval. See docs/02-concepts/nodes/security.md for
 the (deferred) cryptographic-identity option that would make it unspoofable.
 
 Stored machine-locally (never synced), like device tokens and sandbox volumes.
