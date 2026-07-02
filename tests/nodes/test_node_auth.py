@@ -203,3 +203,26 @@ class TestInvokeTimeout:
         # No result is ever delivered, so a short override must time out fast.
         with pytest.raises(TimeoutError):
             await node.invoke("x", {}, timeout=0.05)
+
+
+class TestNodeHostSecrets:
+    @pytest.mark.asyncio
+    async def test_run_injects_stored_secrets(self, monkeypatch):
+        """The node host is a separate process; it must load stored API keys into
+        os.environ on startup so capabilities (e.g. speaker.speak TTS) find them."""
+        from suzent.nodes import node_host
+
+        injected = {"called": False}
+
+        class FakeSM:
+            def inject_all_to_env(self):
+                injected["called"] = True
+                return 3
+
+        monkeypatch.setattr("suzent.core.secrets.get_secret_manager", lambda: FakeSM())
+
+        host = node_host.NodeHost(gateway_url="ws://x:1/ws/node")
+        host._stop = True  # skip the reconnect loop; we only assert startup work
+        await host.run()
+
+        assert injected["called"] is True

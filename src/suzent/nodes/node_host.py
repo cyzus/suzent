@@ -354,6 +354,19 @@ class NodeHost:
 
     async def run(self) -> None:
         """Run with automatic reconnection."""
+        # Load stored API keys into os.environ so capabilities that call
+        # providers (e.g. speaker.speak → litellm TTS) find their keys. The node
+        # host is a separate process from the main server, which does this on its
+        # own startup; without it, TTS/etc. fail with "API key not valid".
+        try:
+            from suzent.core.secrets import get_secret_manager
+
+            n = get_secret_manager().inject_all_to_env()
+            if n:
+                logger.info(f"🔑 Loaded {n} stored secret(s) into env")
+        except Exception as e:
+            logger.warning(f"Could not load stored secrets: {e}")
+
         while not self._stop:
             try:
                 await self.run_once()
