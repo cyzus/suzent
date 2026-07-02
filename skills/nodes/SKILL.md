@@ -120,6 +120,14 @@ with its grant token (`Authorization: Bearer <token>`) and reads the SSE reply.
 The old `agent.run` node capability was removed (node capabilities are now just
 device hardware like `speaker.speak`/`camera.snap`).
 
+On the target, the peer session is a real persisted chat (keyed
+`suzent:<peer_id>`, tagged `platform:"suzent"`, in the Social project): it shows
+in the chat list, **remembers prior turns** (re-triggering the same peer
+continues the conversation), streams live in the UI, and the agent is told which
+device triggered it via a hidden system-reminder. Identity comes from the
+authenticated token — an inbound call with no valid token (and no explicit
+`chat_id`) is rejected 401 and creates no chat.
+
 ## Examples
 
 ```python

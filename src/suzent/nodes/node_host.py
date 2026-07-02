@@ -136,7 +136,7 @@ async def handle_camera_snap(params: dict[str, Any]) -> dict[str, Any]:
 # NOTE: agent.run was removed. Triggering a device's agent now goes through the
 # Suzent channel (POST /channels/suzent/inbound), not a node capability. Node
 # capabilities are for device hardware (speaker, camera). See
-# docs/02-concepts/nodes/agent-channel-migration-plan.md.
+# docs/02-concepts/nodes/nodes.md (Peer agents).
 
 
 # ─── Durable device-token persistence (node side) ────────────────────

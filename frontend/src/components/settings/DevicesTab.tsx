@@ -43,24 +43,13 @@ import { BrutalButton } from '../BrutalButton';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { SettingsHeader } from './SettingsHeader';
 import { SectionCardHeader, SettingsCard, SettingsListItem, SettingsListAction } from './SettingsCard';
+import { relativeTime } from '../../lib/chatUtils';
 
 const POLL_MS = 4000;
 const AGENT_CAPABILITY = 'agent.run';
 
 function capNames(caps: { name: string }[]): string {
   return caps.length ? caps.map((c) => c.name).join(', ') : 'none';
-}
-
-/** Compact "2h ago" style relative time; '' for empty/invalid input. */
-function timeAgo(iso?: string): string {
-  if (!iso) return '';
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return '';
-  const s = Math.max(0, (Date.now() - t) / 1000);
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
 }
 
 function isAgent(node: { capabilities: { name: string }[] }): boolean {
@@ -250,12 +239,13 @@ export function DevicesTab(): React.ReactElement {
   };
 
   // Fully sever a linked device, whichever directions exist. removePeer drops
-  // the peer we drive AND revokes the reverse grant it issued; for an
-  // inbound-only device (no peer) we revoke the grant directly. One "Remove"
-  // covers every row.
+  // the peer we drive (and the reverse grant it minted); revokeDevice kills any
+  // inbound grant we issued to this machine — including one from a separate
+  // control-request approval, which removePeer does NOT cover. Both must run so
+  // "Remove" truly severs both directions.
   const unlinkDevice = async (peerId?: string, deviceId?: string) => {
     if (peerId) await removePeer(peerId);
-    else if (deviceId) await revokeDevice(deviceId);
+    if (deviceId) await revokeDevice(deviceId);
   };
 
   const addresses = config?.addresses ?? [];
@@ -646,7 +636,7 @@ export function DevicesTab(): React.ReactElement {
               <div className="mt-1 pl-3 space-y-0.5 text-neutral-400">
                 {unauthorized.slice(-5).reverse().map((u, i) => (
                   <div key={i} className="truncate">
-                    {timeAgo(u.at)} · from {u.client_host}
+                    {relativeTime(u.at)} · from {u.client_host}
                     {u.claimed_id ? ` (claimed "${u.claimed_id}")` : ''}
                   </div>
                 ))}
@@ -769,7 +759,7 @@ export function DevicesTab(): React.ReactElement {
                     {hasInbound && (d.triggerCount ?? 0) > 0 && (
                       <div className="text-[11px] text-neutral-400 font-mono">
                         Triggered you {d.triggerCount}×
-                        {d.lastTriggeredAt ? ` · last ${timeAgo(d.lastTriggeredAt)}` : ''}
+                        {d.lastTriggeredAt ? ` · last ${relativeTime(d.lastTriggeredAt)}` : ''}
                       </div>
                     )}
 

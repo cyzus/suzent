@@ -12,6 +12,7 @@ config dir) so approvals survive restarts.
 import json
 import secrets
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -41,11 +42,23 @@ class DeviceTokenStore:
     handle used for display and revocation.
     """
 
+    # Min seconds between disk persists of trigger stats — keeps a chatty peer
+    # from rewriting the whole store on every turn (stats are low-value telemetry).
+    _TRIGGER_SAVE_INTERVAL = 30.0
+
     def __init__(self, path=_STORE_PATH):
         self._path = path
         self._lock = threading.Lock()
         self._devices: dict[str, dict[str, Any]] = {}
+        self._last_trigger_save: float = 0.0
         self._load()
+
+    def _find_locked(self, device_id: str) -> tuple[str, dict[str, Any]] | None:
+        """Return (token, record) for a device_id, or None. Caller holds the lock."""
+        for token, rec in self._devices.items():
+            if rec.get("device_id") == device_id:
+                return token, rec
+        return None
 
     def _load(self) -> None:
         try:
@@ -152,44 +165,43 @@ class DeviceTokenStore:
         if status not in ("active", "paused"):
             return False
         with self._lock:
-            for rec in self._devices.values():
-                if rec.get("device_id") == device_id:
-                    rec["status"] = status
-                    self._save()
-                    logger.info(f"Device store: device {device_id} → {status}")
-                    return True
-        return False
+            found = self._find_locked(device_id)
+            if not found:
+                return False
+            found[1]["status"] = status
+            self._save()
+        logger.info(f"Device store: device {device_id} → {status}")
+        return True
 
     def record_trigger(self, device_id: str) -> bool:
         """Record an inbound trigger from this device: bump count + last-used.
 
         Lets the Devices tab show usage stats ("last active", how many times a
-        grant has driven us) so stale/over-active grants are easy to spot.
-        Returns True if a device was updated.
+        grant has driven us) so stale/over-active grants are easy to spot. The
+        in-memory counters update every call, but the disk write is throttled
+        (``_TRIGGER_SAVE_INTERVAL``) so a chatty peer doesn't rewrite the whole
+        store on the inbound hot path. Returns True if a device was updated.
         """
         with self._lock:
-            for rec in self._devices.values():
-                if rec.get("device_id") == device_id:
-                    rec["trigger_count"] = int(rec.get("trigger_count", 0)) + 1
-                    rec["last_triggered_at"] = _now_iso()
-                    self._save()
-                    return True
-        return False
+            found = self._find_locked(device_id)
+            if not found:
+                return False
+            rec = found[1]
+            rec["trigger_count"] = int(rec.get("trigger_count", 0)) + 1
+            rec["last_triggered_at"] = _now_iso()
+            now = time.monotonic()
+            if now - self._last_trigger_save >= self._TRIGGER_SAVE_INTERVAL:
+                self._last_trigger_save = now
+                self._save()
+            return True
 
     def revoke(self, device_id: str) -> bool:
         """Remove a device by its device_id. Returns True if one was removed."""
         with self._lock:
-            token = next(
-                (
-                    t
-                    for t, r in self._devices.items()
-                    if r.get("device_id") == device_id
-                ),
-                None,
-            )
-            if token is None:
+            found = self._find_locked(device_id)
+            if not found:
                 return False
-            del self._devices[token]
+            del self._devices[found[0]]
             self._save()
         logger.info(f"Device store: revoked device {device_id}")
         return True

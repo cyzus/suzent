@@ -88,6 +88,30 @@ def test_inbound_rejects_unidentified(monkeypatch):
     assert r.status_code == 401
 
 
+def test_inbound_frames_run_error_on_failure(monkeypatch):
+    # A turn that raises mid-stream must surface a RUN_ERROR frame (not a silent
+    # end), matching the /chat/send drive loop.
+    cp = _patch_common(monkeypatch)
+
+    class FakeProcessor:
+        def process_turn(self, **kwargs):
+            async def gen():
+                yield 'data: {"type":"TEXT_MESSAGE_CONTENT","delta":"partial"}\n\n'
+                raise RuntimeError("boom")
+
+            return gen()
+
+    monkeypatch.setattr(cp, "ChatProcessor", FakeProcessor)
+    client = TestClient(_app())
+    r = client.post(
+        "/channels/suzent/inbound",
+        json={"chat_id": "suzent:p1", "content": "hi"},
+    )
+    assert r.status_code == 200
+    assert "RUN_ERROR" in r.text
+    assert "boom" in r.text
+
+
 def test_inbound_rejects_empty_content(monkeypatch):
     _patch_common(monkeypatch)
     client = TestClient(_app())

@@ -318,11 +318,17 @@ def test_remove_peer_also_revokes_reverse_grant(tmp_path):
     mgr = NodeManager(device_store=ds)
     ps = PeerGrantStore(path=tmp_path / "peers.json")
 
-    # A peer we drive, plus a reverse grant we issued so they can drive us.
-    pid = ps.add("Peer", "http://peer.example:25314", "theirtok")
-    rev_id, _tok = ds.mint("Peer", "peer", scope="agent")
+    # A peer we drive at a given address, plus TWO inbound grants for the same
+    # machine: a reverse grant (tracked in reverse_device_id) AND an independent
+    # grant approved via a control request (callback_url = the peer's address,
+    # NOT in reverse_device_id). Remove must kill both.
+    addr = "http://peer.example:25314"
+    pid = ps.add("Peer", addr, "theirtok")
+    rev_id, _t1 = ds.mint("Peer", "peer", scope="agent")
     ps.set_reverse_device_id(pid, rev_id)
+    approve_id, _t2 = ds.mint("Peer", "peer", scope="agent", callback_url=addr)
     assert ds.get_by_device_id(rev_id) is not None
+    assert ds.get_by_device_id(approve_id) is not None
 
     app = Starlette(
         routes=[Route("/nodes/peers/{peer_id}/remove", remove_peer, methods=["POST"])]
@@ -334,4 +340,7 @@ def test_remove_peer_also_revokes_reverse_grant(tmp_path):
     r = client.post(f"/nodes/peers/{pid}/remove")
     assert r.status_code == 200 and r.json()["success"] is True
     assert ps.get(pid) is None  # outbound gone
-    assert ds.get_by_device_id(rev_id) is None  # inbound reverse grant revoked
+    assert ds.get_by_device_id(rev_id) is None  # reverse grant revoked
+    # The separately-approved inbound grant (matched by address) is also revoked,
+    # so the peer can no longer trigger us after Remove.
+    assert ds.get_by_device_id(approve_id) is None

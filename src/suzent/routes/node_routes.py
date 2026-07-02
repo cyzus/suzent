@@ -1171,10 +1171,15 @@ async def remove_peer(request: Request) -> JSONResponse:
     peer = store.get(peer_id) if store else None
     if not peer:
         return JSONResponse({"error": "Unknown peer"}, status_code=404)
-    # Revoke the inbound (reverse) grant first, if any.
-    reverse_id = peer.get("reverse_device_id")
-    if reverse_id and node_manager:
-        node_manager.device_store.revoke(reverse_id)
+    if node_manager:
+        # Revoke the reverse grant we minted for this peer, plus any inbound
+        # grant issued to the same machine via a separate control-request
+        # approval (matched by address) — otherwise "Remove" would leave the
+        # peer able to still trigger us.
+        reverse_id = peer.get("reverse_device_id")
+        if reverse_id:
+            node_manager.device_store.revoke(reverse_id)
+        node_manager.device_store.revoke_matching(callback_url=peer.get("base_url", ""))
     store.remove(peer_id)
     return JSONResponse({"success": True})
 

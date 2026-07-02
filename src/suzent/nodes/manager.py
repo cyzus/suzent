@@ -8,6 +8,7 @@ import asyncio
 import secrets
 import string
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -73,8 +74,8 @@ class NodeManager:
         self._grant_requests: dict[str, GrantRequest] = {}
         self.device_store = device_store or DeviceTokenStore()
         # Recent rejected inbound trigger attempts (unauthenticated / bad token),
-        # a small ring for the operator to spot probing. In-memory only.
-        self._unauthorized_triggers: list[dict[str, Any]] = []
+        # a bounded ring for the operator to spot probing. In-memory only.
+        self._unauthorized_triggers: deque[dict[str, Any]] = deque(maxlen=50)
 
     def record_unauthorized_trigger(self, client_host: str, claimed_id: str) -> None:
         """Log a rejected inbound trigger (no valid token) for operator review."""
@@ -85,9 +86,6 @@ class NodeManager:
                 "claimed_id": claimed_id or "",
             }
         )
-        # Keep only the most recent entries.
-        if len(self._unauthorized_triggers) > 50:
-            self._unauthorized_triggers = self._unauthorized_triggers[-50:]
         logger.warning(
             f"Rejected unauthenticated Suzent trigger from {client_host or 'unknown'}"
             f" (claimed id: {claimed_id or 'none'})"

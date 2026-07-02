@@ -237,18 +237,31 @@ a **control-grant** over HTTP — simpler and more robust than the WebSocket mes
   **Control requests** and approves; the peer mints a durable token and the
   controller stores it (the controller doesn't gain anything the peer didn't
   grant).
-- **Trigger.** The controller calls the peer's `/chat` with that token and
-  streams the agent's SSE events back. Gated by the [auth boundary](#auth-boundary).
-- **Two independent directions** per linked device (see
-  [devices-two-direction-ux-plan.md](./devices-two-direction-ux-plan.md)):
-  - **Outbound — I control them** (`off | trigger | paused`): whether we may
-    trigger the peer's agent.
-  - **Inbound — they control me** (`off | granted`, or `granted | paused` for a
-    grant we issued): whether the peer may trigger us. Enabling mints and offers
-    a reverse grant; a grant we issued can be paused (denied at the auth boundary
-    without dropping the durable token) or revoked.
+- **Trigger.** The controller sends through the peer's Suzent channel
+  (below) with that token; the peer streams its agent's SSE events back. Gated by
+  the [auth boundary](#auth-boundary).
 
-  "Mutual" is no longer a stored mode — it is simply both directions on.
+### Two independent directions
+
+A link has **two directions, tracked separately**, so each side shows only what
+it owns (matched across networks by a stable per-install `node_identity`, else by
+address — never by the display name, which differs per side):
+
+- **Outbound — "I control them"** (a *status*: Ready / Revoked / Offline). Not a
+  toggle — whether you can trigger a peer just reflects reachability + a valid
+  grant. If the peer revoked your token, it shows **Revoked** with a
+  **Re-request** action.
+- **Inbound — "they control me"** (a toggle you own): whether the peer may
+  trigger you. A grant you issued can be **paused** (denied at the auth boundary
+  without dropping the durable token) or the whole link **removed**.
+
+"Mutual" is not a stored mode — it is simply both directions active. **Remove**
+fully severs a link: it drops the outbound peer record *and* revokes every
+inbound grant issued to that machine (the reverse grant plus any grant from a
+separate control-request approval, matched by address). Host tokens are
+standalone full-access credentials and keep their own **Revoke**. Each grant's
+row also shows lightweight usage (last-active + trigger count); rejected
+unauthenticated trigger attempts are collected in a quiet, expandable list.
 
 The bootstrap endpoints (`POST /nodes/grant-request`, `GET
 /nodes/grant-status/{id}`) are the only unauthenticated surface: they issue no
@@ -260,13 +273,31 @@ token is served once against an unguessable `request_id`.
 Triggering another linked device's agent goes through the **Suzent channel**
 (`POST /channels/suzent/inbound`), not a node capability. A peer you control
 sends the prompt; the target runs *its own* agent (its files, memory, tools) for
-your session (`suzent:<peer_id>`) and streams the reply back. See the
-[migration plan](./agent-channel-migration-plan.md).
+your session and streams the reply back.
 
 ```bash
 # From device A, drive device B's agent (B must have granted A control):
 suzent nodes trigger "Device B" "summarize ~/notes"
 ```
+
+On the **target**, the session behaves like any other channel conversation:
+
+- **Persisted + resumable.** The session is a real chat keyed `suzent:<peer_id>`,
+  created via the shared `ensure_channel_chat` helper (tagged `platform:"suzent"`,
+  filed in the **Social** project). It shows in the chat list and **remembers
+  prior turns** — re-triggering the same peer continues the same conversation
+  (a fresh session only if the caller passes a new `chat_id`).
+- **Live.** The turn is teed onto the target's event bus, so its UI surfaces the
+  session and streams the reply in real time (and a failed turn emits a
+  `RUN_ERROR`, not a silent stop).
+- **Attributed.** A hidden `<system-reminder>` tells the target's agent which
+  peer device triggered it (out-of-band — not part of the visible message).
+- **Headless + auto-approve** — a remote peer can't answer interactive
+  approvals, so a control grant runs the agent unattended.
+
+Identity is taken from the **authenticated token**, never a body field: an
+inbound call with no valid token (and no explicit `chat_id`) is rejected with
+401 and creates no chat.
 
 > `agent.run` (the old node capability) was removed — node capabilities are now
 > only device hardware (`speaker.speak`, `camera.snap`). Agent-to-agent runs use

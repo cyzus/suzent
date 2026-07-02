@@ -1,10 +1,7 @@
 # Node Mesh — Security & Identity Plan
 
 Status: living doc. Captures how device identity/auth works today and the
-hardening roadmap. See [nodes.md](./nodes.md) for the user-facing feature docs
-and [agent-channel-migration-plan.md](./agent-channel-migration-plan.md) for the
-plan to move agent-to-agent triggering behind the channels stack (which unifies
-the duplicate pairing flow this doc describes).
+hardening roadmap. See [nodes.md](./nodes.md) for the user-facing feature docs.
 
 ## 1. How a device is bound today
 
@@ -15,6 +12,7 @@ to an IP address.
 |---------|-----------|-------|
 | **Authentication** | opaque random token, `secrets.token_urlsafe(32)` | whoever presents it is authorized, from any address |
 | **Identity (display)** | `display_name` ("Jessair") | UX only; not a security identity |
+| **Identity (matching)** | `node_identity` — a stable per-install UUID sent in pairing | a **non-secret label** for matching/dedup across networks; spoofable, so it grants no access (auth still rides on the token). See Option C for the unspoofable version. |
 | **Reachability** | `base_url` (`ip:port`) in the peer store | how to reach a peer; independent of auth |
 | **Locality** | client IP, loopback check only | loopback = trusted local app; not used to pin tokens |
 

@@ -31,6 +31,10 @@ async def suzent_channel_inbound(request: Request):
     if not content:
         return JSONResponse({"error": "content is required"}, status_code=400)
 
+    # Resolve the node manager once (None-safe: request.app may be unset in tests).
+    app = getattr(request, "app", None)
+    nm = getattr(getattr(app, "state", None), "node_manager", None)
+
     # Identify the peer from its authenticated token (the contact/device id) —
     # decision §10.1: session keyed by the *authenticated* identity, never a
     # spoofable body field. The scoped device token is the per-peer authorization.
@@ -38,7 +42,6 @@ async def suzent_channel_inbound(request: Request):
     try:
         from suzent.auth_boundary import extract_token
 
-        nm = getattr(getattr(request, "app", None).state, "node_manager", None)
         token = extract_token(request.headers.raw)
         rec = nm.device_store.verify(token) if (nm and token) else None
     except Exception:
@@ -51,7 +54,6 @@ async def suzent_channel_inbound(request: Request):
     chat_id = body.get("chat_id") or (f"suzent:{peer_id}" if peer_id else None)
     if not chat_id:
         # Record the rejected attempt so the operator can spot probing/abuse.
-        nm = getattr(getattr(request, "app", None).state, "node_manager", None)
         if nm is not None:
             client_host = request.client.host if request.client else ""
             nm.record_unauthorized_trigger(client_host, str(body.get("from_id") or ""))
@@ -61,13 +63,11 @@ async def suzent_channel_inbound(request: Request):
         )
 
     # Stamp usage on the grant so the Devices tab can show last-active + count.
-    if peer_id:
-        nm = getattr(getattr(request, "app", None).state, "node_manager", None)
-        if nm is not None:
-            try:
-                nm.device_store.record_trigger(peer_id)
-            except Exception:
-                pass
+    if peer_id and nm is not None:
+        try:
+            nm.device_store.record_trigger(peer_id)
+        except Exception:
+            pass
     name = (rec or {}).get("display_name") if rec else None
     trigger_label = name or peer_id or "an unknown device"
 
@@ -136,6 +136,19 @@ async def suzent_channel_inbound(request: Request):
                     except Exception:
                         pass
                 yield chunk
+        except Exception as exc:
+            # Frame the error like /chat/send does so the peer AND our local UI
+            # see a RUN_ERROR instead of a silent stream end.
+            logger.error(f"Suzent channel: turn failed for {chat_id}: {exc}")
+            import json as _json
+
+            err = f'data: {{"type":"RUN_ERROR","message":{_json.dumps(str(exc))}}}\n\n'
+            if bus_queue is not None:
+                try:
+                    await bus_queue.put(err)
+                except Exception:
+                    pass
+            yield err
         finally:
             if bus_queue is not None:
                 try:
