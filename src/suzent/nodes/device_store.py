@@ -71,6 +71,7 @@ class DeviceTokenStore:
         platform: str,
         scope: str = "node",
         callback_url: str = "",
+        node_identity: str = "",
     ) -> tuple[str, str]:
         """Create and persist a new device token. Returns (device_id, token).
 
@@ -78,7 +79,8 @@ class DeviceTokenStore:
         ``node`` (WS companion, no HTTP), ``agent`` (trigger the agent only), or
         ``full`` (host access — everything). Enforced in the auth boundary.
         ``callback_url`` is the holder's address, used to notify it if we later
-        revoke this token (revocation propagation).
+        revoke this token (revocation propagation). ``node_identity`` is the
+        holder's stable self-id (a label, for matching across networks).
         """
         device_id = uuid.uuid4().hex[:12]
         token = secrets.token_urlsafe(32)
@@ -93,6 +95,7 @@ class DeviceTokenStore:
                 # token after creation — the raw token is shown only once.
                 "token_hint": f"{token[:6]}…{token[-4:]}",
                 "callback_url": callback_url,
+                "node_identity": node_identity,
                 "approved_at": _now_iso(),
             }
             self._save()
@@ -131,6 +134,7 @@ class DeviceTokenStore:
                     # a grant with the peer record for the same machine (names
                     # differ: peer uses a display name, the grant the hostname).
                     "callback_url": rec.get("callback_url", ""),
+                    "node_identity": rec.get("node_identity", ""),
                     "approved_at": rec.get("approved_at", ""),
                 }
                 for rec in self._devices.values()
@@ -172,20 +176,26 @@ class DeviceTokenStore:
         logger.info(f"Device store: revoked device {device_id}")
         return True
 
-    def revoke_by_callback_url(self, callback_url: str) -> int:
-        """Revoke all grants issued to the same holder address. Returns count.
+    def revoke_matching(self, node_identity: str = "", callback_url: str = "") -> int:
+        """Revoke prior grants for the same machine. Returns count.
 
-        A machine that re-requests control would otherwise accumulate a new token
-        per approval; superseding prior grants for that address keeps one live
-        grant per peer.
+        Matches by ``node_identity`` when present (stable across networks), else
+        falls back to ``callback_url`` (address). A machine that re-requests
+        control would otherwise accumulate a new token per approval; superseding
+        keeps one live grant per peer.
         """
-        if not callback_url:
+        if not node_identity and not callback_url:
             return 0
         with self._lock:
             stale = [
                 t
                 for t, r in self._devices.items()
-                if r.get("callback_url") == callback_url
+                if (node_identity and r.get("node_identity") == node_identity)
+                or (
+                    not node_identity
+                    and callback_url
+                    and r.get("callback_url") == callback_url
+                )
             ]
             for t in stale:
                 del self._devices[t]
@@ -194,6 +204,6 @@ class DeviceTokenStore:
         if stale:
             logger.info(
                 f"Device store: superseded {len(stale)} prior grant(s) for "
-                f"{callback_url}"
+                f"{node_identity or callback_url}"
             )
         return len(stale)

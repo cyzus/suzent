@@ -705,8 +705,11 @@ async def grant_request(request: Request) -> JSONResponse:
         if body.get("controller_addr")
         else ""
     )
+    identity = str(body.get("controller_identity") or "").strip()
     try:
-        rid = node_manager.add_grant_request(name, host, controller_addr=addr)
+        rid = node_manager.add_grant_request(
+            name, host, controller_addr=addr, controller_identity=identity
+        )
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=429)
     return JSONResponse({"request_id": rid, "status": "pending"})
@@ -824,6 +827,8 @@ async def request_control(request: Request) -> JSONResponse:
 
     import socket
 
+    from suzent.nodes.node_identity import get_node_identity
+
     my_name = socket.gethostname()
     # Tell the grantor where to reach us (for revoke notifications), on the same
     # network we're reaching them.
@@ -832,7 +837,11 @@ async def request_control(request: Request) -> JSONResponse:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.post(
                 f"{base}/nodes/grant-request",
-                json={"controller_name": my_name, "controller_addr": my_addr},
+                json={
+                    "controller_name": my_name,
+                    "controller_addr": my_addr,
+                    "controller_identity": get_node_identity(),
+                },
             )
             r.raise_for_status()
             data = r.json()

@@ -59,6 +59,30 @@ class TestGrantRequests:
         ]
         assert len(grants) == 1
 
+    def test_supersede_by_identity_across_addresses(self, tmp_path):
+        # Same node_identity from two DIFFERENT addresses (LAN vs Tailscale) still
+        # collapses to one grant — identity wins over address.
+        mgr = _mgr(tmp_path)
+        nid = "abc123identity"
+        r1 = mgr.add_grant_request(
+            "peer.local",
+            "10.0.0.5",
+            controller_addr="http://10.0.0.5:25314",
+            controller_identity=nid,
+        )
+        assert mgr.approve_grant(r1) is True
+        r2 = mgr.add_grant_request(
+            "peer.local",
+            "100.64.0.9",
+            controller_addr="http://100.64.0.9:25314",
+            controller_identity=nid,
+        )
+        assert mgr.approve_grant(r2) is True
+        grants = [
+            d for d in mgr.device_store.list_devices() if d["node_identity"] == nid
+        ]
+        assert len(grants) == 1
+
     def test_deny(self, tmp_path):
         mgr = _mgr(tmp_path)
         rid = mgr.add_grant_request("A", "")
@@ -150,6 +174,19 @@ class TestPeerStore:
 
 
 # ─── Revocation propagation (Phase 2b) ───────────────────────────────
+
+
+def test_node_identity_stable_and_persisted(tmp_path, monkeypatch):
+    import suzent.nodes.node_identity as ni
+
+    monkeypatch.setattr(ni, "_PATH", tmp_path / "node_identity.json")
+    monkeypatch.setattr(ni, "_cached", None)
+    first = ni.get_node_identity()
+    assert first  # generated
+    # Same process (cached) and a fresh read both return the same id.
+    assert ni.get_node_identity() == first
+    monkeypatch.setattr(ni, "_cached", None)
+    assert ni.get_node_identity() == first  # persisted across "restart"
 
 
 def test_device_store_callback(tmp_path):

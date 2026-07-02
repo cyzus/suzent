@@ -338,6 +338,7 @@ export interface ApprovedDevice {
   status?: 'active' | 'paused';
   token_hint?: string;
   callback_url?: string;
+  node_identity?: string;
   approved_at: string;
   connected: boolean;
 }
@@ -471,6 +472,7 @@ export interface ControlRequest {
   controller_name: string;
   controller_host: string;
   controller_addr?: string;
+  controller_identity?: string;
   requested_at: string;
 }
 

@@ -50,6 +50,9 @@ class GrantRequest:
     controller_host: str
     # The requester's own reachable base URL, so we can notify it on revoke.
     controller_addr: str = ""
+    # The requester's stable self-assigned identity (a label, not a secret) —
+    # used to match/supersede grants for the same machine across networks.
+    controller_identity: str = ""
     requested_at: float = field(default_factory=time.time)
     status: str = "pending"  # pending | approved | denied
     # Minted on approval, handed to the requester exactly once, then cleared.
@@ -259,13 +262,18 @@ class NodeManager:
             self._grant_requests.pop(rid, None)
 
     def add_grant_request(
-        self, controller_name: str, controller_host: str, controller_addr: str = ""
+        self,
+        controller_name: str,
+        controller_host: str,
+        controller_addr: str = "",
+        controller_identity: str = "",
     ) -> str:
         """Queue a remote peer's request to control this device. Returns its id.
 
         Issues no token — only an operator approval mints one. Capped + TTL'd.
         ``controller_addr`` is the requester's reachable base URL (for revoke
-        notifications).
+        notifications); ``controller_identity`` is its stable self-id (for
+        matching grants across networks).
         """
         self._expire_grants()
         if len(self._grant_requests) >= MAX_PENDING_GRANTS:
@@ -276,6 +284,7 @@ class NodeManager:
             controller_name=controller_name or "unknown",
             controller_host=controller_host or "",
             controller_addr=controller_addr or "",
+            controller_identity=controller_identity or "",
         )
         logger.info(
             f"Control request from '{controller_name}' ({controller_host}) [{rid[:6]}…]"
@@ -291,6 +300,7 @@ class NodeManager:
                 "controller_name": g.controller_name,
                 "controller_host": g.controller_host,
                 "controller_addr": g.controller_addr,
+                "controller_identity": g.controller_identity,
                 "requested_at": _iso(g.requested_at),
             }
             for g in self._grant_requests.values()
@@ -304,11 +314,18 @@ class NodeManager:
         if not g or g.status != "pending":
             return False
         # Supersede any prior grant to the same machine so re-requests replace
-        # rather than accumulate (matched by the requester's address).
-        if g.controller_addr:
-            self.device_store.revoke_by_callback_url(g.controller_addr)
+        # rather than accumulate (by stable identity, else by address).
+        if g.controller_identity or g.controller_addr:
+            self.device_store.revoke_matching(
+                node_identity=g.controller_identity,
+                callback_url=g.controller_addr,
+            )
         _device_id, token = self.device_store.mint(
-            g.controller_name, "peer", scope="agent", callback_url=g.controller_addr
+            g.controller_name,
+            "peer",
+            scope="agent",
+            callback_url=g.controller_addr,
+            node_identity=g.controller_identity,
         )
         g.status = "approved"
         g.token = token

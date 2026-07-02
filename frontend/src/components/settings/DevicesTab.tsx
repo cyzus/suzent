@@ -321,12 +321,17 @@ export function DevicesTab(): React.ReactElement {
         });
         continue;
       }
-      // Merge a grant into the peer/node for the SAME machine: by callback_url
-      // (address) first, then by name. This collapses the "MacBook Pro" peer and
-      // the "MacBook Pro.local" grant that name-matching would split.
+      // Merge a grant into the peer/node for the SAME machine: by stable
+      // node_identity first (network-independent), then callback_url (address),
+      // then name. Collapses the "MacBook Pro" peer and the "MacBook-Pro.local"
+      // grant that name-matching alone would split.
+      const idKey = d.node_identity ? `id:${d.node_identity}` : null;
       const addrKey = keyForUrl(d.callback_url);
       const nameKey = keyForName(d.display_name);
-      const existing = (addrKey && byKey.get(addrKey)) || byKey.get(nameKey);
+      const existing =
+        (idKey && byKey.get(idKey)) ||
+        (addrKey && byKey.get(addrKey)) ||
+        byKey.get(nameKey);
       if (existing) {
         existing.deviceId = d.device_id;
         existing.scope = d.scope;
@@ -334,8 +339,9 @@ export function DevicesTab(): React.ReactElement {
         existing.tokenHint = d.token_hint;
         existing.approvedAt = d.approved_at;
         existing.online = existing.online || d.connected;
+        if (idKey) byKey.set(idKey, existing);
       } else {
-        byKey.set(nameKey, {
+        const row: DeviceRow = {
           key: `dev:${d.device_id}`,
           name: d.display_name,
           platform: d.platform,
@@ -346,15 +352,21 @@ export function DevicesTab(): React.ReactElement {
           status: d.status,
           tokenHint: d.token_hint,
           approvedAt: d.approved_at,
-        });
+        };
+        byKey.set(nameKey, row);
+        if (idKey) byKey.set(idKey, row);
       }
     }
     // Attach a pending inbound request to the existing row for the same machine
-    // (matched by requester address), so Approve/Deny shows inline instead of a
-    // duplicate top card. Unmatched requests remain a top card (new device).
+    // (by identity, then address, then name), so Approve/Deny shows inline
+    // instead of a duplicate top card. Unmatched requests remain a top card.
     for (const g of grants) {
+      const idK = g.controller_identity ? `id:${g.controller_identity}` : null;
       const ak = addrKeyOf(g.controller_addr);
-      const row = (ak && byKey.get(ak)) || byKey.get(keyForName(g.controller_name));
+      const row =
+        (idK && byKey.get(idK)) ||
+        (ak && byKey.get(ak)) ||
+        byKey.get(keyForName(g.controller_name));
       if (row) row.pendingGrant = g;
     }
     // De-dup rows that were registered under multiple keys (addr + name).
