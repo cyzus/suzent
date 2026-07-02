@@ -35,6 +35,15 @@ class TestGrantRequests:
         # Approved requests no longer show in the operator's pending list.
         assert mgr.list_grant_requests() == []
 
+    def test_list_exposes_controller_addr(self, tmp_path):
+        # The requester's address is surfaced so the UI can match a pending
+        # request to an existing peer row (inline approve, no duplicate card).
+        mgr = _mgr(tmp_path)
+        addr = "http://peer.example:25314"
+        mgr.add_grant_request("peer-host.local", "10.0.0.5", controller_addr=addr)
+        listed = mgr.list_grant_requests()[0]
+        assert listed["controller_addr"] == addr
+
     def test_deny(self, tmp_path):
         mgr = _mgr(tmp_path)
         rid = mgr.add_grant_request("A", "")

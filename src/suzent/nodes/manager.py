@@ -290,6 +290,7 @@ class NodeManager:
                 "request_id": g.request_id,
                 "controller_name": g.controller_name,
                 "controller_host": g.controller_host,
+                "controller_addr": g.controller_addr,
                 "requested_at": _iso(g.requested_at),
             }
             for g in self._grant_requests.values()

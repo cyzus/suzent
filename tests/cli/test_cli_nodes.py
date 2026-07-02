@@ -74,8 +74,8 @@ class TestNodesSubcommand:
                 "peers": [
                     {
                         "peer_id": "p1",
-                        "name": "Jessair",
-                        "base_url": "http://100.64.50.42:25314",
+                        "name": "Studio",
+                        "base_url": "http://peer.example:25314",
                         "mode": "trigger",
                         "reverse_enabled": True,
                         "online": True,
@@ -92,7 +92,7 @@ class TestNodesSubcommand:
         # WS node
         assert "MyPhone" in result.output and "camera.snap" in result.output
         # control-grant peer, with direction
-        assert "Jessair" in result.output and "trigger them" in result.output
+        assert "Studio" in result.output and "trigger them" in result.output
         assert "inbound granted" in result.output
 
     @patch("suzent.cli.node.get_client")
@@ -103,7 +103,7 @@ class TestNodesSubcommand:
         # invoke on the node manager fails (it's a peer, not a WS node)…
         client.nodes.invoke = AsyncMock(side_effect=ClientError("Node not found: p1"))
         client.nodes.peers = AsyncMock(
-            return_value={"peers": [{"peer_id": "p1", "name": "Jessair"}]}
+            return_value={"peers": [{"peer_id": "p1", "name": "Studio"}]}
         )
         # …so the CLI proxies to the peer and gets a result back.
         client.nodes.invoke_peer = AsyncMock(
@@ -112,7 +112,7 @@ class TestNodesSubcommand:
         mock_get_client.return_value = client
 
         result = runner.invoke(
-            app, ["nodes", "invoke", "Jessair", "speaker.speak", "text=hi"]
+            app, ["nodes", "invoke", "Studio", "speaker.speak", "text=hi"]
         )
         assert result.exit_code == 0
         assert "spoke" in result.output
@@ -155,7 +155,7 @@ class TestNodesSubcommand:
                     {
                         "peer_id": "fd12",
                         "name": "MacBook Pro",
-                        "base_url": "http://100.87.231.85:25314",
+                        "base_url": "http://peer.example:25314",
                         "mode": "trigger",
                         "reverse_enabled": True,
                         "online": True,
@@ -242,9 +242,7 @@ class TestNodesSubcommand:
         client = MagicMock()
         client.nodes.peers = AsyncMock(
             return_value={
-                "peers": [
-                    {"peer_id": "p1", "name": "Jessair", "base_url": "http://h:1"}
-                ]
+                "peers": [{"peer_id": "p1", "name": "Studio", "base_url": "http://h:1"}]
             }
         )
 
@@ -257,7 +255,7 @@ class TestNodesSubcommand:
         client.nodes.trigger = fake_trigger
         mock_get_client.return_value = client
 
-        result = runner.invoke(app, ["nodes", "trigger", "Jessair", "hello"])
+        result = runner.invoke(app, ["nodes", "trigger", "Studio", "hello"])
         assert result.exit_code == 0
         assert "Hi there" in result.output
 

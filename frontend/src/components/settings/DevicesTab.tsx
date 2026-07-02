@@ -240,21 +240,24 @@ export function DevicesTab(): React.ReactElement {
     tokenHint?: string; // non-secret token fingerprint (head…tail)
     approvedAt?: string;
     peer?: ControlledPeer; // I drive them
+    pendingGrant?: ControlRequest; // this device is requesting inbound control
+  };
+  // Normalize a base_url / addr to host:port so identities match across sides.
+  const addrKeyOf = (u?: string): string | null => {
+    if (!u) return null;
+    try {
+      const p = new URL(u.includes('://') ? u : `http://${u}`);
+      return `addr:${p.hostname}:${p.port || '25314'}`;
+    } catch {
+      return null;
+    }
   };
   const deviceRows: DeviceRow[] = (() => {
     const byKey = new Map<string, DeviceRow>();
     const keyForName = (s: string) => `name:${s.trim().toLowerCase()}`;
-    // Normalize a base_url to host:port so peer.base_url and a grant's
-    // callback_url for the same machine collapse (names differ across sides).
-    const keyForUrl = (u?: string): string | null => {
-      if (!u) return null;
-      try {
-        const p = new URL(u.includes('://') ? u : `http://${u}`);
-        return `addr:${p.hostname}:${p.port || '25314'}`;
-      } catch {
-        return null;
-      }
-    };
+    // Merge peer.base_url and a grant's callback_url for the same machine
+    // (names differ across sides). Shared normalizer defined above.
+    const keyForUrl = addrKeyOf;
     for (const n of nodes) {
       const row: DeviceRow = {
         key: `node:${n.node_id}`,
@@ -332,6 +335,14 @@ export function DevicesTab(): React.ReactElement {
         });
       }
     }
+    // Attach a pending inbound request to the existing row for the same machine
+    // (matched by requester address), so Approve/Deny shows inline instead of a
+    // duplicate top card. Unmatched requests remain a top card (new device).
+    for (const g of grants) {
+      const ak = addrKeyOf(g.controller_addr);
+      const row = (ak && byKey.get(ak)) || byKey.get(keyForName(g.controller_name));
+      if (row) row.pendingGrant = g;
+    }
     // De-dup rows that were registered under multiple keys (addr + name).
     const seen = new Set<string>();
     const rows: DeviceRow[] = [];
@@ -344,6 +355,12 @@ export function DevicesTab(): React.ReactElement {
       (a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name)
     );
   })();
+
+  // Pending requests NOT matched to an existing device row (genuinely new).
+  const matchedGrantIds = new Set(
+    deviceRows.filter((r) => r.pendingGrant).map((r) => r.pendingGrant!.request_id)
+  );
+  const unmatchedGrants = grants.filter((g) => !matchedGrantIds.has(g.request_id));
 
   return (
     <div className="space-y-6">
@@ -555,7 +572,7 @@ export function DevicesTab(): React.ReactElement {
         />
         <div className="space-y-2 mt-3">
           {/* Incoming requests — another device wants to control this one. */}
-          {grants.map((g) => (
+          {unmatchedGrants.map((g) => (
             <SettingsListItem key={`grant:${g.request_id}`}>
               <div className="flex items-center justify-between gap-3 w-full">
                 <div className="min-w-0">
@@ -711,7 +728,27 @@ export function DevicesTab(): React.ReactElement {
                       <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-black">
                         They control me
                       </span>
-                      {hasInbound && d.deviceId ? (
+                      {d.pendingGrant ? (
+                        // This machine is asking for inbound control — approve/deny
+                        // inline instead of a separate top card.
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            className="text-[10px] text-brutal-green font-black uppercase hover:underline disabled:opacity-40"
+                            disabled={busy === d.pendingGrant.request_id}
+                            onClick={() => act(d.pendingGrant!.request_id, () => approveGrant(d.pendingGrant!.request_id))}
+                          >
+                            Approve
+                          </button>
+                          <span className="text-neutral-300">·</span>
+                          <button
+                            className="text-[10px] text-brutal-red font-black uppercase hover:underline disabled:opacity-40"
+                            disabled={busy === d.pendingGrant.request_id}
+                            onClick={() => act(d.pendingGrant!.request_id, () => denyGrant(d.pendingGrant!.request_id))}
+                          >
+                            Deny
+                          </button>
+                        </div>
+                      ) : hasInbound && d.deviceId ? (
                         // A grant I issued (the real inbound authorization) —
                         // pause/resume without dropping the token, or revoke.
                         <div className="flex items-center gap-2">

@@ -470,6 +470,7 @@ export interface ControlRequest {
   request_id: string;
   controller_name: string;
   controller_host: string;
+  controller_addr?: string;
   requested_at: string;
 }
 
