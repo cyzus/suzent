@@ -1,4 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ComputerDesktopIcon,
+  MagnifyingGlassIcon,
+  ShieldCheckIcon,
+  WifiIcon,
+} from '@heroicons/react/24/outline';
 
 import {
   fetchNodes,
@@ -69,15 +75,17 @@ function CopyButton({ value, tone = 'neutral', label = 'Copy' }: { value: string
 /** Read-only status pill (used for the outbound direction and empty states). */
 function StatusPill({ tone, label }: { tone: 'green' | 'neutral' | 'red'; label: string }): React.ReactElement {
   if (tone === 'neutral') {
-    return <span className="text-sm text-neutral-300 dark:text-neutral-600 font-mono">{label}</span>;
+    return (
+      <span className="inline-flex min-w-14 items-center justify-center border border-neutral-300 dark:border-white/10 bg-white/70 dark:bg-zinc-900 px-2 py-1 text-[10px] font-black uppercase text-neutral-400 dark:text-neutral-500">
+        {label}
+      </span>
+    );
   }
   const cls = tone === 'red'
-    ? 'text-brutal-red'
-    : 'text-green-700 dark:text-brutal-green';
-  const dot = tone === 'red' ? 'bg-brutal-red' : 'bg-brutal-green';
+    ? 'border-brutal-red bg-red-50 text-brutal-red dark:bg-red-950/40'
+    : 'border-brutal-black bg-brutal-green text-brutal-black';
   return (
-    <span className={`inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide ${cls}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+    <span className={`inline-flex min-w-16 items-center justify-center border-2 px-2 py-1 text-[10px] font-black uppercase tracking-wide ${cls}`}>
       {label}
     </span>
   );
@@ -91,13 +99,13 @@ function DirectionToggle({ on, busy, onToggle }: { on: boolean; busy: boolean; o
       aria-checked={on}
       disabled={busy}
       onClick={onToggle}
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 border-2 rounded-sm text-[11px] font-black uppercase tracking-wide transition-colors disabled:opacity-40 ${
+      className={`inline-flex min-w-24 items-center justify-center gap-1.5 border-2 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide shadow-brutal-sm transition-all active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:opacity-40 ${
         on
-          ? 'border-brutal-green bg-brutal-green/20 text-green-800 dark:text-brutal-green hover:bg-brutal-green/30'
-          : 'border-neutral-300 dark:border-white/20 text-neutral-500 hover:border-neutral-400'
+          ? 'border-brutal-black bg-brutal-green text-brutal-black hover:brightness-105'
+          : 'border-brutal-black bg-white text-neutral-500 hover:bg-neutral-100 dark:bg-zinc-900 dark:text-neutral-300 dark:hover:bg-zinc-800'
       }`}
     >
-      <span className={`w-2 h-2 rounded-full ${on ? 'bg-brutal-green' : 'bg-neutral-300'}`} />
+      <span className={`h-2 w-2 border border-brutal-black ${on ? 'bg-brutal-black' : 'bg-transparent dark:border-white'}`} />
       {on ? 'Granted' : 'Off'}
     </button>
   );
@@ -423,11 +431,13 @@ export function DevicesTab(): React.ReactElement {
       {/* ── Connection auth ─────────────────────────────────────────── */}
       <SettingsCard>
         <SectionCardHeader
+          icon={<ShieldCheckIcon className="h-6 w-6" />}
+          iconTone="green"
           title="Connection auth"
           description="How companion devices are allowed to connect to this server."
         />
-        <div className="space-y-4 mt-3">
-          <div>
+        <div className="space-y-4">
+          <div className="border-2 border-brutal-black bg-neutral-50 p-4 shadow-brutal-sm dark:bg-zinc-900">
             <div className="font-bold uppercase text-sm">Auth mode</div>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono max-w-md">
               New devices must be approved here before they can connect; once
@@ -436,14 +446,19 @@ export function DevicesTab(): React.ReactElement {
             </p>
           </div>
 
-          <div className="flex items-center justify-between gap-4 border-t border-brutal-black/10 dark:border-white/10 pt-3">
-            <div>
-              <div className="font-bold uppercase text-sm">Reachable by other devices</div>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono max-w-md">
-                Bind the server to all interfaces so peers can connect. Off by
-                default the app listens on localhost only — required for
-                cross-device nodes. Takes effect after a restart.
-              </p>
+          <div className="grid gap-4 border-2 border-brutal-black bg-white p-4 shadow-brutal-sm dark:bg-zinc-900 md:grid-cols-[1fr_auto] md:items-center">
+            <div className="flex min-w-0 gap-3">
+              <div className="grid h-9 w-9 shrink-0 place-items-center border-2 border-brutal-black bg-brutal-blue text-white">
+                <WifiIcon className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-bold uppercase text-sm">Reachable by other devices</div>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono max-w-md">
+                  Bind the server to all interfaces so peers can connect. Off by
+                  default the app listens on localhost only — required for
+                  cross-device nodes. Takes effect after a restart.
+                </p>
+              </div>
             </div>
             <BrutalOnOff
               checked={!!config?.node_lan_bind}
@@ -457,8 +472,8 @@ export function DevicesTab(): React.ReactElement {
             </div>
           )}
 
-          <div className="flex items-center justify-between gap-4 border-t border-brutal-black/10 dark:border-white/10 pt-3">
-            <div>
+          <div className="grid gap-4 border-2 border-brutal-black bg-white p-4 shadow-brutal-sm dark:bg-zinc-900 md:grid-cols-[1fr_auto] md:items-center">
+            <div className="min-w-0">
               <div className="font-bold uppercase text-sm">Remote host access</div>
               <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono max-w-md">
                 Mint a <span className="font-bold">full-access</span> token to operate this device remotely (everything, not just the agent). Granted control tokens stay scoped to the agent only.
@@ -493,8 +508,8 @@ export function DevicesTab(): React.ReactElement {
             </div>
           )}
 
-          <p className="text-[11px] text-neutral-500 dark:text-neutral-400 font-mono">
-            ⚠ ws:// traffic is plaintext, and "reachable by other devices" exposes the HTTP API on your network — keep it to a trusted LAN or tailnet.
+          <p className="border-l-4 border-brutal-yellow bg-brutal-yellow/20 px-3 py-2 text-[11px] text-neutral-600 dark:text-neutral-300 font-mono">
+            ws:// traffic is plaintext, and "reachable by other devices" exposes the HTTP API on your network — keep it to a trusted LAN or tailnet.
           </p>
         </div>
       </SettingsCard>
@@ -502,15 +517,17 @@ export function DevicesTab(): React.ReactElement {
       {/* ── Discover peers ──────────────────────────────────────────── */}
       <SettingsCard>
         <SectionCardHeader
+          icon={<MagnifyingGlassIcon className="h-6 w-6" />}
+          iconTone="blue"
           title="Discover"
           description="Find other Suzent instances on your network and join them from here."
           actions={
-            <BrutalButton onClick={runDiscover} disabled={discovering}>
+            <BrutalButton onClick={runDiscover} disabled={discovering} variant="dark">
               {discovering ? 'Scanning…' : 'Discover'}
             </BrutalButton>
           }
         />
-        <div className="space-y-4 mt-3">
+        <div className="space-y-4">
           {!discovered && (
             <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
               Scan the LAN (mDNS) and your tailnet for Suzent peers. Discovery only finds the address — the remote still approves the connection.
@@ -544,11 +561,11 @@ export function DevicesTab(): React.ReactElement {
                         p.name.toLowerCase() === peer.name.toLowerCase()
                     );
                     return (
-                      <SettingsListItem key={peer.gateway_url}>
+                      <SettingsListItem key={peer.gateway_url} className="p-3">
                         <div className="flex items-center justify-between gap-3 w-full">
                           <div className="min-w-0">
                             <div className="font-bold truncate flex items-center gap-2">
-                              <span className={peer.reachable === false ? 'text-neutral-400' : 'text-brutal-green'}>●</span>
+                              <span className={`h-3 w-3 shrink-0 border border-brutal-black ${peer.reachable === false ? 'bg-neutral-300 dark:bg-zinc-700' : 'bg-brutal-green'}`} />
                               {peer.name}
                             </div>
                             <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
@@ -602,13 +619,15 @@ export function DevicesTab(): React.ReactElement {
       {/* ── Devices (one unified card) ──────────────────────────────── */}
       <SettingsCard>
         <SectionCardHeader
+          icon={<ComputerDesktopIcon className="h-6 w-6" />}
+          iconTone="yellow"
           title={`Devices (${deviceRows.length})`}
           description="Every device this one is linked to. Approvals appear at the top. Each link shows two directions: whether you can trigger them, and whether they may trigger you."
         />
-        <div className="space-y-2 mt-3">
+        <div className="space-y-3">
           {/* Incoming requests — another device wants to control this one. */}
           {unmatchedGrants.map((g) => (
-            <SettingsListItem key={`grant:${g.request_id}`}>
+            <SettingsListItem key={`grant:${g.request_id}`} className="p-4 border-brutal-blue">
               <div className="flex items-center justify-between gap-3 w-full">
                 <div className="min-w-0">
                   <div className="font-bold truncate">
@@ -633,7 +652,7 @@ export function DevicesTab(): React.ReactElement {
 
           {/* Incoming WS companion pairings (phones etc.). */}
           {pending.map((p) => (
-            <SettingsListItem key={`wspend:${p.pairing_code}`}>
+            <SettingsListItem key={`wspend:${p.pairing_code}`} className="p-4 border-brutal-blue">
               <div className="flex items-center justify-between gap-3 w-full">
                 <div className="min-w-0">
                   <div className="font-bold truncate">
@@ -678,21 +697,24 @@ export function DevicesTab(): React.ReactElement {
                 ? !!d.peer!.reverse_enabled
                 : false;
             return (
-              <SettingsListItem key={d.key}>
-                <div className="flex flex-col gap-3 w-full">
+              <SettingsListItem key={d.key} className="transition-transform hover:-translate-y-0.5 hover:shadow-[6px_6px_0_0_#000] dark:hover:shadow-[6px_6px_0_0_#fff]">
+                <div className="flex w-full flex-col">
                   {/* Header: identity + badges + remove */}
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center justify-between gap-3 border-b-2 border-brutal-black bg-white px-4 py-3 dark:bg-zinc-800">
                     <div className="min-w-0 flex items-center gap-2">
                       {!isHostToken && (
-                        <span className={`text-[10px] ${d.online ? 'text-brutal-green' : 'text-neutral-300 dark:text-neutral-600'}`}>●</span>
+                        <span
+                          className={`h-3 w-3 shrink-0 border border-brutal-black ${d.online ? 'bg-brutal-green' : 'bg-neutral-300 dark:bg-zinc-700'}`}
+                          title={d.online ? 'Online' : 'Offline'}
+                        />
                       )}
                       <span className="font-bold truncate">{d.name}</span>
                       {d.platform && !isHostToken && <span className="text-neutral-400 font-normal text-sm">{d.platform}</span>}
                       {d.isAgent && (
-                        <span className="px-1.5 py-0.5 text-[10px] font-black uppercase bg-brutal-blue text-white rounded-sm">Agent</span>
+                        <span className="border border-brutal-black bg-brutal-blue px-1.5 py-0.5 text-[10px] font-black uppercase text-white">Agent</span>
                       )}
                       {d.scope === 'full' && (
-                        <span className="px-1.5 py-0.5 text-[10px] font-black uppercase bg-brutal-red text-white rounded-sm">Host</span>
+                        <span className="border border-brutal-black bg-brutal-red px-1.5 py-0.5 text-[10px] font-black uppercase text-white">Host</span>
                       )}
                     </div>
                     {isHostToken && d.deviceId ? (
@@ -710,105 +732,107 @@ export function DevicesTab(): React.ReactElement {
                     ) : null}
                   </div>
 
-                  {d.peer?.base_url && (
-                    <div className="text-[11px] text-neutral-400 font-mono truncate -mt-1.5">{d.peer.base_url}</div>
-                  )}
+                  <div className="space-y-3 px-4 py-3">
+                    {d.peer?.base_url && (
+                      <div className="border-l-4 border-brutal-blue bg-white/80 px-2 py-1 text-[11px] text-neutral-500 font-mono truncate dark:bg-zinc-950/50 dark:text-neutral-400">{d.peer.base_url}</div>
+                    )}
 
-                  {/* Host token: full-access credential — no direction grid. */}
-                  {isHostToken && (
-                    <div className="text-[11px] text-neutral-400 font-mono -mt-1.5">
-                      Full-access credential
-                      {d.tokenHint ? ` · ${d.tokenHint}` : ''}
-                      {d.approvedAt ? ` · created ${d.approvedAt.slice(0, 10)}` : ''}
-                    </div>
-                  )}
+                    {/* Host token: full-access credential — no direction grid. */}
+                    {isHostToken && (
+                      <div className="border-l-4 border-brutal-red bg-white/80 px-2 py-1 text-[11px] text-neutral-500 font-mono dark:bg-zinc-950/50 dark:text-neutral-400">
+                        Full-access credential
+                        {d.tokenHint ? ` · ${d.tokenHint}` : ''}
+                        {d.approvedAt ? ` · created ${d.approvedAt.slice(0, 10)}` : ''}
+                      </div>
+                    )}
 
-                  {/* Two-direction grid */}
-                  {!isHostToken && (
-                  <div className="grid grid-cols-2 gap-2">
-                    {/* Outbound — I control them (status only) */}
-                    <div className="bg-neutral-100/70 dark:bg-white/5 rounded px-3 py-2 flex items-center justify-between gap-2">
-                      <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-black">
-                        I control them
-                      </span>
-                      {hasOutbound && d.peer ? (
-                        (() => {
-                          const st = d.peer.outbound_status
-                            ?? (d.online ? 'ready' : 'offline');
-                          if (st === 'revoked') {
-                            return (
-                              <span className="flex items-center gap-2">
-                                <StatusPill tone="red" label="Revoked" />
-                                <button
-                                  className="text-[10px] text-brutal-blue font-black uppercase hover:underline disabled:opacity-40"
-                                  disabled={busy === d.peer.base_url}
-                                  onClick={() => handleControl(d.peer!.base_url, d.peer!.name)}
-                                >
-                                  Re-request
-                                </button>
-                              </span>
-                            );
-                          }
-                          return (
-                            <StatusPill
-                              tone={st === 'ready' ? 'green' : 'neutral'}
-                              label={st === 'ready' ? 'Ready' : 'Offline'}
-                            />
-                          );
-                        })()
-                      ) : (
-                        <StatusPill tone="neutral" label="—" />
-                      )}
-                    </div>
-
-                    {/* Inbound — they control me (toggle I own) */}
-                    <div className="bg-neutral-100/70 dark:bg-white/5 rounded px-3 py-2 flex items-center justify-between gap-2">
-                      <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-black">
-                        They control me
-                      </span>
-                      {d.pendingGrant ? (
-                        // This machine is asking for inbound control — approve/deny
-                        // inline instead of a separate top card.
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            className="text-[10px] text-brutal-green font-black uppercase hover:underline disabled:opacity-40"
-                            disabled={busy === d.pendingGrant.request_id}
-                            onClick={() => act(d.pendingGrant!.request_id, () => approveGrant(d.pendingGrant!.request_id))}
-                          >
-                            Approve
-                          </button>
-                          <span className="text-neutral-300">·</span>
-                          <button
-                            className="text-[10px] text-brutal-red font-black uppercase hover:underline disabled:opacity-40"
-                            disabled={busy === d.pendingGrant.request_id}
-                            onClick={() => act(d.pendingGrant!.request_id, () => denyGrant(d.pendingGrant!.request_id))}
-                          >
-                            Deny
-                          </button>
+                    {/* Two-direction grid */}
+                    {!isHostToken && (
+                      <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+                        {/* Outbound — I control them (status only) */}
+                        <div className="flex items-center justify-between gap-3 border-2 border-brutal-black bg-white px-3 py-2 dark:bg-zinc-900">
+                          <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-black">
+                            I control them
+                          </span>
+                          {hasOutbound && d.peer ? (
+                            (() => {
+                              const st = d.peer.outbound_status
+                                ?? (d.online ? 'ready' : 'offline');
+                              if (st === 'revoked') {
+                                return (
+                                  <span className="flex items-center gap-2">
+                                    <StatusPill tone="red" label="Revoked" />
+                                    <button
+                                      className="text-[10px] text-brutal-blue font-black uppercase hover:underline disabled:opacity-40"
+                                      disabled={busy === d.peer.base_url}
+                                      onClick={() => handleControl(d.peer!.base_url, d.peer!.name)}
+                                    >
+                                      Re-request
+                                    </button>
+                                  </span>
+                                );
+                              }
+                              return (
+                                <StatusPill
+                                  tone={st === 'ready' ? 'green' : 'neutral'}
+                                  label={st === 'ready' ? 'Ready' : 'Offline'}
+                                />
+                              );
+                            })()
+                          ) : (
+                            <StatusPill tone="neutral" label="—" />
+                          )}
                         </div>
-                      ) : hasInbound && d.deviceId ? (
-                        // A grant I issued (the real inbound authorization) —
-                        // pause/resume without dropping the token. Fully severing
-                        // is the row's single "Remove" button (header).
-                        <DirectionToggle
-                          on={inboundGranted}
-                          busy={busy === d.deviceId}
-                          onToggle={() => act(d.deviceId!, () => setDeviceStatus(d.deviceId!, inboundGranted ? 'paused' : 'active'))}
-                        />
-                      ) : hasOutbound && d.peer ? (
-                        // No issued grant yet — offer to mint a reverse grant so
-                        // this peer we drive can drive us back.
-                        <DirectionToggle
-                          on={inboundGranted}
-                          busy={busy === `rev:${d.peer.peer_id}`}
-                          onToggle={() => act(`rev:${d.peer!.peer_id}`, () => setPeerReverse(d.peer!.peer_id, !inboundGranted))}
-                        />
-                      ) : (
-                        <StatusPill tone="neutral" label="—" />
-                      )}
-                    </div>
+
+                        {/* Inbound — they control me (toggle I own) */}
+                        <div className="flex items-center justify-between gap-3 border-2 border-brutal-black bg-white px-3 py-2 dark:bg-zinc-900">
+                          <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-black">
+                            They control me
+                          </span>
+                          {d.pendingGrant ? (
+                            // This machine is asking for inbound control — approve/deny
+                            // inline instead of a separate top card.
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                className="text-[10px] text-brutal-green font-black uppercase hover:underline disabled:opacity-40"
+                                disabled={busy === d.pendingGrant.request_id}
+                                onClick={() => act(d.pendingGrant!.request_id, () => approveGrant(d.pendingGrant!.request_id))}
+                              >
+                                Approve
+                              </button>
+                              <span className="text-neutral-300">·</span>
+                              <button
+                                className="text-[10px] text-brutal-red font-black uppercase hover:underline disabled:opacity-40"
+                                disabled={busy === d.pendingGrant.request_id}
+                                onClick={() => act(d.pendingGrant!.request_id, () => denyGrant(d.pendingGrant!.request_id))}
+                              >
+                                Deny
+                              </button>
+                            </div>
+                          ) : hasInbound && d.deviceId ? (
+                            // A grant I issued (the real inbound authorization) —
+                            // pause/resume without dropping the token. Fully severing
+                            // is the row's single "Remove" button (header).
+                            <DirectionToggle
+                              on={inboundGranted}
+                              busy={busy === d.deviceId}
+                              onToggle={() => act(d.deviceId!, () => setDeviceStatus(d.deviceId!, inboundGranted ? 'paused' : 'active'))}
+                            />
+                          ) : hasOutbound && d.peer ? (
+                            // No issued grant yet — offer to mint a reverse grant so
+                            // this peer we drive can drive us back.
+                            <DirectionToggle
+                              on={inboundGranted}
+                              busy={busy === `rev:${d.peer.peer_id}`}
+                              onToggle={() => act(`rev:${d.peer!.peer_id}`, () => setPeerReverse(d.peer!.peer_id, !inboundGranted))}
+                            />
+                          ) : (
+                            <StatusPill tone="neutral" label="—" />
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  )}
                 </div>
               </SettingsListItem>
             );
