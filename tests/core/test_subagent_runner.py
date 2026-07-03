@@ -1,10 +1,66 @@
+from datetime import datetime, timedelta
+
 import pytest
 
+import suzent.core.subagent_runner as subagent_runner
 from suzent.core.subagent_runner import (
     SubAgentTask,
+    _evict_old_finished_tasks,
     _task_to_sse_dict,
     _wakeup_parent_batch,
 )
+
+
+def _make_task(task_id: str, status: str, finished_offset: int | None = None):
+    task = SubAgentTask(
+        task_id=task_id,
+        parent_chat_id="chat-1",
+        description="x",
+        tools_allowed=[],
+        chat_id=f"subagent-{task_id}",
+    )
+    task.status = status
+    if finished_offset is not None:
+        task.finished_at = datetime(2026, 1, 1) + timedelta(seconds=finished_offset)
+    return task
+
+
+def test_evict_old_finished_tasks_keeps_active_and_recent(monkeypatch):
+    monkeypatch.setattr(subagent_runner, "_MAX_FINISHED_TASKS", 3)
+    subagent_runner._tasks.clear()
+    try:
+        # 5 finished (oldest → newest) + 2 active that must never be evicted.
+        for i in range(5):
+            t = _make_task(f"done_{i}", "completed", finished_offset=i)
+            subagent_runner._tasks[t.task_id] = t
+        for i in range(2):
+            t = _make_task(f"live_{i}", "running")
+            subagent_runner._tasks[t.task_id] = t
+
+        _evict_old_finished_tasks()
+
+        remaining = set(subagent_runner._tasks)
+        # Both active tasks survive.
+        assert {"live_0", "live_1"} <= remaining
+        # Only the 3 newest finished tasks survive; the 2 oldest are gone.
+        assert "done_0" not in remaining
+        assert "done_1" not in remaining
+        assert {"done_2", "done_3", "done_4"} <= remaining
+    finally:
+        subagent_runner._tasks.clear()
+
+
+def test_evict_old_finished_tasks_noop_under_cap(monkeypatch):
+    monkeypatch.setattr(subagent_runner, "_MAX_FINISHED_TASKS", 10)
+    subagent_runner._tasks.clear()
+    try:
+        for i in range(4):
+            t = _make_task(f"done_{i}", "completed", finished_offset=i)
+            subagent_runner._tasks[t.task_id] = t
+        _evict_old_finished_tasks()
+        assert len(subagent_runner._tasks) == 4
+    finally:
+        subagent_runner._tasks.clear()
 
 
 def test_task_to_sse_dict_includes_model_override():

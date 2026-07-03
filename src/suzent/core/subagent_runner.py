@@ -139,6 +139,27 @@ class SubAgentTask:
 _tasks: Dict[str, SubAgentTask] = {}
 _tasks_lock = asyncio.Lock()
 
+# Cap on finished (completed/failed) tasks retained for UI history. Active
+# (queued/running) tasks are never evicted. Without this, _tasks grows without
+# bound for the process lifetime — one SubAgentTask (with its result/error) per
+# spawn, forever — a slow leak on long-running servers.
+_MAX_FINISHED_TASKS = 200
+_TERMINAL_STATUSES = ("completed", "failed")
+
+
+def _evict_old_finished_tasks() -> None:
+    """Drop the oldest finished tasks beyond _MAX_FINISHED_TASKS.
+
+    Caller must hold _tasks_lock. Active tasks are kept regardless of count.
+    """
+    finished = [t for t in _tasks.values() if t.status in _TERMINAL_STATUSES]
+    if len(finished) <= _MAX_FINISHED_TASKS:
+        return
+    # Oldest first — evict by finish time (falling back to start time).
+    finished.sort(key=lambda t: t.finished_at or t.started_at or datetime.min)
+    for task in finished[: len(finished) - _MAX_FINISHED_TASKS]:
+        _tasks.pop(task.task_id, None)
+
 
 def get_task(task_id: str) -> Optional[SubAgentTask]:
     return _tasks.get(task_id)
@@ -287,6 +308,7 @@ async def spawn_subagent(
 
     async with _tasks_lock:
         _tasks[task_id] = task
+        _evict_old_finished_tasks()
     _broadcast_task_update(task)
 
     if run_in_background:
