@@ -75,19 +75,31 @@ function getActionDisplayOrder(actions: PermissionAction[]): PermissionAction[] 
   return [...once, ...persistent, ...deny];
 }
 
-function getActionCommand(action: PermissionAction): string | null {
+interface ActionCommand {
+  command: string;
+  isPrefix: boolean;
+}
+
+function getActionCommand(action: PermissionAction): ActionCommand | null {
   for (const update of action.permissionUpdates ?? []) {
     if (update.type !== 'add_rule') continue;
     const matcher = update.payload.matcher;
     if (!matcher || typeof matcher !== 'object' || Array.isArray(matcher)) continue;
 
     const matcherRecord = matcher as Record<string, unknown>;
-    if (matcherRecord.type !== 'exact_input') continue;
-    const value = matcherRecord.value;
-    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
-
-    const command = (value as Record<string, unknown>).command;
-    if (typeof command === 'string' && command.trim()) return command.trim();
+    if (matcherRecord.type === 'exact_input') {
+      const value = matcherRecord.value;
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+      const command = (value as Record<string, unknown>).command;
+      if (typeof command === 'string' && command.trim()) {
+        return { command: command.trim(), isPrefix: false };
+      }
+    } else if (matcherRecord.type === 'command_prefix') {
+      const value = matcherRecord.value;
+      if (typeof value === 'string' && value.trim()) {
+        return { command: value.trim(), isPrefix: true };
+      }
+    }
   }
   return null;
 }
@@ -186,9 +198,15 @@ const ApprovalCard: React.FC<{
     if (action.scope === 'once') return t('permissionDock.yes');
     const actionCommand = getActionCommand(action);
     if (actionCommand) {
+      const { command, isPrefix } = actionCommand;
+      if (isPrefix) {
+        return action.scope === 'session'
+          ? t('permissionDock.yesAllowPrefixSession', { command })
+          : t('permissionDock.yesAllowPrefixGlobal', { command });
+      }
       return action.scope === 'session'
-        ? t('permissionDock.yesAllowCommandSession', { command: actionCommand })
-        : t('permissionDock.yesAllowCommandGlobal', { command: actionCommand });
+        ? t('permissionDock.yesAllowCommandSession', { command })
+        : t('permissionDock.yesAllowCommandGlobal', { command });
     }
     const actionText = `${action.label.charAt(0).toLowerCase()}${action.label.slice(1)}`;
     return t('permissionDock.yesAnd', { action: actionText });

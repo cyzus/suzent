@@ -883,6 +883,8 @@ export const zhCN = {
     yesAnd: '是，并{action}',
     yesAllowCommandSession: '是，在本次会话中允许 {command}',
     yesAllowCommandGlobal: '是，始终允许 {command}',
+    yesAllowPrefixSession: '是，在本次会话中允许所有 {command} …',
+    yesAllowPrefixGlobal: '是，始终允许所有 {command} …',
     no: '否',
     feedbackPlaceholder: '否，并告诉 Suzent 应该如何调整',
     submit: '提交',

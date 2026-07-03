@@ -957,6 +957,8 @@ export const en = {
     yesAnd: 'Yes, and {action}',
     yesAllowCommandSession: 'Yes, allow {command} for this session',
     yesAllowCommandGlobal: 'Yes, always allow {command}',
+    yesAllowPrefixSession: 'Yes, allow all {command} … for this session',
+    yesAllowPrefixGlobal: 'Yes, always allow all {command} …',
     no: 'No',
     feedbackPlaceholder: 'No, and tell Suzent what to do differently',
     submit: 'Submit',
