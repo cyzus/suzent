@@ -1765,7 +1765,13 @@ class ChatProcessor:
 
 _ATTACHMENT_PATTERN = re.compile(r"\n?\[User attached (?:an image|a file): ([^\]]+)\]")
 _REFERENCE_PATTERN = re.compile(r"\n?\[User referenced (?:file|directory): ([^\]]+)\]")
-_SAFE_VIRTUAL_REFERENCE_PATTERN = re.compile(r"^/[A-Za-z0-9._~!$&'()*+,;=:@%/\- ]+$")
+_SAFE_REFERENCE_CHARS = r"[A-Za-z0-9._~!$&'()*+,;=:@%/\- ]"
+# A virtual/POSIX path (`/workspace/foo`) or a Windows host path (`D:/work/foo`).
+# Host paths are used for mentions in host mode, where the agent addresses real
+# host paths rather than the virtual /workspace, /mnt aliases.
+_SAFE_VIRTUAL_REFERENCE_PATTERN = re.compile(
+    rf"^(?:/|[A-Za-z]:/){_SAFE_REFERENCE_CHARS}*$"
+)
 
 
 def _normalize_file_mention_path(value: Any) -> str | None:
@@ -1773,9 +1779,12 @@ def _normalize_file_mention_path(value: Any) -> str | None:
         return None
 
     path = value.strip().replace("\\", "/")
-    if not path.startswith("/"):
+    if not (path.startswith("/") or re.match(r"^[A-Za-z]:/", path)):
         return None
     if not _SAFE_VIRTUAL_REFERENCE_PATTERN.fullmatch(path):
+        return None
+    # Reject parent-directory traversal in the reference annotation itself.
+    if any(part == ".." for part in path.split("/")):
         return None
     return path
 

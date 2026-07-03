@@ -414,6 +414,10 @@ async def search_file_mentions(request: Request) -> JSONResponse:
         roots = _prioritize_requested_roots(
             resolver.get_virtual_roots(), override_volumes
         )
+        # In host mode the agent is instructed to use real host paths (not the
+        # virtual /workspace, /mnt aliases), so a mention must carry the host
+        # path. In sandbox mode host paths are inaccessible, so we keep virtual.
+        use_host_paths = not resolver.sandbox_enabled
         results: list[dict] = []
         seen_virtual_paths: set[str] = set()
         visited = 0
@@ -475,10 +479,20 @@ async def search_file_mentions(request: Request) -> JSONResponse:
                     except OSError:
                         continue
 
+                    # `path` is what the mention resolves to for the agent; in
+                    # host mode that's the real host path. Keep the virtual path
+                    # separately so the UI/host-path map can still reference it.
+                    display_path = (
+                        str(entry).replace("\\", "/")
+                        if use_host_paths
+                        else entry_virtual
+                    )
+
                     results.append(
                         {
                             "name": entry.name,
-                            "path": entry_virtual,
+                            "path": display_path,
+                            "virtual_path": entry_virtual,
                             "root": virtual_root,
                             "type": entry_type,
                             "is_dir": entry_type == "directory",

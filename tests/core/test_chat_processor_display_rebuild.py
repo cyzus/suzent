@@ -450,6 +450,22 @@ def test_build_file_mention_context_skips_malformed_entries():
     assert "relative.md" not in context
 
 
+def test_build_file_mention_context_accepts_host_paths():
+    # In host mode a mention carries the real host path (e.g. a Windows
+    # drive-letter path). Backslashes are normalized; traversal is rejected.
+    context = _build_file_mention_context(
+        [
+            {"path": "D:/workspace/Multi Agents.md", "type": "file"},
+            {"path": "D:\\workspace\\notes.md", "type": "file"},
+            {"path": "C:/a/../b/escape.md", "type": "file"},
+        ]
+    )
+
+    assert "[User referenced file: D:/workspace/Multi Agents.md]" in context
+    assert "[User referenced file: D:/workspace/notes.md]" in context
+    assert "escape.md" not in context
+
+
 def test_strip_attachment_annotations_removes_file_reference_annotations():
     text = (
         "summarize this\n"
