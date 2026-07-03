@@ -12,6 +12,7 @@ import {
   setSyncedKeys,
 } from '../../lib/dataApi';
 import { BrutalButton } from '../BrutalButton';
+import { BrutalOnOff } from '../BrutalOnOff';
 import { Badge, SettingsListAction } from './SettingsCard';
 
 type NotificationHandler = (text: string, isError: boolean) => void;
@@ -146,10 +147,11 @@ export function ShibbolethPanel({
     }
     if (autoStarted.current || enabled) return;
     autoStarted.current = true;
+    // A vault exists remotely but this device isn't enrolled → prompt to enter the
+    // words. When there's no vault at all, don't auto-open setup — the enable
+    // switch in the header is the explicit trigger for that now.
     if (available) {
       setMode('enter');
-    } else {
-      void startSetup();
     }
   }, [profile?.id, rotation?.rotation_detected]);
 
@@ -319,7 +321,7 @@ export function ShibbolethPanel({
 
   return (
     <div className="space-y-2">
-      {/* Header row */}
+      {/* Header row: title, lock badge, rotate, and the enable/disable switch */}
       <div className="flex items-center justify-between gap-3 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2">
         <div className="flex-1 min-w-0">
           <span className="text-xs font-bold uppercase">Shared key vault</span>
@@ -327,24 +329,38 @@ export function ShibbolethPanel({
             {t('settings.data.shibbolethHint')}
           </p>
         </div>
-        {/* One prominent lock chip: the single clear locked/unlocked sign */}
-        {enabled && (
-          <Badge
-            tone={unlocked ? 'green' : 'amber'}
-            icon={
-              <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-                <rect x="3" y="7" width="10" height="7" rx="1" strokeLinejoin="round" />
-                {unlocked
-                  ? <path strokeLinecap="round" d="M5 7V5a3 3 0 0 1 5.5-1.5" />
-                  : <path strokeLinecap="round" d="M5 7V5a3 3 0 0 1 6 0v2" />}
-              </svg>
-            }
-            title={unlocked ? 'Vault unlocked — keys can be pushed and fetched' : 'Vault locked — enter recovery words to push or fetch keys'}
-            className="shrink-0"
-          >
-            {unlocked ? 'Unlocked' : 'Locked'}
-          </Badge>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* One prominent lock chip: the single clear locked/unlocked sign */}
+          {enabled && (
+            <Badge
+              tone={unlocked ? 'green' : 'amber'}
+              icon={
+                <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+                  <rect x="3" y="7" width="10" height="7" rx="1" strokeLinejoin="round" />
+                  {unlocked
+                    ? <path strokeLinecap="round" d="M5 7V5a3 3 0 0 1 5.5-1.5" />
+                    : <path strokeLinecap="round" d="M5 7V5a3 3 0 0 1 6 0v2" />}
+                </svg>
+              }
+              title={unlocked ? 'Vault unlocked — keys can be pushed and fetched' : 'Vault locked — enter recovery words to push or fetch keys'}
+            >
+              {unlocked ? 'Unlocked' : 'Locked'}
+            </Badge>
+          )}
+          {enabled && unlocked && (
+            <SettingsListAction tone="neutral" disabled={busy} onClick={startRotate} title="Rotate the vault recovery words">
+              Rotate
+            </SettingsListAction>
+          )}
+          {/* Enable/disable the shared vault. On = generate words / set up;
+              off = disable secret sync on this device. */}
+          <BrutalOnOff
+            size="sm"
+            checked={enabled}
+            disabled={busy}
+            onChange={(on) => { if (on) void startSetup(); else void handleDisable(); }}
+          />
+        </div>
       </div>
 
       {/* Key inventory: what's in the vault vs. on this device. The one-glance
@@ -566,17 +582,6 @@ export function ShibbolethPanel({
         </div>
       )}
 
-      {/* Active actions */}
-      {enabled && unlocked && mode === 'idle' && (
-        <div className="flex flex-wrap gap-2 justify-end">
-          <SettingsListAction tone="neutral" disabled={busy} onClick={startRotate}>
-            Rotate words
-          </SettingsListAction>
-          <SettingsListAction tone="red" disabled={busy} onClick={handleDisable}>
-            Disable
-          </SettingsListAction>
-        </div>
-      )}
     </div>
   );
 }
