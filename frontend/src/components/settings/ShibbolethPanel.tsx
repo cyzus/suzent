@@ -27,6 +27,28 @@ function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+// Keys that belong to one provider must sync together — a BASE_URL without its
+// API_KEY (or vice versa) is useless. Derive a provider group from the shared
+// prefix by stripping a known credential suffix.
+const KEY_SUFFIXES = ['_API_KEY', '_BASE_URL', '_API_BASE', '_MASTER_KEY', '_SECRET', '_TOKEN', '_KEY'];
+
+function providerGroupOf(key: string): string {
+  for (const suffix of KEY_SUFFIXES) {
+    if (key.endsWith(suffix)) return key.slice(0, -suffix.length);
+  }
+  return key;
+}
+
+/** Group key names by provider prefix, preserving sorted order. */
+function groupKeys(keys: string[]): { group: string; keys: string[] }[] {
+  const map = new Map<string, string[]>();
+  for (const key of [...keys].sort()) {
+    const g = providerGroupOf(key);
+    (map.get(g) ?? map.set(g, []).get(g)!).push(key);
+  }
+  return Array.from(map, ([group, ks]) => ({ group, keys: ks }));
+}
+
 function MnemonicGrid({ words }: { words: string[] }): React.ReactElement {
   const [copied, setCopied] = useState(false);
 
@@ -186,13 +208,15 @@ export function ShibbolethPanel({
     }
   }
 
-  async function toggleKeySync(key: string, on: boolean): Promise<void> {
+  async function toggleKeysSync(keys: string[], on: boolean): Promise<void> {
     if (!profile) return;
     // Current selection: explicit synced_keys, or (legacy null) treat as "all
     // local keys". We always persist an explicit list once the user touches it.
     const current = new Set(vault?.synced_keys ?? vault?.local_keys ?? []);
-    if (on) current.add(key);
-    else current.delete(key);
+    for (const key of keys) {
+      if (on) current.add(key);
+      else current.delete(key);
+    }
     try {
       await setSyncedKeys(profile.id, Array.from(current).sort());
       await onChanged();
@@ -307,30 +331,52 @@ export function ShibbolethPanel({
             <span className="text-center w-10">Sync</span>
           </div>
           <div className="max-h-44 overflow-y-auto divide-y divide-brutal-black/10">
-            {Array.from(new Set([...vault.vault_keys, ...vault.local_keys]))
-              .sort()
-              .map((key) => {
-                const inVault = vault.vault_keys.includes(key);
-                const onDevice = vault.local_keys.includes(key);
+            {groupKeys(Array.from(new Set([...vault.vault_keys, ...vault.local_keys]))).map(
+              ({ group, keys }) => {
                 const syncedList = vault.synced_keys ?? vault.local_keys;
-                const isSynced = syncedList.includes(key);
+                // Group is "on" only when every key in it is synced (they move together).
+                const allSynced = keys.every((k) => syncedList.includes(k));
+                const someSynced = keys.some((k) => syncedList.includes(k));
+                const multi = keys.length > 1;
                 return (
-                  <div key={key} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1.5 items-center">
-                    <span className="font-mono text-[11px] truncate dark:text-white" title={key}>{key}</span>
-                    <span className={`text-center w-12 text-xs font-bold ${inVault ? 'text-brutal-green' : 'text-red-400'}`}>{inVault ? '✓' : '—'}</span>
-                    <span className={`text-center w-14 text-xs font-bold ${onDevice ? 'text-brutal-green' : 'text-neutral-300 dark:text-neutral-600'}`}>{onDevice ? '✓' : '—'}</span>
-                    <span className="text-center w-10">
-                      <input
-                        type="checkbox"
-                        checked={isSynced}
-                        disabled={busy}
-                        onChange={(e) => void toggleKeySync(key, e.target.checked)}
-                        title={isSynced ? 'Synced with vault — push/fetch this key' : 'Not synced — stays local only'}
-                      />
-                    </span>
+                  <div key={group}>
+                    <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1.5 items-center">
+                      <span className="font-mono text-[11px] truncate dark:text-white font-bold" title={multi ? keys.join(', ') : keys[0]}>
+                        {multi ? group : keys[0]}
+                        {multi && <span className="ml-1 text-[9px] font-normal text-neutral-400 uppercase">({keys.length} keys)</span>}
+                      </span>
+                      {!multi ? (
+                        <>
+                          <span className={`text-center w-12 text-xs font-bold ${vault.vault_keys.includes(keys[0]) ? 'text-brutal-green' : 'text-red-400'}`}>{vault.vault_keys.includes(keys[0]) ? '✓' : '—'}</span>
+                          <span className={`text-center w-14 text-xs font-bold ${vault.local_keys.includes(keys[0]) ? 'text-brutal-green' : 'text-neutral-300 dark:text-neutral-600'}`}>{vault.local_keys.includes(keys[0]) ? '✓' : '—'}</span>
+                        </>
+                      ) : (
+                        // Multi-key group: per-key status shown in the sub-rows below.
+                        <><span className="w-12" /><span className="w-14" /></>
+                      )}
+                      <span className="text-center w-10">
+                        <input
+                          type="checkbox"
+                          checked={allSynced}
+                          ref={(el) => { if (el) el.indeterminate = someSynced && !allSynced; }}
+                          disabled={busy}
+                          onChange={(e) => void toggleKeysSync(keys, e.target.checked)}
+                          title={multi ? 'Sync this provider’s keys together' : (allSynced ? 'Synced with vault' : 'Not synced — stays local only')}
+                        />
+                      </span>
+                    </div>
+                    {multi && keys.map((key) => (
+                      <div key={key} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1 items-center bg-neutral-50/60 dark:bg-zinc-800/40">
+                        <span className="font-mono text-[10px] truncate text-neutral-500 dark:text-neutral-400 pl-3" title={key}>{key}</span>
+                        <span className={`text-center w-12 text-xs font-bold ${vault.vault_keys.includes(key) ? 'text-brutal-green' : 'text-red-400'}`}>{vault.vault_keys.includes(key) ? '✓' : '—'}</span>
+                        <span className={`text-center w-14 text-xs font-bold ${vault.local_keys.includes(key) ? 'text-brutal-green' : 'text-neutral-300 dark:text-neutral-600'}`}>{vault.local_keys.includes(key) ? '✓' : '—'}</span>
+                        <span className="w-10" />
+                      </div>
+                    ))}
                   </div>
                 );
-              })}
+              },
+            )}
           </div>
           <div className="px-3 py-1.5 border-t-2 border-brutal-black/20 text-[10px] text-neutral-500 dark:text-neutral-400 leading-tight">
             {vault.rotated_by_device && (
