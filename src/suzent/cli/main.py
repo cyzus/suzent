@@ -1,5 +1,5 @@
 """
-Top-level CLI commands: start, doctor, update, upgrade, setup-build-tools.
+Top-level CLI commands: start, serve, stop, doctor, update, upgrade, setup-build-tools.
 """
 
 import io
@@ -122,6 +122,7 @@ def _is_suzent_server_running(host: str, port: int, timeout: float = 1.0) -> boo
     except (OSError, json.JSONDecodeError, urllib.error.URLError):
         return False
     return payload.get("app") == "suzent" and payload.get("status") == "ok"
+
 
 def _platform_asset_name() -> str:
     machine = platform.machine().lower()
@@ -876,6 +877,31 @@ def register_commands(app: typer.Typer):
             typer.echo("🛑 Server stopped.")
         except Exception as e:
             typer.echo(f"❌ Server failed: {e}")
+            raise typer.Exit(code=1)
+
+    @app.command()
+    def stop(
+        port: int = typer.Option(DEFAULT_PORT, help="Port the backend is running on"),
+    ):
+        """Stop a running Suzent backend server."""
+        if not _is_suzent_server_running("127.0.0.1", port):
+            typer.echo(f"No Suzent server running on http://127.0.0.1:{port}.")
+            return
+
+        pid = get_pid_on_port(port)
+        if not pid:
+            typer.echo(
+                f"⚠️  A Suzent server responded on port {port}, but no owning "
+                "PID could be found to stop it."
+            )
+            raise typer.Exit(code=1)
+
+        typer.echo(f"🛑 Stopping Suzent Server (PID {pid}) on port {port}...")
+        try:
+            kill_process(pid)
+            typer.echo("✅ Server stopped.")
+        except Exception as e:
+            typer.echo(f"❌ Failed to stop server: {e}")
             raise typer.Exit(code=1)
 
     @app.command()
