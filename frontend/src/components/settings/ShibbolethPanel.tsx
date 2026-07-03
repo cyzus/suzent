@@ -3,10 +3,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import type { SyncProfile, SyncStatus } from '../../lib/dataApi';
 import {
+  checkMnemonic,
   disableEncryptedSecretSync,
   enableEncryptedSecretSync,
   registerDeviceMnemonic,
   rotateMnemonic,
+  setSyncedKeys,
 } from '../../lib/dataApi';
 import { BrutalButton } from '../BrutalButton';
 
@@ -101,6 +103,7 @@ export function ShibbolethPanel({
   const [confirmed, setConfirmed] = useState(false);
   const [inputPhrase, setInputPhrase] = useState('');
   const [newGenerated, setNewGenerated] = useState<string[]>([]);
+  const [phraseMatch, setPhraseMatch] = useState<boolean | null>(null);
 
   const enabled = profile?.encrypted_secret_sync_enabled ?? false;
   const unlocked = syncStatus?.shibboleth_unlocked ?? false;
@@ -125,6 +128,27 @@ export function ShibbolethPanel({
       void startSetup();
     }
   }, [profile?.id, rotation?.rotation_detected]);
+
+  // Live fingerprint check while entering words: does the typed phrase match the
+  // existing vault? Debounced; only runs on a complete (12/24-word) phrase.
+  useEffect(() => {
+    if (!profile || mode !== 'enter') {
+      setPhraseMatch(null);
+      return;
+    }
+    const words = inputPhrase.trim().split(/\s+/).filter(Boolean);
+    if (words.length !== 12 && words.length !== 24) {
+      setPhraseMatch(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      checkMnemonic(profile.id, inputPhrase.trim())
+        .then((r) => { if (!cancelled) setPhraseMatch(r.valid ? r.matches : null); })
+        .catch(() => { if (!cancelled) setPhraseMatch(null); });
+    }, 400);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [inputPhrase, mode, profile?.id]);
 
   async function generateFromBackend(): Promise<string[]> {
     const res = await fetch(`${(await import('../../lib/api')).getApiBase()}/sync/secrets/generate-mnemonic`, { method: 'POST' });
@@ -159,6 +183,21 @@ export function ShibbolethPanel({
       onNotify(t('settings.data.githubFailed', { error: errMsg(e) }), true);
     } finally {
       onBusyChange(false);
+    }
+  }
+
+  async function toggleKeySync(key: string, on: boolean): Promise<void> {
+    if (!profile) return;
+    // Current selection: explicit synced_keys, or (legacy null) treat as "all
+    // local keys". We always persist an explicit list once the user touches it.
+    const current = new Set(vault?.synced_keys ?? vault?.local_keys ?? []);
+    if (on) current.add(key);
+    else current.delete(key);
+    try {
+      await setSyncedKeys(profile.id, Array.from(current).sort());
+      await onChanged();
+    } catch (e) {
+      onNotify(errMsg(e), true);
     }
   }
 
@@ -261,10 +300,11 @@ export function ShibbolethPanel({
           fact that would have made the GEMINI-missing-from-vault bug obvious. */}
       {enabled && vault?.exists && (
         <div className="border-2 border-brutal-black bg-white dark:bg-zinc-900">
-          <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 px-3 py-1.5 text-[9px] font-bold uppercase text-neutral-400 border-b-2 border-brutal-black/20">
+          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1.5 text-[9px] font-bold uppercase text-neutral-400 border-b-2 border-brutal-black/20">
             <span>Key</span>
-            <span className="text-center w-14">In vault</span>
-            <span className="text-center w-16">This device</span>
+            <span className="text-center w-12">Vault</span>
+            <span className="text-center w-14">Device</span>
+            <span className="text-center w-10">Sync</span>
           </div>
           <div className="max-h-44 overflow-y-auto divide-y divide-brutal-black/10">
             {Array.from(new Set([...vault.vault_keys, ...vault.local_keys]))
@@ -272,11 +312,22 @@ export function ShibbolethPanel({
               .map((key) => {
                 const inVault = vault.vault_keys.includes(key);
                 const onDevice = vault.local_keys.includes(key);
+                const syncedList = vault.synced_keys ?? vault.local_keys;
+                const isSynced = syncedList.includes(key);
                 return (
-                  <div key={key} className="grid grid-cols-[1fr_auto_auto] gap-x-3 px-3 py-1.5 items-center">
+                  <div key={key} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1.5 items-center">
                     <span className="font-mono text-[11px] truncate dark:text-white" title={key}>{key}</span>
-                    <span className={`text-center w-14 text-xs font-bold ${inVault ? 'text-brutal-green' : 'text-red-400'}`}>{inVault ? '✓' : '—'}</span>
-                    <span className={`text-center w-16 text-xs font-bold ${onDevice ? 'text-brutal-green' : 'text-neutral-300 dark:text-neutral-600'}`}>{onDevice ? '✓' : '—'}</span>
+                    <span className={`text-center w-12 text-xs font-bold ${inVault ? 'text-brutal-green' : 'text-red-400'}`}>{inVault ? '✓' : '—'}</span>
+                    <span className={`text-center w-14 text-xs font-bold ${onDevice ? 'text-brutal-green' : 'text-neutral-300 dark:text-neutral-600'}`}>{onDevice ? '✓' : '—'}</span>
+                    <span className="text-center w-10">
+                      <input
+                        type="checkbox"
+                        checked={isSynced}
+                        disabled={busy}
+                        onChange={(e) => void toggleKeySync(key, e.target.checked)}
+                        title={isSynced ? 'Synced with vault — push/fetch this key' : 'Not synced — stays local only'}
+                      />
+                    </span>
                   </div>
                 );
               })}
@@ -355,6 +406,14 @@ export function ShibbolethPanel({
               : 'Enter the 12 recovery words from the device where you originally set this up.'}
           </p>
           <MnemonicInput value={inputPhrase} onChange={setInputPhrase} placeholder="Enter your 12 recovery words" />
+          {phraseMatch === true && (
+            <p className="text-[10px] font-bold text-brutal-green">✓ Matches the existing vault — this device will join it.</p>
+          )}
+          {phraseMatch === false && (
+            <p className="text-[10px] font-bold text-red-500 leading-tight">
+              ✗ Different from the vault&apos;s words. Continuing will RE-KEY the vault and lock out other devices until they enter these new words.
+            </p>
+          )}
           <div className="flex gap-2 flex-wrap">
             <BrutalButton
               type="button"

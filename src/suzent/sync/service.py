@@ -281,9 +281,21 @@ class GitHubSyncService:
                 self.payload_builder.apply_to_local, payload_dir
             )
             imported_keys: list[str] = []
+            changed_keys: list[str] = []
             if phrase:
+                # Compute which local key VALUES the vault will overwrite, before
+                # applying — so the UI can report "N keys changed from vault".
+                changed_keys = await asyncio.to_thread(
+                    self._secret_overwrite_diff,
+                    payload_dir,
+                    phrase,
+                    profile.synced_keys,
+                )
                 imported_keys = await asyncio.to_thread(
-                    self._import_secret_bundles, payload_dir, phrase
+                    self._import_secret_bundles,
+                    payload_dir,
+                    phrase,
+                    only_keys=profile.synced_keys,
                 )
                 if imported_keys and not profile.encrypted_secret_sync_enabled:
                     profile.encrypted_secret_sync_enabled = True
@@ -295,6 +307,7 @@ class GitHubSyncService:
                 "git": git_output,
                 "restored": restored,
                 "imported_secret_keys": imported_keys,
+                "changed_secret_keys": changed_keys,
             }
 
     async def push(
@@ -412,7 +425,10 @@ class GitHubSyncService:
                 if profile.encrypted_secret_sync_enabled or has_bundles:
                     if phrase:
                         imported = await asyncio.to_thread(
-                            self._import_secret_bundles, payload_dir, phrase
+                            self._import_secret_bundles,
+                            payload_dir,
+                            phrase,
+                            only_keys=profile.synced_keys,
                         )
                         if imported and not profile.encrypted_secret_sync_enabled:
                             profile.encrypted_secret_sync_enabled = True
@@ -497,6 +513,7 @@ class GitHubSyncService:
         bundles_file = secret_sync.export_bundles_mnemonic(
             profile,
             shibboleth,
+            keys=profile.synced_keys,
             existing_file=existing
             if existing and existing.format_version == 2
             else None,
@@ -516,14 +533,37 @@ class GitHubSyncService:
         )
         return manifest
 
-    def _import_secret_bundles(self, payload_dir: Path, shibboleth: str) -> list[str]:
+    def _secret_overwrite_diff(
+        self,
+        payload_dir: Path,
+        shibboleth: str,
+        only_keys: list[str] | None,
+    ) -> list[str]:
+        bundle_path = payload_dir / SECRET_BUNDLES_PATH
+        secret_sync = EncryptedSecretSync()
+        payload = secret_sync.read_bundles_file(bundle_path)
+        if payload is None or not payload.bundles or payload.format_version != 2:
+            return []
+        return secret_sync.overwrite_diff_mnemonic(
+            payload, shibboleth, only_keys=only_keys
+        )
+
+    def _import_secret_bundles(
+        self,
+        payload_dir: Path,
+        shibboleth: str,
+        *,
+        only_keys: list[str] | None = None,
+    ) -> list[str]:
         bundle_path = payload_dir / SECRET_BUNDLES_PATH
         secret_sync = EncryptedSecretSync()
         payload = secret_sync.read_bundles_file(bundle_path)
         if payload is None or not payload.bundles:
             return []
         if payload.format_version == 2:
-            return secret_sync.import_bundles_mnemonic(payload, shibboleth)
+            return secret_sync.import_bundles_mnemonic(
+                payload, shibboleth, only_keys=only_keys
+            )
         if not secret_sync.verify_shibboleth(bundle_path, shibboleth):
             raise ValueError("Incorrect Shibboleth (passphrase)")
         return secret_sync.import_bundles(payload, shibboleth)

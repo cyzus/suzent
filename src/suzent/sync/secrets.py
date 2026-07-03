@@ -59,13 +59,33 @@ class EncryptedSecretSync:
         phrase = " ".join(words)
         fingerprint = mnemonic_fingerprint(phrase)
 
-        salt_b64 = new_salt()
+        # Reuse the existing salt when merging into a same-phrase vault so previously
+        # stored ciphertexts (for keys this device isn't re-exporting) stay
+        # decryptable. Only mint a fresh salt for a brand-new / re-keyed vault.
+        can_merge = (
+            existing_file is not None
+            and isinstance(existing_file.kdf, MnemonicKdfParams)
+            and existing_file.mnemonic_fingerprint == fingerprint
+        )
+        if can_merge:
+            salt_b64 = existing_file.kdf.salt  # type: ignore[union-attr]
+        else:
+            salt_b64 = new_salt()
         salt = base64.urlsafe_b64decode(salt_b64.encode("ascii"))
         enc_key = derive_key(phrase, salt)
 
         kdf = MnemonicKdfParams(salt=salt_b64)
         selected_keys = keys or self.secret_manager.list_keys()
+        selected_set = set(selected_keys)
+
+        # Start from existing vault entries for keys NOT in this device's selection
+        # (so a per-key opt-in push doesn't wipe other devices' keys), then
+        # (re)encrypt the selected keys this device holds.
         bundles: list[EncryptedSecretBundle] = []
+        if can_merge and existing_file is not None:
+            bundles.extend(
+                b for b in existing_file.bundles if b.key_name not in selected_set
+            )
         for key in selected_keys:
             value = self.secret_manager.get(key)
             if not value:
@@ -107,8 +127,19 @@ class EncryptedSecretSync:
         )
 
     def import_bundles_mnemonic(
-        self, payload: SecretBundlesFile, mnemonic: str
+        self,
+        payload: SecretBundlesFile,
+        mnemonic: str,
+        *,
+        only_keys: list[str] | None = None,
     ) -> list[str]:
+        """Decrypt and apply vault keys to the local backend.
+
+        ``only_keys`` restricts which keys are applied — used to honor per-key sync
+        opt-in (a profile's ``synced_keys``). ``None`` means apply every key in the
+        bundle (legacy / all-keys behavior). Keys in the bundle but not in
+        ``only_keys`` are left untouched locally.
+        """
         if payload.format_version != 2 or not isinstance(
             payload.kdf, MnemonicKdfParams
         ):
@@ -119,8 +150,11 @@ class EncryptedSecretSync:
         phrase = " ".join(words)
         salt = base64.urlsafe_b64decode(payload.kdf.salt.encode("ascii"))
         enc_key = derive_key(phrase, salt)
+        allow = set(only_keys) if only_keys is not None else None
         imported: list[str] = []
         for bundle in payload.bundles:
+            if allow is not None and bundle.key_name not in allow:
+                continue
             try:
                 value = mnemonic_decrypt(bundle.ciphertext, bundle.nonce, enc_key)
             except ValueError as exc:
@@ -128,6 +162,42 @@ class EncryptedSecretSync:
             self.secret_manager.set(bundle.key_name, value.decode("utf-8"))
             imported.append(bundle.key_name)
         return imported
+
+    def overwrite_diff_mnemonic(
+        self,
+        payload: SecretBundlesFile,
+        mnemonic: str,
+        *,
+        only_keys: list[str] | None = None,
+    ) -> list[str]:
+        """Return key names whose local value would CHANGE if the vault were applied.
+
+        Used to surface "N keys will change from vault" before a pull overwrites
+        local values (vault-is-authority, but visible not silent). Never returns
+        values. Keys absent locally count as changes (they'll be added).
+        """
+        if payload.format_version != 2 or not isinstance(
+            payload.kdf, MnemonicKdfParams
+        ):
+            return []
+        words = validate_mnemonic(mnemonic)
+        phrase = " ".join(words)
+        salt = base64.urlsafe_b64decode(payload.kdf.salt.encode("ascii"))
+        enc_key = derive_key(phrase, salt)
+        allow = set(only_keys) if only_keys is not None else None
+        changed: list[str] = []
+        for bundle in payload.bundles:
+            if allow is not None and bundle.key_name not in allow:
+                continue
+            try:
+                new_val = mnemonic_decrypt(
+                    bundle.ciphertext, bundle.nonce, enc_key
+                ).decode("utf-8")
+            except ValueError:
+                continue
+            if self.secret_manager.get(bundle.key_name) != new_val:
+                changed.append(bundle.key_name)
+        return changed
 
     def register_device(
         self,
@@ -175,6 +245,13 @@ class EncryptedSecretSync:
         the vault, instead of cracking bundles.json by hand.
         """
         local_keys = sorted(self.secret_manager.list_keys())
+        # None synced_keys == legacy "all keys sync"; surface as the full local set so
+        # the UI shows everything opted-in by default.
+        synced = (
+            sorted(profile.synced_keys)
+            if profile.synced_keys is not None
+            else local_keys
+        )
         payload = self.read_bundles_file(bundle_path)
         if payload is None:
             return {
@@ -183,6 +260,7 @@ class EncryptedSecretSync:
                 "local_keys": local_keys,
                 "local_only_keys": local_keys,
                 "vault_only_keys": [],
+                "synced_keys": synced,
                 "devices": [],
                 "this_device_enrolled": False,
                 "rotated_by_device": None,
@@ -200,6 +278,7 @@ class EncryptedSecretSync:
             "local_keys": local_keys,
             "local_only_keys": sorted(local_set - vault_set),
             "vault_only_keys": sorted(vault_set - local_set),
+            "synced_keys": synced,
             "devices": [
                 {
                     "device_id": d.device_id,

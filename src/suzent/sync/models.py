@@ -22,6 +22,10 @@ class SyncProfile(BaseModel):
     auto_resolve_enabled: bool = True
     encrypted_secret_sync_enabled: bool = False
     secret_sync_available: bool = False
+    # Per-key opt-in for secret sync. None == not yet configured (treat as "all keys
+    # sync", preserving legacy behavior). An explicit list == only those keys are
+    # pushed to / fetched from the vault; every other key stays local.
+    synced_keys: list[str] | None = None
     last_revision: str | None = None
     last_sync_at: datetime | None = None
 

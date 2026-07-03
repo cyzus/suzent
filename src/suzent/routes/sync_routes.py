@@ -141,6 +141,21 @@ async def push_sync(request: Request) -> JSONResponse:
         return _error_response(str(exc), 400)
 
 
+async def set_synced_keys(request: Request) -> JSONResponse:
+    """Set which secret keys this device syncs to/from the vault (per-key opt-in)."""
+    try:
+        payload = await _json_payload(request)
+        service = _service(request)
+        profile = service.get_profile(payload.get("profile_id"))
+        keys = payload.get("synced_keys")
+        # None => sync all keys (legacy); a list => only those keys.
+        profile.synced_keys = list(keys) if isinstance(keys, list) else None
+        service.save_profile(profile)
+        return JSONResponse(profile.model_dump(mode="json"))
+    except Exception as exc:
+        return _error_response(str(exc), 400)
+
+
 async def save_auto_config(request: Request) -> JSONResponse:
     try:
         payload = await _json_payload(request)
@@ -300,6 +315,42 @@ async def generate_mnemonic(request: Request) -> JSONResponse:
         return JSONResponse({"mnemonic": _gen()})
     except Exception as exc:
         return _error_response(str(exc), 500)
+
+
+async def check_mnemonic(request: Request) -> JSONResponse:
+    """Non-destructively check whether a typed phrase matches the vault's mnemonic.
+
+    Powers live feedback while entering recovery words: a matching phrase joins the
+    existing vault; a different (valid) phrase would re-key it and lock out other
+    devices. Never unlocks or mutates anything.
+    """
+    try:
+        from suzent.sync.mnemonic import mnemonic_fingerprint, validate_mnemonic
+        from suzent.sync.secrets import EncryptedSecretSync, SECRET_BUNDLES_PATH
+        from pathlib import Path
+        from suzent.sync.payload import PAYLOAD_DIR_NAME
+
+        payload = await _json_payload(request)
+        phrase_raw = (payload.get("mnemonic") or "").strip()
+        try:
+            words = validate_mnemonic(phrase_raw)
+        except Exception:
+            return JSONResponse({"valid": False, "matches": None})
+
+        service = _service(request)
+        profile = service.get_profile(payload.get("profile_id"))
+        bundle_path = Path(profile.repo_path) / PAYLOAD_DIR_NAME / SECRET_BUNDLES_PATH
+        existing = EncryptedSecretSync().read_bundles_file(bundle_path)
+        if existing is None or not existing.mnemonic_fingerprint:
+            # No vault yet — any valid phrase is a fresh setup, nothing to mismatch.
+            return JSONResponse({"valid": True, "matches": None})
+
+        fp = mnemonic_fingerprint(" ".join(words))
+        return JSONResponse(
+            {"valid": True, "matches": fp == existing.mnemonic_fingerprint}
+        )
+    except Exception as exc:
+        return _error_response(str(exc), 400)
 
 
 async def register_device_mnemonic(request: Request) -> JSONResponse:

@@ -96,6 +96,70 @@ def test_inspect_vault_reports_key_diff_and_devices(tmp_path: Path):
     assert info["mnemonic_version"] >= 1
 
 
+def test_export_merges_other_devices_keys_on_subset_push(tmp_path: Path):
+    # Device A writes the vault with KEY_A. Device B, syncing only KEY_B, pushes —
+    # the vault must KEEP KEY_A (merge) and still be decryptable for both.
+    a = FakeSecretManager()
+    a.values = {"KEY_A": "val-a"}
+    sync_a = EncryptedSecretSync(secret_manager=a)
+    profile_a = SyncProfile(repo_path=str(tmp_path), encrypted_secret_sync_enabled=True)
+    bundle_path = tmp_path / "bundles.json"
+    v1 = sync_a.export_bundles_mnemonic(profile_a, TEST_MNEMONIC, keys=["KEY_A"])
+    sync_a.write_bundles_file(bundle_path, v1)
+
+    b = FakeSecretManager()
+    b.values = {"KEY_B": "val-b"}
+    sync_b = EncryptedSecretSync(secret_manager=b)
+    profile_b = SyncProfile(repo_path=str(tmp_path), encrypted_secret_sync_enabled=True)
+    existing = sync_b.read_bundles_file(bundle_path)
+    v2 = sync_b.export_bundles_mnemonic(
+        profile_b, TEST_MNEMONIC, keys=["KEY_B"], existing_file=existing
+    )
+
+    names = {bundle.key_name for bundle in v2.bundles}
+    assert names == {"KEY_A", "KEY_B"}  # KEY_A preserved via merge
+    # And both decrypt with the same phrase.
+    target = FakeSecretManager()
+    target.values = {}
+    imported = EncryptedSecretSync(secret_manager=target).import_bundles_mnemonic(
+        v2, TEST_MNEMONIC
+    )
+    assert set(imported) == {"KEY_A", "KEY_B"}
+    assert target.values["KEY_A"] == "val-a"
+    assert target.values["KEY_B"] == "val-b"
+
+
+def test_import_respects_only_keys_opt_in(tmp_path: Path):
+    src = FakeSecretManager()
+    src.values = {"KEY_A": "val-a", "KEY_B": "val-b"}
+    sync = EncryptedSecretSync(secret_manager=src)
+    profile = SyncProfile(repo_path=str(tmp_path), encrypted_secret_sync_enabled=True)
+    bundles = sync.export_bundles_mnemonic(profile, TEST_MNEMONIC)
+
+    target = FakeSecretManager()
+    target.values = {}
+    imported = EncryptedSecretSync(secret_manager=target).import_bundles_mnemonic(
+        bundles, TEST_MNEMONIC, only_keys=["KEY_A"]
+    )
+    assert imported == ["KEY_A"]
+    assert "KEY_B" not in target.values  # opted out — left untouched
+
+
+def test_overwrite_diff_reports_only_changed(tmp_path: Path):
+    src = FakeSecretManager()
+    src.values = {"KEY_A": "new", "KEY_B": "same"}
+    sync = EncryptedSecretSync(secret_manager=src)
+    profile = SyncProfile(repo_path=str(tmp_path), encrypted_secret_sync_enabled=True)
+    bundles = sync.export_bundles_mnemonic(profile, TEST_MNEMONIC)
+
+    local = FakeSecretManager()
+    local.values = {"KEY_A": "old", "KEY_B": "same"}  # A differs, B identical
+    diff = EncryptedSecretSync(secret_manager=local).overwrite_diff_mnemonic(
+        bundles, TEST_MNEMONIC
+    )
+    assert diff == ["KEY_A"]
+
+
 def test_inspect_vault_when_no_bundle(tmp_path: Path):
     manager = FakeSecretManager()
     sync = EncryptedSecretSync(secret_manager=manager)

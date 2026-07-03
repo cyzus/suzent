@@ -77,6 +77,54 @@ function ActionBtn({
   );
 }
 
+const SECRET_BUNDLE_PREFIX = '_sync/';
+
+function SyncedFilesPanel({ hashes }: { hashes?: Record<string, string> }): React.ReactElement | null {
+  const [open, setOpen] = useState(false);
+  // Group synced payload files by top-level dir (config / skills / memory),
+  // excluding the encrypted secret bundle (shown in the vault panel instead).
+  const groups: Record<string, string[]> = {};
+  for (const rel of Object.keys(hashes ?? {})) {
+    if (rel.startsWith(SECRET_BUNDLE_PREFIX) || rel === 'manifest.json') continue;
+    const top = rel.split('/')[0] || 'other';
+    (groups[top] ??= []).push(rel);
+  }
+  const groupNames = Object.keys(groups).sort();
+  const total = groupNames.reduce((n, g) => n + groups[g].length, 0);
+  if (total === 0) return null;
+
+  return (
+    <div className="mt-3">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between border-2 border-brutal-black px-3 py-2 text-xs font-bold uppercase bg-neutral-50 dark:bg-zinc-900"
+      >
+        <span>Synced files ({total})</span>
+        <span>{open ? '−' : '+'}</span>
+      </button>
+      {open && (
+        <div className="mt-2 border-2 border-brutal-black bg-white dark:bg-zinc-900 divide-y divide-brutal-black/10 max-h-56 overflow-y-auto">
+          {groupNames.map((g) => (
+            <div key={g} className="px-3 py-2">
+              <p className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 mb-1">
+                {g} <span className="text-neutral-300 dark:text-neutral-600">({groups[g].length})</span>
+              </p>
+              <ul className="space-y-0.5">
+                {groups[g].sort().map((rel) => (
+                  <li key={rel} className="font-mono text-[11px] truncate dark:text-neutral-300" title={rel}>
+                    {rel.slice(g.length + 1) || rel}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function GitHubSyncSection({
   busy,
   onBusyChange,
@@ -323,7 +371,9 @@ export function GitHubSyncSection({
       try {
         const profile = syncStatus?.profile;
         if (!profile) throw new Error('GitHub sync is not configured.');
-        const result = (await apiFn(profile.id)) as { secrets?: string } | undefined;
+        const result = (await apiFn(profile.id)) as
+          | { secrets?: string; changed_secret_keys?: string[] }
+          | undefined;
         await refresh();
         // Honest push: if a vault exists but this device didn't contribute keys,
         // say so instead of implying the vault was updated.
@@ -332,6 +382,11 @@ export function GitHubSyncSection({
             'Files pushed, but API keys were NOT pushed — enable the shared key vault on this device first.',
             true,
           );
+        } else if (result?.changed_secret_keys && result.changed_secret_keys.length > 0) {
+          // Vault-is-authority overwrote local values — make it visible, not silent.
+          const keys = result.changed_secret_keys;
+          const list = keys.slice(0, 4).join(', ') + (keys.length > 4 ? `, +${keys.length - 4} more` : '');
+          onNotify(`${t(successKey)} · ${keys.length} key${keys.length !== 1 ? 's' : ''} updated from vault: ${list}`, false);
         } else {
           onNotify(t(successKey), false);
         }
@@ -560,6 +615,10 @@ export function GitHubSyncSection({
           <ShibbolethPanel profile={syncStatus?.profile} syncStatus={syncStatus} busy={busy} onBusyChange={onBusyChange} onNotify={onNotify} onChanged={refresh} />
         </div>
       )}
+
+      {/* Synced files inventory — config / skills / memory that travel with sync,
+          so it's clear what's shared beyond API keys. */}
+      {configured && <SyncedFilesPanel hashes={syncStatus?.payload_hashes} />}
 
       <button
         type="button"

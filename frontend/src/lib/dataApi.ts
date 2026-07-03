@@ -11,6 +11,7 @@ export interface SyncProfile {
   auto_resolve_enabled: boolean;
   encrypted_secret_sync_enabled: boolean;
   secret_sync_available: boolean;
+  synced_keys?: string[] | null;
   last_revision?: string | null;
   last_sync_at?: string | null;
 }
@@ -21,6 +22,7 @@ export interface SyncStatus {
   payload_dir?: string;
   forbidden_paths?: string[];
   git?: Record<string, unknown>;
+  payload_hashes?: Record<string, string>;
   requires_shibboleth?: boolean;
   shibboleth_unlocked?: boolean;
   has_secret_bundles?: boolean;
@@ -39,6 +41,7 @@ export interface SecretVaultInfo {
   local_keys: string[];
   local_only_keys: string[];
   vault_only_keys: string[];
+  synced_keys: string[];
   devices: { device_id: string; device_name: string; mnemonic_version: number }[];
   this_device_enrolled: boolean;
   rotated_by_device: string | null;
@@ -218,4 +221,15 @@ export function rotateMnemonic(profileId: string, mnemonic: string): Promise<{ s
 
 export function registerDeviceMnemonic(profileId: string, mnemonic: string): Promise<{ success: boolean }> {
   return postJson('/sync/secrets/register-device', { profile_id: profileId, mnemonic });
+}
+
+export function setSyncedKeys(profileId: string, syncedKeys: string[] | null): Promise<SyncProfile> {
+  return postJson<SyncProfile>('/sync/secrets/synced-keys', {
+    profile_id: profileId,
+    synced_keys: syncedKeys,
+  });
+}
+
+export function checkMnemonic(profileId: string, mnemonic: string): Promise<{ valid: boolean; matches: boolean | null }> {
+  return postJson('/sync/secrets/check-mnemonic', { profile_id: profileId, mnemonic });
 }
