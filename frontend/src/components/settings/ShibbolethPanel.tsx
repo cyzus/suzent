@@ -527,14 +527,14 @@ export function ShibbolethPanel({
           )}
           {phraseMatch === false && (
             <p className="text-[10px] font-bold text-red-500 leading-tight">
-              ✗ Different from the vault&apos;s words. Continuing will RE-KEY the vault and lock out other devices until they enter these new words.
+              ✗ These don&apos;t match the vault&apos;s recovery words. Enter the words from the device where you set it up. To replace the words for every device, use Rotate on that device instead.
             </p>
           )}
           <div className="flex gap-2 flex-wrap">
             <BrutalButton
               type="button"
               variant="primary"
-              disabled={busy}
+              disabled={busy || phraseMatch === false}
               onClick={handleEnterWords}
               className="px-3 py-1.5 text-xs uppercase"
             >
