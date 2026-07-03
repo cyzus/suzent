@@ -20,9 +20,15 @@ import { A2UIHtmlComponent }     from './components/A2UIHtmlComponent';
 interface Props {
   component: A2UIComponent;
   onAction: (action: string, context: Record<string, unknown>) => void;
+  /** Nesting depth of container components. Drives progressively lighter
+   *  visual weight so nested cards don't stack identical heavy black bars. */
+  depth?: number;
 }
 
 const GAP: Record<string, string> = { sm: 'gap-2', md: 'gap-4', lg: 'gap-6' };
+
+// Minimum readable width for a single column before it wraps to its own row.
+const COLUMN_MIN_WIDTH_PX = 260;
 
 interface LegacyStackHeaderVertical {
   type: 'stackHeaderVertical';
@@ -30,7 +36,7 @@ interface LegacyStackHeaderVertical {
   gap?: 'sm' | 'md' | 'lg';
 }
 
-export const A2UIRenderer: React.FC<Props> = ({ component, onAction }) => {
+export const A2UIRenderer: React.FC<Props> = ({ component, onAction, depth = 0 }) => {
   const rawType = (component as { type?: string }).type;
 
   if (rawType === 'stackHeaderVertical') {
@@ -40,7 +46,7 @@ export const A2UIRenderer: React.FC<Props> = ({ component, onAction }) => {
     return (
       <div className={`flex flex-col ${gapCls}`}>
         {stackChildren.map((child: A2UIComponent, i: number) => (
-          <A2UIRenderer key={i} component={child} onAction={onAction} />
+          <A2UIRenderer key={i} component={child} onAction={onAction} depth={depth} />
         ))}
       </div>
     );
@@ -76,17 +82,23 @@ export const A2UIRenderer: React.FC<Props> = ({ component, onAction }) => {
 
     case 'card': {
       const cardChildren = component.children ?? [];
+      // Top-level card keeps the full brutalist weight; nested cards step down
+      // to a lighter frame + soft header so nesting reads as hierarchy instead
+      // of a stack of identical black bars.
+      const isTop = depth === 0;
+      const frameCls = isTop
+        ? 'border-2 border-brutal-black bg-white dark:bg-zinc-900'
+        : 'border border-neutral-300 dark:border-zinc-700 bg-white dark:bg-zinc-900';
+      const headerCls = isTop
+        ? 'bg-brutal-black text-white px-3 py-2 text-sm font-bold leading-snug'
+        : 'border-b border-neutral-200 dark:border-zinc-700 bg-neutral-50 dark:bg-zinc-800 text-brutal-black dark:text-neutral-100 px-3 py-1.5 text-xs font-bold uppercase tracking-wide leading-snug';
       return (
-        <div className="border-2 border-brutal-black bg-white dark:bg-zinc-900">
-          {component.title && (
-            <div className="bg-brutal-black text-white px-3 py-2 text-sm font-bold leading-snug">
-              {component.title}
-            </div>
-          )}
+        <div className={frameCls}>
+          {component.title && <div className={headerCls}>{component.title}</div>}
           <div className="p-3 flex flex-col gap-3">
             {cardChildren.length > 0
               ? cardChildren.map((child, i) => (
-                  <A2UIRenderer key={i} component={child} onAction={onAction} />
+                  <A2UIRenderer key={i} component={child} onAction={onAction} depth={depth + 1} />
                 ))
               : (
                 <span className="text-xs text-neutral-400 dark:text-neutral-500 italic">—</span>
@@ -103,7 +115,7 @@ export const A2UIRenderer: React.FC<Props> = ({ component, onAction }) => {
       return (
         <div className={`flex flex-col ${gapCls}`}>
           {stackChildren.map((child, i) => (
-            <A2UIRenderer key={i} component={child} onAction={onAction} />
+            <A2UIRenderer key={i} component={child} onAction={onAction} depth={depth} />
           ))}
         </div>
       );
@@ -112,14 +124,21 @@ export const A2UIRenderer: React.FC<Props> = ({ component, onAction }) => {
     case 'columns': {
       const children = component.children ?? [];
       const { ratios } = component;
-      const styles: React.CSSProperties[] = ratios
-        ? children.map((_, i) => ({ flex: ratios[i] ?? 1 }))
-        : children.map(() => ({ flex: 1 }));
+      // Each column keeps a minimum readable width and grows by its ratio.
+      // When the columns can no longer sit side-by-side at that minimum, they
+      // wrap to stacked rows (flex-wrap) — so a narrow canvas shows one column
+      // per row instead of crushing everything into unreadable slivers.
+      const styles: React.CSSProperties[] = children.map((_, i) => ({
+        flexGrow: ratios ? (ratios[i] ?? 1) : 1,
+        flexShrink: 1,
+        flexBasis: `${COLUMN_MIN_WIDTH_PX}px`,
+        minWidth: `min(${COLUMN_MIN_WIDTH_PX}px, 100%)`,
+      }));
       return (
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-4">
           {children.map((child, i) => (
             <div key={i} style={styles[i]}>
-              <A2UIRenderer component={child} onAction={onAction} />
+              <A2UIRenderer component={child} onAction={onAction} depth={depth} />
             </div>
           ))}
         </div>

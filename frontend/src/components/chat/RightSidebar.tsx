@@ -280,7 +280,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
   const getDesktopDefaultWidth = () => {
     if (isAutoExpanded) return Math.round(effectiveViewportWidth * 0.5);
-    if (isCanvasActive) return 576;
+    // Canvas often holds wide content (tables, forms) — give it as much room as
+    // the layout allows (clamped to effectiveMaxWidth below). Drag to narrow.
+    if (isCanvasActive) return effectiveMaxWidth;
     return 384;
   };
 

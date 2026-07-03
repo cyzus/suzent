@@ -72,14 +72,14 @@ export const CanvasView: React.FC<CanvasViewProps> = ({
   );
 
   const content = (
-    <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black">
+    <div className="flex-1 min-w-0 min-h-0 overflow-y-auto p-4 scrollbar-thin scrollbar-track-neutral-200 dark:scrollbar-track-zinc-700 scrollbar-thumb-brutal-black">
       <A2UIRenderer component={activeSurface.component} onAction={dispatchAction} />
     </div>
   );
 
   return (
     <>
-      <div className="flex flex-col h-full min-h-0">
+      <div className="flex flex-col h-full min-h-0 min-w-0">
         <div className={`flex items-stretch border-b-3 border-brutal-black shrink-0 ${hasMultipleSurfaces ? 'bg-neutral-100 dark:bg-zinc-900' : 'bg-white dark:bg-zinc-800'}`}>
           <div className="flex-1 min-w-0">{surfaceNav}</div>
           <div className="px-2 h-11 flex items-center justify-center bg-white dark:bg-zinc-800 shrink-0">
