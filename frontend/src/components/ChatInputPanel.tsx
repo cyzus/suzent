@@ -10,6 +10,7 @@ import { useI18n } from '../i18n';
 import { useSlashCommands } from '../hooks/useSlashCommands';
 import { getApiBase, setChatPermissionMode } from '../lib/api';
 import { buildMountedVolumes } from '../lib/volumeMounts';
+import { MentionTextArea, type MentionTextAreaHandle } from './chat/MentionTextArea';
 
 interface ChatInputPanelProps {
     input: string;
@@ -50,7 +51,6 @@ interface FileMentionSuggestion extends FileMentionSelection {
     mime_type: string;
 }
 
-const FILE_MENTION_PATTERN = /(^|\s)(@(?:"[^"]+"|\[[^\]]+\]|\/[^\s@]+))/g;
 const INPUT_TEXT_METRIC_CLASS =
     'text-lg leading-7 tracking-normal font-sans font-medium [tab-size:4]';
 const PERMISSION_MODES: PermissionMode[] = [
@@ -70,44 +70,6 @@ function getFileExtensionLabel(filename: string): string {
 function getMentionBadgeLabel(suggestion: FileMentionSuggestion): string {
     if (suggestion.type === 'directory') return 'DIR';
     return getFileExtensionLabel(suggestion.name);
-}
-
-function renderInputWithFileMentionHighlights(value: string): React.ReactNode[] {
-    const nodes: React.ReactNode[] = [];
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-
-    FILE_MENTION_PATTERN.lastIndex = 0;
-    while ((match = FILE_MENTION_PATTERN.exec(value)) !== null) {
-        const prefix = match[1];
-        const mention = match[2];
-        const mentionStart = match.index + prefix.length;
-
-        if (mentionStart > lastIndex) {
-            nodes.push(value.slice(lastIndex, mentionStart));
-        }
-
-        nodes.push(
-            <span
-                key={`${mention}-${mentionStart}`}
-                className="bg-brutal-yellow/70 dark:bg-yellow-600/60 text-brutal-blue dark:text-yellow-100"
-            >
-                {mention}
-            </span>
-        );
-        lastIndex = mentionStart + mention.length;
-    }
-
-    if (lastIndex < value.length) {
-        nodes.push(value.slice(lastIndex));
-    }
-
-    return nodes.length > 0 ? nodes : [value];
-}
-
-function hasFileMentionHighlight(value: string): boolean {
-    FILE_MENTION_PATTERN.lastIndex = 0;
-    return FILE_MENTION_PATTERN.test(value);
 }
 
 const ImagePreviewThumbnail: React.FC<{
@@ -169,13 +131,15 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     const [selectedSuggestion, setSelectedSuggestion] = React.useState(0);
     const [mentionSuggestions, setMentionSuggestions] = React.useState<FileMentionSuggestion[]>([]);
     const [selectedMentionSuggestion, setSelectedMentionSuggestion] = React.useState(0);
-    const [mentionRange, setMentionRange] = React.useState<{ start: number; end: number; query: string } | null>(null);
+    // The `@…` query the caret is currently sitting in, or null when there is
+    // no active mention search. Driven by the contenteditable editor.
+    const [mentionQuery, setMentionQuery] = React.useState<string | null>(null);
     const [isMentionLoading, setIsMentionLoading] = React.useState(false);
     const [isSavingPermissionMode, setIsSavingPermissionMode] = React.useState(false);
     const [pendingPermissionMode, setPendingPermissionMode] = React.useState<PermissionMode | null>(null);
-    const highlightRef = React.useRef<HTMLPreElement | null>(null);
+    const editorRef = React.useRef<MentionTextAreaHandle | null>(null);
     const isComposingRef = React.useRef(false);
-    const shouldHighlightFileMentions = hasFileMentionHighlight(input);
+    const mentionActive = mentionQuery !== null;
     const suggestions = useSlashCommands(input);
     const permissionMode = config.permission_mode ?? 'default';
     React.useEffect(() => { setSelectedSuggestion(0); }, [suggestions.length]);
@@ -213,26 +177,8 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
         void applyPermissionMode(nextMode);
     }, [applyPermissionMode, isSavingPermissionMode, permissionMode]);
 
-    const updateMentionRange = React.useCallback((value: string, caret: number | null | undefined) => {
-        if (caret == null) {
-            setMentionRange(null);
-            return;
-        }
-
-        const beforeCaret = value.slice(0, caret);
-        const match = beforeCaret.match(/(^|\s)@([^\s@]*)$/);
-        if (!match) {
-            setMentionRange(null);
-            return;
-        }
-
-        const prefixLength = match[1].length;
-        const start = beforeCaret.length - match[0].length + prefixLength;
-        setMentionRange({ start, end: caret, query: match[2] });
-    }, []);
-
     React.useEffect(() => {
-        if (!mentionRange || mentionRange.query.length < 1) {
+        if (mentionQuery === null || mentionQuery.length < 1) {
             setMentionSuggestions([]);
             setIsMentionLoading(false);
             return;
@@ -244,7 +190,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 setIsMentionLoading(true);
                 const params = new URLSearchParams({
                     chat_id: currentChatId || 'draft',
-                    query: mentionRange.query,
+                    query: mentionQuery,
                     limit: '30',
                 });
                 if (config.sandbox_volumes?.length) {
@@ -274,22 +220,22 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             controller.abort();
             window.clearTimeout(timer);
         };
-    }, [mentionRange?.query, currentChatId, config.sandbox_volumes]);
+    }, [mentionQuery, currentChatId, config.sandbox_volumes]);
 
     const insertMention = React.useCallback((suggestion: FileMentionSuggestion) => {
-        if (!mentionRange) return;
-        const mentionText = `@"${suggestion.name.replace(/"/g, "'")}"`;
-        const nextValue = `${input.slice(0, mentionRange.start)}${mentionText} ${input.slice(mentionRange.end)}`;
-        const nextCaret = mentionRange.start + mentionText.length + 1;
-        setInput(nextValue);
-        setMentionRange(null);
+        // The editor deletes the active `@query` and drops in an atomic chip;
+        // the serialized string form is `@[<path>]` (no quotes, path visible).
+        editorRef.current?.insertMention(suggestion.path, suggestion.name);
+        setMentionQuery(null);
         setMentionSuggestions([]);
         onFileMentionSelected?.({ name: suggestion.name, path: suggestion.path, type: suggestion.type });
-        window.setTimeout(() => {
-            textareaRef.current?.focus();
-            textareaRef.current?.setSelectionRange(nextCaret, nextCaret);
-        }, 0);
-    }, [input, mentionRange, onFileMentionSelected, setInput, textareaRef]);
+    }, [onFileMentionSelected]);
+
+    const dismissMention = React.useCallback(() => {
+        setMentionQuery(null);
+        setMentionSuggestions([]);
+        setIsMentionLoading(false);
+    }, []);
 
     const handleMountFolder = React.useCallback((paths: string[]) => {
         try {
@@ -432,7 +378,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 </div>
             )}
 
-            {mentionRange && (
+            {mentionActive && (
                 <div className="absolute left-2 right-2 bottom-[calc(100%-0.5rem)] border-2 border-brutal-black bg-white dark:bg-zinc-800 shadow-brutal-sm overflow-hidden max-h-56 overflow-y-auto z-40">
                     <div className="px-3 py-1 bg-neutral-200 dark:bg-zinc-900 border-b border-neutral-300 dark:border-zinc-700 text-xs font-bold text-neutral-500 uppercase tracking-wider">
                         {t('chatInput.fileMentions')}
@@ -460,7 +406,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         ))
                     ) : (
                         <div className="px-3 py-3 text-sm text-neutral-500 dark:text-neutral-400">
-                            {mentionRange.query.length < 1
+                            {(mentionQuery?.length ?? 0) < 1
                                 ? t('chatInput.fileMentionTypeToSearch')
                                 : isMentionLoading
                                     ? t('chatInput.fileMentionSearching')
@@ -471,31 +417,20 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             )}
 
             <div className="relative">
-                {shouldHighlightFileMentions && (
-                    <pre
-                        ref={highlightRef}
-                        aria-hidden="true"
-                        className={`absolute inset-0 w-full min-h-[40px] max-h-[120px] overflow-hidden whitespace-pre-wrap break-words pointer-events-none text-brutal-black dark:text-white border-none px-2 py-1.5 ${INPUT_TEXT_METRIC_CLASS}`}
-                    >
-                        {renderInputWithFileMentionHighlights(input)}
-                        {' '}
-                    </pre>
-                )}
-                <textarea
-                    autoFocus
-                    ref={textareaRef}
-                    rows={1}
-                    className={`relative w-full resize-none overflow-y-auto min-h-[40px] max-h-[120px] bg-transparent focus:outline-none caret-brutal-black dark:caret-white placeholder-neutral-400 dark:placeholder-neutral-500 placeholder:font-bold border-none px-2 py-1.5 selection:bg-brutal-blue/30 text-left ${shouldHighlightFileMentions ? 'text-transparent' : 'text-brutal-black dark:text-white'} ${INPUT_TEXT_METRIC_CLASS}`}
+                <MentionTextArea
+                    ref={editorRef}
                     value={input}
-                    onScroll={(e) => {
-                        if (shouldHighlightFileMentions && highlightRef.current) {
-                            highlightRef.current.scrollTop = e.currentTarget.scrollTop;
-                        }
-                    }}
-                    onChange={(e) => {
-                        setInput(e.target.value);
-                        updateMentionRange(e.target.value, e.target.selectionStart);
-                    }}
+                    onChange={setInput}
+                    onQueryChange={setMentionQuery}
+                    disabled={!configReady}
+                    className={`mention-editor block w-full overflow-y-auto min-h-[40px] max-h-[120px] bg-transparent focus:outline-none caret-brutal-black dark:caret-white border-none px-2 py-1.5 whitespace-pre-wrap break-words selection:bg-brutal-blue/30 text-left text-brutal-black dark:text-white ${INPUT_TEXT_METRIC_CLASS}`}
+                    placeholder={
+                        !configReady
+                            ? t('chatInput.placeholderLoading').toUpperCase()
+                            : streamingForCurrentChat
+                                ? t('chatInput.placeholderRedirect')
+                                : t('chatInput.placeholderReady')
+                    }
                     onCompositionStart={() => {
                         isComposingRef.current = true;
                     }}
@@ -504,12 +439,6 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                             isComposingRef.current = false;
                         }, 0);
                     }}
-                    onClick={(e) => updateMentionRange(input, e.currentTarget.selectionStart)}
-                    onKeyUp={(e) => {
-                        if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
-                            updateMentionRange(input, e.currentTarget.selectionStart);
-                        }
-                    }}
                     onKeyDown={(e) => {
                     // Always ignore Enter if IME composition is active to allow selecting characters
                     // Including e.keyCode === 229 for broad cross-browser compatibility
@@ -517,7 +446,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         return;
                     }
 
-                    if (mentionRange && mentionSuggestions.length > 0) {
+                    if (mentionActive && mentionSuggestions.length > 0) {
                         if (e.key === 'ArrowUp') {
                             e.preventDefault();
                             setSelectedMentionSuggestion(i => Math.max(0, i - 1));
@@ -534,17 +463,15 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                             return;
                         }
                         if (e.key === 'Escape') {
-                            setMentionRange(null);
-                            setMentionSuggestions([]);
-                            setIsMentionLoading(false);
+                            e.preventDefault();
+                            dismissMention();
                             return;
                         }
                     }
-                    if (mentionRange && mentionSuggestions.length === 0) {
+                    if (mentionActive && mentionSuggestions.length === 0) {
                         if (e.key === 'Escape') {
-                            setMentionRange(null);
-                            setMentionSuggestions([]);
-                            setIsMentionLoading(false);
+                            e.preventDefault();
+                            dismissMention();
                             return;
                         }
                         if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && input.trim() === '@')) {
@@ -556,7 +483,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                     const hasSpace = input.includes(' ');
                     const activeCmd = suggestions[selectedSuggestion];
                     const isOptionMode = hasSpace && activeCmd?.isOption;
-                    
+
                     if (suggestions.length > 0 && (!hasSpace || isOptionMode)) {
                         // Intercept navigation and autocomplete ONLY if typing the command word OR navigating mapped options
                         if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedSuggestion(i => Math.max(0, i - 1)); return; }
@@ -564,8 +491,8 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
                             e.preventDefault();
                             if (activeCmd) {
-                                const textToInsert = activeCmd.isOption && activeCmd.parentCmd 
-                                    ? `${activeCmd.parentCmd} ${activeCmd.aliases[0]} ` 
+                                const textToInsert = activeCmd.isOption && activeCmd.parentCmd
+                                    ? `${activeCmd.parentCmd} ${activeCmd.aliases[0]} `
                                     : `${activeCmd.aliases?.[0] || activeCmd.usage} `;
 
                                 // If the user completely typed out the command (e.g. "/node list")
@@ -585,7 +512,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         // Passive hint mode: Escape clears, but Enter/Tab/Arrows act normally
                         if (e.key === 'Escape') { setInput(''); return; }
                     }
-                    
+
                     if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
                         if (configReady && input.trim()) {
@@ -593,14 +520,6 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         }
                     }
                     }}
-                    placeholder={
-                        !configReady
-                            ? t('chatInput.placeholderLoading').toUpperCase()
-                            : streamingForCurrentChat
-                                ? t('chatInput.placeholderRedirect')
-                                : t('chatInput.placeholderReady')
-                    }
-                    disabled={!configReady}
                     onPaste={(e) => {
                     if (onPaste && e.clipboardData) {
                         // Method 1: Get files directly (works for all file types pasted)
@@ -620,6 +539,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                         }
 
                         if (files.length > 0) {
+                            e.preventDefault();
                             onPaste(files);
                         }
                     }

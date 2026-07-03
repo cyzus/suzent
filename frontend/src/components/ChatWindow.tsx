@@ -102,9 +102,16 @@ function truncateForStore(value: string, limit: number): string {
 
 function extractFileMentionPaths(value: string): string[] {
   const paths = new Set<string>();
-  const pattern = /(^|\s)@((?:\/[^\s@]+)+)/g;
+  // Bracketed mention tokens `@[<path>]` (inserted as atomic chips) — the
+  // path may contain spaces, so match everything up to the closing bracket.
+  const bracketPattern = /@\[([^\]]+)\]/g;
   let match: RegExpExecArray | null;
-  while ((match = pattern.exec(value)) !== null) {
+  while ((match = bracketPattern.exec(value)) !== null) {
+    paths.add(match[1]);
+  }
+  // Bare `@/absolute/path` mentions typed by hand (no spaces).
+  const barePattern = /(^|\s)@((?:\/[^\s@]+)+)/g;
+  while ((match = barePattern.exec(value)) !== null) {
     paths.add(match[2].replace(/[),.;:!?]+$/, ''));
   }
   return Array.from(paths);
@@ -112,12 +119,12 @@ function extractFileMentionPaths(value: string): string[] {
 
 function extractSelectedFileMentions(value: string, mentions: FileMentionSelection[]): FileMentionSelection[] {
   const manualPaths = extractFileMentionPaths(value).map(path => ({ name: path.split('/').pop() || path, path, type: 'file' as const }));
-  const selected = mentions.filter(mention => {
-    const safeName = mention.name.replace(/"/g, "'");
-    return value.includes(`@"${safeName}"`) || value.includes(`@[${mention.name}]`);
-  });
+  // A tracked mention is present if its `@[<path>]` token is still in the text.
+  const selected = mentions.filter(mention => value.includes(`@[${mention.path}]`));
   const byPath = new Map<string, FileMentionSelection>();
-  for (const mention of [...selected, ...manualPaths]) {
+  // Prefer the richer tracked mention (correct name/type) over the path-derived
+  // fallback when both resolve to the same path.
+  for (const mention of [...manualPaths, ...selected]) {
     byPath.set(mention.path, mention);
   }
   return Array.from(byPath.values());

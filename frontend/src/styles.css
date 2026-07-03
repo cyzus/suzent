@@ -1234,3 +1234,14 @@ code {
     background-position: 22.62px 0;
   }
 }
+
+/* Placeholder for the contenteditable mention input (no native placeholder). */
+.mention-editor.is-empty::before {
+  content: attr(data-placeholder);
+  color: rgb(163 163 163); /* neutral-400 */
+  font-weight: 700;
+  pointer-events: none;
+}
+.dark .mention-editor.is-empty::before {
+  color: rgb(115 115 115); /* neutral-500 */
+}
