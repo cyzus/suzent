@@ -6,6 +6,13 @@ from typing import Any
 from .models import PermissionRule, PermissionsConfig, ToolPermissionPolicy
 
 
+# Modes a user may set as the default for new chats. Mirrors the accepted set
+# in chat_routes._PERMISSION_MODES.
+VALID_DEFAULT_MODES = frozenset(
+    {"default", "accept_edits", "plan", "auto", "strict_readonly"}
+)
+
+
 def normalize_keys(data: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for key, value in data.items():
@@ -87,6 +94,7 @@ def load_permission_overrides(
         )
 
     merged_rules: list[dict[str, Any]] = []
+    default_mode: str | None = None
     for path in paths:
         if not path.exists():
             continue
@@ -95,21 +103,28 @@ def load_permission_overrides(
             continue
         payload = _extract_permissions_payload(raw)
         raw_rules = payload.get("rules", [])
-        if not isinstance(raw_rules, list):
-            continue
-        for raw_rule in raw_rules:
-            if not isinstance(raw_rule, dict):
-                continue
-            try:
-                rule = PermissionRule.model_validate({**raw_rule, "source": "global"})
-                merged_rules.append(rule.model_dump(mode="json", by_alias=True))
-            except Exception:
-                continue
+        if isinstance(raw_rules, list):
+            for raw_rule in raw_rules:
+                if not isinstance(raw_rule, dict):
+                    continue
+                try:
+                    rule = PermissionRule.model_validate(
+                        {**raw_rule, "source": "global"}
+                    )
+                    merged_rules.append(rule.model_dump(mode="json", by_alias=True))
+                except Exception:
+                    continue
+        mode = payload.get("default_permission_mode")
+        if isinstance(mode, str) and mode.strip().lower() in VALID_DEFAULT_MODES:
+            default_mode = mode.strip().lower()
 
-    return {
+    overrides: dict[str, Any] = {
         "permission_policies": merged_tools,
         "permission_rules": merged_rules,
     }
+    if default_mode is not None:
+        overrides["default_permission_mode"] = default_mode
+    return overrides
 
 
 def _load_permissions_user_file(path: Path, logger) -> tuple[dict[str, Any], bool]:
@@ -264,6 +279,45 @@ def persist_global_permission_rule(
         if not isinstance(existing, dict) or existing.get("id") != rule.id
     ]
     rules.append(serialized)
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    import yaml  # type: ignore
+
+    with user_path.open("w", encoding="utf-8") as fh:
+        yaml.safe_dump(document, fh, sort_keys=False, allow_unicode=True)
+    return True
+
+
+def persist_default_permission_mode(
+    project_dir: Path,
+    logger,
+    mode: str,
+    *,
+    user_config_dir: Path | None = None,
+) -> bool:
+    """Persist the default permission mode new chats inherit.
+
+    Returns True if the permissions file was changed.
+    """
+    cleaned = (mode or "").strip().lower()
+    if cleaned not in VALID_DEFAULT_MODES:
+        raise ValueError(f"Unsupported default permission mode: {mode}")
+
+    cfg_dir = user_config_dir if user_config_dir is not None else project_dir / "config"
+    user_path = cfg_dir / "permissions.yaml"
+    document, has_wrapper = _load_permissions_user_file(user_path, logger)
+    if has_wrapper:
+        wrapper_key = "PERMISSIONS" if "PERMISSIONS" in document else "permissions"
+        payload = document.setdefault(wrapper_key, {})
+        if not isinstance(payload, dict):
+            payload = {}
+            document[wrapper_key] = payload
+    else:
+        payload = document
+
+    if payload.get("default_permission_mode") == cleaned and user_path.exists():
+        return False
+    payload["default_permission_mode"] = cleaned
+
     cfg_dir.mkdir(parents=True, exist_ok=True)
     import yaml  # type: ignore
 

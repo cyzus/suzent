@@ -669,6 +669,18 @@ async def create_chat(request: Request) -> JSONResponse:
         messages = data.get("messages", [])
         project_id = data.get("project_id") or data.get("projectId")
 
+        # Seed the configured default mode when the client did not pin an
+        # explicit non-default mode. The frontend store always sends "default",
+        # so treat that as "unset" and upgrade it to the user's preference.
+        if isinstance(config, dict):
+            requested_mode = str(config.get("permission_mode") or "").strip().lower()
+            if requested_mode in ("", "default"):
+                default_mode = str(
+                    getattr(CONFIG, "default_permission_mode", "default") or "default"
+                )
+                if default_mode in _PERMISSION_MODES:
+                    config["permission_mode"] = default_mode
+
         db = get_database()
         chat_id = db.create_chat(title, config, messages, project_id=project_id)
 
@@ -872,6 +884,26 @@ async def set_permission_mode(request: Request) -> JSONResponse:
     elif current_mode == "plan" and mode != "plan":
         updates["pre_plan_permission_mode"] = None
     db.merge_chat_config(chat_id, updates)
+
+    # Make the chosen mode the baseline for new chats. `plan` is intentionally
+    # excluded: it is a transient per-task state (the code stashes the prior
+    # mode to restore on exit), so entering it must not hijack the default. The
+    # plan->restore transition is likewise skipped.
+    if mode != "plan" and not restore_previous:
+        try:
+            from suzent.config import PROJECT_DIR, USER_CONFIG_DIR
+            from suzent.permissions.loader import persist_default_permission_mode
+
+            persist_default_permission_mode(
+                PROJECT_DIR,
+                logger,
+                mode,
+                user_config_dir=USER_CONFIG_DIR,
+            )
+            CONFIG.default_permission_mode = mode
+        except Exception as exc:
+            logger.warning("Failed to persist default permission mode: {}", exc)
+
     return await get_permission_mode(request)
 
 

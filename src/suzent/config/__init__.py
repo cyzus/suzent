@@ -378,6 +378,8 @@ class ConfigModel(BaseModel):
 
     permission_policies: Dict[str, Dict[str, Any]] = {}
     permission_rules: List[Dict[str, Any]] = []
+    # Permission mode new chats inherit when the client does not pin one.
+    default_permission_mode: str = "default"
 
     nodes_enabled: bool = True
     # Advertise this server over mDNS and allow LAN/Tailscale peer discovery.

@@ -9,6 +9,7 @@ from suzent.permissions.audit import record_permission_audit, sanitize_args
 from suzent.permissions.loader import (
     delete_global_permission_rule,
     load_permission_overrides,
+    persist_default_permission_mode,
     persist_global_permission_rule,
 )
 from suzent.permissions.models import PermissionRule
@@ -56,6 +57,68 @@ def test_global_permission_rule_round_trip(tmp_path: Path) -> None:
     )
     document = yaml.safe_load((config_dir / "permissions.yaml").read_text())
     assert document["permissions"]["rules"] == []
+
+
+def test_default_permission_mode_loaded(tmp_path: Path) -> None:
+    config_dir = tmp_path / "user"
+    config_dir.mkdir()
+    (config_dir / "permissions.yaml").write_text(
+        yaml.safe_dump({"permissions": {"default_permission_mode": "accept_edits"}})
+    )
+    loaded = load_permission_overrides(tmp_path, Logger(), user_config_dir=config_dir)
+    assert loaded["default_permission_mode"] == "accept_edits"
+
+
+def test_invalid_default_permission_mode_ignored(tmp_path: Path) -> None:
+    config_dir = tmp_path / "user"
+    config_dir.mkdir()
+    (config_dir / "permissions.yaml").write_text(
+        yaml.safe_dump({"permissions": {"default_permission_mode": "bogus"}})
+    )
+    loaded = load_permission_overrides(tmp_path, Logger(), user_config_dir=config_dir)
+    assert "default_permission_mode" not in loaded
+
+
+def test_default_permission_mode_round_trip(tmp_path: Path) -> None:
+    config_dir = tmp_path / "user"
+    assert persist_default_permission_mode(
+        tmp_path, Logger(), "auto", user_config_dir=config_dir
+    )
+    loaded = load_permission_overrides(tmp_path, Logger(), user_config_dir=config_dir)
+    assert loaded["default_permission_mode"] == "auto"
+    # Writing the same value again is a no-op.
+    assert not persist_default_permission_mode(
+        tmp_path, Logger(), "auto", user_config_dir=config_dir
+    )
+
+
+def test_default_permission_mode_preserves_rules(tmp_path: Path) -> None:
+    config_dir = tmp_path / "user"
+    rule = PermissionRule.model_validate(
+        {
+            "id": "rule-1",
+            "tool": "bash_execute",
+            "behavior": "allow",
+            "matcher": {"type": "exact_input", "value": {"command": "npm test"}},
+            "source": "global",
+        }
+    )
+    persist_global_permission_rule(tmp_path, Logger(), rule, user_config_dir=config_dir)
+    persist_default_permission_mode(
+        tmp_path, Logger(), "accept_edits", user_config_dir=config_dir
+    )
+    loaded = load_permission_overrides(tmp_path, Logger(), user_config_dir=config_dir)
+    assert loaded["default_permission_mode"] == "accept_edits"
+    assert loaded["permission_rules"][0]["id"] == "rule-1"
+
+
+def test_persist_default_permission_mode_rejects_invalid(tmp_path: Path) -> None:
+    import pytest
+
+    with pytest.raises(ValueError):
+        persist_default_permission_mode(
+            tmp_path, Logger(), "bogus", user_config_dir=tmp_path / "user"
+        )
 
 
 async def test_permission_audit_redacts_sensitive_values(
