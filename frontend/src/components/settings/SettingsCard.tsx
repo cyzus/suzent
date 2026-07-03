@@ -125,6 +125,41 @@ export function SettingsCard({ className = '', children }: SettingsCardProps): R
   );
 }
 
+type BadgeTone = 'green' | 'blue' | 'amber' | 'red' | 'neutral';
+
+const BADGE_TONE: Record<BadgeTone, string> = {
+  green: 'bg-brutal-green text-brutal-black',
+  blue: 'bg-brutal-blue text-white',
+  amber: 'bg-amber-400 text-brutal-black',
+  red: 'bg-brutal-red text-white',
+  neutral: 'bg-neutral-100 dark:bg-zinc-700 text-brutal-black dark:text-white',
+};
+
+interface BadgeProps {
+  tone?: BadgeTone;
+  icon?: React.ReactNode;
+  title?: string;
+  className?: string;
+  children: React.ReactNode;
+}
+
+/**
+ * Small status pill with the shared brutalist border. Replaces the hand-rolled
+ * `<span className="px-2 py-1 border-2 border-brutal-black text-[10px]…">`
+ * badges that were duplicated across the sync UI (connected, signed-in, lock).
+ */
+export function Badge({ tone = 'neutral', icon, title, className = '', children }: BadgeProps): React.ReactElement {
+  return (
+    <span
+      title={title}
+      className={`inline-flex items-center gap-1.5 px-2 py-1 border-2 border-brutal-black text-[10px] font-bold uppercase ${BADGE_TONE[tone]} ${className}`}
+    >
+      {icon}
+      {children}
+    </span>
+  );
+}
+
 interface SettingsListActionProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   tone?: 'blue' | 'red' | 'neutral';
   active?: boolean;

@@ -12,6 +12,7 @@ import {
   setSyncedKeys,
 } from '../../lib/dataApi';
 import { BrutalButton } from '../BrutalButton';
+import { Badge, SettingsListAction } from './SettingsCard';
 
 type NotificationHandler = (text: string, isError: boolean) => void;
 
@@ -328,15 +329,14 @@ export function ShibbolethPanel({
         </div>
         {/* One prominent lock chip: the single clear locked/unlocked sign */}
         {enabled && (
-          <span
+          <Badge
+            tone={unlocked ? 'green' : 'amber'}
+            icon={<span aria-hidden>{unlocked ? '🔓' : '🔒'}</span>}
             title={unlocked ? 'Vault unlocked — keys can be pushed and fetched' : 'Vault locked — enter recovery words to push or fetch keys'}
-            className={`flex items-center gap-1.5 shrink-0 px-2.5 py-1 border-2 border-brutal-black text-[10px] font-bold uppercase ${
-              unlocked ? 'bg-brutal-green text-brutal-black' : 'bg-amber-400 text-brutal-black'
-            }`}
+            className="shrink-0"
           >
-            <span aria-hidden>{unlocked ? '🔓' : '🔒'}</span>
             {unlocked ? 'Unlocked' : 'Locked'}
-          </span>
+          </Badge>
         )}
       </div>
 
@@ -562,22 +562,12 @@ export function ShibbolethPanel({
       {/* Active actions */}
       {enabled && unlocked && mode === 'idle' && (
         <div className="flex flex-wrap gap-2 justify-end">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={startRotate}
-            className="px-3 py-1 border-2 border-brutal-black font-bold uppercase text-xs bg-white dark:bg-zinc-700 hover:bg-amber-50 disabled:opacity-50"
-          >
+          <SettingsListAction tone="neutral" disabled={busy} onClick={startRotate}>
             Rotate words
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={handleDisable}
-            className="px-3 py-1 border-2 border-brutal-black font-bold uppercase text-xs bg-white dark:bg-zinc-700 hover:bg-red-50 disabled:opacity-50"
-          >
+          </SettingsListAction>
+          <SettingsListAction tone="red" disabled={busy} onClick={handleDisable}>
             Disable
-          </button>
+          </SettingsListAction>
         </div>
       )}
     </div>
