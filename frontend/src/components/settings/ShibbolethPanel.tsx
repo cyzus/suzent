@@ -392,6 +392,13 @@ export function ShibbolethPanel({
                     </div>
                     {keys.map((key) => {
                       const m = vault.key_meta?.[key];
+                      const inVault = vault.vault_keys.includes(key);
+                      const onDevice = vault.local_keys.includes(key);
+                      const keySynced = syncedList.includes(key);
+                      // Local-only key: make the Vault "—" legible — will it upload?
+                      const localOnlyHint = !inVault && onDevice
+                        ? (keySynced ? '↑ will add to vault on Push' : 'local only')
+                        : null;
                       return (
                         <div key={key} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1 items-center bg-neutral-50/60 dark:bg-zinc-800/40">
                           <span className="min-w-0 pl-3">
@@ -401,9 +408,14 @@ export function ShibbolethPanel({
                                 by {m.written_by}{m.written_at ? ` · ${new Date(m.written_at).toLocaleDateString()}` : ''}
                               </span>
                             )}
+                            {localOnlyHint && (
+                              <span className={`text-[9px] truncate block ${keySynced ? 'text-brutal-blue font-bold' : 'text-neutral-400 dark:text-neutral-500'}`}>
+                                {localOnlyHint}
+                              </span>
+                            )}
                           </span>
-                          <span className={`text-center w-12 text-xs font-bold ${vault.vault_keys.includes(key) ? 'text-brutal-green' : 'text-red-400'}`}>{vault.vault_keys.includes(key) ? '✓' : '—'}</span>
-                          <span className={`text-center w-14 text-xs font-bold ${vault.local_keys.includes(key) ? 'text-brutal-green' : 'text-neutral-300 dark:text-neutral-600'}`}>{vault.local_keys.includes(key) ? '✓' : '—'}</span>
+                          <span className={`text-center w-12 text-xs font-bold ${inVault ? 'text-brutal-green' : keySynced && onDevice ? 'text-brutal-blue' : 'text-red-400'}`}>{inVault ? '✓' : keySynced && onDevice ? '↑' : '—'}</span>
+                          <span className={`text-center w-14 text-xs font-bold ${onDevice ? 'text-brutal-green' : 'text-neutral-300 dark:text-neutral-600'}`}>{onDevice ? '✓' : '—'}</span>
                           <span className="w-10" />
                         </div>
                       );
