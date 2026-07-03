@@ -46,9 +46,30 @@ interface MentionTextAreaProps {
     renderChipLabel?: (path: string) => string;
 }
 
-/** Serialized-string <-> chip label. Default shows the full path. */
+/**
+ * Chip label: a compact form of the path. Short paths are shown whole; long
+ * ones are middle-truncated (keep the leading root + trailing filename, elide
+ * the middle) so the tag stays readable without hiding which file it is. The
+ * full path is preserved on the chip's data attribute for serialization.
+ */
+const CHIP_LABEL_MAX = 40;
+
 function defaultChipLabel(path: string): string {
-    return path;
+    const normalized = path.replace(/\\/g, '/');
+    if (normalized.length <= CHIP_LABEL_MAX) return normalized;
+
+    const parts = normalized.split('/');
+    const file = parts[parts.length - 1];
+    const root = parts[0]; // '' for POSIX absolute, 'D:' for Windows, else first segment
+    const head = root ? `${root}/` : '/';
+    const ellipsis = '…/';
+
+    // Prefer "root/…/file"; if the filename alone is still too long, truncate it.
+    const candidate = `${head}${ellipsis}${file}`;
+    if (candidate.length <= CHIP_LABEL_MAX) return candidate;
+
+    const keep = Math.max(8, CHIP_LABEL_MAX - head.length - ellipsis.length - 1);
+    return `${head}${ellipsis}…${file.slice(file.length - keep)}`;
 }
 
 /**
@@ -96,6 +117,8 @@ function makeChip(
     // rebuilt from the serialized `@[path]` form (which carries no name).
     chip.setAttribute('data-mention-name', name ?? basename(path));
     chip.setAttribute('contenteditable', 'false');
+    // Full path on hover, since the visible label may be middle-truncated.
+    chip.setAttribute('title', path);
     chip.className =
         'inline-flex items-center align-baseline rounded-[3px] border-2 border-brutal-black dark:border-white ' +
         'bg-brutal-yellow dark:bg-yellow-600 text-brutal-black font-bold px-1 mx-px leading-tight ' +
