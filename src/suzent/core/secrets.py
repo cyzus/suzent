@@ -28,12 +28,27 @@ class KeyringBackend:
     def __init__(self) -> None:
         try:
             import keyring as _kr
+            from keyring.backends import fail as _kr_fail
 
             self._kr = _kr
-            _kr.get_keyring()
+            active = _kr.get_keyring()
+
+            # ``get_keyring()`` succeeds even when no real backend is installed:
+            # it returns a fail/chainer backend (priority <= 0) that only raises
+            # ``NoKeyringError`` later, at get/set time. Reject those up front so
+            # the factory can fall back to encrypted SQLite instead of blowing up
+            # on the first credential operation (e.g. on headless CI/Linux).
+            if (
+                isinstance(active, _kr_fail.Keyring)
+                or getattr(active, "priority", 0) <= 0
+            ):
+                raise RuntimeError(
+                    f"no usable keyring backend (resolved {active.__class__.__name__})"
+                )
+
             logger.info(
                 "SecretBackend: using OS keyring ({})",
-                _kr.get_keyring().__class__.__name__,
+                active.__class__.__name__,
             )
         except Exception as exc:
             raise RuntimeError(

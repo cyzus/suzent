@@ -23,7 +23,18 @@ def _isolate_data_dir(tmp_path_factory, monkeypatch):
         monkeypatch.setenv(
             "SUZENT_DATA_DIR", str(tmp_path_factory.mktemp("suzent_data"))
         )
+
+    # Force a keyring-free secret backend for the whole suite. Otherwise tests
+    # that touch secrets (sync profiles, shibboleth unlock) depend on an OS
+    # keyring being installed, which fails on headless CI/Linux with
+    # NoKeyringError. Reset the cached singleton so the choice takes effect.
+    if "SUZENT_SECRET_BACKEND" not in os.environ:
+        monkeypatch.setenv("SUZENT_SECRET_BACKEND", "encrypted_sqlite")
+    from suzent.core import secrets
+
+    secrets._instance = None
     yield
+    secrets._instance = None
 
 
 @pytest.fixture
