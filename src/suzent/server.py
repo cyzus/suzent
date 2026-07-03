@@ -286,6 +286,11 @@ sync_automation_runner: SyncAutomationRunner = None
 _social_reload_lock = asyncio.Lock()
 
 
+async def health(_request: Request) -> JSONResponse:
+    """Lightweight readiness probe used by the CLI to detect running servers."""
+    return JSONResponse({"app": "suzent", "status": "ok"})
+
+
 def _build_social_from_config(
     social_config: dict,
 ) -> tuple["ChannelManager", "SocialBrain"]:
@@ -803,6 +808,7 @@ app = Starlette(
     debug=True,
     lifespan=lifespan,
     routes=[
+        Route("/health", health, methods=["GET"]),
         Route("/chat", chat, methods=["POST"]),
         Route("/chat/send", chat_send, methods=["POST"]),
         Route("/chat/live", live_stream, methods=["POST"]),

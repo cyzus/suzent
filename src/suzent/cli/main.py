@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -108,6 +109,19 @@ def _has_unreleased_ui_changes(root: Path) -> bool:
 
     return False
 
+
+def _is_suzent_server_running(host: str, port: int, timeout: float = 1.0) -> bool:
+    """Return True when a Suzent backend responds on host:port."""
+    probe_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+    url = f"http://{probe_host}:{port}/health"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            if response.status != 200:
+                return False
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, json.JSONDecodeError, urllib.error.URLError):
+        return False
+    return payload.get("app") == "suzent" and payload.get("status") == "ok"
 
 def _platform_asset_name() -> str:
     machine = platform.machine().lower()
@@ -747,7 +761,17 @@ def register_commands(app: typer.Typer):
         ensure_cargo_in_path()
         ensure_msvc_linker()
 
-        for port, name in [(DEFAULT_PORT, "Backend"), (18080, "Frontend")]:
+        backend_running = _is_suzent_server_running("127.0.0.1", DEFAULT_PORT)
+        ports_to_check = [(18080, "Frontend")]
+        if not backend_running:
+            ports_to_check.insert(0, (DEFAULT_PORT, "Backend"))
+        else:
+            typer.echo(
+                f"  ✅ Backend already running on http://127.0.0.1:{DEFAULT_PORT}; "
+                "reusing it."
+            )
+
+        for port, name in ports_to_check:
             pid = get_pid_on_port(port)
             if pid:
                 typer.echo(f"\n⚠️  {name} Port {port} is already in use by PID {pid}.")
@@ -770,15 +794,19 @@ def register_commands(app: typer.Typer):
         if dev:
             backend_env["SUZENT_CAPABILITIES_TO_REPO"] = "1"
 
-        typer.echo("  • Starting backend...")
-        backend_cmd = [sys.executable, "-m", "suzent.server"]
-        if debug:
-            backend_cmd.append("--debug")
-        backend_proc = subprocess.Popen(
-            backend_cmd,
-            cwd=root,
-            env=backend_env,
-        )
+        backend_proc = None
+        if backend_running:
+            typer.echo("  • Skipping backend startup.")
+        else:
+            typer.echo("  • Starting backend...")
+            backend_cmd = [sys.executable, "-m", "suzent.server"]
+            if debug:
+                backend_cmd.append("--debug")
+            backend_proc = subprocess.Popen(
+                backend_cmd,
+                cwd=root,
+                env=backend_env,
+            )
 
         typer.echo("  • Starting frontend (Tauri dev)...")
         _ensure_npm_deps(root)
@@ -790,8 +818,9 @@ def register_commands(app: typer.Typer):
         except (subprocess.CalledProcessError, KeyboardInterrupt):
             pass
         finally:
-            typer.echo("\n🛑 Stopping backend...")
-            _terminate_process_gracefully(backend_proc)
+            if backend_proc is not None:
+                typer.echo("\n🛑 Stopping backend...")
+                _terminate_process_gracefully(backend_proc)
 
     @app.command()
     def serve(
@@ -806,6 +835,13 @@ def register_commands(app: typer.Typer):
         ),
     ):
         """Start the Suzent backend server (headless/standalone mode)."""
+        if _is_suzent_server_running(host, port):
+            typer.echo(
+                f"✅ Suzent Server is already running on http://{host}:{port}; "
+                "reusing it."
+            )
+            return
+
         typer.echo(f"🚀 Starting Suzent Server on {host}:{port}...")
 
         env = os.environ.copy()
