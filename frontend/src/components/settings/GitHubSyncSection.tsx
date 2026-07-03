@@ -553,6 +553,14 @@ export function GitHubSyncSection({
         </div>
       )}
 
+      {/* Shared key vault — surfaced in the main card (not hidden in Advanced) so
+          the lock state and key inventory are always visible. */}
+      {configured && (
+        <div className="mt-4">
+          <ShibbolethPanel profile={syncStatus?.profile} syncStatus={syncStatus} busy={busy} onBusyChange={onBusyChange} onNotify={onNotify} onChanged={refresh} />
+        </div>
+      )}
+
       <button
         type="button"
         onClick={() => setAdvancedOpen((open) => !open)}
@@ -588,7 +596,6 @@ export function GitHubSyncSection({
               hours
             </label>
           </div>
-          <ShibbolethPanel profile={syncStatus?.profile} syncStatus={syncStatus} busy={busy} onBusyChange={onBusyChange} onNotify={onNotify} onChanged={refresh} />
           {syncStatus?.profile?.last_revision !== undefined && (
             <p className="font-mono text-xs text-neutral-500 dark:text-neutral-400">
               {t('settings.data.githubLastRevision')}: {syncStatus.profile.last_revision || t('settings.data.githubNone')}
