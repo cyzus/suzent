@@ -4,7 +4,9 @@ from suzent.sync.models import SyncProfile
 from suzent.sync.payload import PAYLOAD_DIR_NAME, SyncPayloadBuilder
 
 
-def test_sync_payload_excludes_plaintext_secrets_runtime_chats_and_indexes(tmp_path: Path):
+def test_sync_payload_excludes_plaintext_secrets_runtime_chats_and_indexes(
+    tmp_path: Path,
+):
     data_dir = tmp_path / ".suzent"
     config_dir = data_dir / "config"
     skills_dir = data_dir / "skills"
@@ -19,12 +21,21 @@ def test_sync_payload_excludes_plaintext_secrets_runtime_chats_and_indexes(tmp_p
         '{"profiles": [{"repo_path": "device-local"}]}',
         encoding="utf-8",
     )
+    # Node-mesh device/auth state is machine-local and must not sync.
+    (config_dir / "node_devices.json").write_text('{"devices": []}', encoding="utf-8")
+    (config_dir / "node_host_devices.json").write_text(
+        '{"tokens": ["secret-token"]}', encoding="utf-8"
+    )
+    (config_dir / "node_peers.json").write_text('{"peers": []}', encoding="utf-8")
+    (config_dir / "permission-audit.jsonl").write_text("{}\n", encoding="utf-8")
     skills_dir.mkdir()
     (skills_dir / "writer.md").write_text("enabled", encoding="utf-8")
     memory_dir.mkdir(parents=True)
     (memory_dir / "MEMORY.md").write_text("remember", encoding="utf-8")
     (memory_dir / "sessions" / "abc").mkdir(parents=True)
-    (memory_dir / "sessions" / "abc" / "context.md").write_text("local", encoding="utf-8")
+    (memory_dir / "sessions" / "abc" / "context.md").write_text(
+        "local", encoding="utf-8"
+    )
     (data_dir / "runtime").mkdir()
     (data_dir / "cache").mkdir()
     (data_dir / "exports").mkdir()
@@ -52,6 +63,10 @@ def test_sync_payload_excludes_plaintext_secrets_runtime_chats_and_indexes(tmp_p
     assert not (payload_dir / "memory" / "sessions").exists()
     assert not (payload_dir / "chats.db").exists()
     assert not (payload_dir / "secrets.db").exists()
+    assert not (payload_dir / "config" / "node_devices.json").exists()
+    assert not (payload_dir / "config" / "node_host_devices.json").exists()
+    assert not (payload_dir / "config" / "node_peers.json").exists()
+    assert not (payload_dir / "config" / "permission-audit.jsonl").exists()
 
 
 def test_manifest_hashes_change_when_portable_file_changes(tmp_path: Path):
@@ -108,7 +123,9 @@ def test_apply_to_local_preserves_device_local_sync_profile(tmp_path: Path):
     restored = builder.apply_to_local(payload_dir)
 
     assert restored == ["config"]
-    assert (target_config / "config.yaml").read_text(encoding="utf-8") == "remote: true\n"
+    assert (target_config / "config.yaml").read_text(
+        encoding="utf-8"
+    ) == "remote: true\n"
     assert "local-device" in (target_config / "sync_profiles.json").read_text(
         encoding="utf-8"
     )

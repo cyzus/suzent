@@ -27,6 +27,16 @@ EXCLUDED_NAMES = {
     "sessions",
     "sync_secret.key",
     "sync_profiles.json",
+    # Node-mesh device/auth state is inherently machine-local and must NOT sync:
+    #  - node_host_devices.json holds inbound device auth tokens (secrets).
+    #  - node_devices.json / node_peers.json are this device's pairing graph
+    #    (who it approved / who it reaches) — syncing would overwrite another
+    #    machine's mesh state on pull.
+    #  - permission-audit.jsonl is this device's local decision log.
+    "node_devices.json",
+    "node_host_devices.json",
+    "node_peers.json",
+    "permission-audit.jsonl",
 }
 EXCLUDED_SUFFIXES = {".db", ".sqlite", ".sqlite3"}
 
