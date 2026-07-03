@@ -15,17 +15,13 @@ _SERVICE_NAME = "suzent"
 
 
 class SecretBackend(Protocol):
-    def get(self, key: str) -> Optional[str]:
-        ...
+    def get(self, key: str) -> Optional[str]: ...
 
-    def set(self, key: str, value: str) -> None:
-        ...
+    def set(self, key: str, value: str) -> None: ...
 
-    def delete(self, key: str) -> None:
-        ...
+    def delete(self, key: str) -> None: ...
 
-    def list_keys(self) -> list[str]:
-        ...
+    def list_keys(self) -> list[str]: ...
 
 
 class KeyringBackend:
@@ -212,13 +208,24 @@ class SecretManager:
             return "env"
         return "unset"
 
-    def inject_all_to_env(self) -> int:
+    def inject_all_to_env(self, *, overwrite: bool = True) -> int:
+        """Load stored secrets into os.environ.
+
+        By default the durable backend (keyring / encrypted DB — what the UI
+        writes) is **authoritative** and overwrites any pre-existing env value:
+        a stale ambient ``GEMINI_API_KEY`` (from a login-shell export, an old
+        value, etc.) would otherwise shadow the key the user just saved and cause
+        auth failures. Pass ``overwrite=False`` to keep existing env values.
+        """
         count = 0
         for key in self.list_keys():
             val = self._backend.get(key)
-            if val and key not in os.environ:
-                os.environ[key] = val
-                count += 1
+            if not val:
+                continue
+            if overwrite or key not in os.environ:
+                if os.environ.get(key) != val:
+                    os.environ[key] = val
+                    count += 1
         return count
 
 

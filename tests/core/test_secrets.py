@@ -125,13 +125,26 @@ class TestSecretManager:
         os.environ.pop("INJ1", None)
         os.environ.pop("INJ2", None)
 
-    def test_inject_skips_existing_env(self):
+    def test_inject_overwrites_existing_env_by_default(self):
+        # The stored backend value is authoritative: it overwrites a stale
+        # ambient env var (which previously shadowed a freshly-saved key and
+        # caused auth failures).
         backend = InMemoryBackend()
         backend.set("EXIST_KEY", "backend_val")
         sm = SecretManager(backend)
 
         with patch.dict(os.environ, {"EXIST_KEY": "original_env_val"}):
             count = sm.inject_all_to_env()
+            assert count == 1
+            assert os.environ["EXIST_KEY"] == "backend_val"
+
+    def test_inject_can_preserve_existing_env(self):
+        backend = InMemoryBackend()
+        backend.set("EXIST_KEY", "backend_val")
+        sm = SecretManager(backend)
+
+        with patch.dict(os.environ, {"EXIST_KEY": "original_env_val"}):
+            count = sm.inject_all_to_env(overwrite=False)
             assert count == 0
             assert os.environ["EXIST_KEY"] == "original_env_val"
 
