@@ -325,7 +325,7 @@ export function ShibbolethPanel({
       {enabled && vault?.exists && (
         <div className="border-2 border-brutal-black bg-white dark:bg-zinc-900">
           <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1.5 text-[9px] font-bold uppercase text-neutral-400 border-b-2 border-brutal-black/20">
-            <span>Key</span>
+            <span>Provider</span>
             <span className="text-center w-12">Vault</span>
             <span className="text-center w-14">Device</span>
             <span className="text-center w-10">Sync</span>
@@ -334,26 +334,20 @@ export function ShibbolethPanel({
             {groupKeys(Array.from(new Set([...vault.vault_keys, ...vault.local_keys]))).map(
               ({ group, keys }) => {
                 const syncedList = vault.synced_keys ?? vault.local_keys;
-                // Group is "on" only when every key in it is synced (they move together).
+                // Provider syncs as a unit: on only when every key is synced.
                 const allSynced = keys.every((k) => syncedList.includes(k));
                 const someSynced = keys.some((k) => syncedList.includes(k));
-                const multi = keys.length > 1;
                 return (
                   <div key={group}>
+                    {/* Provider header + single Sync toggle — every provider renders
+                        the same way, whether it has one key or several. */}
                     <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1.5 items-center">
-                      <span className="font-mono text-[11px] truncate dark:text-white font-bold" title={multi ? keys.join(', ') : keys[0]}>
-                        {multi ? group : keys[0]}
-                        {multi && <span className="ml-1 text-[9px] font-normal text-neutral-400 uppercase">({keys.length} keys)</span>}
+                      <span className="font-mono text-[11px] truncate dark:text-white font-bold" title={keys.join(', ')}>
+                        {group}
+                        <span className="ml-1 text-[9px] font-normal text-neutral-400 uppercase">({keys.length} key{keys.length !== 1 ? 's' : ''})</span>
                       </span>
-                      {!multi ? (
-                        <>
-                          <span className={`text-center w-12 text-xs font-bold ${vault.vault_keys.includes(keys[0]) ? 'text-brutal-green' : 'text-red-400'}`}>{vault.vault_keys.includes(keys[0]) ? '✓' : '—'}</span>
-                          <span className={`text-center w-14 text-xs font-bold ${vault.local_keys.includes(keys[0]) ? 'text-brutal-green' : 'text-neutral-300 dark:text-neutral-600'}`}>{vault.local_keys.includes(keys[0]) ? '✓' : '—'}</span>
-                        </>
-                      ) : (
-                        // Multi-key group: per-key status shown in the sub-rows below.
-                        <><span className="w-12" /><span className="w-14" /></>
-                      )}
+                      <span className="w-12" />
+                      <span className="w-14" />
                       <span className="text-center w-10">
                         <input
                           type="checkbox"
@@ -361,11 +355,11 @@ export function ShibbolethPanel({
                           ref={(el) => { if (el) el.indeterminate = someSynced && !allSynced; }}
                           disabled={busy}
                           onChange={(e) => void toggleKeysSync(keys, e.target.checked)}
-                          title={multi ? 'Sync this provider’s keys together' : (allSynced ? 'Synced with vault' : 'Not synced — stays local only')}
+                          title={keys.length > 1 ? 'Sync this provider’s keys together' : (allSynced ? 'Synced with vault' : 'Not synced — stays local only')}
                         />
                       </span>
                     </div>
-                    {multi && keys.map((key) => (
+                    {keys.map((key) => (
                       <div key={key} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1 items-center bg-neutral-50/60 dark:bg-zinc-800/40">
                         <span className="font-mono text-[10px] truncate text-neutral-500 dark:text-neutral-400 pl-3" title={key}>{key}</span>
                         <span className={`text-center w-12 text-xs font-bold ${vault.vault_keys.includes(key) ? 'text-brutal-green' : 'text-red-400'}`}>{vault.vault_keys.includes(key) ? '✓' : '—'}</span>
