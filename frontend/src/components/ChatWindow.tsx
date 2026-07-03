@@ -472,6 +472,7 @@ interface ChatWindowProps {
   onRightSidebarToggle?: (isOpen: boolean) => void;
   onRightSidebarWidthChange?: (width: number | null) => void;
   rightSidebarMaxWidthPx?: number;
+  rightSidebarCanvasMaxWidthPx?: number;
   viewportWidthPx?: number;
   rightSidebarForceFullView?: boolean;
 }
@@ -481,6 +482,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   onRightSidebarToggle = () => { },
   onRightSidebarWidthChange,
   rightSidebarMaxWidthPx,
+  rightSidebarCanvasMaxWidthPx,
   viewportWidthPx,
   rightSidebarForceFullView = false,
 }) => {
@@ -2038,6 +2040,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onOpen={() => onRightSidebarToggle(true)}
         onWidthChange={onRightSidebarWidthChange}
         maxWidthPx={rightSidebarMaxWidthPx}
+        canvasMaxWidthPx={rightSidebarCanvasMaxWidthPx}
         viewportWidthPx={viewportWidthPx}
         forceFullView={rightSidebarForceFullView}
         goal={goal}

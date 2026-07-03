@@ -27,6 +27,7 @@ import {
   DESKTOP_BREAKPOINT_PX,
   LEFT_SIDEBAR_WIDTH_PX,
   MAX_RIGHT_SIDEBAR_WIDTH_PX,
+  getCanvasSidebarWidth,
   clampRightSidebarWidth,
   shouldCollapseLeftSidebarOnRightOpen,
   shouldUseFullWidthRightSidebar,
@@ -313,6 +314,13 @@ function AppInner(): React.ReactElement {
 
   const rightSidebarMaxWidthPx = clampRightSidebarWidth(
     MAX_RIGHT_SIDEBAR_WIDTH_PX,
+    viewportWidth,
+    isLeftSidebarOpen ? LEFT_SIDEBAR_WIDTH_PX : 0,
+  );
+  // Canvas scales with the viewport (ratio-based) and may squeeze the chat more
+  // than other tabs — see getCanvasSidebarWidth. This is both its default width
+  // and its drag ceiling.
+  const rightSidebarCanvasMaxWidthPx = getCanvasSidebarWidth(
     viewportWidth,
     isLeftSidebarOpen ? LEFT_SIDEBAR_WIDTH_PX : 0,
   );
@@ -644,6 +652,7 @@ function AppInner(): React.ReactElement {
                 onRightSidebarToggle={handleRightSidebarToggle}
                 onRightSidebarWidthChange={setRightSidebarWidth}
                 rightSidebarMaxWidthPx={rightSidebarMaxWidthPx}
+                rightSidebarCanvasMaxWidthPx={rightSidebarCanvasMaxWidthPx}
                 viewportWidthPx={viewportWidth}
                 rightSidebarForceFullView={rightSidebarForceFullView}
               />
