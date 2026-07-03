@@ -331,7 +331,14 @@ export function ShibbolethPanel({
         {enabled && (
           <Badge
             tone={unlocked ? 'green' : 'amber'}
-            icon={<span aria-hidden>{unlocked ? '🔓' : '🔒'}</span>}
+            icon={
+              <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+                <rect x="3" y="7" width="10" height="7" rx="1" strokeLinejoin="round" />
+                {unlocked
+                  ? <path strokeLinecap="round" d="M5 7V5a3 3 0 0 1 5.5-1.5" />
+                  : <path strokeLinecap="round" d="M5 7V5a3 3 0 0 1 6 0v2" />}
+              </svg>
+            }
             title={unlocked ? 'Vault unlocked — keys can be pushed and fetched' : 'Vault locked — enter recovery words to push or fetch keys'}
             className="shrink-0"
           >

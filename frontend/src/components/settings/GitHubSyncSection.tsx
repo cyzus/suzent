@@ -594,8 +594,10 @@ export function GitHubSyncSection({
                   title={pending > 0 ? `Sync: pull ${behind ?? 0} and push ${ahead ?? 0}` : 'Sync — already up to date'}
                 >
                   <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 6l3-3 3 3M11 10l-3 3-3-3" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2 6a6 6 0 0 1 10-2.5L14 5" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14 2v3h-3" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14 10a6 6 0 0 1-10 2.5L2 11" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2 14v-3h3" />
                   </svg>
                   <span className="text-xs font-bold uppercase">
                     {pending > 0 ? `Sync (${pending})` : 'Sync'}
