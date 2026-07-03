@@ -94,7 +94,8 @@ function MnemonicInput({
 }): React.ReactElement {
   const words = value.trim() ? value.trim().split(/\s+/) : [];
   const count = words.length;
-  const valid = count === 12 || count === 24;
+  const target = count > 12 ? 24 : 12;
+  const complete = count === 12 || count === 24;
 
   return (
     <div className="space-y-1">
@@ -105,8 +106,10 @@ function MnemonicInput({
         rows={3}
         className="w-full bg-neutral-50 dark:bg-zinc-900 border-2 border-brutal-black px-3 py-2 font-mono text-xs focus:outline-none dark:text-white resize-none"
       />
-      <p className={`text-[10px] font-bold ${valid ? 'text-brutal-green' : count > 0 ? 'text-red-500' : 'text-neutral-400'}`}>
-        {count > 0 ? `${count} word${count !== 1 ? 's' : ''}${valid ? ' ✓' : ' (need 12)'}` : 'Paste or type your recovery words'}
+      {/* Neutral word counter — purely a typing aid, not a validity signal (the
+          vault-match check below is what says whether the words are correct). */}
+      <p className={`text-[10px] font-bold tabular-nums ${complete ? 'text-neutral-500 dark:text-neutral-300' : 'text-neutral-400'}`}>
+        {count} / {target} words
       </p>
     </div>
   );
@@ -157,24 +160,45 @@ export function ShibbolethPanel({
 
   // Live fingerprint check while entering words: does the typed phrase match the
   // existing vault? Debounced; only runs on a complete (12/24-word) phrase.
+  // 'checking' guards the window between an edit and the debounced result so a
+  // stale positive match can't keep Confirm enabled after the input changes.
+  const [phraseChecking, setPhraseChecking] = useState(false);
   useEffect(() => {
     if (!profile || mode !== 'enter') {
       setPhraseMatch(null);
+      setPhraseChecking(false);
       return;
     }
     const words = inputPhrase.trim().split(/\s+/).filter(Boolean);
     if (words.length !== 12 && words.length !== 24) {
       setPhraseMatch(null);
+      setPhraseChecking(false);
       return;
     }
+    // A complete phrase is present, but its match is not yet re-verified for this
+    // exact text — clear any prior result until the debounced check returns.
+    setPhraseMatch(null);
+    setPhraseChecking(true);
     let cancelled = false;
     const timer = setTimeout(() => {
       checkMnemonic(profile.id, inputPhrase.trim())
-        .then((r) => { if (!cancelled) setPhraseMatch(r.valid ? r.matches : null); })
-        .catch(() => { if (!cancelled) setPhraseMatch(null); });
+        .then((r) => { if (!cancelled) { setPhraseMatch(r.valid ? r.matches : null); setPhraseChecking(false); } })
+        .catch(() => { if (!cancelled) { setPhraseMatch(null); setPhraseChecking(false); } });
     }, 400);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [inputPhrase, mode, profile?.id]);
+
+  // A vault that already exists demands the matching words (phraseMatch === true).
+  // For a fresh setup (no vault, matches comes back null) any valid complete phrase
+  // is fine. Never confirmable while a check is in flight or on a mismatch.
+  const wordCount = inputPhrase.trim().split(/\s+/).filter(Boolean).length;
+  const completePhrase = wordCount === 12 || wordCount === 24;
+  const vaultExists = vault?.exists ?? false;
+  const canConfirmWords =
+    completePhrase &&
+    !phraseChecking &&
+    phraseMatch !== false &&
+    (!vaultExists || phraseMatch === true);
 
   async function generateFromBackend(): Promise<string[]> {
     const res = await fetch(`${(await import('../../lib/api')).getApiBase()}/sync/secrets/generate-mnemonic`, { method: 'POST' });
@@ -250,9 +274,18 @@ export function ShibbolethPanel({
 
   async function handleEnterWords(): Promise<void> {
     if (!profile) return;
+    const phrase = inputPhrase.trim();
     onBusyChange(true);
     try {
-      await registerDeviceMnemonic(profile.id, inputPhrase.trim());
+      // Re-check at submit time (the live check is debounced, so guard the race
+      // where the input changed right before Confirm). Only blocks when a vault
+      // exists and the words don't match it.
+      const check = await checkMnemonic(profile.id, phrase);
+      if (check.valid && check.matches === false) {
+        onNotify("These recovery words don't match the vault. Use Rotate to replace the vault's words for all devices.", true);
+        return;
+      }
+      await registerDeviceMnemonic(profile.id, phrase);
       setInputPhrase('');
       setMode('idle');
       await onChanged();
@@ -522,10 +555,13 @@ export function ShibbolethPanel({
               : 'Enter the 12 recovery words from the device where you originally set this up.'}
           </p>
           <MnemonicInput value={inputPhrase} onChange={setInputPhrase} placeholder="Enter your 12 recovery words" />
-          {phraseMatch === true && (
+          {phraseChecking && (
+            <p className="text-[10px] font-bold text-neutral-400">Checking…</p>
+          )}
+          {!phraseChecking && phraseMatch === true && (
             <p className="text-[10px] font-bold text-brutal-green">✓ Matches the existing vault — this device will join it.</p>
           )}
-          {phraseMatch === false && (
+          {!phraseChecking && phraseMatch === false && (
             <p className="text-[10px] font-bold text-red-500 leading-tight">
               ✗ These don&apos;t match the vault&apos;s recovery words. Enter the words from the device where you set it up. To replace the words for every device, use Rotate on that device instead.
             </p>
@@ -534,7 +570,7 @@ export function ShibbolethPanel({
             <BrutalButton
               type="button"
               variant="primary"
-              disabled={busy || phraseMatch === false}
+              disabled={busy || !canConfirmWords}
               onClick={handleEnterWords}
               className="px-3 py-1.5 text-xs uppercase"
             >
