@@ -86,6 +86,10 @@ class EncryptedSecretSync:
             bundles.extend(
                 b for b in existing_file.bundles if b.key_name not in selected_set
             )
+        written_meta = {
+            "written_by": _device_name(),
+            "written_at": datetime.now(timezone.utc).isoformat(),
+        }
         for key in selected_keys:
             value = self.secret_manager.get(key)
             if not value:
@@ -97,6 +101,7 @@ class EncryptedSecretSync:
                     key_name=key,
                     ciphertext=ct,
                     nonce=nonce,
+                    metadata=dict(written_meta),
                 )
             )
 
@@ -199,6 +204,24 @@ class EncryptedSecretSync:
                 changed.append(bundle.key_name)
         return changed
 
+    def remove_keys_from_vault(
+        self, bundle_path: Path, profile: SyncProfile, keys: list[str]
+    ) -> tuple[SecretBundlesFile, list[str]]:
+        """Drop the given keys from the vault bundle (no decryption needed).
+
+        Returns the updated bundle and the list of key names actually removed. The
+        caller writes it back and pushes; other devices see the removal on pull.
+        """
+        payload = self.read_bundles_file(bundle_path)
+        if payload is None:
+            raise ValueError("No secret bundles file found")
+        drop = set(keys)
+        removed = [b.key_name for b in payload.bundles if b.key_name in drop]
+        payload.bundles = [b for b in payload.bundles if b.key_name not in drop]
+        payload.rotated_by = profile.device_id
+        payload.rotated_at = datetime.now(timezone.utc)
+        return payload, removed
+
     def register_device(
         self,
         bundle_path: Path,
@@ -257,6 +280,7 @@ class EncryptedSecretSync:
             return {
                 "exists": False,
                 "vault_keys": [],
+                "key_meta": {},
                 "local_keys": local_keys,
                 "local_only_keys": local_keys,
                 "vault_only_keys": [],
@@ -272,9 +296,18 @@ class EncryptedSecretSync:
         vault_keys = sorted(b.key_name for b in payload.bundles)
         vault_set, local_set = set(vault_keys), set(local_keys)
         enrolled = any(d.device_id == profile.device_id for d in payload.devices)
+        # Per-key provenance (who last wrote each key), from bundle metadata.
+        key_meta = {
+            b.key_name: {
+                "written_by": b.metadata.get("written_by"),
+                "written_at": b.metadata.get("written_at"),
+            }
+            for b in payload.bundles
+        }
         return {
             "exists": True,
             "vault_keys": vault_keys,
+            "key_meta": key_meta,
             "local_keys": local_keys,
             "local_only_keys": sorted(local_set - vault_set),
             "vault_only_keys": sorted(vault_set - local_set),

@@ -38,6 +38,7 @@ export interface SyncStatus {
 export interface SecretVaultInfo {
   exists: boolean;
   vault_keys: string[];
+  key_meta?: Record<string, { written_by: string | null; written_at: string | null }>;
   local_keys: string[];
   local_only_keys: string[];
   vault_only_keys: string[];
@@ -232,4 +233,8 @@ export function setSyncedKeys(profileId: string, syncedKeys: string[] | null): P
 
 export function checkMnemonic(profileId: string, mnemonic: string): Promise<{ valid: boolean; matches: boolean | null }> {
   return postJson('/sync/secrets/check-mnemonic', { profile_id: profileId, mnemonic });
+}
+
+export function removeVaultKeys(profileId: string, keys: string[]): Promise<{ success: boolean; removed: string[] }> {
+  return postJson('/sync/secrets/remove-keys', { profile_id: profileId, keys });
 }

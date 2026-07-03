@@ -160,6 +160,42 @@ def test_overwrite_diff_reports_only_changed(tmp_path: Path):
     assert diff == ["KEY_A"]
 
 
+def test_export_stamps_per_key_writer_metadata(tmp_path: Path):
+    manager = FakeSecretManager()
+    manager.values = {"OPENAI_API_KEY": "sk-a"}
+    sync = EncryptedSecretSync(secret_manager=manager)
+    profile = SyncProfile(repo_path=str(tmp_path), encrypted_secret_sync_enabled=True)
+    bundles = sync.export_bundles_mnemonic(profile, TEST_MNEMONIC)
+    meta = bundles.bundles[0].metadata
+    assert meta.get("written_by")  # device name stamped
+    assert meta.get("written_at")  # timestamp stamped
+
+    # And inspect_vault surfaces it per key.
+    bundle_path = tmp_path / PAYLOAD_DIR_NAME / SECRET_BUNDLES_PATH
+    bundle_path.parent.mkdir(parents=True, exist_ok=True)
+    sync.write_bundles_file(bundle_path, bundles)
+    info = sync.inspect_vault(bundle_path, profile)
+    assert info["key_meta"]["OPENAI_API_KEY"]["written_by"] == meta["written_by"]
+
+
+def test_remove_keys_from_vault(tmp_path: Path):
+    manager = FakeSecretManager()
+    manager.values = {"MIMO_API_KEY": "x", "OPENAI_API_KEY": "y"}
+    sync = EncryptedSecretSync(secret_manager=manager)
+    profile = SyncProfile(repo_path=str(tmp_path), encrypted_secret_sync_enabled=True)
+    bundle_path = tmp_path / "bundles.json"
+    sync.write_bundles_file(
+        bundle_path, sync.export_bundles_mnemonic(profile, TEST_MNEMONIC)
+    )
+
+    updated, removed = sync.remove_keys_from_vault(
+        bundle_path, profile, ["MIMO_API_KEY"]
+    )
+    assert removed == ["MIMO_API_KEY"]
+    assert {b.key_name for b in updated.bundles} == {"OPENAI_API_KEY"}
+    assert updated.rotated_by == profile.device_id
+
+
 def test_inspect_vault_when_no_bundle(tmp_path: Path):
     manager = FakeSecretManager()
     sync = EncryptedSecretSync(secret_manager=manager)

@@ -111,6 +111,7 @@ from suzent.routes.sync_routes import (
     rotate_mnemonic,
     run_auto_sync,
     check_mnemonic,
+    remove_vault_keys,
     save_auto_config,
     set_synced_keys,
     start_github_auth,
@@ -896,6 +897,7 @@ app = Starlette(
         Route("/sync/push", push_sync, methods=["POST"]),
         Route("/sync/auto", save_auto_config, methods=["POST"]),
         Route("/sync/secrets/synced-keys", set_synced_keys, methods=["POST"]),
+        Route("/sync/secrets/remove-keys", remove_vault_keys, methods=["POST"]),
         Route("/sync/auto/run", run_auto_sync, methods=["POST"]),
         Route(
             "/sync/conflicts/resolve-agent", resolve_conflicts_agent, methods=["POST"]

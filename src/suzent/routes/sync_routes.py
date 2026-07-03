@@ -156,6 +156,22 @@ async def set_synced_keys(request: Request) -> JSONResponse:
         return _error_response(str(exc), 400)
 
 
+async def remove_vault_keys(request: Request) -> JSONResponse:
+    """Remove keys from the shared vault (e.g. a wrong/legacy key name). Requires
+    an unlocked vault; caller should Push afterwards to propagate the removal."""
+    try:
+        payload = await _json_payload(request)
+        service = _service(request)
+        profile = service.get_profile(payload.get("profile_id"))
+        keys = payload.get("keys")
+        if not isinstance(keys, list) or not keys:
+            return _error_response("keys (non-empty list) is required", 400)
+        removed = service.remove_vault_keys(profile, list(keys))
+        return JSONResponse({"success": True, "removed": removed})
+    except Exception as exc:
+        return _error_response(str(exc), 400)
+
+
 async def save_auto_config(request: Request) -> JSONResponse:
     try:
         payload = await _json_payload(request)

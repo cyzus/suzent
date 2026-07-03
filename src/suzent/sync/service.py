@@ -136,6 +136,27 @@ class GitHubSyncService:
         _store_mnemonic_in_keyring(profile.id, new_mnemonic)
         return bundles_file
 
+    def remove_vault_keys(self, profile: SyncProfile, keys: list[str]) -> list[str]:
+        """Remove keys from the shared vault bundle and drop them from local sync
+        selection. Requires an unlocked session (it mutates the vault). The caller
+        should Push afterwards to propagate the removal to other devices."""
+        from suzent.sync.secrets import EncryptedSecretSync
+
+        if not self._try_load_from_keyring(profile):
+            raise ValueError("Unlock the vault before removing keys")
+        bundle_path = Path(profile.repo_path) / PAYLOAD_DIR_NAME / SECRET_BUNDLES_PATH
+        secret_sync = EncryptedSecretSync()
+        updated, removed = secret_sync.remove_keys_from_vault(
+            bundle_path, profile, keys
+        )
+        secret_sync.write_bundles_file(bundle_path, updated)
+        # Also drop removed keys from this device's sync selection so they don't get
+        # re-pushed on the next sync.
+        if profile.synced_keys is not None:
+            profile.synced_keys = [k for k in profile.synced_keys if k not in removed]
+            self.save_profile(profile)
+        return removed
+
     async def register_device_mnemonic(
         self, profile: SyncProfile, mnemonic: str
     ) -> None:

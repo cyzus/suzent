@@ -7,6 +7,7 @@ import {
   disableEncryptedSecretSync,
   enableEncryptedSecretSync,
   registerDeviceMnemonic,
+  removeVaultKeys,
   rotateMnemonic,
   setSyncedKeys,
 } from '../../lib/dataApi';
@@ -225,6 +226,25 @@ export function ShibbolethPanel({
     }
   }
 
+  async function removeProviderFromVault(group: string, keys: string[]): Promise<void> {
+    if (!profile) return;
+    const inVault = keys.filter((k) => (vault?.vault_keys ?? []).includes(k));
+    if (inVault.length === 0) return;
+    if (!window.confirm(
+      `Remove ${group} (${inVault.join(', ')}) from the shared vault? Other devices will lose it on their next pull. Your local copy stays. Push afterwards to apply.`,
+    )) return;
+    onBusyChange(true);
+    try {
+      const { removed } = await removeVaultKeys(profile.id, inVault);
+      await onChanged();
+      onNotify(`Removed ${removed.length} key${removed.length !== 1 ? 's' : ''} from the vault — Push to propagate.`, false);
+    } catch (e) {
+      onNotify(errMsg(e), true);
+    } finally {
+      onBusyChange(false);
+    }
+  }
+
   async function handleEnterWords(): Promise<void> {
     if (!profile) return;
     onBusyChange(true);
@@ -337,14 +357,25 @@ export function ShibbolethPanel({
                 // Provider syncs as a unit: on only when every key is synced.
                 const allSynced = keys.every((k) => syncedList.includes(k));
                 const someSynced = keys.some((k) => syncedList.includes(k));
+                const anyInVault = keys.some((k) => vault.vault_keys.includes(k));
                 return (
                   <div key={group}>
                     {/* Provider header + single Sync toggle — every provider renders
                         the same way, whether it has one key or several. */}
                     <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1.5 items-center">
-                      <span className="font-mono text-[11px] truncate dark:text-white font-bold" title={keys.join(', ')}>
-                        {group}
-                        <span className="ml-1 text-[9px] font-normal text-neutral-400 uppercase">({keys.length} key{keys.length !== 1 ? 's' : ''})</span>
+                      <span className="font-mono text-[11px] truncate dark:text-white font-bold flex items-center gap-2" title={keys.join(', ')}>
+                        <span className="truncate">{group}<span className="ml-1 text-[9px] font-normal text-neutral-400 uppercase">({keys.length} key{keys.length !== 1 ? 's' : ''})</span></span>
+                        {unlocked && anyInVault && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void removeProviderFromVault(group, keys)}
+                            title="Remove this provider’s keys from the shared vault"
+                            className="shrink-0 text-[9px] font-bold uppercase text-red-500 hover:text-red-600 disabled:opacity-40"
+                          >
+                            Remove
+                          </button>
+                        )}
                       </span>
                       <span className="w-12" />
                       <span className="w-14" />
@@ -359,14 +390,24 @@ export function ShibbolethPanel({
                         />
                       </span>
                     </div>
-                    {keys.map((key) => (
-                      <div key={key} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1 items-center bg-neutral-50/60 dark:bg-zinc-800/40">
-                        <span className="font-mono text-[10px] truncate text-neutral-500 dark:text-neutral-400 pl-3" title={key}>{key}</span>
-                        <span className={`text-center w-12 text-xs font-bold ${vault.vault_keys.includes(key) ? 'text-brutal-green' : 'text-red-400'}`}>{vault.vault_keys.includes(key) ? '✓' : '—'}</span>
-                        <span className={`text-center w-14 text-xs font-bold ${vault.local_keys.includes(key) ? 'text-brutal-green' : 'text-neutral-300 dark:text-neutral-600'}`}>{vault.local_keys.includes(key) ? '✓' : '—'}</span>
-                        <span className="w-10" />
-                      </div>
-                    ))}
+                    {keys.map((key) => {
+                      const m = vault.key_meta?.[key];
+                      return (
+                        <div key={key} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1 items-center bg-neutral-50/60 dark:bg-zinc-800/40">
+                          <span className="min-w-0 pl-3">
+                            <span className="font-mono text-[10px] truncate text-neutral-500 dark:text-neutral-400 block" title={key}>{key}</span>
+                            {m?.written_by && (
+                              <span className="text-[9px] text-neutral-400 dark:text-neutral-500 truncate block" title={m.written_at ?? ''}>
+                                by {m.written_by}{m.written_at ? ` · ${new Date(m.written_at).toLocaleDateString()}` : ''}
+                              </span>
+                            )}
+                          </span>
+                          <span className={`text-center w-12 text-xs font-bold ${vault.vault_keys.includes(key) ? 'text-brutal-green' : 'text-red-400'}`}>{vault.vault_keys.includes(key) ? '✓' : '—'}</span>
+                          <span className={`text-center w-14 text-xs font-bold ${vault.local_keys.includes(key) ? 'text-brutal-green' : 'text-neutral-300 dark:text-neutral-600'}`}>{vault.local_keys.includes(key) ? '✓' : '—'}</span>
+                          <span className="w-10" />
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               },
