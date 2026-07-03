@@ -196,6 +196,7 @@ class GitHubSyncService:
             if has_secret_bundles
             else None
         )
+        vault_info = secret_sync.inspect_vault(bundle_path, profile)
 
         profile_dict = profile.model_dump(mode="json")
         # Derive secret_sync_available from whether the bundle file exists in the
@@ -217,6 +218,7 @@ class GitHubSyncService:
             "shibboleth_unlocked": self.is_shibboleth_unlocked(profile.id),
             "has_secret_bundles": has_secret_bundles,
             "rotation_detected": rotation_info,
+            "vault": vault_info,
         }
 
     def validate(self, profile: SyncProfile) -> dict:
@@ -304,7 +306,11 @@ class GitHubSyncService:
             manifest = await asyncio.to_thread(
                 self.payload_builder.build, repo_path, profile
             )
+            payload_dir = repo_path / PAYLOAD_DIR_NAME
             if profile.encrypted_secret_sync_enabled:
+                # Raises if locked — never a false success. This is the fix for the
+                # class of bug where a push reported success while the secret vault
+                # was left untouched (locked / not exporting).
                 phrase = self._require_shibboleth(profile, shibboleth)
                 manifest = await asyncio.to_thread(
                     self._write_secret_bundles,
@@ -313,9 +319,20 @@ class GitHubSyncService:
                     manifest.revision_id,
                     phrase,
                 )
-            forbidden = self.payload_builder.validate_no_forbidden_paths(
-                repo_path / PAYLOAD_DIR_NAME
-            )
+                secrets_status = "pushed"
+            elif self._has_secret_bundles(payload_dir):
+                # A vault exists but this device isn't set up to contribute keys to
+                # it. Push the rest, but tell the caller loudly so the UI doesn't
+                # imply the vault was updated.
+                logger.warning(
+                    "Push: a secret vault exists but encrypted secret sync is not "
+                    "enabled on this device — API keys were NOT pushed."
+                )
+                secrets_status = "skipped_not_enabled"
+            else:
+                secrets_status = "none"
+
+            forbidden = self.payload_builder.validate_no_forbidden_paths(payload_dir)
             if forbidden:
                 raise ValueError(f"Sync payload contains forbidden paths: {forbidden}")
 
@@ -332,6 +349,7 @@ class GitHubSyncService:
                 "success": True,
                 "git": git_output,
                 "manifest": manifest.model_dump(mode="json"),
+                "secrets": secrets_status,
             }
 
     async def auto_sync(

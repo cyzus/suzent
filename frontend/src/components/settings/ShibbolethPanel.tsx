@@ -106,6 +106,7 @@ export function ShibbolethPanel({
   const unlocked = syncStatus?.shibboleth_unlocked ?? false;
   const available = profile?.secret_sync_available ?? false;
   const rotation = syncStatus?.rotation_detected ?? null;
+  const vault = syncStatus?.vault ?? null;
 
   const autoStarted = useRef(false);
 
@@ -237,19 +238,59 @@ export function ShibbolethPanel({
       {/* Header row */}
       <div className="flex items-center justify-between gap-3 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 px-3 py-2">
         <div className="flex-1 min-w-0">
-          <span className="text-xs font-bold uppercase">Sync API keys</span>
+          <span className="text-xs font-bold uppercase">Shared key vault</span>
           <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-tight">
             {t('settings.data.shibbolethHint')}
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {enabled && (
-            <span className={`text-[10px] font-bold uppercase ${unlocked ? 'text-brutal-green' : 'text-amber-600'}`}>
-              {unlocked ? 'Active' : 'Locked'}
-            </span>
-          )}
-        </div>
+        {/* One prominent lock chip: the single clear locked/unlocked sign */}
+        {enabled && (
+          <span
+            title={unlocked ? 'Vault unlocked — keys can be pushed and fetched' : 'Vault locked — enter recovery words to push or fetch keys'}
+            className={`flex items-center gap-1.5 shrink-0 px-2.5 py-1 border-2 border-brutal-black text-[10px] font-bold uppercase ${
+              unlocked ? 'bg-brutal-green text-brutal-black' : 'bg-amber-400 text-brutal-black'
+            }`}
+          >
+            <span aria-hidden>{unlocked ? '🔓' : '🔒'}</span>
+            {unlocked ? 'Unlocked' : 'Locked'}
+          </span>
+        )}
       </div>
+
+      {/* Key inventory: what's in the vault vs. on this device. The one-glance
+          fact that would have made the GEMINI-missing-from-vault bug obvious. */}
+      {enabled && vault?.exists && (
+        <div className="border-2 border-brutal-black bg-white dark:bg-zinc-900">
+          <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 px-3 py-1.5 text-[9px] font-bold uppercase text-neutral-400 border-b-2 border-brutal-black/20">
+            <span>Key</span>
+            <span className="text-center w-14">In vault</span>
+            <span className="text-center w-16">This device</span>
+          </div>
+          <div className="max-h-44 overflow-y-auto divide-y divide-brutal-black/10">
+            {Array.from(new Set([...vault.vault_keys, ...vault.local_keys]))
+              .sort()
+              .map((key) => {
+                const inVault = vault.vault_keys.includes(key);
+                const onDevice = vault.local_keys.includes(key);
+                return (
+                  <div key={key} className="grid grid-cols-[1fr_auto_auto] gap-x-3 px-3 py-1.5 items-center">
+                    <span className="font-mono text-[11px] truncate dark:text-white" title={key}>{key}</span>
+                    <span className={`text-center w-14 text-xs font-bold ${inVault ? 'text-brutal-green' : 'text-red-400'}`}>{inVault ? '✓' : '—'}</span>
+                    <span className={`text-center w-16 text-xs font-bold ${onDevice ? 'text-brutal-green' : 'text-neutral-300 dark:text-neutral-600'}`}>{onDevice ? '✓' : '—'}</span>
+                  </div>
+                );
+              })}
+          </div>
+          <div className="px-3 py-1.5 border-t-2 border-brutal-black/20 text-[10px] text-neutral-500 dark:text-neutral-400 leading-tight">
+            {vault.rotated_by_device && (
+              <span>Last written by <span className="font-bold">{vault.rotated_by_device}</span>{vault.rotated_at ? ` · ${new Date(vault.rotated_at).toLocaleString()}` : ''}. </span>
+            )}
+            {!vault.this_device_enrolled && (
+              <span className="text-amber-600 dark:text-amber-400 font-bold">This device is not enrolled — push to add its keys.</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Keyring unavailable — locked fallback */}
       {needsWords && mode === 'idle' && (

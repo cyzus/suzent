@@ -66,6 +66,46 @@ def test_second_device_imports_with_same_shibboleth(tmp_path: Path):
     assert target_manager.values["OPENAI_API_KEY"] == "sk-plaintext-value"
 
 
+def test_inspect_vault_reports_key_diff_and_devices(tmp_path: Path):
+    # Exporting device has two keys; write a mnemonic (v2) bundle for them.
+    manager = FakeSecretManager()
+    manager.values = {"OPENAI_API_KEY": "sk-a", "DEEPSEEK_API_KEY": "sk-b"}
+    sync = EncryptedSecretSync(secret_manager=manager)
+    profile = SyncProfile(repo_path=str(tmp_path), encrypted_secret_sync_enabled=True)
+    bundle_path = tmp_path / PAYLOAD_DIR_NAME / SECRET_BUNDLES_PATH
+    bundle_path.parent.mkdir(parents=True, exist_ok=True)
+    bundles_file = sync.export_bundles_mnemonic(profile, TEST_MNEMONIC)
+    sync.write_bundles_file(bundle_path, bundles_file)
+
+    # A different device inspecting: it holds GEMINI locally (not in vault) and is
+    # missing DEEPSEEK (in vault, not local). This is exactly the diff the UI needs.
+    other = FakeSecretManager()
+    other.values = {"OPENAI_API_KEY": "sk-a", "GEMINI_API_KEY": "sk-g"}
+    other_sync = EncryptedSecretSync(secret_manager=other)
+    other_profile = SyncProfile(
+        repo_path=str(tmp_path), encrypted_secret_sync_enabled=True
+    )
+
+    info = other_sync.inspect_vault(bundle_path, other_profile)
+
+    assert info["exists"] is True
+    assert set(info["vault_keys"]) == {"OPENAI_API_KEY", "DEEPSEEK_API_KEY"}
+    assert info["local_only_keys"] == ["GEMINI_API_KEY"]
+    assert info["vault_only_keys"] == ["DEEPSEEK_API_KEY"]
+    assert info["this_device_enrolled"] is False  # other device never wrote it
+    assert info["mnemonic_version"] >= 1
+
+
+def test_inspect_vault_when_no_bundle(tmp_path: Path):
+    manager = FakeSecretManager()
+    sync = EncryptedSecretSync(secret_manager=manager)
+    profile = SyncProfile(repo_path=str(tmp_path))
+    info = sync.inspect_vault(tmp_path / "nope.json", profile)
+    assert info["exists"] is False
+    assert info["vault_keys"] == []
+    assert info["local_only_keys"] == ["OPENAI_API_KEY"]
+
+
 def test_wrong_shibboleth_fails_verification(tmp_path: Path):
     manager = FakeSecretManager()
     sync = EncryptedSecretSync(secret_manager=manager)

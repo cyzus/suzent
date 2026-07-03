@@ -166,6 +166,59 @@ class EncryptedSecretSync:
             else None,
         }
 
+    def inspect_vault(self, bundle_path: Path, profile: SyncProfile) -> dict:
+        """Return non-secret facts about the shared secret vault for the UI.
+
+        Never returns any secret value — only key *names*, device metadata, and a
+        per-device diff of which keys live where. This is the data the redesigned
+        Sync UI needs so a user can see (e.g.) that GEMINI_API_KEY is missing from
+        the vault, instead of cracking bundles.json by hand.
+        """
+        local_keys = sorted(self.secret_manager.list_keys())
+        payload = self.read_bundles_file(bundle_path)
+        if payload is None:
+            return {
+                "exists": False,
+                "vault_keys": [],
+                "local_keys": local_keys,
+                "local_only_keys": local_keys,
+                "vault_only_keys": [],
+                "devices": [],
+                "this_device_enrolled": False,
+                "rotated_by_device": None,
+                "rotated_at": None,
+                "mnemonic_version": None,
+                "mnemonic_fingerprint": None,
+            }
+
+        vault_keys = sorted(b.key_name for b in payload.bundles)
+        vault_set, local_set = set(vault_keys), set(local_keys)
+        enrolled = any(d.device_id == profile.device_id for d in payload.devices)
+        return {
+            "exists": True,
+            "vault_keys": vault_keys,
+            "local_keys": local_keys,
+            "local_only_keys": sorted(local_set - vault_set),
+            "vault_only_keys": sorted(vault_set - local_set),
+            "devices": [
+                {
+                    "device_id": d.device_id,
+                    "device_name": d.device_name,
+                    "mnemonic_version": d.mnemonic_version,
+                }
+                for d in payload.devices
+            ],
+            "this_device_enrolled": enrolled,
+            "rotated_by_device": _device_name_by_id(
+                payload.devices, payload.rotated_by or ""
+            ),
+            "rotated_at": payload.rotated_at.isoformat()
+            if payload.rotated_at
+            else None,
+            "mnemonic_version": payload.mnemonic_version,
+            "mnemonic_fingerprint": payload.mnemonic_fingerprint,
+        }
+
     # ------------------------------------------------------------------
     # Legacy shibboleth (format_version 1) API — kept for migration
     # ------------------------------------------------------------------

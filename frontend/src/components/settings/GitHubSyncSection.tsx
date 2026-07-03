@@ -323,9 +323,18 @@ export function GitHubSyncSection({
       try {
         const profile = syncStatus?.profile;
         if (!profile) throw new Error('GitHub sync is not configured.');
-        await apiFn(profile.id);
+        const result = (await apiFn(profile.id)) as { secrets?: string } | undefined;
         await refresh();
-        onNotify(t(successKey), false);
+        // Honest push: if a vault exists but this device didn't contribute keys,
+        // say so instead of implying the vault was updated.
+        if (result?.secrets === 'skipped_not_enabled') {
+          onNotify(
+            'Files pushed, but API keys were NOT pushed — enable the shared key vault on this device first.',
+            true,
+          );
+        } else {
+          onNotify(t(successKey), false);
+        }
         if (notifyComplete) onSyncComplete?.();
       } catch (error) {
         onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);

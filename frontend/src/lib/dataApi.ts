@@ -30,6 +30,21 @@ export interface SyncStatus {
     rotated_by_device: string;
     rotated_at: string | null;
   } | null;
+  vault?: SecretVaultInfo;
+}
+
+export interface SecretVaultInfo {
+  exists: boolean;
+  vault_keys: string[];
+  local_keys: string[];
+  local_only_keys: string[];
+  vault_only_keys: string[];
+  devices: { device_id: string; device_name: string; mnemonic_version: number }[];
+  this_device_enrolled: boolean;
+  rotated_by_device: string | null;
+  rotated_at: string | null;
+  mnemonic_version: number | null;
+  mnemonic_fingerprint: string | null;
 }
 
 async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
