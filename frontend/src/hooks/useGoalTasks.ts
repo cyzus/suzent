@@ -12,6 +12,10 @@ interface GoalTasksContextValue {
   // Chat-scoped (plan tab)
   goal: Goal | null;
   tasks: Task[];
+  /** The chat id the current goal/tasks belong to (null until first load).
+   *  Consumers use this to tell "data for the chat I'm in" from stale data
+   *  mid-switch, without relying on load-timing heuristics. */
+  goalChatId: string | null;
   refresh: (projectId?: string | null, chatId?: string | null) => Promise<void>;
   goalAction: (action: 'pause' | 'resume' | 'clear') => Promise<void>;
   // Project-scoped (kanban tab)
@@ -28,6 +32,7 @@ const GoalTasksContext = createContext<GoalTasksContextValue | null>(null);
 export const GoalTasksProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [goal, setGoal] = useState<Goal | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [goalChatId, setGoalChatId] = useState<string | null>(null);
   const [kanban, setKanban] = useState<KanbanData | null>(null);
 
   const currentProjectIdRef = useRef<string | null>(null);
@@ -41,7 +46,7 @@ export const GoalTasksProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (chatId !== undefined) currentChatIdRef.current = chatId ?? null;
     const pid = currentProjectIdRef.current;
     const cid = currentChatIdRef.current;
-    if (!pid || !cid) { setGoal(null); setTasks([]); return; }
+    if (!pid || !cid) { setGoal(null); setTasks([]); setGoalChatId(cid ?? null); return; }
     try {
       const [goalRes, tasksRes] = await Promise.all([
         fetch(`${getApiBase()}/project/goal?project_id=${pid}&chat_id=${cid}`),
@@ -49,6 +54,9 @@ export const GoalTasksProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ]);
       if (goalRes.ok) setGoal(await goalRes.json());
       if (tasksRes.ok) setTasks(await tasksRes.json());
+      // Stamp which chat this data belongs to (guard against out-of-order
+      // responses: only stamp if the request's chat is still the current one).
+      if (currentChatIdRef.current === cid) setGoalChatId(cid);
     } catch (err) {
       console.warn('Failed to fetch goal/tasks:', err);
     }
@@ -164,8 +172,8 @@ export const GoalTasksProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const contextValue = React.useMemo(
-    () => ({ goal, tasks, refresh, goalAction, kanban, refreshKanban, updateTask, createTask, deleteTask }),
-    [goal, tasks, refresh, goalAction, kanban, refreshKanban, updateTask, createTask, deleteTask],
+    () => ({ goal, tasks, goalChatId, refresh, goalAction, kanban, refreshKanban, updateTask, createTask, deleteTask }),
+    [goal, tasks, goalChatId, refresh, goalAction, kanban, refreshKanban, updateTask, createTask, deleteTask],
   );
 
   return React.createElement(GoalTasksContext.Provider, { value: contextValue }, children);

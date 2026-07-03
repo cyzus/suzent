@@ -41,6 +41,7 @@ interface RightSidebarProps {
   forceFullView?: boolean;
   goal: Goal | null;
   tasks: Task[];
+  goalChatId?: string | null;
   kanban: KanbanData | null;
   currentProjectName?: string | null;
   currentProjectId?: string | null;
@@ -82,6 +83,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   forceFullView = false,
   goal,
   tasks,
+  goalChatId,
   kanban,
   currentProjectName,
   currentProjectId,
@@ -113,10 +115,16 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const isDesktop = effectiveViewportWidth >= DESKTOP_BREAKPOINT_PX;
   const isOverlayMode = forceFullView || !isDesktop;
 
+  // Canvas surfaces load async on chat switch; only treat them as content once
+  // the surfaces are stamped for the chat we're viewing (avoids the previous
+  // chat's canvas being read as current mid-switch).
+  const canvasMatchesChat = !canvas || canvas.surfacesChatId === currentChatId;
+  const hasCanvasContent = canvasMatchesChat && !!canvas?.hasSurfaces;
+
   // Canvas gets a wider, ratio-based ceiling than other tabs (it holds wide
   // content). App passes canvasMaxWidthPx (viewport-derived, chat-width-safe);
   // other tabs keep the standard maxWidthPx.
-  const isCanvasActive = activeTab === 'canvas' && !!canvas?.hasSurfaces;
+  const isCanvasActive = activeTab === 'canvas' && hasCanvasContent;
   const activeMax = isCanvasActive
     ? (canvasMaxWidthPx ?? maxWidthPx ?? MAX_RIGHT_SIDEBAR_WIDTH_PX)
     : (maxWidthPx ?? MAX_RIGHT_SIDEBAR_WIDTH_PX);
@@ -133,7 +141,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       message.content.includes('web_search') || message.content.includes('webpage_fetch')
     ),
   ));
-  const hasGoalContent = Boolean(goal !== null || tasks.length > 0);
+  // Goal/tasks load async on chat switch; only treat them as content once the
+  // fetched data is stamped for the chat we're viewing (see canvas scoping above).
+  const goalMatchesChat = goalChatId === undefined || goalChatId === currentChatId;
+  const hasGoalContent = goalMatchesChat && Boolean(goal !== null || tasks.length > 0);
 
   // ── Tab definitions ─────────────────────────────────────────────────
   const tabs: TabConfig[] = [
@@ -159,8 +170,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       icon: PencilSquareIcon,
       labelKey: 'sidebar.tabs.canvas',
       fallbackLabel: 'Canvas',
-      hasContent: !!canvas?.hasSurfaces,
-      hasActivity: !!canvas?.hasSurfaces,
+      hasContent: hasCanvasContent,
+      hasActivity: hasCanvasContent,
       activityClass: 'bg-brutal-yellow',
     },
     {
@@ -197,8 +208,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   }, [fileToPreview]);
 
   useEffect(() => {
-    if (canvas?.hasSurfaces) setActiveTab('canvas');
-  }, [canvas?.hasSurfaces]);
+    if (hasCanvasContent) setActiveTab('canvas');
+  }, [hasCanvasContent]);
 
   useEffect(() => {
     if (viewingSubAgentTaskId) setActiveTab('agents');
@@ -209,11 +220,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   }, [hasGoalContent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Open sidebar automatically when content arrives ─────────────────
-  // Auto-open only when content transitions absent → present *while staying in
-  // the same chat*. Switching chats (currentChatId changes) resets the baseline
-  // so an existing chat's data — which loads async after the switch — is treated
-  // as pre-existing and does NOT pop the sidebar open. Content that arrives while
-  // you remain in the chat still auto-opens.
+  // Auto-open only when content transitions absent → present *within the same
+  // chat*. On a chat switch we re-baseline without opening, so loading an
+  // existing chat's content doesn't pop the sidebar. Each content flag is
+  // already chat-scoped (canvas is keyed by chatId in localStorage; goal via
+  // hasGoalContent/goalChatId), so no load-timing heuristic is needed.
   const autoOpenRef = useRef({
     chatId: currentChatId,
     file: false,
@@ -221,37 +232,19 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     subAgent: false,
     goal: false,
   });
-  // A chat's goal/canvas data loads async *after* currentChatId changes, so we
-  // stay in an "adopting" window for a short settle after each switch: any
-  // content that appears during it is treated as the chat's pre-existing state
-  // (baseline updated, no auto-open). New content after that opens the sidebar.
-  const adoptingUntilRef = useRef(0);
 
   useEffect(() => {
     const prev = autoOpenRef.current;
-    if (prev.chatId !== currentChatId) {
-      // Chat switched: reset baseline and start the adopt window.
-      autoOpenRef.current = {
-        chatId: currentChatId,
-        file: !!fileToPreview,
-        canvas: !!canvas?.hasSurfaces,
-        subAgent: !!viewingSubAgentTaskId,
-        goal: hasGoalContent,
-      };
-      adoptingUntilRef.current = Date.now() + 800;
-      return;
-    }
-
     const flags = {
       chatId: currentChatId,
       file: !!fileToPreview,
-      canvas: !!canvas?.hasSurfaces,
+      canvas: hasCanvasContent,
       subAgent: !!viewingSubAgentTaskId,
       goal: hasGoalContent,
     };
-    const adopting = Date.now() < adoptingUntilRef.current;
 
-    if (!adopting && !isOpen) {
+    // Same chat + a flag rose false→true + sidebar closed → open it.
+    if (prev.chatId === currentChatId && !isOpen) {
       const rose =
         (!prev.file && flags.file) ||
         (!prev.canvas && flags.canvas) ||
@@ -261,7 +254,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     }
 
     autoOpenRef.current = flags;
-  }, [currentChatId, fileToPreview, canvas?.hasSurfaces, viewingSubAgentTaskId, hasGoalContent, isOpen, onOpen]);
+  }, [currentChatId, fileToPreview, hasCanvasContent, viewingSubAgentTaskId, hasGoalContent, isOpen, onOpen]);
 
 
   // In a new chat only the Tools tab is usable — the rest have no chat context

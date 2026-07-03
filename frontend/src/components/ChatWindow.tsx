@@ -510,7 +510,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     updateChatTitleLocally,
   } = useChatStore();
 
-  const { refresh: refreshGoalTasks, refreshKanban, goal, tasks, kanban } = useGoalTasks();
+  const { refresh: refreshGoalTasks, refreshKanban, goal, tasks, goalChatId, kanban } = useGoalTasks();
   const { loadCoreMemory, loadStats } = useMemory();
   const canvas = useCanvas(currentChatId);
   const { t } = useI18n();
@@ -2045,6 +2045,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         forceFullView={rightSidebarForceFullView}
         goal={goal}
         tasks={tasks}
+        goalChatId={goalChatId}
         kanban={kanban}
         currentProjectName={chats.find(c => c.id === currentChatId)?.projectName ?? null}
         currentProjectId={chats.find(c => c.id === currentChatId)?.projectId ?? null}

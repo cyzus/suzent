@@ -39,6 +39,9 @@ export interface CanvasState {
   activeSurfaceId: string | null;
   /** True when at least one surface exists */
   hasSurfaces: boolean;
+  /** The chat id the current surfaces belong to. Lets consumers distinguish
+   *  "surfaces for the chat I'm viewing" from stale surfaces during a switch. */
+  surfacesChatId: string | null;
   /** Upsert a surface. Auto-activates if it's the first one. */
   setSurface: (surface: A2UISurface) => void;
   /** Focus a specific surface by id */
@@ -61,6 +64,9 @@ export function useCanvas(chatId: string | null): CanvasState {
     return initial.length > 0 ? initial[0].id : null;
   });
   const [deferredIds, setDeferredIds] = useState<Set<string>>(new Set());
+  // Which chat the surfaces state currently reflects. Updated in lockstep with
+  // setSurfaces so consumers never see new surfaces attributed to the wrong chat.
+  const [surfacesChatId, setSurfacesChatId] = useState<string | null>(chatId);
 
   // Track previous chatId to detect chat switches
   const prevChatIdRef = useRef<string | null>(chatId);
@@ -73,6 +79,7 @@ export function useCanvas(chatId: string | null): CanvasState {
     const loaded = chatId ? loadFromStorage(chatId) : [];
     setSurfaces(loaded);
     setActiveSurfaceId(loaded.length > 0 ? loaded[0].id : null);
+    setSurfacesChatId(chatId);
   }, [chatId]);
 
   const setSurface = useCallback((surface: A2UISurface) => {
@@ -110,6 +117,7 @@ export function useCanvas(chatId: string | null): CanvasState {
     surfaces,
     activeSurfaceId,
     hasSurfaces: surfaces.length > 0,
+    surfacesChatId,
     setSurface,
     setActiveSurface,
     clearSurfaces,
