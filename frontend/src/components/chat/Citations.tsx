@@ -154,10 +154,18 @@ export function renderTextWithCitations(
   sourcesMap: CitationSourcesMap | null,
   keyPrefix: string,
 ): React.ReactNode[] {
-  if (!sourcesMap || !hasCitationMarker(text)) {
+  if (!hasCitationMarker(text)) {
     // No complete marker, but a partial one may be mid-stream at the end.
     return [stripTrailingPartialMarker(text)];
   }
+
+  // When there are no sources at all (map absent or empty), a `cite` marker
+  // can't resolve to anything and would only leak its raw protocol glyphs
+  // (the U+E200/E202 private-use boxes), so we strip the marker instead of
+  // rendering a badge. When a map exists but a specific id is missing, we keep
+  // the marker and let CitationBadge show its muted fallback chip — that id may
+  // reference a real source from an earlier turn that isn't in this map.
+  const hasSources = Boolean(sourcesMap && sourcesMap.size > 0);
 
   const nodes: React.ReactNode[] = [];
   const re = new RegExp(CITATION_MARKER_RE.source, 'g');
@@ -170,13 +178,14 @@ export function renderTextWithCitations(
     const { type, tokens } = parseMarker(m);
     last = re.lastIndex;
 
-    if (type === 'cite' && tokens.length > 0) {
+    if (type === 'cite' && tokens.length > 0 && hasSources) {
       nodes.push(before);
       nodes.push(
         <CitationBadge key={`${keyPrefix}-cite-${n++}`} sourceIds={tokens} />,
       );
     } else {
-      // Unknown/unsupported marker type: keep the leading text, drop the marker.
+      // Unknown/unsupported marker type, or a cite marker with no sources to
+      // resolve against: keep the leading text, drop the marker.
       nodes.push(before);
     }
   }

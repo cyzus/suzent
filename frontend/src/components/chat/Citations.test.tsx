@@ -74,13 +74,30 @@ describe('citation rendering', () => {
     expect(html).not.toContain('t0_src_2');
   });
 
-  it('renders a fallback chip when source metadata is missing', () => {
-    const html = renderWithSources('Fact\ufffccite\ufffct0_src_99\ufffc.', new Map());
+  it('renders a fallback chip when an id is missing from a populated map', () => {
+    // A cite to an id not in this message's map (e.g. an earlier-turn source):
+    // the map is non-empty, so we keep the citation as a muted fallback chip
+    // rather than dropping a possibly-real cross-turn reference.
+    const html = render('Fact\ufffccite\ufffct0_src_99\ufffc.');
 
     expect(html).toContain('t0_src_99');
     expect(html).toContain('Citation source metadata missing');
     expect(html).not.toContain('citet0_src_99');
     expect(html).not.toContain('\ufffc');
+  });
+
+  it('strips a cite marker entirely when there are no sources at all', () => {
+    // Empty/absent map: the marker can't resolve to anything, so it is dropped
+    // rather than leaking its raw protocol glyphs or showing an id-only chip.
+    const html = renderWithSources('Fact\ue200cite\ue202t0_src_1\ue201 done.', new Map());
+
+    expect(html).toContain('Fact');
+    expect(html).toContain('done.');
+    expect(html).not.toContain('t0_src_1');
+    expect(html).not.toContain('cite');
+    expect(html).not.toContain('\ue200');
+    expect(html).not.toContain('\ue201');
+    expect(html).not.toContain('Citation source metadata missing');
   });
 
   it('renders loose cite-source text as a badge', () => {

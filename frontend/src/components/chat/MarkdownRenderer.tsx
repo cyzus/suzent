@@ -143,10 +143,12 @@ function renderLiteInline(text: string, sourcesMap?: CitationSourcesMap | null):
   let match: RegExpExecArray | null;
 
   // Plain-text segments are routed through the citation splitter so [[cite:..]]
-  // markers become badges; code/bold tokens pass through untouched.
+  // markers become badges; code/bold tokens pass through untouched. We route
+  // even when sourcesMap is null/empty so unresolvable markers are stripped
+  // rather than leaking their raw protocol glyphs.
   const pushText = (value: string, key: string) => {
-    if (sourcesMap && hasCitationMarker(value)) {
-      nodes.push(...renderTextWithCitations(value, sourcesMap, key));
+    if (hasCitationMarker(value)) {
+      nodes.push(...renderTextWithCitations(value, sourcesMap ?? null, key));
     } else {
       nodes.push(value);
     }
@@ -380,11 +382,11 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
   // marker into text + <CitationBadge> nodes. This is recursive because
   // react-markdown may wrap text in <strong>, <em>, links, etc.
   const applyCitations = React.useCallback((children: React.ReactNode, keyPrefix: string): React.ReactNode => {
-    if (!sourcesMap) return children;
-
     const walk = (child: React.ReactNode, key: string): React.ReactNode => {
       if (typeof child === 'string' && hasCitationMarker(child)) {
-        return renderTextWithCitations(child, sourcesMap, key);
+        // Route even when sourcesMap is null/empty so unresolvable markers are
+        // stripped rather than leaking their raw protocol glyphs.
+        return renderTextWithCitations(child, sourcesMap ?? null, key);
       }
       if (React.isValidElement(child) && child.props?.children) {
         if (child.type === 'code' || child.props?.node?.tagName === 'code') {
@@ -502,8 +504,8 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
             const isMultilineInlineCode = !lang && codeContent.includes('\n');
             const isInline = inline !== false && !lang && !isMultilineInlineCode;
 
-            if (isInline && sourcesMap && hasCitationMarker(codeContent)) {
-              return <>{renderTextWithCitations(codeContent, sourcesMap, 'code')}</>;
+            if (isInline && hasCitationMarker(codeContent)) {
+              return <>{renderTextWithCitations(codeContent, sourcesMap ?? null, 'code')}</>;
             }
 
             // Check if inline code contains a file path pattern
