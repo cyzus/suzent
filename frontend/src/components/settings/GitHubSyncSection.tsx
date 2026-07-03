@@ -53,12 +53,14 @@ function ActionBtn({
   disabled,
   title,
   primary,
+  muted,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
   title?: string;
   primary?: boolean;
+  muted?: boolean;
 }): React.ReactElement {
   return (
     <button
@@ -69,7 +71,9 @@ function ActionBtn({
       className={`flex items-center gap-1.5 px-3 py-2 border-l-2 border-brutal-black font-bold uppercase text-xs disabled:opacity-40 hover:brightness-95 dark:hover:brightness-125 transition-all ${
         primary
           ? 'bg-brutal-blue text-white'
-          : 'bg-neutral-50 dark:bg-zinc-900 text-brutal-black dark:text-white'
+          : muted
+            ? 'bg-neutral-50 dark:bg-zinc-900 text-neutral-400 dark:text-neutral-600'
+            : 'bg-neutral-50 dark:bg-zinc-900 text-brutal-black dark:text-white'
       }`}
     >
       {children}
@@ -557,8 +561,13 @@ export function GitHubSyncSection({
 
         {configured ? (
           <>
-            {/* Pull button */}
-            <ActionBtn onClick={handlePull} disabled={busy} title="Pull from remote (overwrite local)">
+            {/* Pull button — behind = commits on the remote not yet local */}
+            <ActionBtn
+              onClick={handlePull}
+              disabled={busy}
+              muted={behind === 0}
+              title={behind && behind > 0 ? `Pull ${behind} update${behind !== 1 ? 's' : ''} from other devices` : 'Nothing to pull — up to date with the remote'}
+            >
               <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 2v9M5 8l3 3 3-3" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2 13h12" />
@@ -567,8 +576,13 @@ export function GitHubSyncSection({
                 {behind !== null && behind > 0 ? `Pull (${behind})` : 'Pull'}
               </span>
             </ActionBtn>
-            {/* Push button */}
-            <ActionBtn onClick={handlePush} disabled={busy} title="Push to remote (overwrite remote)">
+            {/* Push button — ahead = local commits not yet on the remote */}
+            <ActionBtn
+              onClick={handlePush}
+              disabled={busy}
+              muted={ahead === 0}
+              title={ahead && ahead > 0 ? `Push ${ahead} local change${ahead !== 1 ? 's' : ''} to other devices` : 'Nothing to push — the remote has all your changes'}
+            >
               <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 14V5M5 8L8 5l3 3" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2 3h12" />
@@ -577,14 +591,26 @@ export function GitHubSyncSection({
                 {ahead !== null && ahead > 0 ? `Push (${ahead})` : 'Push'}
               </span>
             </ActionBtn>
-            {/* Sync button */}
-            <ActionBtn onClick={handleSync} disabled={busy} title="Sync (pull then push)">
-              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 6l3-3 3 3M11 10l-3 3-3-3" />
-              </svg>
-              <span className="text-xs font-bold uppercase">Sync</span>
-            </ActionBtn>
+            {/* Sync button — combined pull+push activity */}
+            {(() => {
+              const pending = (behind ?? 0) + (ahead ?? 0);
+              return (
+                <ActionBtn
+                  onClick={handleSync}
+                  disabled={busy}
+                  muted={pending === 0}
+                  title={pending > 0 ? `Sync: pull ${behind ?? 0} and push ${ahead ?? 0}` : 'Sync — already up to date'}
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 6l3-3 3 3M11 10l-3 3-3-3" />
+                  </svg>
+                  <span className="text-xs font-bold uppercase">
+                    {pending > 0 ? `Sync (${pending})` : 'Sync'}
+                  </span>
+                </ActionBtn>
+              );
+            })()}
           </>
         ) : (
           <ActionBtn onClick={handleQuickStart} disabled={busy || !githubAuthenticated} title={t('settings.data.githubQuickStartButton')} primary>
