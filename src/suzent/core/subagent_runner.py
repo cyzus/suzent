@@ -139,6 +139,39 @@ class SubAgentTask:
 _tasks: Dict[str, SubAgentTask] = {}
 _tasks_lock = asyncio.Lock()
 
+# Cap on finished (completed/failed) tasks retained for UI history. Active
+# (queued/running) tasks are never evicted. Without this, _tasks grows without
+# bound for the process lifetime — one SubAgentTask (with its result/error) per
+# spawn, forever — a slow leak on long-running servers.
+_MAX_FINISHED_TASKS = 200
+_TERMINAL_STATUSES = ("completed", "failed")
+
+
+def _evict_old_finished_tasks() -> None:
+    """Drop the oldest finished tasks beyond _MAX_FINISHED_TASKS.
+
+    Caller must hold _tasks_lock. Active tasks are kept regardless of count.
+    """
+    finished = [t for t in _tasks.values() if t.status in _TERMINAL_STATUSES]
+    if len(finished) <= _MAX_FINISHED_TASKS:
+        return
+    # Oldest first — evict by finish time (falling back to start time).
+    finished.sort(key=lambda t: t.finished_at or t.started_at or datetime.min)
+    for task in finished[: len(finished) - _MAX_FINISHED_TASKS]:
+        _tasks.pop(task.task_id, None)
+
+
+async def _evict_old_finished_tasks_locked() -> None:
+    """Acquire _tasks_lock and evict old finished tasks.
+
+    Called when a task reaches a terminal state, so a burst of subagents that
+    all finish without any new spawn still gets pruned (registration-time
+    eviction alone would leave those result summaries resident until the next
+    spawn).
+    """
+    async with _tasks_lock:
+        _evict_old_finished_tasks()
+
 
 def get_task(task_id: str) -> Optional[SubAgentTask]:
     return _tasks.get(task_id)
@@ -287,6 +320,7 @@ async def spawn_subagent(
 
     async with _tasks_lock:
         _tasks[task_id] = task
+        _evict_old_finished_tasks()
     _broadcast_task_update(task)
 
     if run_in_background:
@@ -475,6 +509,9 @@ async def _run_subagent(
         # Phase 3: always tear down the worktree, even on failure
         if task.isolation == "worktree" and task.worktree_path:
             await _teardown_worktree(task)
+        # The task is now terminal; prune here too so a burst that all finishes
+        # without a new spawn doesn't leave result summaries resident.
+        await _evict_old_finished_tasks_locked()
 
 
 # ─── Phase 2: Context forking ─────────────────────────────────────────────────
@@ -791,6 +828,8 @@ async def clear_stuck_tasks() -> list[str]:
             task.finished_at = datetime.now()
             _broadcast_task_update(task)
             cleared.append(task.task_id)
+    if cleared:
+        await _evict_old_finished_tasks_locked()
     return cleared
 
 
