@@ -161,6 +161,18 @@ def _evict_old_finished_tasks() -> None:
         _tasks.pop(task.task_id, None)
 
 
+async def _evict_old_finished_tasks_locked() -> None:
+    """Acquire _tasks_lock and evict old finished tasks.
+
+    Called when a task reaches a terminal state, so a burst of subagents that
+    all finish without any new spawn still gets pruned (registration-time
+    eviction alone would leave those result summaries resident until the next
+    spawn).
+    """
+    async with _tasks_lock:
+        _evict_old_finished_tasks()
+
+
 def get_task(task_id: str) -> Optional[SubAgentTask]:
     return _tasks.get(task_id)
 
@@ -497,6 +509,9 @@ async def _run_subagent(
         # Phase 3: always tear down the worktree, even on failure
         if task.isolation == "worktree" and task.worktree_path:
             await _teardown_worktree(task)
+        # The task is now terminal; prune here too so a burst that all finishes
+        # without a new spawn doesn't leave result summaries resident.
+        await _evict_old_finished_tasks_locked()
 
 
 # ─── Phase 2: Context forking ─────────────────────────────────────────────────
@@ -813,6 +828,8 @@ async def clear_stuck_tasks() -> list[str]:
             task.finished_at = datetime.now()
             _broadcast_task_update(task)
             cleared.append(task.task_id)
+    if cleared:
+        await _evict_old_finished_tasks_locked()
     return cleared
 
 

@@ -107,3 +107,34 @@ def test_background_turn_locks_prune_idle(monkeypatch):
 
 def test_background_turn_lock_is_stable_per_chat():
     assert get_background_turn_lock("stable") is get_background_turn_lock("stable")
+
+
+def test_background_turn_locks_keep_locks_with_waiters(monkeypatch):
+    async def scenario():
+        monkeypatch.setattr(stream_registry, "_MAX_BACKGROUND_TURN_LOCKS", 3)
+
+        contended = get_background_turn_lock("contended")
+        await contended.acquire()  # holder
+
+        # A second turn queues up as a waiter on the same lock.
+        async def waiter():
+            async with contended:
+                pass
+
+        waiter_task = asyncio.create_task(waiter())
+        await asyncio.sleep(0)  # let the waiter enqueue
+
+        # Release the holder: during the handoff, locked() briefly reads False,
+        # but the lock still has a queued waiter and must not be pruned.
+        contended.release()
+        assert stream_registry._lock_in_use(contended)
+
+        for i in range(3):
+            get_background_turn_lock(f"idle_{i}")
+        get_background_turn_lock("trigger")  # trips the prune
+
+        assert "contended" in stream_registry._background_turn_locks
+
+        await waiter_task
+
+    asyncio.run(scenario())

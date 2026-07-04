@@ -6,6 +6,7 @@ import suzent.core.subagent_runner as subagent_runner
 from suzent.core.subagent_runner import (
     SubAgentTask,
     _evict_old_finished_tasks,
+    _evict_old_finished_tasks_locked,
     _task_to_sse_dict,
     _wakeup_parent_batch,
 )
@@ -59,6 +60,27 @@ def test_evict_old_finished_tasks_noop_under_cap(monkeypatch):
             subagent_runner._tasks[t.task_id] = t
         _evict_old_finished_tasks()
         assert len(subagent_runner._tasks) == 4
+    finally:
+        subagent_runner._tasks.clear()
+
+
+@pytest.mark.asyncio
+async def test_evict_on_terminal_prunes_burst_that_finishes(monkeypatch):
+    # Simulates the burst case: many subagents were queued (so registration-time
+    # eviction saw them as active), then all transition to finished with no new
+    # spawn. The terminal-transition prune must still cap the registry.
+    monkeypatch.setattr(subagent_runner, "_MAX_FINISHED_TASKS", 3)
+    subagent_runner._tasks.clear()
+    try:
+        for i in range(6):
+            t = _make_task(f"done_{i}", "completed", finished_offset=i)
+            subagent_runner._tasks[t.task_id] = t
+
+        await _evict_old_finished_tasks_locked()
+
+        remaining = set(subagent_runner._tasks)
+        assert len(remaining) == 3
+        assert {"done_3", "done_4", "done_5"} == remaining
     finally:
         subagent_runner._tasks.clear()
 

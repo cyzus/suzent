@@ -43,16 +43,34 @@ _background_turn_locks: Dict[str, asyncio.Lock] = {}
 
 # Cap on retained per-chat background-turn locks. Without a bound, one Lock per
 # chat_id that ever ran a background turn (heartbeat/cron/wakeup) accumulates for
-# the process lifetime. We prune idle (unlocked) locks once the dict grows past
-# this — locks held or awaited by a live turn are left alone.
+# the process lifetime. We prune idle locks once the dict grows past this — locks
+# held or awaited by a live turn are left alone.
 _MAX_BACKGROUND_TURN_LOCKS = 512
 
 
+def _lock_in_use(lock: asyncio.Lock) -> bool:
+    """True if a lock is held or has queued waiters.
+
+    Checking ``locked()`` alone is not enough: ``asyncio.Lock.release()``
+    momentarily makes ``locked()`` False during the handoff to a waiter, before
+    that waiter resumes and re-marks the lock held. Pruning in that window would
+    drop a lock with a queued background turn, letting a second lock be minted
+    for the same chat and breaking the serialization guarantee. So also treat a
+    lock with waiters as in-use.
+    """
+    if lock.locked():
+        return True
+    waiters = getattr(lock, "_waiters", None)
+    return bool(waiters)
+
+
 def _prune_idle_background_turn_locks() -> None:
-    """Drop unlocked background-turn locks when the registry grows too large."""
+    """Drop idle background-turn locks when the registry grows too large."""
     if len(_background_turn_locks) <= _MAX_BACKGROUND_TURN_LOCKS:
         return
-    idle = [cid for cid, lock in _background_turn_locks.items() if not lock.locked()]
+    idle = [
+        cid for cid, lock in _background_turn_locks.items() if not _lock_in_use(lock)
+    ]
     for cid in idle:
         _background_turn_locks.pop(cid, None)
 
