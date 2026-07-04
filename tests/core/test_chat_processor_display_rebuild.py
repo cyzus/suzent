@@ -18,6 +18,7 @@ from suzent.core.chat_processor import (
     _merge_rebuilt_after_compaction,
     _preserve_citation_sources,
     _rebuild_display_messages,
+    _resolve_response_model,
     _strip_attachment_annotations,
 )
 from suzent.core.context_compressor import (
@@ -58,6 +59,59 @@ def test_rebuild_display_messages_preserves_reasoning():
     assert assistant["role"] == "assistant"
     assert "final answer" in assistant["content"]
     assert 'data-reasoning="true"' in assistant["content"]
+
+
+def test_rebuild_stamps_per_response_model_when_switched_mid_chat():
+    # User switched from sonnet to opus mid-chat; the run-level model_id is the
+    # *current* model (opus). Each assistant message must show the model that
+    # actually produced it, not the current one.
+    messages = [
+        ModelRequest(parts=[UserPromptPart(content="q1")]),
+        ModelResponse(
+            parts=[TextPart(content="a1")],
+            model_name="claude-sonnet-4-6",
+            provider_name="anthropic",
+        ),
+        ModelRequest(parts=[UserPromptPart(content="q2")]),
+        ModelResponse(
+            parts=[TextPart(content="a2")],
+            model_name="claude-opus-4-8",
+            provider_name="anthropic",
+        ),
+    ]
+
+    display = _rebuild_display_messages(messages, model_id="anthropic/claude-opus-4-8")
+
+    assistants = [m for m in display if m["role"] == "assistant"]
+    assert assistants[0]["model"] == "anthropic/claude-sonnet-4-6"
+    assert assistants[1]["model"] == "anthropic/claude-opus-4-8"
+
+
+def test_resolve_response_model():
+    # Same provider: re-attach the run's config prefix to the response's model.
+    assert (
+        _resolve_response_model(
+            "claude-sonnet-4-6", "anthropic/claude-opus-4-8", "anthropic"
+        )
+        == "anthropic/claude-sonnet-4-6"
+    )
+    # Provider switched mid-chat: use the response's own provider, not the run's.
+    assert (
+        _resolve_response_model("gpt-5", "anthropic/claude-opus-4-8", "openai")
+        == "openai/gpt-5"
+    )
+    # Older response without a model_name falls back to the run id.
+    assert (
+        _resolve_response_model(None, "anthropic/claude-opus-4-8", None)
+        == "anthropic/claude-opus-4-8"
+    )
+    # Response already carrying a prefix is left untouched.
+    assert (
+        _resolve_response_model(
+            "anthropic/claude-opus-4-8", "anthropic/claude-opus-4-8", "anthropic"
+        )
+        == "anthropic/claude-opus-4-8"
+    )
 
 
 def test_rebuild_display_messages_preserves_reasoning_order_before_text():

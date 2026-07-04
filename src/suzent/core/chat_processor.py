@@ -1945,6 +1945,46 @@ def _merge_rebuilt_after_compaction(chat_messages: list, rebuilt: list) -> list:
     return base + turn_rows
 
 
+def _resolve_response_model(
+    response_model_name: str | None,
+    run_model_id: str | None,
+    response_provider_name: str | None = None,
+) -> str | None:
+    """Resolve the display model id for a single assistant response.
+
+    ``response_model_name`` is pydantic-ai's per-response ``model_name`` — the
+    *bare* model (e.g. ``claude-opus-4-8``) with no provider prefix, because the
+    prefix is stripped before the model is constructed (see
+    ``create_pydantic_ai_model``). ``run_model_id`` is the LiteLLM-style
+    ``provider/model`` id for the current run and ``response_provider_name`` is
+    the response's own provider (pydantic-ai's ``provider_name``).
+
+    The frontend derives the provider favicon from the ``provider/`` prefix
+    (``getProviderVisualForModel``), so re-attach a provider prefix to the
+    response's own model name. Reuse the run's config prefix (which the
+    frontend's provider map is keyed on) only when the response was produced by
+    that same provider — otherwise the user switched providers mid-chat and the
+    run prefix would mislabel this older turn. When the response has no model
+    name (older histories), fall back to the run id unchanged.
+    """
+    if not response_model_name:
+        return run_model_id
+    if "/" in response_model_name:
+        return response_model_name
+    run_prefix = (
+        run_model_id.split("/", 1)[0] if run_model_id and "/" in run_model_id else None
+    )
+    if run_prefix:
+        # The config prefix and pydantic-ai's provider_name usually match
+        # (e.g. "anthropic"); when they diverge, the user switched providers,
+        # so prefer the response's own provider and don't borrow the run prefix.
+        if not response_provider_name or response_provider_name == run_prefix:
+            return f"{run_prefix}/{response_model_name}"
+    if response_provider_name:
+        return f"{response_provider_name}/{response_model_name}"
+    return response_model_name
+
+
 def _rebuild_display_messages(messages: list, model_id: str | None = None) -> list:
     """
     Reconstruct an OpenAI-like JSON display log from pydantic-ai message history.
@@ -2154,8 +2194,18 @@ def _rebuild_display_messages(messages: list, model_id: str | None = None) -> li
 
             ts = msg.timestamp.isoformat() if getattr(msg, "timestamp", None) else None
             entry = {"role": "assistant", "content": ordered_content}
-            if model_id:
-                entry["model"] = model_id
+            # Prefer the model that actually produced *this* response so the
+            # per-message signature stays accurate when the user switches models
+            # mid-chat. The run-level ``model_id`` is the agent's *current* model,
+            # so stamping it on every message mislabels older turns. Fall back to
+            # it only for responses that predate per-response model_name.
+            response_model = _resolve_response_model(
+                getattr(msg, "model_name", None),
+                model_id,
+                getattr(msg, "provider_name", None),
+            )
+            if response_model:
+                entry["model"] = response_model
             if structured_parts:
                 entry["parts"] = structured_parts
             if tool_calls:
