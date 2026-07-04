@@ -877,20 +877,20 @@ def _message_has_compaction_marker(msg: Any) -> bool:
 
 
 def context_input_tokens(ctx: Any, messages: list) -> int:
-    """Best-effort current context size for a run.
+    """Best-effort size of the history about to be sent to the model.
 
-    Prefers the provider-reported prompt size from the previous request in this
-    run (``ctx.usage.input_tokens``) — the ground truth for what the next request
-    will cost — and falls back to the char-based estimate on the first request
-    (before any usage is available).
+    This MUST reflect the current ``messages`` list, because it is the trigger
+    metric for mid-run compaction: once a compaction pass shrinks the history,
+    the next request has to observe the reduction or the processor re-fires on
+    every subsequent request in the run.
+
+    ``ctx.usage.input_tokens`` is deliberately NOT used: pydantic-ai's
+    ``RunUsage`` *sums* input tokens across every request in the run (it is a
+    monotonically increasing cumulative counter, not the last prompt's size), so
+    it can never drop after a compaction and would loop the processor. The
+    char-based estimate over the incoming ``messages`` tracks the compacted list
+    directly. ``ctx`` is retained for signature stability / future use.
     """
-    try:
-        usage = getattr(ctx, "usage", None)
-        input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
-        if input_tokens > 0:
-            return input_tokens
-    except Exception:
-        pass
     return estimate_tokens(messages, CONFIG.max_context_tokens).estimated_tokens
 
 

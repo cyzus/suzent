@@ -61,6 +61,9 @@ def _fake_compaction(monkeypatch):
 
 
 def _ctx(stateless=False, input_tokens=0):
+    # ``input_tokens`` models pydantic-ai's cumulative RunUsage. The processor must
+    # NOT key its trigger off this counter (it only ever grows within a run); it is
+    # kept on the fake ctx to prove changing it does not change the decision.
     return SimpleNamespace(
         deps=SimpleNamespace(stateless=stateless, chat_id="c1", user_id="u1"),
         usage=SimpleNamespace(input_tokens=input_tokens),
@@ -110,17 +113,45 @@ async def test_skips_stateless(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_prefers_real_usage_over_estimate(monkeypatch):
-    # Estimate would be ~0 (tiny history) but real usage is huge -> must trigger.
-    monkeypatch.setattr(CONFIG, "max_context_tokens", 1000, raising=False)
+async def test_trigger_ignores_cumulative_run_usage(monkeypatch):
+    # The trigger must key off the CURRENT history size, not ctx.usage. A tiny
+    # history that sits under budget must no-op even when the cumulative run usage
+    # (which pydantic-ai never resets within a run) is huge.
+    monkeypatch.setattr(CONFIG, "max_context_tokens", 10_000_000, raising=False)
     monkeypatch.setattr(CONFIG, "context_compaction_trigger", 0.80, raising=False)
     _fake_compaction(monkeypatch)
 
     proc = make_compaction_history_processor()
     hist = _history(12)
-    out = await proc(_ctx(input_tokens=900), hist)
+    out = await proc(_ctx(input_tokens=9_000_000), hist)
 
-    assert len(out) < len(hist)
+    assert out is hist  # cumulative usage does not force a compaction
+
+
+@pytest.mark.asyncio
+async def test_does_not_reloop_after_history_shrinks(monkeypatch):
+    # Regression: once a pass shrinks the history under budget, a second pass with
+    # the SAME (only-growing) cumulative usage must observe the reduction via the
+    # message-size estimate and no-op — otherwise the processor loops every request.
+    monkeypatch.setattr(CONFIG, "max_context_tokens", 100, raising=False)
+    monkeypatch.setattr(CONFIG, "context_compaction_trigger", 0.80, raising=False)
+    _fake_compaction(monkeypatch)
+
+    proc = make_compaction_history_processor()
+
+    # First pass: large history is over trigger -> compacts down. Pad a message in
+    # the compressible middle so the summary pair genuinely shrinks it under budget
+    # (the first and last-N messages are preserved by compaction).
+    big = _history(40)
+    big[10] = ModelResponse(parts=[TextPart(content="x" * 4000)])
+    ctx = _ctx(input_tokens=1000)  # cumulative usage well over any threshold
+    compacted = await proc(ctx, big)
+    assert len(compacted) < len(big)
+
+    # Second pass: feed the compacted (small) history back with usage still high.
+    # It is now under budget, so the processor must leave it untouched.
+    out = await proc(ctx, compacted)
+    assert out is compacted
 
 
 @pytest.mark.asyncio
