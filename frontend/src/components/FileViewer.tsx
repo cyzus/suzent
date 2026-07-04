@@ -5,6 +5,8 @@ import { FilePreview } from './sidebar/FilePreview';
 import { isBinaryServedFile } from '../lib/fileUtils';
 import { useI18n } from '../i18n';
 import { FullscreenOverlay } from './FullscreenOverlay';
+import { useChatStore } from '../hooks/useChatStore';
+import { getApiBase, getSandboxParams } from '../lib/api';
 
 interface FileViewerProps {
     filePath: string | null;
@@ -13,10 +15,9 @@ interface FileViewerProps {
     onClose: () => void;
 }
 
-import { getApiBase } from '../lib/api';
-
 export const FileViewer: React.FC<FileViewerProps> = ({ filePath, fileName, chatId, onClose }) => {
     const { t } = useI18n();
+    const { config } = useChatStore();
     const [fileContent, setFileContent] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -48,7 +49,8 @@ export const FileViewer: React.FC<FileViewerProps> = ({ filePath, fileName, chat
                 setError("Backend not ready");
                 return;
             }
-            const response = await fetch(`${base}/sandbox/read_file?chat_id=${chatId}&path=${encodeURIComponent(filePath)}`);
+            const params = getSandboxParams(chatId, filePath, config.sandbox_volumes);
+            const response = await fetch(`${base}/sandbox/read_file?${params}`);
             if (!response.ok) {
                 const text = await response.text();
                 try {

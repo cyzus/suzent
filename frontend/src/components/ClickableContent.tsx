@@ -7,6 +7,15 @@ interface ClickableContentProps {
     onFileClick?: (filePath: string, fileName: string, shiftKey?: boolean) => void;
 }
 
+type ContentSegment =
+    | { type: 'text'; value: string; path: string }
+    | { type: 'path'; value: string; path: string };
+
+function basename(path: string): string {
+    const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '');
+    return normalized.split('/').pop() || path;
+}
+
 /**
  * Minimal fallback for clickable file paths in user messages.
  * Only detects absolute paths with extensions (e.g., /workspace/file.txt).
@@ -17,15 +26,16 @@ export const ClickableContent: React.FC<ClickableContentProps> = ({ content, onF
     const segments = useMemo(() => {
         if (!content || !onFileClick) return [];
 
-        // Minimal regex: only known sandbox filesystem paths with extensions
-        // Example: /workspace/file.txt or /shared/report.pdf
-        const pathRegex = /\/(workspace|shared|mnt)\/[\w\-./]+\.\w{2,5}\b/g;
+        // File mention chips serialize to `@[path]`. Match those first so a
+        // Windows host path like `@[D:/workspace/file.md]` is not split into
+        // literal `@[D:` text plus a nested `/workspace/file.md` path match.
+        const tokenRegex = /@\[([^\]]+)\]|\/(?:workspace|shared|mnt)\/[\w\-./]+\.\w{2,5}\b/g;
 
-        const parts: Array<{ type: 'text' | 'path'; value: string; path: string }> = [];
+        const parts: ContentSegment[] = [];
         let lastIndex = 0;
         let match;
 
-        while ((match = pathRegex.exec(content)) !== null) {
+        while ((match = tokenRegex.exec(content)) !== null) {
             // Add text before the path
             if (match.index > lastIndex) {
                 parts.push({
@@ -36,10 +46,11 @@ export const ClickableContent: React.FC<ClickableContentProps> = ({ content, onF
             }
 
             // Add the path
+            const path = match[1] || match[0];
             parts.push({
                 type: 'path',
-                value: match[0],
-                path: match[0]
+                value: path,
+                path,
             });
 
             lastIndex = match.index + match[0].length;
@@ -67,7 +78,7 @@ export const ClickableContent: React.FC<ClickableContentProps> = ({ content, onF
                 if (segment.type === 'text') {
                     return <React.Fragment key={idx}>{segment.value}</React.Fragment>;
                 } else {
-                    const fileName = segment.path.split('/').pop() || segment.path;
+                    const fileName = basename(segment.path);
 
                     return (
                         <button
