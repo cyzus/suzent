@@ -177,3 +177,42 @@ def test_proxy_peer_file_streams_from_peer(tmp_path, monkeypatch):
     assert response.content == b"hello peer"
     assert response.headers["content-type"].startswith("text/plain")
     assert response.headers["content-disposition"] == 'attachment; filename="peer.txt"'
+
+
+def test_proxy_peer_file_closes_client_when_send_fails(tmp_path, monkeypatch):
+    store = PeerGrantStore(path=tmp_path / "peers.json")
+    peer_id = store.add("Peer", "http://peer.example", "peer-token")
+    clients = []
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            self.closed = False
+            clients.append(self)
+
+        def build_request(self, method, url, headers=None):
+            return httpx.Request(method, url, headers=headers)
+
+        async def send(self, request, stream=False):
+            raise httpx.ConnectError("offline", request=request)
+
+        async def aclose(self):
+            self.closed = True
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    app = Starlette(
+        routes=[
+            Route(
+                "/nodes/peers/{peer_id}/files/{file_id}",
+                proxy_peer_file,
+                methods=["GET"],
+            )
+        ]
+    )
+    app.state.peer_store = store
+    client = TestClient(app)
+
+    response = client.get(f"/nodes/peers/{peer_id}/files/pf_123")
+
+    assert response.status_code == 502
+    assert clients
+    assert clients[0].closed is True

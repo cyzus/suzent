@@ -1124,6 +1124,7 @@ async def proxy_peer_file(request: Request):
     url = f"{peer['base_url']}/nodes/peer-files/{file_id}"
     headers = {"Authorization": f"Bearer {peer['token']}"}
 
+    upstream_client = None
     try:
         upstream_client = httpx.AsyncClient(timeout=None)
         request_upstream = upstream_client.build_request("GET", url, headers=headers)
@@ -1166,6 +1167,8 @@ async def proxy_peer_file(request: Request):
             headers=response_headers,
         )
     except httpx.HTTPError as e:
+        if upstream_client is not None:
+            await upstream_client.aclose()
         return JSONResponse({"error": f"Couldn't reach peer: {e}"}, status_code=502)
 
 
