@@ -9,6 +9,7 @@ import pytest
 
 from suzent.auth_boundary import (
     AuthBoundaryMiddleware,
+    agent_path_allowed,
     extract_token,
     is_loopback,
     scope_allows,
@@ -57,6 +58,12 @@ def test_scope_allows():
     assert not scope_allows("agent", "/sandbox/files")
     assert not scope_allows("node", "/chat")
     assert not scope_allows(None, "/chat")
+
+
+def test_agent_path_allowed_peer_files_prefix_only():
+    assert agent_path_allowed("/nodes/peer-files/pf_abc123")
+    assert not agent_path_allowed("/nodes/peer-files")
+    assert not agent_path_allowed("/sandbox/serve/chat/file.png")
 
 
 # ─── Middleware behavior ─────────────────────────────────────────────

@@ -202,7 +202,9 @@ from suzent.routes.node_routes import (
     trigger_peer,
     peer_offer,
     peer_invoke,
+    serve_peer_file,
     invoke_peer,
+    proxy_peer_file,
     peer_capabilities,
 )
 from suzent.routes.cron_routes import (
@@ -997,6 +999,7 @@ app = Starlette(
         Route("/nodes/control-status", control_status, methods=["GET"]),
         Route("/nodes/peer-offer", peer_offer, methods=["POST"]),
         Route("/nodes/peer-invoke", peer_invoke, methods=["POST"]),
+        Route("/nodes/peer-files/{file_id}", serve_peer_file, methods=["GET"]),
         Route("/channels/suzent/inbound", suzent_channel_inbound, methods=["POST"]),
         Route("/channels/suzent/whoami", suzent_channel_whoami, methods=["GET"]),
         Route(
@@ -1006,6 +1009,11 @@ app = Starlette(
         ),
         Route("/nodes/peers", list_peers, methods=["GET"]),
         Route("/nodes/peers/{peer_id}/invoke", invoke_peer, methods=["POST"]),
+        Route(
+            "/nodes/peers/{peer_id}/files/{file_id}",
+            proxy_peer_file,
+            methods=["GET"],
+        ),
         Route(
             "/nodes/peers/{peer_id}/capabilities",
             peer_capabilities,

@@ -72,6 +72,14 @@ AGENT_ALLOWED_PATHS = {
     "/channels/suzent/whoami",  # peer token-validity self-check
 }
 
+AGENT_ALLOWED_PREFIXES = ("/nodes/peer-files/",)
+
+
+def agent_path_allowed(path: str) -> bool:
+    return path in AGENT_ALLOWED_PATHS or any(
+        path.startswith(prefix) for prefix in AGENT_ALLOWED_PREFIXES
+    )
+
 
 def token_scope(token: str, device_store) -> str | None:
     """Return the scope of a token (node | agent | full), or None if invalid.
@@ -97,7 +105,7 @@ def scope_allows(scope: str | None, path: str) -> bool:
     if scope == "full":
         return True
     if scope == "agent":
-        return path in AGENT_ALLOWED_PATHS
+        return agent_path_allowed(path)
     # "node" tokens are for the WS handshake only; no HTTP surface.
     return False
 
