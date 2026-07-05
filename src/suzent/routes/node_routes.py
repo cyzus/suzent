@@ -12,13 +12,14 @@ import uuid
 
 from pydantic import ValidationError
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from suzent.config import CONFIG
 from suzent.logger import get_logger
 from suzent.nodes.base import NodeCapability
 from suzent.nodes.manager import PENDING_TTL_SECONDS
+from suzent.nodes.peer_files import PeerFileRegistry
 from suzent.nodes.models import (
     ConnectMessage,
     ConnectedResponse,
@@ -129,6 +130,81 @@ def _get_peer_store(request):
         store = PeerGrantStore()
         app.state.peer_store = store
     return store
+
+
+def _get_peer_file_registry(request):
+    """Get (or lazily create) the local peer file registry."""
+    app = getattr(request, "app", None)
+    if app is None:
+        return None
+    registry = getattr(app.state, "peer_file_registry", None)
+    if registry is None:
+        registry = PeerFileRegistry()
+        app.state.peer_file_registry = registry
+    return registry
+
+
+def _peer_file_media_type(command: str, result: dict) -> str | None:
+    if command != "camera.snap":
+        return None
+    fmt = str(result.get("format") or "").lower()
+    if fmt in ("jpg", "jpeg"):
+        return "image/jpeg"
+    if fmt == "png":
+        return "image/png"
+    return None
+
+
+def _normalize_peer_file_result(request: Request, command: str, payload: dict) -> dict:
+    if not payload.get("success") or not isinstance(payload.get("result"), dict):
+        return payload
+    result = dict(payload["result"])
+    raw_file = result.get("file")
+    if not isinstance(raw_file, str):
+        return payload
+
+    media_type = _peer_file_media_type(command, result)
+    if media_type is None:
+        return payload
+
+    registry = _get_peer_file_registry(request)
+    if registry is None:
+        return payload
+    try:
+        artifact = registry.register(
+            raw_file,
+            producer=command,
+            media_type=media_type,
+        )
+    except (OSError, ValueError) as exc:
+        logger.warning("Unable to register peer file artifact: {}", exc)
+        redacted = dict(payload)
+        result.pop("file", None)
+        result["file_error"] = "File was produced but could not be exposed to peers"
+        redacted["result"] = result
+        return redacted
+
+    result["file"] = artifact.to_reference()
+    normalized = dict(payload)
+    normalized["result"] = result
+    return normalized
+
+
+def _rewrite_peer_file_references(value, peer_id: str):
+    if isinstance(value, dict):
+        if (
+            isinstance(value.get("id"), str)
+            and isinstance(value.get("url"), str)
+            and value["url"].startswith("/nodes/peer-files/")
+        ):
+            rewritten = dict(value)
+            rewritten["peer_id"] = peer_id
+            rewritten["url"] = f"/nodes/peers/{peer_id}/files/{value['id']}"
+            return rewritten
+        return {k: _rewrite_peer_file_references(v, peer_id) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_rewrite_peer_file_references(item, peer_id) for item in value]
+    return value
 
 
 async def node_websocket_endpoint(websocket: WebSocket):
@@ -1010,11 +1086,87 @@ async def peer_invoke(request: Request) -> JSONResponse:
         result = await node_manager.invoke(
             target.node_id, command, params, timeout=timeout
         )
-        return JSONResponse(result)
+        return JSONResponse(_normalize_peer_file_result(request, command, result))
     except TimeoutError as e:
         return JSONResponse({"error": str(e)}, status_code=504)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def serve_peer_file(request: Request):
+    """GET /nodes/peer-files/{file_id} — serve a registered local artifact."""
+    registry = _get_peer_file_registry(request)
+    file_id = request.path_params.get("file_id", "")
+    artifact = registry.get(file_id) if registry else None
+    if artifact is None:
+        return JSONResponse({"error": "Peer file not found"}, status_code=404)
+    return FileResponse(
+        artifact.path,
+        media_type=artifact.media_type,
+        filename=artifact.name,
+        headers={"Content-Length": str(artifact.size)},
+    )
+
+
+async def proxy_peer_file(request: Request):
+    """GET /nodes/peers/{peer_id}/files/{file_id} — stream a file from a peer."""
+    import httpx
+
+    store = _get_peer_store(request)
+    peer_id = request.path_params.get("peer_id", "")
+    file_id = request.path_params.get("file_id", "")
+    peer = store.get(peer_id) if store else None
+    if not peer:
+        return JSONResponse({"error": "Unknown peer"}, status_code=404)
+    if peer.get("mode") == "paused":
+        return JSONResponse({"error": "Peer is paused"}, status_code=409)
+
+    url = f"{peer['base_url']}/nodes/peer-files/{file_id}"
+    headers = {"Authorization": f"Bearer {peer['token']}"}
+
+    try:
+        upstream_client = httpx.AsyncClient(timeout=None)
+        request_upstream = upstream_client.build_request("GET", url, headers=headers)
+        upstream = await upstream_client.send(request_upstream, stream=True)
+        if upstream.status_code == 404:
+            await upstream.aclose()
+            await upstream_client.aclose()
+            return JSONResponse({"error": "Peer file not found"}, status_code=404)
+        if upstream.status_code == 401:
+            await upstream.aclose()
+            await upstream_client.aclose()
+            return JSONResponse({"error": "Unauthorized by peer"}, status_code=401)
+        if upstream.status_code == 403:
+            await upstream.aclose()
+            await upstream_client.aclose()
+            return JSONResponse({"error": "Forbidden by peer"}, status_code=403)
+        if upstream.status_code >= 400:
+            status_code = upstream.status_code
+            await upstream.aclose()
+            await upstream_client.aclose()
+            return JSONResponse(
+                {"error": f"Peer returned {status_code}"}, status_code=502
+            )
+
+        async def _stream():
+            try:
+                async for chunk in upstream.aiter_bytes():
+                    yield chunk
+            finally:
+                await upstream.aclose()
+                await upstream_client.aclose()
+
+        response_headers = {}
+        for header in ("content-length", "content-disposition"):
+            if header in upstream.headers:
+                response_headers[header] = upstream.headers[header]
+        return StreamingResponse(
+            _stream(),
+            media_type=upstream.headers.get("content-type", "application/octet-stream"),
+            headers=response_headers,
+        )
+    except httpx.HTTPError as e:
+        return JSONResponse({"error": f"Couldn't reach peer: {e}"}, status_code=502)
 
 
 async def invoke_peer(request: Request) -> JSONResponse:
@@ -1051,6 +1203,7 @@ async def invoke_peer(request: Request) -> JSONResponse:
                 headers={"Authorization": f"Bearer {peer['token']}"},
             )
             data = r.json()
+            data = _rewrite_peer_file_references(data, peer_id)
             return JSONResponse(data, status_code=r.status_code)
     except httpx.HTTPError as e:
         return JSONResponse({"error": f"Couldn't reach peer: {e}"}, status_code=502)
