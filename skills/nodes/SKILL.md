@@ -56,6 +56,29 @@ Choose `trigger` when you want the remote agent to decide what to do, combine
 multiple steps, or answer in natural language. Do not use `trigger` just to call
 `camera.snap` or `speaker.speak`; use `invoke` for those.
 
+## File results
+
+Local node invokes may return local filesystem paths because the file lives on
+the same machine. Peer invokes return downloadable file references instead of
+remote-local paths:
+
+```json
+{
+  "file": {
+    "peer_id": "peer-id",
+    "id": "pf_...",
+    "url": "/nodes/peers/peer-id/files/pf_...",
+    "name": "snap.png",
+    "media_type": "image/png",
+    "size": 12345
+  }
+}
+```
+
+The CLI currently prints this JSON. To retrieve the bytes from BashTool or code,
+download `file.url` from the local Suzent server. Never use or expose a raw file
+path returned by a remote peer; it only makes sense on that peer's disk.
+
 ## BashTool/sandbox API
 
 ### Endpoints
@@ -65,6 +88,8 @@ multiple steps, or answer in natural language. Do not use `trigger` just to call
 | List connected nodes | `GET` | `/nodes` |
 | Describe node | `GET` | `/nodes/{node_id_or_name}` |
 | Invoke command | `POST` | `/nodes/{node_id_or_name}/invoke` |
+| Invoke peer command | `POST` | `/nodes/peers/{peer_id}/invoke` |
+| Download peer file | `GET` | `/nodes/peers/{peer_id}/files/{file_id}` |
 
 ### Basic usage (Python)
 
@@ -103,6 +128,15 @@ else:
     invoke_resp.raise_for_status()
     result = invoke_resp.json()
     print(result)
+
+    file_ref = (result.get("result") or {}).get("file")
+    if isinstance(file_ref, dict) and file_ref.get("url"):
+        download_resp = requests.get(f"{base}{file_ref['url']}", timeout=60)
+        download_resp.raise_for_status()
+        output_name = file_ref.get("name") or f"{file_ref['id']}.bin"
+        with open(output_name, "wb") as f:
+            f.write(download_resp.content)
+        print(f"Downloaded {output_name}")
 ```
 
 ### Finding a node by name
@@ -182,5 +216,6 @@ result = requests.post(
 - Always list nodes first and verify capabilities before invoking.
 - Prefer selecting by `display_name`, then use the resolved `node_id` for API calls.
 - Keep command `params` JSON-serializable and explicit.
+- Treat peer file `url` values as local-server download URLs.
 - Handle the case where no nodes are connected gracefully.
 - Nodes require the Suzent server to be running.
