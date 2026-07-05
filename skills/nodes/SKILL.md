@@ -7,14 +7,55 @@ description: Interact with companion devices (phones, laptops, headless servers)
 
 The Nodes skill lets you control remote companion devices connected to the Suzent server. Nodes connect via WebSocket and advertise capabilities (commands) you can invoke.
 
-In **sandbox mode**, the `suzent` CLI is not available. Use the REST API via `$SUZENT_BASE_URL`.
+Prefer the `suzent nodes ...` CLI when it is available. Use the REST API via
+`$SUZENT_BASE_URL` only when running in sandbox mode, writing code, or needing a
+route the CLI does not expose yet.
 
 Use this skill to:
 - Discover connected devices and their capabilities
 - Run commands on remote devices (take photos, run scripts, get clipboard, etc.)
 - Check device connectivity status
 
-## Sandbox API (preferred)
+## CLI quick start (preferred on host)
+
+Use the CLI for ordinary node/peer work:
+
+```bash
+suzent nodes list
+suzent nodes describe <node-or-peer-name>
+suzent nodes invoke <node-or-peer-name> camera.snap format=png
+suzent nodes invoke <node-or-peer-name> speaker.speak text="Hello world"
+suzent nodes trigger <peer-name-or-id> "summarize ~/notes"
+```
+
+`suzent nodes list` is unified: it shows WS-mesh nodes, control-grant **peers**
+this device can drive, and **devices** that can drive it. For a peer, `suzent
+nodes invoke <peer> ...` automatically proxies the capability invocation to that
+peer.
+
+### File results
+
+Local node invokes may return local filesystem paths. Peer invokes return file
+references instead of remote-local paths:
+
+```json
+{
+  "file": {
+    "peer_id": "peer-id",
+    "id": "pf_...",
+    "url": "/nodes/peers/peer-id/files/pf_...",
+    "name": "snap.png",
+    "media_type": "image/png",
+    "size": 12345
+  }
+}
+```
+
+The CLI currently prints this JSON; it does not automatically download the file.
+To retrieve the bytes, download `file.url` from the local Suzent server. Do not
+try to use a raw path returned by a remote peer.
+
+## Sandbox/API usage
 
 ### Endpoints
 
@@ -23,6 +64,8 @@ Use this skill to:
 | List connected nodes | `GET` | `/nodes` |
 | Describe node | `GET` | `/nodes/{node_id_or_name}` |
 | Invoke command | `POST` | `/nodes/{node_id_or_name}/invoke` |
+| Invoke peer command | `POST` | `/nodes/peers/{peer_id}/invoke` |
+| Download peer file | `GET` | `/nodes/peers/{peer_id}/files/{file_id}` |
 
 ### Basic usage (Python)
 
@@ -58,6 +101,15 @@ else:
     invoke_resp.raise_for_status()
     result = invoke_resp.json()
     print(result)
+
+    file_ref = (result.get("result") or {}).get("file")
+    if isinstance(file_ref, dict) and file_ref.get("url"):
+        download_resp = requests.get(f"{base}{file_ref['url']}", timeout=60)
+        download_resp.raise_for_status()
+        output_name = file_ref.get("name") or f"{file_ref['id']}.bin"
+        with open(output_name, "wb") as f:
+            f.write(download_resp.content)
+        print(f"Downloaded {output_name}")
 ```
 
 ### Finding a node by name
@@ -72,9 +124,9 @@ if not target:
 node_id = target["node_id"]
 ```
 
-## Host mode CLI (fallback)
+## CLI reference
 
-If you are running on host and the CLI is installed, these commands are still valid:
+If you are running on host and the CLI is installed, prefer these commands:
 
 ```bash
 suzent nodes list
@@ -96,14 +148,6 @@ suzent nodes discover                              # LAN (mDNS) + tailnet peers
 suzent nodes connect ws://<peer>:25314/ws/node     # join as a node
 suzent nodes connections                           # outbound status + pairing codes
 suzent nodes disconnect ws://<peer>:25314/ws/node
-```
-
-`suzent nodes list` is unified — it shows WS-mesh nodes, control-grant **peers**
-this device can drive, and **devices** that can drive it (each row tagged by
-kind/direction). Drive a peer's agent from the terminal:
-
-```bash
-suzent nodes trigger <peer-name-or-id> "summarize ~/notes"
 ```
 
 ## Peer agents (Suzent channel)
@@ -141,8 +185,10 @@ result = requests.post(
 
 ## Best Practices
 
+- Prefer the CLI for interactive work; use REST for sandbox/code paths.
 - Always list nodes first and verify capabilities before invoking.
 - Prefer selecting by `display_name`, then use the resolved `node_id` for API calls.
 - Keep command `params` JSON-serializable and explicit.
+- Treat peer file `url` values as local-server download URLs; never expose or depend on remote filesystem paths.
 - Handle the case where no nodes are connected gracefully.
 - Nodes require the Suzent server to be running.
