@@ -240,7 +240,12 @@ class SchedulerBrain(BaseBrain):
         chat_id = f"cron-{job_id}"
 
         if chat_id in stream_controls:
-            logger.debug(f"Skipping cron job {job_id} -- stream already active")
+            error = "Previous cron run is still active"
+            logger.warning(f"Deferring cron job {job_id} -- {error.lower()}")
+            now = datetime.now()
+            run_id = db.create_cron_run(job_id, now)
+            db.finish_cron_run(run_id, "error", error=error)
+            self._handle_retry(db, job_id, job.retry_count or 0, now, error)
             return
 
         # Advance schedule before execution to avoid drift
@@ -309,8 +314,7 @@ class SchedulerBrain(BaseBrain):
         except RuntimeError as e:
             logger.error(f"Cron job {job_id} error: {e}")
             db.update_cron_job_run_state(job_id, last_error=str(e))
-            db.finish_cron_run(run_id, "error", error=str(e))
-            return ""
+            raise
         finally:
             unregister_background_stream(chat_id)
 
