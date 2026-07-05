@@ -33,6 +33,29 @@ this device can drive, and **devices** that can drive it. For a peer, `suzent
 nodes invoke <peer> ...` automatically proxies the capability invocation to that
 peer.
 
+## Invoke vs trigger
+
+Use **invoke** for a specific device capability. It is command-shaped,
+parameterized, and returns a bounded JSON result:
+
+```bash
+suzent nodes invoke <node-or-peer-name> camera.snap format=png
+suzent nodes invoke <node-or-peer-name> speaker.speak text="Hello world"
+```
+
+Use **trigger** to ask a linked peer's Suzent agent to think, plan, use tools,
+and stream a conversational reply. It is prompt-shaped and continues that peer
+session over time:
+
+```bash
+suzent nodes trigger <peer-name-or-id> "look at the latest logs and summarize what changed"
+```
+
+Choose `invoke` when you know the exact hardware/capability command to run.
+Choose `trigger` when you want the remote agent to decide what to do, combine
+multiple steps, or answer in natural language. Do not use `trigger` just to call
+`camera.snap` or `speaker.speak`; use `invoke` for those.
+
 ## BashTool/sandbox API
 
 ### Endpoints
