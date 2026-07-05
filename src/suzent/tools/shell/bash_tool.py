@@ -13,6 +13,7 @@ Supports two modes:
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Annotated, Literal, Optional
@@ -790,12 +791,13 @@ class BashTool(Tool):
 
     def _get_host_env(self) -> dict:
         """Build environment variables for host execution."""
-        from suzent.config import CONFIG
+        from suzent.config import CONFIG, RUNTIME_DIR
         from suzent.database import get_database
 
         env = os.environ.copy()
         env["PYTHONIOENCODING"] = "utf-8"
         env["WORKSPACE_ROOT"] = str(Path(self.workspace_root).resolve())
+        env["SUZENT_BASE_URL"] = self._host_server_base_url(CONFIG, RUNTIME_DIR)
 
         sandbox_data_path = Path(CONFIG.sandbox_data_path).resolve()
         if self.chat_id:
@@ -819,3 +821,18 @@ class BashTool(Tool):
                     env[env_name] = str(Path(host_path).resolve())
 
         return env
+
+    @staticmethod
+    def _host_server_base_url(config, runtime_dir: Path) -> str:
+        """Return the local Suzent server base URL for host-mode tools."""
+        raw = config.server_url
+        match = re.match(r"(https?://[^/]+)", raw)
+        base_url = match.group(1) if match else raw
+        try:
+            port_file = runtime_dir / "server.port"
+            if port_file.exists():
+                port = port_file.read_text(encoding="utf-8").strip()
+                base_url = re.sub(r":\d+$", f":{port}", base_url)
+        except Exception:
+            pass
+        return base_url.rstrip("/")

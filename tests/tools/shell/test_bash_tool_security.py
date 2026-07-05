@@ -92,6 +92,35 @@ def test_accepts_command_language_on_host(monkeypatch, tmp_path):
         assert captured["cmd"] == ["bash", "-c", "echo hi"]
 
 
+def test_host_env_includes_suzent_base_url(monkeypatch, tmp_path):
+    from suzent.config import CONFIG
+
+    tool = BashTool()
+
+    class _Process:
+        returncode = 0
+
+        def __init__(self, cmd, **kwargs):
+            captured["env"] = kwargs["env"]
+
+        def communicate(self, timeout=None):
+            return "ok", ""
+
+    captured = {}
+    monkeypatch.setattr("suzent.tools.shell.bash_tool.subprocess.Popen", _Process)
+    monkeypatch.setattr(CONFIG, "server_url", "http://localhost:25314/chat")
+
+    result = tool.forward(
+        _ctx(tmp_path),
+        content="echo $SUZENT_BASE_URL",
+        language="command",
+        description="Print the Suzent base URL",
+    )
+
+    assert result.success
+    assert captured["env"]["SUZENT_BASE_URL"] == "http://localhost:25314"
+
+
 def test_host_timeout_kills_process_tree_and_returns_tool_error(monkeypatch, tmp_path):
     tool = BashTool()
     killed = {"called": False}
