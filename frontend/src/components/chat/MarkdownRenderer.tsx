@@ -136,6 +136,16 @@ function extractCodeText(children: React.ReactNode): string {
   return children == null ? '' : String(children);
 }
 
+function extractNodeText(children: React.ReactNode): string {
+  if (typeof children === 'string' || typeof children === 'number') return String(children);
+  if (Array.isArray(children)) return children.map(extractNodeText).join('');
+  if (React.isValidElement(children)) {
+    const props = children.props as { children?: React.ReactNode };
+    return extractNodeText(props.children);
+  }
+  return '';
+}
+
 function renderLiteInline(text: string, sourcesMap?: CitationSourcesMap | null): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   const pattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*)/g;
@@ -556,7 +566,8 @@ export const MarkdownRenderer = React.memo<MarkdownRendererProps>(({ content, on
               const path = hrefStr.startsWith('file://')
                 ? (fileUrlToPath(hrefStr) ?? hrefStr.replace('file://', ''))
                 : hrefStr;
-              return <FileButton path={path} displayName={String(children)} onFileClick={onFileClick} />;
+              const displayName = extractNodeText(children) || path;
+              return <FileButton path={path} displayName={displayName} onFileClick={onFileClick} />;
             }
 
             // Regular external links
