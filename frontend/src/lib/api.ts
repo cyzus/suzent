@@ -65,6 +65,20 @@ export async function setChatPermissionMode(
   return response.json();
 }
 
+export async function setDefaultPermissionMode(
+  mode: Exclude<PermissionMode, 'plan'>,
+): Promise<{ mode: Exclude<PermissionMode, 'plan'> }> {
+  const response = await fetch(`${getApiBase()}/config/default-permission-mode`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to set default permission mode: ${response.status}`);
+  }
+  return response.json();
+}
+
 export async function restoreChatPermissionMode(
   chatId: string,
 ): Promise<PermissionModeState> {

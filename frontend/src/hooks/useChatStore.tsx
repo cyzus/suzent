@@ -150,6 +150,7 @@ const buildConfigFromPreferences = (
   memory_enabled: prefs?.memory_enabled,
   sandbox_enabled: prefs?.sandbox_enabled ?? backendDefaults.sandboxEnabled ?? true,
   sandbox_volumes: prefs?.sandbox_volumes || [],
+  permission_mode: backendDefaults.defaultPermissionMode ?? 'default',
   mcp_urls: [],
   mcp_enabled: {}
 });
@@ -384,7 +385,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
           const isAgentValid = backendConfig.agents.includes(parsed.agent);
           if (isModelValid && isAgentValid) {
             // Ensure chat-scoped state is never inherited from localStorage.
-            return stripReusableConfig(parsed);
+            return {
+              ...stripReusableConfig(parsed),
+              permission_mode: backendConfig.defaultPermissionMode ?? 'default',
+            };
           }
         }
       }
@@ -399,6 +403,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
         agent: backendConfig.agents[0] || '',
         tools: backendConfig.defaultTools || [],
         sandbox_enabled: backendConfig.sandboxEnabled ?? true,
+        permission_mode: backendConfig.defaultPermissionMode ?? 'default',
         mcp_urls: [],
         mcp_enabled: {}
       };
@@ -407,14 +412,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
   }, [backendConfig]);
 
   const beginNewChat = useCallback(() => {
-    const fallbackConfig = computeDefaultConfig();
+    const defaultConfig = computeDefaultConfig();
+    const fallbackConfig = {
+      ...defaultConfig,
+      permission_mode: config.permission_mode ?? defaultConfig.permission_mode,
+    };
     setCurrentChatId(null);
     setCurrentChatTitle('New Chat');
     setShouldResetNext(true);
     setMessagesByChat(prev => ({ ...prev, [UNSAVED_CHAT_KEY]: [] }));
     setConfigByChat(prev => ({ ...prev, [UNSAVED_CHAT_KEY]: fallbackConfig }));
     setConfigState(fallbackConfig);
-  }, [computeDefaultConfig]);
+  }, [computeDefaultConfig, config.permission_mode]);
 
   const setMessagesForChat = useCallback((chatId: string | null, updater: Message[] | ((prev: Message[]) => Message[])) => {
     const key = keyForChat(chatId);

@@ -160,6 +160,7 @@ export interface ConfigOptions {
   userId?: string;        // backend-provided user identifier for memory system alignment
   globalSandboxVolumes?: string[];  // global volumes from config file
   sandboxEnabled?: boolean;         // global sandbox enable setting
+  defaultPermissionMode?: PermissionMode; // default permission mode for new chats
   maxContextTokens?: number;        // max context window size in tokens
   userPreferences?: {     // saved user preferences from database
     model: string;

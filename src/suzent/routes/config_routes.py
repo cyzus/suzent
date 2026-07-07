@@ -86,6 +86,7 @@ async def get_config(request: Request) -> JSONResponse:
         "userId": CONFIG.user_id,
         "globalSandboxVolumes": sandbox_volumes,
         "sandboxEnabled": sandbox_enabled,
+        "defaultPermissionMode": CONFIG.default_permission_mode,
         "maxContextTokens": CONFIG.max_context_tokens,
         "embeddingModel": CONFIG.embedding_model,
         "extractionModel": CONFIG.extraction_model,
@@ -148,6 +149,39 @@ async def save_preferences(request: Request) -> JSONResponse:
     if success:
         return JSONResponse({"success": True})
     return JSONResponse({"error": "Failed to save preferences"}, status_code=500)
+
+
+async def save_default_permission_mode(request: Request) -> JSONResponse:
+    """Persist the default permission mode used by new chats."""
+    data = await request.json()
+    mode = str(data.get("mode") or "").strip().lower()
+    if mode not in {"default", "accept_edits", "auto", "strict_readonly"}:
+        return JSONResponse(
+            {
+                "error": "Invalid default permission mode",
+                "validModes": ["default", "accept_edits", "auto", "strict_readonly"],
+            },
+            status_code=400,
+        )
+
+    try:
+        from suzent.config import PROJECT_DIR, USER_CONFIG_DIR
+        from suzent.permissions.loader import persist_default_permission_mode
+
+        persist_default_permission_mode(
+            PROJECT_DIR,
+            logger,
+            mode,
+            user_config_dir=USER_CONFIG_DIR,
+        )
+        CONFIG.default_permission_mode = mode
+        return JSONResponse({"mode": mode})
+    except Exception as exc:
+        logger.warning("Failed to persist default permission mode: {}", exc)
+        return JSONResponse(
+            {"error": "Failed to persist default permission mode"},
+            status_code=500,
+        )
 
 
 def _get_default_config_path() -> Path:

@@ -13,6 +13,7 @@ from pydantic_ai.messages import (
 )
 
 import suzent.routes.chat_routes as chat_routes
+import suzent.routes.config_routes as config_routes
 import suzent.routes.permission_routes as permission_routes
 from suzent.core.agent_serializer import serialize_state
 
@@ -65,6 +66,39 @@ def test_plan_mode_restores_previous_mode(monkeypatch) -> None:
     assert restored.status_code == 200
     assert restored.json()["mode"] == "accept_edits"
     assert restored.json()["prePlanMode"] is None
+
+
+def test_default_permission_mode_api_persists(monkeypatch, tmp_path) -> None:
+    import suzent.config as config_module
+
+    config_dir = tmp_path / "config"
+    monkeypatch.setattr(config_module, "PROJECT_DIR", tmp_path)
+    monkeypatch.setattr(config_module, "USER_CONFIG_DIR", config_dir)
+    monkeypatch.setattr(config_module.CONFIG, "default_permission_mode", "default")
+
+    app = Starlette(
+        routes=[
+            Route(
+                "/config/default-permission-mode",
+                config_routes.save_default_permission_mode,
+                methods=["PUT"],
+            ),
+        ]
+    )
+    client = TestClient(app)
+
+    response = client.put(
+        "/config/default-permission-mode",
+        json={"mode": "accept_edits"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "accept_edits"
+    assert config_module.CONFIG.default_permission_mode == "accept_edits"
+    assert (
+        "default_permission_mode: accept_edits"
+        in (config_dir / "permissions.yaml").read_text()
+    )
 
 
 def test_session_rule_api_round_trip(monkeypatch) -> None:

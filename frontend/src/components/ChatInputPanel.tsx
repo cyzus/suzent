@@ -8,7 +8,7 @@ import { PaperClipIcon, XMarkIcon, FolderIcon } from '@heroicons/react/24/outlin
 import { FolderContextPicker } from './chat/FolderContextPicker';
 import { useI18n } from '../i18n';
 import { useSlashCommands } from '../hooks/useSlashCommands';
-import { getApiBase, setChatPermissionMode } from '../lib/api';
+import { getApiBase, setChatPermissionMode, setDefaultPermissionMode } from '../lib/api';
 import { buildMountedVolumes } from '../lib/volumeMounts';
 import { MentionTextArea, type MentionTextAreaHandle } from './chat/MentionTextArea';
 
@@ -150,12 +150,16 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
 
         const previous = permissionMode;
         setConfig(prev => ({ ...prev, permission_mode: nextMode }));
-        if (!currentChatId) return;
 
         setIsSavingPermissionMode(true);
         try {
-            const state = await setChatPermissionMode(currentChatId, nextMode);
-            setConfig(prev => ({ ...prev, permission_mode: state.mode }));
+            if (currentChatId) {
+                const state = await setChatPermissionMode(currentChatId, nextMode);
+                setConfig(prev => ({ ...prev, permission_mode: state.mode }));
+            } else if (nextMode !== 'plan') {
+                const state = await setDefaultPermissionMode(nextMode);
+                setConfig(prev => ({ ...prev, permission_mode: state.mode }));
+            }
         } catch {
             setConfig(prev => ({ ...prev, permission_mode: previous }));
         } finally {
