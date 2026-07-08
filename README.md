@@ -126,7 +126,7 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 
 **Windows** (PowerShell)
 ```powershell
-irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
 ```
 
 Then bind your keys in `~/suzent/.env` and run:

@@ -1,6 +1,6 @@
 # SUZENT Setup & Update Script for Windows
 # Usage:
-#   Fresh install:  powershell -c "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
+#   Fresh install:  powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
 #   Update:         suzent update   (or re-run this script inside the repo)
 # Flags (env vars): $env:SUZENT_DIR, $env:SUZENT_BRANCH, $env:SUZENT_SKIP_PLAYWRIGHT
 
@@ -132,7 +132,7 @@ Ensure-Node
 function Ensure-Uv {
     if (Get-Command uv -ErrorAction SilentlyContinue) { return }
     Write-Info "Installing uv..."
-    powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
     Refresh-Path
     if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
         Write-Fail "uv installation failed. See https://docs.astral.sh/uv/"

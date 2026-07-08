@@ -14,7 +14,7 @@ import { DotCube, type DotFieldPointer } from '@site/src/components/DotSphere';
 import styles from './index.module.css';
 
 const UNIX_CMD = `curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | bash`;
-const WIN_CMD  = `irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex`;
+const WIN_CMD  = `powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"`;
 
 const FEATURE_CARDS = [
   {

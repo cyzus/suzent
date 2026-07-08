@@ -120,7 +120,7 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 
 **Windows**（PowerShell）
 ```powershell
-irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
 ```
 
 然后在 `~/suzent/.env` 中绑定你的密钥并运行：

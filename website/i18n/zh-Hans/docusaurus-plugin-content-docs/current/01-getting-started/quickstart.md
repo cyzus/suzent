@@ -20,7 +20,7 @@ import TabItem from '@theme/TabItem';
 <TabItem value="windows" label="Windows" default>
 
 ```powershell
-powershell -c "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
 ```
 
 </TabItem>
