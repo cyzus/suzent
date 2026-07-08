@@ -39,8 +39,15 @@ async def event_bus_stream(request: Request) -> StreamingResponse:
     async def generate():
         q = register_bus_subscriber()
         try:
-            # Snapshot: tell the client which background streams are already running
-            active = list(background_queues.keys())
+            # Snapshot: tell the client which background streams are still being
+            # produced. Completed queues may briefly remain registered so a
+            # late /chat/live consumer can drain them; they must not resurrect
+            # the frontend's "streaming" state after an error or normal finish.
+            active = [
+                chat_id
+                for chat_id, queue in background_queues.items()
+                if queue.producer_active
+            ]
             yield f"data: {json.dumps({'event': 'snapshot', 'streams': active})}\n\n"
 
             while True:

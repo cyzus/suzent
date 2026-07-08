@@ -419,6 +419,11 @@ export function processEvent(
       return { parts: next, error: (data.message as string) || 'Unknown error' };
     }
 
+    case 'error': {
+      const message = data.message ?? data.data ?? data.error;
+      return { parts: next, error: typeof message === 'string' && message ? message : 'Unknown error' };
+    }
+
     case 'RUN_STARTED':
     case 'RUN_FINISHED':
       // No-op: status managed by fetch lifecycle

@@ -858,14 +858,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     },
     onError: (error, parts = []) => {
       console.error('AG-UI error:', error);
-      const chatId = streamingChatIdRef.current || activeChatIdRef.current;
+      const chatId = streamingChatIdRef.current || activeStreamingChatId || activeChatIdRef.current;
       const wasHeartbeat = heartbeatInFlightRef.current;
       if (wasHeartbeat) setHeartbeatRunning(false, null);
       heartbeatInFlightRef.current = false;
       heartbeatOkRef.current = false;
-      setIsStreaming(false, chatId);
       streamingChatIdRef.current = null;
+      isLiveStreamRef.current = false;
       stopInFlightRef.current = false;
+      pendingConnectRef.current = false;
+      setIsStreaming(false, chatId);
       if (chatId) {
         streamStartByChatRef.current.delete(chatId);
         abandonedPartsRef.current.delete(chatId);
@@ -890,8 +892,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         }
       }
       clearParts();
+      _clearStreamSeed();
       setCurrentUsage(null);
-      isLiveStreamRef.current = false;
       liveStreamPartsRef.current = [];
       setCurrentStreamDisplayRole('assistant');
     },
@@ -1445,7 +1447,32 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
     // Subscribe directly to stream_started — bypasses the React render cycle so
     // there is zero frame delay between the SSE event arriving and tryConnect() firing.
-    const unsubEvents = subscribeToStreamEvents(chatIdAtMount, { onStart: tryConnect });
+    const handleStreamEnd = () => {
+      const pendingApproval = getStreamingParts().some(
+        p => p.type === 'tool' && p.state === 'approval-requested'
+      );
+      if (pendingApproval) return;
+
+      // If we are attached to /chat/live, tryConnect's normal cleanup will
+      // convert parts, reload DB state, and clear streaming. This fallback is
+      // for cases where the backend stream ends before the frontend attaches
+      // (or after an error path), leaving the optimistic send state stuck.
+      if (streamingChatIdRef.current === chatIdAtMount || isLiveStreamRef.current) {
+        return;
+      }
+
+      setIsStreaming(false, chatIdAtMount);
+      streamStartByChatRef.current.delete(chatIdAtMount);
+      abandonedPartsRef.current.delete(chatIdAtMount);
+      _clearStreamSeed();
+      clearParts();
+      loadChat(chatIdAtMount, { force: true }).catch(() => {});
+    };
+
+    const unsubEvents = subscribeToStreamEvents(chatIdAtMount, {
+      onStart: tryConnect,
+      onEnd: handleStreamEnd,
+    });
 
     return () => {
       cancelled = true;
