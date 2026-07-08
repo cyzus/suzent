@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Annotated, Literal, Optional
 
@@ -657,21 +658,25 @@ class BashTool(Tool):
         working_dir = self._resolve_working_dir()
         effective_timeout = timeout or self.default_timeout_seconds()
         process = None
+        stdout_path = None
+        stderr_path = None
 
         try:
-            process = subprocess.Popen(
-                cmd,
-                cwd=str(working_dir),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                env=self._get_host_env(),
-            )
-            stdout, stderr = process.communicate(timeout=effective_timeout)
-            stdout = stdout or ""
-            stderr = stderr or ""
+            with tempfile.NamedTemporaryFile(delete=False) as stdout_file:
+                stdout_path = Path(stdout_file.name)
+                with tempfile.NamedTemporaryFile(delete=False) as stderr_file:
+                    stderr_path = Path(stderr_file.name)
+                    process = subprocess.Popen(
+                        cmd,
+                        cwd=str(working_dir),
+                        stdout=stdout_file,
+                        stderr=stderr_file,
+                        env=self._get_host_env(),
+                    )
+                    process.wait(timeout=effective_timeout)
+
+            stdout = self._read_output_file(stdout_path)
+            stderr = self._read_output_file(stderr_path)
 
             returncode = process.returncode or 0
 
@@ -767,6 +772,27 @@ class BashTool(Tool):
                 timeout=effective_timeout,
                 background=False,
             )
+        finally:
+            self._unlink_temp_output(stdout_path)
+            self._unlink_temp_output(stderr_path)
+
+    @staticmethod
+    def _read_output_file(path: Optional[Path]) -> str:
+        if path is None:
+            return ""
+        try:
+            return path.read_text(encoding="utf-8", errors="replace")
+        except FileNotFoundError:
+            return ""
+
+    @staticmethod
+    def _unlink_temp_output(path: Optional[Path]) -> None:
+        if path is None:
+            return
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.debug(f"Could not remove host command output file {path}: {exc}")
 
     @staticmethod
     def _kill_host_process_tree(process: subprocess.Popen) -> None:

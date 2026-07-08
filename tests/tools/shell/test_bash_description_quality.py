@@ -35,11 +35,12 @@ def test_accepts_required_description(monkeypatch, tmp_path):
     class _Process:
         returncode = 0
 
-        def __init__(self, cmd, **kwargs):
-            pass
+        def __init__(self, _cmd, **kwargs):
+            kwargs["stdout"].write(b"ok")
+            kwargs["stdout"].flush()
 
-        def communicate(self, timeout=None):
-            return "ok", ""
+        def wait(self, timeout=None):
+            return self.returncode
 
     monkeypatch.setattr("suzent.tools.shell.bash_tool.subprocess.Popen", _Process)
 

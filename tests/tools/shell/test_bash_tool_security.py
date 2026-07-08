@@ -62,10 +62,12 @@ def test_accepts_command_language_on_host(monkeypatch, tmp_path):
         def __init__(self, cmd, **kwargs):
             captured["cmd"] = cmd
             captured["kwargs"] = kwargs
+            kwargs["stdout"].write(b"ok")
+            kwargs["stdout"].flush()
 
-        def communicate(self, timeout=None):
+        def wait(self, timeout=None):
             captured["timeout"] = timeout
-            return "ok", ""
+            return self.returncode
 
     captured = {}
     monkeypatch.setattr("suzent.tools.shell.bash_tool.subprocess.Popen", _Process)
@@ -102,9 +104,11 @@ def test_host_env_includes_suzent_base_url(monkeypatch, tmp_path):
 
         def __init__(self, cmd, **kwargs):
             captured["env"] = kwargs["env"]
+            kwargs["stdout"].write(b"ok")
+            kwargs["stdout"].flush()
 
-        def communicate(self, timeout=None):
-            return "ok", ""
+        def wait(self, timeout=None):
+            return self.returncode
 
     captured = {}
     monkeypatch.setattr("suzent.tools.shell.bash_tool.subprocess.Popen", _Process)
@@ -132,7 +136,7 @@ def test_host_timeout_kills_process_tree_and_returns_tool_error(monkeypatch, tmp
         def __init__(self, cmd, **kwargs):
             pass
 
-        def communicate(self, timeout=None):
+        def wait(self, timeout=None):
             raise subprocess.TimeoutExpired(cmd="slow", timeout=timeout)
 
     def fake_kill(process):
