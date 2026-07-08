@@ -19,6 +19,7 @@ from suzent.core.chat_processor import (
     _preserve_citation_sources,
     _rebuild_display_messages,
     _resolve_response_model,
+    _response_provider_matches_run,
     _strip_attachment_annotations,
 )
 from suzent.core.context_compressor import (
@@ -100,6 +101,21 @@ def test_resolve_response_model():
         _resolve_response_model("gpt-5", "anthropic/claude-opus-4-8", "openai")
         == "openai/gpt-5"
     )
+    # OpenAI-compatible providers keep their configured provider prefix.
+    assert (
+        _resolve_response_model("mimo-v2.5-pro", "xiaomi_mimo/mimo-v2.5-pro", "openai")
+        == "xiaomi_mimo/mimo-v2.5-pro"
+    )
+    # Gemini uses pydantic-ai's Google implementation provider internally.
+    assert (
+        _resolve_response_model("gemini-2.5-pro", "gemini/gemini-2.5-pro", "google-gla")
+        == "gemini/gemini-2.5-pro"
+    )
+    # Aliased provider prefixes should also stay user-facing.
+    assert (
+        _resolve_response_model("glm-4.7-flash", "zai/glm-4.7-flash", "openai")
+        == "zai/glm-4.7-flash"
+    )
     # Older response without a model_name falls back to the run id.
     assert (
         _resolve_response_model(None, "anthropic/claude-opus-4-8", None)
@@ -112,6 +128,13 @@ def test_resolve_response_model():
         )
         == "anthropic/claude-opus-4-8"
     )
+
+
+def test_response_provider_matches_run_for_implementation_providers():
+    assert _response_provider_matches_run("xiaomi_mimo", "openai")
+    assert _response_provider_matches_run("gemini", "google-gla")
+    assert _response_provider_matches_run("zai", "openai")
+    assert not _response_provider_matches_run("anthropic", "openai")
 
 
 def test_rebuild_display_messages_preserves_reasoning_order_before_text():
