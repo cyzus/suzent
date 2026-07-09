@@ -122,16 +122,25 @@ impl BackendProcess {
         let url = format!("http://127.0.0.1:{}/config", self.port);
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(2))
+            .no_proxy()
             .build()
             .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
         for attempt in 1..=30 {
             thread::sleep(Duration::from_millis(500));
-            if let Ok(resp) = client.get(&url).send() {
-                if resp.status().is_success() || resp.status().as_u16() == 404 {
-                    println!("Backend ready after {} attempts", attempt);
-                    return Ok(());
+            match client.get(&url).send() {
+                Ok(resp) => {
+                    if resp.status().is_success() || resp.status().as_u16() == 404 {
+                        println!("Backend ready after {} attempts", attempt);
+                        return Ok(());
+                    }
+                    eprintln!(
+                        "Backend readiness attempt {} returned HTTP {}",
+                        attempt,
+                        resp.status()
+                    );
                 }
+                Err(e) => eprintln!("Backend readiness attempt {} failed: {}", attempt, e),
             }
         }
         Err("Backend failed health check within 15 seconds".to_string())

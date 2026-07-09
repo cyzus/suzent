@@ -55,25 +55,23 @@ def _get_ui_binary(root: Path) -> Path | None:
 
 
 def _is_ui_binary_current(root: Path, binary: Path) -> bool:
-    """Avoid launching a stale UI binary against newer backend/Tauri sources."""
-    try:
-        if (root / _BIN_DIR) in binary.resolve().parents and _has_unreleased_ui_changes(
-            root
-        ):
-            return False
-    except OSError:
-        return False
+    """Return True when a discovered UI binary can be launched."""
+    return binary.exists()
 
-    source_paths = [
-        root / "src-tauri" / "src" / "backend.rs",
-        root / "src-tauri" / "src" / "main.rs",
-        root / "src-tauri" / "tauri.conf.json",
-    ]
-    existing_sources = [path for path in source_paths if path.exists()]
-    if not existing_sources:
-        return True
-    binary_mtime = binary.stat().st_mtime
-    return all(path.stat().st_mtime <= binary_mtime for path in existing_sources)
+
+def _ui_launch_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    env = os.environ.copy()
+    if extra:
+        env.update(extra)
+
+    bypass_hosts = ["127.0.0.1", "localhost", "::1"]
+    for key in ("NO_PROXY", "no_proxy"):
+        existing = [
+            item.strip() for item in env.get(key, "").split(",") if item.strip()
+        ]
+        merged = existing + [host for host in bypass_hosts if host not in existing]
+        env[key] = ",".join(merged)
+    return env
 
 
 def _has_unreleased_ui_changes(root: Path) -> bool:
@@ -83,10 +81,6 @@ def _has_unreleased_ui_changes(root: Path) -> bool:
 
     watched_paths = [
         "src-tauri",
-        "src/suzent/server.py",
-        "src/suzent/config/__init__.py",
-        "src/suzent/client/base.py",
-        "src/suzent/sandbox/manager.py",
     ]
 
     commands = [
@@ -751,7 +745,7 @@ def register_commands(app: typer.Typer):
             # Pre-built binary manages both backend and webview internally.
             typer.echo(f"  • Launching UI binary ({ui_bin.name})...")
             try:
-                subprocess.run([str(ui_bin)])
+                subprocess.run([str(ui_bin)], env=_ui_launch_env())
             except (subprocess.CalledProcessError, KeyboardInterrupt):
                 pass
             return
@@ -918,8 +912,7 @@ def register_commands(app: typer.Typer):
 
         ui_bin = _get_ui_binary(root)
         if ui_bin:
-            env = os.environ.copy()
-            env["SUZENT_PORT"] = str(port)
+            env = _ui_launch_env({"SUZENT_PORT": str(port)})
             try:
                 subprocess.run([str(ui_bin)], env=env)
             except (subprocess.CalledProcessError, KeyboardInterrupt):

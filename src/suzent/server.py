@@ -615,8 +615,15 @@ async def startup():
                 port=DEFAULT_PORT,
                 display_name=_socket.gethostname(),
             )
-            node_advertiser.start()
             app.state.node_advertiser = node_advertiser
+
+            def _start_node_advertiser() -> None:
+                try:
+                    node_advertiser.start()
+                except Exception as e:
+                    logger.warning(f"Failed to start mDNS advertiser: {e}")
+
+            asyncio.create_task(asyncio.to_thread(_start_node_advertiser))
         except Exception as e:
             logger.warning(f"Failed to start mDNS advertiser: {e}")
 
@@ -1215,8 +1222,18 @@ if __name__ == "__main__":
             def monitor_stdin():
                 try:
                     if not sys.stdin.read(1):
+                        if sys.platform == "win32":
+                            logger.info(
+                                "Backend stdin closed on Windows; keeping server alive."
+                            )
+                            return
                         os._exit(0)
                 except Exception:
+                    if sys.platform == "win32":
+                        logger.info(
+                            "Backend stdin monitor failed on Windows; keeping server alive."
+                        )
+                        return
                     os._exit(0)
 
             def monitor_parent(pid):
@@ -1256,11 +1273,21 @@ if __name__ == "__main__":
                         os._exit(0)
                     time.sleep(1)
 
-            parent_pid = os.getppid()
             threading.Thread(target=monitor_stdin, daemon=True).start()
-            threading.Thread(
-                target=monitor_parent, args=(parent_pid,), daemon=True
-            ).start()
+
+            parent_pid_raw = os.getenv("SUZENT_PARENT_PID", "").strip()
+            parent_pid = int(parent_pid_raw) if parent_pid_raw.isdigit() else None
+            if parent_pid is None and sys.platform != "win32":
+                parent_pid = os.getppid()
+
+            if parent_pid is not None:
+                threading.Thread(
+                    target=monitor_parent, args=(parent_pid,), daemon=True
+                ).start()
+            else:
+                logger.info(
+                    "Parent PID monitor disabled on Windows; relying on stdin pipe."
+                )
 
         # Use port=0 in config so uvicorn doesn't try to bind (we pass the socket).
         # _sock is closed in the finally block if uvicorn never takes ownership.
