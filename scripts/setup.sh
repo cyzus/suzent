@@ -121,6 +121,27 @@ fi
 command -v uv &>/dev/null || die "uv installation failed. See https://docs.astral.sh/uv/"
 ok "uv $(uv --version | awk '{print $2}')"
 
+ensure_rust() {
+    if command -v cargo &>/dev/null; then
+        ok "Rust/Cargo $(cargo --version | awk '{print $2}')"
+        return
+    fi
+
+    if [ -x "$HOME/.cargo/bin/cargo" ]; then
+        refresh_path
+        if command -v cargo &>/dev/null; then
+            ok "Rust/Cargo $(cargo --version | awk '{print $2}')"
+            return
+        fi
+    fi
+
+    info "Installing Rustup/Cargo for developer mode..."
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    refresh_path
+    command -v cargo &>/dev/null || die "Rust installation failed. Restart your shell and re-run."
+    ok "Rust/Cargo $(cargo --version | awk '{print $2}')"
+}
+
 # ── macOS: Xcode CLI tools ────────────────────────────────────────────────────
 if [ "$OS" = "Darwin" ]; then
     if ! xcode-select -p &>/dev/null; then
@@ -209,6 +230,8 @@ download_binary() {
 download_binary || true
 
 install_dev_deps() {
+    ensure_rust
+
     info "Installing frontend dependencies (npm install)..."
     (cd frontend && npm install) || die "npm install failed in frontend/."
     ok "Frontend dependencies ready"

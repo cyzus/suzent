@@ -143,6 +143,40 @@ function Ensure-Uv {
 Ensure-Uv
 Write-Ok "uv $(uv --version)"
 
+function Ensure-Rust {
+    if (Get-Command cargo -ErrorAction SilentlyContinue) {
+        Write-Ok "Rust/Cargo $(cargo --version)"
+        return
+    }
+
+    $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+    $cargoExe = Join-Path $cargoBin "cargo.exe"
+    if (Test-Path $cargoExe) {
+        Add-ToUserPath $cargoBin
+        Refresh-Path
+        if (Get-Command cargo -ErrorAction SilentlyContinue) {
+            Write-Ok "Rust/Cargo $(cargo --version)"
+            return
+        }
+    }
+
+    Write-Info "Installing Rustup/Cargo for developer mode..."
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        winget install --id Rustlang.Rustup --source winget --accept-package-agreements --accept-source-agreements --silent
+        Add-ToUserPath $cargoBin
+        Refresh-Path
+        if (Get-Command cargo -ErrorAction SilentlyContinue) {
+            Write-Ok "Rust/Cargo $(cargo --version)"
+            return
+        }
+        Write-Warn "Rustup installed, but cargo is not available in this shell yet."
+        Write-Warn "Close and reopen PowerShell, then re-run this script or `suzent start --dev`."
+        exit 1
+    }
+
+    Write-Fail "Rust/Cargo is required for developer mode. Install Rust from https://rustup.rs/ and re-run."
+}
+
 # ── Clone or update repo ──────────────────────────────────────────────────────
 if ($IsUpdate) {
     Write-Info "Updating SUZENT in $SuzentDir..."
@@ -215,6 +249,8 @@ function Get-UiBinary {
 Get-UiBinary
 
 function Install-DevDependencies {
+    Ensure-Rust
+
     Write-Info "Installing frontend dependencies (npm install)..."
     Push-Location "frontend"
     npm install

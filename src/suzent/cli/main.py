@@ -402,9 +402,24 @@ def ensure_cargo_in_path():
         current_path = os.environ.get("PATH", "")
         sep = ";" if IS_WINDOWS else ":"
         os.environ["PATH"] = f"{found_path}{sep}{current_path}"
+        return
     else:
         typer.echo("⚠️  Could not find 'cargo' in standard locations.")
         typer.echo("   Please ensure Rust is installed and 'cargo' is in your PATH.")
+        typer.echo(
+            "   Normal `suzent start` uses the pre-built UI and does not need Rust."
+        )
+        if IS_WINDOWS:
+            typer.echo("   Install Rust with:")
+            typer.echo("     winget install --id Rustlang.Rustup --source winget")
+            typer.echo("   Then restart PowerShell and run `suzent start --dev` again.")
+        else:
+            typer.echo("   Install Rust with:")
+            typer.echo(
+                "     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+            )
+            typer.echo("   Then restart your shell and run `suzent start --dev` again.")
+        raise typer.Exit(code=1)
 
 
 def ensure_msvc_linker():
@@ -751,8 +766,11 @@ def register_commands(app: typer.Typer):
             return
 
         # ── Developer fallback: tauri dev ────────────────────────────────────
-        typer.echo("  ⚠️  No pre-built UI binary found — starting in developer mode.")
-        typer.echo("     Run 'suzent update' to download the binary.")
+        if dev:
+            typer.echo("  * Starting in developer mode (--dev).")
+        else:
+            typer.echo("  No pre-built UI binary found - starting in developer mode.")
+            typer.echo("     Run 'suzent update' to download the binary.")
         ensure_cargo_in_path()
         ensure_msvc_linker()
 
