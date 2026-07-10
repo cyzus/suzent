@@ -94,10 +94,12 @@ from suzent.routes.config_routes import (
 )
 from suzent.routes.sync_routes import (
     create_sync_profile,
+    discard_outgoing_sync,
     disable_secret_sync,
     enable_secret_sync,
     get_github_auth_status,
     get_sync_ahead_behind,
+    get_sync_plan,
     get_sync_profiles,
     get_sync_quickstart_info,
     get_sync_status,
@@ -915,6 +917,8 @@ app = Starlette(
         Route("/sync/profiles", create_sync_profile, methods=["POST"]),
         Route("/sync/validate", validate_sync_profile, methods=["POST"]),
         Route("/sync/ahead-behind", get_sync_ahead_behind, methods=["GET"]),
+        Route("/sync/plan", get_sync_plan, methods=["POST"]),
+        Route("/sync/discard-outgoing", discard_outgoing_sync, methods=["POST"]),
         Route("/sync/pull", pull_sync, methods=["POST"]),
         Route("/sync/push", push_sync, methods=["POST"]),
         Route("/sync/auto", save_auto_config, methods=["POST"]),

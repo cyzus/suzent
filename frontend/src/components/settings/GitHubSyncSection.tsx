@@ -6,6 +6,8 @@ import {
   fetchSyncAheadBehind,
   fetchSyncQuickstartInfo,
   fetchSyncStatus,
+  githubSyncDiscardOutgoing,
+  githubSyncPlan,
   githubSyncPull,
   githubSyncPush,
   logoutGitHub,
@@ -15,6 +17,11 @@ import {
   saveSyncAutoConfig,
   saveSyncProfile,
   startGitHubAuth,
+  syncReviewPlanFromError,
+  SyncFileChange,
+  SyncDirection,
+  SyncOperation,
+  SyncPlan,
   SyncProfile,
   SyncStatus,
 } from '../../lib/dataApi';
@@ -56,7 +63,7 @@ function ActionBtn({
   muted,
 }: {
   children: React.ReactNode;
-  onClick: () => void;
+  onClick: () => void | Promise<void>;
   disabled?: boolean;
   title?: string;
   primary?: boolean;
@@ -65,7 +72,7 @@ function ActionBtn({
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => { void onClick(); }}
       disabled={disabled}
       title={title}
       className={`flex items-center gap-1.5 px-3 py-2 border-l-2 border-brutal-black font-bold uppercase text-xs disabled:opacity-40 hover:brightness-95 dark:hover:brightness-125 transition-all ${
@@ -129,6 +136,335 @@ function SyncedFilesPanel({ hashes }: { hashes?: Record<string, string> }): Reac
   );
 }
 
+function syncChangeStatus(changeType: SyncFileChange['change_type']): string {
+  if (changeType === 'added') return 'A';
+  if (changeType === 'deleted') return 'D';
+  return 'M';
+}
+
+function syncChangeTone(change: SyncFileChange): string {
+  if (change.risk === 'high') return 'text-red-600 dark:text-red-300';
+  if (change.change_type === 'added') return 'text-green-600 dark:text-green-300';
+  if (change.change_type === 'deleted') return 'text-red-600 dark:text-red-300';
+  return 'text-amber-600 dark:text-amber-300';
+}
+
+function syncDisplayName(change: SyncFileChange): string {
+  if (change.category === 'secrets') return 'shared encrypted key vault';
+  return change.path.split('/').pop() || change.path;
+}
+
+function syncDisplayDir(change: SyncFileChange): string {
+  if (change.category === 'secrets') return '_sync/secrets';
+  const parts = change.path.split('/');
+  parts.pop();
+  return parts.join('/') || change.category;
+}
+
+function syncGroupLabel(category: SyncFileChange['category']): string {
+  if (category === 'secrets') return 'keys';
+  return category;
+}
+
+function shouldShowSyncChange(change: SyncFileChange): boolean {
+  if (change.category === 'sync') return change.risk !== 'low';
+  if (change.path === 'memory/.index_state.json') return false;
+  return true;
+}
+
+function syncDirectionOf(change: SyncFileChange): SyncDirection {
+  return change.direction ?? 'outgoing';
+}
+
+function syncPlanKey(plan: SyncPlan): string {
+  const files = plan.files
+    .filter(shouldShowSyncChange)
+    .map((file) => `${file.change_type}:${file.risk}:${file.category}:${file.path}`)
+    .sort()
+    .join('|');
+  return `${plan.operation}:${files}`;
+}
+
+type DiffRowKind = 'add' | 'delete' | 'hunk' | 'context';
+
+function diffRows(diffPreview: string): { kind: DiffRowKind; text: string }[] {
+  return diffPreview
+    .split('\n')
+    .filter((line) => (
+      !line.startsWith('diff --git ')
+      && !line.startsWith('index ')
+      && !line.startsWith('deleted file mode ')
+      && !line.startsWith('new file mode ')
+      && !line.startsWith('--- ')
+      && !line.startsWith('+++ ')
+    ))
+    .map((line) => {
+      if (line.startsWith('@@')) return { kind: 'hunk', text: line };
+      if (line.startsWith('+')) return { kind: 'add', text: line.slice(1) };
+      if (line.startsWith('-')) return { kind: 'delete', text: line.slice(1) };
+      return { kind: 'context', text: line.startsWith(' ') ? line.slice(1) : line };
+    });
+}
+
+function DiffPreview({ value }: { value: string }): React.ReactElement {
+  const rows = diffRows(value);
+  return (
+    <div className="mx-3 mb-2 max-h-56 overflow-auto border border-neutral-300 bg-[#ffffff] font-mono text-[10px] leading-relaxed dark:border-zinc-700 dark:bg-[#1e1e1e]">
+      <div className="border-b border-neutral-200 bg-[#f3f3f3] px-2 py-1 text-[10px] font-bold uppercase text-neutral-500 dark:border-zinc-700 dark:bg-[#252526] dark:text-neutral-400">
+        Diff preview
+      </div>
+      {rows.length === 0 ? (
+        <div className="px-2 py-1 text-neutral-400 dark:text-neutral-500">No textual diff available</div>
+      ) : (
+        rows.map((row, index) => {
+          const tone = row.kind === 'add'
+            ? 'bg-green-50 text-green-900 dark:bg-green-950/30 dark:text-green-200'
+            : row.kind === 'delete'
+              ? 'bg-red-50 text-red-900 dark:bg-red-950/30 dark:text-red-200'
+              : row.kind === 'hunk'
+                ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
+                : 'text-neutral-700 dark:text-neutral-300';
+          const marker = row.kind === 'add' ? '+' : row.kind === 'delete' ? '-' : row.kind === 'hunk' ? '@' : ' ';
+          return (
+            <div key={`${index}:${row.text}`} className={`grid grid-cols-[24px_1fr] ${tone}`}>
+              <span className="select-none border-r border-black/10 px-1 text-right text-neutral-400 dark:border-white/10 dark:text-neutral-500">
+                {marker}
+              </span>
+              <span className="whitespace-pre-wrap px-2">{row.text || ' '}</span>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+function SyncReviewPanel({
+  plan,
+  busy,
+  onCancel,
+  onConfirm,
+  onDiscardOutgoing,
+  onPullCloud,
+  onDiscardFile,
+  onUseCloudFile,
+}: {
+  plan: SyncPlan;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  onDiscardOutgoing: () => void;
+  onPullCloud: () => void;
+  onDiscardFile: (file: SyncFileChange) => void;
+  onUseCloudFile: (file: SyncFileChange) => void;
+}): React.ReactElement {
+  const reviewFiles = plan.files.filter(shouldShowSyncChange);
+  const visibleFiles = reviewFiles.slice(0, 80);
+  const hiddenCount = Math.max(0, reviewFiles.length - visibleFiles.length);
+  const hiddenMetadataCount = plan.files.length - reviewFiles.length;
+  const summary = reviewFiles.reduce(
+    (acc, file) => {
+      acc[file.change_type] += 1;
+      if (file.risk === 'high') acc.high_risk += 1;
+      return acc;
+    },
+    { added: 0, modified: 0, deleted: 0, high_risk: 0 },
+  );
+  const operationLabel = plan.operation === 'auto' ? 'sync' : plan.operation;
+  const directionGroups = visibleFiles.reduce<Record<SyncDirection, Record<string, SyncFileChange[]>>>((acc, file) => {
+    const direction = syncDirectionOf(file);
+    const category = syncGroupLabel(file.category);
+    (acc[direction][category] ??= []).push(file);
+    return acc;
+  }, { outgoing: {}, incoming: {} });
+  const sortedCategoryNames = (groups: Record<string, SyncFileChange[]>): string[] => Object.keys(groups).sort((a, b) => {
+    const order = ['memory', 'keys', 'config', 'skills', 'sync', 'other'];
+    return (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 99 : order.indexOf(b));
+  });
+  const directionOrder: SyncDirection[] = ['outgoing', 'incoming'];
+  const outgoingCount = directionOrder.includes('outgoing')
+    ? Object.values(directionGroups.outgoing).reduce((total, files) => total + files.length, 0)
+    : 0;
+  const incomingCount = directionOrder.includes('incoming')
+    ? Object.values(directionGroups.incoming).reduce((total, files) => total + files.length, 0)
+    : 0;
+
+  return (
+    <div className="mt-3 border-2 border-brutal-black bg-[#f3f3f3] dark:bg-[#181818]">
+      <div className="flex items-center justify-between border-b-2 border-brutal-black bg-[#eeeeee] dark:bg-[#252526] px-3 py-2">
+        <div className="min-w-0">
+          <p className="text-[11px] font-black uppercase text-neutral-700 dark:text-neutral-200">
+            Source Control: GitHub Sync
+          </p>
+          <p className="mt-0.5 text-[10px] font-mono text-neutral-500 dark:text-neutral-400 truncate">
+            Review pending {operationLabel} before applying protected changes
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="font-mono text-[10px] font-bold text-green-700 dark:text-green-300" title="Added">
+            +{summary.added ?? 0}
+          </span>
+          <span className="font-mono text-[10px] font-bold text-amber-700 dark:text-amber-300" title="Modified">
+            ~{summary.modified ?? 0}
+          </span>
+          <span className="font-mono text-[10px] font-bold text-red-700 dark:text-red-300" title="Deleted">
+            -{summary.deleted ?? 0}
+          </span>
+        </div>
+      </div>
+
+      {plan.warnings.length > 0 && (
+        <div className="border-b border-brutal-black/20 bg-red-50 dark:bg-red-950/30 px-3 py-2">
+          {plan.warnings.map((warning) => (
+            <p key={warning} className="text-[11px] font-bold text-red-700 dark:text-red-300">
+              {warning}
+            </p>
+          ))}
+        </div>
+      )}
+
+      <div className="max-h-72 overflow-y-auto bg-[#f8f8f8] dark:bg-[#1e1e1e]">
+        {directionOrder.map((direction) => {
+          const categoryGroups = directionGroups[direction];
+          const categoryNames = sortedCategoryNames(categoryGroups);
+          const count = categoryNames.reduce((total, category) => total + (categoryGroups[category]?.length ?? 0), 0);
+          if (count === 0) return null;
+          return (
+            <div key={direction} className="border-b-2 border-brutal-black/20 last:border-b-0">
+              <div className="flex items-center justify-between bg-[#dddddd] dark:bg-[#303030] px-3 py-1.5">
+                <span className="text-[10px] font-black uppercase text-neutral-700 dark:text-neutral-200">
+                  {direction === 'outgoing' ? 'Outgoing Changes' : 'Incoming Changes'}
+                </span>
+                <span className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400">{count}</span>
+              </div>
+              {categoryNames.map((group) => {
+                const files = categoryGroups[group] ?? [];
+                return (
+                  <div key={`${direction}:${group}`} className="border-t border-brutal-black/10">
+                    <div className="flex items-center justify-between bg-[#eeeeee] dark:bg-[#252526] px-3 py-1.5">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[10px] text-neutral-500 dark:text-neutral-400">v</span>
+                        <span className="text-[10px] font-black uppercase text-neutral-600 dark:text-neutral-300 truncate">
+                          {group}
+                        </span>
+                      </div>
+                      <span className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400">
+                        {files.length}
+                      </span>
+                    </div>
+                    <div>
+                      {files.map((file) => (
+                        <div key={`${syncDirectionOf(file)}:${file.change_type}:${file.path}`} className="border-t border-brutal-black/5 first:border-t-0">
+                          <div
+                            className="grid grid-cols-[18px_1fr_auto_28px] items-center gap-2 px-3 py-1.5 hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]"
+                            title={file.path}
+                          >
+                            <span className={`font-mono text-[11px] font-black ${syncChangeTone(file)}`}>
+                              {syncChangeStatus(file.change_type)}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block truncate font-mono text-[12px] text-neutral-800 dark:text-neutral-100">
+                                {syncDisplayName(file)}
+                              </span>
+                              <span className="block truncate font-mono text-[10px] text-neutral-500 dark:text-neutral-500">
+                                {syncDisplayDir(file)}
+                              </span>
+                            </span>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => {
+                                if (syncDirectionOf(file) === 'outgoing') onDiscardFile(file);
+                                else onUseCloudFile(file);
+                              }}
+                              className="border border-brutal-black/40 bg-white px-2 py-1 text-[9px] font-black uppercase text-neutral-700 hover:bg-neutral-100 disabled:opacity-40 dark:bg-zinc-900 dark:text-neutral-200 dark:hover:bg-zinc-800"
+                              title={syncDirectionOf(file) === 'outgoing'
+                                ? 'Discard this outgoing file and restore it from the sync payload'
+                                : 'Apply this cloud file locally'}
+                            >
+                              {syncDirectionOf(file) === 'outgoing' ? 'Discard' : 'Use Cloud'}
+                            </button>
+                            <span className={`text-right font-mono text-[10px] font-bold uppercase ${syncChangeTone(file)}`}>
+                              {file.risk === 'high' ? '!' : file.risk === 'medium' ? '*' : ''}
+                            </span>
+                          </div>
+                          {file.diff_preview && (
+                            <DiffPreview value={file.diff_preview} />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+        {hiddenCount > 0 && (
+          <div className="px-3 py-2 font-mono text-[11px] text-neutral-500 dark:text-neutral-400">
+            {hiddenCount} more file{hiddenCount !== 1 ? 's' : ''} hidden
+          </div>
+        )}
+        {hiddenMetadataCount > 0 && (
+          <div className="px-3 py-2 font-mono text-[10px] text-neutral-400 dark:text-neutral-500">
+            {hiddenMetadataCount} routine sync metadata change{hiddenMetadataCount !== 1 ? 's' : ''} hidden
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between border-t-2 border-brutal-black bg-[#eeeeee] dark:bg-[#252526] px-3 py-2">
+        <span className={`font-mono text-[10px] font-bold uppercase ${
+          (summary.high_risk ?? 0) > 0
+            ? 'text-red-700 dark:text-red-300'
+            : 'text-neutral-500 dark:text-neutral-400'
+        }`}>
+          {summary.high_risk ?? 0} high risk
+        </span>
+        <div className="flex gap-2">
+          {outgoingCount > 0 && (
+            <button
+              type="button"
+              onClick={onDiscardOutgoing}
+              disabled={busy}
+              title="Restore local synced files from the current cloud payload and clear outgoing changes"
+              className="px-3 py-2 border-2 border-brutal-black bg-white dark:bg-zinc-900 text-xs font-bold uppercase disabled:opacity-50"
+            >
+              Discard Outgoing
+            </button>
+          )}
+          {incomingCount > 0 && (
+            <button
+              type="button"
+              onClick={onPullCloud}
+              disabled={busy}
+              title="Pull cloud changes and let cloud synced content replace local synced content"
+              className="px-3 py-2 border-2 border-brutal-black bg-blue-600 text-white text-xs font-black uppercase disabled:opacity-50"
+            >
+              Pull Cloud
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="px-3 py-2 border-2 border-brutal-black bg-white dark:bg-zinc-900 text-xs font-bold uppercase disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="px-3 py-2 border-2 border-brutal-black bg-red-600 text-white text-xs font-black uppercase disabled:opacity-50"
+          >
+            Confirm {operationLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function GitHubSyncSection({
   busy,
   onBusyChange,
@@ -165,6 +501,9 @@ export function GitHubSyncSection({
   const [installUrl, setInstallUrl] = useState<string | null>(null);
   const [ahead, setAhead] = useState<number | null>(null);
   const [behind, setBehind] = useState<number | null>(null);
+  const [reviewPlan, setReviewPlan] = useState<SyncPlan | null>(null);
+  const [reviewOperation, setReviewOperation] = useState<SyncOperation | null>(null);
+  const [dismissedPlanKey, setDismissedPlanKey] = useState<string | null>(null);
 
   const [devicePhase, setDevicePhase] = useState<DeviceFlowPhase>('idle');
   const [deviceCode, setDeviceCode] = useState('');
@@ -172,6 +511,7 @@ export function GitHubSyncSection({
   const [deviceSessionId, setDeviceSessionId] = useState('');
   const [deviceInterval, setDeviceInterval] = useState(5);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncPlanWatcherRunning = useRef(false);
 
   useEffect(() => {
     refresh().catch(() => setSyncStatus(null));
@@ -188,6 +528,52 @@ export function GitHubSyncSection({
       if (pollTimer.current) clearTimeout(pollTimer.current);
     };
   }, []);
+
+  useEffect(() => {
+    const profileId = syncStatus?.configured ? syncStatus.profile?.id : null;
+    if (!profileId) {
+      setReviewPlan(null);
+      setReviewOperation(null);
+      setDismissedPlanKey(null);
+      return;
+    }
+
+    let cancelled = false;
+    const refreshWatchedPlan = async (): Promise<void> => {
+      if (busy || syncPlanWatcherRunning.current) return;
+      syncPlanWatcherRunning.current = true;
+      try {
+        const plan = await githubSyncPlan('auto', profileId);
+        if (cancelled) return;
+        if (plan.files.filter(shouldShowSyncChange).length === 0) {
+          setReviewPlan((current) => (current?.operation === 'auto' ? null : current));
+          setReviewOperation((current) => (current === 'auto' ? null : current));
+          setDismissedPlanKey(null);
+          return;
+        }
+
+        const nextKey = syncPlanKey(plan);
+        if (nextKey !== dismissedPlanKey) {
+          setReviewPlan(plan);
+          setReviewOperation('auto');
+        }
+      } catch {
+        // A watcher should stay quiet; manual buttons still surface explicit errors.
+      } finally {
+        syncPlanWatcherRunning.current = false;
+      }
+    };
+
+    void refreshWatchedPlan();
+    const interval = window.setInterval(() => { void refreshWatchedPlan(); }, 8000);
+    const handleFocus = (): void => { void refreshWatchedPlan(); };
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [syncStatus?.configured, syncStatus?.profile?.id, busy, dismissedPlanKey]);
 
   async function refresh(): Promise<void> {
     const next = await fetchSyncStatus();
@@ -364,20 +750,44 @@ export function GitHubSyncSection({
     }
   }
 
+  function openReview(plan: SyncPlan, operation: SyncOperation): void {
+    setDismissedPlanKey(null);
+    setReviewPlan(plan);
+    setReviewOperation(operation);
+    onNotify('Review sync changes before continuing.', true);
+  }
+
   function makeSyncHandler(
-    apiFn: (profileId: string) => Promise<unknown>,
+    operation: SyncOperation,
+    apiFn: (profileId: string, confirmDestructive?: boolean) => Promise<unknown>,
     successKey: string,
     notifyComplete = false,
   ) {
-    return async function (): Promise<void> {
+    return async function (confirmDestructive = false): Promise<void> {
       if (!requireShibbolethUnlocked()) return;
       onBusyChange(true);
       try {
         const profile = syncStatus?.profile;
         if (!profile) throw new Error('GitHub sync is not configured.');
-        const result = (await apiFn(profile.id)) as
-          | { secrets?: string; changed_secret_keys?: string[] }
+
+        if (!confirmDestructive) {
+          const plan = await githubSyncPlan(operation, profile.id);
+          if (plan.requires_confirmation) {
+            openReview(plan, operation);
+            return;
+          }
+        }
+
+        const result = (await apiFn(profile.id, confirmDestructive)) as
+          | { secrets?: string; changed_secret_keys?: string[]; blocked_review_required?: boolean; plan?: SyncPlan }
           | undefined;
+        if (result?.blocked_review_required && result.plan) {
+          openReview(result.plan, operation);
+          return;
+        }
+        setReviewPlan(null);
+        setReviewOperation(null);
+        setDismissedPlanKey(null);
         await refresh();
         // Honest push: if a vault exists but this device didn't contribute keys,
         // say so instead of implying the vault was updated.
@@ -396,6 +806,11 @@ export function GitHubSyncSection({
         }
         if (notifyComplete) onSyncComplete?.();
       } catch (error) {
+        const plan = syncReviewPlanFromError(error);
+        if (plan) {
+          openReview(plan, operation);
+          return;
+        }
         onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
       } finally {
         onBusyChange(false);
@@ -403,9 +818,127 @@ export function GitHubSyncSection({
     };
   }
 
-  const handleSync = makeSyncHandler(runSync, 'settings.data.githubPushed', true);
-  const handlePull = makeSyncHandler(githubSyncPull, 'settings.data.githubPulled', true);
-  const handlePush = makeSyncHandler(githubSyncPush, 'settings.data.githubPushed');
+  const handleSync = makeSyncHandler('auto', runSync, 'settings.data.githubPushed', true);
+  const handlePull = makeSyncHandler(
+    'pull',
+    (profileId, confirmDestructive) => githubSyncPull(profileId, undefined, confirmDestructive),
+    'settings.data.githubPulled',
+    true,
+  );
+  const handlePush = makeSyncHandler(
+    'push',
+    (profileId, confirmDestructive) => githubSyncPush(profileId, undefined, confirmDestructive),
+    'settings.data.githubPushed',
+  );
+
+  function handleReviewConfirm(): void {
+    if (reviewOperation === 'auto') void handleSync(true);
+    if (reviewOperation === 'pull') void handlePull(true);
+    if (reviewOperation === 'push') void handlePush(true);
+  }
+
+  async function handleDiscardOutgoing(): Promise<void> {
+    onBusyChange(true);
+    try {
+      const profile = syncStatus?.profile;
+      if (!profile) throw new Error('GitHub sync is not configured.');
+      const result = await githubSyncDiscardOutgoing(profile.id) as { discarded?: string[] };
+      setReviewPlan(null);
+      setReviewOperation(null);
+      setDismissedPlanKey(null);
+      await refresh();
+      const count = result.discarded?.length ?? 0;
+      onNotify(count > 0 ? `Discarded ${count} outgoing sync change${count !== 1 ? 's' : ''}.` : 'No outgoing sync changes to discard.', false);
+    } catch (error) {
+      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
+    } finally {
+      onBusyChange(false);
+    }
+  }
+
+  async function handleDiscardFile(file: SyncFileChange): Promise<void> {
+    onBusyChange(true);
+    try {
+      const profile = syncStatus?.profile;
+      if (!profile) throw new Error('GitHub sync is not configured.');
+      await githubSyncDiscardOutgoing(profile.id, [file.path]);
+      const plan = await githubSyncPlan(reviewOperation ?? 'auto', profile.id);
+      if (plan.files.filter(shouldShowSyncChange).length > 0) {
+        setReviewPlan(plan);
+      } else {
+        setReviewPlan(null);
+        setReviewOperation(null);
+        setDismissedPlanKey(null);
+      }
+      await refresh();
+      onNotify(`Discarded ${file.path}.`, false);
+    } catch (error) {
+      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
+    } finally {
+      onBusyChange(false);
+    }
+  }
+
+  async function handlePullCloud(): Promise<void> {
+    if (!requireShibbolethUnlocked()) return;
+    onBusyChange(true);
+    try {
+      const profile = syncStatus?.profile;
+      if (!profile) throw new Error('GitHub sync is not configured.');
+      const result = await githubSyncPull(profile.id, undefined, true, true) as { changed_secret_keys?: string[] };
+      setReviewPlan(null);
+      setReviewOperation(null);
+      setDismissedPlanKey(null);
+      await refresh();
+      if (result.changed_secret_keys && result.changed_secret_keys.length > 0) {
+        const keys = result.changed_secret_keys;
+        const list = keys.slice(0, 4).join(', ') + (keys.length > 4 ? `, +${keys.length - 4} more` : '');
+        onNotify(`${t('settings.data.githubPulled')} - ${keys.length} key${keys.length !== 1 ? 's' : ''} updated from vault: ${list}`, false);
+      } else {
+        onNotify('Cloud changes pulled and applied as the source of truth.', false);
+      }
+      onSyncComplete?.();
+    } catch (error) {
+      const plan = syncReviewPlanFromError(error);
+      if (plan) {
+        openReview(plan, 'pull');
+        return;
+      }
+      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
+    } finally {
+      onBusyChange(false);
+    }
+  }
+
+  async function handleUseCloudFile(file: SyncFileChange): Promise<void> {
+    if (!requireShibbolethUnlocked()) return;
+    onBusyChange(true);
+    try {
+      const profile = syncStatus?.profile;
+      if (!profile) throw new Error('GitHub sync is not configured.');
+      await githubSyncPull(profile.id, undefined, true, true, [file.path]);
+      const plan = await githubSyncPlan(reviewOperation ?? 'auto', profile.id);
+      if (plan.files.filter(shouldShowSyncChange).length > 0) {
+        setReviewPlan(plan);
+      } else {
+        setReviewPlan(null);
+        setReviewOperation(null);
+        setDismissedPlanKey(null);
+      }
+      await refresh();
+      onNotify(`Applied cloud version of ${file.path}.`, false);
+      onSyncComplete?.();
+    } catch (error) {
+      const plan = syncReviewPlanFromError(error);
+      if (plan) {
+        openReview(plan, 'pull');
+        return;
+      }
+      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
+    } finally {
+      onBusyChange(false);
+    }
+  }
 
   const configured = Boolean(syncStatus?.configured && syncStatus.profile);
 
@@ -630,6 +1163,23 @@ export function GitHubSyncSection({
 
       {/* Shared key vault — surfaced in the main card (not hidden in Advanced) so
           the lock state and key inventory are always visible. */}
+      {configured && reviewPlan && (
+        <SyncReviewPanel
+          plan={reviewPlan}
+          busy={busy}
+          onCancel={() => {
+            setDismissedPlanKey(syncPlanKey(reviewPlan));
+            setReviewPlan(null);
+            setReviewOperation(null);
+          }}
+          onConfirm={handleReviewConfirm}
+          onDiscardOutgoing={() => { void handleDiscardOutgoing(); }}
+          onPullCloud={() => { void handlePullCloud(); }}
+          onDiscardFile={(file) => { void handleDiscardFile(file); }}
+          onUseCloudFile={(file) => { void handleUseCloudFile(file); }}
+        />
+      )}
+
       {configured && (
         <div className="mt-4">
           <ShibbolethPanel profile={syncStatus?.profile} syncStatus={syncStatus} busy={busy} onBusyChange={onBusyChange} onNotify={onNotify} onChanged={refresh} />

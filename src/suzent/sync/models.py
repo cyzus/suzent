@@ -40,6 +40,24 @@ class SyncManifest(BaseModel):
     content_hashes: dict[str, str]
 
 
+class SyncFileChange(BaseModel):
+    path: str
+    category: Literal["config", "skills", "memory", "secrets", "sync", "other"]
+    change_type: Literal["added", "modified", "deleted"]
+    risk: Literal["low", "medium", "high"] = "low"
+    direction: Literal["outgoing", "incoming"] = "outgoing"
+    diff_preview: str | None = None
+
+
+class SyncPlan(BaseModel):
+    operation: Literal["push", "pull", "auto"]
+    files: list[SyncFileChange] = Field(default_factory=list)
+    summary: dict[str, int] = Field(default_factory=dict)
+    destructive: bool = False
+    requires_confirmation: bool = False
+    warnings: list[str] = Field(default_factory=list)
+
+
 class DevicePresence(BaseModel):
     device_id: str
     device_name: str

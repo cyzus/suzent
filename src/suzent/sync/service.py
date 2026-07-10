@@ -9,7 +9,13 @@ from pathlib import Path
 from suzent.config import get_data_dir
 from suzent.logger import get_logger
 from suzent.sync.conflicts import SyncConflictResolver
-from suzent.sync.models import SecretBundlesFile, SyncManifest, SyncProfile
+from suzent.sync.models import (
+    SecretBundlesFile,
+    SyncFileChange,
+    SyncManifest,
+    SyncPlan,
+    SyncProfile,
+)
 from suzent.sync.payload import MANIFEST_PATH, PAYLOAD_DIR_NAME, SyncPayloadBuilder
 from suzent.sync.provider import GitHubSyncProvider
 from suzent.sync.quickstart import (
@@ -20,6 +26,12 @@ from suzent.sync.quickstart import (
 from suzent.sync.secrets import SECRET_BUNDLES_PATH, EncryptedSecretSync
 
 logger = get_logger(__name__)
+
+
+class DestructiveSyncPlanError(ValueError):
+    def __init__(self, plan: SyncPlan) -> None:
+        super().__init__("Sync requires confirmation before destructive changes")
+        self.plan = plan
 
 
 class GitHubSyncService:
@@ -287,20 +299,72 @@ class GitHubSyncService:
         result["payload_hashes"] = self.payload_builder.content_hashes(payload_dir)
         return result
 
+    def preview_sync_plan(
+        self,
+        operation: str,
+        profile_id: str | None = None,
+    ) -> SyncPlan:
+        if operation not in {"push", "pull", "auto"}:
+            raise ValueError(f"Unknown sync operation: {operation}")
+        profile = self.get_profile(profile_id)
+        repo_path = Path(profile.repo_path)
+        provider = GitHubSyncProvider(
+            repo_path, remote=profile.remote, branch=profile.branch
+        )
+
+        if operation in {"push", "auto"}:
+            self.payload_builder.build(repo_path, profile)
+            status = provider.payload_status()
+            plan = _plan_from_status(operation, status)
+            _attach_diff_previews(plan, provider.payload_worktree_diff_patch())
+            _attach_added_file_previews(plan, repo_path)
+            if operation == "auto":
+                incoming = _incoming_tracking_plan(provider, profile, "auto")
+                plan = _merge_plans("auto", [plan, incoming])
+            return plan
+
+        preview = provider.preview_pull()
+        remote_ref = f"{profile.remote}/{profile.branch}"
+        diff = provider.payload_diff_name_status("HEAD", remote_ref)
+        plan = _plan_from_name_status("pull", diff)
+        _attach_diff_previews(plan, provider.payload_diff_patch("HEAD", remote_ref))
+        behind = int(preview.get("behind") or 0)
+        if behind and not plan.files:
+            plan.warnings.append(f"{behind} remote commit(s) have no payload changes.")
+        return plan
+
     async def pull(
-        self, profile_id: str | None = None, *, shibboleth: str | None = None
+        self,
+        profile_id: str | None = None,
+        *,
+        shibboleth: str | None = None,
+        confirm_destructive: bool = False,
+        prefer_cloud: bool = False,
+        paths: list[str] | None = None,
     ) -> dict:
         profile = self.get_profile(profile_id)
         async with self._lock(profile):
             provider = GitHubSyncProvider(
                 Path(profile.repo_path), remote=profile.remote, branch=profile.branch
             )
+            plan = await asyncio.to_thread(self.preview_sync_plan, "pull", profile.id)
+            if plan.requires_confirmation and not confirm_destructive:
+                raise DestructiveSyncPlanError(plan)
             git_output = await asyncio.to_thread(provider.pull_ff_only)
             payload_dir = Path(profile.repo_path) / PAYLOAD_DIR_NAME
             phrase = self._require_shibboleth_for_pull(profile, payload_dir, shibboleth)
-            restored = await asyncio.to_thread(
-                self.payload_builder.apply_to_local, payload_dir
-            )
+            if paths:
+                restored = await asyncio.to_thread(
+                    self.payload_builder.apply_paths_to_local,
+                    payload_dir,
+                    paths,
+                )
+            else:
+                restored = await asyncio.to_thread(
+                    self.payload_builder.apply_to_local,
+                    payload_dir,
+                    replace_memory=prefer_cloud,
+                )
             imported_keys: list[str] = []
             changed_keys: list[str] = []
             if phrase:
@@ -329,10 +393,54 @@ class GitHubSyncService:
                 "restored": restored,
                 "imported_secret_keys": imported_keys,
                 "changed_secret_keys": changed_keys,
+                "prefer_cloud": prefer_cloud,
+                "paths": paths or [],
+            }
+
+    async def discard_outgoing(
+        self, profile_id: str | None = None, *, paths: list[str] | None = None
+    ) -> dict:
+        profile = self.get_profile(profile_id)
+        async with self._lock(profile):
+            repo_path = Path(profile.repo_path)
+            provider = GitHubSyncProvider(
+                repo_path, remote=profile.remote, branch=profile.branch
+            )
+            plan = await asyncio.to_thread(self.preview_sync_plan, "push", profile.id)
+            outgoing = [
+                change for change in plan.files if change.direction == "outgoing"
+            ]
+            allowed_paths = {change.path for change in outgoing}
+            selected_paths = [
+                path
+                for path in (paths or sorted(allowed_paths))
+                if path in allowed_paths
+            ]
+            if paths and len(selected_paths) != len(paths):
+                unknown = sorted(set(paths) - allowed_paths)
+                raise ValueError(f"Unknown outgoing sync path(s): {', '.join(unknown)}")
+            if selected_paths:
+                await asyncio.to_thread(provider.discard_payload_paths, selected_paths)
+            payload_dir = repo_path / PAYLOAD_DIR_NAME
+            restored = await asyncio.to_thread(
+                self.payload_builder.apply_paths_to_local,
+                payload_dir,
+                selected_paths,
+            )
+            await asyncio.to_thread(_reload_runtime)
+            return {
+                "success": True,
+                "discarded": selected_paths,
+                "restored": restored,
+                "plan": plan.model_dump(mode="json"),
             }
 
     async def push(
-        self, profile_id: str | None = None, *, shibboleth: str | None = None
+        self,
+        profile_id: str | None = None,
+        *,
+        shibboleth: str | None = None,
+        confirm_destructive: bool = False,
     ) -> dict:
         profile = self.get_profile(profile_id)
         async with self._lock(profile):
@@ -373,6 +481,11 @@ class GitHubSyncService:
             provider = GitHubSyncProvider(
                 repo_path, remote=profile.remote, branch=profile.branch
             )
+            plan = _plan_from_status("push", provider.payload_status())
+            _attach_diff_previews(plan, provider.payload_worktree_diff_patch())
+            _attach_added_file_previews(plan, repo_path)
+            if plan.requires_confirmation and not confirm_destructive:
+                raise DestructiveSyncPlanError(plan)
             git_output = await asyncio.to_thread(
                 provider.commit_and_push_payload, manifest.revision_id
             )
@@ -387,7 +500,11 @@ class GitHubSyncService:
             }
 
     async def auto_sync(
-        self, profile_id: str | None = None, *, shibboleth: str | None = None
+        self,
+        profile_id: str | None = None,
+        *,
+        shibboleth: str | None = None,
+        confirm_destructive: bool = False,
     ) -> dict:
         profile = self.get_profile(profile_id)
         async with self._lock(profile):
@@ -418,6 +535,18 @@ class GitHubSyncService:
             forbidden = self.payload_builder.validate_no_forbidden_paths(payload_dir)
             if forbidden:
                 raise ValueError(f"Sync payload contains forbidden paths: {forbidden}")
+
+            plan = _plan_from_status("auto", provider.payload_status())
+            _attach_diff_previews(plan, provider.payload_worktree_diff_patch())
+            _attach_added_file_previews(plan, repo_path)
+            incoming = _incoming_tracking_plan(provider, profile, "auto")
+            plan = _merge_plans("auto", [plan, incoming])
+            if plan.requires_confirmation and not confirm_destructive:
+                return {
+                    "success": False,
+                    "blocked_review_required": True,
+                    "plan": plan.model_dump(mode="json"),
+                }
 
             restored: list[str] = []
             imported: list[str] = []
@@ -671,6 +800,241 @@ def _replace_tree(source: Path, target: Path) -> None:
     if target.exists():
         shutil.rmtree(target)
     shutil.copytree(source, target)
+
+
+def _plan_from_status(operation: str, porcelain_output: str) -> SyncPlan:
+    changes: list[SyncFileChange] = []
+    for line in porcelain_output.splitlines():
+        if not line.strip():
+            continue
+        status = line[:2]
+        path = _status_path(line).removeprefix(f"{PAYLOAD_DIR_NAME}/")
+        changes.append(_make_change(path, _change_type_from_status(status), "outgoing"))
+    return _finalize_plan(operation, changes)
+
+
+def _plan_from_name_status(operation: str, diff_output: str) -> SyncPlan:
+    changes: list[SyncFileChange] = []
+    for line in diff_output.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        status = parts[0]
+        path = parts[-1].replace("\\", "/").removeprefix(f"{PAYLOAD_DIR_NAME}/")
+        changes.append(
+            _make_change(path, _change_type_from_name_status(status), "incoming")
+        )
+    return _finalize_plan(operation, changes)
+
+
+def _merge_plans(operation: str, plans: list[SyncPlan]) -> SyncPlan:
+    changes: list[SyncFileChange] = []
+    warnings: list[str] = []
+    for plan in plans:
+        changes.extend(plan.files)
+        warnings.extend(plan.warnings)
+    merged = _finalize_plan(operation, changes)
+    merged.warnings = list(dict.fromkeys([*merged.warnings, *warnings]))
+    return merged
+
+
+def _incoming_tracking_plan(
+    provider: GitHubSyncProvider,
+    profile: SyncProfile,
+    operation: str,
+) -> SyncPlan:
+    remote_ref = f"{profile.remote}/{profile.branch}"
+    try:
+        plan = _plan_from_name_status(
+            operation,
+            provider.payload_diff_name_status("HEAD", remote_ref),
+        )
+        _attach_diff_previews(plan, provider.payload_diff_patch("HEAD", remote_ref))
+        return plan
+    except Exception as exc:
+        logger.debug("Unable to preview incoming sync changes: %s", exc)
+        return _finalize_plan(operation, [])
+
+
+def _attach_diff_previews(plan: SyncPlan, diff_output: str) -> None:
+    if not diff_output.strip():
+        return
+    patches = _split_diff_by_path(diff_output)
+    for change in plan.files:
+        if change.category == "secrets":
+            continue
+        patch = patches.get(change.path)
+        if patch:
+            change.diff_preview = _trim_diff_preview(patch)
+
+
+def _attach_added_file_previews(plan: SyncPlan, repo_path: Path) -> None:
+    for change in plan.files:
+        if (
+            change.diff_preview
+            or change.change_type != "added"
+            or change.category in {"secrets", "sync"}
+        ):
+            continue
+        path = repo_path / PAYLOAD_DIR_NAME / change.path
+        if not path.is_file():
+            continue
+        try:
+            raw = path.read_bytes()
+        except OSError:
+            continue
+        if b"\x00" in raw:
+            continue
+        text = raw[:12000].decode("utf-8", errors="replace")
+        if len(raw) > len(raw[:12000]):
+            text += "\n... file truncated ..."
+        change.diff_preview = f"+++ {change.path}\n{text}"
+
+
+def _split_diff_by_path(diff_output: str) -> dict[str, str]:
+    result: dict[str, str] = {}
+    current_path: str | None = None
+    current_lines: list[str] = []
+    for line in diff_output.splitlines():
+        if line.startswith("diff --git "):
+            if current_path and current_lines:
+                result[current_path] = "\n".join(current_lines)
+            current_path = _path_from_diff_header(line)
+            current_lines = [line]
+            continue
+        if current_path:
+            current_lines.append(line)
+    if current_path and current_lines:
+        result[current_path] = "\n".join(current_lines)
+    return result
+
+
+def _path_from_diff_header(line: str) -> str | None:
+    parts = line.split()
+    if len(parts) < 4:
+        return None
+    path = parts[3]
+    if path.startswith("b/"):
+        path = path[2:]
+    return path.replace("\\", "/").removeprefix(f"{PAYLOAD_DIR_NAME}/")
+
+
+def _trim_diff_preview(patch: str) -> str:
+    lines = patch.splitlines()
+    preview_lines = lines[:120]
+    preview = "\n".join(preview_lines)
+    if len(lines) > len(preview_lines):
+        preview += "\n... diff truncated ..."
+    if len(preview) > 12000:
+        preview = preview[:12000] + "\n... diff truncated ..."
+    return preview
+
+
+def _status_path(line: str) -> str:
+    value = line[3:] if len(line) > 3 else line
+    if " -> " in value:
+        value = value.split(" -> ", 1)[1]
+    return value.strip().replace("\\", "/")
+
+
+def _change_type_from_status(status: str) -> str:
+    if "D" in status:
+        return "deleted"
+    if "A" in status or "?" in status:
+        return "added"
+    return "modified"
+
+
+def _change_type_from_name_status(status: str) -> str:
+    if status.startswith("D"):
+        return "deleted"
+    if status.startswith("A"):
+        return "added"
+    return "modified"
+
+
+def _make_change(path: str, change_type: str, direction: str) -> SyncFileChange:
+    category = _sync_category(path)
+    risk = _risk_for_change(path, category, change_type)
+    return SyncFileChange(
+        path=path,
+        category=category,
+        change_type=change_type,
+        risk=risk,
+        direction=direction,
+    )
+
+
+def _sync_category(path: str) -> str:
+    if path.startswith("config/"):
+        return "config"
+    if path.startswith("skills/"):
+        return "skills"
+    if path.startswith("memory/"):
+        return "memory"
+    if path == SECRET_BUNDLES_PATH:
+        return "secrets"
+    if path.startswith("_sync/"):
+        return "sync"
+    return "other"
+
+
+def _risk_for_change(path: str, category: str, change_type: str) -> str:
+    if category == "memory" and change_type == "deleted":
+        return "high"
+    if category == "memory" and path in {
+        "memory/MEMORY.md",
+        "memory/persona.md",
+        "memory/user.md",
+    }:
+        return "high"
+    if category == "secrets" and change_type == "deleted":
+        return "high"
+    if category == "secrets":
+        return "medium"
+    if change_type == "deleted":
+        return "medium"
+    return "low"
+
+
+def _finalize_plan(operation: str, changes: list[SyncFileChange]) -> SyncPlan:
+    summary = {"added": 0, "modified": 0, "deleted": 0, "high_risk": 0}
+    for change in changes:
+        summary[change.change_type] += 1
+        if change.risk == "high":
+            summary["high_risk"] += 1
+
+    memory_deletes = [
+        change
+        for change in changes
+        if change.category == "memory" and change.change_type == "deleted"
+    ]
+    warnings: list[str] = []
+    if memory_deletes:
+        warnings.append(f"{len(memory_deletes)} memory file(s) would be deleted.")
+    if len(memory_deletes) >= 5:
+        warnings.append("Large memory deletion detected; review before syncing.")
+    secret_deletes = [
+        change
+        for change in changes
+        if change.category == "secrets" and change.change_type == "deleted"
+    ]
+    if secret_deletes:
+        warnings.append("The shared encrypted key vault would be deleted.")
+
+    destructive = bool(
+        memory_deletes or secret_deletes or any(c.risk == "high" for c in changes)
+    )
+    return SyncPlan(
+        operation=operation,
+        files=changes,
+        summary=summary,
+        destructive=destructive,
+        requires_confirmation=destructive,
+        warnings=warnings,
+    )
 
 
 _KEYRING_SERVICE = "suzent-sync-mnemonic"

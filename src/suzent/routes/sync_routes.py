@@ -24,7 +24,7 @@ from suzent.sync.github_device_flow import (
 )
 from suzent.sync.models import SyncConflict, SyncProfile
 from suzent.sync.payload import PAYLOAD_DIR_NAME
-from suzent.sync.service import GitHubSyncService
+from suzent.sync.service import DestructiveSyncPlanError, GitHubSyncService
 
 _SESSION_TTL = 900
 
@@ -113,15 +113,39 @@ async def get_sync_ahead_behind(request: Request) -> JSONResponse:
         return _error_response(str(exc), 400)
 
 
+async def get_sync_plan(request: Request) -> JSONResponse:
+    try:
+        payload = await _json_payload(request)
+        operation = payload.get("operation")
+        profile_id = payload.get("profile_id")
+        plan = _service(request).preview_sync_plan(str(operation), profile_id)
+        return JSONResponse(plan.model_dump(mode="json"))
+    except Exception as exc:
+        return _error_response(str(exc), 400)
+
+
 async def pull_sync(request: Request) -> JSONResponse:
     try:
         payload = await _json_payload(request)
         service = _service(request)
+        paths = payload.get("paths")
         return JSONResponse(
             await service.pull(
                 payload.get("profile_id"),
                 shibboleth=_shibboleth_from_payload(payload),
+                confirm_destructive=bool(payload.get("confirm_destructive")),
+                prefer_cloud=bool(payload.get("prefer_cloud")),
+                paths=list(paths) if isinstance(paths, list) else None,
             )
+        )
+    except DestructiveSyncPlanError as exc:
+        return JSONResponse(
+            {
+                "detail": str(exc),
+                "review_required": True,
+                "plan": exc.plan.model_dump(mode="json"),
+            },
+            status_code=409,
         )
     except Exception as exc:
         return _error_response(str(exc), 400)
@@ -135,6 +159,31 @@ async def push_sync(request: Request) -> JSONResponse:
             await service.push(
                 payload.get("profile_id"),
                 shibboleth=_shibboleth_from_payload(payload),
+                confirm_destructive=bool(payload.get("confirm_destructive")),
+            )
+        )
+    except DestructiveSyncPlanError as exc:
+        return JSONResponse(
+            {
+                "detail": str(exc),
+                "review_required": True,
+                "plan": exc.plan.model_dump(mode="json"),
+            },
+            status_code=409,
+        )
+    except Exception as exc:
+        return _error_response(str(exc), 400)
+
+
+async def discard_outgoing_sync(request: Request) -> JSONResponse:
+    try:
+        payload = await _json_payload(request)
+        service = _service(request)
+        paths = payload.get("paths")
+        return JSONResponse(
+            await service.discard_outgoing(
+                payload.get("profile_id"),
+                paths=list(paths) if isinstance(paths, list) else None,
             )
         )
     except Exception as exc:
@@ -197,6 +246,7 @@ async def run_auto_sync(request: Request) -> JSONResponse:
             await service.auto_sync(
                 payload.get("profile_id"),
                 shibboleth=_shibboleth_from_payload(payload),
+                confirm_destructive=bool(payload.get("confirm_destructive")),
             )
         )
     except Exception as exc:

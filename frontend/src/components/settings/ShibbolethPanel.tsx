@@ -138,6 +138,9 @@ export function ShibbolethPanel({
   const available = profile?.secret_sync_available ?? false;
   const rotation = syncStatus?.rotation_detected ?? null;
   const vault = syncStatus?.vault ?? null;
+  const syncedKeyNames = vault?.synced_keys ?? [];
+  const localOnlyKeyNames = vault?.local_only_keys ?? [];
+  const vaultOnlyKeyNames = vault?.vault_only_keys ?? [];
 
   const autoStarted = useRef(false);
 
@@ -400,6 +403,38 @@ export function ShibbolethPanel({
           fact that would have made the GEMINI-missing-from-vault bug obvious. */}
       {enabled && vault?.exists && (
         <div className="border-2 border-brutal-black bg-white dark:bg-zinc-900">
+          <div className="border-b-2 border-brutal-black/20 bg-neutral-50 dark:bg-zinc-800/60 px-3 py-2">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10px] font-black uppercase text-neutral-600 dark:text-neutral-300">
+                Synced key names
+              </p>
+              <span className="font-mono text-[10px] font-bold text-neutral-400">
+                {syncedKeyNames.length}
+              </span>
+            </div>
+            <div className="mt-1.5 flex max-h-16 flex-wrap gap-1 overflow-y-auto">
+              {syncedKeyNames.length > 0 ? (
+                syncedKeyNames.map((key) => (
+                  <span
+                    key={key}
+                    title={key}
+                    className="max-w-full truncate border border-brutal-black/30 bg-white px-1.5 py-0.5 font-mono text-[10px] font-bold text-neutral-700 dark:bg-zinc-900 dark:text-neutral-200"
+                  >
+                    {key}
+                  </span>
+                ))
+              ) : (
+                <span className="font-mono text-[10px] text-neutral-400">No keys selected for sync</span>
+              )}
+            </div>
+            {(localOnlyKeyNames.length > 0 || vaultOnlyKeyNames.length > 0) && (
+              <p className="mt-1.5 text-[9px] text-neutral-500 dark:text-neutral-400">
+                {localOnlyKeyNames.length > 0 && `${localOnlyKeyNames.length} local-only`}
+                {localOnlyKeyNames.length > 0 && vaultOnlyKeyNames.length > 0 ? ' / ' : ''}
+                {vaultOnlyKeyNames.length > 0 && `${vaultOnlyKeyNames.length} vault-only`}
+              </p>
+            )}
+          </div>
           <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1.5 text-[9px] font-bold uppercase text-neutral-400 border-b-2 border-brutal-black/20">
             <span>Provider</span>
             <span className="text-center w-12">Vault</span>

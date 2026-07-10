@@ -51,6 +51,41 @@ export interface SecretVaultInfo {
   mnemonic_fingerprint: string | null;
 }
 
+export type SyncOperation = 'push' | 'pull' | 'auto';
+export type SyncChangeType = 'added' | 'modified' | 'deleted';
+export type SyncRisk = 'low' | 'medium' | 'high';
+export type SyncDirection = 'outgoing' | 'incoming';
+
+export interface SyncFileChange {
+  path: string;
+  category: 'config' | 'skills' | 'memory' | 'secrets' | 'sync' | 'other';
+  change_type: SyncChangeType;
+  risk: SyncRisk;
+  direction?: SyncDirection;
+  diff_preview?: string | null;
+}
+
+export interface SyncPlan {
+  operation: SyncOperation;
+  files: SyncFileChange[];
+  summary: Record<string, number>;
+  destructive: boolean;
+  requires_confirmation: boolean;
+  warnings: string[];
+}
+
+export class ApiError extends Error {
+  status: number;
+  payload: unknown;
+
+  constructor(message: string, status: number, payload: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
 async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(`${getApiBase()}${path}`, {
     method: 'POST',
@@ -59,15 +94,27 @@ async function postJson<T>(path: string, body: Record<string, unknown>): Promise
   });
   if (!res.ok) {
     let detail = res.statusText;
+    let payload: unknown = null;
     try {
-      const payload = await res.json();
-      detail = payload.detail || payload.error || detail;
+      payload = await res.json();
+      if (payload && typeof payload === 'object') {
+        const data = payload as { detail?: unknown; error?: unknown };
+        detail = String(data.detail || data.error || detail);
+      }
     } catch {
       // Keep the HTTP status text when the backend did not return JSON.
     }
-    throw new Error(`Request failed: ${detail}`);
+    throw new ApiError(`Request failed: ${detail}`, res.status, payload);
   }
   return res.json();
+}
+
+export function syncReviewPlanFromError(error: unknown): SyncPlan | null {
+  if (!(error instanceof ApiError)) return null;
+  if (!error.payload || typeof error.payload !== 'object') return null;
+  const plan = (error.payload as { plan?: unknown }).plan;
+  if (!plan || typeof plan !== 'object') return null;
+  return plan as SyncPlan;
 }
 
 export interface SyncQuickstartInfo {
@@ -173,26 +220,48 @@ export async function fetchSyncAheadBehind(profileId?: string): Promise<{ ahead:
   return res.json();
 }
 
+export function githubSyncPlan(operation: SyncOperation, profileId?: string): Promise<SyncPlan> {
+  const body: Record<string, unknown> = { operation };
+  if (profileId) body.profile_id = profileId;
+  return postJson<SyncPlan>('/sync/plan', body);
+}
+
 export function githubSyncPull(
   profileId?: string,
   shibboleth?: string,
+  confirmDestructive = false,
+  preferCloud = false,
+  paths?: string[],
 ): Promise<Record<string, unknown>> {
   const body: Record<string, unknown> = profileId ? { profile_id: profileId } : {};
   if (shibboleth) body.shibboleth = shibboleth;
+  if (confirmDestructive) body.confirm_destructive = true;
+  if (preferCloud) body.prefer_cloud = true;
+  if (paths) body.paths = paths;
   return postJson<Record<string, unknown>>('/sync/pull', body);
+}
+
+export function githubSyncDiscardOutgoing(profileId?: string, paths?: string[]): Promise<Record<string, unknown>> {
+  const body: Record<string, unknown> = profileId ? { profile_id: profileId } : {};
+  if (paths) body.paths = paths;
+  return postJson<Record<string, unknown>>('/sync/discard-outgoing', body);
 }
 
 export function githubSyncPush(
   profileId?: string,
   shibboleth?: string,
+  confirmDestructive = false,
 ): Promise<Record<string, unknown>> {
   const body: Record<string, unknown> = profileId ? { profile_id: profileId } : {};
   if (shibboleth) body.shibboleth = shibboleth;
+  if (confirmDestructive) body.confirm_destructive = true;
   return postJson<Record<string, unknown>>('/sync/push', body);
 }
 
-export function runSync(profileId?: string): Promise<Record<string, unknown>> {
-  return postJson<Record<string, unknown>>('/sync/auto/run', profileId ? { profile_id: profileId } : {});
+export function runSync(profileId?: string, confirmDestructive = false): Promise<Record<string, unknown>> {
+  const body: Record<string, unknown> = profileId ? { profile_id: profileId } : {};
+  if (confirmDestructive) body.confirm_destructive = true;
+  return postJson<Record<string, unknown>>('/sync/auto/run', body);
 }
 
 export function saveSyncAutoConfig(profileId: string, autoSyncEnabled: boolean, intervalHours: number, autoResolveEnabled: boolean): Promise<SyncProfile> {

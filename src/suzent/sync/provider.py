@@ -68,6 +68,48 @@ class GitHubSyncProvider:
             "behind": behind,
         }
 
+    def payload_diff_name_status(self, left_ref: str, right_ref: str) -> str:
+        self.validate(require_clean=False)
+        return self._git(
+            "diff", "--name-status", left_ref, right_ref, "--", PAYLOAD_DIR_NAME
+        )
+
+    def payload_diff_patch(self, left_ref: str, right_ref: str) -> str:
+        self.validate(require_clean=False)
+        return self._git(
+            "diff",
+            "--no-ext-diff",
+            "--unified=3",
+            left_ref,
+            right_ref,
+            "--",
+            PAYLOAD_DIR_NAME,
+        )
+
+    def payload_worktree_diff_patch(self) -> str:
+        self.validate(require_clean=False)
+        return self._git("diff", "--no-ext-diff", "--unified=3", "--", PAYLOAD_DIR_NAME)
+
+    def discard_payload_changes(self) -> None:
+        self._discard_payload_changes()
+
+    def discard_payload_paths(self, paths: list[str]) -> None:
+        payload_paths: list[str] = []
+        for path in paths:
+            normalized = path.replace("\\", "/").removeprefix(f"{PAYLOAD_DIR_NAME}/")
+            if normalized.strip():
+                payload_paths.append(f"{PAYLOAD_DIR_NAME}/{normalized}")
+        if not payload_paths:
+            return
+        try:
+            self._git("checkout", "--", *payload_paths)
+        except RuntimeError:
+            pass
+        try:
+            self._git("clean", "-f", "--", *payload_paths)
+        except RuntimeError:
+            pass
+
     def pull_ff_only(self) -> str:
         self._discard_payload_changes()
         self.validate(require_clean=False)
@@ -119,6 +161,10 @@ class GitHubSyncProvider:
     def has_meaningful_payload_changes(self) -> bool:
         status = self._git("status", "--porcelain", "--", PAYLOAD_DIR_NAME).strip()
         return bool(status and not _only_metadata_changed(status))
+
+    def payload_status(self) -> str:
+        self.validate(require_clean=False)
+        return self._git("status", "--porcelain", "--", PAYLOAD_DIR_NAME)
 
     def is_clean(self) -> bool:
         return not self._git("status", "--porcelain").strip()
@@ -211,6 +257,8 @@ class GitHubSyncProvider:
             ["git", *args],
             cwd=self.repo_path,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             check=False,
         )
