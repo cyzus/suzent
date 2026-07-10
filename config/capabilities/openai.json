@@ -1,6 +1,54 @@
 {
   "_doc": "OpenAI model capabilities. Auto-updated by Fetch; manually curate the flags.",
   "models": {
+    "openai/computer-use-preview": {
+      "mode": "chat"
+    },
+    "openai/computer-use-preview-2025-03-11": {
+      "mode": "chat"
+    },
+    "openai/gpt-realtime-2.1": {
+      "mode": "chat"
+    },
+    "openai/gpt-realtime-2.1-mini": {
+      "mode": "chat"
+    },
+    "openai/curie:ft-personal-2022-02-08-23-37-50": {
+      "mode": "chat"
+    },
+    "openai/curie:ft-personal-2022-02-09-02-08-23": {
+      "mode": "chat"
+    },
+    "openai/curie:ft-personal-2022-02-09-21-29-30": {
+      "mode": "chat"
+    },
+    "openai/curie:ft-personal-2022-02-09-21-52-55": {
+      "mode": "chat"
+    },
+    "openai/curie:ft-personal-2022-02-10-04-23-19": {
+      "mode": "chat"
+    },
+    "openai/curie:ft-personal-2022-02-11-02-31-29": {
+      "mode": "chat"
+    },
+    "openai/curie:ft-personal-2022-02-15-01-42-17": {
+      "mode": "chat"
+    },
+    "openai/curie:ft-personal-2022-02-15-02-33-31": {
+      "mode": "chat"
+    },
+    "openai/curie:ft-personal-2022-02-16-02-37-59": {
+      "mode": "chat"
+    },
+    "openai/curie:ft-personal-2022-02-16-19-56-32": {
+      "mode": "chat"
+    },
+    "openai/davinci:ft-personal-2022-05-10-02-35-46": {
+      "mode": "chat"
+    },
+    "openai/davinci:ft-personal-2022-05-11-21-16-43": {
+      "mode": "chat"
+    },
     "openai/gpt-4.1": {
       "mode": "chat",
       "max_input_tokens": 1047576,
@@ -65,22 +113,10 @@
     "openai/tts-1-hd": {
       "mode": "tts"
     },
-    "openai/dall-e-3": {
-      "mode": "image_generation"
-    },
-    "openai/dall-e-2": {
-      "mode": "image_generation"
-    },
-    "openai/container": {
-      "mode": "chat"
-    },
     "openai/sora-2": {
       "mode": "chat"
     },
     "openai/sora-2-pro": {
-      "mode": "chat"
-    },
-    "openai/sora-2-pro-high-res": {
       "mode": "chat"
     },
     "openai/gpt-4-0613": {
@@ -152,40 +188,16 @@
     "openai/gpt-4o-2024-08-06": {
       "mode": "chat"
     },
-    "openai/gpt-4o-audio-preview": {
-      "mode": "chat"
-    },
-    "openai/gpt-4o-realtime-preview": {
-      "mode": "chat"
-    },
     "openai/omni-moderation-latest": {
       "mode": "chat"
     },
     "openai/omni-moderation-2024-09-26": {
       "mode": "chat"
     },
-    "openai/gpt-4o-realtime-preview-2024-12-17": {
-      "mode": "chat"
-    },
-    "openai/gpt-4o-audio-preview-2024-12-17": {
-      "mode": "chat"
-    },
-    "openai/gpt-4o-mini-realtime-preview-2024-12-17": {
-      "mode": "chat"
-    },
-    "openai/gpt-4o-mini-audio-preview-2024-12-17": {
-      "mode": "chat"
-    },
     "openai/o1-2024-12-17": {
       "mode": "chat"
     },
     "openai/o1": {
-      "mode": "chat"
-    },
-    "openai/gpt-4o-mini-realtime-preview": {
-      "mode": "chat"
-    },
-    "openai/gpt-4o-mini-audio-preview": {
       "mode": "chat"
     },
     "openai/o3-mini": {
@@ -237,12 +249,6 @@
       "mode": "chat"
     },
     "openai/o3-pro": {
-      "mode": "chat"
-    },
-    "openai/gpt-4o-realtime-preview-2025-06-03": {
-      "mode": "chat"
-    },
-    "openai/gpt-4o-audio-preview-2025-06-03": {
       "mode": "chat"
     },
     "openai/o3-pro-2025-06-10": {
@@ -450,6 +456,12 @@
       "mode": "chat"
     },
     "openai/gpt-realtime-whisper": {
+      "mode": "chat"
+    },
+    "openai/container": {
+      "mode": "chat"
+    },
+    "openai/sora-2-pro-high-res": {
       "mode": "chat"
     }
   }

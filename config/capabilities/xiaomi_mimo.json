@@ -10,15 +10,6 @@
       "input_cost_per_token": 4e-07,
       "output_cost_per_token": 2e-06
     },
-    "xiaomi_mimo/mimo-v2-omni": {
-      "mode": "chat"
-    },
-    "xiaomi_mimo/mimo-v2-pro": {
-      "mode": "chat"
-    },
-    "xiaomi_mimo/mimo-v2-tts": {
-      "mode": "chat"
-    },
     "xiaomi_mimo/mimo-v2.5": {
       "mode": "chat"
     },

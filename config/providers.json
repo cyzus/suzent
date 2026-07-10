@@ -208,7 +208,7 @@
       ],
       "default_models": [
         {"id": "xiaomi_mimo/mimo-v2.5-pro", "name": "MiMo-V2.5-Pro"},
-        {"id": "xiaomi_mimo/mimo-v2.5-omni", "name": "MiMo-V2.5-Omni"}
+        {"id": "xiaomi_mimo/mimo-v2.5", "name": "MiMo-V2.5"}
       ]
     }
   ]
