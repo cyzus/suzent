@@ -129,6 +129,17 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
 ```
 
+**Mainland China mirror mode**
+```bash
+curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | SUZENT_CHINA_MIRROR=1 bash
+```
+
+```powershell
+$env:SUZENT_CHINA_MIRROR="1"; powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
+```
+
+This uses faster mirrors for PyPI, npm, Playwright, Node via nvm, and Rustup. If GitHub itself is slow, set `SUZENT_REPO_URL` or `SUZENT_RELEASE_BASE_URL` to a mirror you trust before running the command.
+
 Then bind your keys in `~/suzent/.env` and run:
 ```bash
 suzent start

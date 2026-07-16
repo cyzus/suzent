@@ -13,6 +13,9 @@ const PROTOCOL_VERSION: u16 = 1;
 const TARGET_PYTHON_VERSION: &str = "3.12";
 const DEFAULT_BRANCH: &str = "main";
 const REPO_URL: &str = "https://github.com/cyzus/suzent.git";
+const UV_INSTALL_SH_URL: &str = "https://astral.sh/uv/install.sh";
+const UV_INSTALL_PS1_URL: &str = "https://astral.sh/uv/install.ps1";
+const RELEASE_BASE_URL: &str = "https://github.com/cyzus/suzent/releases/latest/download";
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -35,6 +38,11 @@ struct InstallConfig {
     dir: PathBuf,
     branch: String,
     skip_playwright: bool,
+    china_mirror: bool,
+    repo_url: String,
+    repo_url_override: bool,
+    uv_install_url: String,
+    release_base_url: String,
     json: bool,
     non_interactive: bool,
 }
@@ -220,11 +228,40 @@ impl InstallConfig {
             || env::var("SUZENT_SKIP_PLAYWRIGHT")
                 .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
                 .unwrap_or(false);
+        let china_mirror = has_flag(args, "--china-mirror")
+            || env::var("SUZENT_CHINA_MIRROR")
+                .map(|value| truthy_env(&value))
+                .unwrap_or(false);
+        let repo_url_env = env::var("SUZENT_REPO_URL")
+            .ok()
+            .filter(|value| !value.trim().is_empty());
+        let repo_url_override = repo_url_env.is_some();
+        let repo_url = repo_url_env.unwrap_or_else(|| REPO_URL.to_string());
+        let uv_install_url = env::var("SUZENT_UV_INSTALL_URL")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| {
+                if cfg!(windows) {
+                    UV_INSTALL_PS1_URL.to_string()
+                } else {
+                    UV_INSTALL_SH_URL.to_string()
+                }
+            });
+        let release_base_url = env::var("SUZENT_RELEASE_BASE_URL")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .map(|value| value.trim_end_matches('/').to_string())
+            .unwrap_or_else(|| RELEASE_BASE_URL.to_string());
 
         Self {
             dir,
             branch,
             skip_playwright,
+            china_mirror,
+            repo_url,
+            repo_url_override,
+            uv_install_url,
+            release_base_url,
             json: has_flag(args, "--json"),
             non_interactive: has_flag(args, "--non-interactive")
                 || has_flag(args, "--json")
@@ -412,18 +449,29 @@ fn stage_uv(_config: &InstallConfig) -> StageOutcome {
                 "-ExecutionPolicy",
                 "Bypass",
                 "-Command",
-                "irm https://astral.sh/uv/install.ps1 | iex",
+                &format!(
+                    "irm '{}' | iex",
+                    escape_powershell_single_quoted(&_config.uv_install_url)
+                ),
             ])
             .stdout(child_stdio())
             .stderr(child_stdio());
+        configure_mirror_env(&mut command, _config);
         hide_command_window(&mut command);
         run_command(&mut command)
     } else {
         let mut command = Command::new("sh");
         command
-            .args(["-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"])
+            .args([
+                "-c",
+                &format!(
+                    "curl -LsSf '{}' | sh",
+                    shell_single_quote(&_config.uv_install_url)
+                ),
+            ])
             .stdout(child_stdio())
             .stderr(child_stdio());
+        configure_mirror_env(&mut command, _config);
         run_command(&mut command)
     };
 
@@ -435,7 +483,7 @@ fn stage_uv(_config: &InstallConfig) -> StageOutcome {
     StageOutcome::fail("uv is required. Install it from https://docs.astral.sh/uv/ and retry.")
 }
 
-fn stage_python(_config: &InstallConfig) -> StageOutcome {
+fn stage_python(config: &InstallConfig) -> StageOutcome {
     let Some(uv) = find_uv_after_install() else {
         return StageOutcome::fail("uv is not installed; run the uv stage first.");
     };
@@ -445,6 +493,7 @@ fn stage_python(_config: &InstallConfig) -> StageOutcome {
         .args(["python", "find", TARGET_PYTHON_VERSION])
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
+    configure_mirror_env(&mut find_command, config);
     hide_command_window(&mut find_command);
     log_command_start(&find_command);
     let found = find_command.output();
@@ -465,6 +514,7 @@ fn stage_python(_config: &InstallConfig) -> StageOutcome {
         .args(["python", "install", TARGET_PYTHON_VERSION])
         .stdout(child_stdio())
         .stderr(child_stdio());
+    configure_mirror_env(&mut install_command, config);
     let status = run_command(&mut install_command);
 
     if status {
@@ -482,9 +532,14 @@ fn stage_repository(config: &InstallConfig) -> StageOutcome {
 
     if config.dir.join(".git").exists() {
         print_human("Existing Suzent repository found. Updating...");
+        let update_remote = if config.repo_url_override {
+            config.repo_url.as_str()
+        } else {
+            "origin"
+        };
         if !run_command(
             Command::new(&git)
-                .args(["fetch", "origin"])
+                .args(["fetch", update_remote, &config.branch])
                 .current_dir(&config.dir),
         ) {
             return StageOutcome::fail("Failed to fetch repository updates.");
@@ -498,7 +553,7 @@ fn stage_repository(config: &InstallConfig) -> StageOutcome {
         let _ = run_command(&mut checkout_command);
         if !run_command(
             Command::new(&git)
-                .args(["pull", "origin", &config.branch])
+                .args(["pull", update_remote, &config.branch])
                 .current_dir(&config.dir),
         ) {
             return StageOutcome::fail("Failed to update repository.");
@@ -525,7 +580,7 @@ fn stage_repository(config: &InstallConfig) -> StageOutcome {
         "clone",
         "--branch",
         &config.branch,
-        REPO_URL,
+        &config.repo_url,
         config.dir.to_string_lossy().as_ref(),
     ])) {
         StageOutcome::ok()
@@ -560,20 +615,22 @@ fn stage_dependencies(config: &InstallConfig) -> StageOutcome {
         return StageOutcome::fail("uv is not installed; run the uv stage first.");
     };
 
-    if run_command(
-        Command::new(&uv)
-            .args(["sync", "--extra", "social"])
-            .current_dir(&config.dir),
-    ) {
+    let mut command = Command::new(&uv);
+    command
+        .args(["sync", "--frozen", "--extra", "social"])
+        .current_dir(&config.dir);
+    configure_mirror_env(&mut command, config);
+
+    if run_command(&mut command) {
         StageOutcome::ok()
     } else {
-        StageOutcome::fail("uv sync --extra social failed.")
+        StageOutcome::fail("uv sync --frozen --extra social failed.")
     }
 }
 
 fn stage_ui(config: &InstallConfig) -> StageOutcome {
     let asset = ui_asset_name();
-    let url = format!("https://github.com/cyzus/suzent/releases/latest/download/{asset}");
+    let url = format!("{}/{asset}", config.release_base_url);
     let bin_dir = config.dir.join("bin");
     let dest = bin_dir.join(ui_binary_name());
     let tmp = dest.with_extension("tmp");
@@ -582,7 +639,11 @@ fn stage_ui(config: &InstallConfig) -> StageOutcome {
         return StageOutcome::fail(format!("Failed to create bin directory: {error}"));
     }
 
-    let response = reqwest::blocking::get(&url).and_then(|resp| resp.error_for_status());
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .get(&url)
+        .send()
+        .and_then(|resp| resp.error_for_status());
     let bytes = match response.and_then(|resp| resp.bytes()) {
         Ok(bytes) => bytes,
         Err(error) => {
@@ -620,15 +681,25 @@ fn stage_playwright(config: &InstallConfig) -> StageOutcome {
         return StageOutcome::skipped("Playwright Chromium skipped by request.");
     }
 
-    let Some(uv) = find_uv_after_install() else {
-        return StageOutcome::fail("uv is not installed; run the uv stage first.");
-    };
-
-    if run_command(
-        Command::new(&uv)
+    let mut command = if let Some(playwright) = playwright_executable(&config.dir) {
+        let mut command = Command::new(playwright);
+        command
+            .args(["install", "chromium"])
+            .current_dir(&config.dir);
+        command
+    } else {
+        let Some(uv) = find_uv_after_install() else {
+            return StageOutcome::fail("uv is not installed; run the uv stage first.");
+        };
+        let mut command = Command::new(&uv);
+        command
             .args(["run", "playwright", "install", "chromium"])
-            .current_dir(&config.dir),
-    ) {
+            .current_dir(&config.dir);
+        command
+    };
+    configure_mirror_env(&mut command, config);
+
+    if run_command(&mut command) {
         StageOutcome::ok()
     } else {
         StageOutcome::skipped(
@@ -871,7 +942,10 @@ exec \"{}\" \"$@\"\n",
         ));
     }
 
-    print_human(format!("[OK] macOS app shortcut created at {}", app_link.display()));
+    print_human(format!(
+        "[OK] macOS app shortcut created at {}",
+        app_link.display()
+    ));
     StageOutcome::ok()
 }
 
@@ -922,6 +996,64 @@ fn escape_powershell_single_quoted(value: &str) -> String {
     value.replace('\'', "''")
 }
 
+fn shell_single_quote(value: &str) -> String {
+    value.replace('\'', "'\\''")
+}
+
+fn truthy_env(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "cn"
+    )
+}
+
+fn configure_mirror_env(command: &mut Command, config: &InstallConfig) {
+    if !config.china_mirror {
+        return;
+    }
+
+    env_if_missing(
+        command,
+        "UV_DEFAULT_INDEX",
+        "https://pypi.tuna.tsinghua.edu.cn/simple",
+    );
+    env_if_missing(
+        command,
+        "NPM_CONFIG_REGISTRY",
+        "https://registry.npmmirror.com",
+    );
+    env_if_missing(
+        command,
+        "PLAYWRIGHT_DOWNLOAD_HOST",
+        "https://npmmirror.com/mirrors/playwright",
+    );
+    env_if_missing(
+        command,
+        "NVM_NODEJS_ORG_MIRROR",
+        "https://npmmirror.com/mirrors/node",
+    );
+    env_if_missing(
+        command,
+        "RUSTUP_DIST_SERVER",
+        "https://mirrors.tuna.tsinghua.edu.cn/rustup",
+    );
+    env_if_missing(
+        command,
+        "RUSTUP_UPDATE_ROOT",
+        "https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup",
+    );
+}
+
+fn env_if_missing(command: &mut Command, key: &str, value: &str) {
+    if env::var(key)
+        .ok()
+        .filter(|existing| !existing.trim().is_empty())
+        .is_none()
+    {
+        command.env(key, value);
+    }
+}
+
 fn is_empty_dir(path: &Path) -> bool {
     path.is_dir()
         && fs::read_dir(path)
@@ -964,6 +1096,9 @@ fn write_banner(config: &InstallConfig) {
     println!();
     println!("Install directory: {}", config.dir.display());
     println!("Branch: {}", config.branch);
+    if config.china_mirror {
+        println!("China mirror mode: enabled");
+    }
     println!();
 }
 
@@ -974,10 +1109,10 @@ fn print_preview(config: &InstallConfig) {
         println!("Step {}/{}: {}", idx + 1, stages().len(), stage.title);
         match stage.name {
             "repository" => {
-                println!("  Clone or update {REPO_URL}");
+                println!("  Clone or update {}", config.repo_url);
                 println!("  Target: {}", config.dir.display());
             }
-            "dependencies" => println!("  uv sync --extra social"),
+            "dependencies" => println!("  uv sync --frozen --extra social"),
             "ui" => println!("  {}", ui_asset_name()),
             "playwright" => {
                 if config.skip_playwright {
@@ -1012,7 +1147,10 @@ fn run_command(command: &mut Command) -> bool {
     log_command_start(command);
 
     if machine_mode() {
-        let result = command.stdout(Stdio::piped()).stderr(Stdio::piped()).output();
+        let result = command
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output();
         let success = matches!(&result, Ok(output) if output.status.success());
         log_command_output(&result);
         return success;
@@ -1096,6 +1234,18 @@ fn find_uv_after_install() -> Option<PathBuf> {
         };
         candidates.into_iter().find(|path| path.exists())
     })
+}
+
+fn playwright_executable(workspace: &Path) -> Option<PathBuf> {
+    let path = if cfg!(windows) {
+        workspace
+            .join(".venv")
+            .join("Scripts")
+            .join("playwright.exe")
+    } else {
+        workspace.join(".venv").join("bin").join("playwright")
+    };
+    path.exists().then_some(path)
 }
 
 fn default_install_dir() -> PathBuf {
@@ -1190,14 +1340,22 @@ fn log_command_output(result: &io::Result<std::process::Output>) {
 
 fn log_stream(name: &str, bytes: &[u8]) {
     let text = String::from_utf8_lossy(bytes);
-    for line in text.lines().map(str::trim_end).filter(|line| !line.is_empty()) {
+    for line in text
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| !line.is_empty())
+    {
         log_detail(format!("{name}: {line}"));
     }
 }
 
 fn command_display(command: &Command) -> String {
     let mut parts = vec![command.get_program().to_string_lossy().to_string()];
-    parts.extend(command.get_args().map(|arg| arg.to_string_lossy().to_string()));
+    parts.extend(
+        command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string()),
+    );
     parts.join(" ")
 }
 
