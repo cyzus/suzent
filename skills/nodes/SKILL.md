@@ -8,8 +8,8 @@ description: Interact with companion devices (phones, laptops, headless servers)
 The Nodes skill lets you control remote companion devices connected to the Suzent server. Nodes connect via WebSocket and advertise capabilities (commands) you can invoke.
 
 Prefer the `suzent nodes ...` CLI when it is available. Use the REST API via
-`$SUZENT_BASE_URL` when running Python/shell code from BashTool or sandbox mode,
-or when writing code that needs direct HTTP access.
+`$SUZENT_BASE_URL` only when running in sandbox mode, writing code, or needing a
+route the CLI does not expose yet.
 
 Use this skill to:
 - Discover connected devices and their capabilities
