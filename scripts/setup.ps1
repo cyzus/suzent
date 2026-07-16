@@ -3,10 +3,12 @@
 #   Fresh install:  powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
 #   Update:         suzent update   (or re-run this script inside the repo)
 # Flags (env vars): $env:SUZENT_DIR, $env:SUZENT_BRANCH, $env:SUZENT_SKIP_PLAYWRIGHT
+#                   $env:SUZENT_CHINA_MIRROR, $env:SUZENT_REPO_URL, $env:SUZENT_RELEASE_BASE_URL
 
 param(
     [string]$Dir    = "",
     [string]$Branch = "",
+    [switch]$ChinaMirror,
     [switch]$SkipPlaywright,
     [switch]$Update
 )
@@ -17,7 +19,11 @@ $ErrorActionPreference = "Stop"
 $SuzentDir    = if ($Dir)    { $Dir }    elseif ($env:SUZENT_DIR)    { $env:SUZENT_DIR }    else { Join-Path $env:USERPROFILE "suzent" }
 $SuzentBranch = if ($Branch) { $Branch } elseif ($env:SUZENT_BRANCH) { $env:SUZENT_BRANCH } else { "main" }
 $SkipPW       = $SkipPlaywright -or ($env:SUZENT_SKIP_PLAYWRIGHT -eq "1")
-$RepoUrl      = "https://github.com/cyzus/suzent.git"
+$UseChinaMirror = $ChinaMirror -or ($env:SUZENT_CHINA_MIRROR -match "^(1|true|yes|cn)$")
+$RepoUrl      = if ($env:SUZENT_REPO_URL) { $env:SUZENT_REPO_URL } else { "https://github.com/cyzus/suzent.git" }
+$UpdateRemote = if ($env:SUZENT_REPO_URL) { $env:SUZENT_REPO_URL } else { "origin" }
+$UvInstallUrl = if ($env:SUZENT_UV_INSTALL_URL) { $env:SUZENT_UV_INSTALL_URL } else { "https://astral.sh/uv/install.ps1" }
+$ReleaseBaseUrl = if ($env:SUZENT_RELEASE_BASE_URL) { $env:SUZENT_RELEASE_BASE_URL.TrimEnd("/") } else { "https://github.com/cyzus/suzent/releases/latest/download" }
 $MinNodeMajor = 20
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -40,6 +46,17 @@ function Add-ToUserPath {
     Write-Warn "Added $NewDir to user PATH (restart terminal if command not found)"
 }
 
+function Enable-ChinaMirrors {
+    if (-not $UseChinaMirror) { return }
+
+    if (-not $env:UV_DEFAULT_INDEX) { $env:UV_DEFAULT_INDEX = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+    if (-not $env:NPM_CONFIG_REGISTRY) { $env:NPM_CONFIG_REGISTRY = "https://registry.npmmirror.com" }
+    if (-not $env:PLAYWRIGHT_DOWNLOAD_HOST) { $env:PLAYWRIGHT_DOWNLOAD_HOST = "https://npmmirror.com/mirrors/playwright" }
+    if (-not $env:RUSTUP_DIST_SERVER) { $env:RUSTUP_DIST_SERVER = "https://mirrors.tuna.tsinghua.edu.cn/rustup" }
+    if (-not $env:RUSTUP_UPDATE_ROOT) { $env:RUSTUP_UPDATE_ROOT = "https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup" }
+    Write-Info "China mirror mode enabled for PyPI, npm, Playwright, and Rustup."
+}
+
 # ── Banner ────────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "  ███████╗██╗   ██╗███████╗███████╗███╗   ██╗████████╗" -ForegroundColor White
@@ -50,6 +67,7 @@ Write-Host "  ███████║╚██████╔╝█████
 Write-Host "  ╚══════╝ ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   " -ForegroundColor White
 Write-Host ""
 
+Enable-ChinaMirrors
 
 # ── Detect update vs fresh install ───────────────────────────────────────────
 $IsUpdate = (Test-Path (Join-Path $SuzentDir ".git"))
@@ -132,7 +150,8 @@ Ensure-Node
 function Ensure-Uv {
     if (Get-Command uv -ErrorAction SilentlyContinue) { return }
     Write-Info "Installing uv..."
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+    $escapedUvInstallUrl = $UvInstallUrl.Replace("'", "''")
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "irm '$escapedUvInstallUrl' | iex"
     Refresh-Path
     if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
         Write-Fail "uv installation failed. See https://docs.astral.sh/uv/"
@@ -190,9 +209,9 @@ if ($IsUpdate) {
         git stash push -m "suzent-update-$stamp"
     }
 
-    git fetch origin
+    git fetch $UpdateRemote $SuzentBranch
     try { git checkout $SuzentBranch --quiet 2>&1 | Out-Null } catch {}
-    git pull origin $SuzentBranch
+    git pull $UpdateRemote $SuzentBranch
     $sha = git rev-parse --short HEAD
     Write-Ok "Repository updated to $sha"
 } else {
@@ -218,15 +237,15 @@ if (-not (Test-Path ".env")) {
 }
 
 # ── Python dependencies ───────────────────────────────────────────────────────
-Write-Info "Syncing Python dependencies with social channel support (uv sync --extra social)..."
-uv sync --extra social
-if ($LASTEXITCODE -ne 0) { Write-Fail "uv sync --extra social failed — check errors above." }
+Write-Info "Syncing Python dependencies with social channel support (uv sync --frozen --extra social)..."
+uv sync --frozen --extra social
+if ($LASTEXITCODE -ne 0) { Write-Fail "uv sync --frozen --extra social failed — check errors above." }
 Write-Ok "Python dependencies ready"
 
 # ── Download pre-built UI binary ─────────────────────────────────────────────
 function Get-UiBinary {
     $asset = "suzent-windows-x86_64.exe"
-    $url = "https://github.com/cyzus/suzent/releases/latest/download/$asset"
+    $url = "$ReleaseBaseUrl/$asset"
     $tmp = $null
     try {
         $binDir = Join-Path $SuzentDir "bin"
@@ -276,7 +295,12 @@ if ($env:SUZENT_DEV_SETUP -eq "1") {
 # ── Playwright Chromium ───────────────────────────────────────────────────────
 if (-not $SkipPW) {
     Write-Info "Installing Playwright Chromium (for web browsing tool)..."
-    uv run playwright install chromium
+    $playwrightExe = Join-Path $SuzentDir ".venv\Scripts\playwright.exe"
+    if (Test-Path $playwrightExe) {
+        & $playwrightExe install chromium
+    } else {
+        uv run playwright install chromium
+    }
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "Playwright install failed — web browsing may not work (non-fatal)."
     }

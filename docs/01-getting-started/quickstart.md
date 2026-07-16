@@ -35,6 +35,29 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 
 The script installs Suzent and any missing dependencies (Python/uv, Rust, build tools).
 
+### Mainland China Mirror Mode
+
+If package downloads are slow from mainland China, enable mirror mode before running setup:
+
+<Tabs groupId="os">
+<TabItem value="windows" label="Windows" default>
+
+```powershell
+$env:SUZENT_CHINA_MIRROR="1"; powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
+```
+
+</TabItem>
+<TabItem value="mac-linux" label="Mac / Linux">
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | SUZENT_CHINA_MIRROR=1 bash
+```
+
+</TabItem>
+</Tabs>
+
+Mirror mode configures PyPI, npm, Playwright, Node via nvm, and Rustup mirrors. If GitHub itself is slow, set `SUZENT_REPO_URL` or `SUZENT_RELEASE_BASE_URL` to a mirror you trust before running setup.
+
 ---
 
 ## 2. Launch

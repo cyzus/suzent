@@ -123,6 +123,17 @@ curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
 ```
 
+**中国大陆镜像模式**
+```bash
+curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | SUZENT_CHINA_MIRROR=1 bash
+```
+
+```powershell
+$env:SUZENT_CHINA_MIRROR="1"; powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.ps1 | iex"
+```
+
+该模式会为 PyPI、npm、Playwright、nvm 下载 Node，以及 Rustup 启用国内镜像。如果 GitHub 本身访问较慢，可在运行前把 `SUZENT_REPO_URL` 或 `SUZENT_RELEASE_BASE_URL` 设置为你信任的镜像地址。
+
 然后在 `~/suzent/.env` 中绑定你的密钥并运行：
 ```bash
 suzent start

@@ -4,6 +4,7 @@
 #   Fresh install:  curl -fsSL https://raw.githubusercontent.com/cyzus/suzent/main/scripts/setup.sh | bash
 #   Update:         suzent update   (or re-run this script inside the repo)
 #   Flags (env):    SUZENT_DIR=~/suzent  SUZENT_BRANCH=main  SUZENT_SKIP_PLAYWRIGHT=1
+#                   SUZENT_CHINA_MIRROR=1  SUZENT_REPO_URL=...  SUZENT_RELEASE_BASE_URL=...
 
 set -euo pipefail
 
@@ -15,10 +16,30 @@ warn() { echo -e "${YELLOW}[!]${RESET} $*"; }
 die()  { echo -e "${RED}[✗]${RESET} $*"; exit 1; }
 
 # ── Config ────────────────────────────────────────────────────────────────────
-REPO_URL="https://github.com/cyzus/suzent.git"
+REPO_URL="${SUZENT_REPO_URL:-https://github.com/cyzus/suzent.git}"
+UPDATE_REMOTE="${SUZENT_REPO_URL:-origin}"
+UV_INSTALL_URL="${SUZENT_UV_INSTALL_URL:-https://astral.sh/uv/install.sh}"
+NVM_INSTALL_URL="${SUZENT_NVM_INSTALL_URL:-https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh}"
+RELEASE_BASE_URL="${SUZENT_RELEASE_BASE_URL:-https://github.com/cyzus/suzent/releases/latest/download}"
 SUZENT_DIR="${SUZENT_DIR:-$HOME/suzent}"
 SUZENT_BRANCH="${SUZENT_BRANCH:-main}"
+CHINA_MIRROR="${SUZENT_CHINA_MIRROR:-0}"
 MIN_NODE_MAJOR=20
+
+enable_china_mirrors() {
+    case "$CHINA_MIRROR" in
+        1|true|TRUE|yes|YES|cn|CN) ;;
+        *) return ;;
+    esac
+
+    export UV_DEFAULT_INDEX="${UV_DEFAULT_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+    export NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}"
+    export PLAYWRIGHT_DOWNLOAD_HOST="${PLAYWRIGHT_DOWNLOAD_HOST:-https://npmmirror.com/mirrors/playwright}"
+    export NVM_NODEJS_ORG_MIRROR="${NVM_NODEJS_ORG_MIRROR:-https://npmmirror.com/mirrors/node}"
+    export RUSTUP_DIST_SERVER="${RUSTUP_DIST_SERVER:-https://mirrors.tuna.tsinghua.edu.cn/rustup}"
+    export RUSTUP_UPDATE_ROOT="${RUSTUP_UPDATE_ROOT:-https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup}"
+    info "China mirror mode enabled for PyPI, npm, Playwright, Node, and Rustup."
+}
 
 # ── Banner ────────────────────────────────────────────────────────────────────
 echo ""
@@ -44,6 +65,7 @@ case "$OS" in
     *)      die "Unsupported OS: $OS" ;;
 esac
 ok "$OS_NAME detected"
+enable_china_mirrors
 
 # ── Helper: refresh PATH after install ───────────────────────────────────────
 refresh_path() {
@@ -84,7 +106,7 @@ install_node() {
         die "curl is required to install nvm. Please install curl first."
     fi
     export NVM_DIR="$HOME/.nvm"
-    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash
+    curl -fsSL "$NVM_INSTALL_URL" | bash
     # shellcheck source=/dev/null
     [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
     nvm install --lts
@@ -115,7 +137,7 @@ fi
 # ── Check/install: uv ────────────────────────────────────────────────────────
 if ! command -v uv &>/dev/null; then
     info "Installing uv..."
-    curl -LsSf https://astral.sh/uv/install.sh | sh
+    curl -LsSf "$UV_INSTALL_URL" | sh
     refresh_path
 fi
 command -v uv &>/dev/null || die "uv installation failed. See https://docs.astral.sh/uv/"
@@ -163,9 +185,9 @@ if [ "$IS_UPDATE" = true ]; then
         git stash push -m "suzent-update-$(date +%Y%m%d-%H%M%S)"
     fi
 
-    git fetch origin
+    git fetch "$UPDATE_REMOTE" "$SUZENT_BRANCH"
     git checkout "$SUZENT_BRANCH" 2>/dev/null || true
-    git pull origin "$SUZENT_BRANCH"
+    git pull "$UPDATE_REMOTE" "$SUZENT_BRANCH"
     ok "Repository updated to $(git rev-parse --short HEAD)"
 else
     if [ -d "$SUZENT_DIR" ]; then
@@ -191,8 +213,8 @@ else
 fi
 
 # ── Install / sync Python dependencies ───────────────────────────────────────
-info "Syncing Python dependencies with social channel support (uv sync --extra social)..."
-uv sync --extra social || die "uv sync --extra social failed — check errors above."
+info "Syncing Python dependencies with social channel support (uv sync --frozen --extra social)..."
+uv sync --frozen --extra social || die "uv sync --frozen --extra social failed — check errors above."
 ok "Python dependencies ready"
 
 # ── Download pre-built UI binary ─────────────────────────────────────────────
@@ -212,7 +234,7 @@ download_binary() {
 
     mkdir -p bin
     local url tmp
-    url="https://github.com/cyzus/suzent/releases/latest/download/$asset"
+    url="${RELEASE_BASE_URL%/}/$asset"
     tmp="bin/suzent-ui.tmp"
 
     info "Downloading pre-built UI binary..."
@@ -251,7 +273,11 @@ fi
 # ── Playwright Chromium ───────────────────────────────────────────────────────
 if [ "${SUZENT_SKIP_PLAYWRIGHT:-0}" != "1" ]; then
     info "Installing Playwright Chromium (for web browsing tool)..."
-    uv run playwright install chromium || warn "Playwright install failed — web browsing may not work (non-fatal)."
+    if [ -x ".venv/bin/playwright" ]; then
+        .venv/bin/playwright install chromium || warn "Playwright install failed — web browsing may not work (non-fatal)."
+    else
+        uv run playwright install chromium || warn "Playwright install failed — web browsing may not work (non-fatal)."
+    fi
 fi
 
 # ── Global CLI shim ───────────────────────────────────────────────────────────
