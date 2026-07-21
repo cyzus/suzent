@@ -1,7 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 
 import { useI18n } from '../../i18n';
-import { PairingRequest, SocialConfig, approvePairing, denyPairing, fetchPairings } from '../../lib/api';
+import {
+    PairingRequest,
+    SocialConfig,
+    WeChatLoginSession,
+    approvePairing,
+    denyPairing,
+    fetchPairings,
+    pollWeChatLogin,
+    startWeChatLogin,
+} from '../../lib/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { SettingsHeader } from './SettingsHeader';
@@ -24,6 +34,46 @@ interface SocialTabProps {
     onUseCustomMcpChange: (use: boolean) => void;
 }
 
+function buildWeChatQrImageSrc(content?: string | null): string | null {
+    const trimmed = content?.trim();
+    if (!trimmed) return null;
+
+    if (trimmed.startsWith('data:image/')) return trimmed;
+
+    if (trimmed.startsWith('<svg') || trimmed.startsWith('<?xml') || trimmed.includes('<svg')) {
+        return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(trimmed)}`;
+    }
+
+    const compact = trimmed.replace(/\s+/g, '');
+    if (!/^[A-Za-z0-9+/=]+$/.test(compact)) return null;
+
+    let mime = 'image/png';
+    if (compact.startsWith('/9j/')) mime = 'image/jpeg';
+    if (compact.startsWith('R0lGOD')) mime = 'image/gif';
+    if (compact.startsWith('PHN2Zy')) mime = 'image/svg+xml';
+
+    return `data:${mime};base64,${compact}`;
+}
+
+function getWeChatQrUrl(login?: WeChatLoginSession | null): string | null {
+    const explicitUrl = login?.qrcode_url?.trim();
+    if (explicitUrl) return explicitUrl;
+
+    const content = login?.qrcode_img_content?.trim();
+    if (content?.startsWith('http://') || content?.startsWith('https://')) {
+        return content;
+    }
+    return null;
+}
+
+function getWeChatQrGenerationContent(login?: WeChatLoginSession | null): string | null {
+    const content = login?.qrcode_img_content?.trim();
+    if (content?.startsWith('http://') || content?.startsWith('https://')) {
+        return content;
+    }
+    return getWeChatQrUrl(login);
+}
+
 export function SocialTab({
     socialConfig,
     tools,
@@ -39,6 +89,11 @@ export function SocialTab({
     const handshakeEnabled = !!(socialConfig.handshake as any)?.enabled;
     const [pairings, setPairings] = useState<PairingRequest[]>([]);
     const [pairingLoading, setPairingLoading] = useState(false);
+    const [wechatLogin, setWechatLogin] = useState<WeChatLoginSession | null>(null);
+    const [wechatLoginBusy, setWechatLoginBusy] = useState(false);
+    const [wechatLoginError, setWechatLoginError] = useState<string | null>(null);
+    const [wechatQrImageFailed, setWechatQrImageFailed] = useState(false);
+    const [wechatGeneratedQrSrc, setWechatGeneratedQrSrc] = useState<string | null>(null);
 
     const refreshPairings = useCallback(async () => {
         if (!handshakeEnabled) return;
@@ -62,6 +117,152 @@ export function SocialTab({
     const handleDeny = async (token: string) => {
         await denyPairing(token);
         await refreshPairings();
+    };
+
+    const beginWeChatLogin = async (baseUrl?: string) => {
+        setWechatLoginBusy(true);
+        setWechatLoginError(null);
+        try {
+            const session = await startWeChatLogin(baseUrl);
+            setWechatQrImageFailed(false);
+            setWechatLogin(session);
+        } catch (error) {
+            setWechatLoginError(error instanceof Error ? error.message : String(error));
+        } finally {
+            setWechatLoginBusy(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!wechatLogin?.session_id) return;
+
+        let cancelled = false;
+        const interval = window.setInterval(async () => {
+            try {
+                const status = await pollWeChatLogin(wechatLogin.session_id);
+                if (cancelled) return;
+                setWechatQrImageFailed(false);
+                setWechatLogin(status);
+
+                if (status.status === 'confirmed' && status.bot_token) {
+                    window.clearInterval(interval);
+                    setWechatLogin(null);
+                    setWechatLoginError(null);
+                    const existing = (socialConfig.wechat as any) || {};
+                    const allowedUsers = [...(existing.allowed_users || [])];
+                    if (status.authorized_user_id && !allowedUsers.includes(status.authorized_user_id)) {
+                        allowedUsers.push(status.authorized_user_id);
+                    }
+                    onConfigChange({
+                        ...socialConfig,
+                        wechat: {
+                            ...existing,
+                            enabled: true,
+                            bot_token: status.bot_token,
+                            base_url: status.base_url || existing.base_url,
+                            allowed_users: allowedUsers,
+                        },
+                    });
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    setWechatLoginError(error instanceof Error ? error.message : String(error));
+                }
+            }
+        }, 2000);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [wechatLogin?.session_id, onConfigChange, socialConfig]);
+
+    useEffect(() => {
+        const qrSrc = buildWeChatQrImageSrc(wechatLogin?.qrcode_img_content);
+        const qrContent = qrSrc ? null : getWeChatQrGenerationContent(wechatLogin);
+        let cancelled = false;
+        setWechatGeneratedQrSrc(null);
+
+        if (!qrContent) return;
+
+        QRCode.toDataURL(qrContent, {
+            errorCorrectionLevel: 'M',
+            margin: 1,
+            width: 256,
+        })
+            .then((dataUrl: string) => {
+                if (!cancelled) setWechatGeneratedQrSrc(dataUrl);
+            })
+            .catch((error: unknown) => {
+                if (!cancelled) {
+                    setWechatLoginError(error instanceof Error ? error.message : String(error));
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [wechatLogin?.qrcode_img_content, wechatLogin?.qrcode_url]);
+
+    const renderWeChatAuthPanel = (platformConfig: any): React.ReactElement => {
+        const hasToken = !!platformConfig.bot_token && platformConfig.bot_token !== '********';
+        const qrSrc = buildWeChatQrImageSrc(wechatLogin?.qrcode_img_content);
+        const qrUrl = getWeChatQrUrl(wechatLogin);
+        const displayQrSrc = qrSrc || wechatGeneratedQrSrc;
+
+        return (
+            <div className="space-y-3 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <div className="text-xs font-black uppercase text-neutral-900 dark:text-neutral-100">{t('settings.social.wechatAuthTitle')}</div>
+                        <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">{hasToken ? t('settings.social.wechatConnected') : t('settings.social.wechatAuthDesc')}</p>
+                    </div>
+                    <button
+                        onClick={() => beginWeChatLogin(platformConfig.base_url)}
+                        disabled={wechatLoginBusy}
+                        className="shrink-0 px-3 py-2 text-xs font-bold uppercase border-2 border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 disabled:opacity-50 brutal-btn"
+                    >
+                        {wechatLoginBusy ? t('settings.social.wechatStarting') : t('settings.social.wechatLogin')}
+                    </button>
+                </div>
+
+                {wechatLogin && (
+                    <div className="flex flex-col sm:flex-row gap-3 items-start">
+                        {displayQrSrc && !wechatQrImageFailed ? (
+                            <img
+                                src={displayQrSrc}
+                                alt={t('settings.social.wechatQrAlt')}
+                                onError={() => setWechatQrImageFailed(true)}
+                                className="w-40 h-40 border-2 border-brutal-black bg-white object-contain"
+                            />
+                        ) : qrUrl ? (
+                            <a
+                                href={qrUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="w-40 min-h-24 border-2 border-brutal-black bg-white dark:bg-zinc-800 p-3 text-xs font-mono break-all text-brutal-blue"
+                            >
+                                {qrUrl}
+                            </a>
+                        ) : (
+                            <div className="w-40 min-h-24 border-2 border-brutal-black bg-white dark:bg-zinc-800 p-3 text-xs font-mono break-all">
+                                {wechatLogin.qrcode}
+                            </div>
+                        )}
+                        <div className="space-y-1 text-xs font-mono text-neutral-600 dark:text-neutral-400">
+                            <div>{t('settings.social.wechatWaiting')}</div>
+                            <div>{t('settings.social.wechatStatus')}: {wechatLogin.status}</div>
+                        </div>
+                    </div>
+                )}
+
+                {wechatLoginError && (
+                    <div className="border-2 border-brutal-red bg-red-50 dark:bg-red-950/30 p-2 text-xs font-mono text-brutal-red dark:text-red-300">
+                        {wechatLoginError}
+                    </div>
+                )}
+            </div>
+        );
     };
 
     return (
@@ -297,6 +498,8 @@ export function SocialTab({
                             }
                         >
                             <div className={`p-5 space-y-3 transition-opacity ${isEnabled ? '' : 'opacity-60'}`}>
+                                {key === 'wechat' && renderWeChatAuthPanel(platformConfig)}
+
                                 {Object.entries(platformConfig).map(([fieldKey, fieldVal]) => {
                                     if (fieldKey === 'enabled' || fieldKey === 'allowed_users') return null;
 

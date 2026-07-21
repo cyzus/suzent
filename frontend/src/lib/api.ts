@@ -1,5 +1,6 @@
 import { ChatGPTLoginResponse, ChatGPTStatusResponse, ConfigOptions, PermissionMode } from '../types/api';
 import type { PermissionPrompt } from '../types/agui';
+import socialExampleConfig from '../../../config/social.example.json';
 
 // -----------------------------------------------------------------------------
 // Tauri Integration
@@ -859,6 +860,39 @@ export interface SocialConfig {
   [key: string]: any;
 }
 
+function getSocialConfigDefaults(): SocialConfig {
+  const defaults: SocialConfig = { allowed_users: [] };
+  for (const [key, value] of Object.entries(socialExampleConfig)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+
+    const platformDefaults = { ...(value as Record<string, unknown>) };
+    if ('enabled' in platformDefaults) {
+      platformDefaults.enabled = false;
+    }
+    defaults[key] = platformDefaults;
+  }
+  return defaults;
+}
+
+function withSocialConfigDefaults(config: SocialConfig): SocialConfig {
+  const defaults = getSocialConfigDefaults();
+  return {
+    ...defaults,
+    ...config,
+    ...Object.fromEntries(
+      Object.entries(defaults)
+        .filter(([, value]) => value && typeof value === 'object' && !Array.isArray(value))
+        .map(([key, value]) => [
+          key,
+          {
+            ...(value as Record<string, unknown>),
+            ...(config[key] || {}),
+          },
+        ])
+    ),
+  };
+}
+
 export interface PairingRequest {
   token: string;
   sender_id: string;
@@ -907,15 +941,59 @@ export async function denyPairing(token: string): Promise<boolean> {
   }
 }
 
+export interface WeChatLoginSession {
+  session_id: string;
+  status: string;
+  qrcode: string;
+  qrcode_img_content?: string | null;
+  qrcode_url?: string | null;
+  base_url: string;
+  expires_at: number;
+}
+
+export interface WeChatLoginStatus extends WeChatLoginSession {
+  bot_token?: string | null;
+  authorized_user_id?: string | null;
+  bot_id?: string | null;
+}
+
+export async function startWeChatLogin(baseUrl?: string): Promise<WeChatLoginSession> {
+  const res = await fetch(`${getApiBase()}/social/wechat/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ base_url: baseUrl }),
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    if (res.status === 404) {
+      throw new Error('WeChat login is not available in the running backend. Restart Suzent after updating.');
+    }
+    throw new Error(error.error || 'Failed to start WeChat login');
+  }
+  return res.json();
+}
+
+export async function pollWeChatLogin(sessionId: string): Promise<WeChatLoginStatus> {
+  const res = await fetch(`${getApiBase()}/social/wechat/login/${sessionId}`);
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    if (res.status === 404) {
+      throw new Error('WeChat login is not available in the running backend. Restart Suzent after updating.');
+    }
+    throw new Error(error.error || 'Failed to poll WeChat login');
+  }
+  return res.json();
+}
+
 export async function fetchSocialConfig(): Promise<SocialConfig> {
   try {
     const res = await fetch(`${getApiBase()}/config/social`);
-    if (!res.ok) return { allowed_users: [] };
+    if (!res.ok) return withSocialConfigDefaults({ allowed_users: [] });
     const data = await res.json();
-    return data.config || { allowed_users: [] };
+    return withSocialConfigDefaults(data.config || { allowed_users: [] });
   } catch (e) {
     console.error('Error fetching social config:', e);
-    return { allowed_users: [] };
+    return withSocialConfigDefaults({ allowed_users: [] });
   }
 }
 

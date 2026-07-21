@@ -31,5 +31,13 @@
         "app_token": "",
         "bot_token": "",
         "allowed_users": []
+    },
+    "wechat": {
+        "enabled": false,
+        "bot_token": "",
+        "base_url": "https://ilinkai.weixin.qq.com",
+        "channel_version": "1.0.2",
+        "get_updates_buf": "",
+        "allowed_users": []
     }
 }

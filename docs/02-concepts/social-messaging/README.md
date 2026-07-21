@@ -8,6 +8,7 @@ Suzent supports integration with social messaging platforms, allowing you to con
 -   [Feishu (Lark)](feishu.md): Support for text and files via WebSocket.
 -   [Slack](slack.md): Support for Socket Mode (Events API).
 -   [Discord](discord.md): Support for Bot interactions via Gateway.
+-   [WeChat](wechat.md): Support for text messages via the iLink Bot API.
 -   **(Planned) WhatsApp**: Architecture supports adding drivers.
 
 ## Configuration
@@ -37,6 +38,11 @@ Create a file at `config/social.json` in your workspace root. You can copy `conf
   "discord": {
     "enabled": true,
     "token": "..."
+  },
+  "wechat": {
+    "enabled": false,
+    "bot_token": "...",
+    "base_url": "https://ilinkai.weixin.qq.com"
   }
 }
 ```
