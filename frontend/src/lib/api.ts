@@ -1,5 +1,6 @@
 import { ChatGPTLoginResponse, ChatGPTStatusResponse, ConfigOptions, PermissionMode } from '../types/api';
 import type { PermissionPrompt } from '../types/agui';
+import socialExampleConfig from '../../../config/social.example.json';
 
 // -----------------------------------------------------------------------------
 // Tauri Integration
@@ -859,26 +860,36 @@ export interface SocialConfig {
   [key: string]: any;
 }
 
-const SOCIAL_CONFIG_DEFAULTS: SocialConfig = {
-  allowed_users: [],
-  wechat: {
-    enabled: false,
-    bot_token: '',
-    base_url: 'https://ilinkai.weixin.qq.com',
-    channel_version: '1.0.2',
-    get_updates_buf: '',
-    allowed_users: [],
-  },
-};
+function getSocialConfigDefaults(): SocialConfig {
+  const defaults: SocialConfig = { allowed_users: [] };
+  for (const [key, value] of Object.entries(socialExampleConfig)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+
+    const platformDefaults = { ...(value as Record<string, unknown>) };
+    if ('enabled' in platformDefaults) {
+      platformDefaults.enabled = false;
+    }
+    defaults[key] = platformDefaults;
+  }
+  return defaults;
+}
 
 function withSocialConfigDefaults(config: SocialConfig): SocialConfig {
+  const defaults = getSocialConfigDefaults();
   return {
-    ...SOCIAL_CONFIG_DEFAULTS,
+    ...defaults,
     ...config,
-    wechat: {
-      ...SOCIAL_CONFIG_DEFAULTS.wechat,
-      ...(config.wechat || {}),
-    },
+    ...Object.fromEntries(
+      Object.entries(defaults)
+        .filter(([, value]) => value && typeof value === 'object' && !Array.isArray(value))
+        .map(([key, value]) => [
+          key,
+          {
+            ...(value as Record<string, unknown>),
+            ...(config[key] || {}),
+          },
+        ])
+    ),
   };
 }
 
