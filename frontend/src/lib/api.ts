@@ -859,6 +859,29 @@ export interface SocialConfig {
   [key: string]: any;
 }
 
+const SOCIAL_CONFIG_DEFAULTS: SocialConfig = {
+  allowed_users: [],
+  wechat: {
+    enabled: false,
+    bot_token: '',
+    base_url: 'https://ilinkai.weixin.qq.com',
+    channel_version: '1.0.2',
+    get_updates_buf: '',
+    allowed_users: [],
+  },
+};
+
+function withSocialConfigDefaults(config: SocialConfig): SocialConfig {
+  return {
+    ...SOCIAL_CONFIG_DEFAULTS,
+    ...config,
+    wechat: {
+      ...SOCIAL_CONFIG_DEFAULTS.wechat,
+      ...(config.wechat || {}),
+    },
+  };
+}
+
 export interface PairingRequest {
   token: string;
   sender_id: string;
@@ -929,6 +952,9 @@ export async function startWeChatLogin(baseUrl?: string): Promise<WeChatLoginSes
   });
   if (!res.ok) {
     const error = await res.json().catch(() => ({}));
+    if (res.status === 404) {
+      throw new Error('WeChat login is not available in the running backend. Restart Suzent after updating.');
+    }
     throw new Error(error.error || 'Failed to start WeChat login');
   }
   return res.json();
@@ -938,6 +964,9 @@ export async function pollWeChatLogin(sessionId: string): Promise<WeChatLoginSta
   const res = await fetch(`${getApiBase()}/social/wechat/login/${sessionId}`);
   if (!res.ok) {
     const error = await res.json().catch(() => ({}));
+    if (res.status === 404) {
+      throw new Error('WeChat login is not available in the running backend. Restart Suzent after updating.');
+    }
     throw new Error(error.error || 'Failed to poll WeChat login');
   }
   return res.json();
@@ -946,12 +975,12 @@ export async function pollWeChatLogin(sessionId: string): Promise<WeChatLoginSta
 export async function fetchSocialConfig(): Promise<SocialConfig> {
   try {
     const res = await fetch(`${getApiBase()}/config/social`);
-    if (!res.ok) return { allowed_users: [] };
+    if (!res.ok) return withSocialConfigDefaults({ allowed_users: [] });
     const data = await res.json();
-    return data.config || { allowed_users: [] };
+    return withSocialConfigDefaults(data.config || { allowed_users: [] });
   } catch (e) {
     console.error('Error fetching social config:', e);
-    return { allowed_users: [] };
+    return withSocialConfigDefaults({ allowed_users: [] });
   }
 }
 
