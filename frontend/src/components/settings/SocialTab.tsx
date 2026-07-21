@@ -65,6 +65,16 @@ function getWeChatQrUrl(login?: WeChatLoginSession | null): string | null {
     return null;
 }
 
+function isWeChatLiteAppQrUrl(url?: string | null): boolean {
+    if (!url) return false;
+    try {
+        const parsed = new URL(url);
+        return parsed.hostname === 'liteapp.weixin.qq.com';
+    } catch {
+        return false;
+    }
+}
+
 export function SocialTab({
     socialConfig,
     tools,
@@ -166,7 +176,7 @@ export function SocialTab({
         const hasToken = !!platformConfig.bot_token && platformConfig.bot_token !== '********';
         const qrSrc = buildWeChatQrImageSrc(wechatLogin?.qrcode_img_content);
         const qrUrl = getWeChatQrUrl(wechatLogin);
-        const qrImageSrc = qrSrc || qrUrl;
+        const shouldEmbedQrPage = !qrSrc && isWeChatLiteAppQrUrl(qrUrl);
 
         return (
             <div className="space-y-3 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3">
@@ -186,12 +196,19 @@ export function SocialTab({
 
                 {wechatLogin && (
                     <div className="flex flex-col sm:flex-row gap-3 items-start">
-                        {qrImageSrc && !wechatQrImageFailed ? (
+                        {qrSrc && !wechatQrImageFailed ? (
                             <img
-                                src={qrImageSrc}
+                                src={qrSrc}
                                 alt={t('settings.social.wechatQrAlt')}
                                 onError={() => setWechatQrImageFailed(true)}
                                 className="w-40 h-40 border-2 border-brutal-black bg-white object-contain"
+                            />
+                        ) : shouldEmbedQrPage ? (
+                            <iframe
+                                src={qrUrl || undefined}
+                                title={t('settings.social.wechatQrAlt')}
+                                className="w-64 h-64 border-2 border-brutal-black bg-white"
+                                sandbox="allow-scripts allow-same-origin"
                             />
                         ) : qrUrl ? (
                             <a
