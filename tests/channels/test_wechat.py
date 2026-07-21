@@ -73,14 +73,53 @@ async def test_wechat_send_message_uses_cached_context_token():
     assert requests[0].headers["Authorization"] == "Bearer token"
     payload = json.loads(requests[0].content.decode("utf-8"))
     assert payload == {
+        "base_info": {
+            "channel_version": "1.0.2",
+            "bot_agent": "suzent-wechat/0.7.0",
+        },
         "msg": {
+            "from_user_id": "",
             "to_user_id": "user-1@im.wechat",
+            "client_id": payload["msg"]["client_id"],
             "message_type": 2,
             "message_state": 2,
             "context_token": "ctx-1",
             "item_list": [{"type": 1, "text_item": {"text": "reply"}}],
-        }
+        },
     }
+    assert payload["msg"]["client_id"].startswith("suzent-wechat-")
+
+
+@pytest.mark.asyncio
+async def test_wechat_send_message_accepts_sender_alias_for_group_context():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"ret": 0})
+
+    channel = _make_channel(handler)
+    message = channel._to_unified_message(
+        {
+            "from_user_id": "user-1@im.wechat",
+            "group_id": "group-1@im.chatroom",
+            "message_type": 1,
+            "context_token": "ctx-1",
+            "item_list": [{"type": 1, "text_item": {"text": "hello"}}],
+        }
+    )
+
+    try:
+        assert message is not None
+        assert message.get_chat_id() == "wechat:group-1@im.chatroom"
+        assert await channel.send_message("user-1@im.wechat", "reply") is True
+    finally:
+        await channel._client.aclose()
+
+    payload = json.loads(requests[0].content.decode("utf-8"))
+    assert payload["msg"]["to_user_id"] == "user-1@im.wechat"
+    assert payload["msg"]["group_id"] == "group-1@im.chatroom"
+    assert payload["msg"]["context_token"] == "ctx-1"
 
 
 @pytest.mark.asyncio

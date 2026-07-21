@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import random
+import secrets
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -19,6 +20,7 @@ from suzent.logger import logger
 
 DEFAULT_BASE_URL = "https://ilinkai.weixin.qq.com"
 DEFAULT_CHANNEL_VERSION = "1.0.2"
+DEFAULT_BOT_AGENT = "suzent-wechat/0.7.0"
 TEXT_ITEM_TYPE = 1
 USER_MESSAGE_TYPE = 1
 BOT_MESSAGE_TYPE = 2
@@ -52,6 +54,10 @@ class WeChatQrStatus:
 def _random_wechat_uin() -> str:
     random_uin = str(random.randint(0, 2**32 - 1))
     return base64.b64encode(random_uin.encode("ascii")).decode("ascii")
+
+
+def _new_client_id() -> str:
+    return f"suzent-wechat-{secrets.token_hex(4)}"
 
 
 def _extract_text(item_list: list[dict[str, Any]]) -> str:
@@ -235,7 +241,9 @@ class WeChatChannel(SocialChannel):
             return False
 
         msg: dict[str, Any] = {
+            "from_user_id": "",
             "to_user_id": context.to_user_id,
+            "client_id": _new_client_id(),
             "message_type": BOT_MESSAGE_TYPE,
             "message_state": FINISHED_MESSAGE_STATE,
             "context_token": context.context_token,
@@ -245,10 +253,20 @@ class WeChatChannel(SocialChannel):
             msg["group_id"] = context.group_id
 
         try:
-            response = await self._post("/ilink/bot/sendmessage", {"msg": msg})
+            response = await self._post(
+                "/ilink/bot/sendmessage",
+                {
+                    "msg": msg,
+                    "base_info": {
+                        "channel_version": self.channel_version,
+                        "bot_agent": DEFAULT_BOT_AGENT,
+                    },
+                },
+            )
             if response.get("ret", 0) != 0:
                 logger.error("WeChat sendmessage failed: {}", response)
                 return False
+            logger.debug("Sent WeChat message to {}", target_id)
             return True
         except Exception as exc:
             logger.error("Failed to send WeChat message to {}: {}", target_id, exc)
@@ -309,11 +327,13 @@ class WeChatChannel(SocialChannel):
         if not isinstance(group_id, str) or not group_id:
             group_id = None
         target_id = group_id or sender_id
-        self._contexts[target_id] = WeChatConversationContext(
+        context = WeChatConversationContext(
             to_user_id=sender_id,
             context_token=context_token,
             group_id=group_id,
         )
+        self._contexts[target_id] = context
+        self._contexts[sender_id] = context
 
         message_id = raw_msg.get("msg_id") or raw_msg.get("message_id")
         if not isinstance(message_id, str) or not message_id:
