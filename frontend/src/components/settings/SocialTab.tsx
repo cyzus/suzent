@@ -33,6 +33,38 @@ interface SocialTabProps {
     onUseCustomMcpChange: (use: boolean) => void;
 }
 
+function buildWeChatQrImageSrc(content?: string | null): string | null {
+    const trimmed = content?.trim();
+    if (!trimmed) return null;
+
+    if (trimmed.startsWith('data:image/')) return trimmed;
+
+    if (trimmed.startsWith('<svg') || trimmed.startsWith('<?xml') || trimmed.includes('<svg')) {
+        return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(trimmed)}`;
+    }
+
+    const compact = trimmed.replace(/\s+/g, '');
+    if (!/^[A-Za-z0-9+/=]+$/.test(compact)) return null;
+
+    let mime = 'image/png';
+    if (compact.startsWith('/9j/')) mime = 'image/jpeg';
+    if (compact.startsWith('R0lGOD')) mime = 'image/gif';
+    if (compact.startsWith('PHN2Zy')) mime = 'image/svg+xml';
+
+    return `data:${mime};base64,${compact}`;
+}
+
+function getWeChatQrUrl(login?: WeChatLoginSession | null): string | null {
+    const explicitUrl = login?.qrcode_url?.trim();
+    if (explicitUrl) return explicitUrl;
+
+    const content = login?.qrcode_img_content?.trim();
+    if (content?.startsWith('http://') || content?.startsWith('https://')) {
+        return content;
+    }
+    return null;
+}
+
 export function SocialTab({
     socialConfig,
     tools,
@@ -51,6 +83,7 @@ export function SocialTab({
     const [wechatLogin, setWechatLogin] = useState<WeChatLoginSession | null>(null);
     const [wechatLoginBusy, setWechatLoginBusy] = useState(false);
     const [wechatLoginError, setWechatLoginError] = useState<string | null>(null);
+    const [wechatQrImageFailed, setWechatQrImageFailed] = useState(false);
 
     const refreshPairings = useCallback(async () => {
         if (!handshakeEnabled) return;
@@ -81,6 +114,7 @@ export function SocialTab({
         setWechatLoginError(null);
         try {
             const session = await startWeChatLogin(baseUrl);
+            setWechatQrImageFailed(false);
             setWechatLogin(session);
         } catch (error) {
             setWechatLoginError(error instanceof Error ? error.message : String(error));
@@ -97,6 +131,7 @@ export function SocialTab({
             try {
                 const status = await pollWeChatLogin(wechatLogin.session_id);
                 if (cancelled) return;
+                setWechatQrImageFailed(false);
                 setWechatLogin(status);
 
                 if (status.status === 'confirmed' && status.bot_token) {
@@ -129,10 +164,8 @@ export function SocialTab({
 
     const renderWeChatAuthPanel = (platformConfig: any): React.ReactElement => {
         const hasToken = !!platformConfig.bot_token && platformConfig.bot_token !== '********';
-        const qrContent = wechatLogin?.qrcode_img_content;
-        const qrSrc = qrContent
-            ? (qrContent.startsWith('data:') ? qrContent : `data:image/png;base64,${qrContent}`)
-            : null;
+        const qrSrc = buildWeChatQrImageSrc(wechatLogin?.qrcode_img_content);
+        const qrUrl = getWeChatQrUrl(wechatLogin);
 
         return (
             <div className="space-y-3 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3">
@@ -152,20 +185,21 @@ export function SocialTab({
 
                 {wechatLogin && (
                     <div className="flex flex-col sm:flex-row gap-3 items-start">
-                        {qrSrc ? (
+                        {qrSrc && !wechatQrImageFailed ? (
                             <img
                                 src={qrSrc}
                                 alt={t('settings.social.wechatQrAlt')}
+                                onError={() => setWechatQrImageFailed(true)}
                                 className="w-40 h-40 border-2 border-brutal-black bg-white object-contain"
                             />
-                        ) : wechatLogin.qrcode_url ? (
+                        ) : qrUrl ? (
                             <a
-                                href={wechatLogin.qrcode_url}
+                                href={qrUrl}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="w-40 min-h-24 border-2 border-brutal-black bg-white dark:bg-zinc-800 p-3 text-xs font-mono break-all text-brutal-blue"
                             >
-                                {wechatLogin.qrcode_url}
+                                {qrUrl}
                             </a>
                         ) : (
                             <div className="w-40 min-h-24 border-2 border-brutal-black bg-white dark:bg-zinc-800 p-3 text-xs font-mono break-all">
