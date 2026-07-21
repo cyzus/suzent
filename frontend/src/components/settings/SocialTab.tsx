@@ -166,6 +166,7 @@ export function SocialTab({
         const hasToken = !!platformConfig.bot_token && platformConfig.bot_token !== '********';
         const qrSrc = buildWeChatQrImageSrc(wechatLogin?.qrcode_img_content);
         const qrUrl = getWeChatQrUrl(wechatLogin);
+        const qrImageSrc = qrSrc || qrUrl;
 
         return (
             <div className="space-y-3 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3">
@@ -185,9 +186,9 @@ export function SocialTab({
 
                 {wechatLogin && (
                     <div className="flex flex-col sm:flex-row gap-3 items-start">
-                        {qrSrc && !wechatQrImageFailed ? (
+                        {qrImageSrc && !wechatQrImageFailed ? (
                             <img
-                                src={qrSrc}
+                                src={qrImageSrc}
                                 alt={t('settings.social.wechatQrAlt')}
                                 onError={() => setWechatQrImageFailed(true)}
                                 className="w-40 h-40 border-2 border-brutal-black bg-white object-contain"
