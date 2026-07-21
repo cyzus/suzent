@@ -2,7 +2,7 @@
 Social message tool for sending progress updates to social channels.
 
 Allows the agent to proactively send intermediate messages to the user's
-social platform (Telegram, Slack, Discord, Feishu) while working on a task.
+social platform (Telegram, Slack, Discord, Feishu, WeChat) while working on a task.
 """
 
 import asyncio
@@ -24,6 +24,7 @@ PLATFORM_CHAR_LIMITS = {
     "slack": 40000,
     "discord": 2000,
     "feishu": 30000,
+    "wechat": 30000,
 }
 
 
@@ -124,7 +125,7 @@ class SocialMessageTool(Tool):
             Optional[str],
             Field(
                 default=None,
-                description="Destination platform such as telegram, slack, discord, or feishu.",
+                description="Destination platform such as telegram, slack, discord, feishu, or wechat.",
             ),
         ] = None,
         recipient: Annotated[
@@ -150,7 +151,7 @@ class SocialMessageTool(Tool):
         Args:
             ctx: The pydantic-ai run context with agent dependencies.
             message: The text message to send. Ignored when list_contacts is true.
-            channel: Platform name (telegram/slack/discord/feishu). Defaults to current social channel if in social mode.
+            channel: Platform name (telegram/slack/discord/feishu/wechat). Defaults to current social channel if in social mode.
             recipient: Recipient/chat ID. Defaults to current conversation partner if in social mode.
             list_contacts: Set to true to list available channels and known contacts instead of sending a message.
         """

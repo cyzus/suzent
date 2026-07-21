@@ -34,6 +34,7 @@ class ChannelManager:
             "feishu": "suzent.channels.feishu.FeishuChannel",
             "slack": "suzent.channels.slack.SlackChannel",
             "discord": "suzent.channels.discord.DiscordChannel",
+            "wechat": "suzent.channels.wechat.WeChatChannel",
         }
 
         for platform, settings in social_config.items():
