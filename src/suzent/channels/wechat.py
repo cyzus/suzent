@@ -10,6 +10,7 @@ import random
 import time
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -50,6 +51,48 @@ class WeChatQrStatus:
 def _random_wechat_uin() -> str:
     random_uin = str(random.randint(0, 2**32 - 1))
     return base64.b64encode(random_uin.encode("ascii")).decode("ascii")
+
+
+def _is_wechat_liteapp_url(url: str) -> bool:
+    parsed = urlparse(url)
+    return (
+        parsed.scheme in {"http", "https"}
+        and parsed.hostname == "liteapp.weixin.qq.com"
+    )
+
+
+async def _render_liteapp_qrcode_to_data_uri(url: str) -> str | None:
+    if not _is_wechat_liteapp_url(url):
+        return None
+
+    try:
+        from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+        from playwright.async_api import async_playwright
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            try:
+                page = await browser.new_page(
+                    viewport={"width": 480, "height": 480},
+                    device_scale_factor=2,
+                )
+                await page.goto(url, wait_until="domcontentloaded", timeout=15_000)
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=5_000)
+                except PlaywrightTimeoutError:
+                    pass
+
+                canvas = page.locator("canvas").first
+                await canvas.wait_for(state="visible", timeout=10_000)
+                image_bytes = await canvas.screenshot(type="png")
+            finally:
+                await browser.close()
+    except Exception as exc:
+        logger.warning("Failed to render WeChat QR canvas page: {}", exc)
+        return None
+
+    image_content = base64.b64encode(image_bytes).decode("ascii")
+    return f"data:image/png;base64,{image_content}"
 
 
 def _extract_text(item_list: list[dict[str, Any]]) -> str:
@@ -110,10 +153,29 @@ class WeChatAuthClient:
         if not isinstance(qrcode, str) or not qrcode:
             raise RuntimeError("WeChat QR login did not return a qrcode.")
 
+        qrcode_img_content = data.get("qrcode_img_content")
         qrcode_url = data.get("url") or data.get("qrcode_url")
+        if not isinstance(qrcode_url, str) and isinstance(qrcode_img_content, str):
+            qrcode_url = (
+                qrcode_img_content
+                if _is_wechat_liteapp_url(qrcode_img_content)
+                else None
+            )
+
+        if isinstance(qrcode_img_content, str) and _is_wechat_liteapp_url(
+            qrcode_img_content
+        ):
+            rendered_qrcode = await _render_liteapp_qrcode_to_data_uri(
+                qrcode_img_content
+            )
+            if rendered_qrcode:
+                qrcode_img_content = rendered_qrcode
+
         return WeChatQrLogin(
             qrcode=qrcode,
-            qrcode_img_content=data.get("qrcode_img_content"),
+            qrcode_img_content=qrcode_img_content
+            if isinstance(qrcode_img_content, str)
+            else None,
             qrcode_url=qrcode_url if isinstance(qrcode_url, str) else None,
         )
 
