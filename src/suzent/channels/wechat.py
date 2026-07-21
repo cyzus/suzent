@@ -44,6 +44,8 @@ class WeChatQrStatus:
     status: str
     bot_token: str | None = None
     base_url: str | None = None
+    user_id: str | None = None
+    bot_id: str | None = None
     raw_data: dict[str, Any] | None = None
 
 
@@ -143,10 +145,14 @@ class WeChatAuthClient:
 
         bot_token = data.get("bot_token")
         base_url = data.get("baseurl") or data.get("base_url")
+        user_id = data.get("ilink_user_id") or data.get("user_id")
+        bot_id = data.get("ilink_bot_id") or data.get("bot_id")
         return WeChatQrStatus(
             status=status,
             bot_token=bot_token if isinstance(bot_token, str) else None,
             base_url=str(base_url).rstrip("/") if base_url else self.base_url,
+            user_id=user_id if isinstance(user_id, str) else None,
+            bot_id=bot_id if isinstance(bot_id, str) else None,
             raw_data=data,
         )
 

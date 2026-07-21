@@ -109,5 +109,7 @@ async def poll_wechat_login(request: Request) -> JSONResponse:
     if status.status == "confirmed" and status.bot_token:
         payload["bot_token"] = status.bot_token
         payload["base_url"] = status.base_url or session.base_url
+        payload["authorized_user_id"] = status.user_id
+        payload["bot_id"] = status.bot_id
         _sessions.pop(session_id, None)
     return JSONResponse(payload)

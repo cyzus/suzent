@@ -953,6 +953,8 @@ export interface WeChatLoginSession {
 
 export interface WeChatLoginStatus extends WeChatLoginSession {
   bot_token?: string | null;
+  authorized_user_id?: string | null;
+  bot_id?: string | null;
 }
 
 export async function startWeChatLogin(baseUrl?: string): Promise<WeChatLoginSession> {

@@ -149,6 +149,10 @@ export function SocialTab({
                     setWechatLogin(null);
                     setWechatLoginError(null);
                     const existing = (socialConfig.wechat as any) || {};
+                    const allowedUsers = [...(existing.allowed_users || [])];
+                    if (status.authorized_user_id && !allowedUsers.includes(status.authorized_user_id)) {
+                        allowedUsers.push(status.authorized_user_id);
+                    }
                     onConfigChange({
                         ...socialConfig,
                         wechat: {
@@ -156,6 +160,7 @@ export function SocialTab({
                             enabled: true,
                             bot_token: status.bot_token,
                             base_url: status.base_url || existing.base_url,
+                            allowed_users: allowedUsers,
                         },
                     });
                 }

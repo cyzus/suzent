@@ -171,6 +171,8 @@ async def test_wechat_auth_client_reads_confirmed_status(monkeypatch):
                 "status": "confirmed",
                 "bot_token": "bot-token",
                 "baseurl": "https://wechat.example.test",
+                "ilink_user_id": "scanner@im.wechat",
+                "ilink_bot_id": "bot@im.bot",
             },
         )
 
@@ -188,3 +190,5 @@ async def test_wechat_auth_client_reads_confirmed_status(monkeypatch):
     assert status.status == "confirmed"
     assert status.bot_token == "bot-token"
     assert status.base_url == "https://wechat.example.test"
+    assert status.user_id == "scanner@im.wechat"
+    assert status.bot_id == "bot@im.bot"
