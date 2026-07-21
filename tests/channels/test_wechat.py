@@ -129,7 +129,7 @@ async def test_wechat_auth_client_creates_qrcode(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_wechat_auth_client_renders_liteapp_qrcode_url(monkeypatch):
+async def test_wechat_auth_client_preserves_qrcode_url_content(monkeypatch):
     async_client = httpx.AsyncClient
     qrcode_url = "https://liteapp.weixin.qq.com/q/example?qrcode=token"
 
@@ -142,10 +142,6 @@ async def test_wechat_auth_client_renders_liteapp_qrcode_url(monkeypatch):
             },
         )
 
-    async def render_qrcode(url: str) -> str:
-        assert url == qrcode_url
-        return "data:image/png;base64,rendered"
-
     monkeypatch.setattr(
         httpx,
         "AsyncClient",
@@ -154,15 +150,11 @@ async def test_wechat_auth_client_renders_liteapp_qrcode_url(monkeypatch):
             transport=httpx.MockTransport(handler),
         ),
     )
-    monkeypatch.setattr(
-        "suzent.channels.wechat._render_liteapp_qrcode_to_data_uri",
-        render_qrcode,
-    )
 
     login = await WeChatAuthClient().create_qrcode()
 
     assert login.qrcode == "qr-token"
-    assert login.qrcode_img_content == "data:image/png;base64,rendered"
+    assert login.qrcode_img_content == qrcode_url
     assert login.qrcode_url == qrcode_url
 
 

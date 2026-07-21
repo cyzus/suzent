@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 
 import { useI18n } from '../../i18n';
 import {
@@ -65,6 +66,14 @@ function getWeChatQrUrl(login?: WeChatLoginSession | null): string | null {
     return null;
 }
 
+function getWeChatQrGenerationContent(login?: WeChatLoginSession | null): string | null {
+    const content = login?.qrcode_img_content?.trim();
+    if (content?.startsWith('http://') || content?.startsWith('https://')) {
+        return content;
+    }
+    return getWeChatQrUrl(login);
+}
+
 export function SocialTab({
     socialConfig,
     tools,
@@ -84,6 +93,7 @@ export function SocialTab({
     const [wechatLoginBusy, setWechatLoginBusy] = useState(false);
     const [wechatLoginError, setWechatLoginError] = useState<string | null>(null);
     const [wechatQrImageFailed, setWechatQrImageFailed] = useState(false);
+    const [wechatGeneratedQrSrc, setWechatGeneratedQrSrc] = useState<string | null>(null);
 
     const refreshPairings = useCallback(async () => {
         if (!handshakeEnabled) return;
@@ -162,10 +172,38 @@ export function SocialTab({
         };
     }, [wechatLogin?.session_id, onConfigChange, socialConfig]);
 
+    useEffect(() => {
+        const qrSrc = buildWeChatQrImageSrc(wechatLogin?.qrcode_img_content);
+        const qrContent = qrSrc ? null : getWeChatQrGenerationContent(wechatLogin);
+        let cancelled = false;
+        setWechatGeneratedQrSrc(null);
+
+        if (!qrContent) return;
+
+        QRCode.toDataURL(qrContent, {
+            errorCorrectionLevel: 'M',
+            margin: 1,
+            width: 256,
+        })
+            .then((dataUrl: string) => {
+                if (!cancelled) setWechatGeneratedQrSrc(dataUrl);
+            })
+            .catch((error: unknown) => {
+                if (!cancelled) {
+                    setWechatLoginError(error instanceof Error ? error.message : String(error));
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [wechatLogin?.qrcode_img_content, wechatLogin?.qrcode_url]);
+
     const renderWeChatAuthPanel = (platformConfig: any): React.ReactElement => {
         const hasToken = !!platformConfig.bot_token && platformConfig.bot_token !== '********';
         const qrSrc = buildWeChatQrImageSrc(wechatLogin?.qrcode_img_content);
         const qrUrl = getWeChatQrUrl(wechatLogin);
+        const displayQrSrc = qrSrc || wechatGeneratedQrSrc;
 
         return (
             <div className="space-y-3 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3">
@@ -185,9 +223,9 @@ export function SocialTab({
 
                 {wechatLogin && (
                     <div className="flex flex-col sm:flex-row gap-3 items-start">
-                        {qrSrc && !wechatQrImageFailed ? (
+                        {displayQrSrc && !wechatQrImageFailed ? (
                             <img
-                                src={qrSrc}
+                                src={displayQrSrc}
                                 alt={t('settings.social.wechatQrAlt')}
                                 onError={() => setWechatQrImageFailed(true)}
                                 className="w-40 h-40 border-2 border-brutal-black bg-white object-contain"
