@@ -2,6 +2,9 @@ import os
 import subprocess
 from types import SimpleNamespace
 
+import pytest
+from pydantic_ai import ApprovalRequired
+
 from suzent.tools.shell.bash_tool import BashTool
 
 
@@ -161,14 +164,11 @@ def test_host_timeout_kills_process_tree_and_returns_tool_error(monkeypatch, tmp
     assert "background=True" in result.message
 
 
-def test_baseline_guardrails_block_dangerous_command(tmp_path):
-    result = BashTool().forward(
-        _ctx(tmp_path),
-        content="sudo ls",
-        language="command",
-        description="List files with elevated privileges",
-    )
-
-    assert not result.success
-    assert result.error_code.value == "permission_denied"
-    assert "baseline guardrails" in result.message
+def test_baseline_guardrails_require_approval_for_dangerous_command(tmp_path):
+    with pytest.raises(ApprovalRequired):
+        BashTool().forward(
+            _ctx(tmp_path),
+            content="sudo ls",
+            language="command",
+            description="List files with elevated privileges",
+        )

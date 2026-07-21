@@ -56,16 +56,24 @@ class PendingApprovalSession:
         Includes ``remember``, ``tool_name``, and ``args`` so ChatProcessor can
         apply the standard permission pathway (command-level rules, global persist).
         """
-        return [
-            {
+        approvals: list[dict] = []
+        for req in self.requests:
+            remembered = self.remember_decisions.get(req.request_id)
+            payload = {
                 "request_id": req.request_id,
                 "tool_call_id": req.tool_call_id,
                 "approved": self.decisions[req.request_id],
-                "remember": "session"
-                if self.remember_decisions.get(req.request_id)
-                else "",
+                "remember": "session" if remembered else "",
                 "tool_name": req.tool_name,
                 "args": req.args,
             }
-            for req in self.requests
-        ]
+            if remembered and self.decisions[req.request_id] and req.decision:
+                action_ids = {
+                    str(action.get("id"))
+                    for action in req.decision.get("actions", [])
+                    if isinstance(action, dict)
+                }
+                if "allow_session" in action_ids:
+                    payload["action_id"] = "allow_session"
+            approvals.append(payload)
+        return approvals

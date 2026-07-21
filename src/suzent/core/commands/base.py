@@ -32,6 +32,7 @@ class CommandContext:
     chat_id: str
     user_id: str
     surface: str = "all"
+    invoked_alias: str = ""
     # Social-specific — None when called from frontend / API
     platform: str | None = None
     sender_id: str | None = None
@@ -134,6 +135,8 @@ async def dispatch(ctx: CommandContext, message: str) -> str | None:
         # If the command is not valid for this surface, let it fall through
         # to the LLM naturally (e.g. typing "/y" on frontend).
         return None
+
+    ctx.invoked_alias = cmd_name
 
     from typer.main import get_command
 

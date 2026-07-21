@@ -51,7 +51,7 @@ async def _resolve_approval(ctx: typer.Context, approved: bool, req_id: str):
     if not brain:
         return None
 
-    cmd_name = "/" + ctx.info_name
+    cmd_name = cmd_ctx.invoked_alias or f"/{ctx.info_name}"
     remember = cmd_name in _REMEMBER
 
     target_id = cmd_ctx.sender_id or ""
