@@ -1,9 +1,9 @@
 import json
 
-import httpx
 import pytest
+import httpx
 
-from suzent.channels.wechat import WeChatChannel
+from suzent.channels.wechat import WeChatAuthClient, WeChatChannel
 
 
 def _make_channel(handler) -> WeChatChannel:
@@ -91,3 +91,70 @@ async def test_wechat_send_message_requires_inbound_context():
         assert await channel.send_message("user-1@im.wechat", "reply") is False
     finally:
         await channel._client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_wechat_auth_client_creates_qrcode(monkeypatch):
+    requests: list[httpx.Request] = []
+    async_client = httpx.AsyncClient
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "qrcode": "qr-token",
+                "qrcode_img_content": "base64-png",
+                "url": "https://example.test/qr",
+            },
+        )
+
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: async_client(
+            **kwargs,
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+
+    login = await WeChatAuthClient().create_qrcode()
+
+    assert login.qrcode == "qr-token"
+    assert login.qrcode_img_content == "base64-png"
+    assert login.qrcode_url == "https://example.test/qr"
+    assert requests[0].url.path == "/ilink/bot/get_bot_qrcode"
+    assert requests[0].url.params["bot_type"] == "3"
+    assert requests[0].headers["AuthorizationType"] == "ilink_bot_token"
+
+
+@pytest.mark.asyncio
+async def test_wechat_auth_client_reads_confirmed_status(monkeypatch):
+    async_client = httpx.AsyncClient
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/ilink/bot/get_qrcode_status"
+        assert request.url.params["qrcode"] == "qr-token"
+        return httpx.Response(
+            200,
+            json={
+                "status": "confirmed",
+                "bot_token": "bot-token",
+                "baseurl": "https://wechat.example.test",
+            },
+        )
+
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: async_client(
+            **kwargs,
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+
+    status = await WeChatAuthClient().get_qrcode_status("qr-token")
+
+    assert status.status == "confirmed"
+    assert status.bot_token == "bot-token"
+    assert status.base_url == "https://wechat.example.test"

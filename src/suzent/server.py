@@ -51,6 +51,7 @@ from suzent.routes.chatgpt_routes import (
     logout_chatgpt,
     start_chatgpt_login,
 )
+from suzent.routes.wechat_routes import poll_wechat_login, start_wechat_login
 from suzent.routes.commands_routes import get_commands
 from suzent.routes.project_routes import (
     create_project,
@@ -942,6 +943,8 @@ app = Starlette(
         Route("/social/pairing", list_pairings, methods=["GET"]),
         Route("/social/pairing/approve", approve_pairing, methods=["POST"]),
         Route("/social/pairing/deny", deny_pairing, methods=["POST"]),
+        Route("/social/wechat/login", start_wechat_login, methods=["POST"]),
+        Route("/social/wechat/login/{session_id}", poll_wechat_login, methods=["GET"]),
         Route("/mcp_servers", list_mcp_servers, methods=["GET"]),
         Route("/mcp_servers", add_mcp_server, methods=["POST"]),
         Route("/mcp_servers/update", update_mcp_server, methods=["POST"]),

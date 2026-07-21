@@ -907,6 +907,42 @@ export async function denyPairing(token: string): Promise<boolean> {
   }
 }
 
+export interface WeChatLoginSession {
+  session_id: string;
+  status: string;
+  qrcode: string;
+  qrcode_img_content?: string | null;
+  qrcode_url?: string | null;
+  base_url: string;
+  expires_at: number;
+}
+
+export interface WeChatLoginStatus extends WeChatLoginSession {
+  bot_token?: string | null;
+}
+
+export async function startWeChatLogin(baseUrl?: string): Promise<WeChatLoginSession> {
+  const res = await fetch(`${getApiBase()}/social/wechat/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ base_url: baseUrl }),
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to start WeChat login');
+  }
+  return res.json();
+}
+
+export async function pollWeChatLogin(sessionId: string): Promise<WeChatLoginStatus> {
+  const res = await fetch(`${getApiBase()}/social/wechat/login/${sessionId}`);
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to poll WeChat login');
+  }
+  return res.json();
+}
+
 export async function fetchSocialConfig(): Promise<SocialConfig> {
   try {
     const res = await fetch(`${getApiBase()}/config/social`);

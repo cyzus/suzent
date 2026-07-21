@@ -5,9 +5,9 @@ Suzent can receive and reply to WeChat messages through Tencent's iLink Bot HTTP
 ## Setup
 
 1. Install or enable the WeChat ClawBot/OpenClaw flow for your account.
-2. Start Suzent with WeChat enabled and no `bot_token` to trigger QR login.
-3. Scan the QR code URL printed in the server logs.
-4. After login succeeds, copy the returned `bot_token` and `base_url` into `config/social.json` so the connection survives restarts.
+2. Open **Settings → Social Channels** and enable WeChat.
+3. Click **Log in with WeChat**.
+4. Scan the QR code with WeChat. Suzent saves the returned `bot_token` and `base_url` into `config/social.json`.
 
 ## Configuration
 

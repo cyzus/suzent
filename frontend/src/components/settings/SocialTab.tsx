@@ -1,7 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { useI18n } from '../../i18n';
-import { PairingRequest, SocialConfig, approvePairing, denyPairing, fetchPairings } from '../../lib/api';
+import {
+    PairingRequest,
+    SocialConfig,
+    WeChatLoginSession,
+    approvePairing,
+    denyPairing,
+    fetchPairings,
+    pollWeChatLogin,
+    startWeChatLogin,
+} from '../../lib/api';
 import { BrutalMultiSelect } from '../BrutalMultiSelect';
 import { BrutalOnOff } from '../BrutalOnOff';
 import { SettingsHeader } from './SettingsHeader';
@@ -39,6 +48,9 @@ export function SocialTab({
     const handshakeEnabled = !!(socialConfig.handshake as any)?.enabled;
     const [pairings, setPairings] = useState<PairingRequest[]>([]);
     const [pairingLoading, setPairingLoading] = useState(false);
+    const [wechatLogin, setWechatLogin] = useState<WeChatLoginSession | null>(null);
+    const [wechatLoginBusy, setWechatLoginBusy] = useState(false);
+    const [wechatLoginError, setWechatLoginError] = useState<string | null>(null);
 
     const refreshPairings = useCallback(async () => {
         if (!handshakeEnabled) return;
@@ -62,6 +74,118 @@ export function SocialTab({
     const handleDeny = async (token: string) => {
         await denyPairing(token);
         await refreshPairings();
+    };
+
+    const beginWeChatLogin = async (baseUrl?: string) => {
+        setWechatLoginBusy(true);
+        setWechatLoginError(null);
+        try {
+            const session = await startWeChatLogin(baseUrl);
+            setWechatLogin(session);
+        } catch (error) {
+            setWechatLoginError(error instanceof Error ? error.message : String(error));
+        } finally {
+            setWechatLoginBusy(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!wechatLogin?.session_id) return;
+
+        let cancelled = false;
+        const interval = window.setInterval(async () => {
+            try {
+                const status = await pollWeChatLogin(wechatLogin.session_id);
+                if (cancelled) return;
+                setWechatLogin(status);
+
+                if (status.status === 'confirmed' && status.bot_token) {
+                    window.clearInterval(interval);
+                    setWechatLogin(null);
+                    setWechatLoginError(null);
+                    const existing = (socialConfig.wechat as any) || {};
+                    onConfigChange({
+                        ...socialConfig,
+                        wechat: {
+                            ...existing,
+                            enabled: true,
+                            bot_token: status.bot_token,
+                            base_url: status.base_url || existing.base_url,
+                        },
+                    });
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    setWechatLoginError(error instanceof Error ? error.message : String(error));
+                }
+            }
+        }, 2000);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [wechatLogin?.session_id, onConfigChange, socialConfig]);
+
+    const renderWeChatAuthPanel = (platformConfig: any): React.ReactElement => {
+        const hasToken = !!platformConfig.bot_token && platformConfig.bot_token !== '********';
+        const qrContent = wechatLogin?.qrcode_img_content;
+        const qrSrc = qrContent
+            ? (qrContent.startsWith('data:') ? qrContent : `data:image/png;base64,${qrContent}`)
+            : null;
+
+        return (
+            <div className="space-y-3 border-2 border-brutal-black bg-neutral-50 dark:bg-zinc-900 p-3">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <div className="text-xs font-black uppercase text-neutral-900 dark:text-neutral-100">{t('settings.social.wechatAuthTitle')}</div>
+                        <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">{hasToken ? t('settings.social.wechatConnected') : t('settings.social.wechatAuthDesc')}</p>
+                    </div>
+                    <button
+                        onClick={() => beginWeChatLogin(platformConfig.base_url)}
+                        disabled={wechatLoginBusy}
+                        className="shrink-0 px-3 py-2 text-xs font-bold uppercase border-2 border-brutal-black bg-white dark:bg-zinc-700 text-brutal-black dark:text-white hover:bg-neutral-100 dark:hover:bg-zinc-600 disabled:opacity-50 brutal-btn"
+                    >
+                        {wechatLoginBusy ? t('settings.social.wechatStarting') : t('settings.social.wechatLogin')}
+                    </button>
+                </div>
+
+                {wechatLogin && (
+                    <div className="flex flex-col sm:flex-row gap-3 items-start">
+                        {qrSrc ? (
+                            <img
+                                src={qrSrc}
+                                alt={t('settings.social.wechatQrAlt')}
+                                className="w-40 h-40 border-2 border-brutal-black bg-white object-contain"
+                            />
+                        ) : wechatLogin.qrcode_url ? (
+                            <a
+                                href={wechatLogin.qrcode_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="w-40 min-h-24 border-2 border-brutal-black bg-white dark:bg-zinc-800 p-3 text-xs font-mono break-all text-brutal-blue"
+                            >
+                                {wechatLogin.qrcode_url}
+                            </a>
+                        ) : (
+                            <div className="w-40 min-h-24 border-2 border-brutal-black bg-white dark:bg-zinc-800 p-3 text-xs font-mono break-all">
+                                {wechatLogin.qrcode}
+                            </div>
+                        )}
+                        <div className="space-y-1 text-xs font-mono text-neutral-600 dark:text-neutral-400">
+                            <div>{t('settings.social.wechatWaiting')}</div>
+                            <div>{t('settings.social.wechatStatus')}: {wechatLogin.status}</div>
+                        </div>
+                    </div>
+                )}
+
+                {wechatLoginError && (
+                    <div className="border-2 border-brutal-red bg-red-50 dark:bg-red-950/30 p-2 text-xs font-mono text-brutal-red dark:text-red-300">
+                        {wechatLoginError}
+                    </div>
+                )}
+            </div>
+        );
     };
 
     return (
@@ -297,6 +421,8 @@ export function SocialTab({
                             }
                         >
                             <div className={`p-5 space-y-3 transition-opacity ${isEnabled ? '' : 'opacity-60'}`}>
+                                {key === 'wechat' && renderWeChatAuthPanel(platformConfig)}
+
                                 {Object.entries(platformConfig).map(([fieldKey, fieldVal]) => {
                                     if (fieldKey === 'enabled' || fieldKey === 'allowed_users') return null;
 

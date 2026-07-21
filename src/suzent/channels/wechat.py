@@ -32,6 +32,21 @@ class WeChatConversationContext:
     group_id: str | None = None
 
 
+@dataclass
+class WeChatQrLogin:
+    qrcode: str
+    qrcode_img_content: str | None = None
+    qrcode_url: str | None = None
+
+
+@dataclass
+class WeChatQrStatus:
+    status: str
+    bot_token: str | None = None
+    base_url: str | None = None
+    raw_data: dict[str, Any] | None = None
+
+
 def _random_wechat_uin() -> str:
     random_uin = str(random.randint(0, 2**32 - 1))
     return base64.b64encode(random_uin.encode("ascii")).decode("ascii")
@@ -75,6 +90,64 @@ def _extract_attachments(item_list: list[dict[str, Any]]) -> list[dict[str, Any]
     return attachments
 
 
+class WeChatAuthClient:
+    """Small HTTP client for the iLink QR auth flow."""
+
+    def __init__(self, base_url: str = DEFAULT_BASE_URL):
+        self.base_url = base_url.rstrip("/")
+
+    async def create_qrcode(self) -> WeChatQrLogin:
+        async with httpx.AsyncClient(base_url=self.base_url, timeout=30) as client:
+            response = await client.get(
+                "/ilink/bot/get_bot_qrcode",
+                params={"bot_type": 3},
+                headers=self._headers(),
+            )
+            response.raise_for_status()
+            data = response.json()
+
+        qrcode = data.get("qrcode")
+        if not isinstance(qrcode, str) or not qrcode:
+            raise RuntimeError("WeChat QR login did not return a qrcode.")
+
+        qrcode_url = data.get("url") or data.get("qrcode_url")
+        return WeChatQrLogin(
+            qrcode=qrcode,
+            qrcode_img_content=data.get("qrcode_img_content"),
+            qrcode_url=qrcode_url if isinstance(qrcode_url, str) else None,
+        )
+
+    async def get_qrcode_status(self, qrcode: str) -> WeChatQrStatus:
+        async with httpx.AsyncClient(base_url=self.base_url, timeout=30) as client:
+            response = await client.get(
+                "/ilink/bot/get_qrcode_status",
+                params={"qrcode": qrcode},
+                headers=self._headers(),
+            )
+            response.raise_for_status()
+            data = response.json()
+
+        status = data.get("status")
+        if not isinstance(status, str):
+            status = "unknown"
+
+        bot_token = data.get("bot_token")
+        base_url = data.get("baseurl") or data.get("base_url")
+        return WeChatQrStatus(
+            status=status,
+            bot_token=bot_token if isinstance(bot_token, str) else None,
+            base_url=str(base_url).rstrip("/") if base_url else self.base_url,
+            raw_data=data,
+        )
+
+    def _headers(self) -> dict[str, str]:
+        return {
+            "Content-Type": "application/json",
+            "AuthorizationType": "ilink_bot_token",
+            "X-WECHAT-UIN": _random_wechat_uin(),
+        }
+
+
 class WeChatChannel(SocialChannel):
     """
     Driver for Tencent WeChat iLink Bot API.
@@ -91,19 +164,21 @@ class WeChatChannel(SocialChannel):
         self.channel_version = config.get("channel_version") or DEFAULT_CHANNEL_VERSION
         self.get_updates_buf = config.get("get_updates_buf", "")
         self.poll_timeout_seconds = float(config.get("poll_timeout_seconds", 40))
-        self.login_poll_interval_seconds = float(
-            config.get("login_poll_interval_seconds", 2)
-        )
         self._client: httpx.AsyncClient | None = None
         self._polling_task: asyncio.Task | None = None
-        self._login_task: asyncio.Task | None = None
         self._running = False
         self._contexts: dict[str, WeChatConversationContext] = {}
 
     async def connect(self) -> None:
-        """Start QR login if needed, then long-poll for WeChat messages."""
+        """Start long-polling when a bot token is configured."""
         if self._running:
             logger.warning("WeChat channel already running, skipping connect.")
+            return
+
+        if not self.bot_token:
+            logger.warning(
+                "WeChat bot token missing. Use Settings > Social Channels to scan a QR code."
+            )
             return
 
         self._client = httpx.AsyncClient(
@@ -111,23 +186,17 @@ class WeChatChannel(SocialChannel):
             timeout=httpx.Timeout(self.poll_timeout_seconds + 5),
         )
         self._running = True
-
-        if self.bot_token:
-            self._start_polling()
-            return
-
-        self._login_task = asyncio.create_task(self._login_and_start_polling())
+        self._start_polling()
 
     async def disconnect(self) -> None:
         """Stop polling and close HTTP resources."""
         self._running = False
-        for task in (self._login_task, self._polling_task):
-            if task and not task.done():
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
+        if self._polling_task and not self._polling_task.done():
+            self._polling_task.cancel()
+            try:
+                await self._polling_task
+            except asyncio.CancelledError:
+                pass
 
         if self._client:
             await self._client.aclose()
@@ -182,51 +251,6 @@ class WeChatChannel(SocialChannel):
     def _start_polling(self) -> None:
         self._polling_task = asyncio.create_task(self._poll_updates())
         logger.info("WeChat polling started.")
-
-    async def _login_and_start_polling(self) -> None:
-        try:
-            login = await self._get("/ilink/bot/get_bot_qrcode", params={"bot_type": 3})
-            qrcode = login.get("qrcode")
-            qrcode_url = login.get("url") or login.get("qrcode_url")
-            if not qrcode:
-                logger.error("WeChat QR login did not return a qrcode.")
-                self._running = False
-                return
-
-            if qrcode_url:
-                logger.info(
-                    "Scan this WeChat bot QR code URL to authenticate: {}", qrcode_url
-                )
-            else:
-                logger.info("WeChat bot QR code created; scan it in the OpenClaw flow.")
-
-            while self._running and not self.bot_token:
-                status = await self._get(
-                    "/ilink/bot/get_qrcode_status",
-                    params={"qrcode": qrcode},
-                )
-                if status.get("status") == "confirmed":
-                    self.bot_token = status.get("bot_token")
-                    returned_base_url = status.get("baseurl") or status.get("base_url")
-                    if returned_base_url and self._client:
-                        self.base_url = str(returned_base_url).rstrip("/")
-                        await self._client.aclose()
-                        self._client = httpx.AsyncClient(
-                            base_url=self.base_url,
-                            timeout=httpx.Timeout(self.poll_timeout_seconds + 5),
-                        )
-                    logger.info(
-                        "WeChat bot authenticated. Add the bot_token and base_url to config/social.json to persist it."
-                    )
-                    self._start_polling()
-                    return
-
-                await asyncio.sleep(self.login_poll_interval_seconds)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            self._running = False
-            logger.error("WeChat QR login failed: {}", exc)
 
     async def _poll_updates(self) -> None:
         while self._running:
