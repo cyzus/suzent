@@ -1,10 +1,13 @@
+import asyncio
 from pathlib import Path
 import subprocess
 
 import pytest
 
-from suzent.sync.payload import PAYLOAD_DIR_NAME
+from suzent.sync.models import SyncProfile
+from suzent.sync.payload import PAYLOAD_DIR_NAME, SyncPayloadBuilder
 from suzent.sync.provider import GitHubSyncProvider
+from suzent.sync.service import GitHubSyncService
 
 
 def git(cwd: Path, *args: str) -> str:
@@ -40,7 +43,7 @@ def test_provider_pushes_only_sync_payload_to_bare_remote(tmp_path: Path):
     payload.mkdir()
     (payload / "memory.md").write_text("brain", encoding="utf-8")
 
-    result = GitHubSyncProvider(repo, branch="master").commit_and_push_payload("rev1")
+    result = GitHubSyncProvider(repo, branch="master").commit_and_push_payload()
 
     assert "master" in result or result == ""
 
@@ -55,7 +58,83 @@ def test_provider_refuses_unrelated_staged_changes(tmp_path: Path):
     git(repo, "add", "README.md")
 
     with pytest.raises(ValueError, match="staged changes outside the sync payload"):
-        GitHubSyncProvider(repo, branch="master").commit_and_push_payload("rev1")
+        GitHubSyncProvider(repo, branch="master").commit_and_push_payload()
+
+
+def test_push_plan_does_not_modify_repository_worktree(tmp_path: Path):
+    repo = make_repo(tmp_path)
+    config_dir = tmp_path / "config"
+    skills_dir = tmp_path / "skills"
+    memory_dir = tmp_path / "sandbox" / "shared" / "memory"
+    config_dir.mkdir()
+    skills_dir.mkdir()
+    memory_dir.mkdir(parents=True)
+    config_file = config_dir / "default.yaml"
+    config_file.write_text("model: first\n", encoding="utf-8")
+
+    builder = SyncPayloadBuilder(
+        user_config_dir=config_dir,
+        user_skills_dir=skills_dir,
+        sandbox_data_path=tmp_path / "sandbox",
+    )
+    profile = SyncProfile(repo_path=str(repo), branch="master")
+    builder.build(repo)
+    GitHubSyncProvider(repo, branch="master").commit_and_push_payload()
+
+    config_file.write_text("model: second\n", encoding="utf-8")
+    service = GitHubSyncService(
+        profiles_path=tmp_path / "profiles.json", payload_builder=builder
+    )
+    service.save_profile(profile)
+    before = git(repo, "status", "--porcelain")
+
+    plan = service.preview_sync_plan("push", profile.id)
+    diff = service.preview_file_diff("config/default.yaml", "outgoing", profile.id)
+
+    assert any(change.path == "config/default.yaml" for change in plan.files)
+    assert "-model: first" in diff
+    assert "+model: second" in diff
+    assert git(repo, "status", "--porcelain") == before
+
+
+def test_discard_one_outgoing_file_leaves_other_change_pending(tmp_path: Path):
+    repo = make_repo(tmp_path)
+    config_dir = tmp_path / "config"
+    skills_dir = tmp_path / "skills"
+    memory_dir = tmp_path / "sandbox" / "shared" / "memory"
+    config_dir.mkdir()
+    skills_dir.mkdir()
+    memory_dir.mkdir(parents=True)
+    first = config_dir / "default.yaml"
+    second = config_dir / "config.yaml"
+    first.write_text("value: cloud-first\n", encoding="utf-8")
+    second.write_text("value: cloud-second\n", encoding="utf-8")
+
+    builder = SyncPayloadBuilder(
+        user_config_dir=config_dir,
+        user_skills_dir=skills_dir,
+        sandbox_data_path=tmp_path / "sandbox",
+    )
+    profile = SyncProfile(repo_path=str(repo), branch="master")
+    builder.build(repo)
+    GitHubSyncProvider(repo, branch="master").commit_and_push_payload()
+    first.write_text("value: local-first\n", encoding="utf-8")
+    second.write_text("value: local-second\n", encoding="utf-8")
+
+    service = GitHubSyncService(
+        profiles_path=tmp_path / "profiles.json", payload_builder=builder
+    )
+    service.save_profile(profile)
+
+    result = asyncio.run(
+        service.discard_outgoing(profile.id, paths=["config/default.yaml"])
+    )
+    remaining = service.preview_sync_plan("push", profile.id)
+
+    assert result["discarded"] == ["config/default.yaml"]
+    assert first.read_text(encoding="utf-8") == "value: cloud-first\n"
+    assert second.read_text(encoding="utf-8") == "value: local-second\n"
+    assert {change.path for change in remaining.files} == {"config/config.yaml"}
 
 
 def test_pull_clears_untracked_payload_files(tmp_path: Path):

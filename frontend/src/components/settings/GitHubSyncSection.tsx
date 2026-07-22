@@ -3,9 +3,11 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import {
   fetchGitHubAuthStatus,
-  fetchSyncAheadBehind,
   fetchSyncQuickstartInfo,
   fetchSyncStatus,
+  githubSyncDiscardOutgoing,
+  githubSyncFileDiff,
+  githubSyncPlan,
   githubSyncPull,
   githubSyncPush,
   logoutGitHub,
@@ -15,10 +17,14 @@ import {
   saveSyncAutoConfig,
   saveSyncProfile,
   startGitHubAuth,
+  syncReviewPlanFromError,
+  SyncFileChange,
+  SyncDirection,
+  SyncOperation,
+  SyncPlan,
   SyncProfile,
   SyncStatus,
 } from '../../lib/dataApi';
-import { ShibbolethPanel } from './ShibbolethPanel';
 import { SettingsCard, SectionCardHeader, Badge, SettingsListAction } from './SettingsCard';
 import { BrutalButton } from '../BrutalButton';
 
@@ -56,7 +62,7 @@ function ActionBtn({
   muted,
 }: {
   children: React.ReactNode;
-  onClick: () => void;
+  onClick: () => void | Promise<void>;
   disabled?: boolean;
   title?: string;
   primary?: boolean;
@@ -65,7 +71,7 @@ function ActionBtn({
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => { void onClick(); }}
       disabled={disabled}
       title={title}
       className={`flex items-center gap-1.5 px-3 py-2 border-l-2 border-brutal-black font-bold uppercase text-xs disabled:opacity-40 hover:brightness-95 dark:hover:brightness-125 transition-all ${
@@ -81,50 +87,372 @@ function ActionBtn({
   );
 }
 
-const SECRET_BUNDLE_PREFIX = '_sync/';
+function syncChangeStatus(changeType: SyncFileChange['change_type']): string {
+  if (changeType === 'added') return 'A';
+  if (changeType === 'deleted') return 'D';
+  return 'M';
+}
 
-function SyncedFilesPanel({ hashes }: { hashes?: Record<string, string> }): React.ReactElement | null {
-  const [open, setOpen] = useState(false);
-  // Group synced payload files by top-level dir (config / skills / memory),
-  // excluding the encrypted secret bundle (shown in the vault panel instead).
-  const groups: Record<string, string[]> = {};
-  for (const rel of Object.keys(hashes ?? {})) {
-    if (rel.startsWith(SECRET_BUNDLE_PREFIX) || rel === 'manifest.json') continue;
-    const top = rel.split('/')[0] || 'other';
-    (groups[top] ??= []).push(rel);
-  }
-  const groupNames = Object.keys(groups).sort();
-  const total = groupNames.reduce((n, g) => n + groups[g].length, 0);
-  if (total === 0) return null;
+function syncChangeTone(change: SyncFileChange): string {
+  if (change.risk === 'high') return 'text-red-600 dark:text-red-300';
+  if (change.change_type === 'added') return 'text-green-600 dark:text-green-300';
+  if (change.change_type === 'deleted') return 'text-red-600 dark:text-red-300';
+  return 'text-amber-600 dark:text-amber-300';
+}
+
+function syncDisplayName(change: SyncFileChange): string {
+  return change.path.split('/').pop() || change.path;
+}
+
+function syncDisplayDir(change: SyncFileChange): string {
+  const parts = change.path.split('/');
+  parts.pop();
+  return parts.join('/') || change.category;
+}
+
+function syncGroupLabel(category: SyncFileChange['category']): string {
+  return category;
+}
+
+function syncDirectionOf(change: SyncFileChange): SyncDirection {
+  return change.direction ?? 'outgoing';
+}
+
+function syncPlanKey(plan: SyncPlan): string {
+  const files = plan.files
+    .map((file) => `${file.change_type}:${file.risk}:${file.category}:${file.path}`)
+    .sort()
+    .join('|');
+  return `${plan.operation}:${files}`;
+}
+
+type DiffRowKind = 'add' | 'delete' | 'hunk' | 'context';
+
+function diffRows(diffPreview: string): { kind: DiffRowKind; text: string }[] {
+  return diffPreview
+    .split('\n')
+    .filter((line) => (
+      !line.startsWith('diff --git ')
+      && !line.startsWith('index ')
+      && !line.startsWith('deleted file mode ')
+      && !line.startsWith('new file mode ')
+      && !line.startsWith('--- ')
+      && !line.startsWith('+++ ')
+    ))
+    .map((line) => {
+      if (line.startsWith('@@')) return { kind: 'hunk', text: line };
+      if (line.startsWith('+')) return { kind: 'add', text: line.slice(1) };
+      if (line.startsWith('-')) return { kind: 'delete', text: line.slice(1) };
+      return { kind: 'context', text: line.startsWith(' ') ? line.slice(1) : line };
+    });
+}
+
+function DiffPreview({ value }: { value: string }): React.ReactElement {
+  const { t } = useI18n();
+  const rows = diffRows(value);
+  return (
+    <div className="mx-3 mb-2 max-h-56 overflow-auto border border-neutral-300 bg-[#ffffff] font-mono text-[10px] leading-relaxed dark:border-zinc-700 dark:bg-[#1e1e1e]">
+      <div className="border-b border-neutral-200 bg-[#f3f3f3] px-2 py-1 text-[10px] font-bold uppercase text-neutral-500 dark:border-zinc-700 dark:bg-[#252526] dark:text-neutral-400">
+        {t('settings.data.githubReviewDiff')}
+      </div>
+      {rows.length === 0 ? (
+        <div className="px-2 py-1 text-neutral-400 dark:text-neutral-500">
+          {t('settings.data.githubReviewNoDiff')}
+        </div>
+      ) : (
+        rows.map((row, index) => {
+          const tone = row.kind === 'add'
+            ? 'bg-green-50 text-green-900 dark:bg-green-950/30 dark:text-green-200'
+            : row.kind === 'delete'
+              ? 'bg-red-50 text-red-900 dark:bg-red-950/30 dark:text-red-200'
+              : row.kind === 'hunk'
+                ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
+                : 'text-neutral-700 dark:text-neutral-300';
+          const marker = row.kind === 'add' ? '+' : row.kind === 'delete' ? '-' : row.kind === 'hunk' ? '@' : ' ';
+          return (
+            <div key={`${index}:${row.text}`} className={`grid grid-cols-[24px_1fr] ${tone}`}>
+              <span className="select-none border-r border-black/10 px-1 text-right text-neutral-400 dark:border-white/10 dark:text-neutral-500">
+                {marker}
+              </span>
+              <span className="whitespace-pre-wrap px-2">{row.text || ' '}</span>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+function SyncReviewPanel({
+  plan,
+  busy,
+  onCancel,
+  onConfirm,
+  onDiscardOutgoing,
+  onDiscardFile,
+  onLoadDiff,
+  onPullCloud,
+}: {
+  plan: SyncPlan;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  onDiscardOutgoing: () => void;
+  onDiscardFile: (file: SyncFileChange) => void;
+  onLoadDiff: (file: SyncFileChange) => Promise<string>;
+  onPullCloud: () => void;
+}): React.ReactElement {
+  const { t } = useI18n();
+  const [expandedFile, setExpandedFile] = useState<string | null>(null);
+  const [loadingFile, setLoadingFile] = useState<string | null>(null);
+  const [loadedDiffs, setLoadedDiffs] = useState<Record<string, string>>({});
+  const reviewFiles = plan.files;
+  const visibleFiles = reviewFiles.slice(0, 80);
+  const hiddenCount = Math.max(0, reviewFiles.length - visibleFiles.length);
+  const summary = reviewFiles.reduce(
+    (acc, file) => {
+      acc[file.change_type] += 1;
+      if (file.risk === 'high') acc.high_risk += 1;
+      return acc;
+    },
+    { added: 0, modified: 0, deleted: 0, high_risk: 0 },
+  );
+  const operationLabel = plan.operation === 'auto'
+    ? t('settings.data.githubReviewSync')
+    : plan.operation === 'pull'
+      ? t('settings.data.githubPull')
+      : t('settings.data.githubPush');
+  const directionGroups = visibleFiles.reduce<Record<SyncDirection, Record<string, SyncFileChange[]>>>((acc, file) => {
+    const direction = syncDirectionOf(file);
+    const category = syncGroupLabel(file.category);
+    (acc[direction][category] ??= []).push(file);
+    return acc;
+  }, { outgoing: {}, incoming: {} });
+  const sortedCategoryNames = (groups: Record<string, SyncFileChange[]>): string[] => Object.keys(groups).sort((a, b) => {
+    const order = ['memory', 'config', 'skills', 'other'];
+    return (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 99 : order.indexOf(b));
+  });
+  const directionOrder: SyncDirection[] = ['outgoing', 'incoming'];
+  const outgoingCount = Object.values(directionGroups.outgoing).reduce(
+    (total, files) => total + files.length,
+    0,
+  );
+  const incomingCount = Object.values(directionGroups.incoming).reduce(
+    (total, files) => total + files.length,
+    0,
+  );
+
+  const fileKey = (file: SyncFileChange): string => `${syncDirectionOf(file)}:${file.path}`;
+  const toggleFile = async (file: SyncFileChange): Promise<void> => {
+    const key = fileKey(file);
+    if (expandedFile === key) {
+      setExpandedFile(null);
+      return;
+    }
+    setExpandedFile(key);
+    if (Object.prototype.hasOwnProperty.call(loadedDiffs, key)) return;
+    setLoadingFile(key);
+    try {
+      const diff = await onLoadDiff(file);
+      setLoadedDiffs((current) => ({ ...current, [key]: diff }));
+    } catch {
+      setLoadedDiffs((current) => ({ ...current, [key]: '' }));
+    } finally {
+      setLoadingFile((current) => (current === key ? null : current));
+    }
+  };
 
   return (
-    <div className="mt-3">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between border-2 border-brutal-black px-3 py-2 text-xs font-bold uppercase bg-neutral-50 dark:bg-zinc-900"
-      >
-        <span>Synced files ({total})</span>
-        <span>{open ? '−' : '+'}</span>
-      </button>
-      {open && (
-        <div className="mt-2 border-2 border-brutal-black bg-white dark:bg-zinc-900 divide-y divide-brutal-black/10 max-h-56 overflow-y-auto">
-          {groupNames.map((g) => (
-            <div key={g} className="px-3 py-2">
-              <p className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 mb-1">
-                {g} <span className="text-neutral-300 dark:text-neutral-600">({groups[g].length})</span>
-              </p>
-              <ul className="space-y-0.5">
-                {groups[g].sort().map((rel) => (
-                  <li key={rel} className="font-mono text-[11px] truncate dark:text-neutral-300" title={rel}>
-                    {rel.slice(g.length + 1) || rel}
-                  </li>
-                ))}
-              </ul>
-            </div>
+    <div className="mt-3 border-2 border-brutal-black bg-[#f3f3f3] dark:bg-[#181818]">
+      <div className="flex items-center justify-between border-b-2 border-brutal-black bg-[#eeeeee] dark:bg-[#252526] px-3 py-2">
+        <div className="min-w-0">
+          <p className="text-[11px] font-black uppercase text-neutral-700 dark:text-neutral-200">
+            {t('settings.data.githubReviewTitle')}
+          </p>
+          <p className="mt-0.5 text-[10px] font-mono text-neutral-500 dark:text-neutral-400 truncate">
+            {t('settings.data.githubReviewSubtitle', { operation: operationLabel })}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="font-mono text-[10px] font-bold text-green-700 dark:text-green-300" title={t('settings.data.githubReviewAdded')}>
+            +{summary.added ?? 0}
+          </span>
+          <span className="font-mono text-[10px] font-bold text-amber-700 dark:text-amber-300" title={t('settings.data.githubReviewModified')}>
+            ~{summary.modified ?? 0}
+          </span>
+          <span className="font-mono text-[10px] font-bold text-red-700 dark:text-red-300" title={t('settings.data.githubReviewDeleted')}>
+            -{summary.deleted ?? 0}
+          </span>
+        </div>
+      </div>
+
+      {plan.warnings.length > 0 && (
+        <div className="border-b border-brutal-black/20 bg-red-50 dark:bg-red-950/30 px-3 py-2">
+          {plan.warnings.map((warning) => (
+            <p key={warning} className="text-[11px] font-bold text-red-700 dark:text-red-300">
+              {warning}
+            </p>
           ))}
         </div>
       )}
+
+      <div className="max-h-72 overflow-y-auto bg-[#f8f8f8] dark:bg-[#1e1e1e]">
+        {directionOrder.map((direction) => {
+          const categoryGroups = directionGroups[direction];
+          const categoryNames = sortedCategoryNames(categoryGroups);
+          const count = categoryNames.reduce((total, category) => total + (categoryGroups[category]?.length ?? 0), 0);
+          if (count === 0) return null;
+          return (
+            <div key={direction} className="border-b-2 border-brutal-black/20 last:border-b-0">
+              <div className="flex items-center justify-between bg-[#dddddd] dark:bg-[#303030] px-3 py-1.5">
+                <span className="text-[10px] font-black uppercase text-neutral-700 dark:text-neutral-200">
+                  {direction === 'outgoing'
+                    ? t('settings.data.githubReviewOutgoing')
+                    : t('settings.data.githubReviewIncoming')}
+                </span>
+                <span className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400">{count}</span>
+              </div>
+              {categoryNames.map((group) => {
+                const files = categoryGroups[group] ?? [];
+                return (
+                  <div key={`${direction}:${group}`} className="border-t border-brutal-black/10">
+                    <div className="flex items-center justify-between bg-[#eeeeee] dark:bg-[#252526] px-3 py-1.5">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[10px] text-neutral-500 dark:text-neutral-400">v</span>
+                        <span className="text-[10px] font-black uppercase text-neutral-600 dark:text-neutral-300 truncate">
+                          {t(`settings.data.githubReviewCategory${group.charAt(0).toUpperCase()}${group.slice(1)}`)}
+                        </span>
+                      </div>
+                      <span className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400">
+                        {files.length}
+                      </span>
+                    </div>
+                    <div>
+                      {files.map((file) => (
+                        <div key={`${syncDirectionOf(file)}:${file.change_type}:${file.path}`} className="border-t border-brutal-black/5 first:border-t-0">
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => { void toggleFile(file); }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                void toggleFile(file);
+                              }
+                            }}
+                            className="grid cursor-pointer grid-cols-[12px_18px_1fr_auto_28px] items-center gap-2 px-3 py-1.5 hover:bg-[#e8e8e8] focus:bg-[#e8e8e8] focus:outline-none dark:hover:bg-[#2a2d2e] dark:focus:bg-[#2a2d2e]"
+                            title={file.path}
+                          >
+                            <span className="text-[10px] text-neutral-500">
+                              {expandedFile === fileKey(file) ? 'v' : '>'}
+                            </span>
+                            <span className={`font-mono text-[11px] font-black ${syncChangeTone(file)}`}>
+                              {syncChangeStatus(file.change_type)}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block truncate font-mono text-[12px] text-neutral-800 dark:text-neutral-100">
+                                {syncDisplayName(file)}
+                              </span>
+                              <span className="block truncate font-mono text-[10px] text-neutral-500 dark:text-neutral-500">
+                                {syncDisplayDir(file)}
+                              </span>
+                            </span>
+                            <span>
+                              {syncDirectionOf(file) === 'outgoing' && (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    onDiscardFile(file);
+                                  }}
+                                  title={t('settings.data.githubReviewDiscardFileTitle')}
+                                  className="border border-brutal-black/40 bg-white px-2 py-1 text-[9px] font-black uppercase text-neutral-700 hover:bg-neutral-100 disabled:opacity-40 dark:bg-zinc-900 dark:text-neutral-200 dark:hover:bg-zinc-800"
+                                >
+                                  {t('settings.data.githubReviewDiscardFile')}
+                                </button>
+                              )}
+                            </span>
+                            <span className={`text-right font-mono text-[10px] font-bold uppercase ${syncChangeTone(file)}`}>
+                              {file.risk === 'high' ? '!' : file.risk === 'medium' ? '*' : ''}
+                            </span>
+                          </div>
+                          {expandedFile === fileKey(file) && (
+                            loadingFile === fileKey(file)
+                              ? (
+                                <div className="mx-3 mb-2 px-2 py-3 font-mono text-[10px] text-neutral-500">
+                                  {t('settings.data.githubReviewLoadingDiff')}
+                                </div>
+                              )
+                              : <DiffPreview value={loadedDiffs[fileKey(file)] ?? ''} />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+        {hiddenCount > 0 && (
+          <div className="px-3 py-2 font-mono text-[11px] text-neutral-500 dark:text-neutral-400">
+            {t('settings.data.githubReviewFilesHidden', { count: hiddenCount })}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between border-t-2 border-brutal-black bg-[#eeeeee] dark:bg-[#252526] px-3 py-2">
+        <span className={`font-mono text-[10px] font-bold uppercase ${
+          (summary.high_risk ?? 0) > 0
+            ? 'text-red-700 dark:text-red-300'
+            : 'text-neutral-500 dark:text-neutral-400'
+        }`}>
+          {t('settings.data.githubReviewHighRisk', { count: summary.high_risk ?? 0 })}
+        </span>
+        <div className="flex gap-2">
+          {outgoingCount > 0 && (
+            <button
+              type="button"
+              onClick={onDiscardOutgoing}
+              disabled={busy}
+              title={t('settings.data.githubReviewDiscardTitle')}
+              className="px-3 py-2 border-2 border-brutal-black bg-white dark:bg-zinc-900 text-xs font-bold uppercase disabled:opacity-50"
+            >
+              {t('settings.data.githubReviewDiscard')}
+            </button>
+          )}
+          {incomingCount > 0 && (
+            <button
+              type="button"
+              onClick={onPullCloud}
+              disabled={busy}
+              title={t('settings.data.githubReviewPullTitle')}
+              className="px-3 py-2 border-2 border-brutal-black bg-blue-600 text-white text-xs font-black uppercase disabled:opacity-50"
+            >
+              {t('settings.data.githubReviewPull')}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="px-3 py-2 border-2 border-brutal-black bg-white dark:bg-zinc-900 text-xs font-bold uppercase disabled:opacity-50"
+          >
+            {t('common.cancel')}
+          </button>
+          {!(outgoingCount > 0 && incomingCount > 0) && (
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={busy}
+              className="px-3 py-2 border-2 border-brutal-black bg-red-600 text-white text-xs font-black uppercase disabled:opacity-50"
+            >
+              {t('settings.data.githubReviewConfirm', { operation: operationLabel })}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -156,15 +484,17 @@ export function GitHubSyncSection({
   const [remote, setRemote] = useState('origin');
   const [autoSync, setAutoSync] = useState(true);
   const [intervalHours, setIntervalHours] = useState(4);
-  const [autoResolve, setAutoResolve] = useState(true);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [githubAuthLoading, setGithubAuthLoading] = useState(true);
   const [githubAuthenticated, setGithubAuthenticated] = useState(false);
   const [githubUsername, setGithubUsername] = useState<string | null>(null);
   const [githubTokenExpired, setGithubTokenExpired] = useState(false);
   const [linkedRepo, setLinkedRepo] = useState<string | null>(null);
   const [installUrl, setInstallUrl] = useState<string | null>(null);
-  const [ahead, setAhead] = useState<number | null>(null);
-  const [behind, setBehind] = useState<number | null>(null);
+  const [pendingPlan, setPendingPlan] = useState<SyncPlan | null>(null);
+  const [reviewPlan, setReviewPlan] = useState<SyncPlan | null>(null);
+  const [reviewOperation, setReviewOperation] = useState<SyncOperation | null>(null);
+  const [dismissedPlanKey, setDismissedPlanKey] = useState<string | null>(null);
 
   const [devicePhase, setDevicePhase] = useState<DeviceFlowPhase>('idle');
   const [deviceCode, setDeviceCode] = useState('');
@@ -172,47 +502,97 @@ export function GitHubSyncSection({
   const [deviceSessionId, setDeviceSessionId] = useState('');
   const [deviceInterval, setDeviceInterval] = useState(5);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncPlanWatcherRunning = useRef(false);
 
   useEffect(() => {
-    refresh().catch(() => setSyncStatus(null));
-    Promise.all([fetchSyncQuickstartInfo(), fetchGitHubAuthStatus()])
-      .then(([info, authStatus]) => {
+    let cancelled = false;
+    refresh().catch(() => {
+      if (!cancelled) setSyncStatus(null);
+    });
+    fetchSyncQuickstartInfo()
+      .then((info) => {
+        if (cancelled) return;
         setRepoPath((current) => current || info.default_repo_path);
         if (!repoName) setRepoName(info.default_repo_name || 'suzent-brain');
+      })
+      .catch(() => {});
+    fetchGitHubAuthStatus()
+      .then((authStatus) => {
+        if (cancelled) return;
         setGithubAuthenticated(authStatus.authenticated);
         setGithubUsername(authStatus.username ?? null);
         setGithubTokenExpired(authStatus.token_expired ?? false);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setGithubAuthLoading(false);
+      });
     return () => {
+      cancelled = true;
       if (pollTimer.current) clearTimeout(pollTimer.current);
     };
   }, []);
+
+  useEffect(() => {
+    const profileId = syncStatus?.configured ? syncStatus.profile?.id : null;
+    if (!profileId) {
+      setPendingPlan(null);
+      setReviewPlan(null);
+      setReviewOperation(null);
+      setDismissedPlanKey(null);
+      return;
+    }
+
+    let cancelled = false;
+    const refreshWatchedPlan = async (refreshRemote = false): Promise<void> => {
+      if (busy || syncPlanWatcherRunning.current) return;
+      syncPlanWatcherRunning.current = true;
+      try {
+        const plan = await githubSyncPlan('auto', profileId, refreshRemote);
+        if (cancelled) return;
+        if (plan.files.length === 0) {
+          setPendingPlan(null);
+          setReviewPlan((current) => (current?.operation === 'auto' ? null : current));
+          setReviewOperation((current) => (current === 'auto' ? null : current));
+          setDismissedPlanKey(null);
+          return;
+        }
+
+        setPendingPlan(plan);
+        const nextKey = syncPlanKey(plan);
+        if (nextKey !== dismissedPlanKey) {
+          setReviewPlan(plan);
+          setReviewOperation('auto');
+        }
+      } catch {
+        // A watcher should stay quiet; manual buttons still surface explicit errors.
+      } finally {
+        syncPlanWatcherRunning.current = false;
+      }
+    };
+
+    void refreshWatchedPlan(true);
+    const interval = window.setInterval(() => { void refreshWatchedPlan(false); }, 8000);
+    const handleFocus = (): void => { void refreshWatchedPlan(true); };
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [syncStatus?.configured, syncStatus?.profile?.id, busy, dismissedPlanKey]);
 
   async function refresh(): Promise<void> {
     const next = await fetchSyncStatus();
     setSyncStatus(next);
     if (next.profile) applyProfile(next.profile);
-    if (next.configured && next.profile) {
-      refreshAheadBehind(next.profile.id).catch(() => {});
-    }
-  }
-
-  async function refreshAheadBehind(profileId?: string): Promise<void> {
-    try {
-      const counts = await fetchSyncAheadBehind(profileId);
-      setAhead(counts.ahead);
-      setBehind(counts.behind);
-    } catch {
-      // network error or repo not yet linked — leave counts null
-    }
   }
 
   async function saveAutoConfig(nextAutoSync: boolean, nextInterval: number): Promise<void> {
     const profileId = syncStatus?.profile?.id;
     if (!profileId) return;
     try {
-      await saveSyncAutoConfig(profileId, nextAutoSync, nextInterval, autoResolve);
+      await saveSyncAutoConfig(profileId, nextAutoSync, nextInterval);
     } catch {
       // non-critical — ignore
     }
@@ -224,14 +604,6 @@ export function GitHubSyncSection({
     setRemote(profile.remote);
     setAutoSync(profile.auto_sync_enabled);
     setIntervalHours(profile.interval_hours);
-    setAutoResolve(profile.auto_resolve_enabled);
-  }
-
-  function requireShibbolethUnlocked(): boolean {
-    if (!syncStatus?.requires_shibboleth) return true;
-    if (syncStatus.shibboleth_unlocked) return true;
-    onNotify(t('settings.data.shibbolethRequiredForSync'), true);
-    return false;
   }
 
   async function handleSignIn(): Promise<void> {
@@ -311,7 +683,6 @@ export function GitHubSyncSection({
         branch: branch.trim() || 'main',
         remote: remote.trim() || 'origin',
         auto_sync_enabled: autoSync,
-        auto_resolve_enabled: autoResolve,
         interval_hours: intervalHours,
       });
       applyProfile(result.profile);
@@ -347,13 +718,10 @@ export function GitHubSyncSection({
         remote: remote.trim() || 'origin',
         auto_sync_enabled: autoSync,
         interval_hours: intervalHours,
-        auto_resolve_enabled: autoResolve,
-        encrypted_secret_sync_enabled:
-          syncStatus?.profile?.encrypted_secret_sync_enabled ?? false,
       });
       applyProfile(profile);
       if (syncStatus?.profile) {
-        await saveSyncAutoConfig(profile.id, autoSync, intervalHours, autoResolve);
+        await saveSyncAutoConfig(profile.id, autoSync, intervalHours);
       }
       await refresh();
       onNotify(t('settings.data.githubSaved'), false);
@@ -364,38 +732,54 @@ export function GitHubSyncSection({
     }
   }
 
+  function openReview(plan: SyncPlan, operation: SyncOperation): void {
+    setDismissedPlanKey(null);
+    setReviewPlan(plan);
+    setReviewOperation(operation);
+    onNotify('Review sync changes before continuing.', true);
+  }
+
   function makeSyncHandler(
-    apiFn: (profileId: string) => Promise<unknown>,
+    operation: SyncOperation,
+    apiFn: (profileId: string, confirmDestructive?: boolean) => Promise<unknown>,
     successKey: string,
     notifyComplete = false,
   ) {
-    return async function (): Promise<void> {
-      if (!requireShibbolethUnlocked()) return;
+    return async function (confirmDestructive = false): Promise<void> {
       onBusyChange(true);
       try {
         const profile = syncStatus?.profile;
-        if (!profile) throw new Error('GitHub sync is not configured.');
-        const result = (await apiFn(profile.id)) as
-          | { secrets?: string; changed_secret_keys?: string[] }
-          | undefined;
-        await refresh();
-        // Honest push: if a vault exists but this device didn't contribute keys,
-        // say so instead of implying the vault was updated.
-        if (result?.secrets === 'skipped_not_enabled') {
-          onNotify(
-            'Files pushed, but API keys were NOT pushed — enable the shared key vault on this device first.',
-            true,
-          );
-        } else if (result?.changed_secret_keys && result.changed_secret_keys.length > 0) {
-          // Vault-is-authority overwrote local values — make it visible, not silent.
-          const keys = result.changed_secret_keys;
-          const list = keys.slice(0, 4).join(', ') + (keys.length > 4 ? `, +${keys.length - 4} more` : '');
-          onNotify(`${t(successKey)} · ${keys.length} key${keys.length !== 1 ? 's' : ''} updated from vault: ${list}`, false);
-        } else {
-          onNotify(t(successKey), false);
+        if (!profile) throw new Error(t('settings.data.githubNotConfigured'));
+
+        if (!confirmDestructive) {
+          const plan = await githubSyncPlan(operation, profile.id);
+          if (plan.requires_confirmation) {
+            openReview(plan, operation);
+            return;
+          }
         }
+
+        const result = (await apiFn(profile.id, confirmDestructive)) as
+          | { blocked_review_required?: boolean; plan?: SyncPlan }
+          | undefined;
+        if (result?.blocked_review_required && result.plan) {
+          openReview(result.plan, operation);
+          return;
+        }
+        setReviewPlan(null);
+        setReviewOperation(null);
+        setDismissedPlanKey(null);
+        await refresh();
+        const nextPlan = await githubSyncPlan('auto', profile.id, false);
+        setPendingPlan(nextPlan.files.length > 0 ? nextPlan : null);
+        onNotify(t(successKey), false);
         if (notifyComplete) onSyncComplete?.();
       } catch (error) {
+        const plan = syncReviewPlanFromError(error);
+        if (plan) {
+          openReview(plan, operation);
+          return;
+        }
         onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
       } finally {
         onBusyChange(false);
@@ -403,11 +787,138 @@ export function GitHubSyncSection({
     };
   }
 
-  const handleSync = makeSyncHandler(runSync, 'settings.data.githubPushed', true);
-  const handlePull = makeSyncHandler(githubSyncPull, 'settings.data.githubPulled', true);
-  const handlePush = makeSyncHandler(githubSyncPush, 'settings.data.githubPushed');
+  const handleSync = makeSyncHandler('auto', runSync, 'settings.data.githubPushed', true);
+  const handlePull = makeSyncHandler(
+    'pull',
+    (profileId, confirmDestructive) => githubSyncPull(profileId, confirmDestructive),
+    'settings.data.githubPulled',
+    true,
+  );
+  const handlePush = makeSyncHandler(
+    'push',
+    (profileId, confirmDestructive) => githubSyncPush(profileId, confirmDestructive),
+    'settings.data.githubPushed',
+  );
+
+  function handleReviewConfirm(): void {
+    if (reviewOperation === 'auto') void handleSync(true);
+    if (reviewOperation === 'pull') void handlePull(true);
+    if (reviewOperation === 'push') void handlePush(true);
+  }
+
+  async function handleDiscardOutgoing(): Promise<void> {
+    onBusyChange(true);
+    try {
+      const profile = syncStatus?.profile;
+      if (!profile) throw new Error(t('settings.data.githubNotConfigured'));
+      const result = await githubSyncDiscardOutgoing(profile.id) as { discarded?: string[] };
+      setReviewPlan(null);
+      setReviewOperation(null);
+      setDismissedPlanKey(null);
+      await refresh();
+      const nextPlan = await githubSyncPlan('auto', profile.id, false);
+      setPendingPlan(nextPlan.files.length > 0 ? nextPlan : null);
+      const count = result.discarded?.length ?? 0;
+      onNotify(
+        count > 0
+          ? t('settings.data.githubDiscardedOutgoing', { count })
+          : t('settings.data.githubNoOutgoing'),
+        false,
+      );
+    } catch (error) {
+      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
+    } finally {
+      onBusyChange(false);
+    }
+  }
+
+  async function handleDiscardFile(file: SyncFileChange): Promise<void> {
+    onBusyChange(true);
+    try {
+      const profile = syncStatus?.profile;
+      if (!profile) throw new Error(t('settings.data.githubNotConfigured'));
+      await githubSyncDiscardOutgoing(profile.id, [file.path]);
+      const operation = reviewOperation ?? 'auto';
+      const remaining = reviewPlan?.files.filter(
+        (item) => !(item.path === file.path && syncDirectionOf(item) === 'outgoing'),
+      ) ?? [];
+      setPendingPlan((current) => current
+        ? {
+            ...current,
+            files: current.files.filter(
+              (item) => !(item.path === file.path && syncDirectionOf(item) === 'outgoing'),
+            ),
+          }
+        : current);
+      if (remaining.length > 0 && reviewPlan) {
+        setReviewPlan({ ...reviewPlan, files: remaining });
+      } else {
+        setReviewPlan(null);
+        setReviewOperation(null);
+        setDismissedPlanKey(null);
+      }
+      onNotify(t('settings.data.githubDiscardedFile', { path: file.path }), false);
+      void githubSyncPlan(operation, profile.id, false).then((plan) => {
+        setPendingPlan(plan.files.length > 0 ? plan : null);
+        if (plan.files.length > 0) {
+          setReviewPlan(plan);
+          setReviewOperation(operation);
+        }
+      }).catch(() => {});
+    } catch (error) {
+      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
+    } finally {
+      onBusyChange(false);
+    }
+  }
+
+  async function handleLoadFileDiff(file: SyncFileChange): Promise<string> {
+    const profile = syncStatus?.profile;
+    if (!profile) throw new Error(t('settings.data.githubNotConfigured'));
+    const result = await githubSyncFileDiff(
+      profile.id,
+      file.path,
+      syncDirectionOf(file),
+    );
+    return result.diff;
+  }
+
+  async function handlePullCloud(): Promise<void> {
+    onBusyChange(true);
+    try {
+      const profile = syncStatus?.profile;
+      if (!profile) throw new Error(t('settings.data.githubNotConfigured'));
+      await githubSyncPull(profile.id, true, true);
+      setReviewPlan(null);
+      setReviewOperation(null);
+      setDismissedPlanKey(null);
+      await refresh();
+      const nextPlan = await githubSyncPlan('auto', profile.id, false);
+      setPendingPlan(nextPlan.files.length > 0 ? nextPlan : null);
+      onNotify(t('settings.data.githubCloudApplied'), false);
+      onSyncComplete?.();
+    } catch (error) {
+      const plan = syncReviewPlanFromError(error);
+      if (plan) {
+        openReview(plan, 'pull');
+        return;
+      }
+      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
+    } finally {
+      onBusyChange(false);
+    }
+  }
 
   const configured = Boolean(syncStatus?.configured && syncStatus.profile);
+  const pendingFiles = pendingPlan?.files ?? [];
+  const incomingFileCount = pendingFiles.filter(
+    (file) => syncDirectionOf(file) === 'incoming',
+  ).length;
+  const outgoingFileCount = pendingFiles.filter(
+    (file) => syncDirectionOf(file) === 'outgoing',
+  ).length;
+  const pullCount = incomingFileCount;
+  const pushCount = outgoingFileCount;
 
   return (
     <SettingsCard>
@@ -442,7 +953,7 @@ export function GitHubSyncSection({
       />
 
       {/* GitHub sign-in / device flow */}
-      {githubTokenExpired && devicePhase === 'idle' && (
+      {!githubAuthLoading && githubTokenExpired && devicePhase === 'idle' && (
         <div className="mb-3 border-2 border-brutal-black bg-red-50 dark:bg-red-900/20 p-3 flex items-start gap-2">
           <span className="text-red-600 dark:text-red-400 text-xs font-bold uppercase shrink-0">⚠</span>
           <div className="flex-1 min-w-0">
@@ -451,7 +962,17 @@ export function GitHubSyncSection({
           </div>
         </div>
       )}
-      {!githubAuthenticated && devicePhase === 'idle' && (
+      {githubAuthLoading && devicePhase === 'idle' && (
+        <div className="mb-4 flex items-center justify-center gap-2 border-2 border-brutal-black/20 bg-neutral-100 px-4 py-3 text-neutral-500 dark:bg-zinc-900 dark:text-neutral-400">
+          <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path strokeLinecap="round" d="M8 2a6 6 0 1 1-4.243 1.757" />
+          </svg>
+          <span className="text-xs font-bold uppercase">
+            {t('settings.data.githubCheckingAuth')}
+          </span>
+        </div>
+      )}
+      {!githubAuthLoading && !githubAuthenticated && devicePhase === 'idle' && (
         <div className="mb-4">
           <button
             type="button"
@@ -549,71 +1070,50 @@ export function GitHubSyncSection({
           )}
         </div>
 
-        <div className="w-px bg-brutal-black/20 dark:bg-white/10" />
-
         {configured ? (
           <>
-            {/* Pull button — behind = commits on the remote not yet local */}
-            <ActionBtn
-              onClick={handlePull}
-              disabled={busy}
-              muted={behind === 0}
-              title={behind && behind > 0 ? `Pull ${behind} update${behind !== 1 ? 's' : ''} from other devices` : 'Nothing to pull — up to date with the remote'}
-            >
-              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 2v9M5 8l3 3 3-3" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2 13h12" />
-              </svg>
-              <span className="text-xs font-bold uppercase">
-                {behind !== null && behind > 0 ? `Pull (${behind})` : 'Pull'}
-              </span>
-            </ActionBtn>
-            {/* Push button — ahead = local commits not yet on the remote */}
-            <ActionBtn
-              onClick={handlePush}
-              disabled={busy}
-              muted={ahead === 0}
-              title={ahead && ahead > 0 ? `Push ${ahead} local change${ahead !== 1 ? 's' : ''} to other devices` : 'Nothing to push — the remote has all your changes'}
-            >
-              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 14V5M5 8L8 5l3 3" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2 3h12" />
-              </svg>
-              <span className="text-xs font-bold uppercase">
-                {ahead !== null && ahead > 0 ? `Push (${ahead})` : 'Push'}
-              </span>
-            </ActionBtn>
-            {/* Sync button — combined pull+push activity */}
-            {(() => {
-              const pending = (behind ?? 0) + (ahead ?? 0);
-              return (
-                <ActionBtn
-                  onClick={handleSync}
-                  disabled={busy}
-                  muted={pending === 0}
-                  title={pending > 0 ? `Sync: pull ${behind ?? 0} and push ${ahead ?? 0}` : 'Sync — already up to date'}
-                >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M2 6a6 6 0 0 1 10-2.5L14 5" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M14 2v3h-3" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M14 10a6 6 0 0 1-10 2.5L2 11" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M2 14v-3h3" />
-                  </svg>
-                  <span className="text-xs font-bold uppercase">
-                    {pending > 0 ? `Sync (${pending})` : 'Sync'}
-                  </span>
-                </ActionBtn>
-              );
-            })()}
+            {pullCount > 0 && (
+              <ActionBtn
+                onClick={handlePull}
+                disabled={busy}
+                title={t('settings.data.githubPullTitle', { count: pullCount })}
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 2v9M5 8l3 3 3-3" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2 13h12" />
+                </svg>
+                <span className="text-xs font-bold uppercase">
+                  {t('settings.data.githubPullCount', { count: pullCount })}
+                </span>
+              </ActionBtn>
+            )}
+            {pushCount > 0 && (
+              <ActionBtn
+                onClick={handlePush}
+                disabled={busy}
+                title={t('settings.data.githubPushTitle', { count: pushCount })}
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 14V5M5 8L8 5l3 3" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2 3h12" />
+                </svg>
+                <span className="text-xs font-bold uppercase">
+                  {t('settings.data.githubPushCount', { count: pushCount })}
+                </span>
+              </ActionBtn>
+            )}
           </>
         ) : (
-          <ActionBtn onClick={handleQuickStart} disabled={busy || !githubAuthenticated} title={t('settings.data.githubQuickStartButton')} primary>
-            {busy
-              ? <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="M8 2a6 6 0 1 1-4.243 1.757" /></svg>
-              : <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M13 8A5 5 0 1 1 8 3" /><path strokeLinecap="round" strokeLinejoin="round" d="M13 3v4h-4" /></svg>
-            }
-            <span className="text-xs font-bold uppercase">{busy ? t('settings.data.working') : t('settings.data.githubQuickStartButton')}</span>
-          </ActionBtn>
+          <>
+            <div className="w-px bg-brutal-black/20 dark:bg-white/10" />
+            <ActionBtn onClick={handleQuickStart} disabled={busy || githubAuthLoading || !githubAuthenticated} title={t('settings.data.githubQuickStartButton')} primary>
+              {busy
+                ? <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="M8 2a6 6 0 1 1-4.243 1.757" /></svg>
+                : <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M13 8A5 5 0 1 1 8 3" /><path strokeLinecap="round" strokeLinejoin="round" d="M13 3v4h-4" /></svg>
+              }
+              <span className="text-xs font-bold uppercase">{busy ? t('settings.data.working') : t('settings.data.githubQuickStartButton')}</span>
+            </ActionBtn>
+          </>
         )}
       </div>
 
@@ -628,17 +1128,28 @@ export function GitHubSyncSection({
         </div>
       )}
 
-      {/* Shared key vault — surfaced in the main card (not hidden in Advanced) so
-          the lock state and key inventory are always visible. */}
-      {configured && (
-        <div className="mt-4">
-          <ShibbolethPanel profile={syncStatus?.profile} syncStatus={syncStatus} busy={busy} onBusyChange={onBusyChange} onNotify={onNotify} onChanged={refresh} />
-        </div>
+      {configured && reviewPlan && (
+        <SyncReviewPanel
+          plan={reviewPlan}
+          busy={busy}
+          onCancel={() => {
+            setDismissedPlanKey(syncPlanKey(reviewPlan));
+            setReviewPlan(null);
+            setReviewOperation(null);
+          }}
+          onConfirm={handleReviewConfirm}
+          onDiscardOutgoing={() => { void handleDiscardOutgoing(); }}
+          onDiscardFile={(file) => { void handleDiscardFile(file); }}
+          onLoadDiff={handleLoadFileDiff}
+          onPullCloud={() => { void handlePullCloud(); }}
+        />
       )}
 
-      {/* Synced files inventory — config / skills / memory that travel with sync,
-          so it's clear what's shared beyond API keys. */}
-      {configured && <SyncedFilesPanel hashes={syncStatus?.payload_hashes} />}
+      {configured && (
+        <p className="mt-3 text-[10px] text-neutral-500 dark:text-neutral-400">
+          {t('settings.data.githubFileOnlyScope')}
+        </p>
+      )}
 
       <button
         type="button"
@@ -675,11 +1186,6 @@ export function GitHubSyncSection({
               hours
             </label>
           </div>
-          {syncStatus?.profile?.last_revision !== undefined && (
-            <p className="font-mono text-xs text-neutral-500 dark:text-neutral-400">
-              {t('settings.data.githubLastRevision')}: {syncStatus.profile.last_revision || t('settings.data.githubNone')}
-            </p>
-          )}
         </div>
       )}
     </SettingsCard>
