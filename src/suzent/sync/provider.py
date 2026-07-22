@@ -78,7 +78,8 @@ class GitHubSyncProvider:
             "diff", "--name-status", left_ref, right_ref, "--", PAYLOAD_DIR_NAME
         )
 
-    def payload_diff_patch(self, left_ref: str, right_ref: str) -> str:
+    def payload_file_diff_patch(self, left_ref: str, right_ref: str, path: str) -> str:
+        normalized = path.replace("\\", "/").removeprefix(f"{PAYLOAD_DIR_NAME}/")
         self.validate(require_clean=False)
         return self._git(
             "diff",
@@ -87,12 +88,8 @@ class GitHubSyncProvider:
             left_ref,
             right_ref,
             "--",
-            PAYLOAD_DIR_NAME,
+            f"{PAYLOAD_DIR_NAME}/{normalized}",
         )
-
-    def payload_worktree_diff_patch(self) -> str:
-        self.validate(require_clean=False)
-        return self._git("diff", "--no-ext-diff", "--unified=3", "--", PAYLOAD_DIR_NAME)
 
     def discard_payload_changes(self) -> None:
         self._discard_payload_changes()

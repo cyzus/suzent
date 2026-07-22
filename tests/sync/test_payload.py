@@ -298,3 +298,26 @@ def test_apply_paths_to_local_restores_only_selected_files(tmp_path: Path):
     assert (target_config / "other.json").read_text(
         encoding="utf-8"
     ) == '{"local": "unchanged"}\n'
+
+
+def test_preview_hashes_preserve_committed_memory_without_copying_payload(
+    tmp_path: Path,
+):
+    payload_dir = tmp_path / "repo" / PAYLOAD_DIR_NAME
+    payload_memory = payload_dir / "memory"
+    local_config = tmp_path / "local" / "config"
+    payload_memory.mkdir(parents=True)
+    local_config.mkdir(parents=True)
+    (payload_memory / "committed.md").write_text("keep\n", encoding="utf-8")
+    (local_config / "default.yaml").write_text("model: local\n", encoding="utf-8")
+
+    builder = SyncPayloadBuilder(
+        user_config_dir=local_config,
+        user_skills_dir=tmp_path / "local" / "skills",
+        sandbox_data_path=tmp_path / "local" / "sandbox",
+    )
+
+    hashes = builder.preview_content_hashes(payload_dir)
+
+    assert set(hashes) == {"config/default.yaml", "memory/committed.md"}
+    assert (payload_memory / "committed.md").read_text(encoding="utf-8") == "keep\n"

@@ -119,9 +119,26 @@ async def get_sync_plan(request: Request) -> JSONResponse:
         operation = payload.get("operation")
         profile_id = payload.get("profile_id")
         plan = await _service(request).preview_sync_plan_safe(
-            str(operation), profile_id
+            str(operation),
+            profile_id,
+            refresh_remote=bool(payload.get("refresh_remote", True)),
         )
         return JSONResponse(plan.model_dump(mode="json"))
+    except Exception as exc:
+        return _error_response(str(exc), 400)
+
+
+async def get_sync_file_diff(request: Request) -> JSONResponse:
+    try:
+        payload = await _json_payload(request)
+        path = str(payload.get("path") or "")
+        direction = str(payload.get("direction") or "")
+        diff = await _service(request).preview_file_diff_safe(
+            path,
+            direction,
+            payload.get("profile_id"),
+        )
+        return JSONResponse({"path": path, "diff": diff})
     except Exception as exc:
         return _error_response(str(exc), 400)
 

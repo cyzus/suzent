@@ -40,7 +40,6 @@ class SyncFileChange(BaseModel):
     change_type: Literal["added", "modified", "deleted"]
     risk: Literal["low", "medium", "high"] = "low"
     direction: Literal["outgoing", "incoming"] = "outgoing"
-    diff_preview: str | None = None
 
 
 class SyncPlan(BaseModel):

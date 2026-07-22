@@ -115,6 +115,14 @@ class SyncPayloadBuilder:
             hashes[rel] = _sha256(path)
         return hashes
 
+    def preview_content_hashes(self, payload_dir: Path) -> dict[str, str]:
+        hashes: dict[str, str] = {}
+        self._overlay_tree_hashes(self.user_config_dir, "config", hashes)
+        self._overlay_tree_hashes(self.user_skills_dir, "skills", hashes)
+        self._overlay_tree_hashes(payload_dir / "memory", "memory", hashes)
+        self._overlay_tree_hashes(self._memory_dir(), "memory", hashes)
+        return hashes
+
     def validate_no_forbidden_paths(self, payload_dir: Path) -> list[str]:
         forbidden: list[str] = []
         if not payload_dir.exists():
@@ -154,19 +162,10 @@ class SyncPayloadBuilder:
     def apply_paths_to_local(self, payload_dir: Path, paths: list[str]) -> list[str]:
         restored: list[str] = []
         for raw_path in paths:
-            rel = Path(raw_path.replace("\\", "/"))
-            if rel.is_absolute() or ".." in rel.parts or len(rel.parts) < 2:
+            resolved = self.resolve_local_path(raw_path)
+            if resolved is None:
                 continue
-
-            top = rel.parts[0]
-            if top == "config":
-                target = self.user_config_dir.joinpath(*rel.parts[1:])
-            elif top == "skills":
-                target = self.user_skills_dir.joinpath(*rel.parts[1:])
-            elif top == "memory":
-                target = self._memory_dir().joinpath(*rel.parts[1:])
-            else:
-                continue
+            rel, target = resolved
 
             source = payload_dir / rel
             if source.is_file():
@@ -180,6 +179,56 @@ class SyncPayloadBuilder:
                     target.unlink()
             restored.append(rel.as_posix())
         return restored
+
+    def resolve_local_path(self, payload_path: str) -> tuple[Path, Path] | None:
+        rel = Path(payload_path.replace("\\", "/"))
+        if (
+            rel.is_absolute()
+            or ".." in rel.parts
+            or len(rel.parts) < 2
+            or any(_is_excluded_name(part) for part in rel.parts)
+            or rel.suffix.lower() in EXCLUDED_SUFFIXES
+        ):
+            return None
+
+        top = rel.parts[0]
+        if top == "config":
+            target = self.user_config_dir.joinpath(*rel.parts[1:])
+        elif top == "skills":
+            target = self.user_skills_dir.joinpath(*rel.parts[1:])
+        elif top == "memory":
+            target = self._memory_dir().joinpath(*rel.parts[1:])
+        else:
+            return None
+        return rel, target
+
+    def has_outgoing_change(self, payload_dir: Path, payload_path: str) -> bool:
+        resolved = self.resolve_local_path(payload_path)
+        if resolved is None:
+            return False
+        rel, local_path = resolved
+        payload_file = payload_dir / rel
+        before = payload_file.read_bytes() if payload_file.is_file() else None
+        after = local_path.read_bytes() if local_path.is_file() else None
+        if rel.parts[0] == "memory" and after is None:
+            after = before
+        return before != after
+
+    def _overlay_tree_hashes(
+        self,
+        source: Path,
+        prefix: str,
+        hashes: dict[str, str],
+    ) -> None:
+        if not source.exists():
+            return
+        for path in sorted(item for item in source.rglob("*") if item.is_file()):
+            rel = path.relative_to(source)
+            if any(_is_excluded_name(part) for part in rel.parts):
+                continue
+            if not _is_portable_file(path):
+                continue
+            hashes[(Path(prefix) / rel).as_posix()] = _sha256(path)
 
     def _remove_tree_preserving_excluded(self, target: Path) -> None:
         if not target.exists():

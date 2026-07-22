@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import json
 import shutil
 import tempfile
@@ -148,6 +149,8 @@ class GitHubSyncService:
         self,
         operation: str,
         profile_id: str | None = None,
+        *,
+        refresh_remote: bool = True,
     ) -> SyncPlan:
         if operation not in {"push", "pull", "auto"}:
             raise ValueError(f"Unknown sync operation: {operation}")
@@ -159,24 +162,18 @@ class GitHubSyncService:
 
         if operation in {"push", "auto"}:
             payload_dir = repo_path / PAYLOAD_DIR_NAME
-            with tempfile.TemporaryDirectory() as temp_dir:
-                snapshot_dir = Path(temp_dir) / PAYLOAD_DIR_NAME
-                payload_existed = payload_dir.exists()
-                if payload_existed:
-                    shutil.copytree(payload_dir, snapshot_dir)
-                try:
-                    self.payload_builder.build(repo_path, profile)
-                    status = provider.payload_status()
-                    plan = _plan_from_status(operation, status)
-                    _attach_diff_previews(plan, provider.payload_worktree_diff_patch())
-                    _attach_added_file_previews(plan, repo_path)
-                finally:
-                    if payload_dir.exists():
-                        shutil.rmtree(payload_dir)
-                    if payload_existed:
-                        shutil.copytree(snapshot_dir, payload_dir)
+            current_hashes = {
+                path: digest
+                for path, digest in self.payload_builder.content_hashes(
+                    payload_dir
+                ).items()
+                if _sync_category(path) != "sync"
+            }
+            preview_hashes = self.payload_builder.preview_content_hashes(payload_dir)
+            plan = _plan_from_hashes(operation, current_hashes, preview_hashes)
             if operation == "auto":
-                provider.refresh_remote()
+                if refresh_remote:
+                    provider.refresh_remote()
                 incoming = _incoming_tracking_plan(provider, profile, "auto")
                 plan = _merge_plans("auto", [plan, incoming])
             return plan
@@ -185,7 +182,6 @@ class GitHubSyncService:
         remote_ref = f"{profile.remote}/{profile.branch}"
         diff = provider.payload_diff_name_status("HEAD", remote_ref)
         plan = _plan_from_name_status("pull", diff)
-        _attach_diff_previews(plan, provider.payload_diff_patch("HEAD", remote_ref))
         behind = int(preview.get("behind") or 0)
         if behind and not plan.files:
             plan.warnings.append(f"{behind} remote commit(s) have no payload changes.")
@@ -195,12 +191,66 @@ class GitHubSyncService:
         self,
         operation: str,
         profile_id: str | None = None,
+        *,
+        refresh_remote: bool = True,
     ) -> SyncPlan:
         profile = self.get_profile(profile_id)
         async with self._lock(profile):
             return await asyncio.to_thread(
-                self.preview_sync_plan, operation, profile.id
+                self.preview_sync_plan,
+                operation,
+                profile.id,
+                refresh_remote=refresh_remote,
             )
+
+    async def preview_file_diff_safe(
+        self,
+        path: str,
+        direction: str,
+        profile_id: str | None = None,
+    ) -> str:
+        profile = self.get_profile(profile_id)
+        async with self._lock(profile):
+            return await asyncio.to_thread(
+                self.preview_file_diff,
+                path,
+                direction,
+                profile.id,
+            )
+
+    def preview_file_diff(
+        self,
+        path: str,
+        direction: str,
+        profile_id: str | None = None,
+    ) -> str:
+        if direction not in {"outgoing", "incoming"}:
+            raise ValueError(f"Unknown sync direction: {direction}")
+        profile = self.get_profile(profile_id)
+        repo_path = Path(profile.repo_path)
+        resolved = self.payload_builder.resolve_local_path(path)
+        if resolved is None:
+            raise ValueError(f"Invalid portable sync path: {path}")
+
+        rel, local_path = resolved
+        provider = GitHubSyncProvider(
+            repo_path, remote=profile.remote, branch=profile.branch
+        )
+        if direction == "incoming":
+            return _trim_diff_preview(
+                provider.payload_file_diff_patch(
+                    "HEAD",
+                    f"{profile.remote}/{profile.branch}",
+                    rel.as_posix(),
+                )
+            )
+
+        payload_path = repo_path / PAYLOAD_DIR_NAME / rel
+        before = _read_text_file(payload_path)
+        after = _read_text_file(local_path)
+        if rel.parts[0] == "memory" and after is None:
+            after = before
+        return _unified_file_diff(rel.as_posix(), before, after)
 
     async def pull(
         self,
@@ -244,6 +294,33 @@ class GitHubSyncService:
             provider = GitHubSyncProvider(
                 repo_path, remote=profile.remote, branch=profile.branch
             )
+            if paths is not None:
+                discarded = sorted(set(paths))
+                invalid = [
+                    path
+                    for path in discarded
+                    if not self.payload_builder.has_outgoing_change(
+                        repo_path / PAYLOAD_DIR_NAME,
+                        path,
+                    )
+                ]
+                if invalid:
+                    raise ValueError(
+                        f"Unknown outgoing sync path(s): {', '.join(invalid)}"
+                    )
+                await asyncio.to_thread(provider.discard_payload_paths, discarded)
+                restored = await asyncio.to_thread(
+                    self.payload_builder.apply_paths_to_local,
+                    repo_path / PAYLOAD_DIR_NAME,
+                    discarded,
+                )
+                await asyncio.to_thread(_reload_runtime_for_paths, discarded)
+                return {
+                    "success": True,
+                    "discarded": discarded,
+                    "restored": restored,
+                }
+
             plan = await asyncio.to_thread(self.preview_sync_plan, "push", profile.id)
             outgoing = [
                 change for change in plan.files if change.direction == "outgoing"
@@ -255,20 +332,12 @@ class GitHubSyncService:
                 raise ValueError(f"Unknown outgoing sync path(s): {', '.join(unknown)}")
 
             payload_dir = repo_path / PAYLOAD_DIR_NAME
-            if paths is None:
-                await asyncio.to_thread(provider.discard_payload_changes)
-                restored = await asyncio.to_thread(
-                    self.payload_builder.apply_to_local,
-                    payload_dir,
-                    replace_memory=True,
-                )
-            else:
-                await asyncio.to_thread(provider.discard_payload_paths, discarded)
-                restored = await asyncio.to_thread(
-                    self.payload_builder.apply_paths_to_local,
-                    payload_dir,
-                    discarded,
-                )
+            await asyncio.to_thread(provider.discard_payload_changes)
+            restored = await asyncio.to_thread(
+                self.payload_builder.apply_to_local,
+                payload_dir,
+                replace_memory=True,
+            )
             await asyncio.to_thread(_reload_runtime)
             return {
                 "success": True,
@@ -298,8 +367,6 @@ class GitHubSyncService:
                 repo_path, remote=profile.remote, branch=profile.branch
             )
             plan = _plan_from_status("push", provider.payload_status())
-            _attach_diff_previews(plan, provider.payload_worktree_diff_patch())
-            _attach_added_file_previews(plan, repo_path)
             if plan.requires_confirmation and not confirm_destructive:
                 raise DestructiveSyncPlanError(plan)
             git_output = await asyncio.to_thread(
@@ -337,8 +404,6 @@ class GitHubSyncService:
                 raise ValueError(f"Sync payload contains forbidden paths: {forbidden}")
 
             plan = _plan_from_status("auto", provider.payload_status())
-            _attach_diff_previews(plan, provider.payload_worktree_diff_patch())
-            _attach_added_file_previews(plan, repo_path)
             incoming = _incoming_tracking_plan(provider, profile, "auto")
             plan = _merge_plans("auto", [plan, incoming])
             if _has_mixed_file_changes(plan):
@@ -472,6 +537,45 @@ def _reload_runtime() -> None:
         pass
 
 
+def _reload_runtime_for_paths(paths: list[str]) -> None:
+    if any(path.startswith("config/") for path in paths):
+        try:
+            from suzent.config import CONFIG
+
+            CONFIG.reload()
+        except Exception:
+            pass
+    if any(path.startswith("skills/") for path in paths):
+        try:
+            from suzent.skills.manager import get_skill_manager
+
+            get_skill_manager().reload()
+        except Exception:
+            pass
+
+
+def _read_text_file(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    raw = path.read_bytes()
+    if b"\x00" in raw:
+        return None
+    return raw.decode("utf-8", errors="replace")
+
+
+def _unified_file_diff(path: str, before: str | None, after: str | None) -> str:
+    if before == after:
+        return ""
+    patch = difflib.unified_diff(
+        (before or "").splitlines(),
+        (after or "").splitlines(),
+        fromfile=f"a/{path}" if before is not None else "/dev/null",
+        tofile=f"b/{path}" if after is not None else "/dev/null",
+        lineterm="",
+    )
+    return _trim_diff_preview("\n".join(patch))
+
+
 def _replace_tree(source: Path, target: Path) -> None:
     if target.exists():
         shutil.rmtree(target)
@@ -486,6 +590,27 @@ def _plan_from_status(operation: str, porcelain_output: str) -> SyncPlan:
         status = line[:2]
         path = _status_path(line).removeprefix(f"{PAYLOAD_DIR_NAME}/")
         changes.append(_make_change(path, _change_type_from_status(status), "outgoing"))
+    return _finalize_plan(operation, changes)
+
+
+def _plan_from_hashes(
+    operation: str,
+    current_hashes: dict[str, str],
+    preview_hashes: dict[str, str],
+) -> SyncPlan:
+    changes: list[SyncFileChange] = []
+    for path in sorted(current_hashes.keys() | preview_hashes.keys()):
+        before = current_hashes.get(path)
+        after = preview_hashes.get(path)
+        if before == after:
+            continue
+        if before is None:
+            change_type = "added"
+        elif after is None:
+            change_type = "deleted"
+        else:
+            change_type = "modified"
+        changes.append(_make_change(path, change_type, "outgoing"))
     return _finalize_plan(operation, changes)
 
 
@@ -534,72 +659,10 @@ def _incoming_tracking_plan(
             operation,
             provider.payload_diff_name_status("HEAD", remote_ref),
         )
-        _attach_diff_previews(plan, provider.payload_diff_patch("HEAD", remote_ref))
         return plan
     except Exception as exc:
         logger.debug("Unable to preview incoming sync changes: %s", exc)
         return _finalize_plan(operation, [])
-
-
-def _attach_diff_previews(plan: SyncPlan, diff_output: str) -> None:
-    if not diff_output.strip():
-        return
-    patches = _split_diff_by_path(diff_output)
-    for change in plan.files:
-        patch = patches.get(change.path)
-        if patch:
-            change.diff_preview = _trim_diff_preview(patch)
-
-
-def _attach_added_file_previews(plan: SyncPlan, repo_path: Path) -> None:
-    for change in plan.files:
-        if (
-            change.diff_preview
-            or change.change_type != "added"
-            or change.category == "sync"
-        ):
-            continue
-        path = repo_path / PAYLOAD_DIR_NAME / change.path
-        if not path.is_file():
-            continue
-        try:
-            raw = path.read_bytes()
-        except OSError:
-            continue
-        if b"\x00" in raw:
-            continue
-        text = raw[:12000].decode("utf-8", errors="replace")
-        if len(raw) > len(raw[:12000]):
-            text += "\n... file truncated ..."
-        change.diff_preview = f"+++ {change.path}\n{text}"
-
-
-def _split_diff_by_path(diff_output: str) -> dict[str, str]:
-    result: dict[str, str] = {}
-    current_path: str | None = None
-    current_lines: list[str] = []
-    for line in diff_output.splitlines():
-        if line.startswith("diff --git "):
-            if current_path and current_lines:
-                result[current_path] = "\n".join(current_lines)
-            current_path = _path_from_diff_header(line)
-            current_lines = [line]
-            continue
-        if current_path:
-            current_lines.append(line)
-    if current_path and current_lines:
-        result[current_path] = "\n".join(current_lines)
-    return result
-
-
-def _path_from_diff_header(line: str) -> str | None:
-    parts = line.split()
-    if len(parts) < 4:
-        return None
-    path = parts[3]
-    if path.startswith("b/"):
-        path = path[2:]
-    return path.replace("\\", "/").removeprefix(f"{PAYLOAD_DIR_NAME}/")
 
 
 def _trim_diff_preview(patch: str) -> str:

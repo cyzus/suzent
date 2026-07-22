@@ -91,8 +91,11 @@ def test_push_plan_does_not_modify_repository_worktree(tmp_path: Path):
     before = git(repo, "status", "--porcelain")
 
     plan = service.preview_sync_plan("push", profile.id)
+    diff = service.preview_file_diff("config/default.yaml", "outgoing", profile.id)
 
     assert any(change.path == "config/default.yaml" for change in plan.files)
+    assert "-model: first" in diff
+    assert "+model: second" in diff
     assert git(repo, "status", "--porcelain") == before
 
 

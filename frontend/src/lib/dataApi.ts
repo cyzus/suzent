@@ -33,7 +33,6 @@ export interface SyncFileChange {
   change_type: SyncChangeType;
   risk: SyncRisk;
   direction?: SyncDirection;
-  diff_preview?: string | null;
 }
 
 export interface SyncPlan {
@@ -191,10 +190,23 @@ export async function fetchSyncAheadBehind(profileId?: string): Promise<{ ahead:
   return res.json();
 }
 
-export function githubSyncPlan(operation: SyncOperation, profileId?: string): Promise<SyncPlan> {
+export function githubSyncPlan(operation: SyncOperation, profileId?: string, refreshRemote = true): Promise<SyncPlan> {
   const body: Record<string, unknown> = { operation };
   if (profileId) body.profile_id = profileId;
+  body.refresh_remote = refreshRemote;
   return postJson<SyncPlan>('/sync/plan', body);
+}
+
+export function githubSyncFileDiff(
+  profileId: string,
+  path: string,
+  direction: SyncDirection,
+): Promise<{ path: string; diff: string }> {
+  return postJson<{ path: string; diff: string }>('/sync/diff', {
+    profile_id: profileId,
+    path,
+    direction,
+  });
 }
 
 export function githubSyncPull(

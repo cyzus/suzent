@@ -25,6 +25,14 @@ class FakePayloadBuilder:
         self.calls.append("validate")
         return []
 
+    def content_hashes(self, payload_dir: Path) -> dict[str, str]:
+        self.calls.append("hashes")
+        return {"memory/MEMORY.md": "cloud"}
+
+    def preview_content_hashes(self, payload_dir: Path) -> dict[str, str]:
+        self.calls.append("preview-hashes")
+        return {}
+
     def apply_to_local(
         self, payload_dir: Path, *, replace_memory: bool = False
     ) -> list[str]:
@@ -34,6 +42,15 @@ class FakePayloadBuilder:
     def apply_paths_to_local(self, payload_dir: Path, paths: list[str]) -> list[str]:
         self.calls.append(f"apply-paths:{','.join(paths)}")
         return paths
+
+    def resolve_local_path(self, payload_path: str) -> tuple[Path, Path] | None:
+        rel = Path(payload_path)
+        if rel.parts[0] not in {"config", "skills", "memory"}:
+            return None
+        return rel, Path("local") / rel
+
+    def has_outgoing_change(self, payload_dir: Path, payload_path: str) -> bool:
+        return self.resolve_local_path(payload_path) is not None
 
 
 class FakeProvider:
@@ -86,6 +103,24 @@ class FakeProvider:
         self.calls.append(f"discard-paths:{','.join(paths)}")
 
 
+def test_watched_plan_does_not_fetch_remote_or_generate_patches(
+    tmp_path: Path, monkeypatch
+) -> None:
+    calls: list[str] = []
+    FakeProvider.calls = calls
+    FakeProvider.payload_remote_status_output = ""
+    monkeypatch.setattr(service_module, "GitHubSyncProvider", FakeProvider)
+    service = GitHubSyncService(
+        profiles_path=tmp_path / "profiles.json",
+        payload_builder=FakePayloadBuilder(calls),
+    )
+    profile = service.save_profile(SyncProfile(repo_path=str(tmp_path / "repo")))
+
+    service.preview_sync_plan("auto", profile.id, refresh_remote=False)
+
+    assert calls == ["hashes", "preview-hashes", "remote-status"]
+
+
 def test_auto_sync_pushes_local_payload_before_remote_apply(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -115,9 +150,7 @@ def test_auto_sync_pushes_local_payload_before_remote_apply(
         "build",
         "validate",
         "status",
-        "diff",
         "remote-status",
-        "remote-diff",
         "changed",
         "pull",
         "push",
@@ -153,9 +186,7 @@ def test_auto_sync_applies_remote_when_local_payload_has_no_changes(
         "build",
         "validate",
         "status",
-        "diff",
         "remote-status",
-        "remote-diff",
         "changed",
         "pull",
         "apply",
@@ -192,16 +223,13 @@ deleted file mode 100644
     assert result["success"] is False
     assert result["blocked_review_required"] is True
     assert result["plan"]["requires_confirmation"] is True
-    assert "old memory" in result["plan"]["files"][0]["diff_preview"]
     assert result["plan"]["files"][0]["direction"] == "outgoing"
     assert calls == [
         "fetch",
         "build",
         "validate",
         "status",
-        "diff",
         "remote-status",
-        "remote-diff",
     ]
 
 
@@ -272,9 +300,8 @@ def test_discard_outgoing_restores_local_from_cloud_payload(
     assert result["success"] is True
     assert result["discarded"] == ["memory/MEMORY.md"]
     assert calls == [
-        "build",
-        "status",
-        "diff",
+        "hashes",
+        "preview-hashes",
         "discard",
         "apply-replace",
         "reload",
@@ -294,7 +321,9 @@ def test_discard_outgoing_can_restore_one_selected_path(
     FakeProvider.payload_remote_diff_output = ""
     monkeypatch.setattr(service_module, "GitHubSyncProvider", FakeProvider)
     monkeypatch.setattr(
-        service_module, "_reload_runtime", lambda: calls.append("reload")
+        service_module,
+        "_reload_runtime_for_paths",
+        lambda paths: calls.append("reload"),
     )
 
     service = GitHubSyncService(
@@ -309,9 +338,6 @@ def test_discard_outgoing_can_restore_one_selected_path(
 
     assert result["discarded"] == ["config/providers.json"]
     assert calls == [
-        "build",
-        "status",
-        "diff",
         "discard-paths:config/providers.json",
         "apply-paths:config/providers.json",
         "reload",

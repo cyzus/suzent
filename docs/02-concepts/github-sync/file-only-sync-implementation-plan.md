@@ -105,10 +105,9 @@ have no other consumers.
 
 ### Keep planning externally read-only
 
-Push and automatic-sync planning may temporarily construct a payload while
-holding the per-profile lock. They must restore the exact prior working-tree
-payload before returning, including when planning fails. Tests must verify that
-repository status is identical before and after planning.
+Push and automatic-sync planning hash portable source trees directly and compare
+them with the committed payload. Tests must verify that repository status is
+identical before and after planning.
 
 Remove `SECRETS_DIR` and encrypted-bundle preservation. Retain memory
 preservation only if append-only memory is still the documented policy.
@@ -166,9 +165,9 @@ Literal["config", "skills", "memory", "sync", "other"]
 Remove secret categories, vault-deletion warnings, and secret-specific diff
 handling.
 
-Planning must produce no persistent working-tree changes. Any operation that
-temporarily touches the working tree must use the same per-profile lock as sync
-execution and restore the original state before returning.
+Planning must not touch the Git working tree. Change lists must omit eager patch
+generation; the selected file's textual diff is loaded through a separate,
+locked request.
 
 Destructive confirmation remains appropriate for:
 
@@ -184,8 +183,8 @@ from the committed payload and applying that path locally. This does not advance
 repository state and must leave every other outgoing change pending.
 
 Incoming changes remain bulk-only because Git fast-forward pull advances the
-repository as a whole. The review UI shows file-level changes and diffs, while
-resolution is one of:
+repository as a whole. The review UI keeps files collapsed and loads only the
+selected file's diff on demand. Resolution is one of:
 
 - pull the complete cloud payload;
 - discard one outgoing local change;

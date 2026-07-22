@@ -7,6 +7,7 @@ import {
   fetchSyncQuickstartInfo,
   fetchSyncStatus,
   githubSyncDiscardOutgoing,
+  githubSyncFileDiff,
   githubSyncPlan,
   githubSyncPull,
   githubSyncPush,
@@ -244,6 +245,7 @@ function SyncReviewPanel({
   onConfirm,
   onDiscardOutgoing,
   onDiscardFile,
+  onLoadDiff,
   onPullCloud,
 }: {
   plan: SyncPlan;
@@ -252,9 +254,13 @@ function SyncReviewPanel({
   onConfirm: () => void;
   onDiscardOutgoing: () => void;
   onDiscardFile: (file: SyncFileChange) => void;
+  onLoadDiff: (file: SyncFileChange) => Promise<string>;
   onPullCloud: () => void;
 }): React.ReactElement {
   const { t } = useI18n();
+  const [expandedFile, setExpandedFile] = useState<string | null>(null);
+  const [loadingFile, setLoadingFile] = useState<string | null>(null);
+  const [loadedDiffs, setLoadedDiffs] = useState<Record<string, string>>({});
   const reviewFiles = plan.files.filter(shouldShowSyncChange);
   const visibleFiles = reviewFiles.slice(0, 80);
   const hiddenCount = Math.max(0, reviewFiles.length - visibleFiles.length);
@@ -289,6 +295,26 @@ function SyncReviewPanel({
   const incomingCount = directionOrder.includes('incoming')
     ? Object.values(directionGroups.incoming).reduce((total, files) => total + files.length, 0)
     : 0;
+
+  const fileKey = (file: SyncFileChange): string => `${syncDirectionOf(file)}:${file.path}`;
+  const toggleFile = async (file: SyncFileChange): Promise<void> => {
+    const key = fileKey(file);
+    if (expandedFile === key) {
+      setExpandedFile(null);
+      return;
+    }
+    setExpandedFile(key);
+    if (Object.prototype.hasOwnProperty.call(loadedDiffs, key)) return;
+    setLoadingFile(key);
+    try {
+      const diff = await onLoadDiff(file);
+      setLoadedDiffs((current) => ({ ...current, [key]: diff }));
+    } catch {
+      setLoadedDiffs((current) => ({ ...current, [key]: '' }));
+    } finally {
+      setLoadingFile((current) => (current === key ? null : current));
+    }
+  };
 
   return (
     <div className="mt-3 border-2 border-brutal-black bg-[#f3f3f3] dark:bg-[#181818]">
@@ -359,9 +385,21 @@ function SyncReviewPanel({
                       {files.map((file) => (
                         <div key={`${syncDirectionOf(file)}:${file.change_type}:${file.path}`} className="border-t border-brutal-black/5 first:border-t-0">
                           <div
-                            className="grid grid-cols-[18px_1fr_auto_28px] items-center gap-2 px-3 py-1.5 hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => { void toggleFile(file); }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                void toggleFile(file);
+                              }
+                            }}
+                            className="grid cursor-pointer grid-cols-[12px_18px_1fr_auto_28px] items-center gap-2 px-3 py-1.5 hover:bg-[#e8e8e8] focus:bg-[#e8e8e8] focus:outline-none dark:hover:bg-[#2a2d2e] dark:focus:bg-[#2a2d2e]"
                             title={file.path}
                           >
+                            <span className="text-[10px] text-neutral-500">
+                              {expandedFile === fileKey(file) ? 'v' : '>'}
+                            </span>
                             <span className={`font-mono text-[11px] font-black ${syncChangeTone(file)}`}>
                               {syncChangeStatus(file.change_type)}
                             </span>
@@ -378,7 +416,10 @@ function SyncReviewPanel({
                                 <button
                                   type="button"
                                   disabled={busy}
-                                  onClick={() => onDiscardFile(file)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    onDiscardFile(file);
+                                  }}
                                   title={t('settings.data.githubReviewDiscardFileTitle')}
                                   className="border border-brutal-black/40 bg-white px-2 py-1 text-[9px] font-black uppercase text-neutral-700 hover:bg-neutral-100 disabled:opacity-40 dark:bg-zinc-900 dark:text-neutral-200 dark:hover:bg-zinc-800"
                                 >
@@ -390,8 +431,14 @@ function SyncReviewPanel({
                               {file.risk === 'high' ? '!' : file.risk === 'medium' ? '*' : ''}
                             </span>
                           </div>
-                          {file.diff_preview && (
-                            <DiffPreview value={file.diff_preview} />
+                          {expandedFile === fileKey(file) && (
+                            loadingFile === fileKey(file)
+                              ? (
+                                <div className="mx-3 mb-2 px-2 py-3 font-mono text-[10px] text-neutral-500">
+                                  {t('settings.data.githubReviewLoadingDiff')}
+                                </div>
+                              )
+                              : <DiffPreview value={loadedDiffs[fileKey(file)] ?? ''} />
                           )}
                         </div>
                       ))}
@@ -557,11 +604,11 @@ export function GitHubSyncSection({
     }
 
     let cancelled = false;
-    const refreshWatchedPlan = async (): Promise<void> => {
+    const refreshWatchedPlan = async (refreshRemote = false): Promise<void> => {
       if (busy || syncPlanWatcherRunning.current) return;
       syncPlanWatcherRunning.current = true;
       try {
-        const plan = await githubSyncPlan('auto', profileId);
+        const plan = await githubSyncPlan('auto', profileId, refreshRemote);
         if (cancelled) return;
         if (plan.files.filter(shouldShowSyncChange).length === 0) {
           setReviewPlan((current) => (current?.operation === 'auto' ? null : current));
@@ -582,9 +629,9 @@ export function GitHubSyncSection({
       }
     };
 
-    void refreshWatchedPlan();
-    const interval = window.setInterval(() => { void refreshWatchedPlan(); }, 8000);
-    const handleFocus = (): void => { void refreshWatchedPlan(); };
+    void refreshWatchedPlan(false);
+    const interval = window.setInterval(() => { void refreshWatchedPlan(false); }, 8000);
+    const handleFocus = (): void => { void refreshWatchedPlan(true); };
     window.addEventListener('focus', handleFocus);
     return () => {
       cancelled = true;
@@ -861,21 +908,40 @@ export function GitHubSyncSection({
       const profile = syncStatus?.profile;
       if (!profile) throw new Error(t('settings.data.githubNotConfigured'));
       await githubSyncDiscardOutgoing(profile.id, [file.path]);
-      const plan = await githubSyncPlan(reviewOperation ?? 'auto', profile.id);
-      if (plan.files.some(shouldShowSyncChange)) {
-        setReviewPlan(plan);
+      const operation = reviewOperation ?? 'auto';
+      const remaining = reviewPlan?.files.filter(
+        (item) => !(item.path === file.path && syncDirectionOf(item) === 'outgoing'),
+      ) ?? [];
+      if (remaining.some(shouldShowSyncChange) && reviewPlan) {
+        setReviewPlan({ ...reviewPlan, files: remaining });
       } else {
         setReviewPlan(null);
         setReviewOperation(null);
         setDismissedPlanKey(null);
       }
-      await refresh();
       onNotify(t('settings.data.githubDiscardedFile', { path: file.path }), false);
+      void githubSyncPlan(operation, profile.id, false).then((plan) => {
+        if (plan.files.some(shouldShowSyncChange)) {
+          setReviewPlan(plan);
+          setReviewOperation(operation);
+        }
+      }).catch(() => {});
     } catch (error) {
       onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
     } finally {
       onBusyChange(false);
     }
+  }
+
+  async function handleLoadFileDiff(file: SyncFileChange): Promise<string> {
+    const profile = syncStatus?.profile;
+    if (!profile) throw new Error(t('settings.data.githubNotConfigured'));
+    const result = await githubSyncFileDiff(
+      profile.id,
+      file.path,
+      syncDirectionOf(file),
+    );
+    return result.diff;
   }
 
   async function handlePullCloud(): Promise<void> {
@@ -1145,6 +1211,7 @@ export function GitHubSyncSection({
           onConfirm={handleReviewConfirm}
           onDiscardOutgoing={() => { void handleDiscardOutgoing(); }}
           onDiscardFile={(file) => { void handleDiscardFile(file); }}
+          onLoadDiff={handleLoadFileDiff}
           onPullCloud={() => { void handlePullCloud(); }}
         />
       )}

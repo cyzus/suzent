@@ -346,6 +346,7 @@ export const zhCN = {
       githubReviewCategoryOther: '其他',
       githubReviewDiff: '差异预览',
       githubReviewNoDiff: '没有可显示的文本差异',
+      githubReviewLoadingDiff: '正在加载差异…',
       githubReviewFilesHidden: '另有 {count} 个文件未显示',
       githubReviewMetadataHidden: '另有 {count} 个常规同步元数据更改未显示',
       githubReviewHighRisk: '{count} 项高风险更改',

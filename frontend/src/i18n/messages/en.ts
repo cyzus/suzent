@@ -346,6 +346,7 @@ export const en = {
       githubReviewCategoryOther: 'other',
       githubReviewDiff: 'Diff preview',
       githubReviewNoDiff: 'No textual diff available',
+      githubReviewLoadingDiff: 'Loading diff…',
       githubReviewFilesHidden: '{count} more files hidden',
       githubReviewMetadataHidden: '{count} routine sync metadata changes hidden',
       githubReviewHighRisk: '{count} high risk',

@@ -53,13 +53,15 @@ portable files. Configure API keys separately on that device.
 | **Discard outgoing** | Restore one or all outgoing local files from the committed payload |
 | **Use cloud** | Apply the remote payload as the local source of truth |
 
-Plans classify changes as incoming or outgoing and show file-level previews.
+Plans classify changes as incoming or outgoing. Files are collapsed by default;
+selecting a file loads only that file's diff, without generating patches for the
+rest of the plan.
 Individual outgoing changes can be discarded without affecting the others.
 Incoming changes are still applied as a complete cloud payload because a Git
 pull advances the repository as a whole.
-Protected memory replacement or deletion requires confirmation. Planning
-restores the repository worktree before returning and is serialized with sync
-execution.
+Protected memory replacement or deletion requires confirmation. Planning hashes
+the portable source trees directly without modifying the repository worktree and
+is serialized with sync execution.
 
 Config and skills are reloaded after a successful pull. Device-local excluded
 files are preserved.
@@ -82,6 +84,7 @@ All routes are served by the local Suzent HTTP API.
 | `/sync/profiles` | GET, POST | List or save profiles |
 | `/sync/ahead-behind` | GET | Commits ahead of and behind the remote |
 | `/sync/plan` | POST | Preview file changes without retaining worktree mutations |
+| `/sync/diff` | POST | Load one selected file's textual diff |
 | `/sync/pull` | POST | Pull and apply portable files |
 | `/sync/push` | POST | Build, commit, and push portable files |
 | `/sync/discard-outgoing` | POST | Restore all outgoing changes, or selected `paths` |

@@ -84,10 +84,15 @@ def test_sync_conflict_resolve_preview_uses_portable_files_only(tmp_path: Path):
 def test_sync_plan_endpoint_returns_review_plan():
     class FakeService:
         async def preview_sync_plan_safe(
-            self, operation: str, profile_id: str | None = None
+            self,
+            operation: str,
+            profile_id: str | None = None,
+            *,
+            refresh_remote: bool = True,
         ):
             assert operation == "push"
             assert profile_id == "profile-1"
+            assert refresh_remote is False
             return _review_plan(operation)
 
     app.state.github_sync_service = FakeService()
@@ -95,7 +100,11 @@ def test_sync_plan_endpoint_returns_review_plan():
 
     response = client.post(
         "/sync/plan",
-        json={"operation": "push", "profile_id": "profile-1"},
+        json={
+            "operation": "push",
+            "profile_id": "profile-1",
+            "refresh_remote": False,
+        },
     )
 
     assert response.status_code == 200
@@ -103,6 +112,35 @@ def test_sync_plan_endpoint_returns_review_plan():
     assert result["requires_confirmation"] is True
     assert result["files"][0]["path"] == "memory/archive/2026-07-08.md"
     assert result["files"][0]["risk"] == "high"
+
+
+def test_sync_diff_endpoint_returns_one_file_patch():
+    class FakeService:
+        async def preview_file_diff_safe(
+            self,
+            path: str,
+            direction: str,
+            profile_id: str | None = None,
+        ) -> str:
+            assert path == "config/default.yaml"
+            assert direction == "outgoing"
+            assert profile_id == "profile-1"
+            return "--- a/config/default.yaml\n+++ b/config/default.yaml"
+
+    app.state.github_sync_service = FakeService()
+    client = TestClient(app)
+
+    response = client.post(
+        "/sync/diff",
+        json={
+            "profile_id": "profile-1",
+            "path": "config/default.yaml",
+            "direction": "outgoing",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "default.yaml" in response.json()["diff"]
 
 
 def test_push_sync_returns_409_when_review_is_required():
