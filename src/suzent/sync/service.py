@@ -232,7 +232,12 @@ class GitHubSyncService:
                 "prefer_cloud": prefer_cloud,
             }
 
-    async def discard_outgoing(self, profile_id: str | None = None) -> dict:
+    async def discard_outgoing(
+        self,
+        profile_id: str | None = None,
+        *,
+        paths: list[str] | None = None,
+    ) -> dict:
         profile = self.get_profile(profile_id)
         async with self._lock(profile):
             repo_path = Path(profile.repo_path)
@@ -243,14 +248,27 @@ class GitHubSyncService:
             outgoing = [
                 change for change in plan.files if change.direction == "outgoing"
             ]
-            discarded = sorted(change.path for change in outgoing)
-            await asyncio.to_thread(provider.discard_payload_changes)
+            outgoing_paths = {change.path for change in outgoing}
+            discarded = sorted(paths if paths is not None else outgoing_paths)
+            unknown = sorted(set(discarded) - outgoing_paths)
+            if unknown:
+                raise ValueError(f"Unknown outgoing sync path(s): {', '.join(unknown)}")
+
             payload_dir = repo_path / PAYLOAD_DIR_NAME
-            restored = await asyncio.to_thread(
-                self.payload_builder.apply_to_local,
-                payload_dir,
-                replace_memory=True,
-            )
+            if paths is None:
+                await asyncio.to_thread(provider.discard_payload_changes)
+                restored = await asyncio.to_thread(
+                    self.payload_builder.apply_to_local,
+                    payload_dir,
+                    replace_memory=True,
+                )
+            else:
+                await asyncio.to_thread(provider.discard_payload_paths, discarded)
+                restored = await asyncio.to_thread(
+                    self.payload_builder.apply_paths_to_local,
+                    payload_dir,
+                    discarded,
+                )
             await asyncio.to_thread(_reload_runtime)
             return {
                 "success": True,

@@ -177,7 +177,15 @@ async def discard_outgoing_sync(request: Request) -> JSONResponse:
     try:
         payload = await _json_payload(request)
         service = _service(request)
-        return JSONResponse(await service.discard_outgoing(payload.get("profile_id")))
+        paths = payload.get("paths")
+        return JSONResponse(
+            await service.discard_outgoing(
+                payload.get("profile_id"),
+                paths=[str(path) for path in paths]
+                if isinstance(paths, list)
+                else None,
+            )
+        )
     except Exception as exc:
         return _error_response(str(exc), 400)
 

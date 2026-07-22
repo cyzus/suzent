@@ -175,17 +175,20 @@ Destructive confirmation remains appropriate for:
 - memory-file deletion;
 - replacement of protected memory files;
 - large deletion batches;
-- explicit removal of a detected legacy encrypted bundle.
+- removal of a legacy encrypted bundle during the next payload build.
 
-### Use bulk, explicit resolution
+### Use asymmetric, explicit resolution
 
-Do not expose selective per-file apply or discard controls in this pull request.
-They require a reconciliation model that Git fast-forward pull cannot safely
-provide on its own.
+Outgoing local changes may be discarded per file by restoring the selected path
+from the committed payload and applying that path locally. This does not advance
+repository state and must leave every other outgoing change pending.
 
-The review UI may show file-level changes and diffs, but resolution is one of:
+Incoming changes remain bulk-only because Git fast-forward pull advances the
+repository as a whole. The review UI shows file-level changes and diffs, while
+resolution is one of:
 
 - pull the complete cloud payload;
+- discard one outgoing local change;
 - discard all outgoing changes and restore the committed payload locally;
 - keep the plan unresolved.
 
@@ -284,10 +287,11 @@ Add real temporary-Git-repository coverage for:
 3. Excluding API keys and all machine-local secret files.
 4. Ensuring planning does not change repository status.
 5. Simultaneous incoming and outgoing changes.
-6. Bulk pull and bulk discard resolution.
-7. Requiring confirmation for protected memory deletion.
-8. Removing a legacy encrypted bundle from newly built payloads.
-9. Preventing auto-sync from overwriting unresolved incoming files.
+6. Per-file outgoing discard preserving other outgoing changes.
+7. Bulk pull and bulk discard resolution.
+8. Requiring confirmation for protected memory deletion.
+9. Removing a legacy encrypted bundle from newly built payloads.
+10. Preventing auto-sync from overwriting unresolved incoming files.
 
 Provider mocks remain useful for error-path unit tests, but reconciliation
 semantics must be verified against real Git repositories.
@@ -299,7 +303,7 @@ semantics must be verified against real Git repositories.
 3. `refactor(sync): make file planning read-only`
 4. `refactor(sync): simplify file sync routes and responses`
 5. `refactor(frontend): remove shared key vault UI`
-6. `test(sync): cover mixed Git reconciliation and bulk resolution`
+6. `test(sync): cover mixed Git reconciliation and outgoing file discard`
 7. `docs(sync): document device-local credentials`
 
 ## Acceptance criteria

@@ -213,8 +213,14 @@ def test_pull_sync_passes_prefer_cloud():
 
 def test_discard_outgoing_route_calls_service():
     class FakeService:
-        async def discard_outgoing(self, profile_id: str | None = None):
+        async def discard_outgoing(
+            self,
+            profile_id: str | None = None,
+            *,
+            paths: list[str] | None = None,
+        ):
             assert profile_id == "profile-1"
+            assert paths == ["memory/MEMORY.md"]
             return {"success": True, "discarded": ["memory/MEMORY.md"]}
 
     app.state.github_sync_service = FakeService()
@@ -222,7 +228,7 @@ def test_discard_outgoing_route_calls_service():
 
     response = client.post(
         "/sync/discard-outgoing",
-        json={"profile_id": "profile-1"},
+        json={"profile_id": "profile-1", "paths": ["memory/MEMORY.md"]},
     )
 
     assert response.status_code == 200

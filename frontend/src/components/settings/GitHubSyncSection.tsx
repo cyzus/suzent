@@ -243,6 +243,7 @@ function SyncReviewPanel({
   onCancel,
   onConfirm,
   onDiscardOutgoing,
+  onDiscardFile,
   onPullCloud,
 }: {
   plan: SyncPlan;
@@ -250,6 +251,7 @@ function SyncReviewPanel({
   onCancel: () => void;
   onConfirm: () => void;
   onDiscardOutgoing: () => void;
+  onDiscardFile: (file: SyncFileChange) => void;
   onPullCloud: () => void;
 }): React.ReactElement {
   const { t } = useI18n();
@@ -357,7 +359,7 @@ function SyncReviewPanel({
                       {files.map((file) => (
                         <div key={`${syncDirectionOf(file)}:${file.change_type}:${file.path}`} className="border-t border-brutal-black/5 first:border-t-0">
                           <div
-                            className="grid grid-cols-[18px_1fr_28px] items-center gap-2 px-3 py-1.5 hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]"
+                            className="grid grid-cols-[18px_1fr_auto_28px] items-center gap-2 px-3 py-1.5 hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]"
                             title={file.path}
                           >
                             <span className={`font-mono text-[11px] font-black ${syncChangeTone(file)}`}>
@@ -370,6 +372,19 @@ function SyncReviewPanel({
                               <span className="block truncate font-mono text-[10px] text-neutral-500 dark:text-neutral-500">
                                 {syncDisplayDir(file)}
                               </span>
+                            </span>
+                            <span>
+                              {syncDirectionOf(file) === 'outgoing' && (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => onDiscardFile(file)}
+                                  title={t('settings.data.githubReviewDiscardFileTitle')}
+                                  className="border border-brutal-black/40 bg-white px-2 py-1 text-[9px] font-black uppercase text-neutral-700 hover:bg-neutral-100 disabled:opacity-40 dark:bg-zinc-900 dark:text-neutral-200 dark:hover:bg-zinc-800"
+                                >
+                                  {t('settings.data.githubReviewDiscardFile')}
+                                </button>
+                              )}
                             </span>
                             <span className={`text-right font-mono text-[10px] font-bold uppercase ${syncChangeTone(file)}`}>
                               {file.risk === 'high' ? '!' : file.risk === 'medium' ? '*' : ''}
@@ -813,7 +828,35 @@ export function GitHubSyncSection({
       setDismissedPlanKey(null);
       await refresh();
       const count = result.discarded?.length ?? 0;
-      onNotify(count > 0 ? `Discarded ${count} outgoing sync change${count !== 1 ? 's' : ''}.` : 'No outgoing sync changes to discard.', false);
+      onNotify(
+        count > 0
+          ? t('settings.data.githubDiscardedOutgoing', { count })
+          : t('settings.data.githubNoOutgoing'),
+        false,
+      );
+    } catch (error) {
+      onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
+    } finally {
+      onBusyChange(false);
+    }
+  }
+
+  async function handleDiscardFile(file: SyncFileChange): Promise<void> {
+    onBusyChange(true);
+    try {
+      const profile = syncStatus?.profile;
+      if (!profile) throw new Error(t('settings.data.githubNotConfigured'));
+      await githubSyncDiscardOutgoing(profile.id, [file.path]);
+      const plan = await githubSyncPlan(reviewOperation ?? 'auto', profile.id);
+      if (plan.files.some(shouldShowSyncChange)) {
+        setReviewPlan(plan);
+      } else {
+        setReviewPlan(null);
+        setReviewOperation(null);
+        setDismissedPlanKey(null);
+      }
+      await refresh();
+      onNotify(t('settings.data.githubDiscardedFile', { path: file.path }), false);
     } catch (error) {
       onNotify(t('settings.data.githubFailed', { error: errMsg(error) }), true);
     } finally {
@@ -1077,6 +1120,7 @@ export function GitHubSyncSection({
           }}
           onConfirm={handleReviewConfirm}
           onDiscardOutgoing={() => { void handleDiscardOutgoing(); }}
+          onDiscardFile={(file) => { void handleDiscardFile(file); }}
           onPullCloud={() => { void handlePullCloud(); }}
         />
       )}

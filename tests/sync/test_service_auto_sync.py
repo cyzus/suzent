@@ -31,6 +31,10 @@ class FakePayloadBuilder:
         self.calls.append("apply-replace" if replace_memory else "apply")
         return ["config"]
 
+    def apply_paths_to_local(self, payload_dir: Path, paths: list[str]) -> list[str]:
+        self.calls.append(f"apply-paths:{','.join(paths)}")
+        return paths
+
 
 class FakeProvider:
     git_output = "pushed"
@@ -77,6 +81,9 @@ class FakeProvider:
 
     def discard_payload_changes(self) -> None:
         self.calls.append("discard")
+
+    def discard_payload_paths(self, paths: list[str]) -> None:
+        self.calls.append(f"discard-paths:{','.join(paths)}")
 
 
 def test_auto_sync_pushes_local_payload_before_remote_apply(
@@ -270,5 +277,42 @@ def test_discard_outgoing_restores_local_from_cloud_payload(
         "diff",
         "discard",
         "apply-replace",
+        "reload",
+    ]
+
+
+def test_discard_outgoing_can_restore_one_selected_path(
+    tmp_path: Path, monkeypatch
+) -> None:
+    calls: list[str] = []
+    FakeProvider.calls = calls
+    FakeProvider.payload_status_output = (
+        " M suzent-sync/memory/MEMORY.md\n M suzent-sync/config/providers.json\n"
+    )
+    FakeProvider.payload_diff_output = ""
+    FakeProvider.payload_remote_status_output = ""
+    FakeProvider.payload_remote_diff_output = ""
+    monkeypatch.setattr(service_module, "GitHubSyncProvider", FakeProvider)
+    monkeypatch.setattr(
+        service_module, "_reload_runtime", lambda: calls.append("reload")
+    )
+
+    service = GitHubSyncService(
+        profiles_path=tmp_path / "profiles.json",
+        payload_builder=FakePayloadBuilder(calls),
+    )
+    profile = service.save_profile(SyncProfile(repo_path=str(tmp_path / "repo")))
+
+    result = asyncio.run(
+        service.discard_outgoing(profile.id, paths=["config/providers.json"])
+    )
+
+    assert result["discarded"] == ["config/providers.json"]
+    assert calls == [
+        "build",
+        "status",
+        "diff",
+        "discard-paths:config/providers.json",
+        "apply-paths:config/providers.json",
         "reload",
     ]

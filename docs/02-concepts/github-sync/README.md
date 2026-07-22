@@ -50,10 +50,13 @@ portable files. Configure API keys separately on that device.
 | **Sync** | Reconcile portable local and remote files |
 | **Push** | Publish local config, skills, and memory |
 | **Pull** | Apply remote portable files locally |
-| **Discard outgoing** | Restore generated payload files from the repository |
+| **Discard outgoing** | Restore one or all outgoing local files from the committed payload |
 | **Use cloud** | Apply the remote payload as the local source of truth |
 
 Plans classify changes as incoming or outgoing and show file-level previews.
+Individual outgoing changes can be discarded without affecting the others.
+Incoming changes are still applied as a complete cloud payload because a Git
+pull advances the repository as a whole.
 Protected memory replacement or deletion requires confirmation. Planning
 restores the repository worktree before returning and is serialized with sync
 execution.
@@ -81,7 +84,7 @@ All routes are served by the local Suzent HTTP API.
 | `/sync/plan` | POST | Preview file changes without retaining worktree mutations |
 | `/sync/pull` | POST | Pull and apply portable files |
 | `/sync/push` | POST | Build, commit, and push portable files |
-| `/sync/discard-outgoing` | POST | Restore outgoing payload changes |
+| `/sync/discard-outgoing` | POST | Restore all outgoing changes, or selected `paths` |
 | `/sync/auto` | POST | Save automation settings |
 | `/sync/auto/run` | POST | Run one automatic sync cycle |
 | `/sync/auth/start` | POST | Start GitHub Device Flow |

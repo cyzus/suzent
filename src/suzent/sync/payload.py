@@ -151,6 +151,36 @@ class SyncPayloadBuilder:
             restored.append("memory")
         return restored
 
+    def apply_paths_to_local(self, payload_dir: Path, paths: list[str]) -> list[str]:
+        restored: list[str] = []
+        for raw_path in paths:
+            rel = Path(raw_path.replace("\\", "/"))
+            if rel.is_absolute() or ".." in rel.parts or len(rel.parts) < 2:
+                continue
+
+            top = rel.parts[0]
+            if top == "config":
+                target = self.user_config_dir.joinpath(*rel.parts[1:])
+            elif top == "skills":
+                target = self.user_skills_dir.joinpath(*rel.parts[1:])
+            elif top == "memory":
+                target = self._memory_dir().joinpath(*rel.parts[1:])
+            else:
+                continue
+
+            source = payload_dir / rel
+            if source.is_file():
+                self._copy_tree(source, target)
+            elif target.exists() and not any(
+                _is_excluded_name(part) for part in rel.parts
+            ):
+                if target.is_dir():
+                    shutil.rmtree(target)
+                else:
+                    target.unlink()
+            restored.append(rel.as_posix())
+        return restored
+
     def _remove_tree_preserving_excluded(self, target: Path) -> None:
         if not target.exists():
             return

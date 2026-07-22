@@ -208,8 +208,9 @@ export function githubSyncPull(
   return postJson<Record<string, unknown>>('/sync/pull', body);
 }
 
-export function githubSyncDiscardOutgoing(profileId?: string): Promise<Record<string, unknown>> {
+export function githubSyncDiscardOutgoing(profileId?: string, paths?: string[]): Promise<Record<string, unknown>> {
   const body: Record<string, unknown> = profileId ? { profile_id: profileId } : {};
+  if (paths) body.paths = paths;
   return postJson<Record<string, unknown>>('/sync/discard-outgoing', body);
 }
 

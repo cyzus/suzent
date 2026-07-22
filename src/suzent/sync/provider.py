@@ -97,6 +97,22 @@ class GitHubSyncProvider:
     def discard_payload_changes(self) -> None:
         self._discard_payload_changes()
 
+    def discard_payload_paths(self, paths: list[str]) -> None:
+        payload_paths = [
+            f"{PAYLOAD_DIR_NAME}/{path.replace('\\', '/').removeprefix(f'{PAYLOAD_DIR_NAME}/')}"
+            for path in paths
+        ]
+        if not payload_paths:
+            return
+        try:
+            self._git("checkout", "--", *payload_paths)
+        except RuntimeError:
+            pass
+        try:
+            self._git("clean", "-f", "--", *payload_paths)
+        except RuntimeError:
+            pass
+
     def pull_ff_only(self) -> str:
         self._discard_payload_changes()
         self.validate(require_clean=False)
