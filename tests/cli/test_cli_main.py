@@ -133,6 +133,7 @@ def test_serve_uses_default_windows_process_group(monkeypatch):
 
     monkeypatch.setattr(cli_main, "IS_WINDOWS", True)
     monkeypatch.setattr(cli_main.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(cli_main, "_is_suzent_server_running", lambda *args: False)
 
     result = runner.invoke(app, ["serve", "--host", "127.0.0.1", "--port", "25314"])
 
@@ -160,6 +161,7 @@ def test_serve_ctrl_c_calls_graceful_terminator(monkeypatch):
 
     monkeypatch.setattr(cli_main.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(cli_main, "_terminate_process_gracefully", fake_terminate)
+    monkeypatch.setattr(cli_main, "_is_suzent_server_running", lambda *args: False)
 
     result = runner.invoke(app, ["serve"])
 

@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.7.1] - 2026-07-22
+
+### 🚀 Added
+- **WeChat Channel**: Added WeChat social messaging support.
+- **Peer Camera Downloads**: Peer `camera.snap` invokes now return downloadable file references and stream through the controller proxy instead of exposing remote-local paths.
+- **ChatGPT Subscription Provider**: Added ChatGPT subscription fetching support.
+- **File Mentions**: Improved host-path and virtual-path handling for file mentions.
+- **Permission Controls**: Added command-prefix permission support and persisted default permission modes.
+- **Encrypted Sync UX**: Expanded the sync vault with per-key opt-in, provenance, inventory, grouped provider keys, and clearer pull/push/sync states.
+
+### ⚡ Changed
+- **Model Providers**: Refreshed model provider capability lists.
+- **Setup Flow**: Added China setup mirrors and refined Cargo install prompts.
+- **Runtime**: Reused already-running Suzent servers from the CLI and improved streaming/error cleanup behavior.
+- **Memory & Context**: Added real-time compression token updates and improved compact/decomposition behavior.
+
+### 🐛 Fixed
+- **Social Permissions**: Fixed approval persistence and permission handling for social interactions.
+- **UI Startup**: Fixed opening the UI when a proxy is enabled.
+- **Files**: Fixed file clicking, file viewer refresh issues, and file button rendering.
+- **Sync**: Fixed secret injection, profile self-healing, stale config writes during tests, machine-local sync exclusions, and recovery-word confirmation.
+- **Nodes**: Fixed node-host secret loading and reduced peer outbound status polling cost.
+- **Server**: Bounded subagent and background-turn registries, and added a stop command.
+- **Scheduler**: Improved active cron job error handling.
+- **Compact**: Fixed manual compact permission handling and token lookup logic.
+
 ## [v0.7.0] - 2026-06-29
 
 ### 🚀 Added
