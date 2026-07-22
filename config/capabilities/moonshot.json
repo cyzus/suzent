@@ -154,10 +154,13 @@
       "supports_function_calling": true,
       "supports_response_schema": true
     },
-    "moonshot/kimi-k2.7-code-highspeed": {
+    "moonshot/kimi-k3": {
       "mode": "chat"
     },
     "moonshot/kimi-k2.7-code": {
+      "mode": "chat"
+    },
+    "moonshot/kimi-k2.7-code-highspeed": {
       "mode": "chat"
     }
   }

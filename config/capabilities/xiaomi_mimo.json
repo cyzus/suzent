@@ -13,6 +13,9 @@
     "xiaomi_mimo/mimo-v2.5": {
       "mode": "chat"
     },
+    "xiaomi_mimo/mimo-v2.5-asr": {
+      "mode": "chat"
+    },
     "xiaomi_mimo/mimo-v2.5-tts": {
       "mode": "chat"
     },
@@ -20,9 +23,6 @@
       "mode": "chat"
     },
     "xiaomi_mimo/mimo-v2.5-tts-voicedesign": {
-      "mode": "chat"
-    },
-    "xiaomi_mimo/mimo-v2.5-asr": {
       "mode": "chat"
     }
   }

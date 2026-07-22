@@ -1,6 +1,26 @@
 {
   "_doc": "xAI (Grok) model capabilities. Auto-updated by Fetch; manually curate the flags.",
   "models": {
+    "xai/grok-4.5": {
+      "mode": "chat",
+      "max_input_tokens": 500000,
+      "max_output_tokens": 500000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
+    "xai/grok-4.5-latest": {
+      "mode": "chat",
+      "max_input_tokens": 500000,
+      "max_output_tokens": 500000,
+      "supports_vision": true,
+      "supports_function_calling": true,
+      "supports_response_schema": true,
+      "supports_reasoning": true,
+      "supports_prompt_caching": true
+    },
     "xai/grok-3": {
       "mode": "chat",
       "max_input_tokens": 131072,
@@ -319,26 +339,6 @@
       "mode": "chat",
       "max_input_tokens": 1000000,
       "max_output_tokens": 1000000,
-      "supports_vision": true,
-      "supports_function_calling": true,
-      "supports_response_schema": true,
-      "supports_reasoning": true,
-      "supports_prompt_caching": true
-    },
-    "xai/grok-4.5": {
-      "mode": "chat",
-      "max_input_tokens": 500000,
-      "max_output_tokens": 500000,
-      "supports_vision": true,
-      "supports_function_calling": true,
-      "supports_response_schema": true,
-      "supports_reasoning": true,
-      "supports_prompt_caching": true
-    },
-    "xai/grok-4.5-latest": {
-      "mode": "chat",
-      "max_input_tokens": 500000,
-      "max_output_tokens": 500000,
       "supports_vision": true,
       "supports_function_calling": true,
       "supports_response_schema": true,

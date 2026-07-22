@@ -1,6 +1,16 @@
 {
   "_doc": "Google Gemini model capabilities. Auto-updated by Fetch; manually curate the flags.",
   "models": {
+    "gemini/gemini-3.1-flash-lite-image": {
+      "mode": "chat"
+    },
+    "gemini/gemini-omni-flash-preview": {
+      "mode": "chat",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65535,
+      "supports_vision": true,
+      "supports_reasoning": true
+    },
     "gemini/gemini-2.5-pro": {
       "mode": "chat",
       "max_input_tokens": 1048576,
@@ -195,7 +205,8 @@
       "supports_vision": true,
       "supports_function_calling": false,
       "supports_response_schema": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supports_reasoning": false
     },
     "gemini/nano-banana-pro-preview": {
       "mode": "chat"
@@ -207,7 +218,8 @@
       "supports_vision": true,
       "supports_function_calling": false,
       "supports_response_schema": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supports_reasoning": false
     },
     "gemini/lyria-3-clip-preview": {
       "mode": "chat",
@@ -454,7 +466,8 @@
       "supports_vision": true,
       "supports_function_calling": false,
       "supports_response_schema": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supports_reasoning": false
     },
     "gemini/gemini-3.1-flash-image": {
       "mode": "image_generation",
@@ -463,12 +476,13 @@
       "supports_vision": true,
       "supports_function_calling": false,
       "supports_response_schema": true,
-      "supports_prompt_caching": true
+      "supports_prompt_caching": true,
+      "supports_reasoning": false
     },
-    "gemini/gemini-3.1-flash-lite-image": {
+    "gemini/gemini-3.5-flash-lite": {
       "mode": "chat"
     },
-    "gemini/gemini-omni-flash-preview": {
+    "gemini/gemini-3.6-flash": {
       "mode": "chat"
     },
     "gemini/imagen-3.0-fast-generate-001": {

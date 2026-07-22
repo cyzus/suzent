@@ -820,6 +820,33 @@
     },
     "dashscope/test-sre-gpu-auto-handle": {
       "mode": "chat"
+    },
+    "dashscope/qwen3.7-text-embedding": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-audio-3.0-realtime-flash": {
+      "mode": "chat"
+    },
+    "dashscope/qwen-audio-3.0-realtime-plus": {
+      "mode": "chat"
+    },
+    "dashscope/glm-5.2-fast-preview": {
+      "mode": "chat"
+    },
+    "dashscope/kimi/kimi-k2.7-code-highspeed": {
+      "mode": "chat"
+    },
+    "dashscope/xiaomi/mimo-v2.5-pro": {
+      "mode": "chat"
+    },
+    "dashscope/MiniMax/MiniMax-M3": {
+      "mode": "chat"
+    },
+    "dashscope/ZHIPU/GLM-5.2": {
+      "mode": "chat"
+    },
+    "dashscope/kimi/kimi-k3": {
+      "mode": "chat"
     }
   }
 }
