@@ -249,6 +249,11 @@ The GitHub sync card should state, through i18n:
 
 > Syncs config, skills, and memory. API keys and credentials stay on this device.
 
+The action bar should follow the file plan: show **Pull** only when incoming
+files exist, show **Push** only when outgoing files exist, and hide both when
+the repository is current. Do not retain a separate combined Sync button;
+mixed changes belong in the explicit review flow.
+
 From `frontend/src/lib/dataApi.ts`, remove secret-vault types, secret-sync profile
 fields, secret-management functions, and Shibboleth arguments on pull and push.
 

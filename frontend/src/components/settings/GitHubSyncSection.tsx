@@ -3,7 +3,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import {
   fetchGitHubAuthStatus,
-  fetchSyncAheadBehind,
   fetchSyncQuickstartInfo,
   fetchSyncStatus,
   githubSyncDiscardOutgoing,
@@ -551,8 +550,7 @@ export function GitHubSyncSection({
   const [githubTokenExpired, setGithubTokenExpired] = useState(false);
   const [linkedRepo, setLinkedRepo] = useState<string | null>(null);
   const [installUrl, setInstallUrl] = useState<string | null>(null);
-  const [ahead, setAhead] = useState<number | null>(null);
-  const [behind, setBehind] = useState<number | null>(null);
+  const [pendingPlan, setPendingPlan] = useState<SyncPlan | null>(null);
   const [reviewPlan, setReviewPlan] = useState<SyncPlan | null>(null);
   const [reviewOperation, setReviewOperation] = useState<SyncOperation | null>(null);
   const [dismissedPlanKey, setDismissedPlanKey] = useState<string | null>(null);
@@ -597,6 +595,7 @@ export function GitHubSyncSection({
   useEffect(() => {
     const profileId = syncStatus?.configured ? syncStatus.profile?.id : null;
     if (!profileId) {
+      setPendingPlan(null);
       setReviewPlan(null);
       setReviewOperation(null);
       setDismissedPlanKey(null);
@@ -611,12 +610,14 @@ export function GitHubSyncSection({
         const plan = await githubSyncPlan('auto', profileId, refreshRemote);
         if (cancelled) return;
         if (plan.files.filter(shouldShowSyncChange).length === 0) {
+          setPendingPlan(null);
           setReviewPlan((current) => (current?.operation === 'auto' ? null : current));
           setReviewOperation((current) => (current === 'auto' ? null : current));
           setDismissedPlanKey(null);
           return;
         }
 
+        setPendingPlan(plan);
         const nextKey = syncPlanKey(plan);
         if (nextKey !== dismissedPlanKey) {
           setReviewPlan(plan);
@@ -629,7 +630,7 @@ export function GitHubSyncSection({
       }
     };
 
-    void refreshWatchedPlan(false);
+    void refreshWatchedPlan(true);
     const interval = window.setInterval(() => { void refreshWatchedPlan(false); }, 8000);
     const handleFocus = (): void => { void refreshWatchedPlan(true); };
     window.addEventListener('focus', handleFocus);
@@ -644,19 +645,6 @@ export function GitHubSyncSection({
     const next = await fetchSyncStatus();
     setSyncStatus(next);
     if (next.profile) applyProfile(next.profile);
-    if (next.configured && next.profile) {
-      refreshAheadBehind(next.profile.id).catch(() => {});
-    }
-  }
-
-  async function refreshAheadBehind(profileId?: string): Promise<void> {
-    try {
-      const counts = await fetchSyncAheadBehind(profileId);
-      setAhead(counts.ahead);
-      setBehind(counts.behind);
-    } catch {
-      // network error or repo not yet linked — leave counts null
-    }
   }
 
   async function saveAutoConfig(nextAutoSync: boolean, nextInterval: number): Promise<void> {
@@ -844,6 +832,8 @@ export function GitHubSyncSection({
         setReviewOperation(null);
         setDismissedPlanKey(null);
         await refresh();
+        const nextPlan = await githubSyncPlan('auto', profile.id, false);
+        setPendingPlan(nextPlan.files.some(shouldShowSyncChange) ? nextPlan : null);
         onNotify(t(successKey), false);
         if (notifyComplete) onSyncComplete?.();
       } catch (error) {
@@ -888,6 +878,8 @@ export function GitHubSyncSection({
       setReviewOperation(null);
       setDismissedPlanKey(null);
       await refresh();
+      const nextPlan = await githubSyncPlan('auto', profile.id, false);
+      setPendingPlan(nextPlan.files.some(shouldShowSyncChange) ? nextPlan : null);
       const count = result.discarded?.length ?? 0;
       onNotify(
         count > 0
@@ -912,6 +904,14 @@ export function GitHubSyncSection({
       const remaining = reviewPlan?.files.filter(
         (item) => !(item.path === file.path && syncDirectionOf(item) === 'outgoing'),
       ) ?? [];
+      setPendingPlan((current) => current
+        ? {
+            ...current,
+            files: current.files.filter(
+              (item) => !(item.path === file.path && syncDirectionOf(item) === 'outgoing'),
+            ),
+          }
+        : current);
       if (remaining.some(shouldShowSyncChange) && reviewPlan) {
         setReviewPlan({ ...reviewPlan, files: remaining });
       } else {
@@ -921,6 +921,7 @@ export function GitHubSyncSection({
       }
       onNotify(t('settings.data.githubDiscardedFile', { path: file.path }), false);
       void githubSyncPlan(operation, profile.id, false).then((plan) => {
+        setPendingPlan(plan.files.some(shouldShowSyncChange) ? plan : null);
         if (plan.files.some(shouldShowSyncChange)) {
           setReviewPlan(plan);
           setReviewOperation(operation);
@@ -954,6 +955,8 @@ export function GitHubSyncSection({
       setReviewOperation(null);
       setDismissedPlanKey(null);
       await refresh();
+      const nextPlan = await githubSyncPlan('auto', profile.id, false);
+      setPendingPlan(nextPlan.files.some(shouldShowSyncChange) ? nextPlan : null);
       onNotify(t('settings.data.githubCloudApplied'), false);
       onSyncComplete?.();
     } catch (error) {
@@ -969,6 +972,15 @@ export function GitHubSyncSection({
   }
 
   const configured = Boolean(syncStatus?.configured && syncStatus.profile);
+  const pendingFiles = pendingPlan?.files.filter(shouldShowSyncChange) ?? [];
+  const incomingFileCount = pendingFiles.filter(
+    (file) => syncDirectionOf(file) === 'incoming',
+  ).length;
+  const outgoingFileCount = pendingFiles.filter(
+    (file) => syncDirectionOf(file) === 'outgoing',
+  ).length;
+  const pullCount = incomingFileCount;
+  const pushCount = outgoingFileCount;
 
   return (
     <SettingsCard>
@@ -1120,71 +1132,50 @@ export function GitHubSyncSection({
           )}
         </div>
 
-        <div className="w-px bg-brutal-black/20 dark:bg-white/10" />
-
         {configured ? (
           <>
-            {/* Pull button — behind = commits on the remote not yet local */}
-            <ActionBtn
-              onClick={handlePull}
-              disabled={busy}
-              muted={behind === 0}
-              title={behind && behind > 0 ? `Pull ${behind} update${behind !== 1 ? 's' : ''} from other devices` : 'Nothing to pull — up to date with the remote'}
-            >
-              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 2v9M5 8l3 3 3-3" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2 13h12" />
-              </svg>
-              <span className="text-xs font-bold uppercase">
-                {behind !== null && behind > 0 ? `Pull (${behind})` : 'Pull'}
-              </span>
-            </ActionBtn>
-            {/* Push button — ahead = local commits not yet on the remote */}
-            <ActionBtn
-              onClick={handlePush}
-              disabled={busy}
-              muted={ahead === 0}
-              title={ahead && ahead > 0 ? `Push ${ahead} local change${ahead !== 1 ? 's' : ''} to other devices` : 'Nothing to push — the remote has all your changes'}
-            >
-              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 14V5M5 8L8 5l3 3" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2 3h12" />
-              </svg>
-              <span className="text-xs font-bold uppercase">
-                {ahead !== null && ahead > 0 ? `Push (${ahead})` : 'Push'}
-              </span>
-            </ActionBtn>
-            {/* Sync button — combined pull+push activity */}
-            {(() => {
-              const pending = (behind ?? 0) + (ahead ?? 0);
-              return (
-                <ActionBtn
-                  onClick={handleSync}
-                  disabled={busy}
-                  muted={pending === 0}
-                  title={pending > 0 ? `Sync: pull ${behind ?? 0} and push ${ahead ?? 0}` : 'Sync — already up to date'}
-                >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M2 6a6 6 0 0 1 10-2.5L14 5" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M14 2v3h-3" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M14 10a6 6 0 0 1-10 2.5L2 11" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M2 14v-3h3" />
-                  </svg>
-                  <span className="text-xs font-bold uppercase">
-                    {pending > 0 ? `Sync (${pending})` : 'Sync'}
-                  </span>
-                </ActionBtn>
-              );
-            })()}
+            {pullCount > 0 && (
+              <ActionBtn
+                onClick={handlePull}
+                disabled={busy}
+                title={t('settings.data.githubPullTitle', { count: pullCount })}
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 2v9M5 8l3 3 3-3" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2 13h12" />
+                </svg>
+                <span className="text-xs font-bold uppercase">
+                  {t('settings.data.githubPullCount', { count: pullCount })}
+                </span>
+              </ActionBtn>
+            )}
+            {pushCount > 0 && (
+              <ActionBtn
+                onClick={handlePush}
+                disabled={busy}
+                title={t('settings.data.githubPushTitle', { count: pushCount })}
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 14V5M5 8L8 5l3 3" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2 3h12" />
+                </svg>
+                <span className="text-xs font-bold uppercase">
+                  {t('settings.data.githubPushCount', { count: pushCount })}
+                </span>
+              </ActionBtn>
+            )}
           </>
         ) : (
-          <ActionBtn onClick={handleQuickStart} disabled={busy || githubAuthLoading || !githubAuthenticated} title={t('settings.data.githubQuickStartButton')} primary>
-            {busy
-              ? <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="M8 2a6 6 0 1 1-4.243 1.757" /></svg>
-              : <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M13 8A5 5 0 1 1 8 3" /><path strokeLinecap="round" strokeLinejoin="round" d="M13 3v4h-4" /></svg>
-            }
-            <span className="text-xs font-bold uppercase">{busy ? t('settings.data.working') : t('settings.data.githubQuickStartButton')}</span>
-          </ActionBtn>
+          <>
+            <div className="w-px bg-brutal-black/20 dark:bg-white/10" />
+            <ActionBtn onClick={handleQuickStart} disabled={busy || githubAuthLoading || !githubAuthenticated} title={t('settings.data.githubQuickStartButton')} primary>
+              {busy
+                ? <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="M8 2a6 6 0 1 1-4.243 1.757" /></svg>
+                : <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M13 8A5 5 0 1 1 8 3" /><path strokeLinecap="round" strokeLinejoin="round" d="M13 3v4h-4" /></svg>
+              }
+              <span className="text-xs font-bold uppercase">{busy ? t('settings.data.working') : t('settings.data.githubQuickStartButton')}</span>
+            </ActionBtn>
+          </>
         )}
       </div>
 

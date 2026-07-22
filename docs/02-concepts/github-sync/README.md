@@ -47,7 +47,6 @@ portable files. Configure API keys separately on that device.
 
 | Action | Purpose |
 |---|---|
-| **Sync** | Reconcile portable local and remote files |
 | **Push** | Publish local config, skills, and memory |
 | **Pull** | Apply remote portable files locally |
 | **Discard outgoing** | Restore one or all outgoing local files from the committed payload |
@@ -56,6 +55,10 @@ portable files. Configure API keys separately on that device.
 Plans classify changes as incoming or outgoing. Files are collapsed by default;
 selecting a file loads only that file's diff, without generating patches for the
 rest of the plan.
+The toolbar is contextual: **Pull** appears only for incoming files, **Push**
+appears only for outgoing files, and neither is shown when the repository is up
+to date. Mixed changes are resolved explicitly in the review instead of through
+a separate combined Sync action.
 Individual outgoing changes can be discarded without affecting the others.
 Incoming changes are still applied as a complete cloud payload because a Git
 pull advances the repository as a whole.
