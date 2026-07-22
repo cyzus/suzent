@@ -481,7 +481,9 @@ class MemoryManager:
                 turn = conversation_turn
 
             # Extract facts from the formatted turn
-            extracted_facts = await self._extract_facts_llm(turn.format_for_extraction())
+            extracted_facts = await self._extract_facts_llm(
+                turn.format_for_extraction()
+            )
 
             if not extracted_facts:
                 logger.debug("No facts extracted from conversation turn")

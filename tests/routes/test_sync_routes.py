@@ -15,7 +15,11 @@ def test_sync_profile_create_read_status(tmp_path: Path):
 
     response = client.post(
         "/sync/profiles",
-        json={"repo_path": str(tmp_path / "repo"), "branch": "main", "remote": "origin"},
+        json={
+            "repo_path": str(tmp_path / "repo"),
+            "branch": "main",
+            "remote": "origin",
+        },
     )
 
     assert response.status_code == 200
@@ -64,7 +68,9 @@ def test_unlock_shibboleth_endpoint(tmp_path: Path):
     app.state.github_sync_service = service
     client = TestClient(app)
     profile = service.create_profile(
-        SyncProfile(repo_path=str(tmp_path / "repo"), encrypted_secret_sync_enabled=True)
+        SyncProfile(
+            repo_path=str(tmp_path / "repo"), encrypted_secret_sync_enabled=True
+        )
     )
 
     response = client.post(

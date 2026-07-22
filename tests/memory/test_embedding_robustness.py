@@ -2,6 +2,7 @@
 into a zero vector (which poisons the vector index and breaks retrieval). It must
 raise, and the indexer must leave the index untouched + retryable on failure.
 """
+
 import pytest
 
 from suzent.llm import EmbeddingGenerator
@@ -18,6 +19,7 @@ async def test_generate_raises_on_backend_failure(monkeypatch):
             raise RuntimeError("embedding backend unreachable")
 
     import suzent.llm as llm_mod
+
     monkeypatch.setattr(llm_mod, "_litellm", lambda: _Boom())
 
     with pytest.raises(Exception):

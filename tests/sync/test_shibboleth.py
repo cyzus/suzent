@@ -1,4 +1,8 @@
-from suzent.sync.shibboleth import derive_fernet_key, new_kdf_params, verify_against_ciphertext
+from suzent.sync.shibboleth import (
+    derive_fernet_key,
+    new_kdf_params,
+    verify_against_ciphertext,
+)
 
 
 def test_derive_key_is_deterministic_for_same_passphrase_and_salt():

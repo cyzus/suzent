@@ -43,7 +43,9 @@ def derive_fernet_key(passphrase: str, kdf: ShibbolethKdfParams) -> bytes:
     return base64.urlsafe_b64encode(digest)
 
 
-def verify_against_ciphertext(passphrase: str, kdf: ShibbolethKdfParams, ciphertext: str) -> bool:
+def verify_against_ciphertext(
+    passphrase: str, kdf: ShibbolethKdfParams, ciphertext: str
+) -> bool:
     try:
         Fernet(derive_fernet_key(passphrase, kdf)).decrypt(ciphertext.encode("utf-8"))
         return True

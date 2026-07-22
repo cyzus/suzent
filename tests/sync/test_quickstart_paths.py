@@ -5,7 +5,9 @@ import pytest
 from suzent.sync.quickstart import _is_ephemeral_repo_path, _resolve_quickstart_target
 
 
-def test_ephemeral_pytest_path_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_ephemeral_pytest_path_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.setenv("SUZENT_DATA_DIR", str(tmp_path / "data"))
     pytest_dir = tmp_path / "pytest-of-user" / "test_x" / "github-sync"
     pytest_dir.mkdir(parents=True)

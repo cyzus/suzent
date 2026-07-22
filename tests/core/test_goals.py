@@ -115,7 +115,9 @@ def test_format_status_active_with_subgoals():
 
 
 def test_format_status_paused_icon():
-    assert "⏸" in format_status(_goal(status=STATUS_PAUSED, turns_elapsed=20, max_turns=20))
+    assert "⏸" in format_status(
+        _goal(status=STATUS_PAUSED, turns_elapsed=20, max_turns=20)
+    )
 
 
 # ─── judge prompt builder ────────────────────────────────────────────────────

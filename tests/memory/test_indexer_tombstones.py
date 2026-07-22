@@ -7,6 +7,7 @@ re-indexed unconditionally — a user could delete a notebook memory, get
 resurrect it. The fix applies the same normalized-content tombstone filter to
 notebook/core chunks, so a deletion is durable across a full rebuild.
 """
+
 import pytest
 
 from suzent.memory.indexer import CoreMemoryFileIndexer

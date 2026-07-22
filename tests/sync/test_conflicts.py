@@ -31,4 +31,6 @@ async def test_conflict_preview_rejects_paths_outside_payload(tmp_path: Path):
     assert result.changed_paths == ["memory/MEMORY.md"]
     assert result.chosen_merge == {"memory/MEMORY.md": "inside"}
     assert not (payload_dir.parent / "outside" / "_sync").exists()
-    assert (payload_dir / "_sync" / "conflict-previews" / "memory" / "MEMORY.md").exists()
+    assert (
+        payload_dir / "_sync" / "conflict-previews" / "memory" / "MEMORY.md"
+    ).exists()

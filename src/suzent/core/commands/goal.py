@@ -97,9 +97,7 @@ def handle_goal(
                 max_turns=max_turns,
             )
         else:
-            db.create_goal(
-                project_id, objective, chat_id=chat_id, max_turns=max_turns
-            )
+            db.create_goal(project_id, objective, chat_id=chat_id, max_turns=max_turns)
         _schedule_step(chat_id, user_id)
         return (
             f"🎯 Goal set: {objective}\n"
@@ -119,9 +117,7 @@ def handle_goal(
 )
 def handle_subgoal(
     ctx: typer.Context,
-    args: list[str] = typer.Argument(
-        None, help="A criterion, or: remove <N>, clear"
-    ),
+    args: list[str] = typer.Argument(None, help="A criterion, or: remove <N>, clear"),
 ):
     async def _impl():
         from suzent.database import get_database
