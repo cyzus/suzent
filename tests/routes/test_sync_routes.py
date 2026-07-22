@@ -70,7 +70,7 @@ def test_sync_conflict_resolve_preview_uses_portable_files_only(tmp_path: Path):
             "profile_id": profile.id,
             "conflicting_paths": [
                 "memory/MEMORY.md",
-                "_sync/secrets/bundles.json",
+                "_sync/manifest.json",
             ],
         },
     )
@@ -81,30 +81,11 @@ def test_sync_conflict_resolve_preview_uses_portable_files_only(tmp_path: Path):
     assert result["changed_paths"] == ["memory/MEMORY.md"]
 
 
-def test_unlock_shibboleth_endpoint(tmp_path: Path):
-    service = GitHubSyncService(profiles_path=tmp_path / "profiles.json")
-    app.state.github_sync_service = service
-    client = TestClient(app)
-    profile = service.create_profile(
-        SyncProfile(
-            repo_path=str(tmp_path / "repo"), encrypted_secret_sync_enabled=True
-        )
-    )
-
-    response = client.post(
-        "/sync/shibboleth/unlock",
-        json={"profile_id": profile.id, "shibboleth": "route-test-shibboleth"},
-    )
-
-    assert response.status_code == 200
-    assert response.json()["shibboleth_unlocked"] is True
-    status = client.get("/sync/status").json()
-    assert status["shibboleth_unlocked"] is True
-
-
 def test_sync_plan_endpoint_returns_review_plan():
     class FakeService:
-        def preview_sync_plan(self, operation: str, profile_id: str | None = None):
+        async def preview_sync_plan_safe(
+            self, operation: str, profile_id: str | None = None
+        ):
             assert operation == "push"
             assert profile_id == "profile-1"
             return _review_plan(operation)
@@ -130,11 +111,9 @@ def test_push_sync_returns_409_when_review_is_required():
             self,
             profile_id: str | None = None,
             *,
-            shibboleth: str | None = None,
             confirm_destructive: bool = False,
         ):
             assert profile_id == "profile-1"
-            assert shibboleth is None
             assert confirm_destructive is False
             raise DestructiveSyncPlanError(_review_plan("push"))
 
@@ -158,13 +137,10 @@ def test_confirmed_sync_routes_pass_destructive_confirmation():
             self,
             profile_id: str | None = None,
             *,
-            shibboleth: str | None = None,
             confirm_destructive: bool = False,
             prefer_cloud: bool = False,
-            paths: list[str] | None = None,
         ):
             assert profile_id == "profile-1"
-            assert paths is None
             calls.append(("pull", confirm_destructive, prefer_cloud))
             return {"success": True}
 
@@ -172,7 +148,6 @@ def test_confirmed_sync_routes_pass_destructive_confirmation():
             self,
             profile_id: str | None = None,
             *,
-            shibboleth: str | None = None,
             confirm_destructive: bool = False,
         ):
             assert profile_id == "profile-1"
@@ -183,7 +158,6 @@ def test_confirmed_sync_routes_pass_destructive_confirmation():
             self,
             profile_id: str | None = None,
             *,
-            shibboleth: str | None = None,
             confirm_destructive: bool = False,
         ):
             assert profile_id == "profile-1"
@@ -213,16 +187,13 @@ def test_pull_sync_passes_prefer_cloud():
             self,
             profile_id: str | None = None,
             *,
-            shibboleth: str | None = None,
             confirm_destructive: bool = False,
             prefer_cloud: bool = False,
-            paths: list[str] | None = None,
         ):
             assert profile_id == "profile-1"
             assert confirm_destructive is True
             assert prefer_cloud is True
-            assert paths == ["memory/MEMORY.md"]
-            return {"success": True, "prefer_cloud": prefer_cloud, "paths": paths}
+            return {"success": True, "prefer_cloud": prefer_cloud}
 
     app.state.github_sync_service = FakeService()
     client = TestClient(app)
@@ -233,33 +204,25 @@ def test_pull_sync_passes_prefer_cloud():
             "profile_id": "profile-1",
             "confirm_destructive": True,
             "prefer_cloud": True,
-            "paths": ["memory/MEMORY.md"],
         },
     )
 
     assert response.status_code == 200
     assert response.json()["prefer_cloud"] is True
-    assert response.json()["paths"] == ["memory/MEMORY.md"]
 
 
 def test_discard_outgoing_route_calls_service():
     class FakeService:
-        async def discard_outgoing(
-            self,
-            profile_id: str | None = None,
-            *,
-            paths: list[str] | None = None,
-        ):
+        async def discard_outgoing(self, profile_id: str | None = None):
             assert profile_id == "profile-1"
-            assert paths == ["memory/MEMORY.md"]
-            return {"success": True, "discarded": paths}
+            return {"success": True, "discarded": ["memory/MEMORY.md"]}
 
     app.state.github_sync_service = FakeService()
     client = TestClient(app)
 
     response = client.post(
         "/sync/discard-outgoing",
-        json={"profile_id": "profile-1", "paths": ["memory/MEMORY.md"]},
+        json={"profile_id": "profile-1"},
     )
 
     assert response.status_code == 200

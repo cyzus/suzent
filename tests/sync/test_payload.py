@@ -138,7 +138,7 @@ def test_build_preserves_existing_payload_memory_when_local_memory_is_partial(
     ) == "remote summary\n"
 
 
-def test_build_preserves_existing_encrypted_secret_vault(tmp_path: Path):
+def test_build_removes_legacy_secret_bundle_from_portable_payload(tmp_path: Path):
     config_dir = tmp_path / "config"
     skills_dir = tmp_path / "skills"
     memory_dir = tmp_path / "sandbox" / "shared" / "memory"
@@ -158,11 +158,8 @@ def test_build_preserves_existing_encrypted_secret_vault(tmp_path: Path):
 
     manifest = builder.build(repo, SyncProfile(repo_path=str(repo)))
 
-    assert (
-        bundles_path.read_text(encoding="utf-8")
-        == '{"format_version":2,"bundles":[]}\n'
-    )
-    assert "_sync/secrets/bundles.json" in manifest.included_paths
+    assert not bundles_path.exists()
+    assert "_sync/secrets/bundles.json" not in manifest.included_paths
 
 
 def test_apply_to_local_preserves_device_local_sync_profile(tmp_path: Path):
@@ -272,60 +269,3 @@ def test_apply_to_local_can_replace_memory_when_cloud_is_authority(tmp_path: Pat
     assert (target_memory / "sessions" / "abc" / "context.md").read_text(
         encoding="utf-8"
     ) == "device local\n"
-
-
-def test_apply_paths_to_local_restores_selected_file(tmp_path: Path):
-    payload_dir = tmp_path / "payload"
-    source_config = payload_dir / "config"
-    target_config = tmp_path / "local" / "config"
-    source_config.mkdir(parents=True)
-    target_config.mkdir(parents=True)
-    (source_config / "providers.json").write_text('{"cloud": true}\n', encoding="utf-8")
-    (source_config / "other.json").write_text('{"cloud": "other"}\n', encoding="utf-8")
-    (target_config / "providers.json").write_text('{"local": true}\n', encoding="utf-8")
-    (target_config / "other.json").write_text('{"local": "other"}\n', encoding="utf-8")
-
-    builder = SyncPayloadBuilder(
-        user_config_dir=target_config,
-        user_skills_dir=tmp_path / "local" / "skills",
-        sandbox_data_path=tmp_path / "local" / "sandbox",
-    )
-
-    restored = builder.apply_paths_to_local(payload_dir, ["config/providers.json"])
-
-    assert restored == ["config/providers.json"]
-    assert (target_config / "providers.json").read_text(
-        encoding="utf-8"
-    ) == '{"cloud": true}\n'
-    assert (target_config / "other.json").read_text(
-        encoding="utf-8"
-    ) == '{"local": "other"}\n'
-
-
-def test_apply_paths_to_local_deletes_selected_missing_file(tmp_path: Path):
-    payload_dir = tmp_path / "payload"
-    target_sandbox = tmp_path / "local" / "sandbox"
-    target_memory = target_sandbox / "shared" / "memory"
-    payload_dir.mkdir()
-    target_memory.mkdir(parents=True)
-    (target_memory / "scratch.md").write_text("local only\n", encoding="utf-8")
-    (target_memory / "sessions" / "abc").mkdir(parents=True)
-    (target_memory / "sessions" / "abc" / "context.md").write_text(
-        "device local\n",
-        encoding="utf-8",
-    )
-
-    builder = SyncPayloadBuilder(
-        user_config_dir=tmp_path / "local" / "config",
-        user_skills_dir=tmp_path / "local" / "skills",
-        sandbox_data_path=target_sandbox,
-    )
-
-    restored = builder.apply_paths_to_local(
-        payload_dir,
-        ["memory/scratch.md", "memory/sessions/abc/context.md"],
-    )
-
-    assert restored == ["memory/scratch.md", "memory/sessions/abc/context.md"]
-    assert not (target_memory / "scratch.md").exists()
-    assert (target_memory / "sessions" / "abc" / "context.md").exists()

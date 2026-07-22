@@ -25,7 +25,7 @@ def _isolate_data_dir(tmp_path_factory, monkeypatch):
         )
 
     # Force a keyring-free secret backend for the whole suite. Otherwise tests
-    # that touch secrets (sync profiles, shibboleth unlock) depend on an OS
+    # that touch secrets or sync profiles depend on an OS
     # keyring being installed, which fails on headless CI/Linux with
     # NoKeyringError. Reset the cached singleton so the choice takes effect.
     if "SUZENT_SECRET_BACKEND" not in os.environ:

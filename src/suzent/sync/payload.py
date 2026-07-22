@@ -13,7 +13,6 @@ from suzent.sync.models import DevicePresence, SyncManifest, SyncProfile
 PAYLOAD_DIR_NAME = "suzent-sync"
 MANIFEST_PATH = "_sync/manifest.json"
 PRESENCE_DIR = "_sync/presence"
-SECRETS_DIR = "_sync/secrets"
 
 EXCLUDED_NAMES = {
     ".env",
@@ -66,11 +65,6 @@ class SyncPayloadBuilder:
             existing_memory = payload_dir / "memory"
             if existing_memory.exists():
                 self._copy_tree(existing_memory, preserved_memory)
-            preserved_secrets = Path(temp_dir) / SECRETS_DIR
-            existing_secrets = payload_dir / SECRETS_DIR
-            if existing_secrets.exists():
-                self._copy_tree(existing_secrets, preserved_secrets)
-
             if payload_dir.exists():
                 shutil.rmtree(payload_dir)
             payload_dir.mkdir(parents=True, exist_ok=True)
@@ -83,11 +77,6 @@ class SyncPayloadBuilder:
             # become an authoritative mass deletion on push.
             self._copy_tree(preserved_memory, payload_dir / "memory")
             self._copy_tree(self._memory_dir(), payload_dir / "memory")
-            # Secret bundles are produced by the service only when the vault is
-            # unlocked. Planning/rebuilding the portable payload must not turn a
-            # locked or preview-only pass into a vault deletion.
-            self._copy_tree(preserved_secrets, payload_dir / SECRETS_DIR)
-
             presence = DevicePresence(
                 device_id=profile.device_id,
                 device_name=_device_name(),
@@ -160,35 +149,6 @@ class SyncPayloadBuilder:
                 self._remove_tree_preserving_excluded(self._memory_dir())
             self._copy_tree(memory_source, self._memory_dir())
             restored.append("memory")
-        return restored
-
-    def apply_paths_to_local(self, payload_dir: Path, paths: list[str]) -> list[str]:
-        restored: list[str] = []
-        for raw_path in paths:
-            rel = Path(raw_path.replace("\\", "/"))
-            if rel.is_absolute() or ".." in rel.parts or len(rel.parts) < 2:
-                continue
-            top = rel.parts[0]
-            if top == "config":
-                target = self.user_config_dir.joinpath(*rel.parts[1:])
-            elif top == "skills":
-                target = self.user_skills_dir.joinpath(*rel.parts[1:])
-            elif top == "memory":
-                target = self._memory_dir().joinpath(*rel.parts[1:])
-            else:
-                continue
-
-            source = payload_dir / rel
-            if source.exists():
-                self._copy_tree(source, target)
-            elif target.exists() and not any(
-                _is_excluded_name(part) for part in rel.parts
-            ):
-                if target.is_dir():
-                    shutil.rmtree(target)
-                else:
-                    target.unlink()
-            restored.append(rel.as_posix())
         return restored
 
     def _remove_tree_preserving_excluded(self, target: Path) -> None:

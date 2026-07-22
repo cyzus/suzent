@@ -3,8 +3,10 @@ import subprocess
 
 import pytest
 
-from suzent.sync.payload import PAYLOAD_DIR_NAME
+from suzent.sync.models import SyncProfile
+from suzent.sync.payload import PAYLOAD_DIR_NAME, SyncPayloadBuilder
 from suzent.sync.provider import GitHubSyncProvider
+from suzent.sync.service import GitHubSyncService
 
 
 def git(cwd: Path, *args: str) -> str:
@@ -56,6 +58,41 @@ def test_provider_refuses_unrelated_staged_changes(tmp_path: Path):
 
     with pytest.raises(ValueError, match="staged changes outside the sync payload"):
         GitHubSyncProvider(repo, branch="master").commit_and_push_payload("rev1")
+
+
+def test_push_plan_does_not_modify_repository_worktree(tmp_path: Path):
+    repo = make_repo(tmp_path)
+    config_dir = tmp_path / "config"
+    skills_dir = tmp_path / "skills"
+    memory_dir = tmp_path / "sandbox" / "shared" / "memory"
+    config_dir.mkdir()
+    skills_dir.mkdir()
+    memory_dir.mkdir(parents=True)
+    config_file = config_dir / "default.yaml"
+    config_file.write_text("model: first\n", encoding="utf-8")
+
+    builder = SyncPayloadBuilder(
+        user_config_dir=config_dir,
+        user_skills_dir=skills_dir,
+        sandbox_data_path=tmp_path / "sandbox",
+    )
+    profile = SyncProfile(repo_path=str(repo), branch="master")
+    manifest = builder.build(repo, profile)
+    GitHubSyncProvider(repo, branch="master").commit_and_push_payload(
+        manifest.revision_id
+    )
+
+    config_file.write_text("model: second\n", encoding="utf-8")
+    service = GitHubSyncService(
+        profiles_path=tmp_path / "profiles.json", payload_builder=builder
+    )
+    service.save_profile(profile)
+    before = git(repo, "status", "--porcelain")
+
+    plan = service.preview_sync_plan("push", profile.id)
+
+    assert any(change.path == "config/default.yaml" for change in plan.files)
+    assert git(repo, "status", "--porcelain") == before
 
 
 def test_pull_clears_untracked_payload_files(tmp_path: Path):

@@ -68,6 +68,10 @@ class GitHubSyncProvider:
             "behind": behind,
         }
 
+    def refresh_remote(self) -> None:
+        self.validate(require_clean=False)
+        self._fetch()
+
     def payload_diff_name_status(self, left_ref: str, right_ref: str) -> str:
         self.validate(require_clean=False)
         return self._git(
@@ -92,23 +96,6 @@ class GitHubSyncProvider:
 
     def discard_payload_changes(self) -> None:
         self._discard_payload_changes()
-
-    def discard_payload_paths(self, paths: list[str]) -> None:
-        payload_paths: list[str] = []
-        for path in paths:
-            normalized = path.replace("\\", "/").removeprefix(f"{PAYLOAD_DIR_NAME}/")
-            if normalized.strip():
-                payload_paths.append(f"{PAYLOAD_DIR_NAME}/{normalized}")
-        if not payload_paths:
-            return
-        try:
-            self._git("checkout", "--", *payload_paths)
-        except RuntimeError:
-            pass
-        try:
-            self._git("clean", "-f", "--", *payload_paths)
-        except RuntimeError:
-            pass
 
     def pull_ff_only(self) -> str:
         self._discard_payload_changes()

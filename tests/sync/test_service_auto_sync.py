@@ -31,10 +31,6 @@ class FakePayloadBuilder:
         self.calls.append("apply-replace" if replace_memory else "apply")
         return ["config"]
 
-    def apply_paths_to_local(self, payload_dir: Path, paths: list[str]) -> list[str]:
-        self.calls.append(f"apply-paths:{','.join(paths)}")
-        return paths
-
 
 class FakeProvider:
     git_output = "pushed"
@@ -51,6 +47,9 @@ class FakeProvider:
     def commit_and_push_payload(self, revision_id: str) -> str:
         self.calls.append("push")
         return self.git_output
+
+    def refresh_remote(self) -> None:
+        self.calls.append("fetch")
 
     def has_meaningful_payload_changes(self) -> bool:
         self.calls.append("changed")
@@ -79,9 +78,6 @@ class FakeProvider:
     def discard_payload_changes(self) -> None:
         self.calls.append("discard")
 
-    def discard_payload_paths(self, paths: list[str]) -> None:
-        self.calls.append(f"discard-paths:{','.join(paths)}")
-
 
 def test_auto_sync_pushes_local_payload_before_remote_apply(
     tmp_path: Path, monkeypatch
@@ -108,6 +104,7 @@ def test_auto_sync_pushes_local_payload_before_remote_apply(
     asyncio.run(service.auto_sync(profile.id))
 
     assert calls == [
+        "fetch",
         "build",
         "validate",
         "status",
@@ -145,6 +142,7 @@ def test_auto_sync_applies_remote_when_local_payload_has_no_changes(
     asyncio.run(service.auto_sync(profile.id))
 
     assert calls == [
+        "fetch",
         "build",
         "validate",
         "status",
@@ -190,6 +188,7 @@ deleted file mode 100644
     assert "old memory" in result["plan"]["files"][0]["diff_preview"]
     assert result["plan"]["files"][0]["direction"] == "outgoing"
     assert calls == [
+        "fetch",
         "build",
         "validate",
         "status",
@@ -199,20 +198,18 @@ deleted file mode 100644
     ]
 
 
-def test_auto_sync_blocks_shared_key_vault_delete(tmp_path: Path, monkeypatch) -> None:
+def test_auto_sync_blocks_mixed_incoming_and_outgoing_changes(
+    tmp_path: Path, monkeypatch
+) -> None:
     calls: list[str] = []
     FakeProvider.calls = calls
     FakeProvider.meaningful_changes = True
-    FakeProvider.payload_status_output = " D suzent-sync/_sync/secrets/bundles.json\n"
-    FakeProvider.payload_remote_status_output = ""
+    FakeProvider.payload_status_output = " M suzent-sync/config/local.yaml\n"
+    FakeProvider.payload_diff_output = ""
+    FakeProvider.payload_remote_status_output = (
+        "M\tsuzent-sync/skills/remote/SKILL.md\n"
+    )
     FakeProvider.payload_remote_diff_output = ""
-    FakeProvider.payload_diff_output = """diff --git a/suzent-sync/_sync/secrets/bundles.json b/suzent-sync/_sync/secrets/bundles.json
-deleted file mode 100644
---- a/suzent-sync/_sync/secrets/bundles.json
-+++ /dev/null
-@@ -1 +0,0 @@
--ciphertext
-"""
     monkeypatch.setattr(service_module, "GitHubSyncProvider", FakeProvider)
 
     service = GitHubSyncService(
@@ -221,27 +218,20 @@ deleted file mode 100644
     )
     profile = service.save_profile(SyncProfile(repo_path=str(tmp_path / "repo")))
 
-    result = asyncio.run(service.auto_sync(profile.id))
+    result = asyncio.run(service.auto_sync(profile.id, confirm_destructive=True))
 
     assert result["success"] is False
     assert result["blocked_review_required"] is True
     assert result["plan"]["requires_confirmation"] is True
-    assert result["plan"]["summary"]["high_risk"] == 1
-    assert result["plan"]["files"][0]["category"] == "secrets"
-    assert result["plan"]["files"][0]["risk"] == "high"
-    assert result["plan"]["files"][0]["direction"] == "outgoing"
-    assert result["plan"]["files"][0]["diff_preview"] is None
-    assert (
-        "shared encrypted key vault would be deleted" in result["plan"]["warnings"][0]
-    )
-    assert calls == [
-        "build",
-        "validate",
-        "status",
-        "diff",
-        "remote-status",
-        "remote-diff",
+    assert result["plan"]["warnings"] == [
+        "Incoming and outgoing files must be resolved before auto-sync."
     ]
+    assert {item["direction"] for item in result["plan"]["files"]} == {
+        "incoming",
+        "outgoing",
+    }
+    assert "pull" not in calls
+    assert "push" not in calls
 
 
 def test_discard_outgoing_restores_local_from_cloud_payload(
@@ -278,45 +268,7 @@ def test_discard_outgoing_restores_local_from_cloud_payload(
         "build",
         "status",
         "diff",
-        "discard-paths:memory/MEMORY.md",
-        "apply-paths:memory/MEMORY.md",
-        "reload",
-    ]
-
-
-def test_discard_outgoing_can_restore_one_selected_path(
-    tmp_path: Path, monkeypatch
-) -> None:
-    calls: list[str] = []
-    FakeProvider.calls = calls
-    FakeProvider.payload_status_output = (
-        " M suzent-sync/memory/MEMORY.md\n M suzent-sync/config/providers.json\n"
-    )
-    FakeProvider.payload_diff_output = ""
-    FakeProvider.payload_remote_status_output = ""
-    FakeProvider.payload_remote_diff_output = ""
-    monkeypatch.setattr(service_module, "GitHubSyncProvider", FakeProvider)
-    monkeypatch.setattr(
-        service_module, "_reload_runtime", lambda: calls.append("reload")
-    )
-
-    service = GitHubSyncService(
-        profiles_path=tmp_path / "profiles.json",
-        payload_builder=FakePayloadBuilder(calls),
-    )
-    profile = service.save_profile(SyncProfile(repo_path=str(tmp_path / "repo")))
-
-    result = asyncio.run(
-        service.discard_outgoing(profile.id, paths=["config/providers.json"])
-    )
-
-    assert result["success"] is True
-    assert result["discarded"] == ["config/providers.json"]
-    assert calls == [
-        "build",
-        "status",
-        "diff",
-        "discard-paths:config/providers.json",
-        "apply-paths:config/providers.json",
+        "discard",
+        "apply-replace",
         "reload",
     ]

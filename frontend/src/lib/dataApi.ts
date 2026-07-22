@@ -9,9 +9,6 @@ export interface SyncProfile {
   auto_sync_enabled: boolean;
   interval_hours: number;
   auto_resolve_enabled: boolean;
-  encrypted_secret_sync_enabled: boolean;
-  secret_sync_available: boolean;
-  synced_keys?: string[] | null;
   last_revision?: string | null;
   last_sync_at?: string | null;
 }
@@ -23,32 +20,6 @@ export interface SyncStatus {
   forbidden_paths?: string[];
   git?: Record<string, unknown>;
   payload_hashes?: Record<string, string>;
-  requires_shibboleth?: boolean;
-  shibboleth_unlocked?: boolean;
-  has_secret_bundles?: boolean;
-  rotation_detected?: {
-    rotation_detected: boolean;
-    mnemonic_version: number;
-    rotated_by_device: string;
-    rotated_at: string | null;
-  } | null;
-  vault?: SecretVaultInfo;
-}
-
-export interface SecretVaultInfo {
-  exists: boolean;
-  vault_keys: string[];
-  key_meta?: Record<string, { written_by: string | null; written_at: string | null }>;
-  local_keys: string[];
-  local_only_keys: string[];
-  vault_only_keys: string[];
-  synced_keys: string[];
-  devices: { device_id: string; device_name: string; mnemonic_version: number }[];
-  this_device_enrolled: boolean;
-  rotated_by_device: string | null;
-  rotated_at: string | null;
-  mnemonic_version: number | null;
-  mnemonic_fingerprint: string | null;
 }
 
 export type SyncOperation = 'push' | 'pull' | 'auto';
@@ -58,7 +29,7 @@ export type SyncDirection = 'outgoing' | 'incoming';
 
 export interface SyncFileChange {
   path: string;
-  category: 'config' | 'skills' | 'memory' | 'secrets' | 'sync' | 'other';
+  category: 'config' | 'skills' | 'memory' | 'sync' | 'other';
   change_type: SyncChangeType;
   risk: SyncRisk;
   direction?: SyncDirection;
@@ -228,32 +199,25 @@ export function githubSyncPlan(operation: SyncOperation, profileId?: string): Pr
 
 export function githubSyncPull(
   profileId?: string,
-  shibboleth?: string,
   confirmDestructive = false,
   preferCloud = false,
-  paths?: string[],
 ): Promise<Record<string, unknown>> {
   const body: Record<string, unknown> = profileId ? { profile_id: profileId } : {};
-  if (shibboleth) body.shibboleth = shibboleth;
   if (confirmDestructive) body.confirm_destructive = true;
   if (preferCloud) body.prefer_cloud = true;
-  if (paths) body.paths = paths;
   return postJson<Record<string, unknown>>('/sync/pull', body);
 }
 
-export function githubSyncDiscardOutgoing(profileId?: string, paths?: string[]): Promise<Record<string, unknown>> {
+export function githubSyncDiscardOutgoing(profileId?: string): Promise<Record<string, unknown>> {
   const body: Record<string, unknown> = profileId ? { profile_id: profileId } : {};
-  if (paths) body.paths = paths;
   return postJson<Record<string, unknown>>('/sync/discard-outgoing', body);
 }
 
 export function githubSyncPush(
   profileId?: string,
-  shibboleth?: string,
   confirmDestructive = false,
 ): Promise<Record<string, unknown>> {
   const body: Record<string, unknown> = profileId ? { profile_id: profileId } : {};
-  if (shibboleth) body.shibboleth = shibboleth;
   if (confirmDestructive) body.confirm_destructive = true;
   return postJson<Record<string, unknown>>('/sync/push', body);
 }
@@ -271,39 +235,4 @@ export function saveSyncAutoConfig(profileId: string, autoSyncEnabled: boolean, 
     interval_hours: intervalHours,
     auto_resolve_enabled: autoResolveEnabled,
   });
-}
-
-export function enableEncryptedSecretSync(profileId: string, mnemonic: string): Promise<SyncProfile & { mnemonic_version?: number; mnemonic_fingerprint?: string }> {
-  return postJson('/sync/secrets/enable', { profile_id: profileId, mnemonic });
-}
-
-export function disableEncryptedSecretSync(profileId: string): Promise<SyncProfile> {
-  return postJson<SyncProfile>('/sync/secrets/disable', { profile_id: profileId });
-}
-
-export function unlockMnemonic(profileId: string, mnemonic: string): Promise<{ success: boolean }> {
-  return postJson('/sync/secrets/unlock', { profile_id: profileId, mnemonic });
-}
-
-export function rotateMnemonic(profileId: string, mnemonic: string): Promise<{ success: boolean; mnemonic_version: number; mnemonic_fingerprint: string }> {
-  return postJson('/sync/secrets/rotate', { profile_id: profileId, mnemonic });
-}
-
-export function registerDeviceMnemonic(profileId: string, mnemonic: string): Promise<{ success: boolean }> {
-  return postJson('/sync/secrets/register-device', { profile_id: profileId, mnemonic });
-}
-
-export function setSyncedKeys(profileId: string, syncedKeys: string[] | null): Promise<SyncProfile> {
-  return postJson<SyncProfile>('/sync/secrets/synced-keys', {
-    profile_id: profileId,
-    synced_keys: syncedKeys,
-  });
-}
-
-export function checkMnemonic(profileId: string, mnemonic: string): Promise<{ valid: boolean; matches: boolean | null }> {
-  return postJson('/sync/secrets/check-mnemonic', { profile_id: profileId, mnemonic });
-}
-
-export function removeVaultKeys(profileId: string, keys: string[]): Promise<{ success: boolean; removed: string[] }> {
-  return postJson('/sync/secrets/remove-keys', { profile_id: profileId, keys });
 }
