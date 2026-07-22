@@ -28,6 +28,7 @@ def context(
     tmp_path: Path,
     *,
     mode: PermissionMode = PermissionMode.DEFAULT,
+    interaction_profile: str = "interactive",
     tool_approval_policy: dict[str, str] | None = None,
     tool_permission_policies: dict | None = None,
     permission_rules: list[dict] | None = None,
@@ -35,7 +36,7 @@ def context(
     return PermissionContext(
         chat_id="chat-1",
         mode=mode,
-        interaction_profile="interactive",
+        interaction_profile=interaction_profile,
         tool_approval_policy=tool_approval_policy or {},
         tool_permission_policies=tool_permission_policies or {},
         permission_rules=parse_rules(permission_rules or []),
@@ -176,7 +177,7 @@ async def test_auto_mode_classifies_unresolved_tool(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_auto_mode_blocks_risky_classifier_result(tmp_path: Path) -> None:
+async def test_auto_mode_prompts_for_risky_classifier_result(tmp_path: Path) -> None:
     decision = await PermissionEngine(
         classifier=Classifier(should_block=True)
     ).evaluate(
@@ -184,8 +185,45 @@ async def test_auto_mode_blocks_risky_classifier_result(tmp_path: Path) -> None:
         context(tmp_path, mode=PermissionMode.AUTO),
     )
 
+    assert decision.behavior == CommandDecision.ASK
+    assert decision.reason_code == "auto_classifier_high_risk"
+    assert decision.risk.value == "high"
+
+
+@pytest.mark.asyncio
+async def test_auto_mode_headless_blocks_risky_classifier_result(
+    tmp_path: Path,
+) -> None:
+    decision = await PermissionEngine(
+        classifier=Classifier(should_block=True)
+    ).evaluate(
+        ToolPermissionRequest("social_message", {"message": "hello"}),
+        context(
+            tmp_path,
+            mode=PermissionMode.AUTO,
+            interaction_profile="headless",
+        ),
+    )
+
     assert decision.behavior == CommandDecision.DENY
     assert decision.reason_code == "auto_classifier_block"
+
+
+@pytest.mark.asyncio
+async def test_auto_mode_prompts_for_high_risk_shell_policy(
+    tmp_path: Path,
+) -> None:
+    decision = await PermissionEngine().evaluate(
+        ToolPermissionRequest(
+            "bash_execute",
+            {"content": "chmod 777 secrets.txt", "language": "command"},
+        ),
+        context(tmp_path, mode=PermissionMode.AUTO),
+    )
+
+    assert decision.behavior == CommandDecision.ASK
+    assert decision.reason_code == "shell_policy_high_risk"
+    assert decision.risk.value == "critical"
 
 
 @pytest.mark.asyncio

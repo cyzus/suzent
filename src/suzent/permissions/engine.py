@@ -7,9 +7,7 @@ from typing import Any
 from suzent.permissions.actions import build_approval_decision
 from suzent.permissions.auto import AutoPermissionClassifier
 from suzent.permissions.auto.denial_tracker import (
-    limit_exceeded,
     record_allowed,
-    record_denied,
 )
 from suzent.permissions.context import PermissionContext
 from suzent.permissions.models import (
@@ -140,6 +138,7 @@ class PermissionEngine:
         if (
             context.mode == PermissionMode.AUTO
             and decision.behavior == CommandDecision.ASK
+            and decision.reason_code != "shell_policy_high_risk"
         ):
             return await self._evaluate_auto(request, context, decision)
         return decision
@@ -206,19 +205,17 @@ class PermissionEngine:
                 },
             )
 
-        denial_state = record_denied(context.chat_id)
-        if (
-            limit_exceeded(denial_state)
-            and context.interaction_profile == "interactive"
-        ):
+        if context.interaction_profile == "interactive":
             payload = fallback.model_dump(by_alias=True)
             payload.update(
                 {
-                    "reason": (
-                        "Auto mode repeatedly blocked actions. "
-                        f"Review this request manually: {result.reason}"
-                    ),
-                    "reasonCode": "auto_denial_limit",
+                    "reason": result.reason,
+                    "reasonCode": "auto_classifier_high_risk",
+                    "risk": PermissionRisk.HIGH.value,
+                    "metadata": {
+                        "confidence": result.confidence,
+                        "risk_categories": result.risk_categories,
+                    },
                 }
             )
             return PermissionDecision.model_validate(payload)
@@ -230,8 +227,6 @@ class PermissionEngine:
             metadata={
                 "confidence": result.confidence,
                 "risk_categories": result.risk_categories,
-                "consecutive_denials": denial_state.consecutive,
-                "total_denials": denial_state.total,
             },
         )
 
@@ -358,6 +353,19 @@ class PermissionEngine:
                 metadata=evaluation.metadata,
             )
         if evaluation.decision == CommandDecision.DENY:
+            if (
+                context.mode == PermissionMode.AUTO
+                and context.interaction_profile == "interactive"
+            ):
+                payload = build_approval_decision(
+                    request.tool_name,
+                    request.args,
+                    reason=evaluation.reason,
+                    reason_code="shell_policy_high_risk",
+                    risk=PermissionRisk.CRITICAL,
+                ).model_dump(by_alias=True)
+                payload["metadata"] = evaluation.metadata
+                return PermissionDecision.model_validate(payload)
             return _decision(
                 CommandDecision.DENY,
                 evaluation.reason,

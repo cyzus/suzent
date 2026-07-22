@@ -322,27 +322,26 @@ class BashTool(Tool):
                 baseline_eval.decision == CommandDecision.DENY
                 and baseline_eval.reason.startswith(baseline_hard_reasons)
             ):
+                tool_call_approved = bool(getattr(ctx, "tool_call_approved", False))
                 self.audit_operation(
                     self.tool_name,
                     "policy",
-                    "deny",
+                    "allow" if tool_call_approved else "ask",
                     language=lang,
                     mode="baseline",
                     reason=baseline_eval.reason,
                     description=description,
                     command_class=baseline_eval.command_class.value,
                 )
-                return self._error_result(
-                    ToolErrorCode.PERMISSION_DENIED,
-                    f"Command blocked by baseline guardrails: {baseline_eval.reason}",
-                    mode="unknown",
-                    language=lang,
-                    timeout=timeout,
-                    background=background,
-                    policy_decision="deny",
-                    policy_reason=baseline_eval.reason,
-                    command_class=baseline_eval.command_class.value,
-                )
+                if not tool_call_approved:
+                    raise ApprovalRequired(
+                        metadata={
+                            "reason": baseline_eval.reason,
+                            "mode": "baseline",
+                            "command_class": baseline_eval.command_class.value,
+                            "description": description,
+                        }
+                    )
 
             baseline_ask_reasons = (
                 "Command requires approval due to shell chaining semantics",
@@ -393,17 +392,21 @@ class BashTool(Tool):
             )
 
             if policy_eval.decision == CommandDecision.DENY:
-                return self._error_result(
-                    ToolErrorCode.PERMISSION_DENIED,
-                    f"Command blocked by bash policy: {policy_eval.reason}",
-                    mode="unknown",
-                    language=lang,
-                    timeout=timeout,
-                    background=background,
-                    policy_decision=policy_eval.decision.value,
-                    policy_reason=policy_eval.reason,
-                    command_class=policy_eval.command_class.value,
-                )
+                approved_high_risk = bool(
+                    getattr(ctx, "tool_call_approved", False)
+                ) and policy_eval.reason.startswith(baseline_hard_reasons)
+                if not approved_high_risk:
+                    return self._error_result(
+                        ToolErrorCode.PERMISSION_DENIED,
+                        f"Command blocked by bash policy: {policy_eval.reason}",
+                        mode="unknown",
+                        language=lang,
+                        timeout=timeout,
+                        background=background,
+                        policy_decision=policy_eval.decision.value,
+                        policy_reason=policy_eval.reason,
+                        command_class=policy_eval.command_class.value,
+                    )
 
             if policy_eval.decision == CommandDecision.ASK:
                 if not bool(getattr(ctx, "tool_call_approved", False)):

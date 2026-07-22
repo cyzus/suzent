@@ -8,7 +8,7 @@ from suzent.config import CONFIG
 from suzent.tools.shell.bash_tool import BashTool
 
 
-def _ctx(tmp_path, sandbox_enabled=False):
+def _ctx(tmp_path, sandbox_enabled=False, approved=False):
     deps = SimpleNamespace(
         chat_id="chat-1",
         sandbox_enabled=sandbox_enabled,
@@ -18,10 +18,10 @@ def _ctx(tmp_path, sandbox_enabled=False):
         auto_approve_tools=False,
         tool_approval_policy={},
     )
-    return SimpleNamespace(deps=deps)
+    return SimpleNamespace(deps=deps, tool_call_approved=approved)
 
 
-def test_policy_blocks_dangerous_command_when_enabled(monkeypatch, tmp_path):
+def test_policy_prompts_for_dangerous_command_when_unapproved(monkeypatch, tmp_path):
     tool = BashTool()
 
     monkeypatch.setattr(
@@ -30,16 +30,44 @@ def test_policy_blocks_dangerous_command_when_enabled(monkeypatch, tmp_path):
         {"bash_execute": {"enabled": True, "mode": "accept_edits"}},
     )
 
+    with pytest.raises(ApprovalRequired):
+        tool.forward(
+            _ctx(tmp_path),
+            content="sudo ls",
+            description="List files with sudo",
+            language="command",
+        )
+
+
+def test_approved_dangerous_command_reaches_execution(monkeypatch, tmp_path):
+    tool = BashTool()
+
+    class _Process:
+        returncode = 0
+
+        def __init__(self, _cmd, **kwargs):
+            kwargs["stdout"].write(b"approved\n")
+            kwargs["stdout"].flush()
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+    monkeypatch.setattr("suzent.tools.shell.bash_tool.subprocess.Popen", _Process)
+    monkeypatch.setattr(
+        CONFIG,
+        "permission_policies",
+        {"bash_execute": {"enabled": True, "mode": "accept_edits"}},
+    )
+
     result = tool.forward(
-        _ctx(tmp_path),
+        _ctx(tmp_path, approved=True),
         content="sudo ls",
         description="List files with sudo",
         language="command",
     )
 
-    assert not result.success
-    assert result.error_code.value == "permission_denied"
-    assert "baseline guardrails" in result.message.lower()
+    assert result.success
+    assert "approved" in result.message
 
 
 def test_policy_asks_unknown_command_in_full_approval(monkeypatch, tmp_path):

@@ -3,6 +3,7 @@ Social Brain: The bridge between Social Channels and the Suzent Agent.
 """
 
 import asyncio
+from datetime import datetime, timezone
 import secrets
 import string
 import time
@@ -25,6 +26,62 @@ from suzent.core.stream_registry import (
 logger = get_logger(__name__)
 
 _TOKEN_CHARS = string.ascii_uppercase + string.digits
+
+
+def _pending_approval_payload(req: ApprovalRequest) -> dict:
+    return {
+        "approvalId": req.request_id,
+        "toolCallId": req.tool_call_id or req.request_id,
+        "toolName": req.tool_name,
+        "args": req.args,
+        "decision": req.decision or {},
+        "savedAt": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _ensure_approval_decision(req: ApprovalRequest) -> ApprovalRequest:
+    decision = req.decision if isinstance(req.decision, dict) else None
+    if decision and isinstance(decision.get("actions"), list) and decision["actions"]:
+        return req
+
+    from suzent.permissions.actions import build_approval_decision
+
+    req.decision = build_approval_decision(
+        req.tool_name,
+        req.args,
+        reason="This restored social tool call requires approval",
+        reason_code="social_approval_contract_restored",
+    ).model_dump(mode="json", by_alias=True)
+    return req
+
+
+def _persist_pending_approval_session(
+    chat_id: str,
+    requests: list[ApprovalRequest],
+) -> None:
+    if not requests:
+        return
+    db = get_database()
+    chat = db.get_chat(chat_id)
+    if chat is None:
+        return
+    existing = (chat.config or {}).get("_pending_approvals") or []
+    if not isinstance(existing, list):
+        existing = []
+    incoming = [
+        _pending_approval_payload(_ensure_approval_decision(req)) for req in requests
+    ]
+    incoming_ids = {
+        str(item.get("toolCallId") or item.get("approvalId") or "") for item in incoming
+    }
+    remaining = [
+        item
+        for item in existing
+        if not isinstance(item, dict)
+        or str(item.get("toolCallId") or item.get("approvalId") or "")
+        not in incoming_ids
+    ]
+    db.merge_chat_config(chat_id, {"_pending_approvals": [*remaining, *incoming]})
 
 
 def get_active_social_brain() -> Optional["SocialBrain"]:
@@ -699,6 +756,7 @@ class SocialBrain(BaseBrain):
 
             async def on_event(event):
                 if isinstance(event, ApprovalRequest):
+                    event = _ensure_approval_decision(event)
                     logger.info(
                         f"SocialBrain: Collected approval request for {event.tool_name}"
                     )
@@ -792,6 +850,17 @@ class SocialBrain(BaseBrain):
                     sender_id=message.sender_id,
                 )
                 self._sessions[social_chat_id] = session
+                try:
+                    _persist_pending_approval_session(
+                        social_chat_id,
+                        collected_approvals,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to persist social pending approvals for {}: {}",
+                        social_chat_id,
+                        exc,
+                    )
                 await self._prompt_next_approval(session)
 
             # Send Final Response (non-streaming path, or steer)
@@ -910,8 +979,10 @@ class SocialBrain(BaseBrain):
             platform, target_id, f"{status} {tool_name}{remember_label}"
         )
 
-        # Persist "always" policy for this session
-        if remember and req:
+        # Persist legacy "always" policy for this session. Modern approval
+        # requests carry a decision contract; those are remembered by resuming
+        # with action_id=allow_session so ChatProcessor applies permissionUpdates.
+        if remember and req and not req.decision:
             is_bash = req.tool_name in ("bash_execute", "BashTool")
             if is_bash and approved:
                 # For bash, store a prefix rule on the base command in the chat DB
@@ -980,6 +1051,7 @@ class SocialBrain(BaseBrain):
 
             async def on_event(event):
                 if isinstance(event, _AR):
+                    event = _ensure_approval_decision(event)
                     logger.info(
                         f"SocialBrain: New approval request during resume for {event.tool_name}"
                     )
@@ -1005,6 +1077,17 @@ class SocialBrain(BaseBrain):
                     sender_id=session.sender_id,
                 )
                 self._sessions[social_chat_id] = new_session
+                try:
+                    _persist_pending_approval_session(
+                        social_chat_id,
+                        new_approvals,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to persist resumed social pending approvals for {}: {}",
+                        social_chat_id,
+                        exc,
+                    )
                 await self._prompt_next_approval(new_session)
                 return  # agent hasn't finished yet; response will come after approvals
 
