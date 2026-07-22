@@ -498,6 +498,7 @@ export function GitHubSyncSection({
   const [intervalHours, setIntervalHours] = useState(4);
   const [autoResolve, setAutoResolve] = useState(true);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [githubAuthLoading, setGithubAuthLoading] = useState(true);
   const [githubAuthenticated, setGithubAuthenticated] = useState(false);
   const [githubUsername, setGithubUsername] = useState<string | null>(null);
   const [githubTokenExpired, setGithubTokenExpired] = useState(false);
@@ -518,17 +519,30 @@ export function GitHubSyncSection({
   const syncPlanWatcherRunning = useRef(false);
 
   useEffect(() => {
-    refresh().catch(() => setSyncStatus(null));
-    Promise.all([fetchSyncQuickstartInfo(), fetchGitHubAuthStatus()])
-      .then(([info, authStatus]) => {
+    let cancelled = false;
+    refresh().catch(() => {
+      if (!cancelled) setSyncStatus(null);
+    });
+    fetchSyncQuickstartInfo()
+      .then((info) => {
+        if (cancelled) return;
         setRepoPath((current) => current || info.default_repo_path);
         if (!repoName) setRepoName(info.default_repo_name || 'suzent-brain');
+      })
+      .catch(() => {});
+    fetchGitHubAuthStatus()
+      .then((authStatus) => {
+        if (cancelled) return;
         setGithubAuthenticated(authStatus.authenticated);
         setGithubUsername(authStatus.username ?? null);
         setGithubTokenExpired(authStatus.token_expired ?? false);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setGithubAuthLoading(false);
+      });
     return () => {
+      cancelled = true;
       if (pollTimer.current) clearTimeout(pollTimer.current);
     };
   }, []);
@@ -923,7 +937,7 @@ export function GitHubSyncSection({
       />
 
       {/* GitHub sign-in / device flow */}
-      {githubTokenExpired && devicePhase === 'idle' && (
+      {!githubAuthLoading && githubTokenExpired && devicePhase === 'idle' && (
         <div className="mb-3 border-2 border-brutal-black bg-red-50 dark:bg-red-900/20 p-3 flex items-start gap-2">
           <span className="text-red-600 dark:text-red-400 text-xs font-bold uppercase shrink-0">⚠</span>
           <div className="flex-1 min-w-0">
@@ -932,7 +946,17 @@ export function GitHubSyncSection({
           </div>
         </div>
       )}
-      {!githubAuthenticated && devicePhase === 'idle' && (
+      {githubAuthLoading && devicePhase === 'idle' && (
+        <div className="mb-4 flex items-center justify-center gap-2 border-2 border-brutal-black/20 bg-neutral-100 px-4 py-3 text-neutral-500 dark:bg-zinc-900 dark:text-neutral-400">
+          <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path strokeLinecap="round" d="M8 2a6 6 0 1 1-4.243 1.757" />
+          </svg>
+          <span className="text-xs font-bold uppercase">
+            {t('settings.data.githubCheckingAuth')}
+          </span>
+        </div>
+      )}
+      {!githubAuthLoading && !githubAuthenticated && devicePhase === 'idle' && (
         <div className="mb-4">
           <button
             type="button"
@@ -1088,7 +1112,7 @@ export function GitHubSyncSection({
             })()}
           </>
         ) : (
-          <ActionBtn onClick={handleQuickStart} disabled={busy || !githubAuthenticated} title={t('settings.data.githubQuickStartButton')} primary>
+          <ActionBtn onClick={handleQuickStart} disabled={busy || githubAuthLoading || !githubAuthenticated} title={t('settings.data.githubQuickStartButton')} primary>
             {busy
               ? <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="M8 2a6 6 0 1 1-4.243 1.757" /></svg>
               : <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M13 8A5 5 0 1 1 8 3" /><path strokeLinecap="round" strokeLinejoin="round" d="M13 3v4h-4" /></svg>

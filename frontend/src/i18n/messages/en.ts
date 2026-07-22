@@ -311,6 +311,7 @@ export const en = {
       githubRepoNameLabel: 'GitHub repository name',
       githubRepoNameHint: 'Creates or links username/{name} on GitHub (private). You can rename it before starting.',
       githubSignInButton: 'Sign in with GitHub',
+      githubCheckingAuth: 'Checking GitHub sign-in',
       githubSignInDesc: 'Authorize Suzent to access your GitHub repositories.',
       githubSignInCode: 'Open {url} and enter this code:',
       githubSignInWaiting: 'Waiting for authorization…',

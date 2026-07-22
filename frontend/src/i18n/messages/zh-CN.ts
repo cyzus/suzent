@@ -311,6 +311,7 @@ export const zhCN = {
       githubRepoNameLabel: 'GitHub 仓库名称',
       githubRepoNameHint: '在 GitHub 上创建或关联 用户名/{name}（私有）。开始前可修改名称。',
       githubSignInButton: '使用 GitHub 登录',
+      githubCheckingAuth: '正在检查 GitHub 登录状态',
       githubSignInDesc: '授权 Suzent 访问您的 GitHub 仓库。',
       githubSignInCode: '打开 {url} 并输入此验证码：',
       githubSignInWaiting: '等待授权…',
