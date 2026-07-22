@@ -50,24 +50,6 @@ class GitHubSyncProvider:
             "clean": self.is_clean(),
         }
 
-    def preview_pull(self) -> dict:
-        self.validate(require_clean=False)
-        output = self._fetch()
-        local = self._git("rev-parse", "HEAD").strip()
-        remote_ref = f"{self.remote}/{self.branch}"
-        remote = self._git("rev-parse", remote_ref).strip()
-        merge_base = self._git("merge-base", "HEAD", remote_ref).strip()
-        ahead = len(self._git("rev-list", f"{remote_ref}..HEAD").splitlines())
-        behind = len(self._git("rev-list", f"HEAD..{remote_ref}").splitlines())
-        return {
-            "fetch": output,
-            "local": local,
-            "remote": remote,
-            "merge_base": merge_base,
-            "ahead": ahead,
-            "behind": behind,
-        }
-
     def refresh_remote(self) -> None:
         self.validate(require_clean=False)
         self._fetch()
@@ -145,26 +127,15 @@ class GitHubSyncProvider:
         except RuntimeError:
             pass  # nothing untracked to clean — fine either way
 
-    def commit_and_push_payload(self, revision_id: str) -> str:
+    def commit_and_push_payload(self) -> str:
         self.validate(require_clean=False)
         self._git("add", PAYLOAD_DIR_NAME)
         self._ensure_no_unrelated_staged_changes()
         staged = self._git("status", "--porcelain", "--", PAYLOAD_DIR_NAME).strip()
         if not staged:
             return "No sync payload changes to push."
-        if _only_metadata_changed(staged):
-            self._git("restore", "--staged", PAYLOAD_DIR_NAME)
-            return "No meaningful changes to push (only manifest/presence updated)."
-        self._git("commit", "-m", f"sync: update suzent brain {revision_id}")
-        return self._push_with_rebase(revision_id)
-
-    def has_meaningful_payload_changes(self) -> bool:
-        status = self._git("status", "--porcelain", "--", PAYLOAD_DIR_NAME).strip()
-        return bool(status and not _only_metadata_changed(status))
-
-    def payload_status(self) -> str:
-        self.validate(require_clean=False)
-        return self._git("status", "--porcelain", "--", PAYLOAD_DIR_NAME)
+        self._git("commit", "-m", "sync: update portable files")
+        return self._push_with_rebase()
 
     def is_clean(self) -> bool:
         return not self._git("status", "--porcelain").strip()
@@ -227,7 +198,7 @@ class GitHubSyncProvider:
                 pass
             self._git("reset", "--hard", remote_ref)
 
-    def _push_with_rebase(self, revision_id: str) -> str:
+    def _push_with_rebase(self) -> str:
         """Push, rebasing on top of any remote commits that arrived since we committed."""
         try:
             return self._push()
@@ -246,9 +217,9 @@ class GitHubSyncProvider:
             # Hard-reset discarded our commit — re-stage and recommit the payload
             self._git("add", PAYLOAD_DIR_NAME)
             staged = self._git("status", "--porcelain", "--", PAYLOAD_DIR_NAME).strip()
-            if not staged or _only_metadata_changed(staged):
-                return "No meaningful changes after rebase — nothing to push."
-            self._git("commit", "-m", f"sync: update suzent brain {revision_id}")
+            if not staged:
+                return "No changes after rebase — nothing to push."
+            self._git("commit", "-m", "sync: update portable files")
 
         return self._push()
 
@@ -269,26 +240,3 @@ class GitHubSyncProvider:
             command = " ".join(_redact_git_credentials(arg) for arg in args)
             raise RuntimeError(f"git {command} failed: {detail}")
         return completed.stdout
-
-
-def _status_path(line: str) -> str:
-    value = line[3:] if len(line) > 3 else line
-    if " -> " in value:
-        value = value.split(" -> ", 1)[1]
-    return value.strip().replace("\\", "/")
-
-
-# Paths that are always regenerated on every push and carry no meaningful content.
-_METADATA_PREFIXES = (
-    f"{PAYLOAD_DIR_NAME}/_sync/manifest.json",
-    f"{PAYLOAD_DIR_NAME}/_sync/presence/",
-)
-
-
-def _only_metadata_changed(porcelain_output: str) -> bool:
-    """Return True if every staged change is a manifest or presence file."""
-    for line in porcelain_output.splitlines():
-        path = _status_path(line).replace("\\", "/")
-        if not any(path.startswith(p) for p in _METADATA_PREFIXES):
-            return False
-    return True

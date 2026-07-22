@@ -5,21 +5,15 @@ export interface SyncProfile {
   repo_path: string;
   branch: string;
   remote: string;
-  device_id: string;
   auto_sync_enabled: boolean;
   interval_hours: number;
-  auto_resolve_enabled: boolean;
-  last_revision?: string | null;
   last_sync_at?: string | null;
 }
 
 export interface SyncStatus {
   configured: boolean;
   profile?: SyncProfile;
-  payload_dir?: string;
-  forbidden_paths?: string[];
   git?: Record<string, unknown>;
-  payload_hashes?: Record<string, string>;
 }
 
 export type SyncOperation = 'push' | 'pull' | 'auto';
@@ -29,7 +23,7 @@ export type SyncDirection = 'outgoing' | 'incoming';
 
 export interface SyncFileChange {
   path: string;
-  category: 'config' | 'skills' | 'memory' | 'sync' | 'other';
+  category: 'config' | 'skills' | 'memory' | 'other';
   change_type: SyncChangeType;
   risk: SyncRisk;
   direction?: SyncDirection;
@@ -159,7 +153,6 @@ export function runSyncQuickstart(options?: {
   branch?: string;
   remote?: string;
   auto_sync_enabled?: boolean;
-  auto_resolve_enabled?: boolean;
   interval_hours?: number;
 }): Promise<SyncQuickstartResult> {
   return postJson<SyncQuickstartResult>('/sync/quickstart', {
@@ -168,7 +161,6 @@ export function runSyncQuickstart(options?: {
     branch: options?.branch?.trim() || undefined,
     remote: options?.remote?.trim() || undefined,
     auto_sync_enabled: options?.auto_sync_enabled ?? true,
-    auto_resolve_enabled: options?.auto_resolve_enabled ?? true,
     interval_hours: options?.interval_hours ?? 4,
   });
 }
@@ -181,13 +173,6 @@ export async function fetchSyncStatus(): Promise<SyncStatus> {
 
 export function saveSyncProfile(profile: Partial<SyncProfile> & { repo_path: string }): Promise<SyncProfile> {
   return postJson<SyncProfile>('/sync/profiles', profile);
-}
-
-export async function fetchSyncAheadBehind(profileId?: string): Promise<{ ahead: number; behind: number }> {
-  const url = `${getApiBase()}/sync/ahead-behind${profileId ? `?profile_id=${encodeURIComponent(profileId)}` : ''}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`ahead-behind check failed: ${res.statusText}`);
-  return res.json();
 }
 
 export function githubSyncPlan(operation: SyncOperation, profileId?: string, refreshRemote = true): Promise<SyncPlan> {
@@ -241,11 +226,10 @@ export function runSync(profileId?: string, confirmDestructive = false): Promise
   return postJson<Record<string, unknown>>('/sync/auto/run', body);
 }
 
-export function saveSyncAutoConfig(profileId: string, autoSyncEnabled: boolean, intervalHours: number, autoResolveEnabled: boolean): Promise<SyncProfile> {
+export function saveSyncAutoConfig(profileId: string, autoSyncEnabled: boolean, intervalHours: number): Promise<SyncProfile> {
   return postJson<SyncProfile>('/sync/auto', {
     profile_id: profileId,
     auto_sync_enabled: autoSyncEnabled,
     interval_hours: intervalHours,
-    auto_resolve_enabled: autoResolveEnabled,
   });
 }

@@ -87,53 +87,6 @@ function ActionBtn({
   );
 }
 
-const SYNC_METADATA_PREFIX = '_sync/';
-
-function SyncedFilesPanel({ hashes }: { hashes?: Record<string, string> }): React.ReactElement | null {
-  const [open, setOpen] = useState(false);
-  // Group portable payload files by top-level directory and hide sync metadata.
-  const groups: Record<string, string[]> = {};
-  for (const rel of Object.keys(hashes ?? {})) {
-    if (rel.startsWith(SYNC_METADATA_PREFIX) || rel === 'manifest.json') continue;
-    const top = rel.split('/')[0] || 'other';
-    (groups[top] ??= []).push(rel);
-  }
-  const groupNames = Object.keys(groups).sort();
-  const total = groupNames.reduce((n, g) => n + groups[g].length, 0);
-  if (total === 0) return null;
-
-  return (
-    <div className="mt-3">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between border-2 border-brutal-black px-3 py-2 text-xs font-bold uppercase bg-neutral-50 dark:bg-zinc-900"
-      >
-        <span>Synced files ({total})</span>
-        <span>{open ? '−' : '+'}</span>
-      </button>
-      {open && (
-        <div className="mt-2 border-2 border-brutal-black bg-white dark:bg-zinc-900 divide-y divide-brutal-black/10 max-h-56 overflow-y-auto">
-          {groupNames.map((g) => (
-            <div key={g} className="px-3 py-2">
-              <p className="text-[10px] font-bold uppercase text-neutral-500 dark:text-neutral-400 mb-1">
-                {g} <span className="text-neutral-300 dark:text-neutral-600">({groups[g].length})</span>
-              </p>
-              <ul className="space-y-0.5">
-                {groups[g].sort().map((rel) => (
-                  <li key={rel} className="font-mono text-[11px] truncate dark:text-neutral-300" title={rel}>
-                    {rel.slice(g.length + 1) || rel}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function syncChangeStatus(changeType: SyncFileChange['change_type']): string {
   if (changeType === 'added') return 'A';
   if (changeType === 'deleted') return 'D';
@@ -161,19 +114,12 @@ function syncGroupLabel(category: SyncFileChange['category']): string {
   return category;
 }
 
-function shouldShowSyncChange(change: SyncFileChange): boolean {
-  if (change.category === 'sync') return change.risk !== 'low';
-  if (change.path === 'memory/.index_state.json') return false;
-  return true;
-}
-
 function syncDirectionOf(change: SyncFileChange): SyncDirection {
   return change.direction ?? 'outgoing';
 }
 
 function syncPlanKey(plan: SyncPlan): string {
   const files = plan.files
-    .filter(shouldShowSyncChange)
     .map((file) => `${file.change_type}:${file.risk}:${file.category}:${file.path}`)
     .sort()
     .join('|');
@@ -260,10 +206,9 @@ function SyncReviewPanel({
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [loadingFile, setLoadingFile] = useState<string | null>(null);
   const [loadedDiffs, setLoadedDiffs] = useState<Record<string, string>>({});
-  const reviewFiles = plan.files.filter(shouldShowSyncChange);
+  const reviewFiles = plan.files;
   const visibleFiles = reviewFiles.slice(0, 80);
   const hiddenCount = Math.max(0, reviewFiles.length - visibleFiles.length);
-  const hiddenMetadataCount = plan.files.length - reviewFiles.length;
   const summary = reviewFiles.reduce(
     (acc, file) => {
       acc[file.change_type] += 1;
@@ -284,16 +229,18 @@ function SyncReviewPanel({
     return acc;
   }, { outgoing: {}, incoming: {} });
   const sortedCategoryNames = (groups: Record<string, SyncFileChange[]>): string[] => Object.keys(groups).sort((a, b) => {
-    const order = ['memory', 'config', 'skills', 'sync', 'other'];
+    const order = ['memory', 'config', 'skills', 'other'];
     return (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 99 : order.indexOf(b));
   });
   const directionOrder: SyncDirection[] = ['outgoing', 'incoming'];
-  const outgoingCount = directionOrder.includes('outgoing')
-    ? Object.values(directionGroups.outgoing).reduce((total, files) => total + files.length, 0)
-    : 0;
-  const incomingCount = directionOrder.includes('incoming')
-    ? Object.values(directionGroups.incoming).reduce((total, files) => total + files.length, 0)
-    : 0;
+  const outgoingCount = Object.values(directionGroups.outgoing).reduce(
+    (total, files) => total + files.length,
+    0,
+  );
+  const incomingCount = Object.values(directionGroups.incoming).reduce(
+    (total, files) => total + files.length,
+    0,
+  );
 
   const fileKey = (file: SyncFileChange): string => `${syncDirectionOf(file)}:${file.path}`;
   const toggleFile = async (file: SyncFileChange): Promise<void> => {
@@ -453,11 +400,6 @@ function SyncReviewPanel({
             {t('settings.data.githubReviewFilesHidden', { count: hiddenCount })}
           </div>
         )}
-        {hiddenMetadataCount > 0 && (
-          <div className="px-3 py-2 font-mono text-[10px] text-neutral-400 dark:text-neutral-500">
-            {t('settings.data.githubReviewMetadataHidden', { count: hiddenMetadataCount })}
-          </div>
-        )}
       </div>
 
       <div className="flex items-center justify-between border-t-2 border-brutal-black bg-[#eeeeee] dark:bg-[#252526] px-3 py-2">
@@ -542,7 +484,6 @@ export function GitHubSyncSection({
   const [remote, setRemote] = useState('origin');
   const [autoSync, setAutoSync] = useState(true);
   const [intervalHours, setIntervalHours] = useState(4);
-  const [autoResolve, setAutoResolve] = useState(true);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [githubAuthLoading, setGithubAuthLoading] = useState(true);
   const [githubAuthenticated, setGithubAuthenticated] = useState(false);
@@ -609,7 +550,7 @@ export function GitHubSyncSection({
       try {
         const plan = await githubSyncPlan('auto', profileId, refreshRemote);
         if (cancelled) return;
-        if (plan.files.filter(shouldShowSyncChange).length === 0) {
+        if (plan.files.length === 0) {
           setPendingPlan(null);
           setReviewPlan((current) => (current?.operation === 'auto' ? null : current));
           setReviewOperation((current) => (current === 'auto' ? null : current));
@@ -651,7 +592,7 @@ export function GitHubSyncSection({
     const profileId = syncStatus?.profile?.id;
     if (!profileId) return;
     try {
-      await saveSyncAutoConfig(profileId, nextAutoSync, nextInterval, autoResolve);
+      await saveSyncAutoConfig(profileId, nextAutoSync, nextInterval);
     } catch {
       // non-critical — ignore
     }
@@ -663,7 +604,6 @@ export function GitHubSyncSection({
     setRemote(profile.remote);
     setAutoSync(profile.auto_sync_enabled);
     setIntervalHours(profile.interval_hours);
-    setAutoResolve(profile.auto_resolve_enabled);
   }
 
   async function handleSignIn(): Promise<void> {
@@ -743,7 +683,6 @@ export function GitHubSyncSection({
         branch: branch.trim() || 'main',
         remote: remote.trim() || 'origin',
         auto_sync_enabled: autoSync,
-        auto_resolve_enabled: autoResolve,
         interval_hours: intervalHours,
       });
       applyProfile(result.profile);
@@ -779,11 +718,10 @@ export function GitHubSyncSection({
         remote: remote.trim() || 'origin',
         auto_sync_enabled: autoSync,
         interval_hours: intervalHours,
-        auto_resolve_enabled: autoResolve,
       });
       applyProfile(profile);
       if (syncStatus?.profile) {
-        await saveSyncAutoConfig(profile.id, autoSync, intervalHours, autoResolve);
+        await saveSyncAutoConfig(profile.id, autoSync, intervalHours);
       }
       await refresh();
       onNotify(t('settings.data.githubSaved'), false);
@@ -833,7 +771,7 @@ export function GitHubSyncSection({
         setDismissedPlanKey(null);
         await refresh();
         const nextPlan = await githubSyncPlan('auto', profile.id, false);
-        setPendingPlan(nextPlan.files.some(shouldShowSyncChange) ? nextPlan : null);
+        setPendingPlan(nextPlan.files.length > 0 ? nextPlan : null);
         onNotify(t(successKey), false);
         if (notifyComplete) onSyncComplete?.();
       } catch (error) {
@@ -879,7 +817,7 @@ export function GitHubSyncSection({
       setDismissedPlanKey(null);
       await refresh();
       const nextPlan = await githubSyncPlan('auto', profile.id, false);
-      setPendingPlan(nextPlan.files.some(shouldShowSyncChange) ? nextPlan : null);
+      setPendingPlan(nextPlan.files.length > 0 ? nextPlan : null);
       const count = result.discarded?.length ?? 0;
       onNotify(
         count > 0
@@ -912,7 +850,7 @@ export function GitHubSyncSection({
             ),
           }
         : current);
-      if (remaining.some(shouldShowSyncChange) && reviewPlan) {
+      if (remaining.length > 0 && reviewPlan) {
         setReviewPlan({ ...reviewPlan, files: remaining });
       } else {
         setReviewPlan(null);
@@ -921,8 +859,8 @@ export function GitHubSyncSection({
       }
       onNotify(t('settings.data.githubDiscardedFile', { path: file.path }), false);
       void githubSyncPlan(operation, profile.id, false).then((plan) => {
-        setPendingPlan(plan.files.some(shouldShowSyncChange) ? plan : null);
-        if (plan.files.some(shouldShowSyncChange)) {
+        setPendingPlan(plan.files.length > 0 ? plan : null);
+        if (plan.files.length > 0) {
           setReviewPlan(plan);
           setReviewOperation(operation);
         }
@@ -956,7 +894,7 @@ export function GitHubSyncSection({
       setDismissedPlanKey(null);
       await refresh();
       const nextPlan = await githubSyncPlan('auto', profile.id, false);
-      setPendingPlan(nextPlan.files.some(shouldShowSyncChange) ? nextPlan : null);
+      setPendingPlan(nextPlan.files.length > 0 ? nextPlan : null);
       onNotify(t('settings.data.githubCloudApplied'), false);
       onSyncComplete?.();
     } catch (error) {
@@ -972,7 +910,7 @@ export function GitHubSyncSection({
   }
 
   const configured = Boolean(syncStatus?.configured && syncStatus.profile);
-  const pendingFiles = pendingPlan?.files.filter(shouldShowSyncChange) ?? [];
+  const pendingFiles = pendingPlan?.files ?? [];
   const incomingFileCount = pendingFiles.filter(
     (file) => syncDirectionOf(file) === 'incoming',
   ).length;
@@ -1213,8 +1151,6 @@ export function GitHubSyncSection({
         </p>
       )}
 
-      {configured && <SyncedFilesPanel hashes={syncStatus?.payload_hashes} />}
-
       <button
         type="button"
         onClick={() => setAdvancedOpen((open) => !open)}
@@ -1250,11 +1186,6 @@ export function GitHubSyncSection({
               hours
             </label>
           </div>
-          {syncStatus?.profile?.last_revision !== undefined && (
-            <p className="font-mono text-xs text-neutral-500 dark:text-neutral-400">
-              {t('settings.data.githubLastRevision')}: {syncStatus.profile.last_revision || t('settings.data.githubNone')}
-            </p>
-          )}
         </div>
       )}
     </SettingsCard>

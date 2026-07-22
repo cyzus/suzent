@@ -2,24 +2,21 @@ import asyncio
 from pathlib import Path
 
 from suzent.sync import service as service_module
-from suzent.sync.models import SyncManifest, SyncProfile
+from suzent.sync.models import SyncProfile
 from suzent.sync.payload import PAYLOAD_DIR_NAME
 from suzent.sync.service import GitHubSyncService
 
 
 class FakePayloadBuilder:
+    current_hashes: dict[str, str] = {}
+    preview_hashes: dict[str, str] = {}
+
     def __init__(self, calls: list[str]) -> None:
         self.calls = calls
 
-    def build(self, repo_path: Path, profile: SyncProfile) -> SyncManifest:
+    def build(self, repo_path: Path) -> None:
         self.calls.append("build")
         (repo_path / PAYLOAD_DIR_NAME).mkdir(parents=True, exist_ok=True)
-        return SyncManifest(
-            revision_id="rev-local",
-            source_device=profile.device_id,
-            included_paths=[],
-            content_hashes={},
-        )
 
     def validate_no_forbidden_paths(self, payload_dir: Path) -> list[str]:
         self.calls.append("validate")
@@ -27,11 +24,11 @@ class FakePayloadBuilder:
 
     def content_hashes(self, payload_dir: Path) -> dict[str, str]:
         self.calls.append("hashes")
-        return {"memory/MEMORY.md": "cloud"}
+        return self.current_hashes
 
     def preview_content_hashes(self, payload_dir: Path) -> dict[str, str]:
         self.calls.append("preview-hashes")
-        return {}
+        return self.preview_hashes
 
     def apply_to_local(
         self, payload_dir: Path, *, replace_memory: bool = False
@@ -55,42 +52,22 @@ class FakePayloadBuilder:
 
 class FakeProvider:
     git_output = "pushed"
-    meaningful_changes = True
-    payload_status_output = ""
-    payload_diff_output = ""
     payload_remote_status_output = ""
-    payload_remote_diff_output = ""
     calls: list[str] = []
 
     def __init__(self, repo_path: Path, *, remote: str, branch: str) -> None:
         self.repo_path = repo_path
 
-    def commit_and_push_payload(self, revision_id: str) -> str:
+    def commit_and_push_payload(self) -> str:
         self.calls.append("push")
         return self.git_output
 
     def refresh_remote(self) -> None:
         self.calls.append("fetch")
 
-    def has_meaningful_payload_changes(self) -> bool:
-        self.calls.append("changed")
-        return self.meaningful_changes
-
-    def payload_status(self) -> str:
-        self.calls.append("status")
-        return self.payload_status_output
-
-    def payload_worktree_diff_patch(self) -> str:
-        self.calls.append("diff")
-        return self.payload_diff_output
-
     def payload_diff_name_status(self, left_ref: str, right_ref: str) -> str:
         self.calls.append("remote-status")
         return self.payload_remote_status_output
-
-    def payload_diff_patch(self, left_ref: str, right_ref: str) -> str:
-        self.calls.append("remote-diff")
-        return self.payload_remote_diff_output
 
     def pull_ff_only(self) -> str:
         self.calls.append("pull")
@@ -109,6 +86,8 @@ def test_watched_plan_does_not_fetch_remote_or_generate_patches(
     calls: list[str] = []
     FakeProvider.calls = calls
     FakeProvider.payload_remote_status_output = ""
+    FakePayloadBuilder.current_hashes = {"memory/MEMORY.md": "cloud"}
+    FakePayloadBuilder.preview_hashes = {"memory/MEMORY.md": "cloud"}
     monkeypatch.setattr(service_module, "GitHubSyncProvider", FakeProvider)
     service = GitHubSyncService(
         profiles_path=tmp_path / "profiles.json",
@@ -127,11 +106,9 @@ def test_auto_sync_pushes_local_payload_before_remote_apply(
     calls: list[str] = []
     FakeProvider.calls = calls
     FakeProvider.git_output = "pushed"
-    FakeProvider.meaningful_changes = True
-    FakeProvider.payload_status_output = ""
-    FakeProvider.payload_diff_output = ""
     FakeProvider.payload_remote_status_output = ""
-    FakeProvider.payload_remote_diff_output = ""
+    FakePayloadBuilder.current_hashes = {"config/default.yaml": "cloud"}
+    FakePayloadBuilder.preview_hashes = {"config/default.yaml": "local"}
     monkeypatch.setattr(service_module, "GitHubSyncProvider", FakeProvider)
     monkeypatch.setattr(
         service_module, "_reload_runtime", lambda: calls.append("reload")
@@ -147,12 +124,12 @@ def test_auto_sync_pushes_local_payload_before_remote_apply(
 
     assert calls == [
         "fetch",
+        "hashes",
+        "preview-hashes",
+        "remote-status",
+        "pull",
         "build",
         "validate",
-        "status",
-        "remote-status",
-        "changed",
-        "pull",
         "push",
     ]
 
@@ -163,11 +140,11 @@ def test_auto_sync_applies_remote_when_local_payload_has_no_changes(
     calls: list[str] = []
     FakeProvider.calls = calls
     FakeProvider.git_output = "No sync payload changes to push."
-    FakeProvider.meaningful_changes = False
-    FakeProvider.payload_status_output = ""
-    FakeProvider.payload_diff_output = ""
-    FakeProvider.payload_remote_status_output = ""
-    FakeProvider.payload_remote_diff_output = ""
+    FakeProvider.payload_remote_status_output = (
+        "M\tsuzent-sync/skills/remote/SKILL.md\n"
+    )
+    FakePayloadBuilder.current_hashes = {"memory/MEMORY.md": "cloud"}
+    FakePayloadBuilder.preview_hashes = {"memory/MEMORY.md": "cloud"}
     monkeypatch.setattr(service_module, "GitHubSyncProvider", FakeProvider)
     monkeypatch.setattr(
         service_module, "_reload_runtime", lambda: calls.append("reload")
@@ -183,11 +160,9 @@ def test_auto_sync_applies_remote_when_local_payload_has_no_changes(
 
     assert calls == [
         "fetch",
-        "build",
-        "validate",
-        "status",
+        "hashes",
+        "preview-hashes",
         "remote-status",
-        "changed",
         "pull",
         "apply",
         "reload",
@@ -199,17 +174,9 @@ def test_auto_sync_blocks_destructive_memory_deletes(
 ) -> None:
     calls: list[str] = []
     FakeProvider.calls = calls
-    FakeProvider.meaningful_changes = True
-    FakeProvider.payload_status_output = " D suzent-sync/memory/archive/2026-07-08.md\n"
     FakeProvider.payload_remote_status_output = ""
-    FakeProvider.payload_remote_diff_output = ""
-    FakeProvider.payload_diff_output = """diff --git a/suzent-sync/memory/archive/2026-07-08.md b/suzent-sync/memory/archive/2026-07-08.md
-deleted file mode 100644
---- a/suzent-sync/memory/archive/2026-07-08.md
-+++ /dev/null
-@@ -1 +0,0 @@
--old memory
-"""
+    FakePayloadBuilder.current_hashes = {"memory/archive/2026-07-08.md": "cloud"}
+    FakePayloadBuilder.preview_hashes = {}
     monkeypatch.setattr(service_module, "GitHubSyncProvider", FakeProvider)
 
     service = GitHubSyncService(
@@ -226,9 +193,8 @@ deleted file mode 100644
     assert result["plan"]["files"][0]["direction"] == "outgoing"
     assert calls == [
         "fetch",
-        "build",
-        "validate",
-        "status",
+        "hashes",
+        "preview-hashes",
         "remote-status",
     ]
 
@@ -238,13 +204,11 @@ def test_auto_sync_blocks_mixed_incoming_and_outgoing_changes(
 ) -> None:
     calls: list[str] = []
     FakeProvider.calls = calls
-    FakeProvider.meaningful_changes = True
-    FakeProvider.payload_status_output = " M suzent-sync/config/local.yaml\n"
-    FakeProvider.payload_diff_output = ""
     FakeProvider.payload_remote_status_output = (
         "M\tsuzent-sync/skills/remote/SKILL.md\n"
     )
-    FakeProvider.payload_remote_diff_output = ""
+    FakePayloadBuilder.current_hashes = {"config/default.yaml": "cloud"}
+    FakePayloadBuilder.preview_hashes = {"config/default.yaml": "local"}
     monkeypatch.setattr(service_module, "GitHubSyncProvider", FakeProvider)
 
     service = GitHubSyncService(
@@ -274,16 +238,9 @@ def test_discard_outgoing_restores_local_from_cloud_payload(
 ) -> None:
     calls: list[str] = []
     FakeProvider.calls = calls
-    FakeProvider.payload_status_output = " M suzent-sync/memory/MEMORY.md\n"
-    FakeProvider.payload_diff_output = """diff --git a/suzent-sync/memory/MEMORY.md b/suzent-sync/memory/MEMORY.md
---- a/suzent-sync/memory/MEMORY.md
-+++ b/suzent-sync/memory/MEMORY.md
-@@ -1 +1 @@
--cloud
-+local
-"""
     FakeProvider.payload_remote_status_output = ""
-    FakeProvider.payload_remote_diff_output = ""
+    FakePayloadBuilder.current_hashes = {"memory/MEMORY.md": "cloud"}
+    FakePayloadBuilder.preview_hashes = {"memory/MEMORY.md": "local"}
     monkeypatch.setattr(service_module, "GitHubSyncProvider", FakeProvider)
     monkeypatch.setattr(
         service_module, "_reload_runtime", lambda: calls.append("reload")
@@ -313,12 +270,9 @@ def test_discard_outgoing_can_restore_one_selected_path(
 ) -> None:
     calls: list[str] = []
     FakeProvider.calls = calls
-    FakeProvider.payload_status_output = (
-        " M suzent-sync/memory/MEMORY.md\n M suzent-sync/config/providers.json\n"
-    )
-    FakeProvider.payload_diff_output = ""
     FakeProvider.payload_remote_status_output = ""
-    FakeProvider.payload_remote_diff_output = ""
+    FakePayloadBuilder.current_hashes = {"config/config.yaml": "cloud"}
+    FakePayloadBuilder.preview_hashes = {"config/config.yaml": "local"}
     monkeypatch.setattr(service_module, "GitHubSyncProvider", FakeProvider)
     monkeypatch.setattr(
         service_module,
@@ -333,12 +287,12 @@ def test_discard_outgoing_can_restore_one_selected_path(
     profile = service.save_profile(SyncProfile(repo_path=str(tmp_path / "repo")))
 
     result = asyncio.run(
-        service.discard_outgoing(profile.id, paths=["config/providers.json"])
+        service.discard_outgoing(profile.id, paths=["config/config.yaml"])
     )
 
-    assert result["discarded"] == ["config/providers.json"]
+    assert result["discarded"] == ["config/config.yaml"]
     assert calls == [
-        "discard-paths:config/providers.json",
-        "apply-paths:config/providers.json",
+        "discard-paths:config/config.yaml",
+        "apply-paths:config/config.yaml",
         "reload",
     ]

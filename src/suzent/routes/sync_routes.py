@@ -22,8 +22,7 @@ from suzent.sync.github_device_flow import (
     poll,
     start,
 )
-from suzent.sync.models import SyncConflict, SyncProfile
-from suzent.sync.payload import PAYLOAD_DIR_NAME
+from suzent.sync.models import SyncProfile
 from suzent.sync.service import DestructiveSyncPlanError, GitHubSyncService
 
 _SESSION_TTL = 900
@@ -69,7 +68,6 @@ async def quickstart_sync(request: Request) -> JSONResponse:
                 branch=payload.get("branch"),
                 remote=payload.get("remote"),
                 auto_sync_enabled=bool(payload.get("auto_sync_enabled", True)),
-                auto_resolve_enabled=bool(payload.get("auto_resolve_enabled", True)),
                 interval_hours=int(payload.get("interval_hours", 4)),
             )
         )
@@ -100,15 +98,6 @@ async def validate_sync_profile(request: Request) -> JSONResponse:
         return JSONResponse(service.validate(profile))
     except FileNotFoundError as exc:
         return _error_response(str(exc), 404)
-    except Exception as exc:
-        return _error_response(str(exc), 400)
-
-
-async def get_sync_ahead_behind(request: Request) -> JSONResponse:
-    try:
-        profile_id = request.query_params.get("profile_id")
-        result = _service(request).preview_pull(profile_id)
-        return JSONResponse({"ahead": result["ahead"], "behind": result["behind"]})
     except Exception as exc:
         return _error_response(str(exc), 400)
 
@@ -216,8 +205,6 @@ async def save_auto_config(request: Request) -> JSONResponse:
             profile.auto_sync_enabled = bool(payload["auto_sync_enabled"])
         if "interval_hours" in payload:
             profile.interval_hours = int(payload["interval_hours"])
-        if "auto_resolve_enabled" in payload:
-            profile.auto_resolve_enabled = bool(payload["auto_resolve_enabled"])
         service.save_profile(profile)
         return JSONResponse(profile.model_dump(mode="json"))
     except Exception as exc:
@@ -236,30 +223,6 @@ async def run_auto_sync(request: Request) -> JSONResponse:
         )
     except Exception as exc:
         return _error_response(str(exc), 400)
-
-
-async def resolve_conflicts_agent(request: Request) -> JSONResponse:
-    try:
-        payload = await _json_payload(request)
-        service = _service(request)
-        profile = service.get_profile(payload.get("profile_id"))
-        conflict = SyncConflict.model_validate(
-            {
-                "conflicting_paths": payload.get("conflicting_paths", []),
-                "status": "resolving",
-                "resolution_mode": "agent",
-            }
-        )
-        result = await service.conflict_resolver.resolve_preview(
-            conflict, Path(profile.repo_path) / PAYLOAD_DIR_NAME
-        )
-        return JSONResponse(result.model_dump(mode="json"))
-    except Exception as exc:
-        return _error_response(str(exc), 400)
-
-
-async def stop_conflict_resolution(request: Request) -> JSONResponse:
-    return JSONResponse(_service(request).stop_conflict_resolution())
 
 
 async def start_github_auth(request: Request) -> JSONResponse:

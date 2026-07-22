@@ -96,7 +96,6 @@ def quickstart_github_sync(
     branch: str | None = None,
     remote: str = DEFAULT_REMOTE,
     auto_sync_enabled: bool = True,
-    auto_resolve_enabled: bool = True,
     interval_hours: int = 4,
 ) -> dict:
     actions: list[str] = []
@@ -157,7 +156,6 @@ def quickstart_github_sync(
         branch_name,
         remote=remote,
         auto_sync_enabled=auto_sync_enabled,
-        auto_resolve_enabled=auto_resolve_enabled,
         interval_hours=interval_hours,
     )
 
@@ -195,7 +193,6 @@ def _save_default_profile(
     *,
     remote: str,
     auto_sync_enabled: bool,
-    auto_resolve_enabled: bool,
     interval_hours: int,
 ) -> SyncProfile:
     from suzent.sync.service import GitHubSyncService
@@ -210,7 +207,6 @@ def _save_default_profile(
     profile.branch = branch
     profile.remote = remote
     profile.auto_sync_enabled = auto_sync_enabled
-    profile.auto_resolve_enabled = auto_resolve_enabled
     profile.interval_hours = max(1, interval_hours)
     return service.save_profile(profile)
 

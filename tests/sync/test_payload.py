@@ -1,6 +1,5 @@
 from pathlib import Path
 
-from suzent.sync.models import SyncProfile
 from suzent.sync.payload import PAYLOAD_DIR_NAME, SyncPayloadBuilder
 
 
@@ -28,10 +27,22 @@ def test_sync_payload_excludes_plaintext_secrets_runtime_chats_and_indexes(
     )
     (config_dir / "node_peers.json").write_text('{"peers": []}', encoding="utf-8")
     (config_dir / "permission-audit.jsonl").write_text("{}\n", encoding="utf-8")
+    (config_dir / "permissions.yaml").write_text("allow: local\n", encoding="utf-8")
+    (config_dir / "node_identity.json").write_text(
+        '{"node_identity":"device-local"}', encoding="utf-8"
+    )
+    (config_dir / "mcp_servers.json").write_text(
+        '{"server":{"headers":{"Authorization":"secret"}}}', encoding="utf-8"
+    )
+    (config_dir / "chatgpt").mkdir()
+    (config_dir / "chatgpt" / "auth.json").write_text(
+        '{"access_token":"secret"}', encoding="utf-8"
+    )
     skills_dir.mkdir()
     (skills_dir / "writer.md").write_text("enabled", encoding="utf-8")
     memory_dir.mkdir(parents=True)
     (memory_dir / "MEMORY.md").write_text("remember", encoding="utf-8")
+    (memory_dir / "attachment.json").write_text('{"local":true}', encoding="utf-8")
     (memory_dir / "sessions" / "abc").mkdir(parents=True)
     (memory_dir / "sessions" / "abc" / "context.md").write_text(
         "local", encoding="utf-8"
@@ -50,10 +61,10 @@ def test_sync_payload_excludes_plaintext_secrets_runtime_chats_and_indexes(
         user_skills_dir=skills_dir,
         sandbox_data_path=data_dir / "sandbox",
     )
-    manifest = builder.build(repo, SyncProfile(repo_path=str(repo)))
+    builder.build(repo)
 
     payload_dir = repo / PAYLOAD_DIR_NAME
-    included = set(manifest.included_paths)
+    included = set(builder.content_hashes(payload_dir))
     assert "config/default.yaml" in included
     assert "skills/writer.md" in included
     assert "memory/MEMORY.md" in included
@@ -67,9 +78,14 @@ def test_sync_payload_excludes_plaintext_secrets_runtime_chats_and_indexes(
     assert not (payload_dir / "config" / "node_host_devices.json").exists()
     assert not (payload_dir / "config" / "node_peers.json").exists()
     assert not (payload_dir / "config" / "permission-audit.jsonl").exists()
+    assert not (payload_dir / "config" / "permissions.yaml").exists()
+    assert not (payload_dir / "config" / "node_identity.json").exists()
+    assert not (payload_dir / "config" / "mcp_servers.json").exists()
+    assert not (payload_dir / "config" / "chatgpt").exists()
+    assert not (payload_dir / "memory" / "attachment.json").exists()
 
 
-def test_manifest_hashes_change_when_portable_file_changes(tmp_path: Path):
+def test_payload_hashes_change_when_portable_file_changes(tmp_path: Path):
     config_dir = tmp_path / "config"
     skills_dir = tmp_path / "skills"
     memory_dir = tmp_path / "sandbox" / "shared" / "memory"
@@ -86,15 +102,13 @@ def test_manifest_hashes_change_when_portable_file_changes(tmp_path: Path):
         user_skills_dir=skills_dir,
         sandbox_data_path=tmp_path / "sandbox",
     )
-    profile = SyncProfile(repo_path=str(repo))
-    first = builder.build(repo, profile)
+    builder.build(repo)
+    first = builder.content_hashes(repo / PAYLOAD_DIR_NAME)
     config_file.write_text("a: 2\n", encoding="utf-8")
-    second = builder.build(repo, profile)
+    builder.build(repo)
+    second = builder.content_hashes(repo / PAYLOAD_DIR_NAME)
 
-    assert (
-        first.content_hashes["config/default.yaml"]
-        != second.content_hashes["config/default.yaml"]
-    )
+    assert first["config/default.yaml"] != second["config/default.yaml"]
 
 
 def test_build_preserves_existing_payload_memory_when_local_memory_is_partial(
@@ -127,9 +141,9 @@ def test_build_preserves_existing_payload_memory_when_local_memory_is_partial(
         sandbox_data_path=tmp_path / "sandbox",
     )
 
-    manifest = builder.build(repo, SyncProfile(repo_path=str(repo)))
+    builder.build(repo)
 
-    included = set(manifest.included_paths)
+    included = set(builder.content_hashes(repo / PAYLOAD_DIR_NAME))
     assert "memory/MEMORY.md" in included
     assert "memory/archive/2026-07-08.md" in included
     assert "memory/archive/2026-07-09.md" in included
@@ -156,10 +170,9 @@ def test_build_removes_legacy_secret_bundle_from_portable_payload(tmp_path: Path
         sandbox_data_path=tmp_path / "sandbox",
     )
 
-    manifest = builder.build(repo, SyncProfile(repo_path=str(repo)))
+    builder.build(repo)
 
     assert not bundles_path.exists()
-    assert "_sync/secrets/bundles.json" not in manifest.included_paths
 
 
 def test_apply_to_local_preserves_device_local_sync_profile(tmp_path: Path):
@@ -178,6 +191,9 @@ def test_apply_to_local_preserves_device_local_sync_profile(tmp_path: Path):
         '{"profiles": [{"repo_path": "local-device"}]}',
         encoding="utf-8",
     )
+    (target_config / "mcp_servers.json").write_text(
+        '{"headers":{"Authorization":"local-secret"}}', encoding="utf-8"
+    )
 
     builder = SyncPayloadBuilder(
         user_config_dir=target_config,
@@ -192,6 +208,9 @@ def test_apply_to_local_preserves_device_local_sync_profile(tmp_path: Path):
         encoding="utf-8"
     ) == "remote: true\n"
     assert "local-device" in (target_config / "sync_profiles.json").read_text(
+        encoding="utf-8"
+    )
+    assert "local-secret" in (target_config / "mcp_servers.json").read_text(
         encoding="utf-8"
     )
 
@@ -277,8 +296,8 @@ def test_apply_paths_to_local_restores_only_selected_files(tmp_path: Path):
     target_config = tmp_path / "local" / "config"
     source_config.mkdir(parents=True)
     target_config.mkdir(parents=True)
-    (source_config / "providers.json").write_text('{"cloud": true}\n', encoding="utf-8")
-    (target_config / "providers.json").write_text('{"local": true}\n', encoding="utf-8")
+    (source_config / "config.yaml").write_text("cloud: true\n", encoding="utf-8")
+    (target_config / "config.yaml").write_text("local: true\n", encoding="utf-8")
     (target_config / "other.json").write_text(
         '{"local": "unchanged"}\n', encoding="utf-8"
     )
@@ -289,12 +308,12 @@ def test_apply_paths_to_local_restores_only_selected_files(tmp_path: Path):
         sandbox_data_path=tmp_path / "local" / "sandbox",
     )
 
-    restored = builder.apply_paths_to_local(payload_dir, ["config/providers.json"])
+    restored = builder.apply_paths_to_local(payload_dir, ["config/config.yaml"])
 
-    assert restored == ["config/providers.json"]
-    assert (target_config / "providers.json").read_text(
+    assert restored == ["config/config.yaml"]
+    assert (target_config / "config.yaml").read_text(
         encoding="utf-8"
-    ) == '{"cloud": true}\n'
+    ) == "cloud: true\n"
     assert (target_config / "other.json").read_text(
         encoding="utf-8"
     ) == '{"local": "unchanged"}\n'

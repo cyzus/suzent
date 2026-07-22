@@ -96,7 +96,6 @@ from suzent.routes.sync_routes import (
     create_sync_profile,
     discard_outgoing_sync,
     get_github_auth_status,
-    get_sync_ahead_behind,
     get_sync_file_diff,
     get_sync_plan,
     get_sync_profiles,
@@ -107,11 +106,9 @@ from suzent.routes.sync_routes import (
     pull_sync,
     push_sync,
     quickstart_sync,
-    resolve_conflicts_agent,
     run_auto_sync,
     save_auto_config,
     start_github_auth,
-    stop_conflict_resolution,
     validate_sync_profile,
 )
 from suzent.routes.goal_task_routes import (
@@ -906,7 +903,6 @@ app = Starlette(
         Route("/sync/profiles", get_sync_profiles, methods=["GET"]),
         Route("/sync/profiles", create_sync_profile, methods=["POST"]),
         Route("/sync/validate", validate_sync_profile, methods=["POST"]),
-        Route("/sync/ahead-behind", get_sync_ahead_behind, methods=["GET"]),
         Route("/sync/plan", get_sync_plan, methods=["POST"]),
         Route("/sync/diff", get_sync_file_diff, methods=["POST"]),
         Route("/sync/discard-outgoing", discard_outgoing_sync, methods=["POST"]),
@@ -914,10 +910,6 @@ app = Starlette(
         Route("/sync/push", push_sync, methods=["POST"]),
         Route("/sync/auto", save_auto_config, methods=["POST"]),
         Route("/sync/auto/run", run_auto_sync, methods=["POST"]),
-        Route(
-            "/sync/conflicts/resolve-agent", resolve_conflicts_agent, methods=["POST"]
-        ),
-        Route("/sync/conflicts/stop", stop_conflict_resolution, methods=["POST"]),
         Route("/sync/auth/start", start_github_auth, methods=["POST"]),
         Route("/sync/auth/poll", poll_github_auth, methods=["POST"]),
         Route("/sync/auth/status", get_github_auth_status, methods=["GET"]),

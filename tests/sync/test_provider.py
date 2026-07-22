@@ -43,7 +43,7 @@ def test_provider_pushes_only_sync_payload_to_bare_remote(tmp_path: Path):
     payload.mkdir()
     (payload / "memory.md").write_text("brain", encoding="utf-8")
 
-    result = GitHubSyncProvider(repo, branch="master").commit_and_push_payload("rev1")
+    result = GitHubSyncProvider(repo, branch="master").commit_and_push_payload()
 
     assert "master" in result or result == ""
 
@@ -58,7 +58,7 @@ def test_provider_refuses_unrelated_staged_changes(tmp_path: Path):
     git(repo, "add", "README.md")
 
     with pytest.raises(ValueError, match="staged changes outside the sync payload"):
-        GitHubSyncProvider(repo, branch="master").commit_and_push_payload("rev1")
+        GitHubSyncProvider(repo, branch="master").commit_and_push_payload()
 
 
 def test_push_plan_does_not_modify_repository_worktree(tmp_path: Path):
@@ -78,10 +78,8 @@ def test_push_plan_does_not_modify_repository_worktree(tmp_path: Path):
         sandbox_data_path=tmp_path / "sandbox",
     )
     profile = SyncProfile(repo_path=str(repo), branch="master")
-    manifest = builder.build(repo, profile)
-    GitHubSyncProvider(repo, branch="master").commit_and_push_payload(
-        manifest.revision_id
-    )
+    builder.build(repo)
+    GitHubSyncProvider(repo, branch="master").commit_and_push_payload()
 
     config_file.write_text("model: second\n", encoding="utf-8")
     service = GitHubSyncService(
@@ -107,8 +105,8 @@ def test_discard_one_outgoing_file_leaves_other_change_pending(tmp_path: Path):
     config_dir.mkdir()
     skills_dir.mkdir()
     memory_dir.mkdir(parents=True)
-    first = config_dir / "first.yaml"
-    second = config_dir / "second.yaml"
+    first = config_dir / "default.yaml"
+    second = config_dir / "config.yaml"
     first.write_text("value: cloud-first\n", encoding="utf-8")
     second.write_text("value: cloud-second\n", encoding="utf-8")
 
@@ -118,10 +116,8 @@ def test_discard_one_outgoing_file_leaves_other_change_pending(tmp_path: Path):
         sandbox_data_path=tmp_path / "sandbox",
     )
     profile = SyncProfile(repo_path=str(repo), branch="master")
-    manifest = builder.build(repo, profile)
-    GitHubSyncProvider(repo, branch="master").commit_and_push_payload(
-        manifest.revision_id
-    )
+    builder.build(repo)
+    GitHubSyncProvider(repo, branch="master").commit_and_push_payload()
     first.write_text("value: local-first\n", encoding="utf-8")
     second.write_text("value: local-second\n", encoding="utf-8")
 
@@ -131,16 +127,14 @@ def test_discard_one_outgoing_file_leaves_other_change_pending(tmp_path: Path):
     service.save_profile(profile)
 
     result = asyncio.run(
-        service.discard_outgoing(profile.id, paths=["config/first.yaml"])
+        service.discard_outgoing(profile.id, paths=["config/default.yaml"])
     )
     remaining = service.preview_sync_plan("push", profile.id)
 
-    assert result["discarded"] == ["config/first.yaml"]
+    assert result["discarded"] == ["config/default.yaml"]
     assert first.read_text(encoding="utf-8") == "value: cloud-first\n"
     assert second.read_text(encoding="utf-8") == "value: local-second\n"
-    assert {change.path for change in remaining.files if change.category != "sync"} == {
-        "config/second.yaml"
-    }
+    assert {change.path for change in remaining.files} == {"config/config.yaml"}
 
 
 def test_pull_clears_untracked_payload_files(tmp_path: Path):

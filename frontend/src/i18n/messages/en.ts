@@ -348,7 +348,6 @@ export const en = {
       githubReviewNoDiff: 'No textual diff available',
       githubReviewLoadingDiff: 'Loading diff…',
       githubReviewFilesHidden: '{count} more files hidden',
-      githubReviewMetadataHidden: '{count} routine sync metadata changes hidden',
       githubReviewHighRisk: '{count} high risk',
       githubReviewDiscard: 'Discard Outgoing',
       githubReviewDiscardTitle: 'Restore local synced files from the current cloud payload and clear outgoing changes',
@@ -375,8 +374,6 @@ export const en = {
       githubPulled: 'GitHub sync payload pulled.',
       githubFailed: 'GitHub sync failed: {error}',
       githubPullConfirm: 'Pull from GitHub sync and replace local portable config, skills, and markdown memory?',
-      githubLastRevision: 'Last revision',
-      githubNone: 'none',
     },
     roles: {
       title: 'Model Roles',

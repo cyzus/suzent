@@ -348,7 +348,6 @@ export const zhCN = {
       githubReviewNoDiff: '没有可显示的文本差异',
       githubReviewLoadingDiff: '正在加载差异…',
       githubReviewFilesHidden: '另有 {count} 个文件未显示',
-      githubReviewMetadataHidden: '另有 {count} 个常规同步元数据更改未显示',
       githubReviewHighRisk: '{count} 项高风险更改',
       githubReviewDiscard: '放弃待推送更改',
       githubReviewDiscardTitle: '从当前云端同步内容恢复本地文件并清除待推送更改',
@@ -375,8 +374,6 @@ export const zhCN = {
       githubPulled: 'GitHub 同步内容已拉取。',
       githubFailed: 'GitHub 同步失败：{error}',
       githubPullConfirm: '从 GitHub 同步拉取并替换本机可迁移配置、技能和 Markdown 记忆？',
-      githubLastRevision: '上次修订',
-      githubNone: '无',
     },
     roles: {
       title: '模型角色',

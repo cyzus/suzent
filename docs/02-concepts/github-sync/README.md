@@ -7,10 +7,10 @@ Markdown memory in a private Git repository. Credentials remain on each device.
 
 | Included in `suzent-sync/` | Device-local only |
 |---|---|
-| Portable configuration | API keys and provider credentials |
+| `default.yaml`, `config.yaml`, and `skills.json` | API keys and provider credentials |
 | User skills | `.env`, `.secret_key`, `secrets.db`, and `local.yaml` |
-| Markdown memory | Chat databases, indexes, caches, and sessions |
-| Manifest and device presence | Sync profiles, pairing state, and device tokens |
+| Markdown memory | Chat databases, indexes, caches, sessions, and non-Markdown attachments |
+| | MCP definitions, permission rules, node identity, and ChatGPT authentication |
 
 The payload builder rejects forbidden paths before push. GitHub sync never
 creates encrypted key bundles and never reads from Suzent's local secret store.
@@ -20,11 +20,10 @@ creates encrypted key bundles and never reads from Suzent's local secret store.
 ```text
 github-sync/
   suzent-sync/
-    _sync/
-      manifest.json
-      presence/
-        <device-id>.json
     config/
+      config.yaml
+      default.yaml
+      skills.json
     skills/
     memory/
 ```
@@ -66,6 +65,9 @@ Protected memory replacement or deletion requires confirmation. Planning hashes
 the portable source trees directly without modifying the repository worktree and
 is serialized with sync execution.
 
+Git commits and refs are the revision source of truth. Sync does not maintain a
+second manifest, device-presence files, revision UUIDs, or Git tags.
+
 Config and skills are reloaded after a successful pull. Device-local excluded
 files are preserved.
 
@@ -85,7 +87,6 @@ All routes are served by the local Suzent HTTP API.
 | `/sync/quickstart/info` | GET | Default paths and GitHub authentication state |
 | `/sync/quickstart` | POST | Create or connect the sync repository |
 | `/sync/profiles` | GET, POST | List or save profiles |
-| `/sync/ahead-behind` | GET | Commits ahead of and behind the remote |
 | `/sync/plan` | POST | Preview file changes without retaining worktree mutations |
 | `/sync/diff` | POST | Load one selected file's textual diff |
 | `/sync/pull` | POST | Pull and apply portable files |
@@ -102,8 +103,8 @@ All routes are served by the local Suzent HTTP API.
 
 Earlier versions could store encrypted API-key bundles under
 `suzent-sync/_sync/secrets/`. File-only sync no longer imports, exports, or
-preserves those bundles. The next payload build removes them from the current
-branch, but historical ciphertext remains in Git history.
+preserves `_sync/`. The next payload build removes that legacy directory from
+the current branch, but historical ciphertext remains in Git history.
 
 Ensure required keys exist in the local secret store before upgrading another
 device. Rotate provider keys if the repository or old recovery phrase may have

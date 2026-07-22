@@ -1,18 +1,14 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import shutil
 import tempfile
 from pathlib import Path
-from uuid import uuid4
 
 from suzent.config import CONFIG, get_data_dir
-from suzent.sync.models import DevicePresence, SyncManifest, SyncProfile
 
 PAYLOAD_DIR_NAME = "suzent-sync"
-MANIFEST_PATH = "_sync/manifest.json"
-PRESENCE_DIR = "_sync/presence"
+PORTABLE_CONFIG_FILES = frozenset({"config.yaml", "default.yaml", "skills.json"})
 
 EXCLUDED_NAMES = {
     ".env",
@@ -58,7 +54,7 @@ class SyncPayloadBuilder:
         self.user_skills_dir = user_skills_dir or base / "skills" / "user"
         self.sandbox_data_path = sandbox_data_path or Path(CONFIG.sandbox_data_path)
 
-    def build(self, repo_path: Path, profile: SyncProfile) -> SyncManifest:
+    def build(self, repo_path: Path) -> None:
         payload_dir = repo_path / PAYLOAD_DIR_NAME
         with tempfile.TemporaryDirectory() as temp_dir:
             preserved_memory = Path(temp_dir) / "memory"
@@ -69,40 +65,16 @@ class SyncPayloadBuilder:
                 shutil.rmtree(payload_dir)
             payload_dir.mkdir(parents=True, exist_ok=True)
 
-            self._copy_tree(self.user_config_dir, payload_dir / "config")
+            self._copy_portable_config(self.user_config_dir, payload_dir / "config")
             self._copy_tree(self.user_skills_dir, payload_dir / "skills")
             # Conversation memory is append-heavy and may be partially missing on a
             # device after recovery. Preserve the repo's existing memory files, then
             # overlay this device's local updates, so a partial local tree does not
             # become an authoritative mass deletion on push.
-            self._copy_tree(preserved_memory, payload_dir / "memory")
-            self._copy_tree(self._memory_dir(), payload_dir / "memory")
-            presence = DevicePresence(
-                device_id=profile.device_id,
-                device_name=_device_name(),
-                status="online",
-                last_sync_revision=profile.last_revision,
+            self._copy_tree(preserved_memory, payload_dir / "memory", suffixes={".md"})
+            self._copy_tree(
+                self._memory_dir(), payload_dir / "memory", suffixes={".md"}
             )
-            presence_path = payload_dir / PRESENCE_DIR / f"{profile.device_id}.json"
-            presence_path.parent.mkdir(parents=True, exist_ok=True)
-            presence_path.write_text(
-                presence.model_dump_json(indent=2), encoding="utf-8"
-            )
-
-            hashes = self.content_hashes(payload_dir)
-            manifest = SyncManifest(
-                revision_id=uuid4().hex,
-                source_device=profile.device_id,
-                included_paths=sorted(hashes),
-                content_hashes=hashes,
-            )
-            manifest_path = payload_dir / MANIFEST_PATH
-            manifest_path.parent.mkdir(parents=True, exist_ok=True)
-            manifest_path.write_text(
-                json.dumps(manifest.model_dump(mode="json"), indent=2, sort_keys=True),
-                encoding="utf-8",
-            )
-            return manifest
 
     def content_hashes(self, payload_dir: Path) -> dict[str, str]:
         hashes: dict[str, str] = {}
@@ -110,17 +82,21 @@ class SyncPayloadBuilder:
             return hashes
         for path in sorted(p for p in payload_dir.rglob("*") if p.is_file()):
             rel = path.relative_to(payload_dir).as_posix()
-            if rel == MANIFEST_PATH:
+            if path.is_symlink() or not _is_allowed_payload_path(Path(rel)):
                 continue
             hashes[rel] = _sha256(path)
         return hashes
 
     def preview_content_hashes(self, payload_dir: Path) -> dict[str, str]:
         hashes: dict[str, str] = {}
-        self._overlay_tree_hashes(self.user_config_dir, "config", hashes)
+        self._overlay_config_hashes(hashes)
         self._overlay_tree_hashes(self.user_skills_dir, "skills", hashes)
-        self._overlay_tree_hashes(payload_dir / "memory", "memory", hashes)
-        self._overlay_tree_hashes(self._memory_dir(), "memory", hashes)
+        self._overlay_tree_hashes(
+            payload_dir / "memory", "memory", hashes, suffixes={".md"}
+        )
+        self._overlay_tree_hashes(
+            self._memory_dir(), "memory", hashes, suffixes={".md"}
+        )
         return hashes
 
     def validate_no_forbidden_paths(self, payload_dir: Path) -> list[str]:
@@ -128,10 +104,10 @@ class SyncPayloadBuilder:
         if not payload_dir.exists():
             return forbidden
         for path in payload_dir.rglob("*"):
+            if not path.is_file():
+                continue
             rel = path.relative_to(payload_dir)
-            if any(_is_excluded_name(part) for part in rel.parts):
-                forbidden.append(rel.as_posix())
-            elif path.is_file() and path.suffix.lower() in EXCLUDED_SUFFIXES:
+            if path.is_symlink() or not _is_allowed_payload_path(rel):
                 forbidden.append(rel.as_posix())
         return sorted(set(forbidden))
 
@@ -139,23 +115,22 @@ class SyncPayloadBuilder:
         self, payload_dir: Path, *, replace_memory: bool = False
     ) -> list[str]:
         restored: list[str] = []
-        replace_mappings = [
-            ("config", self.user_config_dir),
-            ("skills", self.user_skills_dir),
-        ]
-        for name, target in replace_mappings:
-            source = payload_dir / name
-            if not source.exists():
-                continue
-            self._remove_tree_preserving_excluded(target)
-            self._copy_tree(source, target)
-            restored.append(name)
+        config_source = payload_dir / "config"
+        if config_source.exists():
+            self._replace_portable_config(config_source, self.user_config_dir)
+            restored.append("config")
+
+        skills_source = payload_dir / "skills"
+        if skills_source.exists():
+            self._remove_tree_preserving_excluded(self.user_skills_dir)
+            self._copy_tree(skills_source, self.user_skills_dir)
+            restored.append("skills")
 
         memory_source = payload_dir / "memory"
         if memory_source.exists():
             if replace_memory:
-                self._remove_tree_preserving_excluded(self._memory_dir())
-            self._copy_tree(memory_source, self._memory_dir())
+                self._remove_markdown_files(self._memory_dir())
+            self._copy_tree(memory_source, self._memory_dir(), suffixes={".md"})
             restored.append("memory")
         return restored
 
@@ -193,10 +168,14 @@ class SyncPayloadBuilder:
 
         top = rel.parts[0]
         if top == "config":
+            if len(rel.parts) != 2 or rel.parts[1] not in PORTABLE_CONFIG_FILES:
+                return None
             target = self.user_config_dir.joinpath(*rel.parts[1:])
         elif top == "skills":
             target = self.user_skills_dir.joinpath(*rel.parts[1:])
         elif top == "memory":
+            if rel.suffix.lower() != ".md":
+                return None
             target = self._memory_dir().joinpath(*rel.parts[1:])
         else:
             return None
@@ -219,6 +198,8 @@ class SyncPayloadBuilder:
         source: Path,
         prefix: str,
         hashes: dict[str, str],
+        *,
+        suffixes: set[str] | None = None,
     ) -> None:
         if not source.exists():
             return
@@ -228,7 +209,37 @@ class SyncPayloadBuilder:
                 continue
             if not _is_portable_file(path):
                 continue
+            if suffixes is not None and path.suffix.lower() not in suffixes:
+                continue
             hashes[(Path(prefix) / rel).as_posix()] = _sha256(path)
+
+    def _overlay_config_hashes(self, hashes: dict[str, str]) -> None:
+        for name in sorted(PORTABLE_CONFIG_FILES):
+            path = self.user_config_dir / name
+            if path.is_file() and _is_portable_file(path):
+                hashes[(Path("config") / name).as_posix()] = _sha256(path)
+
+    def _copy_portable_config(self, source: Path, target: Path) -> None:
+        for name in sorted(PORTABLE_CONFIG_FILES):
+            self._copy_tree(source / name, target / name)
+
+    def _replace_portable_config(self, source: Path, target: Path) -> None:
+        for name in sorted(PORTABLE_CONFIG_FILES):
+            source_path = source / name
+            target_path = target / name
+            if source_path.is_file():
+                self._copy_tree(source_path, target_path)
+            elif target_path.exists():
+                target_path.unlink()
+
+    def _remove_markdown_files(self, target: Path) -> None:
+        if not target.exists():
+            return
+        for path in sorted(target.rglob("*.md")):
+            if path.is_file() and not any(
+                _is_excluded_name(part) for part in path.relative_to(target).parts
+            ):
+                path.unlink()
 
     def _remove_tree_preserving_excluded(self, target: Path) -> None:
         if not target.exists():
@@ -258,11 +269,19 @@ class SyncPayloadBuilder:
                     dest.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(preserved_path, dest)
 
-    def _copy_tree(self, source: Path, target: Path) -> None:
+    def _copy_tree(
+        self,
+        source: Path,
+        target: Path,
+        *,
+        suffixes: set[str] | None = None,
+    ) -> None:
         if not source.exists():
             return
         if source.is_file():
-            if _is_portable_file(source):
+            if _is_portable_file(source) and (
+                suffixes is None or source.suffix.lower() in suffixes
+            ):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target)
             return
@@ -273,7 +292,9 @@ class SyncPayloadBuilder:
             dest = target / rel
             if child.is_dir():
                 dest.mkdir(parents=True, exist_ok=True)
-            elif _is_portable_file(child):
+            elif _is_portable_file(child) and (
+                suffixes is None or child.suffix.lower() in suffixes
+            ):
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(child, dest)
 
@@ -301,7 +322,14 @@ def _is_excluded_name(name: str) -> bool:
     return name in EXCLUDED_NAMES or name.startswith(".env")
 
 
-def _device_name() -> str:
-    import platform
-
-    return platform.node() or "local-device"
+def _is_allowed_payload_path(rel: Path) -> bool:
+    if len(rel.parts) < 2 or any(_is_excluded_name(part) for part in rel.parts):
+        return False
+    top = rel.parts[0]
+    if top == "config":
+        return len(rel.parts) == 2 and rel.parts[1] in PORTABLE_CONFIG_FILES
+    if top == "skills":
+        return rel.suffix.lower() not in EXCLUDED_SUFFIXES
+    if top == "memory":
+        return rel.suffix.lower() == ".md"
+    return False

@@ -11,8 +11,7 @@ GitHub sync will synchronize:
 
 - portable configuration;
 - user skills;
-- memory files;
-- sync manifests and device-presence metadata.
+- Markdown memory files.
 
 API keys, credentials, provider tokens, recovery phrases, and secret-manager
 sessions will remain device-local. A Bitwarden-compatible secret provider can be
@@ -29,14 +28,14 @@ implemented separately without coupling it to file reconciliation.
 
 ## Portable-file boundary
 
-The payload may contain:
+The payload may contain only:
 
 ```text
-config/
+config/config.yaml
+config/default.yaml
+config/skills.json
 skills/
-memory/
-_sync/manifest.json
-_sync/presence/*.json
+memory/**/*.md
 ```
 
 The payload must exclude:
@@ -51,11 +50,19 @@ node_devices.json
 node_host_devices.json
 node_peers.json
 permission-audit.jsonl
+permissions.yaml
+node_identity.json
+mcp_servers.json
+chatgpt/**
 _sync/secrets/**
 ```
 
 Database files, runtime data, caches, sessions, exports, backups, device tokens,
 and other machine-local state must continue to be excluded.
+
+Configuration uses an allowlist, not an exclusion-only traversal. Pull replaces
+only the three portable configuration files and must preserve every other local
+configuration file, including files introduced by future features.
 
 Tests must prove that representative API-key values cannot enter the payload
 through environment files, local configuration, secret databases, or structured
@@ -109,8 +116,13 @@ Push and automatic-sync planning hash portable source trees directly and compare
 them with the committed payload. Tests must verify that repository status is
 identical before and after planning.
 
-Remove `SECRETS_DIR` and encrypted-bundle preservation. Retain memory
-preservation only if append-only memory is still the documented policy.
+Remove `SECRETS_DIR` and encrypted-bundle preservation. Retain append-only
+Markdown memory preservation. Do not copy non-Markdown memory attachments.
+
+Do not generate `_sync/manifest.json` or `_sync/presence/**`. Git commits and
+refs already provide revision identity, timestamps, and changed paths. Remove
+the random revision UUID, device presence, metadata-only commit filtering, and
+the corresponding status UI.
 
 ### Simplify the sync service
 
@@ -159,7 +171,7 @@ Operation results must not contain `secrets`, `imported_secret_keys`, or
 `SyncFileChange.category` should support:
 
 ```python
-Literal["config", "skills", "memory", "sync", "other"]
+Literal["config", "skills", "memory", "other"]
 ```
 
 Remove secret categories, vault-deletion warnings, and secret-specific diff
@@ -174,7 +186,7 @@ Destructive confirmation remains appropriate for:
 - memory-file deletion;
 - replacement of protected memory files;
 - large deletion batches;
-- removal of a legacy encrypted bundle during the next payload build.
+- removal of legacy `_sync/**` content during the next payload build.
 
 ### Use asymmetric, explicit resolution
 
@@ -216,6 +228,10 @@ Remove the following route handlers and routes:
 Remove `_shibboleth_from_payload`. Pull, push, and automatic-sync requests must
 not accept passphrases or mnemonics.
 
+Also remove the unused `/sync/ahead-behind` and conflict-preview endpoints.
+Mixed changes are handled solely by the explicit review flow; no agent conflict
+resolver or `auto_resolve_enabled` profile option remains.
+
 Keep the file-sync routes:
 
 ```text
@@ -256,6 +272,8 @@ mixed changes belong in the explicit review flow.
 
 From `frontend/src/lib/dataApi.ts`, remove secret-vault types, secret-sync profile
 fields, secret-management functions, and Shibboleth arguments on pull and push.
+Remove the payload inventory and revision UUID display; both duplicate Git state
+and require unnecessary full-payload work during status loading.
 
 Remove obsolete Shibboleth translations from the English and Chinese message
 files. Add translations for the file-only scope statement and any legacy-bundle

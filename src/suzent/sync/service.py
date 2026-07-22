@@ -3,13 +3,11 @@ from __future__ import annotations
 import asyncio
 import difflib
 import json
-import shutil
-import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from suzent.config import get_data_dir
 from suzent.logger import get_logger
-from suzent.sync.conflicts import SyncConflictResolver
 from suzent.sync.models import (
     SyncFileChange,
     SyncPlan,
@@ -47,7 +45,6 @@ class GitHubSyncService:
             profiles_path or get_data_dir() / "config" / "sync_profiles.json"
         )
         self.payload_builder = payload_builder or SyncPayloadBuilder()
-        self.conflict_resolver = SyncConflictResolver()
         self._locks: dict[str, asyncio.Lock] = {}
 
     def list_profiles(self) -> list[SyncProfile]:
@@ -79,7 +76,6 @@ class GitHubSyncService:
         except ValueError:
             return {"configured": False, "profiles": []}
 
-        payload_dir = Path(profile.repo_path) / PAYLOAD_DIR_NAME
         provider = GitHubSyncProvider(
             Path(profile.repo_path), remote=profile.remote, branch=profile.branch
         )
@@ -92,11 +88,6 @@ class GitHubSyncService:
         return {
             "configured": True,
             "profile": profile.model_dump(mode="json"),
-            "payload_dir": str(payload_dir),
-            "payload_hashes": self.payload_builder.content_hashes(payload_dir),
-            "forbidden_paths": self.payload_builder.validate_no_forbidden_paths(
-                payload_dir
-            ),
             "git": validation,
         }
 
@@ -122,7 +113,6 @@ class GitHubSyncService:
         branch: str | None = None,
         remote: str | None = None,
         auto_sync_enabled: bool = True,
-        auto_resolve_enabled: bool = True,
         interval_hours: int = 4,
     ) -> dict:
         return quickstart_github_sync(
@@ -131,19 +121,8 @@ class GitHubSyncService:
             branch=branch,
             remote=remote or "origin",
             auto_sync_enabled=auto_sync_enabled,
-            auto_resolve_enabled=auto_resolve_enabled,
             interval_hours=interval_hours,
         )
-
-    def preview_pull(self, profile_id: str | None = None) -> dict:
-        profile = self.get_profile(profile_id)
-        provider = GitHubSyncProvider(
-            Path(profile.repo_path), remote=profile.remote, branch=profile.branch
-        )
-        result = provider.preview_pull()
-        payload_dir = Path(profile.repo_path) / PAYLOAD_DIR_NAME
-        result["payload_hashes"] = self.payload_builder.content_hashes(payload_dir)
-        return result
 
     def preview_sync_plan(
         self,
@@ -162,13 +141,7 @@ class GitHubSyncService:
 
         if operation in {"push", "auto"}:
             payload_dir = repo_path / PAYLOAD_DIR_NAME
-            current_hashes = {
-                path: digest
-                for path, digest in self.payload_builder.content_hashes(
-                    payload_dir
-                ).items()
-                if _sync_category(path) != "sync"
-            }
+            current_hashes = self.payload_builder.content_hashes(payload_dir)
             preview_hashes = self.payload_builder.preview_content_hashes(payload_dir)
             plan = _plan_from_hashes(operation, current_hashes, preview_hashes)
             if operation == "auto":
@@ -178,14 +151,10 @@ class GitHubSyncService:
                 plan = _merge_plans("auto", [plan, incoming])
             return plan
 
-        preview = provider.preview_pull()
+        provider.refresh_remote()
         remote_ref = f"{profile.remote}/{profile.branch}"
         diff = provider.payload_diff_name_status("HEAD", remote_ref)
-        plan = _plan_from_name_status("pull", diff)
-        behind = int(preview.get("behind") or 0)
-        if behind and not plan.files:
-            plan.warnings.append(f"{behind} remote commit(s) have no payload changes.")
-        return plan
+        return _plan_from_name_status("pull", diff)
 
     async def preview_sync_plan_safe(
         self,
@@ -355,9 +324,11 @@ class GitHubSyncService:
         profile = self.get_profile(profile_id)
         async with self._lock(profile):
             repo_path = Path(profile.repo_path)
-            manifest = await asyncio.to_thread(
-                self.payload_builder.build, repo_path, profile
-            )
+            plan = await asyncio.to_thread(self.preview_sync_plan, "push", profile.id)
+            if plan.requires_confirmation and not confirm_destructive:
+                raise DestructiveSyncPlanError(plan)
+
+            await asyncio.to_thread(self.payload_builder.build, repo_path)
             payload_dir = repo_path / PAYLOAD_DIR_NAME
             forbidden = self.payload_builder.validate_no_forbidden_paths(payload_dir)
             if forbidden:
@@ -366,19 +337,12 @@ class GitHubSyncService:
             provider = GitHubSyncProvider(
                 repo_path, remote=profile.remote, branch=profile.branch
             )
-            plan = _plan_from_status("push", provider.payload_status())
-            if plan.requires_confirmation and not confirm_destructive:
-                raise DestructiveSyncPlanError(plan)
-            git_output = await asyncio.to_thread(
-                provider.commit_and_push_payload, manifest.revision_id
-            )
-            profile.last_revision = manifest.revision_id
-            profile.last_sync_at = manifest.created_at
+            git_output = await asyncio.to_thread(provider.commit_and_push_payload)
+            profile.last_sync_at = datetime.now(timezone.utc)
             self.save_profile(profile)
             return {
                 "success": True,
                 "git": git_output,
-                "manifest": manifest.model_dump(mode="json"),
             }
 
     async def auto_sync(
@@ -395,17 +359,12 @@ class GitHubSyncService:
                 repo_path, remote=profile.remote, branch=profile.branch
             )
             await asyncio.to_thread(provider.refresh_remote)
-            manifest = await asyncio.to_thread(
-                self.payload_builder.build, repo_path, profile
+            plan = await asyncio.to_thread(
+                self.preview_sync_plan,
+                "auto",
+                profile.id,
+                refresh_remote=False,
             )
-
-            forbidden = self.payload_builder.validate_no_forbidden_paths(payload_dir)
-            if forbidden:
-                raise ValueError(f"Sync payload contains forbidden paths: {forbidden}")
-
-            plan = _plan_from_status("auto", provider.payload_status())
-            incoming = _incoming_tracking_plan(provider, profile, "auto")
-            plan = _merge_plans("auto", [plan, incoming])
             if _has_mixed_file_changes(plan):
                 plan.requires_confirmation = True
                 plan.warnings.append(
@@ -424,40 +383,35 @@ class GitHubSyncService:
                 }
 
             restored: list[str] = []
-            local_payload_changed = await asyncio.to_thread(
-                provider.has_meaningful_payload_changes
-            )
-
-            if local_payload_changed:
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    snapshot_dir = Path(temp_dir) / PAYLOAD_DIR_NAME
-                    await asyncio.to_thread(shutil.copytree, payload_dir, snapshot_dir)
-                    await asyncio.to_thread(provider.pull_ff_only)
-                    await asyncio.to_thread(_replace_tree, snapshot_dir, payload_dir)
-                git_output = await asyncio.to_thread(
-                    provider.commit_and_push_payload, manifest.revision_id
-                )
-            else:
-                git_output = "No sync payload changes to push."
+            directions = {change.direction for change in plan.files}
+            if directions == {"incoming"}:
                 await asyncio.to_thread(provider.pull_ff_only)
                 restored = await asyncio.to_thread(
                     self.payload_builder.apply_to_local, payload_dir
                 )
                 await asyncio.to_thread(_reload_runtime)
+                git_output = "Pulled incoming portable files."
+            elif directions == {"outgoing"}:
+                await asyncio.to_thread(provider.pull_ff_only)
+                await asyncio.to_thread(self.payload_builder.build, repo_path)
+                forbidden = self.payload_builder.validate_no_forbidden_paths(
+                    payload_dir
+                )
+                if forbidden:
+                    raise ValueError(
+                        f"Sync payload contains forbidden paths: {forbidden}"
+                    )
+                git_output = await asyncio.to_thread(provider.commit_and_push_payload)
+            else:
+                git_output = "No portable file changes to sync."
 
-            profile.last_revision = manifest.revision_id
-            profile.last_sync_at = manifest.created_at
+            profile.last_sync_at = datetime.now(timezone.utc)
             self.save_profile(profile)
             return {
                 "success": True,
                 "git": git_output,
                 "restored": restored,
-                "manifest": manifest.model_dump(mode="json"),
             }
-
-    def stop_conflict_resolution(self) -> dict:
-        self.conflict_resolver.reset()
-        return {"success": True}
 
     def _lock(self, profile: SyncProfile) -> asyncio.Lock:
         if profile.id not in self._locks:
@@ -576,23 +530,6 @@ def _unified_file_diff(path: str, before: str | None, after: str | None) -> str:
     return _trim_diff_preview("\n".join(patch))
 
 
-def _replace_tree(source: Path, target: Path) -> None:
-    if target.exists():
-        shutil.rmtree(target)
-    shutil.copytree(source, target)
-
-
-def _plan_from_status(operation: str, porcelain_output: str) -> SyncPlan:
-    changes: list[SyncFileChange] = []
-    for line in porcelain_output.splitlines():
-        if not line.strip():
-            continue
-        status = line[:2]
-        path = _status_path(line).removeprefix(f"{PAYLOAD_DIR_NAME}/")
-        changes.append(_make_change(path, _change_type_from_status(status), "outgoing"))
-    return _finalize_plan(operation, changes)
-
-
 def _plan_from_hashes(
     operation: str,
     current_hashes: dict[str, str],
@@ -642,9 +579,7 @@ def _merge_plans(operation: str, plans: list[SyncPlan]) -> SyncPlan:
 
 
 def _has_mixed_file_changes(plan: SyncPlan) -> bool:
-    directions = {
-        change.direction for change in plan.files if change.category != "sync"
-    }
+    directions = {change.direction for change in plan.files}
     return directions == {"incoming", "outgoing"}
 
 
@@ -676,21 +611,6 @@ def _trim_diff_preview(patch: str) -> str:
     return preview
 
 
-def _status_path(line: str) -> str:
-    value = line[3:] if len(line) > 3 else line
-    if " -> " in value:
-        value = value.split(" -> ", 1)[1]
-    return value.strip().replace("\\", "/")
-
-
-def _change_type_from_status(status: str) -> str:
-    if "D" in status:
-        return "deleted"
-    if "A" in status or "?" in status:
-        return "added"
-    return "modified"
-
-
 def _change_type_from_name_status(status: str) -> str:
     if status.startswith("D"):
         return "deleted"
@@ -718,8 +638,6 @@ def _sync_category(path: str) -> str:
         return "skills"
     if path.startswith("memory/"):
         return "memory"
-    if path.startswith("_sync/"):
-        return "sync"
     return "other"
 
 
