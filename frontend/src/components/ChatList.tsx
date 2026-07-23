@@ -25,7 +25,6 @@ import { ChatRowMenu } from './ChatRowMenu';
 import { ProjectRowMenu } from './ProjectRowMenu';
 import { BrutalDialog } from './BrutalDialog';
 import { BrutalButton } from './BrutalButton';
-import { describeCron } from './settings/ScheduleBuilder';
 
 const ALL_PROJECTS_FILTER = '__all__';
 const AUTOMATION_PREVIEW_LIMIT = 5;
@@ -36,6 +35,11 @@ type ChatOrganization = 'projects' | 'list';
 const MoreActionsIcon = (): React.ReactElement => (
   <EllipsisVerticalIcon className="h-4 w-4 stroke-[2.5]" />
 );
+
+const isCronFailureHandledInChat = (job: CronJob): boolean => {
+  if (!job.last_error || !job.chat_updated_at || !job.last_run_finished_at) return false;
+  return new Date(job.chat_updated_at).getTime() > new Date(job.last_run_finished_at).getTime();
+};
 
 interface ChatListProps {
   onOpenAutomation?: () => void;
@@ -546,6 +550,18 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
     setCreatingProjectInline(false);
   };
 
+  const formatNextRun = (dateString: string): string => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const sameDay =
+      date.getFullYear() === now.getFullYear()
+      && date.getMonth() === now.getMonth()
+      && date.getDate() === now.getDate();
+    return date.toLocaleString([], sameDay
+      ? { hour: '2-digit', minute: '2-digit' }
+      : { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
   // ── Move chat to project ──
 
   const handleMoveChatToProject = async (chatId: string, projectId: string) => {
@@ -765,8 +781,8 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   const isSearching = localSearchQuery.trim().length > 0;
   const visibleCronJobs = [...cronJobs]
     .sort((left, right) => {
-      const leftPriority = left.last_error ? 0 : left.active ? 1 : 2;
-      const rightPriority = right.last_error ? 0 : right.active ? 1 : 2;
+      const leftPriority = left.last_error && !isCronFailureHandledInChat(left) ? 0 : left.active ? 1 : 2;
+      const rightPriority = right.last_error && !isCronFailureHandledInChat(right) ? 0 : right.active ? 1 : 2;
       if (leftPriority !== rightPriority) return leftPriority - rightPriority;
       const leftNext = left.next_run_at ? new Date(left.next_run_at).getTime() : Number.MAX_SAFE_INTEGER;
       const rightNext = right.next_run_at ? new Date(right.next_run_at).getTime() : Number.MAX_SAFE_INTEGER;
@@ -894,6 +910,20 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                             {visibleCronJobs.map(job => {
                               const chatId = `cron-${job.id}`;
                               const canOpen = !!job.last_run_at;
+                              const failureHandled = isCronFailureHandledInChat(job);
+                              const unresolvedError = job.last_error && !failureHandled ? job.last_error : null;
+                              const subtitle = !job.active
+                                ? unresolvedError
+                                  ? `${t('chatList.automation.paused')} · ${unresolvedError}`
+                                  : t('chatList.automation.paused')
+                                : unresolvedError
+                                  ? t('chatList.automation.lastRunFailed', { error: unresolvedError })
+                                  : job.next_run_at
+                                    ? t('chatList.automation.nextRunAt', { time: formatNextRun(job.next_run_at) })
+                                    : t('chatList.automation.active');
+                              const latestActivityAt = failureHandled
+                                ? job.chat_updated_at
+                                : job.last_run_at;
                               return (
                                 <div
                                   key={job.id}
@@ -930,23 +960,17 @@ export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
                                         type="button"
                                         disabled={!canOpen && !onOpenAutomation}
                                         onClick={() => canOpen ? openChatById(chatId) : onOpenAutomation?.()}
-                                        title={job.last_error ?? job.last_result ?? undefined}
+                                        title={unresolvedError ?? job.last_result ?? undefined}
                                         className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 bg-transparent px-3.5 py-2 pr-10 text-left disabled:cursor-default"
                                       >
                                         <span className="min-w-0">
                                           <span className="block truncate text-xs font-extrabold leading-tight text-brutal-black dark:text-white">{job.name}</span>
-                                          <span className={`block truncate text-[9px] font-bold leading-tight ${job.last_error ? 'text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'}`}>
-                                            {job.last_error
-                                              ? `${describeCron(job.cron_expr, t)} · ${job.last_error}`
-                                              : describeCron(job.cron_expr, t)}
+                                          <span className={`block truncate text-[9px] font-bold leading-tight ${unresolvedError ? 'text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'}`}>
+                                            {subtitle}
                                           </span>
                                         </span>
                                         <span className="shrink-0 text-[9px] font-bold uppercase text-neutral-400 dark:text-neutral-500">
-                                          {job.last_run_at
-                                            ? formatDate(job.last_run_at)
-                                            : job.active
-                                              ? t('chatList.automation.active')
-                                              : t('chatList.automation.disabled')}
+                                          {latestActivityAt ? formatDate(latestActivityAt) : t('chatList.automation.notYet')}
                                         </span>
                                       </button>
                                       <button

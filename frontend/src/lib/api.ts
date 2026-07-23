@@ -1014,6 +1014,8 @@ export interface CronJob {
   next_run_at: string | null;
   last_result: string | null;
   last_error: string | null;
+  chat_updated_at: string | null;
+  last_run_finished_at: string | null;
   created_at: string;
   updated_at: string;
 }

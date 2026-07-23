@@ -8,11 +8,14 @@ from croniter import croniter
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from suzent.database import CronJobModel, get_database
+from suzent.database import ChatDatabase, CronJobModel, get_database
 
 
-def _job_to_dict(job: CronJobModel) -> dict:
+def _job_to_dict(job: CronJobModel, db: ChatDatabase) -> dict:
     """Serialize a CronJobModel to a JSON-safe dict."""
+    chat = db.get_chat(f"cron-{job.id}")
+    latest_runs = db.list_cron_runs(job.id, limit=1)
+    latest_run = latest_runs[0] if latest_runs else None
     return {
         "id": job.id,
         "name": job.name,
@@ -26,6 +29,12 @@ def _job_to_dict(job: CronJobModel) -> dict:
         "next_run_at": job.next_run_at.isoformat() if job.next_run_at else None,
         "last_result": job.last_result,
         "last_error": job.last_error,
+        "chat_updated_at": chat.updated_at.isoformat() if chat else None,
+        "last_run_finished_at": (
+            latest_run.finished_at.isoformat()
+            if latest_run and latest_run.finished_at
+            else None
+        ),
         "created_at": job.created_at.isoformat(),
         "updated_at": job.updated_at.isoformat(),
     }
@@ -35,7 +44,7 @@ async def list_cron_jobs(request: Request) -> JSONResponse:
     """List all cron jobs."""
     db = get_database()
     jobs = db.list_cron_jobs()
-    return JSONResponse({"jobs": [_job_to_dict(j) for j in jobs]})
+    return JSONResponse({"jobs": [_job_to_dict(j, db) for j in jobs]})
 
 
 async def create_cron_job(request: Request) -> JSONResponse:
@@ -74,7 +83,7 @@ async def create_cron_job(request: Request) -> JSONResponse:
     db.update_cron_job_run_state(job_id, next_run_at=next_run)
 
     job = db.get_cron_job(job_id)
-    return JSONResponse({"job": _job_to_dict(job)}, status_code=201)
+    return JSONResponse({"job": _job_to_dict(job, db)}, status_code=201)
 
 
 async def update_cron_job(request: Request) -> JSONResponse:
@@ -113,7 +122,7 @@ async def update_cron_job(request: Request) -> JSONResponse:
         db.update_cron_job(job_id, **updates)
 
     job = db.get_cron_job(job_id)
-    return JSONResponse({"job": _job_to_dict(job)})
+    return JSONResponse({"job": _job_to_dict(job, db)})
 
 
 async def delete_cron_job(request: Request) -> JSONResponse:
