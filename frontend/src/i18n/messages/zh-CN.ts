@@ -1049,6 +1049,7 @@ export const zhCN = {
     remove: '移除',
     recentFolders: '最近使用',
     noRecentFolders: '暂无最近文件夹',
+    allRecentFoldersMounted: '最近使用的文件夹均已挂载',
     chooseDifferent: '选择其他文件夹…',
     context: '工作目录',
   },

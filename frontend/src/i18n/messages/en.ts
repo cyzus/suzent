@@ -1123,6 +1123,7 @@ export const en = {
     remove: 'Remove',
     recentFolders: 'Recent folders',
     noRecentFolders: 'No recent folders',
+    allRecentFoldersMounted: 'All recent folders are already mounted',
     chooseDifferent: 'Choose a different folder...',
     context: 'Working Dir',
   },

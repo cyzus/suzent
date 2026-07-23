@@ -574,11 +574,11 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="text-brutal-black hover:text-brutal-blue transition-colors disabled:opacity-40 shrink-0"
+                    className="w-9 h-9 flex items-center justify-center bg-transparent text-brutal-black dark:text-white hover:bg-neutral-200 dark:hover:bg-zinc-700 hover:text-brutal-blue transition-colors disabled:opacity-40 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
                     title={t('chatInput.attachFiles')}
                     disabled={!configReady || streamingForCurrentChat || isUploading}
                 >
-                    <PaperClipIcon className="w-6 h-6" />
+                    <PaperClipIcon className="w-5 h-5" />
                 </button>
 
                 {/* Spacer */}
@@ -593,7 +593,8 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                             options={backendConfig!.models}
                             placeholder={t('chatInput.modelPlaceholder').toUpperCase()}
                             dropUp={modelSelectDropUp}
-                            className="h-10 text-sm"
+                            className="h-9 text-sm max-w-[220px]"
+                            buttonClassName="!h-9 !border-0 !bg-neutral-100 dark:!bg-zinc-700 !px-2.5 !py-1.5 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-neutral-200 dark:hover:!bg-zinc-600 focus-visible:!ring-2 focus-visible:!ring-brutal-blue"
                             dropdownClassName="min-w-[200px] right-0"
                         />
                     </div>
@@ -603,7 +604,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 {stopStreaming && streamingForCurrentChat && input.trim() ? (
                     <button
                         type="submit"
-                        className="h-9 border-2 border-brutal-black shadow-[2px_2px_0_0_#000] brutal-btn duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed uppercase shrink-0 bg-brutal-yellow text-brutal-black"
+                        className="h-9 border-2 border-brutal-black duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed uppercase shrink-0 bg-brutal-yellow hover:bg-yellow-300 text-brutal-black focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
                         disabled={!configReady}
                         title={t('chatInput.redirectAgent')}
                     >
@@ -616,7 +617,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                             e.preventDefault();
                             stopStreaming();
                         }}
-                        className="h-9 border-2 border-brutal-black shadow-[2px_2px_0_0_#000] brutal-btn duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-red"
+                        className="h-9 border-2 border-brutal-black duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-red hover:bg-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
                         disabled={stopInFlight}
                         title={t('chatInput.stopGenerating')}
                     >
@@ -625,7 +626,7 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 ) : (
                     <button
                         type="submit"
-                        className="h-9 border-2 border-brutal-black shadow-[2px_2px_0_0_#000] brutal-btn duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue"
+                        className="h-9 border-2 border-brutal-black duration-100 px-4 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase shrink-0 bg-brutal-blue hover:bg-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brutal-blue"
                         disabled={streamingForCurrentChat || !configReady}
                         title={t('chatInput.sendMessage')}
                     >
