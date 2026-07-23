@@ -16,6 +16,7 @@ import { SecurityTab } from './SecurityTab';
 import { useI18n, type Locale } from '../../i18n';
 import { BrutalSelect } from '../BrutalSelect';
 import { FullscreenOverlay } from '../FullscreenOverlay';
+import { closeImmediatelyAndPersist } from './settingsPersistence';
 
 type MCPUrlServer = {
   type: 'url';
@@ -64,6 +65,10 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
   const rolesAutosaveStarted = useRef(false);
   const socialAutosaveStarted = useRef(false);
   const notebookAutosaveStarted = useRef(false);
+  const savedProviderSnapshot = useRef<string | null>(null);
+  const savedRolesSnapshot = useRef<string | null>(null);
+  const savedSocialSnapshot = useRef<string | null>(null);
+  const savedNotebookPath = useRef<string | null>(null);
 
   // Role models + suggestions
   const [roleModels, setRoleModels] = useState<Record<string, string[]>>({});
@@ -98,6 +103,7 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
       setApiKeys(keys);
       setOriginalDisplayValues({ ...keys });
       setUserConfigs(configs);
+      savedProviderSnapshot.current = JSON.stringify({ apiKeys: keys, userConfigs: configs });
     });
   }
 
@@ -113,6 +119,10 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
     rolesAutosaveStarted.current = false;
     socialAutosaveStarted.current = false;
     notebookAutosaveStarted.current = false;
+    savedProviderSnapshot.current = null;
+    savedRolesSnapshot.current = null;
+    savedSocialSnapshot.current = null;
+    savedNotebookPath.current = null;
 
     setLoading(true);
     fetchApiKeys().then(data => {
@@ -141,12 +151,17 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
       setOriginalDisplayValues({ ...initialKeys });
       setUserConfigs(initialConfigs);
       setActiveTabs(initialTabs);
+      savedProviderSnapshot.current = JSON.stringify({
+        apiKeys: initialKeys,
+        userConfigs: initialConfigs,
+      });
       setProvidersLoaded(true);
       setLoading(false);
     });
 
     fetchRoleModels().then(models => {
       setRoleModels(models);
+      savedRolesSnapshot.current = JSON.stringify(models);
       setRolesLoaded(true);
     });
     fetchRoleSuggestions().then(setRoleSuggestions);
@@ -155,6 +170,9 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
       setSocialConfig(config);
       setUseCustomTools(config.tools !== null && config.tools !== undefined);
       setUseCustomMcp(config.mcp_enabled !== null && config.mcp_enabled !== undefined);
+      const socialSnapshot = { ...config };
+      delete socialSnapshot.model;
+      savedSocialSnapshot.current = JSON.stringify(socialSnapshot);
       setSocialLoaded(true);
     });
 
@@ -195,22 +213,31 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
     } else {
       setGlobalNotebookHostPath('');
     }
+    savedNotebookPath.current = notebookVolume
+      ? notebookVolume.substring(0, notebookVolume.lastIndexOf(':')).trim()
+      : '';
     setNotebookLoaded(true);
     setMemoryEnabled(!!(backendConfig?.userPreferences?.memory_enabled));
     setSandboxEnabled(!!(backendConfig?.userPreferences?.sandbox_enabled ?? backendConfig?.sandboxEnabled));
   }, [isOpen, initialCategory]);
 
   async function saveProviderSettings(): Promise<void> {
+    const snapshot = JSON.stringify({ apiKeys, userConfigs });
+    if (snapshot === savedProviderSnapshot.current) return;
+
     const keysToSave: Record<string, string> = {};
     for (const [key, value] of Object.entries(apiKeys)) {
       if (value === originalDisplayValues[key]) continue;
       keysToSave[key] = value;
     }
 
-    await saveApiKeys({
+    const saved = await saveApiKeys({
       ...keysToSave,
       "_PROVIDER_CONFIG_": JSON.stringify(userConfigs),
     });
+    if (!saved) throw new Error('Failed to save provider settings');
+
+    savedProviderSnapshot.current = snapshot;
     if (Object.keys(keysToSave).length > 0) {
       setOriginalDisplayValues(prev => ({ ...prev, ...keysToSave }));
     }
@@ -219,7 +246,21 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
   async function saveSocialSettings(): Promise<void> {
     const socialToSave = { ...socialConfig };
     delete socialToSave.model;
-    await saveSocialConfig(socialToSave);
+    const snapshot = JSON.stringify(socialToSave);
+    if (snapshot === savedSocialSnapshot.current) return;
+
+    const saved = await saveSocialConfig(socialToSave);
+    if (!saved) throw new Error('Failed to save social settings');
+    savedSocialSnapshot.current = snapshot;
+  }
+
+  async function saveRoleSettings(): Promise<void> {
+    const snapshot = JSON.stringify(roleModels);
+    if (snapshot === savedRolesSnapshot.current) return;
+
+    const saved = await saveRoleModels(roleModels);
+    if (!saved) throw new Error('Failed to save model roles');
+    savedRolesSnapshot.current = snapshot;
   }
 
   async function handleSandboxEnabledChange(enabled: boolean): Promise<void> {
@@ -245,27 +286,37 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
   }
 
   async function saveNotebookSettings(): Promise<void> {
-    const sandboxVolumes = globalNotebookHostPath.trim()
-      ? [`${globalNotebookHostPath.trim()}:/mnt/notebook`]
+    const notebookPath = globalNotebookHostPath.trim();
+    if (notebookPath === savedNotebookPath.current) return;
+
+    const sandboxVolumes = notebookPath
+      ? [`${notebookPath}:/mnt/notebook`]
       : [];
 
     await saveGlobalSandboxConfig(sandboxVolumes);
+    savedNotebookPath.current = notebookPath;
     await refreshBackendConfig();
   }
 
-  async function handleClose(): Promise<void> {
-    try {
-      await Promise.all([
-        providersLoaded ? saveProviderSettings() : Promise.resolve(),
-        rolesLoaded ? saveRoleModels(roleModels) : Promise.resolve(),
-        socialLoaded ? saveSocialSettings() : Promise.resolve(),
-        notebookLoaded ? saveNotebookSettings() : Promise.resolve(),
-      ]);
-    } catch (error) {
-      console.error('Failed to save settings before close', error);
-    } finally {
-      onClose();
-    }
+  function handleClose(): void {
+    closeImmediatelyAndPersist(
+      onClose,
+      async () => {
+        const results = await Promise.allSettled([
+          providersLoaded ? saveProviderSettings() : Promise.resolve(),
+          rolesLoaded ? saveRoleSettings() : Promise.resolve(),
+          socialLoaded ? saveSocialSettings() : Promise.resolve(),
+          notebookLoaded ? saveNotebookSettings() : Promise.resolve(),
+        ]);
+
+        for (const result of results) {
+          if (result.status === 'rejected') {
+            console.error('Failed to save settings after close', result.reason);
+          }
+        }
+      },
+      error => console.error('Failed to persist settings after close', error),
+    );
   }
 
   useEffect(() => {
@@ -295,7 +346,7 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'providers' }
 
     const timeoutId = window.setTimeout(async () => {
       try {
-        await saveRoleModels(roleModels);
+        await saveRoleSettings();
       } catch (error) {
         console.error('Failed to save model roles', error);
       }
