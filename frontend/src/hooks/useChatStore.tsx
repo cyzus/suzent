@@ -794,55 +794,57 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; enabled?: boole
     setConfigState(resolved);
     setConfigByChat(prevConfigs => ({ ...prevConfigs, [key]: resolved }));
 
-    // Save reusable preferences for the next new chat without chat-scoped state.
-    try {
-      localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripReusableConfig(resolved)));
-    } catch (e) {
-      console.warn('Failed to save config to localStorage:', e);
-    }
+    // Platform chats own model/tool settings independently (for example,
+    // social chat config and cron model_override). Do not let editing one
+    // silently replace the defaults used by new personal chats.
+    if (!resolved.platform) {
+      try {
+        localStorage.setItem(LAST_CONFIG_KEY, JSON.stringify(stripReusableConfig(resolved)));
+      } catch (e) {
+        console.warn('Failed to save config to localStorage:', e);
+      }
 
-    // Check if preferences actually changed before saving to backend
-    const newPrefs = {
-      model: resolved.model,
-      agent: resolved.agent,
-      tools: resolved.tools,
-      memory_enabled: resolved.memory_enabled,
-      sandbox_enabled: resolved.sandbox_enabled,
-      sandbox_volumes: resolved.sandbox_volumes
-    };
+      const newPrefs = {
+        model: resolved.model,
+        agent: resolved.agent,
+        tools: resolved.tools,
+        memory_enabled: resolved.memory_enabled,
+        sandbox_enabled: resolved.sandbox_enabled,
+        sandbox_volumes: resolved.sandbox_volumes
+      };
 
-    const lastSaved = lastSavedPreferencesRef.current;
-    const prefsChanged = !preferencesEqual(lastSaved, newPrefs);
+      const lastSaved = lastSavedPreferencesRef.current;
+      const prefsChanged = !preferencesEqual(lastSaved, newPrefs);
 
-    if (prefsChanged) {
-      // Save preferences to backend database (async, don't await)
-      import('../lib/api').then(({ saveUserPreferences }) => {
-        saveUserPreferences(newPrefs).then(() => {
-          // Update ref after successful save
-          lastSavedPreferencesRef.current = newPrefs;
+      if (prefsChanged) {
+        // Save preferences to backend database (async, don't await)
+        import('../lib/api').then(({ saveUserPreferences }) => {
+          saveUserPreferences(newPrefs).then(() => {
+            // Update ref after successful save
+            lastSavedPreferencesRef.current = newPrefs;
 
-          // Also update the local backendConfig state so that subsequent calls to 
-          // computeDefaultConfig() (e.g. when starting a new chat) use the updated preferences
-          setBackendConfig(prev => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              userPreferences: {
-                ...(prev.userPreferences || {
-                  model: '',
-                  agent: '',
-                  tools: [],
-                  memory_enabled: false
-                }),
-                ...newPrefs,
-                memory_enabled: !!newPrefs.memory_enabled // Ensure boolean for required field
-              }
-            };
+            // Keep local defaults in sync for subsequently created chats.
+            setBackendConfig(prev => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                userPreferences: {
+                  ...(prev.userPreferences || {
+                    model: '',
+                    agent: '',
+                    tools: [],
+                    memory_enabled: false
+                  }),
+                  ...newPrefs,
+                  memory_enabled: !!newPrefs.memory_enabled
+                }
+              };
+            });
+          }).catch(err => {
+            console.warn('Failed to save preferences to backend:', err);
           });
-        }).catch(err => {
-          console.warn('Failed to save preferences to backend:', err);
         });
-      });
+      }
     }
 
     if (currentChatId && !configsEqual(previousConfig, resolved)) {

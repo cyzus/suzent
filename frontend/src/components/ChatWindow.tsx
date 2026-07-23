@@ -1,7 +1,13 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
 import { useAGUI, type AGUIPart, type ApprovalRememberScope } from '../hooks/useAGUI';
-import { getApiBase, getChatPermissionState, getSandboxParams } from '../lib/api';
+import {
+  fetchCronJobs,
+  getApiBase,
+  getChatPermissionState,
+  getSandboxParams,
+  updateCronJob,
+} from '../lib/api';
 import { stripDenyApprovalPolicies } from '../lib/approvalPolicy';
 import { hideStreamingDrafts } from '../lib/streamingDrafts';
 import { reconcileToolCallMessages } from '../lib/toolCallReconciliation';
@@ -542,6 +548,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [forcedWebContextId, setForcedWebContextId] = useState<string | null>(null);
   const [isBoardFullscreen, setIsBoardFullscreen] = useState(false);
   const [fileMentions, setFileMentions] = useState<FileMentionSelection[]>([]);
+  const [cronModelSelection, setCronModelSelection] = useState<{
+    jobId: number;
+    model: string | null;
+  } | null>(null);
   const [visibleMessageCount, setVisibleMessageCount] = useState(INITIAL_VISIBLE_MESSAGES);
   const prependScrollSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
   const pendingMinimapJumpRef = useRef<number | null>(null);
@@ -1081,15 +1091,74 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const hasHiddenOlderMessages = visibleMessageStartIndex > 0;
   const _prefs = backendConfig?.userPreferences;
   const _base = config || { model: '', agent: '', tools: [] as string[] };
-  // Platform chats (cron, social) have no model/agent — fall back to user prefs.
-  // The config selector is hidden for these chats so users can't override the managed config.
-  const _isPlatformChat = !!(config as any)?.platform;
+  // Platform chats fall back to user preferences when they have no explicit
+  // model/agent. Social chats persist the shared selector in chat config; cron
+  // chats additionally synchronize it with the scheduled job's model_override.
+  const _isPlatformChat = !!config?.platform;
+  const _isCronChat = config?.platform?.toLowerCase() === 'cron';
+  const cronJobId = config?.cron_job_id ?? (
+    _isCronChat && currentChatId?.startsWith('cron-')
+      ? Number(currentChatId.slice('cron-'.length))
+      : undefined
+  );
+  const cronModelOverride =
+    cronModelSelection && cronModelSelection.jobId === cronJobId
+      ? cronModelSelection.model
+      : null;
   const safeConfig = stripDenyApprovalPolicies({
     ..._base,
-    model: _base.model || (_isPlatformChat ? (_prefs?.model || backendConfig?.models?.[0] || '') : ''),
+    model: (
+      (_isCronChat ? cronModelOverride : null) ||
+      _base.model ||
+      (_isPlatformChat ? (_prefs?.model || backendConfig?.models?.[0] || '') : '')
+    ),
     agent: _base.agent || (_isPlatformChat ? (_prefs?.agent || backendConfig?.agents?.[0] || '') : ''),
     tools: _base.tools?.length ? _base.tools : (_isPlatformChat ? (_prefs?.tools ?? []) : []),
   });
+
+  useEffect(() => {
+    if (!_isCronChat || !Number.isFinite(cronJobId)) {
+      setCronModelSelection(null);
+      return;
+    }
+
+    let cancelled = false;
+    fetchCronJobs()
+      .then(jobs => {
+        if (cancelled) return;
+        const job = jobs.find(item => item.id === cronJobId);
+        setCronModelSelection({
+          jobId: cronJobId!,
+          model: job?.model_override || null,
+        });
+      })
+      .catch(error => {
+        if (!cancelled) {
+          console.warn('Failed to load cron model override:', error);
+          setCronModelSelection(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [_isCronChat, cronJobId]);
+
+  const handleInputModelChange = useCallback((model: string) => {
+    const previousModel = safeConfig.model;
+    setConfig(prev => ({ ...prev, model }));
+
+    if (!_isCronChat || !Number.isFinite(cronJobId)) return;
+
+    setCronModelSelection({ jobId: cronJobId!, model });
+    void updateCronJob(cronJobId!, { model_override: model })
+      .catch(error => {
+        console.error('Failed to update cron model override:', error);
+        setCronModelSelection({ jobId: cronJobId!, model: previousModel });
+        setConfig(prev => ({ ...prev, model: previousModel }));
+        setStatusBar(t('chatInput.modelUpdateError'), 'error', 4000);
+      });
+  }, [_isCronChat, cronJobId, safeConfig.model, setConfig, setStatusBar, t]);
 
   // Unified canvas action dispatcher — used by both the canvas sidebar panel and inline surfaces.
   // Adds a decorative canvas_action pill to the chat, then starts a real AG-UI stream so the
@@ -2057,7 +2126,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               stopStreaming={stopStreaming}
               stopInFlight={stopInFlightRef.current}
               modelSelectDropUp={true}
-              hideConfigSelector={_isPlatformChat}
+              modelValue={safeConfig.model}
+              onModelChange={handleInputModelChange}
               onPaste={handlePaste}
               onImageClick={setViewingImage}
               currentChatId={currentChatId}

@@ -51,6 +51,7 @@ export interface ChatConfig {
   heartbeat_instructions?: string;
   heartbeat_last_run_at?: string;
   platform?: string;
+  cron_job_id?: number;
 }
 
 export type PermissionMode =

@@ -32,7 +32,8 @@ interface ChatInputPanelProps {
     stopStreaming?: () => void; // Optional because only used in footer sometimes
     stopInFlight?: boolean;
     modelSelectDropUp?: boolean;
-    hideConfigSelector?: boolean;
+    modelValue?: string;
+    onModelChange?: (model: string) => void;
     onPaste?: (files: File[]) => void;
     onImageClick?: (src: string) => void;
     currentChatId?: string | null;
@@ -120,7 +121,8 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
     stopStreaming,
     stopInFlight = false,
     modelSelectDropUp = true,
-    hideConfigSelector = false,
+    modelValue,
+    onModelChange,
     onPaste,
     onImageClick,
     currentChatId,
@@ -583,11 +585,11 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
                 <div className="flex-1" />
 
                 {/* Right: model picker (shrinks) + action button (fixed) */}
-                {configReady && !hideConfigSelector && (
+                {configReady && (
                     <div className="relative min-w-0 shrink">
                         <BrutalSelect
-                            value={config.model}
-                            onChange={(val) => setConfig(prev => ({ ...prev, model: val }))}
+                            value={modelValue ?? config.model}
+                            onChange={onModelChange ?? ((val) => setConfig(prev => ({ ...prev, model: val })))}
                             options={backendConfig!.models}
                             placeholder={t('chatInput.modelPlaceholder').toUpperCase()}
                             dropUp={modelSelectDropUp}
@@ -633,27 +635,25 @@ export const ChatInputPanel: React.FC<ChatInputPanelProps> = ({
             </div>
           </form>
 
-          {!hideConfigSelector && (
-            <div
-              className="flex items-center px-1"
-              title={t(`chatWindow.permissionModeDescriptions.${permissionMode}`)}
-            >
-              <BrutalSelect
-                value={permissionMode}
-                onChange={value => changePermissionMode(value as PermissionMode)}
-                options={PERMISSION_MODES.map(option => ({
-                  value: option,
-                  label: t(`chatWindow.permissionModeInputLabels.${option}`),
-                }))}
-                dropUp={true}
-                hideChevron={true}
-                disabled={!configReady || streamingForCurrentChat || isSavingPermissionMode}
-                className="inline-block w-auto"
-                buttonClassName="!h-6 !w-auto !gap-1.5 !border-0 !bg-transparent dark:!bg-transparent !px-0 !py-0 !font-sans !text-xs !font-medium !normal-case !tracking-normal !text-neutral-600 dark:!text-neutral-400 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-transparent hover:!text-brutal-black dark:hover:!bg-transparent dark:hover:!text-white"
-                dropdownClassName="min-w-[220px] font-mono text-[10px]"
-              />
-            </div>
-          )}
+          <div
+            className="flex items-center px-1"
+            title={t(`chatWindow.permissionModeDescriptions.${permissionMode}`)}
+          >
+            <BrutalSelect
+              value={permissionMode}
+              onChange={value => changePermissionMode(value as PermissionMode)}
+              options={PERMISSION_MODES.map(option => ({
+                value: option,
+                label: t(`chatWindow.permissionModeInputLabels.${option}`),
+              }))}
+              dropUp={true}
+              hideChevron={true}
+              disabled={!configReady || streamingForCurrentChat || isSavingPermissionMode}
+              className="inline-block w-auto"
+              buttonClassName="!h-6 !w-auto !gap-1.5 !border-0 !bg-transparent dark:!bg-transparent !px-0 !py-0 !font-sans !text-xs !font-medium !normal-case !tracking-normal !text-neutral-600 dark:!text-neutral-400 !shadow-none !translate-x-0 !translate-y-0 hover:!bg-transparent hover:!text-brutal-black dark:hover:!bg-transparent dark:hover:!text-white"
+              dropdownClassName="min-w-[220px] font-mono text-[10px]"
+            />
+          </div>
 
           <BrutalDialog
             open={pendingPermissionMode === 'auto'}

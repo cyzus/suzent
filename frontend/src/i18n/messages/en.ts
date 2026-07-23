@@ -732,6 +732,7 @@ export const en = {
     placeholderLoading: 'System loading...',
     attachFiles: 'Attach files (images, PDFs, documents, etc.)',
     modelPlaceholder: 'Model',
+    modelUpdateError: 'Could not update the model',
     stopGenerating: 'Stop generating',
     sendMessage: 'Send message',
     redirectAgent: 'Redirect the agent',

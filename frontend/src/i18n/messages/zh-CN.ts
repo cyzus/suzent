@@ -658,6 +658,7 @@ export const zhCN = {
     placeholderLoading: '系统加载中...',
     attachFiles: '添加附件（图片、PDF、文档等）',
     modelPlaceholder: '模型',
+    modelUpdateError: '无法更新模型',
     stopGenerating: '停止生成',
     sendMessage: '发送消息',
     redirectAgent: '重定向助手',
