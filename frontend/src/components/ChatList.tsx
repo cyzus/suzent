@@ -1,24 +1,50 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  CheckIcon,
+  EllipsisVerticalIcon,
+  FolderIcon,
+  PencilSquareIcon,
+  PlusIcon,
+} from '@heroicons/react/24/outline';
 import { useChatStore } from '../hooks/useChatStore';
 import { useProjects } from '../hooks/useProjects';
 import type { ChatKindCounts, ChatSummary, Project } from '../types/api';
 import { RobotAvatar } from './chat/RobotAvatar';
 import { useI18n } from '../i18n';
-import { getApiBase, markChatRead } from '../lib/api';
+import {
+  fetchCronJobs,
+  fetchHeartbeatStatus,
+  getApiBase,
+  markChatRead,
+  deleteCronJob,
+  updateCronJob,
+  type CronJob,
+  type HeartbeatStatus,
+} from '../lib/api';
 import { ChatRowMenu } from './ChatRowMenu';
 import { ProjectRowMenu } from './ProjectRowMenu';
 import { BrutalDialog } from './BrutalDialog';
-import { BrutalSegmentedTabs } from './BrutalSegmentedTabs';
+import { BrutalButton } from './BrutalButton';
+import { describeCron } from './settings/ScheduleBuilder';
 
 const ALL_PROJECTS_FILTER = '__all__';
+const AUTOMATION_PREVIEW_LIMIT = 5;
+const ORGANIZATION_STORAGE_KEY = 'suzent-chat-organization';
 type ChatKind = 'you' | 'subagent' | 'scheduled';
-type ChatKindFilter = 'you' | 'scheduled' | 'all';
+type ChatOrganization = 'projects' | 'list';
 
-export const ChatList: React.FC = () => {
+const MoreActionsIcon = (): React.ReactElement => (
+  <EllipsisVerticalIcon className="h-4 w-4 stroke-[2.5]" />
+);
+
+interface ChatListProps {
+  onOpenAutomation?: () => void;
+}
+
+export const ChatList: React.FC<ChatListProps> = ({ onOpenAutomation }) => {
   const {
     chats,
     chatTotal,
-    chatKindTotals,
     loadingChats,
     loadingMoreChats,
     refreshingChats,
@@ -36,6 +62,7 @@ export const ChatList: React.FC = () => {
 
   const {
     projects,
+    currentProjectId,
     setCurrentProjectId,
     createProject,
     renameProject,
@@ -56,13 +83,28 @@ export const ChatList: React.FC = () => {
     anchor: { x: number; y: number } | { rect: DOMRect };
   } | null>(null);
 
-  // Project context menu (kebab inside filter dropdown)
+  // Project context menu (kebab on each project row).
   const [projectMenu, setProjectMenu] = useState<{
     projectId: string;
     anchor: { rect: DOMRect };
   } | null>(null);
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
   const [projectRenameValue, setProjectRenameValue] = useState('');
+  const [taskMenu, setTaskMenu] = useState<{
+    jobId: number;
+    anchor: { rect: DOMRect };
+  } | null>(null);
+  const [renamingTaskId, setRenamingTaskId] = useState<number | null>(null);
+  const [taskRenameValue, setTaskRenameValue] = useState('');
+  const [organizationMenuOpen, setOrganizationMenuOpen] = useState(false);
+  const organizationMenuRef = useRef<HTMLDivElement | null>(null);
+  const [organization, setOrganization] = useState<ChatOrganization>(() => {
+    try {
+      return localStorage.getItem(ORGANIZATION_STORAGE_KEY) === 'list' ? 'list' : 'projects';
+    } catch {
+      return 'projects';
+    }
+  });
 
   // Dialog state — replaces window.alert / window.confirm so we keep
   // brutalist styling and never get blocked by browser dialog rendering.
@@ -72,30 +114,77 @@ export const ChatList: React.FC = () => {
     actions: { label: string; tone?: 'default' | 'primary' | 'danger'; onClick?: () => void | Promise<void>; preventDismiss?: boolean }[];
   } | null>(null);
 
-  // Filter pill state
+  // A single expanded project keeps the sidebar compact.
   const [filterId, setFilterId] = useState<string>(ALL_PROJECTS_FILTER);
-  const [kindFilter, setKindFilter] = useState<ChatKindFilter>('you');
   const [expandedSubagentParents, setExpandedSubagentParents] = useState<Set<string>>(
     () => new Set(),
   );
-  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const [creatingProjectInline, setCreatingProjectInline] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
-  const filterMenuRef = useRef<HTMLDivElement | null>(null);
-  const filterPillRef = useRef<HTMLButtonElement | null>(null);
   const sidebarBoundsRef = useRef<HTMLDivElement | null>(null);
   const [projectChats, setProjectChats] = useState<ChatSummary[]>([]);
   const [projectChatKindTotals, setProjectChatKindTotals] = useState<ChatKindCounts>({ you: 0, scheduled: 0, all: 0 });
   const [projectChatOffset, setProjectChatOffset] = useState(0);
   const [loadingProjectChats, setLoadingProjectChats] = useState(false);
   const [loadingMoreProjectChats, setLoadingMoreProjectChats] = useState(false);
+  const [cronJobs, setCronJobs] = useState<CronJob[]>([]);
+  const [heartbeatStatus, setHeartbeatStatus] = useState<HeartbeatStatus | null>(null);
+  const [loadingAutomation, setLoadingAutomation] = useState(true);
 
   const { t } = useI18n();
+
+  const refreshAutomation = useCallback(async (): Promise<void> => {
+    const [cronResult, heartbeatResult] = await Promise.allSettled([
+      fetchCronJobs(),
+      fetchHeartbeatStatus(),
+    ]);
+    if (cronResult.status === 'fulfilled') setCronJobs(cronResult.value);
+    if (heartbeatResult.status === 'fulfilled') setHeartbeatStatus(heartbeatResult.value);
+    setLoadingAutomation(false);
+  }, []);
+
+  useEffect(() => {
+    void refreshAutomation();
+    const interval = window.setInterval(() => void refreshAutomation(), 30_000);
+    return () => window.clearInterval(interval);
+  }, [refreshAutomation]);
+
+  useEffect(() => {
+    if (!organizationMenuOpen) return;
+    const closeMenu = (event: MouseEvent): void => {
+      if (!organizationMenuRef.current?.contains(event.target as Node)) {
+        setOrganizationMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', closeMenu);
+    return () => document.removeEventListener('mousedown', closeMenu);
+  }, [organizationMenuOpen]);
+
+  const selectOrganization = (next: ChatOrganization): void => {
+    setOrganization(next);
+    setOrganizationMenuOpen(false);
+    if (next === 'list') setFilterId(ALL_PROJECTS_FILTER);
+    try {
+      localStorage.setItem(ORGANIZATION_STORAGE_KEY, next);
+    } catch {
+      // The preference remains active for this session when storage is unavailable.
+    }
+  };
 
   const chatsRef = useRef(chats);
   useEffect(() => { chatsRef.current = chats; }, [chats]);
   const projectChatsRef = useRef(projectChats);
   useEffect(() => { projectChatsRef.current = projectChats; }, [projectChats]);
+  const initialProjectSelectedRef = useRef(false);
+
+  useEffect(() => {
+    if (initialProjectSelectedRef.current || projects.length === 0) return;
+    const selectedProjectId = chats.find(chat => chat.id === currentChatId)?.projectId;
+    if (selectedProjectId && projects.some(project => project.id === selectedProjectId)) {
+      setFilterId(selectedProjectId);
+    }
+    initialProjectSelectedRef.current = true;
+  }, [chats, currentChatId, projects]);
 
   // Whenever the chat list changes (create / delete / move), the server-side
   // project chat counts may be stale. Refresh them so the dropdown shows
@@ -181,15 +270,6 @@ export const ChatList: React.FC = () => {
     };
   }, [refreshingChats]);
 
-  // Whenever the filter dropdown closes, also dismiss any project-row menu
-  // and abandon an inline project rename so we don't leave orphan UI behind.
-  useEffect(() => {
-    if (filterMenuOpen) return;
-    setProjectMenu(null);
-    setRenamingProjectId(null);
-    setCreatingProjectInline(false);
-  }, [filterMenuOpen]);
-
   const fetchProjectChats = useCallback(async (
     projectId: string,
     options?: { offset?: number; append?: boolean },
@@ -210,8 +290,6 @@ export const ChatList: React.FC = () => {
         offset: String(offset),
         project_id: projectId,
       });
-      const search = searchQuery.trim();
-      if (search) params.set('search', search);
 
       const res = await fetch(`${getApiBase()}/chats?${params.toString()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -241,7 +319,7 @@ export const ChatList: React.FC = () => {
       if (append) setLoadingMoreProjectChats(false);
       else setLoadingProjectChats(false);
     }
-  }, [searchQuery]);
+  }, []);
 
   useEffect(() => {
     if (filterId === ALL_PROJECTS_FILTER) {
@@ -253,41 +331,10 @@ export const ChatList: React.FC = () => {
     void fetchProjectChats(filterId);
   }, [filterId, fetchProjectChats]);
 
-  // Close filter menu on outside click. Clicks inside the kebab popover or
-  // the modal dialog (which live in portals at document.body) are treated as
-  // inside, since they were spawned from the dropdown.
-  useEffect(() => {
-    if (!filterMenuOpen) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Element | null;
-      if (!target) return;
-      const insidePill = filterPillRef.current?.contains(target);
-      const insideMenu = filterMenuRef.current?.contains(target);
-      const insidePortal = !!target.closest?.('[data-popover-source="project-filter"]');
-      if (insidePill || insideMenu || insidePortal) return;
-      setFilterMenuOpen(false);
-      setCreatingProjectInline(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [filterMenuOpen]);
-
-  // ── Filter and derived counts ──
-
-  const filterLabel = useMemo(() => {
-    if (filterId === ALL_PROJECTS_FILTER) return t('chatList.filter.all');
-    return projects.find(p => p.id === filterId)?.name ?? t('chatList.filter.all');
-  }, [filterId, projects, t]);
-
   const filteredChats = useMemo(() => {
     if (filterId === ALL_PROJECTS_FILTER) return chats;
     return projectChats;
   }, [chats, filterId, projectChats]);
-
-  const filteredKindTotals = useMemo(() => {
-    if (filterId === ALL_PROJECTS_FILTER) return chatKindTotals;
-    return projectChatKindTotals;
-  }, [chatKindTotals, filterId, projectChatKindTotals]);
 
   const getChatKind = (chat: ChatSummary): ChatKind => {
     const platform = (chat.platform || '').toLowerCase();
@@ -328,12 +375,7 @@ export const ChatList: React.FC = () => {
   };
 
   const visibleChats = useMemo(() => {
-    const source = filteredChats.filter(chat => {
-      const kind = getChatKind(chat);
-      if (kindFilter === 'scheduled') return kind === 'scheduled';
-      if (kindFilter === 'you') return kind !== 'scheduled';
-      return true;
-    });
+    const source = filteredChats;
 
     const childIds = new Set<string>();
     for (const chat of source) {
@@ -362,7 +404,7 @@ export const ChatList: React.FC = () => {
       }
     }
     return arranged;
-  }, [expandedSubagentParents, filteredChats, kindFilter, subagentsByParent]);
+  }, [expandedSubagentParents, filteredChats, subagentsByParent]);
 
   const handleLoadMore = useCallback(async () => {
     if (filterId === ALL_PROJECTS_FILTER) {
@@ -422,6 +464,53 @@ export const ChatList: React.FC = () => {
     setRenamingChatId(null);
   };
 
+  const handleTaskRenameSubmit = async (
+    job: CronJob,
+    event: React.FormEvent,
+  ): Promise<void> => {
+    event.preventDefault();
+    event.stopPropagation();
+    const trimmed = taskRenameValue.trim();
+    if (trimmed && trimmed !== job.name) {
+      await updateCronJob(job.id, { name: trimmed });
+      if (job.last_run_at) {
+        try {
+          await renameChat(`cron-${job.id}`, `Cron: ${trimmed}`);
+        } catch {
+          // The task may not have created its backing conversation yet.
+        }
+      }
+      await refreshAutomation();
+    }
+    setRenamingTaskId(null);
+  };
+
+  const handleRequestTaskDelete = (job: CronJob): void => {
+    const deleteTask = async (): Promise<void> => {
+      await deleteCronJob(job.id);
+      if (job.last_run_at) {
+        try {
+          await deleteChat(`cron-${job.id}`);
+        } catch {
+          // The scheduled task is already removed even if its chat was absent.
+        }
+      }
+      await Promise.all([
+        refreshAutomation(),
+        refreshChatList(undefined, true),
+        refreshProjects(),
+      ]);
+    };
+    setDialog({
+      title: t('chatList.automation.deleteTaskTitle', { name: job.name }),
+      message: t('chatList.automation.deleteTaskMessage'),
+      actions: [
+        { label: t('common.cancel') },
+        { label: t('chatList.menu.delete'), tone: 'danger', onClick: deleteTask },
+      ],
+    });
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -435,14 +524,12 @@ export const ChatList: React.FC = () => {
     }
   };
 
-  // ── Project filter / creation ──
+  // ── Project expansion / creation ──
 
   const handleSelectFilter = (id: string) => {
     setFilterId(id);
-    // If a real project is selected, also set it as the current project so
-    // new chats land there.
+    // Expanding a project also makes it the destination for new chats.
     if (id !== ALL_PROJECTS_FILTER) setCurrentProjectId(id);
-    setFilterMenuOpen(false);
     setCreatingProjectInline(false);
   };
 
@@ -457,7 +544,6 @@ export const ChatList: React.FC = () => {
     }
     setNewProjectName('');
     setCreatingProjectInline(false);
-    setFilterMenuOpen(false);
   };
 
   // ── Move chat to project ──
@@ -492,18 +578,19 @@ export const ChatList: React.FC = () => {
     setOpenMenu({ chatId, anchor });
   };
 
-  const renderChatRow = (chat: ChatSummary) => {
+  const renderChatRow = (chat: ChatSummary, showProject = false, nested = false) => {
     const unread = unreadMessages(chat);
     const showUnread = currentChatId !== chat.id && unread > 0;
     const chatKind = getChatKind(chat);
     const parentTitle = chat.parentChatId
       ? filteredChats.find(item => item.id === chat.parentChatId)?.title
+        ?? chats.find(item => item.id === chat.parentChatId)?.title
       : null;
     const childSubagents = subagentsByParent.get(chat.id) ?? [];
     const hasCollapsedChildren = childSubagents.length > 0;
     const childrenExpanded = expandedSubagentParents.has(chat.id);
     const rowSurface = currentChatId === chat.id
-      ? 'bg-brutal-yellow/95 dark:bg-zinc-700 border-brutal-black dark:border-brutal-yellow z-10'
+      ? 'bg-yellow-50 dark:bg-zinc-700 border-neutral-200 dark:border-zinc-600 shadow-[inset_3px_0_0_var(--brutal-yellow)]'
       : chat.heartbeatEnabled
         ? 'bg-yellow-50 border-neutral-200 dark:bg-zinc-800 dark:border-zinc-700 shadow-[inset_4px_0_0_var(--brutal-yellow)] hover:bg-yellow-100/70 dark:hover:bg-zinc-700/80'
         : chatKind === 'subagent'
@@ -528,19 +615,11 @@ export const ChatList: React.FC = () => {
           e.stopPropagation();
           openChatMenu(chat.id, { x: e.clientX, y: e.clientY });
         }}
-        className={`group relative py-3 transition-all border-b last:border-b-0
-          ${chatKind === 'subagent' ? 'pl-8 pr-3.5' : 'px-3.5'}
+        className={`group relative py-2 transition-all border-b last:border-b-0
+          ${chatKind === 'subagent' ? (nested ? 'pl-10 pr-3' : 'pl-8 pr-3.5') : (nested ? 'pl-8 pr-3' : 'px-3.5')}
           ${renamingChatId ? (renamingChatId === chat.id ? 'cursor-default' : 'opacity-50 pointer-events-none') : 'cursor-pointer'}
           ${rowSurface}`}
       >
-        {chatKind === 'subagent' && (
-          <div className="absolute left-3 top-0 bottom-0 w-3 border-l-2 border-b-2 border-neutral-300 dark:border-zinc-600 rounded-bl-sm" />
-        )}
-        {currentChatId === chat.id && (
-          <div className="absolute pointer-events-none inset-0 border-2 border-brutal-black dark:border-brutal-yellow transition-all" />
-        )}
-
-
         {renamingChatId === chat.id && (
           <form
             className="absolute inset-0 z-20 flex items-center gap-1 px-2 bg-white dark:bg-zinc-800 border-2 border-brutal-black dark:border-brutal-yellow"
@@ -567,32 +646,9 @@ export const ChatList: React.FC = () => {
 
         <div className="min-w-0 space-y-1 pr-8">
           <div className="flex items-start gap-2 overflow-hidden">
-            {hasCollapsedChildren && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleSubagentParent(chat.id);
-                }}
-                className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center border border-neutral-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-neutral-400 dark:text-zinc-500 hover:border-neutral-500 dark:hover:border-zinc-400 hover:text-neutral-600 dark:hover:text-zinc-300 transition-all ${
-                  childrenExpanded ? 'rotate-90' : ''
-                }`}
-                title={t('chatList.labels.subagentsCount', { count: childSubagents.length })}
-                aria-label={t('chatList.labels.subagentsCount', { count: childSubagents.length })}
-              >
-                <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-            )}
-            <h3 className={`font-extrabold text-sm leading-snug truncate flex-1 min-w-0 transition-colors ${currentChatId === chat.id ? 'text-brutal-black dark:text-white' : isUnread(chat) ? 'text-neutral-950 dark:text-white' : 'text-neutral-800 dark:text-neutral-100 group-hover:text-brutal-black dark:group-hover:text-white'}`}>
+            <h3 className={`font-extrabold text-xs leading-snug truncate flex-1 min-w-0 transition-colors ${currentChatId === chat.id ? 'text-brutal-black dark:text-white' : isUnread(chat) ? 'text-neutral-950 dark:text-white' : 'text-neutral-800 dark:text-neutral-100 group-hover:text-brutal-black dark:group-hover:text-white'}`}>
               {chat.title || t('chatList.untitled')}
             </h3>
-            {hasCollapsedChildren && (
-              <span className="mt-0.5 flex h-4 min-w-[16px] shrink-0 items-center justify-center rounded-full bg-neutral-200 dark:bg-zinc-700 px-1 text-[9px] font-semibold text-neutral-500 dark:text-zinc-400">
-                {childSubagents.length}
-              </span>
-            )}
             {showUnread && (
               <span className="text-[10px] font-extrabold min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-sm bg-brutal-yellow text-brutal-black border-2 border-brutal-black leading-none shrink-0 shadow-[1px_1px_0_0_rgba(0,0,0,1)]">
                 {unread > 99 ? '99+' : unread}
@@ -601,7 +657,7 @@ export const ChatList: React.FC = () => {
           </div>
           <div className="flex items-center gap-1.5 overflow-hidden">
             {/* Project chip — always shown so the user knows which workspace */}
-            {chat.projectName && (
+            {showProject && chat.projectName && (
               <span
                 className={`inline-flex items-center h-5 px-2 text-[10px] font-extrabold uppercase tracking-wide border shrink-0 max-w-[8rem] truncate ${
                   currentChatId === chat.id
@@ -628,6 +684,23 @@ export const ChatList: React.FC = () => {
                 </svg>
                 <span>{t('chatList.labels.heartbeat')}</span>
               </span>
+            )}
+            {hasCollapsedChildren && (
+              <button
+                type="button"
+                aria-expanded={childrenExpanded}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleSubagentParent(chat.id);
+                }}
+                className={`inline-flex items-center h-4 px-1.5 border text-[9px] font-extrabold uppercase tracking-wide shrink-0 transition-colors ${
+                  childrenExpanded
+                    ? 'border-brutal-black bg-brutal-yellow text-brutal-black'
+                    : 'border-neutral-300 bg-neutral-100 text-neutral-600 hover:border-brutal-black dark:border-zinc-600 dark:bg-zinc-700 dark:text-neutral-300'
+                }`}
+              >
+                {t('chatList.labels.subagentsCount', { count: childSubagents.length })}
+              </button>
             )}
             {chatKind === 'subagent' && parentTitle && (
               <span className="text-[9px] font-bold uppercase text-neutral-400 dark:text-neutral-500 truncate">
@@ -663,11 +736,7 @@ export const ChatList: React.FC = () => {
               : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
           }`}
         >
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-            <circle cx="12" cy="5" r="1.6" />
-            <circle cx="12" cy="12" r="1.6" />
-            <circle cx="12" cy="19" r="1.6" />
-          </svg>
+          <MoreActionsIcon />
         </button>
       </div>
     );
@@ -691,14 +760,27 @@ export const ChatList: React.FC = () => {
     );
   }
 
-  const loadedKindCount = kindFilter === 'all'
-    ? filteredChats.length
-    : filteredChats.filter(chat => {
-      const kind = getChatKind(chat);
-      if (kindFilter === 'scheduled') return kind === 'scheduled';
-      return kind !== 'scheduled';
-    }).length;
-  const remaining = Math.max(0, filteredKindTotals[kindFilter] - loadedKindCount);
+  const filteredTotal = filterId === ALL_PROJECTS_FILTER ? chatTotal : projectChatKindTotals.all;
+  const remaining = Math.max(0, filteredTotal - filteredChats.length);
+  const isSearching = localSearchQuery.trim().length > 0;
+  const visibleCronJobs = [...cronJobs]
+    .sort((left, right) => {
+      const leftPriority = left.last_error ? 0 : left.active ? 1 : 2;
+      const rightPriority = right.last_error ? 0 : right.active ? 1 : 2;
+      if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+      const leftNext = left.next_run_at ? new Date(left.next_run_at).getTime() : Number.MAX_SAFE_INTEGER;
+      const rightNext = right.next_run_at ? new Date(right.next_run_at).getTime() : Number.MAX_SAFE_INTEGER;
+      return leftNext - rightNext;
+    })
+    .slice(0, AUTOMATION_PREVIEW_LIMIT);
+  const heartbeatSessions = heartbeatStatus?.active_sessions ?? [];
+  const showAutomation = loadingAutomation || cronJobs.length > 0 || heartbeatSessions.length > 0;
+
+  const openChatById = (chatId: string): void => {
+    markRead(chatId);
+    loadChat(chatId);
+    if (switchToView) switchToView('chat');
+  };
 
   return (
     <div ref={sidebarBoundsRef} className="flex flex-col h-full relative">
@@ -710,14 +792,14 @@ export const ChatList: React.FC = () => {
 
       {/* Header: Search + New Chat */}
       <div className="p-3 bg-white dark:bg-zinc-800 flex-shrink-0 space-y-2.5">
-        <div className="flex gap-2">
+        <div className="flex items-stretch gap-2">
           <div className="relative flex-1">
             <input
               type="text"
               value={localSearchQuery}
               onChange={(e) => setLocalSearchQuery(e.target.value)}
               placeholder={t('chatList.searchChatsPlaceholder').toUpperCase()}
-              className="w-full px-3 py-2 pl-9 bg-neutral-50 dark:bg-zinc-700 dark:text-white dark:placeholder-neutral-500 border-2 border-brutal-black font-bold text-xs uppercase placeholder-neutral-400 focus:outline-none focus:bg-white dark:focus:bg-zinc-600 focus:shadow-brutal-sm transition-all"
+              className="h-10 w-full px-3 pl-9 bg-neutral-50 dark:bg-zinc-700 dark:text-white dark:placeholder-neutral-500 border-2 border-brutal-black font-bold text-xs uppercase placeholder-neutral-400 focus:outline-none focus:bg-white dark:focus:bg-zinc-600 focus:shadow-[inset_3px_0_0_var(--brutal-yellow)] transition-all"
             />
             <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-brutal-black dark:text-neutral-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -734,217 +816,395 @@ export const ChatList: React.FC = () => {
               </button>
             )}
           </div>
-          <button
+          <BrutalButton
+            type="button"
+            variant="primary"
+            size="icon"
             onClick={() => { beginNewChat(); if (switchToView) switchToView('chat'); }}
-            className="flex items-center justify-center w-[38px] bg-brutal-black text-white border-2 border-brutal-black shadow-[2px_2px_0_0_#000] hover:bg-brutal-blue hover:text-white hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[1px_1px_0_0_#000] active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all flex-shrink-0"
+            className="!h-10 !w-10 !flex-shrink-0 !p-0"
             title={t('chatList.newChat')}
+            aria-label={t('chatList.newChat')}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-          </button>
+            <PencilSquareIcon className="h-5 w-5 stroke-[2.4]" />
+          </BrutalButton>
         </div>
 
-        {/* Project filter pill */}
-        <div className="relative">
-          <button
-            ref={filterPillRef}
-            type="button"
-            onClick={() => setFilterMenuOpen(prev => !prev)}
-            className="w-full flex items-center gap-2 px-3 py-2 border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white shadow-[2px_2px_0_0_#000] hover:bg-brutal-yellow hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[1px_1px_0_0_#000] active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all"
-          >
-            <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
-              {t('chatList.filter.in')}
-            </span>
-            <span className="text-xs font-extrabold uppercase tracking-wider truncate flex-1 text-left">
-              {filterLabel}
-            </span>
-            <svg className={`w-3 h-3 transition-transform shrink-0 ${filterMenuOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+      </div>
 
-          {filterMenuOpen && (
-            <div
-              ref={filterMenuRef}
-              className="absolute left-0 right-0 top-full mt-1 z-30 bg-white dark:bg-zinc-800 border-2 border-brutal-black shadow-[3px_3px_0_0_#000] max-h-[60vh] overflow-hidden flex flex-col"
-            >
-              <div className="overflow-y-auto flex-1">
-                <div
-                  className={`flex items-stretch border-b border-neutral-200 dark:border-zinc-700 ${
-                    filterId === ALL_PROJECTS_FILTER ? 'bg-brutal-yellow text-brutal-black' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700 dark:text-white'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => handleSelectFilter(ALL_PROJECTS_FILTER)}
-                    className="flex-1 min-w-0 text-left px-3 py-2 text-xs font-bold flex items-center justify-between gap-2"
-                  >
-                    <span className="truncate uppercase tracking-wider">{t('chatList.filter.all')}</span>
-                    <span className="text-[10px] font-bold tabular-nums opacity-70">{chatTotal}</span>
-                  </button>
-                  {/* Spacer to align with kebab column on user-project rows */}
-                  <span aria-hidden="true" className="px-2 flex items-center shrink-0">
-                    <span className="w-4" />
-                  </span>
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin bg-white dark:bg-zinc-800">
+        {isSearching ? (
+          <section>
+            <div className="flex items-center justify-between px-3 py-2 border-y-2 border-brutal-black bg-white dark:bg-zinc-800">
+              <h2 className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
+                {t('chatList.sections.searchResults')}
+              </h2>
+              <span className="text-[10px] font-bold tabular-nums text-neutral-500 dark:text-neutral-400">
+                {chatTotal}
+              </span>
+            </div>
+            {chats.length === 0 ? (
+              <div className="px-6 py-10 text-center">
+                <RobotAvatar variant="ghost" />
+                <p className="mt-3 text-xs font-extrabold uppercase text-brutal-black dark:text-white">
+                  {t('chatList.empty.noResultsTitle')}
+                </p>
+                <p className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+                  {t('chatList.empty.noResultsDesc')}
+                </p>
+              </div>
+            ) : (
+              <div>{chats.map(chat => renderChatRow(chat, true))}</div>
+            )}
+            {chatTotal > chats.length && (
+              <button
+                type="button"
+                onClick={() => void loadMoreChats()}
+                disabled={loadingMoreChats}
+                className="w-full py-3 border-t border-neutral-200 dark:border-zinc-700 text-[10px] font-extrabold uppercase text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black dark:hover:bg-zinc-700 dark:hover:text-white disabled:opacity-50"
+              >
+                {loadingMoreChats ? t('chatList.loadingMore') : t('chatList.loadMore', { count: chatTotal - chats.length })}
+              </button>
+            )}
+          </section>
+        ) : (
+          <div className="flex flex-col">
+            {showAutomation && (
+              <section className="order-2 border-t border-neutral-200 dark:border-zinc-700">
+                <div className="flex items-center justify-between px-3 py-1.5">
+                  <h2 className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
+                    {t('chatList.sections.tasks')}
+                  </h2>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] font-bold tabular-nums text-neutral-400 dark:text-neutral-500">
+                      {cronJobs.length + heartbeatSessions.length}
+                    </span>
+                  </div>
                 </div>
-                {projects.map(p => {
-                  const isSystem = p.slug === 'default' || p.slug === 'social';
-                  const isRenaming = renamingProjectId === p.id;
-                  const isFiltered = filterId === p.id;
-                  return (
-                    <div
-                      key={p.id}
-                      className={`group/proj relative flex items-stretch border-b border-neutral-200 dark:border-zinc-700 last:border-b-0 ${
-                        isFiltered ? 'bg-brutal-yellow text-brutal-black' : 'hover:bg-neutral-100 dark:hover:bg-zinc-700 dark:text-white'
-                      }`}
-                    >
-                      {isRenaming ? (
-                        <form
-                          className="flex-1 flex items-center gap-1 p-1.5"
-                          onSubmit={async (e) => {
-                            e.preventDefault();
-                            const trimmed = projectRenameValue.trim();
-                            if (trimmed && trimmed !== p.name) await renameProject(p.id, trimmed);
-                            setRenamingProjectId(null);
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <input
-                            autoFocus
-                            type="text"
-                            value={projectRenameValue}
-                            onChange={(e) => setProjectRenameValue(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Escape') setRenamingProjectId(null); }}
-                            className="flex-1 min-w-0 px-2 py-1 text-xs font-bold bg-white dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
-                          />
-                          <button type="submit" className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-brutal-yellow hover:bg-yellow-300 text-brutal-black shrink-0">✓</button>
-                          <button type="button" onClick={() => setRenamingProjectId(null)} className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white shrink-0">✕</button>
-                        </form>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => handleSelectFilter(p.id)}
-                            className="flex-1 min-w-0 text-left px-3 py-2 text-xs font-bold flex items-center justify-between gap-2"
-                          >
-                            <span className="truncate">{p.name}</span>
-                            <span className="text-[10px] font-bold tabular-nums opacity-70">{p.chatCount}</span>
-                          </button>
-                          {!isSystem ? (
+
+                {loadingAutomation ? (
+                  <div className="border-t border-neutral-200 dark:border-zinc-700">
+                    <div className="h-11 border-b border-neutral-200 bg-neutral-100 dark:border-zinc-700 dark:bg-zinc-700 animate-pulse" />
+                    <div className="h-11 border-b border-neutral-200 bg-neutral-100 dark:border-zinc-700 dark:bg-zinc-700 animate-pulse" />
+                  </div>
+                ) : (
+                  <div className="border-t border-neutral-200 dark:border-zinc-700">
+                    {cronJobs.length > 0 && (
+                      <div className="border-b border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
+                        <div>
+                            {visibleCronJobs.map(job => {
+                              const chatId = `cron-${job.id}`;
+                              const canOpen = !!job.last_run_at;
+                              return (
+                                <div
+                                  key={job.id}
+                                  onContextMenu={(event) => {
+                                    event.preventDefault();
+                                    setTaskMenu({ jobId: job.id, anchor: { rect: event.currentTarget.getBoundingClientRect() } });
+                                  }}
+                                  className={`group/task relative min-h-11 border-b border-neutral-200 transition-colors dark:border-zinc-700 ${
+                                    currentChatId === chatId
+                                      ? 'bg-yellow-50 shadow-[inset_3px_0_0_var(--brutal-yellow)] dark:bg-zinc-700'
+                                      : 'bg-white hover:bg-neutral-50 dark:bg-zinc-800 dark:hover:bg-zinc-700'
+                                  }`}
+                                >
+                                  {renamingTaskId === job.id ? (
+                                    <form
+                                      className="flex min-h-11 items-center gap-1 px-2"
+                                      onSubmit={(event) => void handleTaskRenameSubmit(job, event)}
+                                    >
+                                      <input
+                                        autoFocus
+                                        value={taskRenameValue}
+                                        onChange={(event) => setTaskRenameValue(event.target.value)}
+                                        onKeyDown={(event) => {
+                                          if (event.key === 'Escape') setRenamingTaskId(null);
+                                        }}
+                                        className="min-w-0 flex-1 border-2 border-brutal-black bg-white px-2 py-1 text-xs font-bold focus:outline-none dark:bg-zinc-700 dark:text-white"
+                                      />
+                                      <button type="submit" className="border-2 border-brutal-black bg-brutal-yellow px-2 py-1 text-[10px] font-extrabold">✓</button>
+                                      <button type="button" onClick={() => setRenamingTaskId(null)} className="border-2 border-brutal-black bg-white px-2 py-1 text-[10px] font-extrabold dark:bg-zinc-700 dark:text-white">✕</button>
+                                    </form>
+                                  ) : (
+                                    <>
+                                      <button
+                                        type="button"
+                                        disabled={!canOpen && !onOpenAutomation}
+                                        onClick={() => canOpen ? openChatById(chatId) : onOpenAutomation?.()}
+                                        title={job.last_error ?? job.last_result ?? undefined}
+                                        className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 bg-transparent px-3.5 py-2 pr-10 text-left disabled:cursor-default"
+                                      >
+                                        <span className="min-w-0">
+                                          <span className="block truncate text-xs font-extrabold leading-tight text-brutal-black dark:text-white">{job.name}</span>
+                                          <span className={`block truncate text-[9px] font-bold leading-tight ${job.last_error ? 'text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'}`}>
+                                            {job.last_error
+                                              ? `${describeCron(job.cron_expr, t)} · ${job.last_error}`
+                                              : describeCron(job.cron_expr, t)}
+                                          </span>
+                                        </span>
+                                        <span className="shrink-0 text-[9px] font-bold uppercase text-neutral-400 dark:text-neutral-500">
+                                          {job.last_run_at
+                                            ? formatDate(job.last_run_at)
+                                            : job.active
+                                              ? t('chatList.automation.active')
+                                              : t('chatList.automation.disabled')}
+                                        </span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        aria-label={t('chatList.menu.title')}
+                                        title={t('chatList.menu.title')}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setTaskMenu({ jobId: job.id, anchor: { rect: event.currentTarget.getBoundingClientRect() } });
+                                        }}
+                                        className={`absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center justify-center p-1 text-neutral-500 transition-opacity hover:bg-neutral-200 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-600 dark:hover:text-white ${
+                                          taskMenu?.jobId === job.id ? 'opacity-100' : 'opacity-0 group-hover/task:opacity-100 focus:opacity-100'
+                                        }`}
+                                      >
+                                        <MoreActionsIcon />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          {cronJobs.length > AUTOMATION_PREVIEW_LIMIT && onOpenAutomation && (
                             <button
                               type="button"
-                              aria-label={t('chatList.menu.title')}
-                              title={t('chatList.menu.title')}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                                setProjectMenu({ projectId: p.id, anchor: { rect } });
-                              }}
-                              className={`px-2 transition-opacity flex items-center justify-center shrink-0 ${
-                                projectMenu?.projectId === p.id
-                                  ? 'opacity-100'
-                                  : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'
-                              } hover:bg-black/10`}
+                              onClick={onOpenAutomation}
+                              className="w-full px-3 py-2.5 text-[9px] font-extrabold uppercase tracking-wide text-brutal-blue border-b border-neutral-200 hover:bg-brutal-yellow hover:text-brutal-black dark:border-zinc-700 dark:text-brutal-yellow"
                             >
-                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                                <circle cx="12" cy="5" r="1.6" />
-                                <circle cx="12" cy="12" r="1.6" />
-                                <circle cx="12" cy="19" r="1.6" />
-                              </svg>
+                              {t('chatList.automation.viewAllScheduled', { count: cronJobs.length })}
                             </button>
-                          ) : (
-                            // Spacer so the chat-count column stays aligned across
-                            // rows whether or not a kebab button is rendered.
-                            <span aria-hidden="true" className="px-2 flex items-center shrink-0">
-                              <span className="w-4" />
-                            </span>
                           )}
-                        </>
+                        </div>
+                      </div>
+                    )}
+
+                    {heartbeatSessions.length > 0 && (
+                      <div className="border-b border-neutral-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
+                        <div>
+                          {heartbeatSessions.slice(0, AUTOMATION_PREVIEW_LIMIT).map(session => (
+                              <button
+                                key={session.chat_id}
+                                type="button"
+                                onClick={() => openChatById(session.chat_id)}
+                                className={`w-full min-h-11 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3.5 py-2 text-left border-b border-neutral-200 transition-colors dark:border-zinc-700 ${
+                                  currentChatId === session.chat_id
+                                    ? 'bg-yellow-50 shadow-[inset_3px_0_0_var(--brutal-yellow)] dark:bg-zinc-700'
+                                    : 'bg-white hover:bg-neutral-50 dark:bg-zinc-800 dark:hover:bg-zinc-700'
+                                }`}
+                              >
+                                <span className="min-w-0">
+                                  <span className="block text-xs leading-tight font-extrabold truncate text-brutal-black dark:text-white">{session.title}</span>
+                                  <span className="block text-[9px] leading-tight font-bold text-neutral-500 dark:text-neutral-400">
+                                    {t('chatList.automation.everyMinutes', { minutes: session.interval_minutes })}
+                                  </span>
+                                </span>
+                                <span className="text-[9px] font-extrabold uppercase text-neutral-500 dark:text-neutral-400">
+                                  {session.last_run_at ? formatDate(session.last_run_at) : t('chatList.automation.notYet')}
+                                </span>
+                              </button>
+                          ))}
+                          {heartbeatSessions.length > AUTOMATION_PREVIEW_LIMIT && (
+                            <div className="px-3 py-2.5 text-center text-[9px] font-extrabold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                              {t('chatList.automation.moreHeartbeat', { count: heartbeatSessions.length - AUTOMATION_PREVIEW_LIMIT })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
+
+            <section className="relative order-1 border-t-2 border-brutal-black">
+              <div ref={organizationMenuRef} className="relative flex items-center justify-between px-3 py-1.5">
+                <h2 className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-neutral-400 dark:text-neutral-500">
+                  {organization === 'projects' ? t('chatList.sections.projects') : t('chatList.sections.chats')}
+                </h2>
+                <div className="flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setOrganizationMenuOpen(value => !value)}
+                    className="flex h-6 w-6 items-center justify-center text-neutral-500 hover:bg-neutral-100 hover:text-brutal-black dark:text-neutral-400 dark:hover:bg-zinc-700 dark:hover:text-white"
+                    title={t('chatList.organization.title')}
+                    aria-label={t('chatList.organization.title')}
+                    aria-expanded={organizationMenuOpen}
+                  >
+                    <MoreActionsIcon />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (organization === 'list') selectOrganization('projects');
+                      setCreatingProjectInline(true);
+                    }}
+                    className="w-6 h-6 flex items-center justify-center text-neutral-500 hover:bg-brutal-yellow hover:text-brutal-black dark:text-neutral-400"
+                    title={t('chatList.newProject')}
+                    aria-label={t('chatList.newProject')}
+                  >
+                    <PlusIcon className="w-4 h-4 stroke-[3]" />
+                  </button>
+                </div>
+                {organizationMenuOpen && (
+                  <div
+                    role="menu"
+                    className="absolute right-3 top-8 z-30 min-w-[180px] border-2 border-brutal-black bg-white py-1 shadow-[3px_3px_0_0_#000] dark:bg-zinc-800"
+                  >
+                    <div className="px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.14em] text-neutral-400 dark:text-neutral-500">
+                      {t('chatList.organization.title')}
+                    </div>
+                    {(['projects', 'list'] as const).map(mode => (
+                      <button
+                        key={mode}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={organization === mode}
+                        onClick={() => selectOrganization(mode)}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-bold text-brutal-black hover:bg-brutal-yellow dark:text-white dark:hover:text-brutal-black"
+                      >
+                        <span className="flex h-4 w-4 items-center justify-center">
+                          {organization === mode && <CheckIcon className="h-4 w-4 stroke-[2.5]" />}
+                        </span>
+                        {mode === 'projects'
+                          ? t('chatList.organization.byProject')
+                          : t('chatList.organization.singleList')}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {organization === 'projects' ? (
+                <>
+              {creatingProjectInline && (
+                <form onSubmit={handleCreateProjectInline} className="flex items-center gap-1 px-3 pb-2">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={newProjectName}
+                    onChange={(event) => setNewProjectName(event.target.value)}
+                    onKeyDown={(event) => { if (event.key === 'Escape') { setCreatingProjectInline(false); setNewProjectName(''); } }}
+                    placeholder={t('chatList.newProjectPlaceholder')}
+                    className="flex-1 min-w-0 px-2 py-1.5 text-xs font-bold bg-white dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
+                  />
+                  <button type="submit" className="px-2 py-1.5 text-[10px] font-extrabold border-2 border-brutal-black bg-brutal-yellow">✓</button>
+                  <button type="button" onClick={() => { setCreatingProjectInline(false); setNewProjectName(''); }} className="px-2 py-1.5 text-[10px] font-extrabold border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white">✕</button>
+                </form>
+              )}
+
+              <div>
+                {projects.map(project => {
+                  const isOpen = filterId === project.id;
+                  const isSystem = project.slug === 'default' || project.slug === 'social';
+                  const isRenaming = renamingProjectId === project.id;
+                  return (
+                    <div key={project.id} className="border-t border-neutral-200 dark:border-zinc-700">
+                      <div className={`group/proj grid min-h-10 grid-cols-[minmax(0,1fr)_28px] ${isOpen ? 'bg-yellow-50/70 shadow-[inset_3px_0_0_var(--brutal-yellow)] dark:bg-zinc-700' : ''}`}>
+                        {isRenaming ? (
+                          <form
+                            className="col-span-2 flex items-center gap-1 px-2 py-1"
+                            onSubmit={async (event) => {
+                              event.preventDefault();
+                              const trimmed = projectRenameValue.trim();
+                              if (trimmed && trimmed !== project.name) await renameProject(project.id, trimmed);
+                              setRenamingProjectId(null);
+                            }}
+                          >
+                            <input
+                              autoFocus
+                              value={projectRenameValue}
+                              onChange={(event) => setProjectRenameValue(event.target.value)}
+                              onKeyDown={(event) => { if (event.key === 'Escape') setRenamingProjectId(null); }}
+                              className="flex-1 min-w-0 px-2 py-1 text-xs font-bold bg-white dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
+                            />
+                            <button type="submit" className="px-2 py-1 text-[10px] font-extrabold border-2 border-brutal-black bg-brutal-yellow">✓</button>
+                            <button type="button" onClick={() => setRenamingProjectId(null)} className="px-2 py-1 text-[10px] font-extrabold border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white">✕</button>
+                          </form>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              aria-expanded={isOpen}
+                              onClick={() => isOpen ? setFilterId(ALL_PROJECTS_FILTER) : handleSelectFilter(project.id)}
+                              className="min-w-0 grid grid-cols-[18px_minmax(0,1fr)_28px] items-center gap-2 pl-3 pr-2 py-1.5 text-left hover:bg-neutral-50 dark:hover:bg-zinc-700"
+                            >
+                              <FolderIcon className="w-[18px] h-[18px] stroke-[2.2] text-brutal-black dark:text-white" />
+                              <span className="min-w-0 truncate text-[11px] font-extrabold text-brutal-black dark:text-white">{project.name}</span>
+                              <span className="text-right text-[10px] font-bold tabular-nums text-neutral-500 dark:text-neutral-400">{project.chatCount}</span>
+                            </button>
+                            {!isSystem && (
+                              <button
+                                type="button"
+                                aria-label={t('chatList.menu.title')}
+                                title={t('chatList.menu.title')}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  const rect = event.currentTarget.getBoundingClientRect();
+                                  setProjectMenu({ projectId: project.id, anchor: { rect } });
+                                }}
+                                className={`w-7 flex items-center justify-center hover:bg-neutral-100 dark:hover:bg-zinc-600 ${projectMenu?.projectId === project.id ? 'opacity-100' : 'opacity-0 group-hover/proj:opacity-100 focus:opacity-100'}`}
+                              >
+                                <MoreActionsIcon />
+                              </button>
+                            )}
+                            {isSystem && <span aria-hidden="true" />}
+                          </>
+                        )}
+                      </div>
+
+                      {isOpen && (
+                        <div className="bg-neutral-50/50 dark:bg-zinc-900/20">
+                          {loadingProjectChats ? (
+                            renderListSkeleton()
+                          ) : visibleChats.length === 0 ? (
+                            <div className="px-4 py-6 text-center text-[10px] font-bold uppercase text-neutral-400">
+                              {t('chatList.empty.noChatsTitle')}
+                            </div>
+                          ) : (
+                            <>
+                              {visibleChats
+                                .filter(chat => getChatKind(chat) !== 'scheduled')
+                                .map(chat => renderChatRow(chat, false, true))}
+                              {remaining > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleLoadMore()}
+                                  disabled={loadingMoreProjectChats}
+                                  className="w-full py-2.5 border-t border-neutral-200 dark:border-zinc-700 text-[10px] font-extrabold uppercase text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black dark:hover:bg-zinc-700 dark:hover:text-white disabled:opacity-50"
+                                >
+                                  {loadingMoreProjectChats ? t('chatList.loadingMore') : t('chatList.loadMore', { count: remaining })}
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
                       )}
                     </div>
                   );
                 })}
               </div>
-              <div className="border-t-2 border-brutal-black">
-                {creatingProjectInline ? (
-                  <form onSubmit={handleCreateProjectInline} className="flex items-center gap-1 p-2">
-                    <input
-                      autoFocus
-                      type="text"
-                      value={newProjectName}
-                      onChange={(e) => setNewProjectName(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Escape') { setCreatingProjectInline(false); setNewProjectName(''); } }}
-                      placeholder={t('chatList.newProjectPlaceholder')}
-                      className="flex-1 min-w-0 px-2 py-1 text-xs font-bold bg-white dark:bg-zinc-700 dark:text-white border-2 border-brutal-black focus:outline-none"
-                    />
-                    <button type="submit" className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-brutal-yellow hover:bg-yellow-300 text-brutal-black shrink-0">✓</button>
-                    <button type="button" onClick={() => { setCreatingProjectInline(false); setNewProjectName(''); }} className="px-2 py-1 text-[10px] font-extrabold uppercase border-2 border-brutal-black bg-white dark:bg-zinc-700 dark:text-white shrink-0">✕</button>
-                  </form>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setCreatingProjectInline(true)}
-                    className="w-full text-left px-3 py-2 text-xs font-extrabold uppercase tracking-wider hover:bg-brutal-yellow hover:text-brutal-black text-brutal-blue dark:text-brutal-yellow"
-                  >
-                    + {t('chatList.newProject')}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Filter context line */}
-        <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 dark:text-neutral-500 px-0.5">
-          {filterId === ALL_PROJECTS_FILTER
-            ? t('chatList.filter.recentAll')
-            : t('chatList.filter.recentIn', { name: filterLabel })}
-        </div>
-        <BrutalSegmentedTabs
-          value={kindFilter}
-          onChange={setKindFilter}
-          containerClassName="border-2 border-brutal-black bg-white dark:bg-zinc-700"
-          inactiveTextClassName="text-neutral-500 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-zinc-600"
-          tabClassName="flex-1 min-w-0 h-6 px-1 text-[9px] font-extrabold"
-          tabs={[
-            { id: 'you', label: t('chatList.kind.you') },
-            { id: 'scheduled', label: t('chatList.kind.scheduled') },
-            { id: 'all', label: t('chatList.kind.all') },
-          ]}
-        />
-      </div>
-
-      {/* Chat list */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin min-h-0">
-        {loadingProjectChats ? (
-          renderListSkeleton()
-        ) : visibleChats.length === 0 ? (
-          <div className="flex flex-col bg-white dark:bg-zinc-800">
-            <div className="p-8 text-center">
-              <div className="w-16 h-16 mx-auto mb-3">
-                <RobotAvatar variant={searchQuery ? 'ghost' : 'portal'} />
-              </div>
-              <p className="text-brutal-black dark:text-white text-sm font-bold uppercase">
-                {searchQuery ? t('chatList.empty.noResultsTitle') : t('chatList.empty.noChatsTitle')}
-              </p>
-              <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-1">
-                {searchQuery ? t('chatList.empty.noResultsDesc') : t('chatList.empty.noChatsDesc')}
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col bg-white dark:bg-zinc-800">
-            {visibleChats.map(renderChatRow)}
-            {remaining > 0 && (
-              <button
-                onClick={handleLoadMore}
-                disabled={loadingMoreChats || loadingMoreProjectChats}
-                className="w-full py-3 text-[10px] font-bold uppercase border-t border-neutral-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-neutral-50 dark:hover:bg-zinc-700/80 text-neutral-500 dark:text-neutral-400 hover:text-brutal-black dark:hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loadingMoreChats || loadingMoreProjectChats ? t('chatList.loadingMore') : t('chatList.loadMore', { count: remaining })}
-              </button>
-            )}
+                </>
+              ) : (
+                <div className="border-t border-neutral-200 dark:border-zinc-700">
+                  {visibleChats
+                    .filter(chat => getChatKind(chat) !== 'scheduled')
+                    .map(chat => renderChatRow(chat, true))}
+                  {remaining > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => void handleLoadMore()}
+                      disabled={loadingMoreChats}
+                      className="w-full border-t border-neutral-200 py-2.5 text-[10px] font-extrabold uppercase text-neutral-500 hover:bg-neutral-50 hover:text-brutal-black disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-white"
+                    >
+                      {loadingMoreChats ? t('chatList.loadingMore') : t('chatList.loadMore', { count: remaining })}
+                    </button>
+                  )}
+                </div>
+              )}
+            </section>
           </div>
         )}
       </div>
@@ -972,6 +1232,24 @@ export const ChatList: React.FC = () => {
         );
       })()}
 
+      {taskMenu && (() => {
+        const job = cronJobs.find(item => item.id === taskMenu.jobId);
+        if (!job) return null;
+        return (
+          <ProjectRowMenu
+            anchor={taskMenu.anchor}
+            boundary={sidebarBoundsRef.current?.getBoundingClientRect() ?? null}
+            rootDataAttrs={{ 'data-popover-source': 'task-row' }}
+            onRename={() => {
+              setTaskRenameValue(job.name);
+              setRenamingTaskId(job.id);
+            }}
+            onDelete={() => handleRequestTaskDelete(job)}
+            onClose={() => setTaskMenu(null)}
+          />
+        );
+      })()}
+
       {/* Modal dialog (replaces window.alert / window.confirm) */}
       <BrutalDialog
         open={dialog !== null}
@@ -982,7 +1260,7 @@ export const ChatList: React.FC = () => {
         rootDataAttrs={{ 'data-popover-source': 'project-filter' }}
       />
 
-      {/* Floating project menu (kebab inside the filter dropdown) */}
+      {/* Floating project menu */}
       {projectMenu && (() => {
         const p = projects.find(pr => pr.id === projectMenu.projectId);
         if (!p) return null;

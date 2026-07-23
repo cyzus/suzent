@@ -507,7 +507,7 @@ function AppInner(): React.ReactElement {
       <TitleBar />
       <div className={`flex h-full relative ${showStandaloneTitleBar ? 'pt-8' : ''}`}>
         <Sidebar
-          chatsContent={<ChatList />}
+          chatsContent={<ChatList onOpenAutomation={() => openSettings('automation')} />}
           isOpen={isLeftSidebarOpen}
           onOpenSettings={() => openSettings()}
           onClose={() => setIsLeftSidebarOpen(false)}

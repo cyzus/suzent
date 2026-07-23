@@ -1134,11 +1134,18 @@ export interface HeartbeatStatus {
   enabled: boolean;
   running: boolean;
   interval_minutes: number;
+  polling_interval?: number;
   heartbeat_instructions?: string;
   last_run_at: string | null;
   last_result: string | null;
   last_error: string | null;
   heartbeat_due?: boolean;
+  active_sessions?: Array<{
+    chat_id: string;
+    title: string;
+    interval_minutes: number;
+    last_run_at: string | null;
+  }>;
 }
 
 export async function fetchHeartbeatStatus(chatId?: string): Promise<HeartbeatStatus> {
