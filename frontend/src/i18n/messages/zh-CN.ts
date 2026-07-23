@@ -25,6 +25,8 @@ export const zhCN = {
     title: 'Suzent',
     initializing: '初始化中',
     connectingToCore: '正在连接核心服务...',
+    systemIdentity: 'SUZENT / 系统',
+    systemStartup: '系统启动',
     backendErrorTitle: '连接失败',
     desktopRequiredTitle: '需要桌面端',
     desktopRequiredDesc: 'Suzent 仅支持桌面端运行。请使用原生桌面启动器打开该应用。',

@@ -25,6 +25,8 @@ export const en = {
     title: 'Suzent',
     initializing: 'INITIALIZING',
     connectingToCore: 'Connecting to Neural Core...',
+    systemIdentity: 'SUZENT / SYSTEM',
+    systemStartup: 'System startup',
     backendErrorTitle: 'CONNECTION FAILED',
     desktopRequiredTitle: 'Desktop required',
     desktopRequiredDesc: 'Suzent is a desktop-only application. Please run this application using the native desktop launcher.',
