@@ -3,6 +3,23 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from suzent.permissions.models import CommandDecision, PermissionRule
+from suzent.tools.shell.permissions.command_parser import parse_command
+
+
+def _matches_command_prefix(command: str, prefix: str) -> bool:
+    command_context = parse_command(command)
+    prefix_context = parse_command(prefix)
+    if (
+        not command_context.base_command
+        or not prefix_context.base_command
+        or command_context.has_control_operators
+        or prefix_context.has_control_operators
+    ):
+        return False
+
+    command_tokens = [command_context.base_command, *command_context.args]
+    prefix_tokens = [prefix_context.base_command, *prefix_context.args]
+    return command_tokens[: len(prefix_tokens)] == prefix_tokens
 
 
 def match_rule(
@@ -24,7 +41,7 @@ def match_rule(
     if matcher.type == "command_prefix":
         command = str(args.get("content") or args.get("command") or "").strip()
         prefix = str(matcher.value or "").strip()
-        return bool(prefix) and (command == prefix or command.startswith(prefix + " "))
+        return _matches_command_prefix(command, prefix)
     if matcher.type == "path_prefix":
         path = str(args.get("file_path") or args.get("path") or "").replace("\\", "/")
         prefix = str(matcher.value or "").replace("\\", "/").rstrip("/")
