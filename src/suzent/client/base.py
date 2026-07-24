@@ -1,5 +1,7 @@
 import os
+from ipaddress import ip_address
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -39,12 +41,37 @@ def get_server_url() -> str:
     return os.getenv("SUZENT_SERVER_URL", f"http://{host}:{port}")
 
 
+def _is_loopback_url(url: str) -> bool:
+    """Return whether *url* targets the local machine's loopback interface."""
+    hostname = urlsplit(url).hostname
+    if hostname is None:
+        return False
+
+    normalized_hostname = hostname.rstrip(".").lower()
+    if normalized_hostname == "localhost" or normalized_hostname.endswith(".localhost"):
+        return True
+
+    try:
+        address = ip_address(normalized_hostname)
+    except ValueError:
+        return False
+
+    if address.is_loopback:
+        return True
+    mapped_address = getattr(address, "ipv4_mapped", None)
+    return mapped_address is not None and mapped_address.is_loopback
+
+
 class AsyncBaseClient:
     """Base async client providing HTTP wrappers around httpx."""
 
     def __init__(self, base_url: str | None = None):
         self.base_url = base_url or get_server_url()
-        self._client = httpx.AsyncClient(base_url=self.base_url, timeout=30.0)
+        self._client = httpx.AsyncClient(
+            base_url=self.base_url,
+            timeout=30.0,
+            trust_env=not _is_loopback_url(self.base_url),
+        )
 
     async def get(self, path: str, **kwargs) -> Any:
         try:
