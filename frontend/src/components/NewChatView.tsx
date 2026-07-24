@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { ChatInputPanel, type FileMentionSelection } from './ChatInputPanel';
 import { ConfigOptions, ChatConfig } from '../types/api';
-import { RobotAvatar, RobotVariant } from './chat/RobotAvatar';
+import { GreetingCube } from './chat/GreetingCube';
 import { useI18n } from '../i18n';
 import { useProjects } from '../hooks/useProjects';
 
@@ -28,18 +28,8 @@ interface NewChatViewProps {
     onFileMentionSelected?: (mention: FileMentionSelection) => void;
 }
 
-// Memoized greeting robot component to prevent animation restarts on input changes
-const GreetingRobot: React.FC = React.memo(() => {
+const GreetingPresence: React.FC<{ engaged: boolean }> = React.memo(({ engaged }) => {
     const { t } = useI18n();
-    // Select a random friendly robot (only runs once per mount)
-    const greetingRobot = useMemo(() => {
-        const variants: RobotVariant[] = ['peeker', 'jumper', 'dj', 'party', 'snoozer'];
-        // Snoozer is rare (10% chance)
-        if (Math.random() > 0.9) return 'snoozer';
-
-        const friendly = ['peeker', 'jumper', 'dj', 'party'];
-        return friendly[Math.floor(Math.random() * friendly.length)] as RobotVariant;
-    }, []);
 
     const getGreeting = () => {
         const hour = new Date().getHours();
@@ -51,10 +41,8 @@ const GreetingRobot: React.FC = React.memo(() => {
     };
 
     return (
-        <div className="mb-8 flex flex-col items-center gap-6">
-            <div className="w-24 h-24">
-                <RobotAvatar variant={greetingRobot} />
-            </div>
+        <div className="mb-8 flex flex-col items-center gap-5">
+            <GreetingCube engaged={engaged} />
             <h2 className="text-4xl sm:text-5xl font-brutal font-bold text-brutal-black dark:text-white mb-2 tracking-tight">
                 {getGreeting()}
             </h2>
@@ -62,7 +50,7 @@ const GreetingRobot: React.FC = React.memo(() => {
     );
 });
 
-GreetingRobot.displayName = 'GreetingRobot';
+GreetingPresence.displayName = 'GreetingPresence';
 
 // Inline project picker shown above the chat input on the new-chat screen.
 // Changes which project the next created chat will be assigned to.
@@ -172,36 +160,50 @@ export const NewChatView: React.FC<NewChatViewProps> = ({
     currentChatId,
     onFileMentionSelected,
 }) => {
+    const [isInputHovered, setIsInputHovered] = useState(false);
+    const [isInputFocused, setIsInputFocused] = useState(false);
+    const isInputEngaged = isInputHovered || isInputFocused;
 
     return (
         <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center p-8 animate-brutal-drop">
-            <GreetingRobot />
+            <GreetingPresence engaged={isInputEngaged} />
 
             <div className="w-full max-w-2xl">
                 <ProjectPicker />
-                <ChatInputPanel
-                    input={input}
-                    setInput={setInput}
-                    selectedFiles={selectedFiles}
-                    handleFileSelect={handleFileSelect}
-                    removeFile={removeFile}
-                    uploadProgress={uploadProgress}
-                    isUploading={isUploading}
-                    fileError={fileError}
-                    send={send}
-                    config={config}
-                    setConfig={setConfig}
-                    backendConfig={backendConfig}
-                    fileInputRef={fileInputRef}
-                    textareaRef={textareaRef}
-                    configReady={configReady}
-                    streamingForCurrentChat={streamingForCurrentChat}
-                    modelSelectDropUp={false}
-                    onPaste={onPaste}
-                    onImageClick={onImageClick}
-                    currentChatId={currentChatId}
-                    onFileMentionSelected={onFileMentionSelected}
-                />
+                <div
+                    onPointerEnter={() => setIsInputHovered(true)}
+                    onPointerLeave={() => setIsInputHovered(false)}
+                    onFocusCapture={() => setIsInputFocused(true)}
+                    onBlurCapture={(event) => {
+                        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                            setIsInputFocused(false);
+                        }
+                    }}
+                >
+                    <ChatInputPanel
+                        input={input}
+                        setInput={setInput}
+                        selectedFiles={selectedFiles}
+                        handleFileSelect={handleFileSelect}
+                        removeFile={removeFile}
+                        uploadProgress={uploadProgress}
+                        isUploading={isUploading}
+                        fileError={fileError}
+                        send={send}
+                        config={config}
+                        setConfig={setConfig}
+                        backendConfig={backendConfig}
+                        fileInputRef={fileInputRef}
+                        textareaRef={textareaRef}
+                        configReady={configReady}
+                        streamingForCurrentChat={streamingForCurrentChat}
+                        modelSelectDropUp={false}
+                        onPaste={onPaste}
+                        onImageClick={onImageClick}
+                        currentChatId={currentChatId}
+                        onFileMentionSelected={onFileMentionSelected}
+                    />
+                </div>
             </div>
         </div>
     );
